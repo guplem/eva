@@ -3,6 +3,7 @@ import {
   scheduleCardProblem,
   scheduleFiringProblem,
   engineMissingProblem,
+  engineRestartProblem,
   engineUpdateProblem,
   relayedProblem,
   updateProblem,
@@ -148,8 +149,9 @@ describe("relayedProblem", () => {
 });
 
 describe("engineMissingProblem", () => {
-  test("a loaded engine is no problem", () => {
+  test("a loaded or installed engine is no missing program", () => {
     expect(engineMissingProblem("claude-code", "loaded", "linux")).toBeNull();
+    expect(engineMissingProblem("claude-code", "installed", "linux")).toBeNull();
   });
 
   test("a missing program is an error that names the engine and each fix", () => {
@@ -166,12 +168,16 @@ describe("engineMissingProblem", () => {
       "In PowerShell, run `irm https://pi.dev/install.ps1 | iex`.",
     );
   });
+});
 
-  test("a program installed since the start asks only for a restart", () => {
-    const problem = engineMissingProblem("pi", "installed", "linux");
+describe("engineRestartProblem", () => {
+  test("only a program installed since the start asks for a restart", () => {
+    expect(engineRestartProblem("pi", "loaded")).toBeNull();
+    expect(engineRestartProblem("pi", "missing")).toBeNull();
+    const problem = engineRestartProblem("pi", "installed");
     expect(problem?.level).toBe("warn");
     expect(problem?.message).toBe(
-      "The pi program is installed now, but chats use it only after a restart. Send /restart, or press Restart now in Settings, Updates.",
+      "The pi program is installed now, but chats use it only after a restart. Press Restart now in Settings, Updates.",
     );
   });
 });

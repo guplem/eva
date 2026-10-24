@@ -28,6 +28,7 @@ import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput }
 import {
   scheduleCardProblem,
   engineMissingProblem,
+  engineRestartProblem,
   engineUpdateProblem,
   heldBackNews,
   machineAheadMessage,
@@ -1148,6 +1149,7 @@ export class Eva {
       "default_engine",
       engineMissingProblem(engine, state, this.options.toolPlaces?.platform ?? process.platform),
     );
+    this.alerts.report("default_engine_restart", engineRestartProblem(engine, state));
   }
 
   /** The start found the marker of a run that never stopped cleanly. */

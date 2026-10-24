@@ -86,15 +86,8 @@ export function engineMissingProblem(
   state: EngineProgramState,
   platform: NodeJS.Platform,
 ): AlertProblem | null {
-  if (state === "loaded") return null;
+  if (state !== "missing") return null;
   const name = engineProgramNames[engine];
-  const resolvedMessage = `Eva finds the ${name} program again.`;
-  if (state === "installed")
-    return {
-      level: "warn",
-      message: `The ${name} program is installed now, but chats use it only after a restart. Send /restart, or press Restart now in Settings, Updates.`,
-      resolvedMessage,
-    };
   return {
     level: "error",
     message: [
@@ -103,7 +96,22 @@ export function engineMissingProblem(
       "Or run `eva setup` again on this computer.",
       `Or install it by hand: ${engineInstallSteps(engine, platform)}`,
     ].join(" "),
-    resolvedMessage,
+    resolvedMessage: `Eva finds the ${name} program again.`,
+  };
+}
+
+/**
+ * A program installed since the start. It has its own key: an open key changes its text with no
+ * new alert, so the phone would not hear that a restart now fixes the chats.
+ */
+export function engineRestartProblem(engine: EngineName, state: EngineProgramState): AlertProblem | null {
+  if (state !== "installed") return null;
+  const name = engineProgramNames[engine];
+  return {
+    level: "warn",
+    // No /restart: on a relayed alert, a Telegram command restarts the hub.
+    message: `The ${name} program is installed now, but chats use it only after a restart. Press Restart now in Settings, Updates.`,
+    resolvedMessage: `Chats use the ${name} program.`,
   };
 }
 

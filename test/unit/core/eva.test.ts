@@ -1707,6 +1707,12 @@ describe("Eva alerts", () => {
     // The install happens while Eva runs: only a restart loads the engine.
     piProgram = "/opt/pi/bin/pi";
     await instance.backgroundTick();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([
+      ["default_engine", "error"],
+      ["default_engine", "resolved"],
+      ["default_engine_restart", "warn"],
+    ]);
+    expect(instance.status().problems).toHaveLength(1);
     expect(instance.status().problems[0]).toStartWith("The pi program is installed now");
   });
 

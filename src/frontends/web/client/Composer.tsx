@@ -411,7 +411,13 @@ function EngineChip({
         className="chip"
         aria-haspopup="dialog"
         aria-expanded={open}
-        data-tooltip={lock === null ? "Pick the engine, the model and the effort" : "Pick the model and the effort"}
+        data-tooltip={
+          lock === null
+            ? "Pick the engine, the model and the effort"
+            : running
+              ? "Pick the effort"
+              : "Pick the model and the effort"
+        }
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
         <Icon name="bolt" />

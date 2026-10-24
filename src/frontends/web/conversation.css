@@ -1127,3 +1127,35 @@ button.ghost .icon {
   margin-top: var(--space-1);
   max-height: 30dvh;
 }
+
+/* The choices of a retry or a fork of a Project chat (issue 523): one button for each, with a line under its name. */
+.branch-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.branch-choices button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  text-align: left;
+}
+
+.branch-choice-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+
+.branch-choice-detail {
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+/* A chat from another clone names the chat that it came from above its first message. */
+.forked-from {
+  margin: 0 0 var(--space-2);
+}

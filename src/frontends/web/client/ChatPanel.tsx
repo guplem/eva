@@ -4,6 +4,7 @@
  * inspector column. A phone shows the same content in a bottom sheet from the chat header.
  */
 import { useCallback, useState, type CSSProperties, type ReactElement } from "react";
+import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { api, type SessionRecord } from "./api.ts";
 import {
@@ -102,9 +103,19 @@ function ForkButton({
 }: Pick<ChatProps, "tree" | "onChanged" | "shownId">): ReactElement | null {
   const showError = useShowError();
   const [forking, setForking] = useState(false);
+  /** The fork of a Project chat whose choices the dialog shows (issue 523). */
+  const [choosing, setChoosing] = useState<BranchRequest | null>(null);
+  const closeChoices = useCallback(() => setChoosing(null), []);
+  const finishBranch = useFinishBranch(onChanged);
   const point = branchForkPoint(tree, shownId);
   if (point === null) return null;
+  const owner = tree.find((session) => session.id === point.sessionId);
+  const turn = owner?.turns.find((candidate) => candidate.lastMessageId === point.messageId);
   const fork = async (): Promise<void> => {
+    if (owner?.mode === "project" && turn !== undefined) {
+      setChoosing({ kind: "fork", sessionId: point.sessionId, atMessageId: point.messageId, turn });
+      return;
+    }
     setForking(true);
     try {
       await api.fork(point.sessionId, point.messageId);
@@ -116,9 +127,12 @@ function ForkButton({
     }
   };
   return (
-    <button className="fork-chat" disabled={forking} onClick={() => void fork()}>
-      <Icon name="fork" /> Fork this chat
-    </button>
+    <>
+      <button className="fork-chat" disabled={forking} onClick={() => void fork()}>
+        <Icon name="fork" /> Fork this chat
+      </button>
+      {choosing !== null && <BranchChoiceDialog request={choosing} onClose={closeChoices} onDone={finishBranch} />}
+    </>
   );
 }
 

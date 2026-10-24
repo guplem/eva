@@ -1341,6 +1341,12 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
   await page.getByRole("button", { name: "Retry" }).first().click();
+  // A Project chat asks where the retry runs and from which files (issue 523).
+  const choices = page.getByRole("dialog", { name: "Retry this answer" });
+  await expect(choices.getByRole("button", { name: /^Undo and retry here/ })).toBeVisible();
+  await expect(choices.getByRole("button", { name: /^Retry in a new clone/ })).toBeVisible();
+  await choices.getByRole("button", { name: /^Retry here/ }).click();
+  await expect(choices).toHaveCount(0);
   await expect(page.getByRole("group", { name: "Branches from the start" })).toContainText("Fork 1");
   let forkId: string | undefined;
   await expect
@@ -1355,6 +1361,26 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   await page.goto(`/#/chat/${forkId ?? ""}`);
   await expect(page.getByText("Project mode")).toBeVisible();
   await expect(page.locator(".message.user").first()).toContainText(title);
+});
+
+test("a fork of a project chat in a new clone opens there, and names the chat it came from", async ({ page }) => {
+  const title = `Fork in a new clone (${test.info().project.name})`;
+  await logIn(page);
+  await openExampleApp(page);
+  await newProjectChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(title);
+  await composer.press("Enter");
+  await answerInNewClone(page, title);
+  const chatId = await chatIdNamed(page, title);
+  await waitUntilIdle(page, chatId);
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  const choices = page.getByRole("dialog", { name: "Fork at this answer" });
+  await expect(choices.getByRole("button", { name: /^This clone/ })).toBeVisible();
+  await choices.getByRole("button", { name: /^New clone at this answer/ }).click();
+  // The fork is the first chat of its clone, so the page opens it.
+  await expect(page.locator(".forked-from")).toContainText(`Forked from ${title} in clone-`);
+  await expect(page.locator(".message.user")).toHaveCount(0);
 });
 
 test("the address of a fork opens that fork, even when another branch is newer", async ({ page }) => {

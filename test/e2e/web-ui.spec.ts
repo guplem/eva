@@ -4690,7 +4690,13 @@ test("Files: a phone shows only the open folder (issue 308)", async ({ page }, t
   await page.goto("/#/files/Projects");
   await expect(page.getByRole("list", { name: "Contents of Projects" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Contents of Vault" })).toBeHidden();
-  await expect(page.getByRole("button", { name: "Make the file large" })).toHaveCount(0);
+  // The file fills the phone already, so its menu has no large item.
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  await page.getByRole("region", { name: "File text" }).getByRole("button", { name: "More actions" }).click();
+  await expect(
+    page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Download" }),
+  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Make the file large" })).toHaveCount(0);
 });
 
 test("Files: on a phone, the buttons leave the folder name room for whole words", async ({ page }, testInfo) => {

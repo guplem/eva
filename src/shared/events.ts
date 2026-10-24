@@ -75,6 +75,8 @@ export type EngineEventPayload =
   | { readonly kind: "session_seen"; readonly seenTurns: number }
   /** The person archived the chat, or brought it back to the chat list (issue 388). */
   | { readonly kind: "session_archived"; readonly archived: boolean }
+  /** Eva closed the chat to reuse its clone. It keeps its history, but takes no message (issue 521). */
+  | { readonly kind: "session_closed" }
   | { readonly kind: "notice"; readonly text: string }
   /** The subscription is near the limit of a usage window, or past it, so the engine refused the turn. */
   | {

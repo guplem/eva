@@ -809,6 +809,15 @@ export class TelegramBot {
           await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
         });
         return;
+      case "session_closed":
+        await this.inOrder(event.sessionId, async () => {
+          await this.send(
+            target.chatId,
+            target.topicId,
+            "Eva closed this chat to reuse its clone. Start a new chat to go on.",
+          );
+        });
+        return;
       case "notice":
         // Plain text: a reason from the system, such as a path, is no Markdown. Quiet, because
         // only the block that ends the turn rings the phone (issue #40).

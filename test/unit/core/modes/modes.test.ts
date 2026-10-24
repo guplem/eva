@@ -68,6 +68,7 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     historyLost: false,
     seenTurns: 0,
     archived: false,
+    closed: false,
     turns: [],
     ...overrides,
   };

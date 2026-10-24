@@ -246,6 +246,7 @@ export class SessionManager {
       turns: [],
       seenTurns: 0,
       archived: false,
+      closed: false,
     };
     this.options.store.save(record);
     return record;
@@ -407,6 +408,7 @@ export class SessionManager {
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
   send(sessionId: string, text: string, origin: MessageOrigin = "eva"): Promise<void> {
+    this.assertOpen(this.get(sessionId));
     // A new answer must not hide in the archive.
     this.setArchived(this.rootOf(this.get(sessionId)).id, false);
     const runtime = this.runtimeOf(sessionId);
@@ -429,12 +431,7 @@ export class SessionManager {
    * at a parent that is gone. The engine keeps its own transcript.
    */
   delete(sessionId: string): string[] {
-    this.get(sessionId);
-    const ids = [sessionId];
-    // The loop also visits the ids that it adds, so it walks the whole tree.
-    for (const parentId of ids) {
-      for (const session of this.list()) if (session.parentId === parentId) ids.push(session.id);
-    }
+    const ids = this.treeOf(sessionId);
     // A queued message would run on a deleted record, so a gathered one refuses the delete too.
     if (ids.some((id) => this.isActive(id)))
       throw new EvaError("session_busy", "Eva is still working in this chat. Try again when she finishes.");
@@ -447,6 +444,36 @@ export class SessionManager {
     }
     // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
     for (const id of ids) this.emit(id, { kind: "session_deleted" });
+    return ids;
+  }
+
+  /**
+   * Closes a chat and every fork of it, and returns their ids. Eva closes a chat when she reuses its
+   * clone (issue 521): a later message would run on another task. The history stays.
+   */
+  close(sessionId: string): string[] {
+    const ids = this.treeOf(sessionId);
+    if (ids.some((id) => this.isActive(id)))
+      throw new EvaError("session_busy", "Eva is still working in this chat. Try again when she finishes.");
+    const closed = ids.filter((id) => !this.get(id).closed);
+    for (const id of closed) this.options.store.save({ ...this.get(id), closed: true });
+    for (const id of closed) this.emit(id, { kind: "session_closed" });
+    return ids;
+  }
+
+  private assertOpen(session: SessionRecord): void {
+    if (session.closed)
+      throw new EvaError("session_closed", "This chat is closed, because Eva reused its clone. Start a new chat.");
+  }
+
+  /** A chat and every fork of it, through every level. */
+  private treeOf(sessionId: string): string[] {
+    this.get(sessionId);
+    const ids = [sessionId];
+    // The loop also visits the ids that it adds, so it walks the whole tree.
+    for (const parentId of ids) {
+      for (const session of this.list()) if (session.parentId === parentId) ids.push(session.id);
+    }
     return ids;
   }
 
@@ -470,6 +497,7 @@ export class SessionManager {
   /** A new branch of a conversation, up to and including one message. Its first message starts it. */
   fork(sessionId: string, atMessageId: string): SessionRecord {
     const parent = this.get(sessionId);
+    this.assertOpen(parent);
     const record: SessionRecord = {
       ...this.createSession({
         mode: parent.mode,
@@ -493,6 +521,7 @@ export class SessionManager {
   /** Runs a turn again on a new branch; the old answer stays in its own branch. */
   async retry(sessionId: string, turnIndex: number): Promise<SessionRecord> {
     const session = this.get(sessionId);
+    this.assertOpen(session);
     const turn = session.turns[turnIndex];
     if (turn === undefined)
       throw new EvaError("session_not_found", `Session ${sessionId} has no turn ${String(turnIndex)}.`);
@@ -1050,6 +1079,7 @@ function redactPayload(
     case "session_deleted":
     case "session_seen":
     case "session_archived":
+    case "session_closed":
       return payload;
     case "project_work_started":
       return { ...payload, request: redactor.redact(payload.request) };

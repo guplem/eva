@@ -124,6 +124,7 @@ machine state/push-subscriptions.json version=1
 machine state/sessions.json sessions
 machine state/sessions.json sessions[].archived
 machine state/sessions.json sessions[].clone
+machine state/sessions.json sessions[].closed
 machine state/sessions.json sessions[].createdAt
 machine state/sessions.json sessions[].effort
 machine state/sessions.json sessions[].effort=default

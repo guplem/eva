@@ -10,6 +10,8 @@ export type EvaErrorCode =
   | "engine_failed"
   | "session_busy"
   | "session_not_found"
+  /** The chat is closed: Eva reused its clone, so it takes no message. */
+  | "session_closed"
   | "schedule_invalid"
   | "update_failed"
   | "device_login_unavailable"

@@ -191,6 +191,28 @@ export function shownPending(pending: PendingMessage | null, turnCount: number):
   return pending !== null && pending.turnCount === turnCount ? pending.text : null;
 }
 
+/** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
+const stickToBottomPx = 80;
+
+/** Where the chat view is scrolled: the scroll top, the whole height and the visible height. */
+export interface ScrollPlace {
+  readonly top: number;
+  readonly height: number;
+  readonly visible: number;
+}
+
+/**
+ * True when the view must follow the newest message after a scroll. Any move up stops the follow,
+ * so the person can read while an answer streams. Shorter content can pull the view up to the very
+ * bottom, and that keeps the follow.
+ */
+export function followsBottom(previousTop: number, place: ScrollPlace): boolean {
+  const distance = place.height - place.top - place.visible;
+  if (distance <= 1) return true;
+  if (place.top < previousTop) return false;
+  return distance < stickToBottomPx;
+}
+
 /** The empty message box names who answers: Eva in an Assistant chat, the project's harness in a project chat. */
 export function composerPlaceholder(projectTitle: string | null): string {
   return `Message ${projectTitle ?? "Eva"}`;

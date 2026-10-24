@@ -7,6 +7,7 @@ import {
   elapsedText,
   engineLabel,
   foldSteps,
+  followsBottom,
   inputFields,
   liveFace,
   missingDetail,
@@ -198,6 +199,30 @@ describe("shownPending", () => {
 
   test("shows nothing when nothing waits", () => {
     expect(shownPending(null, 0)).toBeNull();
+  });
+});
+
+describe("followsBottom", () => {
+  const place = (top: number): { top: number; height: number; visible: number } => ({
+    top,
+    height: 2_000,
+    visible: 500,
+  });
+
+  test("stops following as soon as the person scrolls up, even near the bottom", () => {
+    expect(followsBottom(1_500, place(1_490))).toBe(false);
+  });
+
+  test("follows again once the person scrolls back near the bottom", () => {
+    expect(followsBottom(1_300, place(1_450))).toBe(true);
+  });
+
+  test("does not follow while the person scrolls down far from the bottom", () => {
+    expect(followsBottom(500, place(800))).toBe(false);
+  });
+
+  test("follows when shorter content pulls the view up to the very bottom", () => {
+    expect(followsBottom(1_800, place(1_500))).toBe(true);
   });
 });
 

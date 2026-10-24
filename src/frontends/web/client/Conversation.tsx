@@ -23,6 +23,7 @@ import {
   composerPlaceholder,
   elapsedText,
   foldSteps,
+  followsBottom,
   liveFace,
   shownPending,
   type PendingMessage,
@@ -40,8 +41,6 @@ import { toWebHtml } from "./web-format.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 
-/** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
-const stickToBottomPx = 80;
 /** How long a Copy button says "Copied". */
 const copiedMs = 2_000;
 /** The voice notes of this tab, so a sent message can play what the person said. */
@@ -90,6 +89,8 @@ export function Conversation({
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
+  // Each render scrolls down while the view follows, so only a move up tells that the person reads.
+  const lastTop = useRef(0);
 
   // A layout effect, so it runs before the scroll to a picked turn in the same commit.
   useLayoutEffect(() => {
@@ -119,7 +120,12 @@ export function Conversation({
       ref={scroller}
       onScroll={(event) => {
         const element = event.currentTarget;
-        isAtBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < stickToBottomPx;
+        isAtBottom.current = followsBottom(lastTop.current, {
+          top: element.scrollTop,
+          height: element.scrollHeight,
+          visible: element.clientHeight,
+        });
+        lastTop.current = element.scrollTop;
       }}
     >
       {tree.length > 1 && (

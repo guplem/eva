@@ -571,6 +571,11 @@ export class ProjectWork {
     }
   }
 
+  /** True while Eva pulls or pushes any repository in the clone folder, so an undo waits (issue 523). */
+  isSyncingFolder(clonePath: string): boolean {
+    return listRepositories(clonePath).some((repository) => this.syncingRepositories.has(repository.path));
+  }
+
   /** True while Eva pulls or pushes any repository of the clone. */
   private isSyncing(clone: Clone): boolean {
     return clone.repositories.some((repository) => this.syncingRepositories.has(repository.path));

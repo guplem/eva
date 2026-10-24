@@ -1239,9 +1239,11 @@ describe("file snapshots of Project chats (issue 523)", () => {
     expect(retry.pendingRestore).toBe(before);
     await waitUntil(() => !manager.isActive(retry.id));
 
-    expect(log[0]).toBe(`restore ${before}`);
-    expect(log[1]?.startsWith("snapshot ")).toBe(true);
-    expect(log[2]).toBe("engine");
+    // First a snapshot of the files as they are, so a change by hand after the last turn stays.
+    expect(log[0]?.startsWith("snapshot ")).toBe(true);
+    expect(log[1]).toBe(`restore ${before}`);
+    expect(log[2]?.startsWith("snapshot ")).toBe(true);
+    expect(log[3]).toBe("engine");
     expect(manager.get(retry.id).pendingRestore).toBeNull();
     expect(manager.get(retry.id).turns[0]?.userText).toBe("two");
   });
@@ -1323,6 +1325,8 @@ describe("chats that move to another clone (issue 523)", () => {
       title: parent.title,
       forkedFrom: { sessionId: parentId, clone: "clone-0", ...point },
     });
+    // Its first turn goes on from the parent's engine session, so it keeps the engine.
+    expect(() => manager.setEngine(moved.id, "claude-code")).toThrow("keeps the engine");
     await manager.send(moved.id, "another way");
     expect(engine.requests[1]?.history).toEqual({
       kind: "fork",
@@ -1331,8 +1335,7 @@ describe("chats that move to another clone (issue 523)", () => {
     });
     expect(engine.requests[1]?.startFolder).toBe("/clones/clone-1");
 
-    // It keeps its engine, and the parent's delete leaves it.
-    expect(() => manager.setEngine(moved.id, "claude-code")).toThrow("keeps the engine");
+    // The parent's delete leaves it.
     expect(manager.delete(parentId)).toEqual([parentId]);
     expect(manager.get(moved.id).turns).toHaveLength(1);
   });
@@ -1342,8 +1345,33 @@ describe("chats that move to another clone (issue 523)", () => {
     const manager = createManager(engine);
     const parentId = newProjectSession(manager);
     const moved = manager.createMovedBranch(parentId, null, { startFolder: "/clones/clone-1", clone: "clone-1" });
+    // With no history to go on from, it may still choose its engine.
+    expect(manager.setEngine(moved.id, "claude-code").forkedFrom?.sessionId).toBe(parentId);
     await manager.send(moved.id, "first");
     expect(engine.requests[0]?.history.kind).toBe("new");
+  });
+
+  test("an undo stops when Eva cannot keep the files as they are first", async () => {
+    const log: string[] = [];
+    let snapshots = 0;
+    const projectPreparer: TurnPreparer = {
+      ...preparer,
+      snapshot: () => {
+        snapshots += 1;
+        return Promise.resolve(snapshots <= 2);
+      },
+      restore: (_session, id) => {
+        log.push(`restore ${id}`);
+        return Promise.resolve();
+      },
+    };
+    const manager = createManager(new FakeEngine(), { projectPreparer });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    const retry = await manager.retry(sessionId, 0, "undo");
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(manager.get(retry.id).turns[0]?.failure).toContain("did not undo");
+    expect(log).toEqual([]);
   });
 
   test("a retry of a moved chat's first turn goes on from the same point", async () => {

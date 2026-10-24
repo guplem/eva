@@ -324,7 +324,8 @@ export class SessionManager {
   setEngine(sessionId: string, engine: EngineName): SessionRecord {
     const session = this.get(sessionId);
     // The fork's first turn continues its parent's engine session, which only that engine knows.
-    if (session.parentId !== null || session.forkedFrom !== null)
+    // A chat from another clone with no engine history, as after a summary, may still choose.
+    if (session.parentId !== null || session.forkFromEngineSessionId !== null)
       throw new EvaError("session_busy", "A fork keeps the engine of its chat.");
     if (session.turns.length > 0 || this.isBusy(sessionId)) {
       throw new EvaError("session_busy", "The engine of a chat is chosen before its first message.");
@@ -1152,6 +1153,13 @@ ${prompt}`,
   private async restorePending(session: SessionRecord, preparer: TurnPreparer): Promise<void> {
     const snapshot = this.get(session.id).pendingRestore;
     if (snapshot === null || preparer.restore === undefined) return;
+    // The files now can hold changes that the person made after the last turn: keep them first.
+    const before = await this.takeSnapshot(session, preparer);
+    if (before === null) throw new Error("Eva could not keep the files as they are now, so she did not undo them.");
+    this.options.logger?.log("info", "Eva kept the files of a clone before an undo.", {
+      sessionId: session.id,
+      snapshot: before,
+    });
     try {
       await preparer.restore(session, snapshot);
     } catch (error) {

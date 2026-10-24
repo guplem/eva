@@ -558,6 +558,21 @@ describe("Project mode", () => {
     expect(readFileSync(join(clone, "draft.txt"), "utf8")).toBe("first\n");
   });
 
+  test("refuses a restore while Eva pulls or pushes in the clone", async () => {
+    const preparer = new ProjectPreparer({
+      trustStore: new TrustStore(join(sandbox.root, "trust.json")),
+      cloneOrigins: origins,
+      trustedOwners: () => [],
+      environment: { PATH: "/bin" },
+      readRemote: () => Promise.resolve(null),
+      snapshots: { runner: systemProcessRunner, environment: gitEnvironment },
+      isSyncing: (folder) => folder === cloneFolder,
+    });
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder });
+    const error: unknown = await preparer.restore(cloneSession, "s1").catch((caught: unknown) => caught);
+    expect(isEvaError(error, "session_busy")).toBe(true);
+  });
+
   test("without Eva's git it keeps no snapshot, and refuses a restore", async () => {
     const preparer = project(["owner"]);
     const cloneSession = session({ mode: "project", startFolder: cloneFolder });

@@ -31,6 +31,8 @@ export interface ProjectPreparerOptions {
   readonly readRemote: (cloneFolder: string) => Promise<string | null>;
   /** Eva's own git for the snapshots of a clone's files (issue 523). Without it, a turn keeps none. */
   readonly snapshots?: SnapshotRun;
+  /** True while Eva pulls or pushes a repository of the clone. A restore must not change files under it. */
+  readonly isSyncing?: (cloneFolder: string) => boolean;
 }
 
 export class ProjectPreparer implements TurnPreparer {
@@ -71,6 +73,10 @@ export class ProjectPreparer implements TurnPreparer {
   restore(session: SessionRecord, id: string): Promise<void> {
     const run = this.options.snapshots;
     if (run === undefined) return Promise.reject(new EvaError("snapshot_missing", "This Eva keeps no snapshots."));
+    if (this.options.isSyncing?.(session.startFolder) === true)
+      return Promise.reject(
+        new EvaError("session_busy", "Eva pulls or pushes in this clone now. Send the message again when she ends."),
+      );
     return restoreSnapshot(session.startFolder, id, run);
   }
 

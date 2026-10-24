@@ -635,6 +635,8 @@ export class Eva {
           environment: agentEnvironment,
           readRemote: (folder) => readOriginUrl(folder, options.runner, ownGitEnvironment),
           snapshots: { runner: options.runner, environment: ownGitEnvironment },
+          // Read at each restore: the project work exists only after the session manager.
+          isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
         }),
       },
       now: options.now,

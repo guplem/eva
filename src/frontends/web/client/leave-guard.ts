@@ -125,8 +125,7 @@ export interface LeaveWindow {
     readonly state: unknown;
     replaceState(data: unknown, unused: string, url?: string): void;
     pushState(data: unknown, unused: string, url: string): void;
-    back(): void;
-    forward(): void;
+    go(delta: number): void;
   };
 }
 
@@ -185,20 +184,19 @@ export function watchLeaving(
     expected = { place, shown: false };
     if (arrived === null) {
       // The link added an entry. Back removes it from sight; Discard adds it again in place of the old one.
-      history.back();
+      history.go(-1);
       askToLeave(() => {
         history.pushState(null, "", newURL);
         target.dispatchEvent(new Event("hashchange"));
       });
       return;
     }
-    const wentBack = arrived < place;
-    if (wentBack) history.forward();
-    else history.back();
+    // A long press on Back can jump several entries, so the steps use the distance.
+    const from = place;
+    history.go(from - arrived);
     askToLeave(() => {
       expected = { place: arrived, shown: true };
-      if (wentBack) history.back();
-      else history.forward();
+      history.go(arrived - from);
     });
   });
   // A reload or a closed tab would drop the changes, so the browser asks first.

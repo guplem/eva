@@ -71,3 +71,16 @@ Rejected:
 - Shorten the subject of commit `81d995c` (74 characters): it is pushed, and a rewrite needs a force-push. The commit check passes it.
 - Add a line to `docs/guide/`: optional, and nothing there is false.
 - Set `returnValue` on `beforeunload` for old browsers: the lint forbids the deprecated API, and current browsers need only `preventDefault`.
+
+## Review round 2
+
+Three new sub-agents reviewed the work, with the rejected findings above. None raised a rejected finding again. Fixed:
+
+- A search result for the page that is open closes the search again.
+- Escape in the file rename field keeps the question open: the shared `Dialog` ignores the Escape that opened it.
+- The login link no longer wipes the place of the first history entry: the watch starts after it.
+- A long press on Back that jumps several entries steps back and forward by the same distance.
+
+Rejected:
+
+- Mark again an entry that a link to the same address replaces: no such link exists in the web app.

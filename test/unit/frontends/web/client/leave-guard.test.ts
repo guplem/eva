@@ -182,8 +182,9 @@ class FakeWindow extends EventTarget implements LeaveWindow {
       this.at += 1;
       this.history.state = data;
     },
-    back: (): void => this.step(-1),
-    forward: (): void => this.step(1),
+    back: (): void => this.history.go(-1),
+    forward: (): void => this.history.go(1),
+    go: (delta: number): void => this.step(delta),
   };
 
   constructor(staysOnPage?: (oldURL: string, newURL: string) => boolean) {
@@ -278,6 +279,18 @@ describe("watchLeaving", () => {
     window.history.forward();
     await answerLeave("discard");
     expect(window.address).toBe("#/settings");
+  });
+
+  test("a jump of two entries steps back to the page, and Discard makes the same jump", async () => {
+    const window = new FakeWindow();
+    window.link("#/files");
+    window.link("#/settings");
+    hold();
+    window.history.go(-2);
+    expect(window.address).toBe("#/settings");
+    expect(await answerLeave("discard")).toBe(true);
+    expect(window.address).toBe("#/projects");
+    expect(window.seen).toEqual(["#/files", "#/settings", "#/projects"]);
   });
 
   test("a move while the question is open does not replace the question", async () => {

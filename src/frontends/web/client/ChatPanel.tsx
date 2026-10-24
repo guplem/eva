@@ -273,8 +273,10 @@ export function Dialog({
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     close.current?.focus();
+    // An Escape that opened this dialog, such as in a rename field, must not close it at once.
+    const openedAt = performance.now();
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.timeStamp < openedAt) return;
       // One Escape closes only the top dialog, such as the unsaved changes question over a form.
       const dialogs = document.querySelectorAll('[role="dialog"]');
       if (dialogs[dialogs.length - 1] !== box.current) return;

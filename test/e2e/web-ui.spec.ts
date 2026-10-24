@@ -4705,6 +4705,13 @@ test("Files: the person renames a note, and its new address opens it (issue 343)
   await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
   await page.getByRole("button", { name: `Rename ${run}-draft.md` }).click();
   const field = page.getByRole("textbox", { name: `New name of ${run}-draft.md` });
+  // Escape with a changed name asks first, and the question stays open.
+  await field.fill(`${run}-other.md`);
+  await field.press("Escape");
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await expect(question.getByRole("button", { name: "Discard and close" })).toBeVisible();
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(field).toHaveValue(`${run}-other.md`);
   await field.fill("bad:name.md");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("A name cannot hold these characters")).toBeVisible();

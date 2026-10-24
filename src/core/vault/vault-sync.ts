@@ -100,6 +100,8 @@ const unmergedCodes: ReadonlySet<string> = new Set(["DD", "AU", "UD", "UA", "DU"
  * Paths go on stdin, never on the command line: Windows limits a command line to 32,767
  * characters, so a save of some hundred files would fail each time (#505).
  */
+/** An index.lock older than this is left over from a git that was stopped (#505). */
+const staleIndexLockMs = 10 * 60_000;
 const pathsOnStdin: readonly string[] = ["--pathspec-from-file=-", "--pathspec-file-nul"];
 
 interface GitResult {
@@ -706,7 +708,11 @@ export class VaultSync {
   }
 
   private async statusEntries(): Promise<StatusEntry[]> {
-    const status = await this.git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], localTimeoutMs);
+    // No index refresh, so no index.lock: a timeout kill would leave the lock (lesson 81).
+    const status = await this.git(
+      ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+      localTimeoutMs,
+    );
     const fields = status.stdout.split("\0").filter((field) => field.length > 0);
     const entries: StatusEntry[] = [];
     for (let index = 0; index < fields.length; index += 1) {
@@ -753,6 +759,23 @@ export class VaultSync {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * A git that a timeout or a power loss stopped leaves `.git/index.lock` behind (lesson 81).
+   * Each later step that writes the index then fails, and /sync cannot fix it from a phone.
+   * No git step holds the lock for minutes, so an old lock has no owner.
+   */
+  private removeStaleIndexLock(): void {
+    const lock = join(this.options.vaultPath, ".git", "index.lock");
+    try {
+      // The file time comes from the real clock, so the age does too, not from the `now` seam.
+      if (Date.now() - statSync(lock).mtimeMs < staleIndexLockMs) return;
+      rmSync(lock, { force: true });
+      this.options.logger?.log("warn", "Eva removed a stale index.lock from the vault.");
+    } catch {
+      // No lock, or Windows still holds it open: the git step then reports the problem.
     }
   }
 
@@ -810,7 +833,11 @@ export class VaultSync {
   }
 
   private serialize<Result>(operation: () => Promise<Result>): Promise<Result> {
-    const next = this.queue.then(operation, operation);
+    const run = (): Promise<Result> => {
+      this.removeStaleIndexLock();
+      return operation();
+    };
+    const next = this.queue.then(run, run);
     this.queue = next.catch(() => undefined);
     return next;
   }

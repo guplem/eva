@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnvironmentWithToken } from "../../../../src/core/instance/child-environments.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
@@ -235,6 +235,19 @@ describe("VaultSync.save", () => {
       expect(run?.command.some((part) => part.includes("Notes/"))).toBe(false);
       expect(run?.stdin?.split("\0")).toContain("Notes/n 39.md");
     }
+  });
+
+  test("removes an index.lock that a killed git left long ago, and keeps a fresh one (#505)", async () => {
+    const lock = join(vault, ".git", "index.lock");
+    sandbox.write(vault, "note.md", "kept\n");
+    writeFileSync(lock, "");
+    expect((await createSync(vault).save()).status).toBe("error");
+    expect(existsSync(lock)).toBe(true);
+    const hourAgo = new Date(Date.now() - 60 * 60_000);
+    utimesSync(lock, hourAgo, hourAgo);
+    expect((await createSync(vault).save()).status).toBe("ok");
+    expect(existsSync(lock)).toBe(false);
+    expect(remoteFiles()).toContain("note.md");
   });
 
   test("never commits a cloned project repository", async () => {

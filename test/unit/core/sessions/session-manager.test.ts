@@ -699,6 +699,7 @@ describe("a chat that continues another chat from a summary (#522)", () => {
     expect(manager.branchTurns(rootId).map((turn) => turn.userText)).toEqual(["one", "two"]);
     // A retry of the first turn starts with none of its parent's turns.
     const retried = await manager.retry(rootId, 0);
+    await waitUntil(() => manager.get(retried.id).turns.length === 1 && !manager.isBusy(retried.id));
     expect(manager.branchTurns(retried.id).map((turn) => turn.userText)).toEqual(["one"]);
   });
 

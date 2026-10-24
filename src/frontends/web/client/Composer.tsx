@@ -6,7 +6,7 @@
  * Without voice notes on her machine, the microphone leads to the button that installs them.
  * The clip attaches files in an Assistant chat. Each file uploads when the person picks it, so Send waits for no upload.
  */
-import { useEffect, useId, useRef, useState, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { effortLevels, type EffortLevel, type EngineName, type ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { messageWithFiles } from "./attachments.ts";
@@ -386,22 +386,66 @@ function EngineChip({
               </div>
             </>
           )}
-          <div className="chip-group" role="group" aria-label="Effort">
-            <span className="chip-group-name">Effort</span>
-            {effortLevels.map((effort) => (
-              <button
-                key={effort}
-                className={`chip${effort === session.effort ? " on" : ""}`}
-                aria-pressed={effort === session.effort}
-                disabled={saving}
-                onClick={() => void choose(() => choices.setEffort(effort))}
-              >
-                {effortName(effort)}
-              </button>
-            ))}
-          </div>
+          <EffortSlider effort={session.effort} onPick={(effort) => void choose(() => choices.setEffort(effort))} />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The effort levels have an order, so one slider shows them. The name follows each move, but the
+ * chat takes the level only on the native `change` event: on release, or on each key press. So a
+ * drag sends one request, not one for each stop.
+ */
+function EffortSlider({
+  effort,
+  onPick,
+}: {
+  readonly effort: EffortLevel;
+  readonly onPick: (effort: EffortLevel) => void;
+}): ReactElement {
+  const [shown, setShown] = useState(effort);
+  const input = useRef<HTMLInputElement>(null);
+  const pick = useRef(onPick);
+  pick.current = onPick;
+
+  // After a save, or a failed one, the slider shows the chat's level again.
+  useEffect(() => setShown(effort), [effort]);
+
+  useEffect(() => {
+    const slider = input.current;
+    if (slider === null) return;
+    const onChange = (): void => {
+      const picked = effortLevels[slider.valueAsNumber];
+      if (picked !== undefined) pick.current(picked);
+    };
+    slider.addEventListener("change", onChange);
+    return () => slider.removeEventListener("change", onChange);
+  }, []);
+
+  const index = effortLevels.indexOf(shown);
+  return (
+    <div className="chip-group" role="group" aria-label="Effort">
+      <span className="chip-group-name">Effort</span>
+      {/* The slider is never disabled while it saves: a disabled slider drops the drag and the focus. */}
+      <input
+        ref={input}
+        className="effort-slider"
+        type="range"
+        min={0}
+        max={effortLevels.length - 1}
+        step={1}
+        value={index}
+        aria-label="Effort"
+        aria-valuetext={effortName(shown)}
+        style={{ "--fill": `${(index / (effortLevels.length - 1)) * 100}%` } as CSSProperties}
+        onChange={(event) => setShown(effortLevels[event.target.valueAsNumber] ?? shown)}
+      />
+      {/* The slider already gives its name to a screen reader. */}
+      <span className="effort-name" aria-hidden="true">
+        {effortName(shown)}
+      </span>
     </div>
   );
 }

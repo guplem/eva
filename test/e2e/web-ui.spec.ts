@@ -854,15 +854,23 @@ test("the composer's chip picks the model before the first message, and is fixed
   const chip = page.getByRole("button", { name: /Default model/ });
   await chip.click();
   const menu = page.getByRole("dialog", { name: "Engine, model and effort" });
+  const picker = page.locator(".chip-picker > .chip");
   await expect(
     menu.getByRole("group", { name: "Engine" }).getByRole("button", { name: "Claude Code" }),
   ).toHaveAttribute("aria-pressed", "true");
   await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Haiku" }).click();
-  await menu.getByRole("group", { name: "Effort" }).getByRole("button", { name: "Low" }).click();
+  // The effort is a slider, with the name of its level at its right.
+  const effort = menu.getByRole("group", { name: "Effort" });
+  const slider = effort.getByRole("slider", { name: "Effort" });
+  await expect(slider).toHaveAttribute("aria-valuetext", "Default");
+  await expect(effort.locator(".effort-name")).toHaveText("Default");
+  await slider.press("ArrowRight");
+  await expect(slider).toHaveAttribute("aria-valuetext", "Low");
+  await expect(effort.locator(".effort-name")).toHaveText("Low");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   // The chip is the one place that shows the model.
-  const picker = page.locator(".chip-picker > .chip");
   await expect(picker).toContainText("Haiku");
   await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
 
@@ -879,9 +887,22 @@ test("the composer's chip picks the model before the first message, and is fixed
   await expect(menu).toBeInViewport({ ratio: 1 });
   await expect(menu.getByRole("group", { name: "Model" })).toHaveCount(0);
   // The effort changes no history, so it changes after the first message too.
-  await menu.getByRole("group", { name: "Effort" }).getByRole("button", { name: "Max" }).click();
+  // A drag over every stop saves the effort once, on release.
+  const saves: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/effort")) saves.push(request.url());
+  });
+  const box = await slider.boundingBox();
+  if (box === null) throw new Error("The effort slider has no box.");
+  await page.mouse.move(box.x + 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 12 });
+  await expect(effort.locator(".effort-name")).toHaveText("Max");
+  expect(saves).toHaveLength(0);
+  await page.mouse.up();
   await expect(picker).toContainText("Haiku 5.5");
   await expect(picker.locator(".chip-effort")).toHaveText("· Max effort");
+  expect(saves).toHaveLength(1);
 });
 
 test("a chat on the default model names the model that answered (#419)", async ({ page }) => {

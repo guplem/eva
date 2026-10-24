@@ -774,6 +774,64 @@ button.ghost .icon {
   color: var(--muted);
 }
 
+/* The track looks like the progress bar: its filled part ends at the thumb. */
+.effort-slider {
+  flex: 1;
+  min-width: 0;
+  height: var(--space-6);
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.effort-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-pill);
+}
+
+.effort-slider::-webkit-slider-runnable-track {
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(to right, var(--accent) var(--fill), var(--chip) var(--fill));
+}
+
+.effort-slider::-moz-range-track {
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(to right, var(--accent) var(--fill), var(--chip) var(--fill));
+}
+
+.effort-slider::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  /* Centres the thumb on the track. */
+  margin-top: calc((var(--space-2) - 18px) / 2);
+  appearance: none;
+  border: 3px solid var(--panel);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--glow);
+}
+
+.effort-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--panel);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--glow);
+}
+
+/* As wide as the longest name, so the slider does not move when the name changes. */
+.effort-name {
+  min-width: 5.5em;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .send {
   width: 40px;
   height: 40px;
@@ -975,6 +1033,10 @@ button.ghost .icon {
   .composer .chip {
     min-height: 44px;
     padding: 4px 14px;
+  }
+
+  .effort-slider {
+    height: 44px;
   }
 
   /* Each step opens its dialog, so a finger needs a full target. */

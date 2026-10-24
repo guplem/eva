@@ -10,8 +10,19 @@ export const messageLimit = 3_500;
 export const telegramMessageLimit = 4_096;
 export const firstRetryMs = 1_000;
 const sendRetries = 3;
-/** Telegram flood waits are mostly under a minute; a longer wait would hold the poll loop too long. */
-const maxSendRetryMs = 120_000;
+/**
+ * The longest total wait across the retries of one call. A send in the poll loop holds the loop:
+ * no button, /stop or other chat is read while it waits.
+ */
+const sendWaitBudgetMs = 120_000;
+/** A call that only logs its failure, such as the answer to a button, is useless when it comes late. */
+const quietWaitBudgetMs = 30_000;
+
+/** How a call goes again after a failure. */
+interface RetryPolicy {
+  /** The longest total wait across all retries of the call. */
+  readonly waitBudgetMs: number;
+}
 
 export interface TelegramSenderOptions {
   readonly api: TelegramApi;
@@ -76,20 +87,30 @@ export class TelegramSender {
   /** A call that only logs its failure. */
   async quietCall(method: string, params: Record<string, unknown>): Promise<void> {
     try {
-      await this.callWithRetry(method, params);
+      await this.callWithRetry(method, params, { waitBudgetMs: quietWaitBudgetMs });
     } catch (error) {
       this.logFailedCall(method, error);
     }
   }
 
-  /** A call that goes again after a 429 or a network error, at most three times. Any other error throws at once. */
-  async callWithRetry<Result>(method: string, params: Record<string, unknown>): Promise<Result> {
+  /**
+   * A call that goes again after a 429 or a network error, at most three times, while the waits
+   * stay within the policy's budget. Any other error throws at once. Telegram refuses a call
+   * before its 429 wait ends, so a retry that would come early gives up instead.
+   */
+  async callWithRetry<Result>(
+    method: string,
+    params: Record<string, unknown>,
+    policy: RetryPolicy = { waitBudgetMs: sendWaitBudgetMs },
+  ): Promise<Result> {
+    let waitedMs = 0;
     for (let retry = 0; ; retry += 1) {
       try {
         return await this.options.api.call<Result>(method, params);
       } catch (error) {
         const waitMs = sendRetryMs(error, retry);
-        if (waitMs === null || retry >= sendRetries) throw error;
+        if (waitMs === null || retry >= sendRetries || waitedMs + waitMs > policy.waitBudgetMs) throw error;
+        waitedMs += waitMs;
         await this.options.sleep(waitMs);
       }
     }
@@ -102,15 +123,11 @@ export class TelegramSender {
 
 /**
  * The wait before a retry of a sending call, or null when a retry cannot help. A 429 waits what
- * Telegram asks for. Past two minutes it gives up: Telegram refuses any call before the wait ends.
- * A network error (code 0) waits 1, 2, then 4 seconds.
+ * Telegram asks for. A network error (code 0) waits 1, 2, then 4 seconds.
  */
 function sendRetryMs(error: unknown, retry: number): number | null {
   if (!(error instanceof TelegramError)) return null;
-  if (error.code === 429) {
-    const waitMs = (error.retryAfterSeconds ?? 1) * 1_000;
-    return waitMs > maxSendRetryMs ? null : waitMs;
-  }
+  if (error.code === 429) return (error.retryAfterSeconds ?? 1) * 1_000;
   if (error.code === 0) return firstRetryMs * 2 ** retry;
   return null;
 }

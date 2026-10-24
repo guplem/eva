@@ -469,6 +469,23 @@ describe("chats", () => {
     expect(telegram.sentTexts()[1]).toBe(telegram.sentTexts()[0]);
   });
 
+  test("the retries of one message wait two minutes at most in all, so the poll loop goes on", async () => {
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 100", 3, 100);
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(sleeps.reduce((sum, ms) => sum + ms, 0)).toBeLessThanOrEqual(120_000);
+    expect(sleeps).toEqual([100_000]);
+  });
+
+  test("a call that only logs its failure waits 30 seconds at most, so a button answer never comes late", async () => {
+    const bot = createBot();
+    telegram.failNext("answerCallbackQuery", 429, "Too Many Requests: retry after 60", 1, 60);
+    telegram.pressButton(owner, "x:unknown");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(sleeps).toEqual([]);
+  });
+
   test("a message refused with a 429 wait past two minutes gives up at once, since an early retry only fails", async () => {
     const bot = createBot();
     telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 600", 1, 600);

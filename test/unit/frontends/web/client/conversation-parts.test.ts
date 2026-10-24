@@ -14,6 +14,7 @@ import {
   stepState,
   modelLabel,
   keptPending,
+  sendsOnEnter,
   sentTurnCount,
   stepIcon,
   stepOrigin,
@@ -242,6 +243,25 @@ describe("followsBottom", () => {
 
   test("follows when shorter content pulls the view up to the very bottom", () => {
     expect(followsBottom(1_800, place(1_500))).toBe(true);
+  });
+});
+
+describe("sendsOnEnter", () => {
+  const key = { key: "Enter", shiftKey: false, isComposing: false, keyCode: 13 };
+
+  test("sends on Enter with a keyboard", () => {
+    expect(sendsOnEnter(key, false)).toBe(true);
+  });
+
+  test("keeps Shift+Enter and any Enter on a touch screen for a new line", () => {
+    expect(sendsOnEnter({ ...key, shiftKey: true }, false)).toBe(false);
+    expect(sendsOnEnter(key, true)).toBe(false);
+  });
+
+  test("leaves an Enter that ends an IME composition to the input method", () => {
+    expect(sendsOnEnter({ ...key, isComposing: true }, false)).toBe(false);
+    // Safari ends the composition before its keydown, and marks that key with the code 229.
+    expect(sendsOnEnter({ ...key, keyCode: 229 }, false)).toBe(false);
   });
 });
 

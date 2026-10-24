@@ -18,6 +18,7 @@ import {
   effortName,
   engineLabel,
   modelLabel,
+  sendsOnEnter,
 } from "./conversation-parts.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
@@ -170,8 +171,14 @@ export function Composer({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
-            // On a touch screen, Enter starts a new line; the Send button sends.
-            if (event.key === "Enter" && !event.shiftKey && !isTouchScreen()) {
+            const press = {
+              key: event.key,
+              shiftKey: event.shiftKey,
+              isComposing: event.nativeEvent.isComposing,
+              // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's Enter only with this code.
+              keyCode: event.keyCode,
+            };
+            if (sendsOnEnter(press, isTouchScreen())) {
               event.preventDefault();
               void send();
             }

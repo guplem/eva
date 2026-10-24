@@ -221,6 +221,26 @@ export function followsBottom(previousTop: number, place: ScrollPlace): boolean 
   return distance < stickToBottomPx;
 }
 
+/** The parts of a key press in the message box that decide a send. */
+export interface ComposerKey {
+  readonly key: string;
+  readonly shiftKey: boolean;
+  readonly isComposing: boolean;
+  readonly keyCode: number;
+}
+
+/** The code that a browser gives a key press that an input method handles. */
+const inputMethodKeyCode = 229;
+
+/**
+ * True when a key press sends the message. On a touch screen, Enter starts a new line and the Send
+ * button sends. An Enter that picks the word of an input method, such as for Japanese, must not send.
+ */
+export function sendsOnEnter(press: ComposerKey, touchScreen: boolean): boolean {
+  if (press.key !== "Enter" || press.shiftKey || touchScreen) return false;
+  return !press.isComposing && press.keyCode !== inputMethodKeyCode;
+}
+
 /** The empty message box names who answers: Eva in an Assistant chat, the project's harness in a project chat. */
 export function composerPlaceholder(projectTitle: string | null): string {
   return `Message ${projectTitle ?? "Eva"}`;

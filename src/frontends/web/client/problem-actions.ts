@@ -12,6 +12,13 @@ export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   open_claude_login: "Open Settings",
 };
 
+const claudeLoginKey = "engine_login:claude-code";
+
+/** A saved token can still have expired, so the Claude Code card must not say the login works. */
+export function claudeLoginExpired(problems: readonly { readonly key: string }[]): boolean {
+  return problems.some((problem) => problem.key === claudeLoginKey);
+}
+
 /** A relayed problem belongs to another machine: its own page fixes it. */
 export function isOtherMachineProblem(key: string): boolean {
   return key.startsWith("machine:");
@@ -32,6 +39,6 @@ export function problemAction(
   if (isOtherMachineProblem(key) || openPage === "settings") return null;
   if (key === "vault_sync" && syncStatus === "conflict") return "pick_version";
   if (key === "template_alignment") return "choose_template_version";
-  if (key === "engine_login:claude-code") return "open_claude_login";
+  if (key === claudeLoginKey) return "open_claude_login";
   return "open_settings";
 }

@@ -7,6 +7,7 @@ import { ProgressBar } from "./Loading.tsx";
 import { PermissionsCard } from "./PermissionsCard.tsx";
 import { restartNote } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
+import { claudeLoginExpired } from "./problem-actions.ts";
 import { stepMark } from "./setup-summary.ts";
 import {
   Card,
@@ -112,7 +113,10 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
     </Card>
   );
   // A failed last test, as of an expired token, keeps the steps. The engine step may test pi instead.
-  const failed = engineStep?.check === "claude-code" && stepMark(engineStep) === "failed";
+  const testFailed = engineStep?.check === "claude-code" && stepMark(engineStep) === "failed";
+  // A chat turn can find the expired token before any test runs.
+  const expired = claudeLoginExpired(context.status?.problemDetails ?? []);
+  const failed = testFailed || expired;
   const loginWorks = installed && saved && !failed;
   if (loginWorks && !loggingInAgain)
     return card(
@@ -136,7 +140,9 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
         </div>
       )}
       {installed && failed && (
-        <div className="callout warning">The last test of the Claude Code token failed. Log in again.</div>
+        <div className="callout warning">
+          {expired ? "The Claude Code login expired." : "The last test of the Claude Code token failed."} Log in again.
+        </div>
       )}
       {loginWorks && (
         <button className="link-button" onClick={() => setLoggingInAgain(false)}>

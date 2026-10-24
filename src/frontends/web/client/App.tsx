@@ -29,6 +29,7 @@ import {
   emptyLiveState,
   forgetTaskEvents,
   startRecovery,
+  withoutRunningTurns,
   withRunningTurns,
   withTasks,
   type LiveState,
@@ -269,9 +270,11 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         try {
           const snapshot = await api.runningTurns();
           setLive((state) => withRunningTurns(state, id, snapshot));
-        } catch {
+        } catch (error) {
           // An older Eva has no such route. The page shows the steps that come from now on.
-          setLive((state) => withRunningTurns(state, id, null));
+          if (error instanceof ApiError && error.status === 404) setLive((state) => withRunningTurns(state, id, null));
+          // A slow network or a time limit says nothing about the turns: keep the steps that the page has.
+          else setLive((state) => withoutRunningTurns(state, id));
         }
       })(),
       refreshSessions(),

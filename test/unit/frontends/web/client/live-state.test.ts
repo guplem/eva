@@ -5,6 +5,7 @@ import {
   forgetTaskEvents,
   stepsWithDraft,
   startRecovery,
+  withoutRunningTurns,
   withRunningTurns,
   withTasks,
   type LiveState,
@@ -327,6 +328,21 @@ describe("withRunningTurns", () => {
   test("with no recovery, events are not kept", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
     expect(state.recovery).toBeNull();
+  });
+});
+
+describe("withoutRunningTurns", () => {
+  test("a read that timed out keeps the steps that the page knows, and stops keeping events", () => {
+    let state = startRecovery(run([{ kind: "text", text: "Old.", messageId: "m0" }]), 1);
+    state = applyEvent(state, event({ kind: "text", text: "New.", messageId: "m1" }));
+    const after = withoutRunningTurns(state, 1);
+    expect(after.steps).toEqual(state.steps);
+    expect(after.recovery).toBeNull();
+  });
+
+  test("the end of an older recovery changes nothing", () => {
+    const state = startRecovery(startRecovery(emptyLiveState, 1), 2);
+    expect(withoutRunningTurns(state, 1)).toBe(state);
   });
 });
 

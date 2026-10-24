@@ -99,6 +99,15 @@ export function withRunningTurns(state: LiveState, id: number, snapshot: TurnSna
   };
 }
 
+/**
+ * Ends the read with this id when it got no answer, such as on a slow network. The page applied
+ * each event as it came, so its steps stay: only a newer snapshot may replace them.
+ */
+export function withoutRunningTurns(state: LiveState, id: number): LiveState {
+  if (state.recovery?.id !== id) return state;
+  return { ...state, recovery: null };
+}
+
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
   const drafts = draftsAfter(state.drafts, event);

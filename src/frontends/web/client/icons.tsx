@@ -201,6 +201,8 @@ const drawings = {
   shrink: <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" />,
   /** A line that turns back to the left: break the long lines of a file to fit the width. */
   wrap: <path d="M4 6h16M4 12h13a3 3 0 0 1 0 6h-4M15 16l-2 2 2 2M4 18h5" />,
+  /** Two angle brackets: show the plain text of a file, or its formatted view. */
+  code: <path d="M9 7l-5 5 5 5M15 7l5 5-5 5" />,
   /** A frame with a column at its right side: hide or show the chat details. */
   panel: (
     <>

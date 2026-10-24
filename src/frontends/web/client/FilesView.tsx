@@ -792,7 +792,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
   const keepsLines = plain || view !== "markdown" || splitFrontMatter(file.text).frontMatter !== null;
   const items: MenuItem[] = [];
   if (draft === null && (view === "markdown" || view === "json")) {
-    items.push({ label: plain ? "Show formatted" : "Show plain text", icon: "file", onChoose: () => setPlain(!plain) });
+    items.push({ label: plain ? "Show formatted" : "Show plain text", icon: "code", onChoose: () => setPlain(!plain) });
   }
   // A text area wraps by itself, so the editor needs no wrap item.
   if (draft === null && keepsLines) {

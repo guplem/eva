@@ -164,8 +164,8 @@ describe("engineUpdateProblem", () => {
 describe("relayedProblem", () => {
   const file = ".eva/machines/laptop.json";
 
-  test("names the machine once, points to its web page, and names the file to delete", () => {
-    const relayed = relayedProblem("laptop", file, {
+  test("names the machine once, says where to fix it, and names the file to delete", () => {
+    const relayed = relayedProblem("laptop", "desktop", file, {
       key: "update",
       level: "error",
       message: "The update install failed.",
@@ -173,13 +173,13 @@ describe("relayedProblem", () => {
     });
     expect(relayed.level).toBe("error");
     expect(relayed.message).toBe(
-      "On laptop: The update install failed. A Telegram command acts on the hub, so open Eva's web page on laptop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
+      "On laptop: The update install failed. Fix it in Eva on laptop. Telegram commands act on desktop only. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
     );
     expect(relayed.resolvedMessage).toBe("On laptop: Updates work again.");
   });
 
   test("adds no prefix to a message that names the machine already", () => {
-    const relayed = relayedProblem("laptop", file, {
+    const relayed = relayedProblem("laptop", "desktop", file, {
       key: "vault_ahead",
       level: "warn",
       message: "laptop runs Eva 1.0.0.",
@@ -190,13 +190,13 @@ describe("relayedProblem", () => {
   });
 
   test("a short name inside a word is no name: the prefix stays", () => {
-    const relayed = relayedProblem("pc", ".eva/machines/pc.json", {
+    const relayed = relayedProblem("pc", "desktop", ".eva/machines/pc.json", {
       key: "update",
       level: "warn",
-      message: "The update check failed: no specification.",
+      message: "Eva could not check for updates: no specification.",
       resolvedMessage: "Updates work again.",
     });
-    expect(relayed.message.startsWith("On pc: The update check failed")).toBe(true);
+    expect(relayed.message.startsWith("On pc: Eva could not check")).toBe(true);
   });
 });
 

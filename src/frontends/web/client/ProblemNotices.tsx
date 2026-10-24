@@ -5,13 +5,7 @@
 import type { ReactElement } from "react";
 import type { EvaStatus } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import {
-  isOtherMachineProblem,
-  problemAction,
-  problemActionLabels,
-  type FixPage,
-  type ProblemAction,
-} from "./problem-actions.ts";
+import { problemAction, problemActionLabels, type FixPage, type ProblemAction } from "./problem-actions.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
@@ -67,10 +61,7 @@ export function ProblemNotices({
             return (
               <div key={problem.key} className={`notice ${problem.level === "error" ? "bad" : "warn"}`}>
                 <Icon name="alert" />
-                <span className="notice-text">
-                  {problem.message}
-                  {isOtherMachineProblem(problem.key) && " Open Eva on that machine to fix it."}
-                </span>
+                <span className="notice-text">{problem.message}</span>
                 {action !== null && <button onClick={() => onAction(action)}>{problemActionLabels[action]}</button>}
               </div>
             );

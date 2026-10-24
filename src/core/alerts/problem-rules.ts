@@ -204,16 +204,16 @@ export function heldBackNews(status: UpdateStatus): string | null {
 
 /**
  * A problem that another machine reports through the vault, for the hub to send. A Telegram command
- * acts on the hub, so the alert points to the web page of the machine with the problem.
+ * acts on the hub, so the alert says to fix it on the machine with the problem.
  */
-export function relayedProblem(machine: string, reportFile: string, problem: OpenAlert): AlertProblem {
+export function relayedProblem(machine: string, hub: string, reportFile: string, problem: OpenAlert): AlertProblem {
   // A message such as vault_ahead starts with the machine name already.
   const named = (line: string): string => (line.startsWith(`${machine} `) ? line : `On ${machine}: ${line}`);
   return {
     level: problem.level,
     message: [
       named(problem.message),
-      `A Telegram command acts on the hub, so open Eva's web page on ${machine}.`,
+      `Fix it in Eva on ${machine}. Telegram commands act on ${hub} only.`,
       `If ${machine} no longer runs Eva, ask the Assistant to delete ${reportFile}.`,
     ].join(" "),
     resolvedMessage:

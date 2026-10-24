@@ -2130,7 +2130,10 @@ export class Eva {
       for (const problem of report.problems) {
         const key = `machine:${report.machine}:${problem.key}`;
         keys.add(key);
-        this.alerts.report(key, relayedProblem(report.machine, machineReportFile(report.machine), problem));
+        this.alerts.report(
+          key,
+          relayedProblem(report.machine, this.machine, machineReportFile(report.machine), problem),
+        );
       }
       relayed.set(file, keys);
     }

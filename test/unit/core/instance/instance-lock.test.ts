@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireInstanceLock, readBootId, runningInstancePid } from "../../../../src/core/instance/instance-lock.ts";
@@ -80,6 +80,40 @@ describe("acquireInstanceLock", () => {
       acquireInstanceLock(lockPath, { pid: 5151, bootId: "boot-now", isProcessAlive: () => true });
     });
     expect(isEvaError(error, "instance_locked")).toBe(true);
+  });
+
+  test("takes over a lock written before this boot, when there is no boot id (Windows)", () => {
+    const lockPath = join(home, "eva.lock");
+    writeFileSync(lockPath, "4242");
+    const bootTimeMs = Date.now() - 60_000;
+    const beforeBoot = new Date(bootTimeMs - 10 * 60_000);
+    utimesSync(lockPath, beforeBoot, beforeBoot);
+    const probe = { bootId: null, bootTimeMs, isProcessAlive: () => true };
+    expect(runningInstancePid(lockPath, probe)).toBeNull();
+    acquireInstanceLock(lockPath, { ...probe, pid: 5151 }).release();
+  });
+
+  test("keeps a lock written after this boot, when there is no boot id", () => {
+    const lockPath = join(home, "eva.lock");
+    writeFileSync(lockPath, "4242");
+    const error = lockError(() => {
+      acquireInstanceLock(lockPath, {
+        pid: 5151,
+        bootId: null,
+        bootTimeMs: Date.now() - 60_000,
+        isProcessAlive: () => true,
+      });
+    });
+    expect(isEvaError(error, "instance_locked")).toBe(true);
+  });
+
+  test("trusts the boot id over the file time where both sides have one", () => {
+    const lockPath = join(home, "eva.lock");
+    writeFileSync(lockPath, "4242\nboot-now\n");
+    const longAgo = new Date(Date.now() - 24 * 60 * 60_000);
+    utimesSync(lockPath, longAgo, longAgo);
+    const probe = { bootId: "boot-now", bootTimeMs: Date.now() - 60_000, isProcessAlive: () => true };
+    expect(runningInstancePid(lockPath, probe)).toBe(4242);
   });
 
   test("release twice is harmless", () => {

@@ -3,7 +3,8 @@
  * file that holds the owner's pid and, on Linux, the boot id. It is created exclusively,
  * and a lock whose owner no longer runs is taken over, so a crash never blocks the next start.
  */
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { uptime } from "node:os";
 import { EvaError } from "../../shared/errors.ts";
 
 export interface InstanceLock {
@@ -14,6 +15,8 @@ export interface InstanceLock {
 export interface LockProbe {
   /** This boot's id, or null where the platform gives none. */
   readonly bootId: string | null;
+  /** When this boot started, in milliseconds. By default, Eva reads it from the system uptime. */
+  readonly bootTimeMs?: number;
   readonly isProcessAlive: (pid: number) => boolean;
 }
 
@@ -24,9 +27,13 @@ export interface LockOwner extends LockProbe {
 interface LockHolder {
   readonly pid: number;
   readonly bootId: string | null;
+  /** When the lock file was written. */
+  readonly writtenAtMs: number;
 }
 
 const linuxBootIdPath = "/proc/sys/kernel/random/boot_id";
+/** A clock correction after the boot can move the boot time later; this margin keeps a live lock. */
+const clockChangeMarginMs = 2 * 60_000;
 
 export function acquireInstanceLock(lockPath: string, owner: LockOwner): InstanceLock {
   if (!tryCreate(lockPath, owner)) {
@@ -83,10 +90,19 @@ export function runningInstancePid(lockPath: string, probe: LockProbe): number |
 /**
  * After a reboot, an unrelated process can have the old pid. The boot id tells such a lock
  * apart: without this check, Eva exits with code 3 and systemd never starts her again.
+ * Where a side has no boot id, such as on Windows, a lock file older than this boot is stale.
  */
 function isHolderRunning(holder: LockHolder, probe: LockProbe): boolean {
-  if (holder.bootId !== null && probe.bootId !== null && holder.bootId !== probe.bootId) return false;
+  if (holder.bootId !== null && probe.bootId !== null) {
+    if (holder.bootId !== probe.bootId) return false;
+  } else if (holder.writtenAtMs < (probe.bootTimeMs ?? bootTimeMs()) - clockChangeMarginMs) {
+    return false;
+  }
   return probe.isProcessAlive(holder.pid);
+}
+
+function bootTimeMs(): number {
+  return Date.now() - uptime() * 1000;
 }
 
 function tryCreate(lockPath: string, owner: LockOwner): boolean {
@@ -105,7 +121,7 @@ function readHolder(lockPath: string): LockHolder | null {
     const pid = Number.parseInt(pidLine.trim(), 10);
     if (!Number.isSafeInteger(pid) || pid <= 0) return null;
     const bootId = bootIdLine.trim();
-    return { pid, bootId: bootId.length > 0 ? bootId : null };
+    return { pid, bootId: bootId.length > 0 ? bootId : null, writtenAtMs: statSync(lockPath).mtimeMs };
   } catch {
     return null;
   }

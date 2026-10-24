@@ -33,7 +33,9 @@ export type EvaErrorCode =
   | "file_not_writable"
   | "file_not_downloadable"
   /** A person stopped a question with Ctrl+C, or its input ended. */
-  | "prompt_stopped";
+  | "prompt_stopped"
+  /** The running Eva refused a request of the CLI, and her answer named no code. */
+  | "request_failed";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

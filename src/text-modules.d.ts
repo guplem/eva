@@ -20,3 +20,9 @@ declare module "*.svg" {
   const path: string;
   export default path;
 }
+
+/** The Windows tray script, imported `with { type: "text" }`. */
+declare module "*.ps1" {
+  const text: string;
+  export default text;
+}

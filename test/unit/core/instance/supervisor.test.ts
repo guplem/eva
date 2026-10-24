@@ -4,6 +4,8 @@ import {
   superviseEva,
   supervisedVariable,
   type Supervisor,
+  type SupervisorOptions,
+  type SupervisorPhase,
 } from "../../../../src/core/instance/supervisor.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import type { LongProcessStarter } from "../../../../src/shared/long-process.ts";
@@ -51,7 +53,7 @@ interface Fake {
   readonly starts: () => number;
 }
 
-function fakeSupervisor(runs: readonly FakeRun[]): Fake {
+function fakeSupervisor(runs: readonly FakeRun[], extra: Partial<SupervisorOptions> = {}): Fake {
   let clock = 0;
   const delays: number[] = [];
   const environments: Readonly<Record<string, string>>[] = [];
@@ -99,6 +101,7 @@ function fakeSupervisor(runs: readonly FakeRun[]): Fake {
     log: (message) => logs.push(message),
     stopTimeoutMs: 25_000,
     pid: 4242,
+    ...extra,
   });
   return { supervisor, delays, environments, stopTimeouts, logs, starts: () => index };
 }
@@ -181,5 +184,63 @@ describe("superviseEva", () => {
     fake.supervisor.stop();
     expect(await fake.supervisor.done).toBe(0);
     expect(fake.logs.join("\n")).toContain("taskkill could not start");
+  });
+
+  test("a stop first asks Eva to stop by herself, then stops her with a bounded wait", async () => {
+    const asks: string[] = [];
+    const fake = fakeSupervisor([{ exit: "hold" }], {
+      askStop: () => {
+        asks.push("ask");
+        return Promise.resolve();
+      },
+    });
+    await Bun.sleep(0);
+    fake.supervisor.stop();
+    expect(await fake.supervisor.done).toBe(0);
+    expect(asks).toEqual(["ask"]);
+    expect(fake.stopTimeouts).toEqual([25_000]);
+  });
+
+  test("an ask to stop that fails changes nothing: the bounded stop still ends Eva", async () => {
+    const fake = fakeSupervisor([{ exit: "hold" }], { askStop: () => Promise.reject(new Error("no answer")) });
+    await Bun.sleep(0);
+    fake.supervisor.stop();
+    expect(await fake.supervisor.done).toBe(0);
+  });
+
+  test("a restart stops the running Eva and starts her again at once, with no crash delay", async () => {
+    const fake = fakeSupervisor([{ exit: "hold" }, { exit: "hold" }]);
+    await Bun.sleep(0);
+    fake.supervisor.restart();
+    fake.supervisor.restart();
+    for (let round = 0; round < 20 && fake.starts() < 2; round += 1) await Bun.sleep(0);
+    expect(fake.starts()).toBe(2);
+    expect(fake.delays).toEqual([]);
+    expect(fake.logs.join("\n")).toContain("Eva restarts on request.");
+    fake.supervisor.stop();
+    expect(await fake.supervisor.done).toBe(0);
+  });
+
+  test("a restart during the wait after a crash ends the wait, and starts Eva at once", async () => {
+    const fake = fakeSupervisor([{ exit: 1 }, { exit: "hold" }]);
+    await Bun.sleep(0);
+    expect(fake.delays).toEqual([5_000]);
+    fake.supervisor.restart();
+    for (let round = 0; round < 20 && fake.starts() < 2; round += 1) await Bun.sleep(0);
+    expect(fake.starts()).toBe(2);
+    fake.supervisor.stop();
+    expect(await fake.supervisor.done).toBe(0);
+  });
+
+  test("reports each start, and each wait after a crash, for the tray icon", async () => {
+    const phases: SupervisorPhase[] = [];
+    const fake = fakeSupervisor([{ exit: 1 }, { exit: 4 }, { exit: 0 }], { onPhase: (phase) => phases.push(phase) });
+    await fake.supervisor.done;
+    expect(phases).toEqual([
+      { kind: "started" },
+      { kind: "waiting", afterMs: 5_000 },
+      { kind: "started" },
+      { kind: "started" },
+    ]);
   });
 });

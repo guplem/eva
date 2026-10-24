@@ -37,11 +37,19 @@ describe("applyEvent", () => {
   test("the core's own events change nothing of a running turn", () => {
     const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
     const core: SessionEvent[] = [
-      { ...stamp, kind: "message_received", text: "Hi", origin: "api" },
       { ...stamp, kind: "project_work_started", projectId: "p", projectSessionId: "q", request: "r" },
       { ...stamp, kind: "session_deleted" },
     ];
     expect(core.reduce(applyEvent, emptyLiveState)).toBe(emptyLiveState);
+  });
+
+  test("a turn runs from the message that starts it, before the engine sends its first step", () => {
+    const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
+    const state = applyEvent(emptyLiveState, { ...stamp, kind: "message_received", text: "Hi", origin: "api" });
+    expect(state.steps["s1"]).toEqual([]);
+    // A batch of messages starts one turn, and each one comes as its own event.
+    const later = applyEvent(state, { ...stamp, seq: 2, kind: "message_received", text: "And this", origin: "api" });
+    expect(later.steps).toBe(state.steps);
   });
 
   test("a running turn collects its steps, before any message too", () => {

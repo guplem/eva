@@ -18,19 +18,24 @@ afterEach(() => {
   rmSync(folder, { recursive: true, force: true });
 });
 
-// Answers each new line in the file with the line in capitals, and ends when the file goes away.
+// Answers each new line in the file with the line in capitals, and ends when the file stays away.
+// As the tray script does, it waits out a moment with no file, or a refused read, during a write.
 const echo = `
-const { existsSync, readFileSync } = require("node:fs");
+const { readFileSync } = require("node:fs");
 let last = "";
 let seen = false;
+let missing = 0;
 setInterval(() => {
-  const file = process.env.EVA_LINE_FILE;
-  if (!existsSync(file)) {
-    if (seen) process.exit(5);
+  let line;
+  try {
+    line = readFileSync(process.env.EVA_LINE_FILE, "utf-8").trim();
+  } catch {
+    missing += 1;
+    if (seen && missing >= 20) process.exit(5);
     return;
   }
   seen = true;
-  const line = readFileSync(file, "utf-8").trim();
+  missing = 0;
   if (line !== last) {
     last = line;
     process.stdout.write(line.toUpperCase() + "\\r\\n");
@@ -50,10 +55,14 @@ async function firstLines(lines: AsyncIterable<string>, count: number): Promise<
 describe("systemLineProcessStarter", () => {
   test("the child reads each newest line from the file, and a close removes it, so the child ends", async () => {
     const child = systemLineProcessStarter([bun, "-e", echo], { cwd: folder, environment, lineFile });
-    expect(child.publish("open")).toBe(true);
+    // A write fails while the child reads the file: it goes again.
+    const publish = async (line: string): Promise<void> => {
+      while (!child.publish(line)) await Bun.sleep(10);
+    };
+    await publish("open");
     const lines = child.lines[Symbol.asyncIterator]();
     expect((await lines.next()).value).toBe("OPEN");
-    child.publish("quit");
+    await publish("quit");
     expect((await lines.next()).value).toBe("QUIT");
     await child.close(5_000);
     expect(existsSync(lineFile)).toBe(false);

@@ -12,7 +12,10 @@ import { writeFileAtomic } from "./files.ts";
 import { EvaError } from "./errors.ts";
 import { stopProcessTree } from "./process-runner.ts";
 
-/** The child reads the newest line from the file that this variable names. */
+/**
+ * The child reads the newest line from the file that this variable names. While Eva replaces the
+ * file, Windows can hide it or refuse a read for a moment: a child counts only a lasting absence.
+ */
 const lineFileVariable = "EVA_LINE_FILE";
 /** Eva's pid: the child ends when this process is gone, also after a hard stop of Eva. */
 const lineParentVariable = "EVA_LINE_PARENT";

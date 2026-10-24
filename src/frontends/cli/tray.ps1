@@ -117,6 +117,7 @@ $parent = $null
 try { $parent = [System.Diagnostics.Process]::GetProcessById([int]$env:EVA_LINE_PARENT) } catch { }
 $script:lastText = ''
 $script:seenFile = $false
+$script:missingTicks = 0
 
 function Stop-Tray($reason) {
   Write-Trace $reason
@@ -130,11 +131,14 @@ $timer.Interval = 200
 $timer.add_Tick({
   if ($null -eq $parent -or $parent.HasExited) { Stop-Tray 'parent ended'; return }
   if (-not [System.IO.File]::Exists($viewFile)) {
-    # Eva removes the file to close the icon. Before her first view, there is no file yet.
-    if ($script:seenFile) { Stop-Tray 'view file removed' }
+    # Eva removes the file to close the icon. Before her first view, there is no file yet. While
+    # Eva replaces the file, Windows can hide it for a moment, so only a second of absence counts.
+    $script:missingTicks += 1
+    if ($script:seenFile -and $script:missingTicks -ge 5) { Stop-Tray 'view file removed' }
     return
   }
   $script:seenFile = $true
+  $script:missingTicks = 0
   # A failed read, such as during Eva's write, waits for the next tick.
   try { $text = [System.IO.File]::ReadAllText($viewFile) } catch { return }
   if ($text -eq $script:lastText) { return }

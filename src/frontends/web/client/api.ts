@@ -343,6 +343,8 @@ export const api = {
   resolveVaultConflict: (path: string, choice: ConflictChoice): Promise<ConflictResolution> =>
     request("POST", "/api/vault/conflicts", { path, choice }),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
+  /** Hides the notice of an open problem, and answers with the new status. */
+  hideProblem: (key: string): Promise<EvaStatus> => request("POST", "/api/problems/hide", { key }),
   startClaudeLogin: (): Promise<{ url: string }> => request("POST", "/api/engines/claude-code/login", {}),
   /** Takes the code that Claude's page shows after the login. */
   finishClaudeLogin: (code: string): Promise<{ restartNeeded: boolean }> =>

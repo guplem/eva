@@ -504,6 +504,15 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       window.location.hash = settingsHash({ section: "engines", item: "claude-code" });
     else openDestination(action === "open_schedules" ? "schedules" : "settings");
   };
+  const hideProblem = (key: string): void => {
+    // The notice goes at once; the answer brings the true list.
+    setProblems((current) => current.map((problem) => (problem.key === key ? { ...problem, hidden: true } : problem)));
+    api.hideProblem(key).then(
+      (status) => setProblems(status.problemDetails),
+      // A 404 means that the problem cleared meanwhile: the fresh list says so.
+      () => void refreshProblems(),
+    );
+  };
   const notices = (
     <ProblemNotices
       isConnected={isConnected}
@@ -512,6 +521,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       openPage={screen === "settings" || screen === "schedules" ? screen : null}
       onRetryNow={() => events.current?.retryNow()}
       onAction={runProblemAction}
+      onHide={hideProblem}
     />
   );
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */

@@ -2900,6 +2900,34 @@ test("open problems show in a banner at the top, each with the button that fixes
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("the person hides a notice, and the problems that are hidden get none (#541)", async ({ page }) => {
+  let hidden = false;
+  const problems = (): { key: string; level: "warn" | "error"; message: string; hidden: boolean }[] => [
+    { key: "update", level: "warn", message: "Eva could not check for updates for 2 hours.", hidden },
+    { key: "schedule:lunch", level: "warn", message: "The schedule Lunch failed.", hidden: true },
+  ];
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, problemDetails: problems() } });
+  });
+  await page.route("**/api/problems/hide", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ key: "update" });
+    hidden = true;
+    const response = await route.fetch({ url: route.request().url().replace("/api/problems/hide", "/api/status") });
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ json: { ...status, problemDetails: problems() } });
+  });
+  await logIn(page);
+  const banner = page.getByRole("region", { name: "Problems" });
+  await expect(banner).toContainText("Eva could not check for updates");
+  await expect(banner).not.toContainText("The schedule Lunch failed.");
+  await banner.getByRole("button", { name: "Hide this notice" }).click();
+  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("a note conflict opens from its banner, and the last pick closes it", async ({ page }) => {
   await routeProblems(page, [{ key: "vault_sync", level: "error", message: "Notes/plan.md has a conflict." }], {
     status: "conflict",

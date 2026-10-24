@@ -13,6 +13,7 @@ import {
   stepState,
   modelLabel,
   shownPending,
+  undoQuestion,
   stepIcon,
   stepOrigin,
   stepParts,
@@ -226,5 +227,18 @@ describe("step dialog", () => {
     expect(missingDetail("output", true)).toBe("The tool still runs.");
     expect(missingDetail("output", false)).toBe("Eva kept no output for this step.");
     expect(missingDetail("input", true)).toBe("Eva kept no input for this step.");
+  });
+});
+
+describe("undoQuestion", () => {
+  const none = { restore: [], changed: [], notKept: [], answers: 1 };
+
+  test("asks only when a file can go back, and names the later answers", () => {
+    expect(undoQuestion(none)).toBeNull();
+    expect(undoQuestion({ ...none, notKept: ["Scratch/a.pdf"], changed: ["Plan.md"] })).toBeNull();
+    expect(undoQuestion({ ...none, restore: ["Plan.md"] })).toBe("Undo the changes of this answer?");
+    expect(undoQuestion({ ...none, restore: ["Plan.md"], answers: 3 })).toBe(
+      "Undo the changes of this answer and the later ones?",
+    );
   });
 });

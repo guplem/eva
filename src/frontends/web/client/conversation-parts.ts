@@ -1,6 +1,7 @@
 /** The rules of the conversation view that need no React: the step line, the faces and the chips. */
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
+import type { RetryUndoPreview } from "./api.ts";
 import type { IconName } from "./icons.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 
@@ -194,4 +195,15 @@ export function shownPending(pending: PendingMessage | null, turnCount: number):
 /** The empty message box names who answers: Eva in an Assistant chat, the project's harness in a project chat. */
 export function composerPlaceholder(projectTitle: string | null): string {
   return `Message ${projectTitle ?? "Eva"}`;
+}
+
+/**
+ * The title of the question before a retry, or null to retry at once. Eva asks only when a file
+ * can go back: with none, Undo and Keep would do the same.
+ */
+export function undoQuestion(preview: RetryUndoPreview): string | null {
+  if (preview.restore.length === 0) return null;
+  return preview.answers > 1
+    ? "Undo the changes of this answer and the later ones?"
+    : "Undo the changes of this answer?";
 }

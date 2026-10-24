@@ -65,6 +65,7 @@ sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");
 
+const writtenNotes = new Set<string>();
 const engine = new FakeEngine(async function* (request, turnNumber) {
   if (request.mode === "model-call" && request.prompt.startsWith("Summarize this chat.")) {
     yield* FakeEngine.answer(request, "Goal: the demo summary.");
@@ -138,6 +139,12 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield { kind: "notice", text: 'Eva could not start the MCP server "google": no uvx' };
     yield* FakeEngine.answer(request, "No calendar today.");
     return;
+  }
+  // An answer that writes a note, once, then echoes: the retry of the undo test starts from the files before it (#525).
+  const note = /write the note (\S+)/.exec(lastLine)?.[1];
+  if (note !== undefined && !writtenNotes.has(note)) {
+    writtenNotes.add(note);
+    writeFileSync(join(vault, "Notes", `${note}.md`), "Written by an answer.\n");
   }
   if (lastLine.includes("list")) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");

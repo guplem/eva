@@ -567,6 +567,32 @@ async function newAnsweredChat(page: Page, text: string): Promise<string> {
   return title;
 }
 
+test("a retry of an answer that wrote a note asks to undo it, and the undo removes the note (#525)", async ({
+  page,
+}) => {
+  const note = `undo-${test.info().project.name}`;
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, `Please write the note ${note}`));
+  await waitUntilIdle(page, chatId);
+  expect((await page.request.get(`/api/files?path=Notes/${note}.md`)).status()).toBe(200);
+
+  await page.getByRole("button", { name: "Retry" }).first().click();
+  const question = page.getByRole("dialog", { name: "Undo the changes" });
+  await expect(question.getByRole("heading")).toHaveText("Undo the changes of this answer?");
+  await expect(question.getByRole("region", { name: "These files go back" })).toContainText(`Notes/${note}.md`);
+  // The undo waits for the end of every Assistant turn, so an earlier test must be done.
+  await expect
+    .poll(
+      async () =>
+        ((await (await page.request.get("/api/status")).json()) as { busySessionIds: string[] }).busySessionIds,
+    )
+    .toEqual([]);
+  await question.getByRole("button", { name: "Undo and retry" }).click();
+  await expect(question).toBeHidden();
+  await expect(page.getByRole("group", { name: "Branches from the start" })).toContainText("Fork 1");
+  expect((await page.request.get(`/api/files?path=Notes/${note}.md`)).status()).toBe(404);
+});
+
 test("a new chat from a summary starts with the summary to edit, and each chat links to the other (#522)", async ({
   page,
 }) => {

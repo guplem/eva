@@ -214,6 +214,7 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Project work:** when Eva gives work to a project from Telegram, its conversation opens in a topic. In a group, Eva sends the link to that topic. When Tailscale gives Eva an address, she also sends the link to the conversation on the web page.
 - **Delete a conversation:** send `/delete` in its topic, or pick **Delete chat** in the "More actions" menu (•••) of the chat on the web page. It goes from Telegram, the web page and the terminal, with its forks. The engine keeps its own transcript.
 - **Open one conversation on the web page:** add `#/chat/<id>` to the address. Telegram sends such links.
+- **Retry an answer:** press **Retry** under it on the web page. The new answer goes in a new branch, and the old answer stays. When the answer, or a later one, changed notebook files, Eva asks first. **Undo and retry** puts those files back as they were before the answer, and saves that as a new commit. **Keep and retry** leaves them. Only files go back: a sent message or a calendar event stays. A file that changed after the answer stays too, and so does a file that Eva keeps out of git, such as a file in `Scratch/`. The question names them. With the notebook sync off, Eva does not ask.
 
 ## Projects
 

@@ -45,6 +45,8 @@ function ask(move: () => void, asked: readonly Guard[], name: LeaveMove): void {
     move();
     return;
   }
+  // The open question stays: a second move, such as Back during a save, is dropped.
+  if (waiting !== null) return;
   waiting = { move, guards: asked, question: { move: name, canSave: asked.every((guard) => guard.save !== null) } };
   notify();
 }
@@ -119,23 +121,84 @@ export async function answerLeave(answer: "save" | "discard" | "stay"): Promise<
 export interface LeaveWindow {
   addEventListener(type: string, listener: (event: Event) => void): void;
   dispatchEvent(event: Event): boolean;
-  readonly history: { replaceState(data: unknown, unused: string, url: string): void };
+  readonly history: {
+    readonly state: unknown;
+    replaceState(data: unknown, unused: string, url?: string): void;
+    pushState(data: unknown, unused: string, url: string): void;
+    back(): void;
+    forward(): void;
+  };
+}
+
+/** The key of the place of each history entry, in the entry's state. */
+const placeKey = "evaPlace";
+
+function placeOf(state: unknown): number | null {
+  if (typeof state !== "object" || state === null) return null;
+  const place = (state as Record<string, unknown>)[placeKey];
+  return typeof place === "number" ? place : null;
 }
 
 /**
  * Watches the address and the end of the page. Call it before the first render: the browser
  * runs the listeners in order, so this one stops a change before a view sees it.
+ * `staysOnPage` tells a move that keeps each form open, such as a link to a card on the same
+ * Settings page: it asks nothing.
  */
-export function watchLeaving(target: LeaveWindow): void {
+export function watchLeaving(
+  target: LeaveWindow,
+  staysOnPage: (oldURL: string, newURL: string) => boolean = () => false,
+): void {
+  const { history } = target;
+  // A browser cannot stop the back button. Each entry keeps its place, so the watch knows the
+  // direction of a move and can step back to the page until the person answers.
+  let place = placeOf(history.state) ?? 0;
+  const mark = (): void => {
+    const state = typeof history.state === "object" && history.state !== null ? history.state : {};
+    history.replaceState({ ...state, [placeKey]: place }, "");
+  };
+  mark();
+  /** The entry that a step of the watch itself goes to, and whether the views must see it. */
+  let expected: { readonly place: number; readonly shown: boolean } | null = null;
+
   target.addEventListener("hashchange", (event) => {
-    if (passing || guards.size === 0) return;
+    const arrived = placeOf(history.state);
+    if (expected !== null && arrived === expected.place) {
+      const { shown } = expected;
+      expected = null;
+      place = arrived;
+      if (!shown) event.stopImmediatePropagation();
+      return;
+    }
     const { oldURL, newURL } = event as HashChangeEvent;
-    // The back button cannot be stopped, so the old address comes back in place until the person answers.
+    if (passing || guards.size === 0 || staysOnPage(oldURL, newURL)) {
+      // A link or a tab adds an entry with no place yet.
+      if (arrived === null) {
+        place += 1;
+        mark();
+      } else {
+        place = arrived;
+      }
+      return;
+    }
     event.stopImmediatePropagation();
-    target.history.replaceState(null, "", oldURL);
+    expected = { place, shown: false };
+    if (arrived === null) {
+      // The link added an entry. Back removes it from sight; Discard adds it again in place of the old one.
+      history.back();
+      askToLeave(() => {
+        history.pushState(null, "", newURL);
+        target.dispatchEvent(new Event("hashchange"));
+      });
+      return;
+    }
+    const wentBack = arrived < place;
+    if (wentBack) history.forward();
+    else history.back();
     askToLeave(() => {
-      target.history.replaceState(null, "", newURL);
-      target.dispatchEvent(new Event("hashchange"));
+      expected = { place: arrived, shown: true };
+      if (wentBack) history.back();
+      else history.forward();
     });
   });
   // A reload or a closed tab would drop the changes, so the browser asks first.

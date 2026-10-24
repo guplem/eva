@@ -139,7 +139,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
    */
   const onLinkedChatOpened = useCallback((): void => {
     setLinkedChatId(null);
-    window.history.replaceState(null, "", addressOf(screenRef.current));
+    // The state keeps the entry's place for the unsaved changes guard.
+    window.history.replaceState(window.history.state, "", addressOf(screenRef.current));
   }, []);
 
   /** A new address adds a history entry, so the back button goes to the previous destination. */

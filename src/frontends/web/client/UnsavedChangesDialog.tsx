@@ -15,11 +15,20 @@ import {
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 
 const ignore = (): void => undefined;
-const stay = (): void => void answerLeave("stay");
 
 export function UnsavedChangesDialog(): ReactElement | null {
   const question = useSyncExternalStore(subscribeToLeave, leaveQuestion);
   const [saving, setSaving] = useState(false);
+  // Read before the dialog moves the focus to Stay, so Stay gives it back to the field.
+  const opener = useRef<Element | null>(null);
+  if (question === null) opener.current = null;
+  else opener.current ??= document.activeElement;
+  // A stable function: the dialog focuses Stay each time its onClose changes.
+  const stay = useCallback((): void => {
+    const field = opener.current;
+    void answerLeave("stay");
+    if (field instanceof HTMLElement) field.focus();
+  }, []);
   if (question === null) return null;
 
   const save = async (): Promise<void> => {

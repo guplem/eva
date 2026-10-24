@@ -165,58 +165,137 @@ describe("answerLeave", () => {
   });
 });
 
-/** A window with an address, its history and listeners in order, as a browser has. */
+/** A window with an address, a history of entries and listeners in order, as a browser has. */
 class FakeWindow extends EventTarget implements LeaveWindow {
-  address = "#/projects";
+  entries: { hash: string; state: unknown }[] = [{ hash: "#/projects", state: null }];
+  at = 0;
   readonly seen: string[] = [];
   readonly history = {
-    replaceState: (_data: unknown, _unused: string, url: string): void => {
-      this.address = new URL(url, "http://eva.test/").hash;
+    state: null as unknown,
+    replaceState: (data: unknown, _unused: string, url?: string): void => {
+      this.entries[this.at] = { hash: url === undefined ? this.address : hashOf(url), state: data };
+      this.history.state = data;
     },
+    pushState: (data: unknown, _unused: string, url: string): void => {
+      this.entries.splice(this.at + 1);
+      this.entries.push({ hash: hashOf(url), state: data });
+      this.at += 1;
+      this.history.state = data;
+    },
+    back: (): void => this.step(-1),
+    forward: (): void => this.step(1),
   };
 
-  constructor() {
+  constructor(staysOnPage?: (oldURL: string, newURL: string) => boolean) {
     super();
-    watchLeaving(this);
+    watchLeaving(this, staysOnPage);
     // A view listens after the watch, as App does.
     this.addEventListener("hashchange", () => this.seen.push(this.address));
   }
 
-  /** The person taps a link or the back button: the address changes first, then the event comes. */
-  go(hash: string): void {
-    const oldURL = `http://eva.test/${this.address}`;
-    this.address = hash;
-    this.dispatchEvent(Object.assign(new Event("hashchange"), { oldURL, newURL: `http://eva.test/${hash}` }));
+  get address(): string {
+    return this.entries[this.at]?.hash ?? "";
+  }
+
+  /** A tap on a link or a tab: a new entry, then the event. */
+  link(hash: string): void {
+    const oldURL = urlOf(this.address);
+    this.history.pushState(null, "", urlOf(hash));
+    this.fire(oldURL);
+  }
+
+  private step(by: number): void {
+    const oldURL = urlOf(this.address);
+    this.at += by;
+    this.history.state = this.entries[this.at]?.state ?? null;
+    this.fire(oldURL);
+  }
+
+  private fire(oldURL: string): void {
+    this.dispatchEvent(Object.assign(new Event("hashchange"), { oldURL, newURL: urlOf(this.address) }));
   }
 }
+
+const urlOf = (hash: string): string => `http://eva.test/${hash}`;
+const hashOf = (url: string): string => new URL(url, "http://eva.test/").hash;
 
 describe("watchLeaving", () => {
   test("with nothing unsaved, a new address reaches the views", () => {
     const window = new FakeWindow();
-    window.go("#/chats");
+    window.link("#/chats");
     expect(window.seen).toEqual(["#/chats"]);
   });
 
-  test("with an unsaved change, the old address stays until the person answers", async () => {
+  test("a tap on a link asks, and the old address comes back until the answer", async () => {
     const window = new FakeWindow();
     hold();
-    window.go("#/chats");
+    window.link("#/chats");
     expect(window.address).toBe("#/projects");
     expect(window.seen).toEqual([]);
     expect(isAskingToLeave()).toBe(true);
 
     expect(await answerLeave("discard")).toBe(true);
+    expect(window.entries.map((entry) => entry.hash)).toEqual(["#/projects", "#/chats"]);
     expect(window.address).toBe("#/chats");
     expect(window.seen).toEqual(["#/chats"]);
   });
 
-  test("Stay keeps the old address", async () => {
+  test("Stay after a link keeps one entry for the page, so Back leaves it at once", async () => {
     const window = new FakeWindow();
+    window.link("#/files");
     hold();
-    window.go("#/settings");
+    window.link("#/chats");
+    await answerLeave("stay");
+    expect(window.address).toBe("#/files");
+    expect(window.entries.slice(0, window.at + 1).map((entry) => entry.hash)).toEqual(["#/projects", "#/files"]);
+  });
+
+  test("Back asks, Stay keeps the entry before the page, and Discard goes back", async () => {
+    const window = new FakeWindow();
+    window.link("#/settings");
+    hold();
+    window.history.back();
+    expect(window.address).toBe("#/settings");
+    await answerLeave("stay");
+    expect(window.address).toBe("#/settings");
+    expect(window.entries.map((entry) => entry.hash)).toEqual(["#/projects", "#/settings"]);
+
+    window.history.back();
+    expect(await answerLeave("discard")).toBe(true);
+    expect(window.address).toBe("#/projects");
+    expect(window.seen).toEqual(["#/settings", "#/projects"]);
+  });
+
+  test("Forward asks too, and Stay keeps the page", async () => {
+    const window = new FakeWindow();
+    window.link("#/settings");
+    window.history.back();
+    hold();
+    window.history.forward();
+    expect(window.address).toBe("#/projects");
     await answerLeave("stay");
     expect(window.address).toBe("#/projects");
-    expect(window.seen).toEqual([]);
+    window.history.forward();
+    await answerLeave("discard");
+    expect(window.address).toBe("#/settings");
+  });
+
+  test("a move while the question is open does not replace the question", async () => {
+    const window = new FakeWindow();
+    hold();
+    window.link("#/chats");
+    window.link("#/files");
+    expect(window.address).toBe("#/projects");
+    await answerLeave("discard");
+    expect(window.address).toBe("#/chats");
+  });
+
+  test("a move that keeps the same page asks nothing", () => {
+    const window = new FakeWindow(() => true);
+    hold();
+    window.link("#/settings/engines/pi");
+    expect(isAskingToLeave()).toBe(false);
+    expect(window.seen).toEqual(["#/settings/engines/pi"]);
   });
 
   test("a reload or a closed tab asks the browser only with an unsaved change", () => {

@@ -253,11 +253,25 @@ describe("VaultSync.save", () => {
   test("syncs a vault on master with no origin/HEAD, through the branch's upstream (#505)", async () => {
     sandbox.git(vault, "switch", "-q", "-c", "master");
     sandbox.git(vault, "push", "-q", "-u", "origin", "master");
+    // The remote has only master, as after git init and a first push -u.
+    sandbox.git(sandbox.remote, "symbolic-ref", "HEAD", "refs/heads/master");
+    sandbox.git(vault, "push", "-q", "origin", "--delete", "main");
     sandbox.git(vault, "remote", "set-head", "origin", "-d");
     sandbox.write(vault, "note.md", "kept\n");
     const state = await createSync(vault).save();
     expect(state.status).toBe("ok");
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "master")).toContain("note.md");
+  });
+
+  test("with no origin/HEAD, stays out of a second branch that has an upstream, while the remote has main (#505)", async () => {
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.git(vault, "switch", "-q", "-c", "ideas");
+    sandbox.git(vault, "push", "-q", "-u", "origin", "ideas");
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("skipped");
+    expect(state.lastError).toBe("The vault is on ideas, not on main.");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "ideas")).not.toContain("note.md");
   });
 
   test("never commits a cloned project repository", async () => {

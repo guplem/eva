@@ -706,6 +706,11 @@ export class VaultSync {
     const name = head.stdout.trim();
     if (head.exitCode === 0 && name.startsWith("origin/")) return name.slice("origin/".length);
     // A vault made with git init and a first push -u has no origin/HEAD, and can use master (#505).
+    // The remote's main or master comes first: the upstream of a second branch would pass any branch.
+    for (const candidate of ["main", "master"]) {
+      const found = await this.git(["rev-parse", "--verify", "-q", `refs/remotes/origin/${candidate}`], localTimeoutMs);
+      if (found.exitCode === 0) return candidate;
+    }
     const upstream = await this.git(
       ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
       localTimeoutMs,

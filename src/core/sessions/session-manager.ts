@@ -711,6 +711,8 @@ export class SessionManager {
       this.expireApprovals(sessionId);
     });
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    // An object, as only the timer callback sets it.
+    const timeLimit = { reached: false };
     let releaseFolder = (): void => undefined;
     let historyLost = false;
     try {
@@ -718,13 +720,21 @@ export class SessionManager {
       this.lastActivity.set(sessionId, this.options.now().getTime());
       // After the wait: the other turn may itself run up to the time-out.
       timeout = setTimeout(() => {
+        timeLimit.reached = true;
         controller.abort();
       }, this.options.turnTimeoutMs);
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);
       const prepared = await preparer.prepare(session, {
         ask: (question, detail) => this.requestApproval(sessionId, question, detail, controller.signal),
       });
-      if (controller.signal.aborted) throw new Error("The turn stopped before the engine started.");
+      if (controller.signal.aborted) {
+        // Nobody pressed Stop after a time-out, so the reason must not say so.
+        throw new Error(
+          timeLimit.reached
+            ? "The turn ran past its time limit before the engine started."
+            : "The turn stopped before the engine started.",
+        );
+      }
       const history = this.historyOf(session);
       // A continue after failed turns only: the engine may never have created its session. Its
       // lost-history retry then starts one, and nothing was lost, so the person sees no notice.

@@ -1175,6 +1175,19 @@ describe("approvals", () => {
     expect(manager.get(sessionId).turns).toMatchObject([{ failure: "The turn stopped before the engine started." }]);
   });
 
+  test("a time-out while the mode prepares says so, not that someone stopped the turn", async () => {
+    const answers: string[] = [];
+    const engine = new FakeEngine();
+    const manager = askingManager(answers, { engine, beforeAsk: Bun.sleep(60), turnTimeoutMs: 20 });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(answers).toEqual(["expired"]);
+    expect(engine.requests).toEqual([]);
+    expect(manager.get(sessionId).turns).toMatchObject([
+      { failure: "The turn ran past its time limit before the engine started." },
+    ]);
+  });
+
   test("a mode's question that the person answers gets that answer", async () => {
     const answers: string[] = [];
     const manager = askingManager(answers);

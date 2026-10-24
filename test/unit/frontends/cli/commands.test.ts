@@ -373,6 +373,39 @@ describe("with a running Eva", () => {
     expect(await run(chatting, "chat")).toBe(exitCodes.clean);
   });
 
+  test("an update that fails in the running Eva exits with a failure, as it does here", async () => {
+    const failing = new Eva({
+      paths,
+      config: loadSettings(paths).config,
+      secrets: { localApiToken: "running-token" },
+      engines: [],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.reject(new Error("The release server did not answer.")),
+        apply: () => Promise.reject(new Error("not used")),
+      },
+    });
+    const failingApi = startLocalApi({
+      eva: failing,
+      port: 0,
+      token: "running-token",
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: Number(new URL(failingApi.url).port) });
+      expect(await run(host, "update", "--check")).toBe(exitCodes.crash);
+      expect(printed(host)).toContain("The release server did not answer.");
+    } finally {
+      failingApi.stop();
+      failing.stop();
+    }
+  });
+
   test("a client command exits as any other command for the same refusal", async () => {
     const refusing = Bun.serve({
       hostname: "127.0.0.1",

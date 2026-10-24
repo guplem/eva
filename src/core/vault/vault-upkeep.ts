@@ -22,6 +22,14 @@ export const noVaultState: VaultSyncState = {
   withheldFiles: [],
 };
 
+/** Why "sync now" did not run, so a client can tell a wait from a failure without reading the text. */
+export type SyncSkipReason = "assistant_busy" | "no_vault";
+
+/** The state after "sync now". An older Eva sends no reason. */
+export interface SyncNowState extends VaultSyncState {
+  readonly skipReason?: SyncSkipReason;
+}
+
 export interface VaultUpkeepOptions {
   /** Null when no vault is configured. */
   readonly vaultSync: VaultSync | null;
@@ -75,14 +83,15 @@ export class VaultUpkeep {
   }
 
   /** "Sync now": brings the remote's changes in, then commits and pushes this machine's changes. */
-  async syncNow(): Promise<VaultSyncState> {
+  async syncNow(): Promise<SyncNowState> {
     const vaultSync = this.options.vaultSync;
-    if (vaultSync === null) return noVaultState;
+    if (vaultSync === null) return { ...noVaultState, skipReason: "no_vault" };
     if (this.options.assistantBusy())
       return {
         ...vaultSync.currentState,
         status: "skipped",
         lastError: "Eva is working in an Assistant chat. Sync again when it ends.",
+        skipReason: "assistant_busy",
       };
     this.lastPullAt = this.options.now();
     this.logSyncState(await vaultSync.pull());

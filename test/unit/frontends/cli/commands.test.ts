@@ -22,7 +22,8 @@ import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/loca
 import { describeFailure, runCli, type CliWiring } from "../../../../src/frontends/cli/commands.ts";
 import { terminalDeviceApprover } from "../../../../src/frontends/cli/devices.ts";
 import { evaCommand } from "../../../../src/frontends/cli/host.ts";
-import { updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
+import type { SyncNowState } from "../../../../src/core/vault/vault-upkeep.ts";
+import { syncExitCode, updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
 import { restartMethodNow } from "../../../../src/frontends/cli/service.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import { exitCodes } from "../../../../src/shared/exit-codes.ts";
@@ -355,11 +356,103 @@ describe("with a running Eva", () => {
     expect(printed(host)).not.toContain("\u001b[");
     expect(await run(host, "projects")).toBe(exitCodes.clean);
     expect(await run(host, "work", "missing-project", "do it")).toBe(exitCodes.crash);
+    // Eva answered, so the refusal needs no hint to start her.
+    expect(host.errors.join("")).not.toContain("Is Eva running?");
+    expect(host.errors.join("")).not.toContain("{");
+  });
+
+  test("a refusal of the token keeps the status and the hint: another Eva may hold the port", async () => {
+    saveSecrets(paths, { localApiToken: "token-of-another-eva" });
+    expect(await run(host, "status")).toBe(exitCodes.crash);
+    expect(host.errors.join("")).toContain("Eva answered 401: ");
+    expect(host.errors.join("")).toContain("Is Eva running?");
   });
 
   test("chat talks to the running Eva until the input ends", async () => {
     const chatting = fakeHost({ isProcessAlive: () => true }, ["/exit"]);
     expect(await run(chatting, "chat")).toBe(exitCodes.clean);
+  });
+
+  test("an update that fails in the running Eva exits with a failure, as it does here", async () => {
+    const failing = new Eva({
+      paths,
+      config: loadSettings(paths).config,
+      secrets: { localApiToken: "running-token" },
+      engines: [],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.reject(new Error("The release server did not answer.")),
+        apply: () => Promise.reject(new Error("not used")),
+      },
+    });
+    const failingApi = startLocalApi({
+      eva: failing,
+      port: 0,
+      token: "running-token",
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: Number(new URL(failingApi.url).port) });
+      expect(await run(host, "update", "--check")).toBe(exitCodes.crash);
+      expect(printed(host)).toContain("The release server did not answer.");
+    } finally {
+      failingApi.stop();
+      failing.stop();
+    }
+  });
+
+  test("a client command exits as any other command for the same refusal", async () => {
+    const refusing = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => Response.json({ error: "The config is invalid.", code: "config_invalid" }, { status: 400 }),
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: refusing.port ?? 0 });
+      const chatting = fakeHost({ isProcessAlive: () => true }, ["/exit"]);
+      expect(await run(chatting, "chat")).toBe(exitCodes.badConfig);
+      expect(chatting.errors.join("")).toBe("Eva refused the chat: The config is invalid.\n");
+    } finally {
+      await refusing.stop(true);
+    }
+  });
+
+  test("chat exits 1, with one line, when Eva drops the event stream", async () => {
+    // An Eva that opens the chat, then drops the stream while the person has not typed yet.
+    const dropping = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request, bunServer) =>
+        new URL(request.url).pathname === "/api/events"
+          ? bunServer.upgrade(request)
+            ? undefined
+            : new Response(null, { status: 400 })
+          : Response.json({ id: "s1", startFolder: "vault" }, { status: 201 }),
+      websocket: {
+        open: (socket) => {
+          setTimeout(() => {
+            socket.close();
+          }, 50);
+        },
+        message: () => undefined,
+      },
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: dropping.port ?? 0 });
+      const waiting = fakeHost({
+        isProcessAlive: () => true,
+        withPrompt: (work) => work(() => new Promise<string>(() => undefined)),
+      });
+      expect(await run(waiting, "chat")).toBe(exitCodes.crash);
+      expect(waiting.errors.join("")).toBe("Eva closed the connection.\n");
+    } finally {
+      await dropping.stop(true);
+    }
   });
 
   test("open opens this computer's browser with a login link that works once (#407)", async () => {
@@ -414,6 +507,13 @@ describe("with a running Eva", () => {
     expect(String(failure)).toContain("no update channel");
   });
 
+  test("a sync that fails in the running Eva exits with a failure, as it does here", async () => {
+    const vault = loadSettings(paths).config.vaultPath ?? "";
+    sandbox.git(vault, "remote", "set-url", "origin", join(vault, "no-such-remote"));
+    expect(await run(host, "sync")).toBe(exitCodes.crash);
+    expect(printed(host)).toContain("Vault sync: offline");
+  });
+
   test("setup restarts a running Eva when it changed her files, so she uses the new answers", async () => {
     const answering = fakeHost({
       isProcessAlive: () => true,
@@ -460,6 +560,37 @@ describe("with a running Eva", () => {
     expect(printed(host)).toContain("Saved updates.frequency in the vault, for every machine. Eva uses it now.");
     expect(await run(host, "settings", "set", "port", "7425")).toBe(exitCodes.clean);
     expect(printed(host)).toContain("Saved port on this machine. Restart Eva to use it.");
+  });
+
+  test("a refusal of the running Eva prints its message, with no stack trace", async () => {
+    const failure = await run(host, "settings", "set", "port", "5").then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const described = describeFailure(failure);
+    expect(described.exitCode).toBe(exitCodes.badConfig);
+    expect(described.text).not.toContain("Eva stopped on an error");
+    expect(described.text).not.toContain("{");
+  });
+});
+
+describe("syncExitCode", () => {
+  const state: SyncNowState = {
+    status: "ok",
+    lastCommitAt: null,
+    lastPushAt: null,
+    lastError: null,
+    withheldFiles: [],
+  };
+
+  test("a busy Eva postpones the sync, which is no failure; no vault is a bad config; other skips fail", () => {
+    expect(syncExitCode(state)).toBe(exitCodes.clean);
+    // The Assistant runs `eva sync` inside its own turn, where the sync always waits for the turn.
+    expect(syncExitCode({ ...state, status: "skipped", skipReason: "assistant_busy" })).toBe(exitCodes.clean);
+    expect(syncExitCode({ ...state, status: "skipped", skipReason: "no_vault" })).toBe(exitCodes.badConfig);
+    // A vault on another branch, or an older Eva that names no reason.
+    expect(syncExitCode({ ...state, status: "skipped" })).toBe(exitCodes.crash);
+    expect(syncExitCode({ ...state, status: "offline" })).toBe(exitCodes.crash);
   });
 });
 

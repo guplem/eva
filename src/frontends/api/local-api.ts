@@ -28,6 +28,7 @@ import iconSvg from "../web/icons/icon.svg" with { type: "file" };
 import { serviceWorkerScript } from "../web/service-worker-script.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { isEvaError } from "../../shared/errors.ts";
+import type { Logger } from "../../shared/logger.ts";
 import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
 
 export interface LocalApiOptions {
@@ -46,6 +47,8 @@ export interface LocalApiOptions {
   readonly tailnet?: () => TailnetSnapshot | null;
   /** Seconds before Bun closes an idle request. Default: 255, the maximum. A test sets a short one. */
   readonly idleTimeoutSeconds?: number;
+  /** Gets each unexpected error of a request. */
+  readonly logger?: Logger;
 }
 
 export interface LocalApi {
@@ -272,7 +275,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           (await route(request, url, options.eva, deviceToken))
         );
       } catch (error) {
-        return errorResponse(error, options.eva);
+        return errorResponse(error, request, options);
       }
     },
     websocket: {
@@ -390,8 +393,8 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
   if (account === null)
     return json({ error: "A device login works through Tailscale from an allowed account, or on this computer." }, 403);
   const deviceLogins = options.eva.deviceLogins;
-  const id = decodeURIComponent(url.pathname.slice("/api/login/device/".length));
   try {
+    const id = decodeURIComponent(url.pathname.slice("/api/login/device/".length));
     if (request.method === "POST" && url.pathname === "/api/login/device") {
       const browser = (request.headers.get("user-agent") ?? "an unknown browser").slice(0, deviceLabelBrowserLength);
       return json(
@@ -408,7 +411,7 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
       );
     }
   } catch (error) {
-    return errorResponse(error, options.eva);
+    return errorResponse(error, request, options);
   }
   return json({ error: "Not found." }, 404);
 }
@@ -960,13 +963,30 @@ async function scheduleCardsRoute(
   return json({ error: "Not found." }, 404);
 }
 
+/** The routes that carry the id of a pending device login, which lets a browser in. */
+const deviceLoginIdPrefixes = ["/api/login/device/", "/api/devices/requests/"] as const;
+
+/** The path of a request for the log, without the id of a pending device login. */
+export function loggedPath(pathname: string): string {
+  const prefix = deviceLoginIdPrefixes.find((each) => pathname.startsWith(each));
+  return prefix === undefined ? pathname : `${prefix}…`;
+}
+
 /** An EvaError message can hold a value from the request or from git, so it is redacted first (lesson 95). */
-function errorResponse(error: unknown, eva: Eva): Response {
+function errorResponse(error: unknown, request: Request, options: LocalApiOptions): Response {
+  const eva = options.eva;
   // `decodeURIComponent` throws on a bad `%` escape in a path. That is the client's fault, not Eva's.
   if (error instanceof URIError) return json({ error: "The address is invalid." }, 400);
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     return json({ error: "The request body is invalid." }, 400);
-  if (!isEvaError(error)) return json({ error: "Eva failed to handle the request." }, 500);
+  if (!isEvaError(error)) {
+    // A bug: the answer stays generic. `/logs` shows the route and the first line of the reason on
+    // the phone; the log file keeps the whole stack.
+    options.logger?.log("error", `A request failed: ${request.method} ${loggedPath(new URL(request.url).pathname)}`, {
+      reason: eva.redact(error instanceof Error ? (error.stack ?? error.message) : String(error)),
+    });
+    return json({ error: "Eva failed to handle the request." }, 500);
+  }
   // The code lets a page tell one failure from another that shares its status.
   const body = { error: eva.redact(error.message), code: error.code };
   if (

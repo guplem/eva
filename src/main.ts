@@ -230,6 +230,7 @@ async function serve(paths: HomePaths): Promise<number> {
     extraHosts: config.remoteAccess.hostNames,
     allowedTailscaleIdentities: config.remoteAccess.allowedTailscaleIdentities,
     tailnet: () => remoteAccess?.tailnet() ?? null,
+    logger,
   });
   logger.log("info", "Eva started.", { version: evaVersion, url: api.url });
   writeLine(

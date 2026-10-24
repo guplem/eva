@@ -6,6 +6,8 @@ import { setupSteps } from "../../core/remote-access/steps.ts";
 import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
 import type { VaultSyncState, WithheldFile, WithheldReason } from "../../core/vault/vault-sync.ts";
+import type { SyncNowState } from "../../core/vault/vault-upkeep.ts";
+import { EvaError, type EvaErrorCode } from "../../shared/errors.ts";
 import type { LogEntry } from "../../shared/logger.ts";
 import { scanCodeLines } from "./network-setup.ts";
 
@@ -162,7 +164,7 @@ export async function startProjectWork(
       ...(input.reportToSessionId === null ? {} : { reportToSessionId: input.reportToSessionId }),
     }),
   });
-  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  if (!response.ok) throw await refusalOf(response);
   const started = (await response.json()) as { sessionId: string; clone: string };
   return input.reportToSessionId === null
     ? `Started the work in clone ${started.clone}, chat ${started.sessionId}.`
@@ -291,17 +293,20 @@ export async function requestUpdate(
   options: ClientOptions,
   checkOnly: boolean,
   version: string | null = null,
-): Promise<string> {
+): Promise<{ readonly text: string; readonly status: UpdateStatus }> {
   const checked = await postJson<UpdateStatus>(options, "/api/update/check", {});
-  if (checkOnly) return describeUpdateWithHint(checked);
+  if (checkOnly) return { text: describeUpdateWithHint(checked), status: checked };
   const release = version === null ? null : describeRelease(checked, version);
   const update = await postJson<UpdateStatus>(options, "/api/update", version === null ? {} : { version });
-  return release === null ? describeUpdateWithHint(update) : `${release}\n\n${describeUpdate(update)}`;
+  return {
+    text: release === null ? describeUpdateWithHint(update) : `${release}\n\n${describeUpdate(update)}`,
+    status: update,
+  };
 }
 
-/** `eva sync` while Eva runs. */
-export async function requestSync(options: ClientOptions): Promise<string> {
-  return describeSync(await postJson<VaultSyncState>(options, "/api/vault/sync", {}));
+/** `eva sync` while Eva runs: her sync state after the sync. */
+export function requestSync(options: ClientOptions): Promise<SyncNowState> {
+  return postJson<SyncNowState>(options, "/api/vault/sync", {});
 }
 
 /** `eva settings set` while Eva runs, so the running Eva uses the change too. */
@@ -314,7 +319,7 @@ export async function requestSettingsChange(
     headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
     body: JSON.stringify(change),
   });
-  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  if (!response.ok) throw await refusalOf(response);
   return ((await response.json()) as { restartNeeded: boolean }).restartNeeded;
 }
 
@@ -329,7 +334,7 @@ export async function requestDeviceAllow(options: ClientOptions, code: string): 
     body: JSON.stringify({ code }),
   });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  if (!response.ok) throw await refusalOf(response);
   return ((await response.json()) as { label: string }).label;
 }
 
@@ -363,7 +368,7 @@ export async function requestRestart(options: ClientOptions): Promise<void> {
     method: "POST",
     headers: { authorization: `Bearer ${options.token}` },
   });
-  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  if (!response.ok) throw await refusalOf(response);
 }
 
 export async function describeProjects(options: ClientOptions, query: string): Promise<string> {
@@ -385,19 +390,49 @@ function hashTags(tags: readonly string[]): string[] {
   return tags.length === 0 ? [] : [tags.map((tag) => `#${tag}`).join(" ")];
 }
 
+/** The hint for a failure that may not come from this Eva. */
+export const startHint = "Is Eva running? Start her with `eva`.";
+
+/**
+ * The running Eva's refusal as an EvaError, so the terminal shows her message with no stack
+ * trace. A code that this CLI does not know, from a newer Eva, passes through unchanged: the CLI
+ * branches on no such code. An answer that may come from another program keeps its status and
+ * the start hint: one with no JSON `error`, and a 401 or 404 with no code, such as from another
+ * Eva on the same port.
+ */
+export async function refusalOf(response: Response): Promise<EvaError> {
+  const text = await response.text();
+  let error: string | null = null;
+  let code: string | null = null;
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown; code?: unknown };
+    if (typeof parsed.error === "string") error = parsed.error;
+    if (typeof parsed.code === "string") code = parsed.code;
+  } catch {
+    // Not JSON, such as a page of another program: the start of the text says enough.
+  }
+  if (error !== null && code !== null) return new EvaError(code as EvaErrorCode, error);
+  if (error !== null && response.status !== 401 && response.status !== 404)
+    return new EvaError("request_failed", error);
+  return new EvaError(
+    "request_failed",
+    `Eva answered ${String(response.status)}: ${error ?? text.slice(0, 200)}\n${startHint}`,
+  );
+}
+
 async function postJson<Body>(options: ClientOptions, path: string, body: unknown): Promise<Body> {
   const response = await fetch(`${options.baseUrl}${path}`, {
     method: "POST",
     headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  if (!response.ok) throw await refusalOf(response);
   return (await response.json()) as Body;
 }
 
 async function getJson<Body>(options: ClientOptions, path: string): Promise<Body> {
   const response = await fetch(`${options.baseUrl}${path}`, { headers: { authorization: `Bearer ${options.token}` } });
-  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  if (!response.ok) throw await refusalOf(response);
   return (await response.json()) as Body;
 }
 
@@ -408,6 +443,6 @@ export async function requestLoginLink(options: ClientOptions): Promise<{ secret
     headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
     body: "{}",
   });
-  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  if (!response.ok) throw await refusalOf(response);
   return (await response.json()) as { secret: string; expiresAt: string };
 }

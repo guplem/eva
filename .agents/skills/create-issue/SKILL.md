@@ -5,13 +5,13 @@ description: Create a clear GitHub issue that an agent can implement later. Use 
 
 # Create an issue
 
-An issue says what the person wants. It also shows which parts the person decided and which parts an agent chose, so an implementer and a reviewer can trace each rule to its source.
+An issue states a clear goal. It settles only the choices that change what the person gets, and leaves the other details to the implementer: `implement-issue` fills those gaps in its plan. It also shows which parts the person decided and which parts an agent chose, so an implementer and a reviewer can trace each rule to its source.
 
 ## Steps
 
 1. **Research first.** Read the related code, docs and issues, so the issue names the real files and behavior. When the request depends on an outside tool or service, read its current documentation. Tell the person what is possible before you ask what they want.
 2. **Look for a duplicate.** Search open and closed issues by meaning, not only by the exact words. Prefer to reopen or comment on a matching issue.
-3. **Settle the open decisions.** List each choice and each gap that the request leaves open.
+3. **Settle the open decisions.** List each open choice that changes what the person gets. Leave out the details that an implementer can decide.
    - When the code, the docs or the project goals settle a choice with high confidence, decide it yourself. Do not spend the person's time on it. Write it as an assumption, and name its source, such as a rule in `AGENTS.md` or a pattern in the code.
    - For each choice that is left, interview the person when they are there. See [Interview the person](#interview-the-person).
    - When nobody is there, choose the most likely meaning, and write it as an assumption.
@@ -27,7 +27,7 @@ An issue says what the person wants. It also shows which parts the person decide
    - **What the person decided:** only what the person said or confirmed, in their meaning.
    - **Assumptions, written by an agent. Check them:** each choice that you made or inferred. Include each proposal that the person did not reject but did not choose.
    - **Proposed solution:** only when the person proposed one.
-   - **Done when:** behavior that a person can see, not implementation steps. Cover each decision and each assumption. Name a front end only when it has the feature.
+   - **Done when:** behavior that a person can see, not implementation steps. Cover the goal and each decision. Name a front end only when it has the feature.
 7. **Add labels.** Add `waiting-for-human-check` when an agent wrote the issue. Add `requires-human-intervention` when only a person can do the next step. Add no other label.
 8. **Review each issue.** Do this step for every issue.
    - Read the issue again yourself, against the code and the decisions. Check each reference to another issue.
@@ -35,14 +35,18 @@ An issue says what the person wants. It also shows which parts the person decide
      - a decision that is missing, wrong or contradicted;
      - an assumption that the issue shows as a decision of the person;
      - a claim about the code that is not true;
-     - a gap that an implementer would hit;
+     - a gap that leaves the goal or a decision unclear;
      - a "Done when" item that is missing or that a person cannot see.
+
+     They do not ask for detail that an implementer can decide.
+
    - Judge each finding against the code and the decisions. Fix each valid finding in the issue.
    - Ask the person about each finding that changes what they want.
    - Name the assumptions that matter most, so the person checks them first.
 
 ## Interview the person
 
+- Ask only about a choice that changes what the person gets. A clear request needs no interview.
 - Ask one question at a time.
 - Make each question a concrete case: "X happens. Should Y happen?" Put all the context in the question. The person answers yes, no, maybe or "I do not know", with no special knowledge.
 - Choose each question from the earlier answers.

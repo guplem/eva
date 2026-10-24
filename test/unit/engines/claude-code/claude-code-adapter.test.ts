@@ -853,6 +853,17 @@ describe("the start of Eva's MCP servers", () => {
 });
 
 describe("ClaudeCodeEngine", () => {
+  test("carries a chat to another folder through its config folder (issue 523)", () => {
+    const config = mkdtempSync(join(tmpdir(), "eva-claude-carry-"));
+    try {
+      const engine = new ClaudeCodeEngine({ executable: "/bin/claude" });
+      const input = { engineSessionId: "abc", toFolder: "/clones/clone-1", environment: { CLAUDE_CONFIG_DIR: config } };
+      expect(engine.carryHistory(input)).toBe(false);
+    } finally {
+      rmSync(config, { recursive: true, force: true });
+    }
+  });
+
   test("runs the query with the built options and maps its messages", async () => {
     const seen: unknown[] = [];
     const engine = new ClaudeCodeEngine({

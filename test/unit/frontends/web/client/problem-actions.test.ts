@@ -3,6 +3,8 @@ import {
   claudeLoginExpired,
   isOtherMachineProblem,
   problemAction,
+  shownProblems,
+  withPendingHides,
 } from "../../../../../src/frontends/web/client/problem-actions.ts";
 
 describe("problemAction", () => {
@@ -55,5 +57,29 @@ describe("claudeLoginExpired", () => {
     expect(
       claudeLoginExpired([{ key: "engine_login:pi" }, { key: "machine:example-pc:engine_login:claude-code" }]),
     ).toBe(false);
+  });
+});
+
+describe("shownProblems", () => {
+  test("leaves out a problem that the person hid, and keeps one from an older Eva with no mark (#541)", () => {
+    const problems: { key: string; level: string; message: string; hidden?: boolean }[] = [
+      { key: "update", level: "warn", message: "Hidden.", hidden: true },
+      { key: "vault_sync", level: "error", message: "Shown.", hidden: false },
+      { key: "telegram_poll", level: "warn", message: "Older Eva." },
+    ];
+    expect(shownProblems(problems).map((problem) => problem.key)).toEqual(["vault_sync", "telegram_poll"]);
+  });
+});
+
+describe("withPendingHides", () => {
+  test("marks a problem whose hide Eva has not answered yet, and leaves the others", () => {
+    const problems = [
+      { key: "update", hidden: false },
+      { key: "vault_sync", hidden: false },
+    ];
+    expect(withPendingHides(problems, new Set(["update"]))).toEqual([
+      { key: "update", hidden: true },
+      { key: "vault_sync", hidden: false },
+    ]);
   });
 });

@@ -16,7 +16,7 @@ import {
   type MapRow,
 } from "./branch-path.ts";
 import { DeleteQuestion, useIsPhone } from "./ChatHeader.tsx";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
 import { useContextMenu } from "./Menu.tsx";

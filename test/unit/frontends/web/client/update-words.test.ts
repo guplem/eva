@@ -36,6 +36,7 @@ const status: UpdateStatus = {
   lastCheckAt: null,
   lastError: null,
   failedStep: null,
+  failingSince: null,
   download: null,
 };
 

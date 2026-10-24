@@ -19,7 +19,7 @@ import {
 } from "./project-format.ts";
 import { chatTime, type ChatState } from "./chat-list.ts";
 import { ButtonSpinner, CardsSkeleton, ProgressBar } from "./Loading.tsx";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { ChatStatePill, chatListItems, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
 import { fileAddressOf } from "./file-paths.ts";

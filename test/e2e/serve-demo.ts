@@ -131,6 +131,11 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     if (end !== undefined) yield end;
     return;
   }
+  if (lastLine.includes("calendar")) {
+    yield { kind: "notice", text: 'Eva could not start the MCP server "google": no uvx' };
+    yield* FakeEngine.answer(request, "No calendar today.");
+    return;
+  }
   if (lastLine.includes("list")) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
     return;

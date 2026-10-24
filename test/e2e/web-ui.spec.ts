@@ -733,6 +733,24 @@ test("a usage warning shows under the chat after its answer (issue #67)", async 
   );
 });
 
+test("a notice stays on its turn after the turn ends and after a reload, apart from the answer (issue 157)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("what is on my calendar");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer).toContainText("No calendar today.");
+  const note = page.locator(".turn-note").filter({ hasText: 'MCP server "google"' });
+  await expect(note).toBeVisible();
+  await page.reload();
+  await expect(answer).toContainText("No calendar today.");
+  await expect(note).toBeVisible();
+  await expect(answer).not.toContainText("MCP server");
+});
+
 test("the answer shows its words while the engine writes them, then the whole text (issue 117)", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);

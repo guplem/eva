@@ -59,7 +59,7 @@ On the page, **Settings → Setup** lists each step that is left. Each answer is
 
 To open Eva on her own computer later, run `eva open`. It opens her page in this computer's browser, already logged in. You need no code and no token.
 
-On Windows, Eva also has an icon in the system tray, the area next to the clock. Windows can hide it under the arrow there: drag it out to keep it in sight. The icon shows her face for her state: she runs, she works, she needs you, or she stopped. Point at the icon to read her state. Right-click it for the menu:
+On Windows, a few seconds after you log in, Eva also has an icon in the system tray, the area next to the clock. Windows can hide it under the arrow there: drag it out to keep it in sight. The icon shows her face for her state: she runs, she works, she needs you, or she stopped. Point at the icon to read her state. Right-click it for the menu:
 
 - **Open Eva** opens her page in this computer's browser, already logged in. A double-click does the same.
 - **Restart Eva** stops her and starts her again.

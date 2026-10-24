@@ -38,4 +38,19 @@ No warning: the composer keeps each unsent text, the Files editor keeps each dra
 
 ## Decisions
 
-(Filled in step 3.)
+Three sub-agents (two mid-tier, one top-tier) researched all gaps. The owner answered gaps 1 and the save question.
+
+1. **Dialogs.** The owner chose: Cancel and Escape ask when the form has typed text. A page move under the dialog asks too. A tap on the scrim already does nothing in these sheets.
+2. **A save that creates or acts.** The owner chose: such a form offers only Discard and Stay. Nothing gets created, pushed or sent as a side effect of a tab tap. This covers New project, Add schedule (create), the push note, the question card, the Google login address and the vault setup. A plain save keeps "Save": the settings forms, project details, schedule edit, the trusted owners and the renames.
+3. **Fields with Add or Finish.** Typed text not yet added counts, as `ProjectDetailsEditor.tsx` already says for its Add fields. Trusted owners save with Add. The Google address gets no save: Finish completes a login.
+4. **Vault setup.** The new vault answers ask when they differ from their defaults. The typed repository address asks when not empty. Neither offers a save: both create or clone.
+5. **Renames.** The issue asks for every form, so both renames ask, and Save renames. The cost is one line each.
+6. **Load again.** It asks first, with the same dialog, about the details page only.
+7. **Which component asks.** `leave-guard.ts` stays the one component. It grows two small parts:
+   - A guard can have no save. The question then hides "Save".
+   - A form can ask about its own guard only, for a dialog close or Load again. A page move asks about every guard.
+8. **Wording.** The question names the move: leave, close or load again.
+9. **Risks found.**
+   - Discard must not drop a guard that stays mounted. The guards stay held while the allowed move runs, and each form releases its own guard when it closes or saves.
+   - Escape must close only the top dialog. The shared `Dialog` stops the Escape key after it handles it, so the sheet under it does not close too.
+10. **Not in scope.** Moving the hand-made sheets onto the shared `Dialog` is a separate refactor.

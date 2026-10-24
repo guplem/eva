@@ -2181,6 +2181,43 @@ describe("migrations (#119)", () => {
   });
 });
 
+describe("the hub claim after a later fetch (#529)", () => {
+  const claimedBy = (): unknown => JSON.parse(readFileSync(join(vault, ".eva", "hub.json"), "utf-8"));
+
+  test("a machine that started with no claim claims the hub at its first timed pull", async () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc", sync: syncOn });
+    await instance.backgroundTick();
+    expect(claimedBy()).toMatchObject({ machine: "example-pc" });
+    expect(instance.role()).toBe("hub");
+  });
+
+  test("Sync now claims the hub and pushes the claim", async () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc", sync: syncOn });
+    await instance.syncVault();
+    expect(sandbox.git(sandbox.remote, "show", "main:.eva/hub.json")).toContain("example-pc");
+  });
+
+  test("a claim that another machine pushed wins over a later fetch", async () => {
+    const other = sandbox.clone("other");
+    sandbox.write(other, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "claim");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    const instance = start(new FakeEngine(), { machineName: "example-pc", sync: syncOn });
+    await instance.backgroundTick();
+    expect(claimedBy()).toMatchObject({ machine: "other-pc" });
+    expect(instance.role()).toBe("satellite");
+  });
+
+  test("a read or a pick of a conflict never claims the hub, and Sync now with sync off neither", async () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    await instance.vaultConflicts();
+    await instance.resolveVaultConflict("note.md", "mine");
+    await instance.syncVault();
+    expect(existsSync(join(vault, ".eva", "hub.json"))).toBe(false);
+  });
+});
+
 describe("machine reports (#126)", () => {
   function collectAlerts(instance: Eva): Alert[] {
     const alerts: Alert[] = [];

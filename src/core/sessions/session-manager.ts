@@ -165,8 +165,15 @@ interface PendingBatch {
   readonly texts: string[];
   /** The messages that people and Eva sent, for the front ends. A follow-up of the mode is no message. */
   readonly messages: { readonly text: string; readonly origin: MessageOrigin }[];
+  /** The result of this batch's own turn, kept in memory: the record can fail to save. */
+  readonly outcome: TurnResult;
   readonly done: Promise<void>;
   readonly resolve: () => void;
+}
+
+interface TurnResult {
+  /** The failure reason of the turn, or null when it finished or has not run. */
+  failure: string | null;
 }
 
 interface SessionRuntime {
@@ -395,14 +402,6 @@ export class SessionManager {
     return this.options.now().getTime() - last < ms;
   }
 
-  /**
-   * The failure reason of a chat's last turn, or null after a good turn, before the first turn,
-   * or for a missing chat. A send never rejects, so a caller that must know reads this after it.
-   */
-  lastTurnFailure(sessionId: string): string | null {
-    return this.options.store.get(sessionId)?.turns.at(-1)?.failure ?? null;
-  }
-
   /** Stops the running turn of a chat. False when no turn runs. */
   stop(sessionId: string): boolean {
     const controller = this.runtimes.get(sessionId)?.controller ?? null;
@@ -415,6 +414,20 @@ export class SessionManager {
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
   send(sessionId: string, text: string, origin: MessageOrigin = "eva"): Promise<void> {
+    return this.enqueue(sessionId, text, origin).done;
+  }
+
+  /**
+   * Sends a message, as `send` does. It resolves to the failure reason of the turn that carried
+   * the message, or null. A send never rejects, and a later turn of the chat must not count.
+   */
+  async sendWithResult(sessionId: string, text: string, origin: MessageOrigin): Promise<string | null> {
+    const batch = this.enqueue(sessionId, text, origin);
+    await batch.done;
+    return batch.outcome.failure;
+  }
+
+  private enqueue(sessionId: string, text: string, origin: MessageOrigin): PendingBatch {
     // A new answer must not hide in the archive.
     this.setArchived(this.rootOf(this.get(sessionId)).id, false);
     const runtime = this.runtimeOf(sessionId);
@@ -424,7 +437,7 @@ export class SessionManager {
     batch.messages.push({ text, origin });
     this.lastActivity.set(sessionId, this.options.now().getTime());
     if (!runtime.busy) this.startGathering(sessionId, runtime);
-    return batch.done;
+    return batch;
   }
 
   /** Waits a moment for more messages, then runs the turn (lesson 51). */
@@ -630,7 +643,7 @@ export class SessionManager {
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
         let followUp: string | null = null;
         try {
-          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"));
+          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), batch.outcome);
           // Telegram showed the answer where the person asked, so the web app must not show it as unread.
           // A follow-up of the mode has no message, so its answer stays unread.
           const fromTelegram =
@@ -671,8 +684,8 @@ export class SessionManager {
     }
   }
 
-  /** Runs one turn and returns the follow-up message of the mode, if any. */
-  private async runTurn(sessionId: string, prompt: string): Promise<string | null> {
+  /** Runs one turn, writes its failure into `result`, and returns the follow-up message of the mode, if any. */
+  private async runTurn(sessionId: string, prompt: string, result: TurnResult): Promise<string | null> {
     // The record is read once at the start, so a change made during the turn cannot move it (lesson 48).
     const session = this.get(sessionId);
     const engine = this.options.engines.find((candidate) => candidate.name === session.engine);
@@ -847,6 +860,8 @@ ${prompt}`,
       runtime.turnRunning = false;
       this.forgetRunningTurn(sessionId);
     }
+    // Before the work after the turn, which can throw. Each unfinished turn sent one turn_failed.
+    result.failure = finished === null ? (this.lastFailure.get(sessionId) ?? "The turn failed.") : null;
     if (finished === null)
       this.recordFailure(
         session.id,
@@ -1067,7 +1082,7 @@ function createBatch(): PendingBatch {
   const done = new Promise<void>((settle) => {
     resolve = settle;
   });
-  return { texts: [], messages: [], done, resolve };
+  return { texts: [], messages: [], outcome: { failure: null }, done, resolve };
 }
 
 function titleOf(prompt: string): string {

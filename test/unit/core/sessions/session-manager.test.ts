@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -807,22 +807,6 @@ describe("exactly one end event (lesson 47)", () => {
     expect(manager.get(sessionId).turns[0]?.failure).not.toBeNull();
   });
 
-  test("the failure of a chat's last turn is readable after the send, and a good turn clears it", async () => {
-    const engine = new FakeEngine((request, turnNumber) =>
-      turnNumber === 1
-        ? [{ kind: "turn_failed", reason: "You hit the usage limit." }]
-        : FakeEngine.answer(request, "ok"),
-    );
-    const manager = createManager(engine);
-    const sessionId = newAssistantSession(manager);
-    expect(manager.lastTurnFailure(sessionId)).toBeNull();
-    await manager.send(sessionId, "one");
-    expect(manager.lastTurnFailure(sessionId)).toBe("You hit the usage limit.");
-    await manager.send(sessionId, "two");
-    expect(manager.lastTurnFailure(sessionId)).toBeNull();
-    expect(manager.lastTurnFailure("gone")).toBeNull();
-  });
-
   test("a stream that stops without an end gets one turn_failed", async () => {
     const manager = createManager(new FakeEngine(() => [{ kind: "text", text: "half", messageId: "m1" }]));
     await manager.send(newAssistantSession(manager), "go");
@@ -1444,6 +1428,55 @@ describe("after a turn", () => {
     await manager.send(sessionId, "start the skill");
     expect(engine.requests.map((request) => request.prompt)).toEqual(["start the skill", "continue the skill run"]);
     expect(engine.requests[1]?.history.kind).toBe("continue");
+  });
+
+  test("a send with a result gives the failure of its own turn, though a later message's turn succeeds", async () => {
+    let release = (): void => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const engine = new FakeEngine(async function* (request, turnNumber) {
+      if (turnNumber === 1) {
+        await released;
+        yield { kind: "turn_failed", reason: "You hit the usage limit." };
+        return;
+      }
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const scheduled = manager.sendWithResult(sessionId, "Plan my day.", "schedule");
+    await waitUntil(() => engine.requests.length === 1);
+    const personal = manager.send(sessionId, "And the weather?", "api");
+    release();
+    expect(await scheduled).toBe("You hit the usage limit.");
+    await personal;
+    expect(manager.get(sessionId).turns.map((turn) => turn.failure)).toEqual(["You hit the usage limit.", null]);
+  });
+
+  test("a send with a result gives null for a good turn, though a follow-up of the mode fails", async () => {
+    followUps = ["continue the skill run", null];
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 1 ? FakeEngine.answer(request, "ok") : [{ kind: "turn_failed", reason: "offline" }],
+    );
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    expect(await manager.sendWithResult(sessionId, "start the skill", "schedule")).toBeNull();
+    expect(engine.requests).toHaveLength(2);
+  });
+
+  test("a send with a result gives the failure even when the failed turn cannot be saved", async () => {
+    const engine = new FakeEngine(() => {
+      // A folder where the session list was: each save of the list fails.
+      const listPath = join(folder, "sessions.json");
+      rmSync(listPath, { force: true });
+      mkdirSync(listPath);
+      return [{ kind: "turn_failed", reason: "You hit the usage limit." }];
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    expect(await manager.sendWithResult(sessionId, "Plan my day.", "schedule")).toBe("You hit the usage limit.");
+    expect(logged.join("\n")).toContain("The work after a turn failed.");
   });
 
   test("an error after a turn is logged, and a message that waits still gets its turn", async () => {

@@ -18,7 +18,7 @@ A change to one of these goals needs the owner.
 - **One core process per instance,** and any number of instances.
 - **Instances share programs, never identity.** Every Eva on a computer uses the same git, Claude Code, pi, uv, gh and Tailscale. Each Eva keeps her own logins, vault, bot, settings and commit identity in her own folder.
 - **Eva owns vault sync in her own code.** No agent hooks.
-- **The vault layout is a contract.** A project is `Projects/YYYY-MM-DD-HHmm-name/`; its clones live in `repos/<repo>-<n>/`.
+- **The vault layout is a contract.** A project is `Projects/YYYY-MM-DD-HHmm-name/`; its clones live in `repos/clone-<n>/`, with one folder for each repository: `repos/clone-<n>/<repo>/`.
 - **Windows and Linux are both first-class.**
 
 ## Writing style

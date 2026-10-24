@@ -1,33 +1,39 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   commitAndPush,
   describeChanges,
   fallbackCommitMessage,
   fetchClone,
+  hasLocalWork,
   pullClone,
   readSyncState,
+  resetToDefaultBranch,
 } from "../../../../src/core/projects/clone-sync.ts";
-import { CloneOriginStore, createClone, type Clone } from "../../../../src/core/projects/clones.ts";
+import { CloneOriginStore, createClone, type CloneRepository } from "../../../../src/core/projects/clones.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
-let clone: Clone;
+// The one repository of a clone: the sync works on each repository apart.
+let clone: CloneRepository;
 
 beforeEach(async () => {
   sandbox = createGitSandbox();
   const project = join(sandbox.root, "vault", "Projects", "2025-03-02-1015-example-app");
   mkdirSync(project, { recursive: true });
-  clone = await createClone({
+  const created = await createClone({
     projectPath: project,
-    repositoryUrl: sandbox.remote,
+    repositoryUrls: [sandbox.remote],
     runner: systemProcessRunner,
     environment: gitEnvironment,
     origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
   });
+  const [repository] = created.repositories;
+  if (repository === undefined) throw new Error("The test needs one repository.");
+  clone = repository;
 }, gitHookTimeoutMs);
 afterEach(() => {
   sandbox.dispose();
@@ -179,5 +185,76 @@ describe("commit message", () => {
     expect(fallbackCommitMessage(["src/app.ts"])).toBe("Update app.ts");
     expect(fallbackCommitMessage(["a.ts", "b.ts", "c.ts"])).toBe("Update 3 files");
     expect(fallbackCommitMessage([])).toBe("Update files");
+  });
+});
+
+describe("reuse (issue 521)", () => {
+  test("a fresh repository has no work that only it holds", async () => {
+    expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(false);
+  });
+
+  test("a changed or new file is local work", async () => {
+    writeFileSync(join(clone.path, "new.txt"), "new\n");
+    expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(true);
+  });
+
+  test("a commit on a branch that no remote has is local work, also after a switch away from it", async () => {
+    sandbox.git(clone.path, "checkout", "-q", "-b", "feature");
+    sandbox.write(clone.path, "feature.txt", "feature\n");
+    sandbox.git(clone.path, "add", "-A");
+    sandbox.git(clone.path, "commit", "-q", "-m", "feature");
+    expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(true);
+    sandbox.git(clone.path, "checkout", "-q", "main");
+    expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(true);
+    sandbox.git(clone.path, "push", "-q", "origin", "feature");
+    expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(false);
+  });
+
+  test("a commit on a detached head is local work", async () => {
+    sandbox.git(clone.path, "checkout", "-q", "--detach");
+    sandbox.write(clone.path, "detached.txt", "detached\n");
+    sandbox.git(clone.path, "add", "-A");
+    sandbox.git(clone.path, "commit", "-q", "-m", "detached");
+    expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(true);
+  });
+
+  test("a folder that is not the top of its own repository counts as local work", async () => {
+    const inner = join(clone.path, "inner");
+    mkdirSync(inner);
+    expect(await hasLocalWork({ name: "inner", path: inner }, systemProcessRunner, gitEnvironment)).toBe(true);
+  });
+
+  test("a reset puts a pushed branch back on the default branch, up to date, and keeps ignored files", async () => {
+    sandbox.write(clone.path, ".gitignore", "node_modules/\n");
+    sandbox.git(clone.path, "add", "-A");
+    sandbox.git(clone.path, "commit", "-q", "-m", "ignore");
+    sandbox.git(clone.path, "push", "-q", "origin", "main");
+    sandbox.git(clone.path, "checkout", "-q", "-b", "feature");
+    sandbox.write(clone.path, "feature.txt", "feature\n");
+    sandbox.git(clone.path, "add", "-A");
+    sandbox.git(clone.path, "commit", "-q", "-m", "feature");
+    sandbox.git(clone.path, "push", "-q", "-u", "origin", "feature");
+    mkdirSync(join(clone.path, "node_modules"));
+    writeFileSync(join(clone.path, "node_modules", "kept.js"), "kept\n");
+    commitElsewhere("remote.txt");
+    await resetToDefaultBranch(clone, systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(clone.path, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("add remote.txt");
+    expect(existsSync(join(clone.path, "feature.txt"))).toBe(false);
+    expect(existsSync(join(clone.path, "node_modules", "kept.js"))).toBe(true);
+  });
+
+  test("a reset finds the default branch when the clone does not know it", async () => {
+    sandbox.git(clone.path, "remote", "set-head", "origin", "--delete");
+    await resetToDefaultBranch(clone, systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(clone.path, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+  });
+
+  test("a reset that cannot reach the remote fails with git's reason", async () => {
+    sandbox.git(clone.path, "remote", "set-url", "origin", join(sandbox.root, "gone.git"));
+    const error: unknown = await resetToDefaultBranch(clone, systemProcessRunner, gitEnvironment).catch(
+      (caught: unknown) => caught,
+    );
+    expect(isEvaError(error, "git_failed")).toBe(true);
   });
 });

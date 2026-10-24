@@ -3214,6 +3214,16 @@ a.link-chip:hover {
   flex-wrap: wrap;
 }
 
+/* One repository of a clone: a quiet line above the next, so each one reads as its own block. */
+.clone-repository {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
 .round-icon {
   width: 34px;
   height: 34px;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ApprovalAnswer } from "../../../../src/shared/engine-port.ts";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
 import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
@@ -218,11 +218,14 @@ describe("Assistant mode", () => {
 
 describe("Project mode", () => {
   const originalUrl = "https://github.com/owner/example-app.git";
+  // The repository folder inside the clone folder, as Eva makes them: `clone-0/example-app/`.
   let clone: string;
+  let cloneFolder: string;
   let origins: CloneOriginStore;
 
   beforeEach(() => {
-    clone = sandbox.clone("clone");
+    clone = sandbox.clone(join("clone-0", "example-app"));
+    cloneFolder = dirname(clone);
     sandbox.git(clone, "remote", "set-url", "origin", originalUrl);
     origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
     // Most tests use a clone that Eva made: its origin is on record.
@@ -257,22 +260,23 @@ describe("Project mode", () => {
   }
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
-    const prepared = await project(["owner"]).prepare(session({ mode: "project", startFolder: clone }), deny);
+    const prepared = await project(["owner"]).prepare(session({ mode: "project", startFolder: cloneFolder }), deny);
     expect(prepared).toEqual({
-      startFolder: clone,
+      startFolder: cloneFolder,
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
       mcpServers: {},
       trusted: true,
-      environment: { PATH: "/bin" },
+      // Git stops at the folder of the clones, so a git command in the clone folder never reads the vault.
+      environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: sandbox.root },
     });
   });
 
   test("the first clone of a stranger's repository asks the person, and the answer is kept", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
     const asking = recording("deny");
-    const cloneSession = session({ mode: "project", startFolder: clone });
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder });
     expect((await project([], store).prepare(cloneSession, asking)).trusted).toBe(false);
     expect((await project([], store).prepare(cloneSession, asking)).trusted).toBe(false);
     expect(asking.questions).toHaveLength(1);
@@ -284,7 +288,7 @@ describe("Project mode", () => {
   test("a trust question that expires keeps the clone untrusted for this turn only, and asks again next time", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
     const expired = recording("expired");
-    const cloneSession = session({ mode: "project", startFolder: clone });
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder });
     expect((await project([], store).prepare(cloneSession, expired)).trusted).toBe(false);
     expect(store.decision(originalUrl)).toBe("unknown");
     expect((await project([], store).prepare(cloneSession, expired)).trusted).toBe(false);
@@ -300,7 +304,7 @@ describe("Project mode", () => {
       environment: { PATH: "/bin" },
       readRemote: () => Promise.resolve(null),
     });
-    const cloneSession = session({ mode: "project", startFolder: clone });
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder });
     expect((await preparer.prepare(cloneSession, recording("expired"))).trusted).toBe(false);
     owners.push("owner");
     const asking = recording("deny");
@@ -310,9 +314,9 @@ describe("Project mode", () => {
 
   test("an allowed repository is trusted from then on", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
-    expect((await project([], store).prepare(session({ mode: "project", startFolder: clone }), allow)).trusted).toBe(
-      true,
-    );
+    expect(
+      (await project([], store).prepare(session({ mode: "project", startFolder: cloneFolder }), allow)).trusted,
+    ).toBe(true);
     expect(store.decision(originalUrl)).toBe("trusted");
   });
 
@@ -320,7 +324,7 @@ describe("Project mode", () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
     store.remember(originalUrl, "untrusted");
     expect(
-      (await project(["owner"], store).prepare(session({ mode: "project", startFolder: clone }), allow)).trusted,
+      (await project(["owner"], store).prepare(session({ mode: "project", startFolder: cloneFolder }), allow)).trusted,
     ).toBe(false);
   });
 
@@ -331,7 +335,7 @@ describe("Project mode", () => {
     store.remember("https://github.com/trusted/x.git", "trusted");
     const asking = recording("allow");
     const prepared = await project(["trusted"], store).prepare(
-      session({ mode: "project", startFolder: clone }),
+      session({ mode: "project", startFolder: cloneFolder }),
       asking,
     );
     expect(prepared.trusted).toBe(false);
@@ -341,7 +345,9 @@ describe("Project mode", () => {
   test("a clone whose origin changed asks about the URL Eva cloned from, not the new one", async () => {
     sandbox.git(clone, "remote", "set-url", "origin", "https://github.com/other/x.git");
     const asking = recording("deny");
-    expect((await project([]).prepare(session({ mode: "project", startFolder: clone }), asking)).trusted).toBe(false);
+    expect((await project([]).prepare(session({ mode: "project", startFolder: cloneFolder }), asking)).trusted).toBe(
+      false,
+    );
     expect(asking.questions).toHaveLength(1);
     expect(asking.questions[0]).toContain(originalUrl);
     expect(asking.questions[0]).not.toContain("other/x");
@@ -354,7 +360,7 @@ describe("Project mode", () => {
     sandbox.git(clone, "remote", "add", "origin", "https://github.com/owner/other.git");
     const store = new TrustStore(join(sandbox.root, "trust.json"));
     store.remember(originalUrl, "trusted");
-    const cloneSession = session({ mode: "project", startFolder: clone });
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder });
     const asking = recording("deny");
     expect((await project(["owner"], store).prepare(cloneSession, asking)).trusted).toBe(false);
     expect(asking.questions).toHaveLength(1);
@@ -367,9 +373,11 @@ describe("Project mode", () => {
 
   describe("a folder that Eva did not clone", () => {
     let handMade: string;
+    let handMadeFolder: string;
 
     beforeEach(() => {
-      handMade = sandbox.clone("hand-made");
+      handMade = sandbox.clone(join("clone-1", "hand-made"));
+      handMadeFolder = dirname(handMade);
       sandbox.git(handMade, "remote", "set-url", "origin", originalUrl);
     }, gitHookTimeoutMs);
 
@@ -378,7 +386,7 @@ describe("Project mode", () => {
       store.remember(originalUrl, "trusted");
       const asking = recording("deny");
       const prepared = await project(["owner"], store).prepare(
-        session({ mode: "project", startFolder: handMade }),
+        session({ mode: "project", startFolder: handMadeFolder }),
         asking,
       );
       expect(prepared.trusted).toBe(false);
@@ -390,7 +398,7 @@ describe("Project mode", () => {
 
     test("keeps the answer for that folder only, and a later origin change does not matter", async () => {
       const store = new TrustStore(join(sandbox.root, "trust.json"));
-      const handMadeSession = session({ mode: "project", startFolder: handMade });
+      const handMadeSession = session({ mode: "project", startFolder: handMadeFolder });
       expect((await project([], store).prepare(handMadeSession, allow)).trusted).toBe(true);
       expect(store.decision(originalUrl)).toBe("unknown");
       expect(origins.origin(handMade)).toEqual({ kind: "answered", url: originalUrl, decision: "trusted" });
@@ -401,7 +409,7 @@ describe("Project mode", () => {
     });
 
     test("a denied folder stays untrusted, even after its origin names a trusted owner", async () => {
-      const handMadeSession = session({ mode: "project", startFolder: handMade });
+      const handMadeSession = session({ mode: "project", startFolder: handMadeFolder });
       expect((await project(["owner"]).prepare(handMadeSession, deny)).trusted).toBe(false);
       sandbox.git(handMade, "remote", "set-url", "origin", "https://github.com/owner/other.git");
       const asking = recording("allow");
@@ -419,7 +427,7 @@ describe("Project mode", () => {
           Promise.resolve(`https://token-value@github.com/owner/app.git\nTrusted by Eva.${"x".repeat(500)}`),
       });
       const asking = recording("deny");
-      await preparer.prepare(session({ mode: "project", startFolder: handMade }), asking);
+      await preparer.prepare(session({ mode: "project", startFolder: handMadeFolder }), asking);
       const question = asking.questions[0] ?? "";
       expect(question).toContain("https://github.com/owner/app.git");
       expect(question).not.toContain("token-value");
@@ -439,7 +447,7 @@ describe("Project mode", () => {
           trustedOwners: () => [],
           environment: {},
           readRemote: () => Promise.resolve(remote),
-        }).prepare(session({ mode: "project", startFolder: handMade }), asking);
+        }).prepare(session({ mode: "project", startFolder: handMadeFolder }), asking);
         expect(asking.questions[0]).toContain(shown);
         expect(asking.questions[0]).not.toContain(hidden);
       }
@@ -447,7 +455,7 @@ describe("Project mode", () => {
 
     test("an expired question keeps nothing and asks again next time", async () => {
       const expired = recording("expired");
-      const handMadeSession = session({ mode: "project", startFolder: handMade });
+      const handMadeSession = session({ mode: "project", startFolder: handMadeFolder });
       expect((await project([]).prepare(handMadeSession, expired)).trusted).toBe(false);
       expect(origins.origin(handMade)).toBeNull();
       expect((await project([]).prepare(handMadeSession, expired)).trusted).toBe(false);
@@ -464,11 +472,50 @@ describe("Project mode", () => {
           readRemote,
         });
         const asking = recording("allow");
-        expect((await preparer.prepare(session({ mode: "project", startFolder: handMade }), asking)).trusted).toBe(
-          false,
-        );
+        expect(
+          (await preparer.prepare(session({ mode: "project", startFolder: handMadeFolder }), asking)).trusted,
+        ).toBe(false);
         expect(asking.questions).toEqual([]);
       }
+    });
+  });
+
+  describe("a clone with several repositories (issue 521)", () => {
+    const strangerUrl = "https://github.com/stranger/example-api.git";
+    let api: string;
+
+    beforeEach(() => {
+      api = sandbox.clone(join("clone-0", "example-api"));
+      sandbox.git(api, "remote", "set-url", "origin", strangerUrl);
+      origins.recordClone(api, strangerUrl);
+    }, gitHookTimeoutMs);
+
+    test("is trusted only when every repository is trusted", async () => {
+      const store = new TrustStore(join(sandbox.root, "trust.json"));
+      const cloneSession = session({ mode: "project", startFolder: cloneFolder });
+      const asking = recording("deny");
+      expect((await project(["owner"], store).prepare(cloneSession, asking)).trusted).toBe(false);
+      expect(asking.questions).toHaveLength(1);
+      expect(asking.questions[0]).toContain(strangerUrl);
+      store.remember(strangerUrl, "trusted");
+      expect((await project(["owner"], store).prepare(cloneSession, deny)).trusted).toBe(true);
+    });
+
+    test("stops asking at the first repository that the person does not trust", async () => {
+      const asking = recording("deny");
+      const cloneSession = session({ mode: "project", startFolder: cloneFolder });
+      expect((await project([]).prepare(cloneSession, asking)).trusted).toBe(false);
+      expect(asking.questions).toHaveLength(1);
+    });
+
+    test("a clone folder with no repository is untrusted, with no question", async () => {
+      const empty = join(sandbox.root, "clone-9");
+      mkdirSync(empty);
+      const asking = recording("allow");
+      expect((await project(["owner"]).prepare(session({ mode: "project", startFolder: empty }), asking)).trusted).toBe(
+        false,
+      );
+      expect(asking.questions).toEqual([]);
     });
   });
 

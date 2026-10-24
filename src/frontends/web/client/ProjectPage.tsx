@@ -4,7 +4,7 @@
  * shows the way to start (issue 392).
  */
 import { useState, type ReactElement } from "react";
-import type { CloneDetails, Project, SessionRecord } from "./api.ts";
+import type { CloneDetails, Project, RepositoryDetails, SessionRecord } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import {
   canPush,
@@ -43,17 +43,18 @@ interface ProjectPageProps {
   readonly onNewClone: () => void;
   /** With an action, the chat opens and its header starts it, as the context menu asks. */
   readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
-  readonly onNewChat: (clone: CloneDetails) => void;
+  /** Eva picks the clone of the new chat: a free one, or a new one. */
+  readonly onNewChat: () => void;
   /** Rejects when Eva cannot delete the clone, so the question stays open. */
   readonly onDeleteClone: (clone: CloneDetails) => Promise<void>;
   /** What Eva does with the remotes now, such as "Eva checks the remotes.", or null. */
   readonly syncWork: string | null;
-  /** The clone whose pull runs now, or null. */
+  /** The repository whose pull runs now, as `<clone>/<repository>`, or null. */
   readonly pulling: string | null;
   readonly onCheckRemotes: () => void;
   readonly onPullAll: () => void;
-  readonly onPull: (clone: CloneDetails) => void;
-  readonly onPush: (clone: CloneDetails) => void;
+  readonly onPull: (clone: CloneDetails, repository: RepositoryDetails) => void;
+  readonly onPush: (clone: CloneDetails, repository: RepositoryDetails) => void;
 }
 
 export function ProjectPage({
@@ -79,7 +80,8 @@ export function ProjectPage({
   onPush,
 }: ProjectPageProps): ReactElement {
   const now = new Date();
-  const behind = clones?.filter((clone) => (clone.behind ?? 0) > 0).length ?? 0;
+  const behind =
+    clones?.flatMap((clone) => clone.repositories).filter((repository) => (repository.behind ?? 0) > 0).length ?? 0;
   return (
     <>
       <div className="main-header">
@@ -92,6 +94,9 @@ export function ProjectPage({
           </div>
           <div className="sub mono">{projectFolder(project.path)}</div>
         </div>
+        <button className="primary" onClick={onNewChat}>
+          <Icon name="plus" /> New chat
+        </button>
         <button className="outline" onClick={onDetails}>
           <Icon name="pen" /> Details
         </button>
@@ -138,12 +143,11 @@ export function ProjectPage({
                     isWorking={isWorking}
                     now={now}
                     onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
-                    onNewChat={() => onNewChat(clone)}
                     onDelete={() => onDeleteClone(clone)}
-                    pulling={pulling === clone.name}
+                    pulling={pulling}
                     syncBusy={syncWork !== null}
-                    onPull={() => onPull(clone)}
-                    onPush={() => onPush(clone)}
+                    onPull={(repository) => onPull(clone, repository)}
+                    onPush={(repository) => onPush(clone, repository)}
                   />
                 ))}
 
@@ -246,15 +250,16 @@ interface CloneCardProps {
   readonly stateOf: (chat: SessionRecord) => ChatState;
   readonly isWorking: (chat: SessionRecord) => boolean;
   readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
-  readonly onNewChat: () => void;
   readonly onDelete: () => Promise<void>;
-  readonly pulling: boolean;
+  /** The repository whose pull runs now, as `<clone>/<repository>`, or null. */
+  readonly pulling: string | null;
   /** A check or a pull of all clones runs, so a pull of one waits. */
   readonly syncBusy: boolean;
-  readonly onPull: () => void;
-  readonly onPush: () => void;
+  readonly onPull: (repository: RepositoryDetails) => void;
+  readonly onPush: (repository: RepositoryDetails) => void;
 }
 
+/** A clone holds every repository of the project (issue 521), so the card has one row for each. */
 function CloneCard({
   clone,
   chats,
@@ -262,7 +267,6 @@ function CloneCard({
   stateOf,
   isWorking,
   onOpenChat,
-  onNewChat,
   onDelete,
   pulling,
   syncBusy,
@@ -272,12 +276,10 @@ function CloneCard({
   const [deleting, setDeleting] = useState(false);
   // On the head only: a chat row has its own menu, and a right click there must not open two.
   const { props, menu } = useContextMenu(
-    [
-      { label: "New chat here", icon: "plus", onChoose: onNewChat },
-      { label: "Delete clone", icon: "trash", danger: true, onChoose: () => setDeleting(true) },
-    ],
+    [{ label: "Delete clone", icon: "trash", danger: true, onChoose: () => setDeleting(true) }],
     `Actions of the clone ${clone.name}`,
   );
+  const pullingHere = clone.repositories.find((repository) => pulling === `${clone.name}/${repository.name}`);
   return (
     <section className="card clone-card" aria-label={`Clone ${clone.name}`}>
       {menu}
@@ -292,18 +294,21 @@ function CloneCard({
       )}
       <div className="clone-head" {...props}>
         <span className="round-icon">
-          <Icon name="branch" />
+          <Icon name="folder" />
         </span>
         <div className="header-text">
           <b>{clone.name}</b>
-          {clone.branch !== null && <div className="sub mono">{clone.branch}</div>}
         </div>
-        {clone.pullRequest !== null && <span className="pill idle">PR #{clone.pullRequest}</span>}
-        <StatusPill pill={changesPill(clone.changes)} />
-        {syncPills(clone.ahead, clone.behind).map((pill) => (
-          <StatusPill key={pill.text} pill={pill} />
-        ))}
       </div>
+      {clone.repositories.map((repository) => (
+        <RepositoryRow
+          key={repository.path}
+          repository={repository}
+          busy={pulling !== null || syncBusy}
+          onPull={() => onPull(repository)}
+          onPush={() => onPush(repository)}
+        />
+      ))}
       {chats.map((chat) => (
         <CloneChat
           key={chat.id}
@@ -313,23 +318,53 @@ function CloneCard({
           onOpen={(action) => onOpenChat(chat, action)}
         />
       ))}
-      <div className="button-row">
-        <button className="soft small" onClick={onNewChat}>
-          <Icon name="plus" /> New chat here
-        </button>
-        {(clone.behind ?? 0) > 0 && (
-          <button className="soft small" disabled={pulling || syncBusy} onClick={onPull}>
-            <Icon name="download" /> Pull
-          </button>
-        )}
-        {canPush(clone) && (
-          <button className="soft small" disabled={pulling || syncBusy} onClick={onPush}>
-            <Icon name="send" /> Push
-          </button>
-        )}
-      </div>
-      {pulling && <ProgressBar label={`Eva pulls ${clone.name}.`} />}
+      {pullingHere !== undefined && <ProgressBar label={`Eva pulls ${pullingHere.name}.`} />}
     </section>
+  );
+}
+
+/** One repository of a clone: its branch, pull request, changes and sync, with its own Pull and Push. */
+function RepositoryRow({
+  repository,
+  busy,
+  onPull,
+  onPush,
+}: {
+  readonly repository: RepositoryDetails;
+  /** A pull runs, so the buttons wait. */
+  readonly busy: boolean;
+  readonly onPull: () => void;
+  readonly onPush: () => void;
+}): ReactElement {
+  return (
+    <div className="clone-repository" aria-label={`Repository ${repository.name}`}>
+      <div className="clone-head">
+        <Icon name="branch" />
+        <div className="header-text">
+          <b>{repository.name}</b>
+          {repository.branch !== null && <div className="sub mono">{repository.branch}</div>}
+        </div>
+        {repository.pullRequest !== null && <span className="pill idle">PR #{repository.pullRequest}</span>}
+        <StatusPill pill={changesPill(repository.changes)} />
+        {syncPills(repository.ahead, repository.behind).map((pill) => (
+          <StatusPill key={pill.text} pill={pill} />
+        ))}
+      </div>
+      {((repository.behind ?? 0) > 0 || canPush(repository)) && (
+        <div className="button-row">
+          {(repository.behind ?? 0) > 0 && (
+            <button className="soft small" disabled={busy} onClick={onPull}>
+              <Icon name="download" /> Pull
+            </button>
+          )}
+          {canPush(repository) && (
+            <button className="soft small" disabled={busy} onClick={onPush}>
+              <Icon name="send" /> Push
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -353,6 +388,7 @@ function DeleteCloneDialog({
   const [understood, setUnderstood] = useState(false);
   const [busy, setBusy] = useState(false);
   const hasChats = chats.length > 0;
+  const changes = clone.repositories.reduce((sum, repository) => sum + (repository.changes ?? 0), 0);
   const remove = async (): Promise<void> => {
     setBusy(true);
     try {
@@ -368,8 +404,8 @@ function DeleteCloneDialog({
       <h2>Delete the clone “{clone.name}”?</h2>
       <div className="callout warning">
         Eva deletes this folder from this computer. Work that is only here is lost for good:
-        {clone.changes !== null && clone.changes > 0 && <> {countOf(clone.changes, "changed file")},</>} commits that
-        you did not push, and files that git ignores, such as <span className="mono">.env</span>.
+        {changes > 0 && <> {countOf(changes, "changed file")},</>} commits that you did not push, and files that git
+        ignores, such as <span className="mono">.env</span>.
       </div>
       {hasChats && (
         <div className="callout danger" role="alert">

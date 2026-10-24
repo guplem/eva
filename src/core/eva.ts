@@ -1445,9 +1445,9 @@ export class Eva {
     return this.projectWork.fetchClones(projectId);
   }
 
-  /** A fast-forward pull of one clone. */
-  pullClone(projectId: string, cloneName: string): Promise<void> {
-    return this.projectWork.pullClone(projectId, cloneName);
+  /** A fast-forward pull of one repository of a clone. */
+  pullClone(projectId: string, cloneName: string, repositoryName: string): Promise<void> {
+    return this.projectWork.pullClone(projectId, cloneName, repositoryName);
   }
 
   /** Pulls each clone of a project that is behind its remote. */
@@ -1455,14 +1455,19 @@ export class Eva {
     return this.projectWork.pullClones(projectId);
   }
 
-  /** Commits every change of a clone and pushes it. An empty note lets a model write the message. */
-  pushClone(projectId: string, cloneName: string, note: string): Promise<{ readonly message: string }> {
-    return this.projectWork.pushClone(projectId, cloneName, note);
+  /** Commits every change of one repository of a clone and pushes it. An empty note lets a model write the message. */
+  pushClone(
+    projectId: string,
+    cloneName: string,
+    repositoryName: string,
+    note: string,
+  ): Promise<{ readonly message: string }> {
+    return this.projectWork.pushClone(projectId, cloneName, repositoryName, note);
   }
 
-  /** Clones a project's repository into its next free folder (the "New clone" button). */
-  newClone(projectId: string, repositoryUrl?: string): Promise<Clone> {
-    return this.projectWork.newClone(projectId, repositoryUrl);
+  /** Clones every repository of a project into its next free clone folder (the "New clone" button). */
+  newClone(projectId: string): Promise<Clone> {
+    return this.projectWork.newClone(projectId);
   }
 
   /** Deletes a clone folder and its chats, unless Eva works there now. */

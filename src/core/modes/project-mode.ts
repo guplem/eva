@@ -1,5 +1,5 @@
 /**
- * Project mode: the harness exactly as if the person opened the clone.
+ * Project mode: the harness exactly as if the person opened the clone folder, above its repositories.
  * Eva adds no prompt and no plugin. She only decides trust: an untrusted clone runs with
  * its hooks, project settings and project MCP servers off. Trust follows the URL that Eva
  * cloned from, never the clone's live `origin`. The first time a clone of an unknown
@@ -7,8 +7,14 @@
  * no record of cloning, or that is not the folder she cloned, is asked about too, and the
  * answer holds for that folder only.
  */
-import { basename } from "node:path";
-import { isTrustedByDefault, shownUrl, type CloneOriginStore, type TrustStore } from "../projects/clones.ts";
+import { basename, delimiter, dirname } from "node:path";
+import {
+  isTrustedByDefault,
+  listRepositories,
+  shownUrl,
+  type CloneOriginStore,
+  type TrustStore,
+} from "../projects/clones.ts";
 import type { PrepareContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
@@ -37,13 +43,24 @@ export class ProjectPreparer implements TurnPreparer {
       messagePrefix: null,
       pluginFolders: [],
       mcpServers: {},
-      trusted: await this.isTrusted(session.startFolder, context),
-      environment: this.options.environment,
+      trusted: await this.isCloneTrusted(session.startFolder, context),
+      environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };
   }
 
   afterTurn(_session: SessionRecord, _outcome: TurnOutcome): Promise<string | null> {
     return Promise.resolve(null);
+  }
+
+  /**
+   * A clone is trusted only when each of its repositories is (issue 521): the agent starts above them
+   * all. Eva asks about each unknown repository in turn, and stops at the first one that is not trusted.
+   */
+  private async isCloneTrusted(cloneFolder: string, context: PrepareContext): Promise<boolean> {
+    const repositories = listRepositories(cloneFolder);
+    if (repositories.length === 0) return false;
+    for (const repository of repositories) if (!(await this.isTrusted(repository.path, context))) return false;
+    return true;
   }
 
   private async isTrusted(cloneFolder: string, context: PrepareContext): Promise<boolean> {
@@ -122,4 +139,17 @@ async function askTrust(
   // Only the person's own answer is kept. An expired question leaves this turn untrusted and asks again next time.
   if (answer === "expired") return null;
   return answer === "allow" ? "trusted" : "untrusted";
+}
+
+/**
+ * Git stops its search for a repository at the folder of the clones. The clone folder itself is no
+ * repository, so without this a git command there would read the vault's repository above it.
+ */
+function withGitCeiling(
+  environment: Readonly<Record<string, string>>,
+  clonesFolder: string,
+): Readonly<Record<string, string>> {
+  const current = environment["GIT_CEILING_DIRECTORIES"];
+  const ceiling = current === undefined || current === "" ? clonesFolder : `${current}${delimiter}${clonesFolder}`;
+  return { ...environment, GIT_CEILING_DIRECTORIES: ceiling };
 }

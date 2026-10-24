@@ -50,6 +50,20 @@ describe("systemPiProcessStarter", () => {
     expect(pi.stderrTail()).toContain("starting up");
   });
 
+  test("a process that never reads stdin is stopped after the timeout, even with a full pipe", async () => {
+    const stubborn = "setInterval(() => undefined, 1000);";
+    const pi = systemPiProcessStarter([process.execPath, "-e", stubborn], {
+      cwd: process.cwd(),
+      environment: { ...process.env } as Record<string, string>,
+    });
+    // More than a pipe buffer holds, so the end of stdin waits for a reader that never comes.
+    pi.send({ type: "prompt", message: "x".repeat(400_000) });
+    const started = Date.now();
+    await pi.close(200);
+    expect(await collect(pi.records)).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
   test("a process that ignores the end of stdin is stopped after the timeout", async () => {
     const stubborn = "setInterval(() => undefined, 1000);";
     const pi = systemPiProcessStarter([process.execPath, "-e", stubborn], {

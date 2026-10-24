@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,6 +46,9 @@ function fakeRunner(answer: (command: readonly string[]) => ProcessResult | Prom
 }
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
+
+/** What Windows answers while a stopped program still holds a file. */
+const busy = (): Error => Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
 
 describe("createTranscriber (lessons 71, 123)", () => {
   test("decodes with ffmpeg, transcribes with whisper, and leaves no audio behind", async () => {
@@ -107,6 +111,55 @@ describe("createTranscriber (lessons 71, 123)", () => {
     // The program's own last line says why.
     expect(String(failure)).toContain("whisper could not transcribe the voice note: no model");
     expect(readdirSync(folder)).toEqual([]);
+  });
+
+  test("a folder that Windows still holds keeps the real error, after five tries to delete it", async () => {
+    const remove = spyOn(fs, "rmSync").mockImplementation(() => {
+      throw busy();
+    });
+    try {
+      const { runner } = fakeRunner((command) =>
+        command[0] === "whisper-cli" ? { exitCode: 2, stdout: "", stderr: "timed out" } : ok(),
+      );
+      const transcribe = createTranscriber({ tools, runner, environment: {}, temporaryRoot: folder });
+      const failure = await transcribe(new Uint8Array([1])).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(String(failure)).toContain("whisper could not transcribe the voice note: timed out");
+      expect(remove).toHaveBeenCalledTimes(5);
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
+  test("the delete tries again until a busy folder is free", async () => {
+    const realRemove = fs.rmSync;
+    let failures = 2;
+    const remove = spyOn(fs, "rmSync").mockImplementation((path, options) => {
+      if (failures > 0) {
+        failures -= 1;
+        throw busy();
+      }
+      realRemove(path, options);
+    });
+    try {
+      const { runner } = fakeRunner(() => ok());
+      await createTranscriber({ tools, runner, environment: {}, temporaryRoot: folder })(new Uint8Array([1]));
+      expect(remove).toHaveBeenCalledTimes(3);
+      expect(readdirSync(folder)).toEqual([]);
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
+  test("a note removes the audio that an earlier note could not delete, and nothing else", async () => {
+    fs.mkdirSync(join(folder, "voice-old"));
+    fs.writeFileSync(join(folder, "voice-old", "note.ogg"), "audio");
+    fs.writeFileSync(join(folder, "sessions.json"), "{}");
+    const { runner } = fakeRunner(() => ok());
+    await createTranscriber({ tools, runner, environment: {}, temporaryRoot: folder })(new Uint8Array([1]));
+    expect(readdirSync(folder)).toEqual(["sessions.json"]);
   });
 
   test("a whisper-cli that lacks a system library says which one, and how to add it", async () => {

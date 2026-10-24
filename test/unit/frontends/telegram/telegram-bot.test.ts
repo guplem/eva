@@ -1249,7 +1249,13 @@ describe("project work from a Telegram chat (#9)", () => {
     const asking = eva.sessions.list()[0]!;
 
     const work = await eva.startProjectWork({ projectId, request: "Fix the login bug.", reportToSessionId: asking.id });
-    await settle(bot, () => telegram.sentTexts().includes("Fixed it."));
+    // The start notice and the answer go out on their own, so under load the answer can come first.
+    await settle(
+      bot,
+      () =>
+        telegram.sentTexts().includes("Fixed it.") &&
+        telegram.sentTexts().some((text) => text.startsWith("Project work started")),
+    );
     expect(telegram.callsTo("createForumTopic")[0]?.params["name"]).toBe("Example app: Fix the login bug.");
     const started = telegram.sentTexts().find((text) => text.startsWith("Project work started"));
     expect(started).toBe(

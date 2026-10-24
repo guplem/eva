@@ -804,7 +804,7 @@ describe("closed chats (issue 521)", () => {
     expect(createManager(new FakeEngine()).get(fork.id).closed).toBe(true);
   });
 
-  test("a closed chat keeps its history, and refuses a message, a fork and a retry", async () => {
+  test("a closed chat keeps its history, and refuses a message, a fork, a retry and a model", async () => {
     const engine = new FakeEngine();
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
@@ -825,6 +825,14 @@ describe("closed chats (issue 521)", () => {
       ),
     ).toBe(true);
     expect(isEvaError(await manager.retry(sessionId, 0).catch((error: unknown) => error), "session_closed")).toBe(true);
+    // A closed chat takes no next turn, so a new model would never answer (#545).
+    expect(
+      isEvaError(
+        caughtFrom(() => manager.setModel(sessionId, "opus")),
+        "session_closed",
+      ),
+    ).toBe(true);
+    expect(manager.get(sessionId).modelAlias).toBe("default");
     expect(engine.requests).toHaveLength(1);
     expect(manager.list()).toHaveLength(1);
   });

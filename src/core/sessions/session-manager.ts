@@ -285,6 +285,7 @@ export class SessionManager {
    */
   setModel(sessionId: string, model: ModelAlias): SessionRecord {
     const session = this.get(sessionId);
+    this.assertOpen(session);
     if (this.isBusy(sessionId)) {
       throw new EvaError("session_busy", "The model of a chat cannot change while a turn runs.");
     }

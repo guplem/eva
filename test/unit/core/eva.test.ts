@@ -9,6 +9,7 @@ import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/sett
 import { templateParts } from "../../../src/core/vault/vault-template.ts";
 import type { SessionRecord } from "../../../src/core/sessions/session-store.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
+import { isEvaError } from "../../../src/shared/errors.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { TurnRequest } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -907,6 +908,86 @@ describe("Eva", () => {
       expect(sandbox.git(repository, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
     });
   });
+
+  test("an Assistant chat goes on in a new Assistant chat that starts from a summary (#522)", async () => {
+    const engine = new FakeEngine((request) =>
+      FakeEngine.answer(request, request.mode === "model-call" ? "Goal: plan a trip." : "Rome is lovely."),
+    );
+    const instance = start(engine);
+    const old = instance.createAssistantSession({ source: "web", model: "opus", effort: "high" });
+    await instance.sessions.send(old.id, "Plan a trip to Rome");
+    const { session, summaryFailure } = await instance.continueFromSummary(old.id, "web");
+    expect(summaryFailure).toBeNull();
+    expect(session).toMatchObject({
+      mode: "assistant",
+      engine: "claude-code",
+      modelAlias: "opus",
+      effort: "high",
+      startFolder: vault,
+      continuedFrom: old.id,
+      turns: [],
+    });
+    expect(session.firstMessageDraft).toContain("Goal: plan a trip.");
+    const call = engine.requests.find((request) => request.mode === "model-call");
+    expect(call?.prompt).toContain("Person: Plan a trip to Rome\n\nAgent: Rome is lovely.");
+    expect(call?.prompt).not.toContain("<git-state>");
+  });
+
+  test("a Project chat goes on in another clone, with the git state in the summary call (#522)", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
+    );
+    const engine = new FakeEngine((request) =>
+      FakeEngine.answer(request, request.mode === "model-call" ? "Goal: fix login." : "Fixed."),
+    );
+    const instance = start(engine);
+    const old = await instance.createProjectSession({
+      projectId: "2025-03-02-1015-example-app",
+      source: "web",
+      model: "default",
+    });
+    await instance.sessions.send(old.id, "fix login");
+    const { session } = await instance.continueFromSummary(old.id, "web");
+    expect(session).toMatchObject({
+      mode: "project",
+      projectId: "2025-03-02-1015-example-app",
+      clone: "clone-1",
+      continuedFrom: old.id,
+    });
+    const call = engine.requests.find((request) => request.mode === "model-call");
+    expect(call?.prompt).toContain("<git-state>\nRepository remote:\n## main...origin/main");
+  });
+
+  test("a chat deleted while its summary is written opens no new chat (#522)", async () => {
+    let oldId = "";
+    const engine = new FakeEngine((request) => {
+      if (request.mode === "model-call") eva?.sessions.delete(oldId);
+      return FakeEngine.answer(request, "Goal: something.");
+    });
+    const instance = start(engine);
+    oldId = instance.createAssistantSession({ source: "web", model: "default" }).id;
+    await instance.sessions.send(oldId, "Hello");
+    const error: unknown = await instance.continueFromSummary(oldId, "web").catch((caught: unknown) => caught);
+    expect(isEvaError(error, "session_not_found")).toBe(true);
+    expect(instance.sessions.list()).toHaveLength(0);
+  });
+
+  test("a failed summary still opens the new chat, with the link, no draft and the reason (#522)", async () => {
+    const engine = new FakeEngine((request) =>
+      request.mode === "model-call"
+        ? [{ kind: "turn_failed", reason: "Rate limited." }]
+        : FakeEngine.answer(request, "Sure."),
+    );
+    const instance = start(engine);
+    const old = instance.createAssistantSession({ source: "web", model: "default" });
+    await instance.sessions.send(old.id, "Hello");
+    const { session, summaryFailure } = await instance.continueFromSummary(old.id, "web");
+    expect(summaryFailure).toBe("Rate limited.");
+    expect(session).toMatchObject({ continuedFrom: old.id, firstMessageDraft: null });
+  });
+
   test("an unknown project is an EvaError", async () => {
     const instance = start(new FakeEngine());
     const error: unknown = await instance
@@ -1601,6 +1682,25 @@ describe("Eva alerts", () => {
     await turn;
   });
 
+  test("a sync during an Assistant turn, or with no vault, says why it skipped, in a field a client can read", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine);
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const turn = instance.sessions.send(session.id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    const busy = await instance.syncVault();
+    expect([busy.status, busy.skipReason]).toEqual(["skipped", "assistant_busy"]);
+    release();
+    await turn;
+    expect((await instance.syncVault()).skipReason).toBeUndefined();
+    const bare = start(new FakeEngine(), { vaultPath: null });
+    expect((await bare.syncVault()).skipReason).toBe("no_vault");
+  });
+
   test("with no vault, there is no conflict to list or resolve", async () => {
     const instance = start(new FakeEngine(), { vaultPath: null });
     expect((await instance.vaultConflicts()).conflicts).toEqual([]);
@@ -1751,6 +1851,52 @@ describe("Eva alerts", () => {
     expect(alerts[0]?.message).toContain("Lunch");
   });
 
+  test("a scheduled prompt whose turn fails raises the schedule's alert", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(new FakeEngine(() => [{ kind: "turn_failed", reason: "You hit the usage limit." }]));
+    const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    await waitFor(() => alerts.some((alert) => alert.key === "schedule:lunch"));
+    expect(alerts.find((alert) => alert.key === "schedule:lunch")?.message).toContain("You hit the usage limit.");
+    expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ failed: true });
+  });
+
+  test("a scheduled turn that the person stops raises no alert, and the run counts as good", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => {
+        request.signal.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const instance = start(engine);
+    const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    await waitFor(() => engine.requests.length === 1);
+    const [session] = instance.sessions.list();
+    instance.sessions.stop(session?.id ?? "");
+    await instance.idle();
+    await Bun.sleep(0);
+    expect(alerts.filter((alert) => alert.key === "schedule:lunch")).toEqual([]);
+    expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ failed: false });
+  });
+
   test("a card that no front end showed is a problem in the status until a front end shows it (lesson 66)", async () => {
     sandbox.write(
       vault,
@@ -1781,6 +1927,42 @@ describe("Eva alerts", () => {
     ]);
     instance.reportProblem("telegram_poll", null);
     expect(instance.status().problems).toEqual([]);
+    expect(instance.status().problemDetails).toEqual([]);
+  });
+
+  test("an expired engine login is a problem with its own key until a turn of that engine works", async () => {
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 1
+        ? [{ kind: "turn_failed", reason: "The login expired.", loginExpired: true }]
+        : FakeEngine.answer(request, "ok"),
+    );
+    const instance = start(engine);
+    const alerts = collectAlerts(instance);
+    const chat = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.sessions.send(chat.id, "hello");
+    await instance.idle();
+    expect(instance.status().problemDetails).toEqual([
+      {
+        key: "engine_login:claude-code",
+        level: "error",
+        message: expect.stringContaining("Claude Code login") as string,
+      },
+    ]);
+    await instance.sessions.send(chat.id, "hello again");
+    await instance.idle();
+    expect(instance.status().problemDetails).toEqual([]);
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([
+      ["engine_login:claude-code", "error"],
+      ["engine_login:claude-code", "resolved"],
+    ]);
+  });
+
+  test("a turn that fails for another reason leaves the login problem alone", async () => {
+    const engine = new FakeEngine(() => [{ kind: "turn_failed", reason: "The network is down." }]);
+    const instance = start(engine);
+    const chat = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.sessions.send(chat.id, "hello");
+    await instance.idle();
     expect(instance.status().problemDetails).toEqual([]);
   });
 

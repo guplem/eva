@@ -14,7 +14,16 @@ let events: ScheduleEvent[];
 let logged: string[];
 /** Schedule names whose chat creation throws. */
 let failingChats: Set<string>;
+/** A send that resolves to the failure of its last turn, as the session manager does. */
 let failingSends: boolean;
+/** A send that rejects, which only a bug can cause. */
+let rejectingSends: boolean;
+/** Runs in each send, such as to break the state file while the turn runs. */
+let duringSend: () => void;
+/** The next send returns this result, so a test chooses when the turn ends. */
+let heldSend: Promise<string | null> | null;
+/** A report of a failed firing throws. */
+let failingReports: boolean;
 /** Each firing result: the schedule name and the failure, or null for a success. */
 let firings: { name: string; failure: string | null }[];
 /** What the test listener answers: true when it showed the event to the person. */
@@ -26,6 +35,10 @@ beforeEach(() => {
   logged = [];
   failingChats = new Set();
   failingSends = false;
+  rejectingSends = false;
+  duringSend = () => undefined;
+  heldSend = null;
+  failingReports = false;
   firings = [];
   shows = true;
   cardReports = [];
@@ -61,11 +74,21 @@ function createScheduler(isHub = true): Scheduler {
       },
       send: (sessionId, prompt) => {
         sent.push({ sessionId, prompt });
-        return failingSends ? Promise.reject(new Error("the engine is gone")) : Promise.resolve();
+        duringSend();
+        if (heldSend !== null) {
+          const held = heldSend;
+          heldSend = null;
+          return held;
+        }
+        if (rejectingSends) return Promise.reject(new Error("the engine is gone"));
+        return Promise.resolve(failingSends ? "You hit the usage limit." : null);
       },
     },
     logger: { log: (level, message) => logged.push(`${level} ${message}`) },
-    reportFiring: (schedule, failure) => firings.push({ name: schedule.name, failure }),
+    reportFiring: (schedule, failure) => {
+      if (failure !== null && failingReports) throw new Error("The alert list is broken.");
+      firings.push({ name: schedule.name, failure });
+    },
     reportCard: (scheduleId, name, waiting) => cardReports.push({ scheduleId, name, waiting }),
   });
   scheduler.subscribe((event) => {
@@ -471,9 +494,101 @@ describe("Scheduler", () => {
     ]);
   });
 
-  test("a prompt that fails after the chat started reports a failed firing", async () => {
+  test("a prompt whose turn fails after the chat started reports a failed firing, and logs it", async () => {
     writeSchedules([morning]);
     failingSends = true;
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    await Bun.sleep(0);
+    expect(firings).toEqual([
+      { name: "Morning", failure: null },
+      { name: "Morning", failure: "You hit the usage limit." },
+    ]);
+    expect(logged).toContain("error A scheduled prompt failed.");
+  });
+
+  test("a failed prompt still reaches the alert when its run cannot be recorded", async () => {
+    writeSchedules([morning]);
+    failingSends = true;
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    // A folder where the state file was: each write of the state fails.
+    const statePath = join(folder, "state", "schedules-state.json");
+    duringSend = () => {
+      rmSync(statePath, { force: true });
+      mkdirSync(statePath);
+    };
+    await scheduler.tick();
+    await Bun.sleep(0);
+    expect(firings).toEqual([
+      { name: "Morning", failure: null },
+      { name: "Morning", failure: "You hit the usage limit." },
+    ]);
+    expect(logged).toContain("error Eva could not record the failed run.");
+  });
+
+  test("a failure that ends after a newer run fired changes neither that run nor the alert", async () => {
+    writeSchedules([morning]);
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    let endFirstTurn = (_failure: string | null): void => undefined;
+    heldSend = new Promise((resolve) => {
+      endFirstTurn = resolve;
+    });
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    clock = new Date("2026-07-02T05:30:00Z");
+    await scheduler.tick();
+    await Bun.sleep(0);
+    endFirstTurn("You hit the usage limit.");
+    await Bun.sleep(0);
+    expect(firings).toEqual([
+      { name: "Morning", failure: null },
+      { name: "Morning", failure: null },
+    ]);
+    expect(scheduler.list().schedules[0]?.lastRun).toEqual({ slot: "2026-07-02T07:30", failed: false });
+    expect(logged).toContain("error A scheduled prompt failed.");
+  });
+
+  test("a failure still counts when the person edits the schedule while its prompt runs", async () => {
+    writeSchedules([morning]);
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    let endTurn = (_failure: string | null): void => undefined;
+    heldSend = new Promise((resolve) => {
+      endTurn = resolve;
+    });
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    // The new card skips the slot that is due now, so the last fired slot moves.
+    writeSchedules([{ ...morning, at: "07:40" }]);
+    clock = new Date("2026-07-01T05:45:00Z");
+    await scheduler.tick();
+    endTurn("You hit the usage limit.");
+    await Bun.sleep(0);
+    expect(firings).toContainEqual({ name: "Morning", failure: "You hit the usage limit." });
+    expect(scheduler.list().schedules[0]?.lastRun).toEqual({ slot: "2026-07-01T07:30", failed: true });
+  });
+
+  test("a failed run is recorded even when its report throws", async () => {
+    writeSchedules([morning]);
+    failingSends = true;
+    failingReports = true;
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    await Bun.sleep(0);
+    expect(scheduler.list().schedules[0]?.lastRun).toEqual({ slot: "2026-07-01T07:30", failed: true });
+    expect(logged).toContain("error Eva could not report the failed run.");
+  });
+
+  test("a send that rejects reports a failed firing too", async () => {
+    writeSchedules([morning]);
+    rejectingSends = true;
     const scheduler = createScheduler();
     await scheduler.tick();
     clock = new Date("2026-07-01T05:30:00Z");
@@ -752,7 +867,7 @@ describe("Scheduler", () => {
         timeZone: "Europe/Madrid",
         isHub: () => isHub,
         now: () => clock,
-        chats: { createChat: () => "session-1", send: () => Promise.resolve() },
+        chats: { createChat: () => "session-1", send: () => Promise.resolve(null) },
       });
       await scheduler.tick();
       const [card] = scheduler.waitingCards();
@@ -770,7 +885,7 @@ describe("Scheduler", () => {
         timeZone: "Europe/Madrid",
         isHub: () => isHub,
         now: () => clock,
-        chats: { createChat: () => "session-1", send: () => Promise.resolve() },
+        chats: { createChat: () => "session-1", send: () => Promise.resolve(null) },
         reportCard: (scheduleId, name, waiting) => cardReports.push({ scheduleId, name, waiting }),
       });
       await scheduler.tick();

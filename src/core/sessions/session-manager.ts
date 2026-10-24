@@ -23,6 +23,7 @@ import {
   type TaskState,
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
+import type { Logger } from "../../shared/logger.ts";
 import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
 import { boundedDetail, maxTurnDetailLength, redactedJsonText } from "../../shared/tool-details.ts";
 import {
@@ -114,6 +115,8 @@ export interface SessionManagerOptions {
   readonly approvalTimeoutMs: number;
   /** A turn that runs longer is stopped, so a hung engine never keeps a chat busy for good. */
   readonly turnTimeoutMs: number;
+  /** Where an error of the work after a turn goes. The turn has its end event already. */
+  readonly logger?: Logger;
 }
 
 /** An approval that waits for an answer. The summary is already redacted. */
@@ -163,8 +166,17 @@ interface PendingBatch {
   readonly texts: string[];
   /** The messages that people and Eva sent, for the front ends. A follow-up of the mode is no message. */
   readonly messages: { readonly text: string; readonly origin: MessageOrigin }[];
+  /** The result of this batch's own turn, kept in memory: the record can fail to save. */
+  readonly outcome: TurnResult;
   readonly done: Promise<void>;
   readonly resolve: () => void;
+}
+
+interface TurnResult {
+  /** The failure reason of the turn, or null when it finished or has not run. */
+  failure: string | null;
+  /** The person stopped the turn. */
+  stopped: boolean;
 }
 
 interface SessionRuntime {
@@ -197,6 +209,8 @@ const maxFollowUps = 20;
 export class SessionManager {
   private readonly options: SessionManagerOptions;
   private readonly listeners = new Set<EventListener>();
+  /** The listeners whose last call threw, so their error is logged once. */
+  private readonly brokenListeners = new WeakSet<EventListener>();
   private readonly idleListeners = new Set<IdleListener>();
   private readonly runtimes = new Map<string, SessionRuntime>();
   private readonly approvals = new Map<
@@ -247,6 +261,8 @@ export class SessionManager {
       seenTurns: 0,
       archived: false,
       closed: false,
+      continuedFrom: null,
+      firstMessageDraft: null,
     };
     this.options.store.save(record);
     return record;
@@ -334,6 +350,26 @@ export class SessionManager {
     return updated;
   }
 
+  /**
+   * Makes a new, empty chat go on from an old one (issue 522). The summary becomes the draft of its
+   * first message: a model wrote it from text of other people, so the person reads it before it goes.
+   */
+  continueFrom(sessionId: string, fromSessionId: string, summary: string | null): SessionRecord {
+    const session = this.get(sessionId);
+    const from = this.get(fromSessionId);
+    if (session.turns.length > 0 || this.isActive(sessionId))
+      throw new EvaError("session_busy", "Only a new chat can continue another chat.");
+    const draft = summary === null ? null : this.options.redactor.redact(summary).trim();
+    const updated: SessionRecord = {
+      ...session,
+      continuedFrom: from.id,
+      firstMessageDraft: draft === null || draft.length === 0 ? null : draft,
+      title: cutTitle(`${from.title} (continued)`),
+    };
+    this.options.store.save(updated);
+    return updated;
+  }
+
   private retitle(session: SessionRecord, title: string, automatic: boolean): SessionRecord {
     const cleaned = cutTitle(this.options.redactor.redact(title).replace(/\s+/g, " ").trim());
     if (cleaned.length === 0) throw new EvaError("title_invalid", "A chat title needs at least one character.");
@@ -408,6 +444,21 @@ export class SessionManager {
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
   send(sessionId: string, text: string, origin: MessageOrigin = "eva"): Promise<void> {
+    return this.enqueue(sessionId, text, origin).done;
+  }
+
+  /**
+   * Sends a message, as `send` does. It resolves to the failure reason of the turn that carried
+   * the message, or null. A send never rejects, and a later turn of the chat must not count.
+   * A stop of the person is null too: the person chose it, so it is no failure.
+   */
+  async sendWithResult(sessionId: string, text: string, origin: MessageOrigin): Promise<string | null> {
+    const batch = this.enqueue(sessionId, text, origin);
+    await batch.done;
+    return batch.outcome.stopped ? null : batch.outcome.failure;
+  }
+
+  private enqueue(sessionId: string, text: string, origin: MessageOrigin): PendingBatch {
     this.assertOpen(this.get(sessionId));
     // A new answer must not hide in the archive.
     this.setArchived(this.rootOf(this.get(sessionId)).id, false);
@@ -417,13 +468,24 @@ export class SessionManager {
     batch.texts.push(text);
     batch.messages.push({ text, origin });
     this.lastActivity.set(sessionId, this.options.now().getTime());
-    if (!runtime.busy && runtime.timer === null) {
-      runtime.timer = setTimeout(() => {
-        runtime.timer = null;
-        void this.drain(sessionId);
-      }, this.options.gatherMs);
-    }
-    return batch.done;
+    if (!runtime.busy) this.startGathering(sessionId, runtime);
+    return batch;
+  }
+
+  /** Waits a moment for more messages, then runs the turn (lesson 51). */
+  private startGathering(sessionId: string, runtime: SessionRuntime): void {
+    if (runtime.timer !== null) return;
+    runtime.timer = setTimeout(() => {
+      runtime.timer = null;
+      void this.drain(sessionId);
+    }, this.options.gatherMs);
+  }
+
+  private logAfterTurnError(sessionId: string, error: unknown): void {
+    this.options.logger?.log("error", "The work after a turn failed.", {
+      sessionId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
   }
 
   /**
@@ -445,6 +507,30 @@ export class SessionManager {
     // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
     for (const id of ids) this.emit(id, { kind: "session_deleted" });
     return ids;
+  }
+
+  /**
+   * Every turn that a branch's engine session holds, oldest first: the parent's turns up to the
+   * fork point, then the branch's own. A retry from the start keeps none of its parent's turns.
+   */
+  branchTurns(sessionId: string): SessionRecord["turns"] {
+    const chain: SessionRecord[] = [];
+    // The bound stops a loop of parents, which only a damaged file can hold.
+    for (let session: SessionRecord | undefined = this.get(sessionId); session !== undefined && chain.length < 1000;) {
+      chain.unshift(session);
+      session = session.parentId === null ? undefined : this.options.store.get(session.parentId);
+    }
+    const turns: SessionRecord["turns"][number][] = [];
+    for (const [index, session] of chain.entries()) {
+      const forkAt = chain[index + 1]?.forkAtMessageId;
+      if (forkAt === undefined) turns.push(...session.turns);
+      else if (forkAt === null) turns.length = 0;
+      else {
+        const end = session.turns.findIndex((turn) => turn.lastMessageId === forkAt);
+        turns.push(...session.turns.slice(0, end + 1));
+      }
+    }
+    return turns;
   }
 
   /**
@@ -518,20 +604,23 @@ export class SessionManager {
     return record;
   }
 
-  /** Runs a turn again on a new branch; the old answer stays in its own branch. */
-  async retry(sessionId: string, turnIndex: number): Promise<SessionRecord> {
-    const session = this.get(sessionId);
-    this.assertOpen(session);
-    const turn = session.turns[turnIndex];
-    if (turn === undefined)
-      throw new EvaError("session_not_found", `Session ${sessionId} has no turn ${String(turnIndex)}.`);
-    const previous = session.turns[turnIndex - 1];
-    const branch =
-      previous === undefined || previous.lastMessageId === null
-        ? this.retryFromStart(session)
-        : this.fork(sessionId, previous.lastMessageId);
-    await this.send(branch.id, turn.userText);
-    return this.get(branch.id);
+  /**
+   * Runs a turn again on a new branch; the old answer stays in its own branch. It returns the
+   * branch at once: a long turn must not hold the request past the idle time-out of the server.
+   */
+  retry(sessionId: string, turnIndex: number): Promise<SessionRecord> {
+    // A refusal still comes as a rejection, as the caller awaits it.
+    return Promise.resolve().then(() => {
+      const session = this.get(sessionId);
+      this.assertOpen(session);
+      const turn = session.turns[turnIndex];
+      if (turn === undefined)
+        throw new EvaError("session_not_found", `Session ${sessionId} has no turn ${String(turnIndex)}.`);
+      const branch = this.retryBranch(session, turnIndex);
+      // The send never rejects: a failure of the turn is its turn_failed event.
+      void this.send(branch.id, turn.userText);
+      return this.get(branch.id);
+    });
   }
 
   answerApproval(requestId: string, answer: ApprovalAnswer): void {
@@ -585,6 +674,20 @@ export class SessionManager {
     }
   }
 
+  /**
+   * The branch for a retry, with all the history before the turn. A failed turn has no message
+   * to branch at, so the branch starts at the newest answer before it. A fork's history before
+   * its own turns is in its parent.
+   */
+  private retryBranch(session: SessionRecord, turnIndex: number): SessionRecord {
+    const earlier = session.turns.slice(0, turnIndex).findLast((turn) => turn.lastMessageId !== null);
+    const atMessageId = earlier?.lastMessageId ?? null;
+    if (atMessageId !== null) return this.fork(session.id, atMessageId);
+    const parent = session.parentId === null ? undefined : this.options.store.get(session.parentId);
+    if (parent !== undefined && session.forkAtMessageId !== null) return this.fork(parent.id, session.forkAtMessageId);
+    return this.retryFromStart(session);
+  }
+
   private retryFromStart(session: SessionRecord): SessionRecord {
     const record: SessionRecord = {
       ...this.createSession({
@@ -621,21 +724,35 @@ export class SessionManager {
         // When the turn starts, not at the send: a message sent during a turn joins the next one
         // (lesson 114), so a front end shows each message just before its own answer.
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
-        const followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"));
-        // Telegram showed the answer where the person asked, so the web app must not show it as unread.
-        // A follow-up of the mode has no message, so its answer stays unread.
-        const fromTelegram =
-          batch.messages.length > 0 && batch.messages.every((message) => message.origin === "telegram");
-        const recorded = this.options.store.get(sessionId);
-        if (fromTelegram && recorded !== undefined) this.markSeen(sessionId, recorded.turns.length);
-        if (followUp !== null && followUps < maxFollowUps) {
+        let followUp: string | null = null;
+        try {
+          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), batch.outcome);
+          // Telegram showed the answer where the person asked, so the web app must not show it as unread.
+          // A follow-up of the mode has no message, so its answer stays unread.
+          const fromTelegram =
+            batch.messages.length > 0 && batch.messages.every((message) => message.origin === "telegram");
+          const recorded = this.options.store.get(sessionId);
+          if (fromTelegram && recorded !== undefined) this.markSeen(sessionId, recorded.turns.length);
+        } catch (error) {
+          // The turn sent its end event already. Only the work after it failed, such as a save, so
+          // the messages that wait still get their turn.
+          this.logAfterTurnError(sessionId, error);
+        }
+        // After a stop, the person wants Eva to end the work, not to go on with the mode's next step.
+        if (followUp !== null && !runtime.stopped && followUps < maxFollowUps) {
           followUps += 1;
           runtime.pending ??= createBatch();
           runtime.pending.texts.unshift(followUp);
         }
       }
+    } catch (error) {
+      // Nobody awaits the drain, so a rejection would go nowhere.
+      this.logAfterTurnError(sessionId, error);
     } finally {
       runtime.busy = false;
+      // A batch that came while the chat was busy set no timer. Without one, it waits for good,
+      // and the chat stays active, which blocks a delete and a restart for an update.
+      if (runtime.pending !== null) this.startGathering(sessionId, runtime);
       const stopped = runtime.stopped;
       runtime.stopped = false;
       for (const listener of this.idleListeners) {
@@ -650,8 +767,8 @@ export class SessionManager {
     }
   }
 
-  /** Runs one turn and returns the follow-up message of the mode, if any. */
-  private async runTurn(sessionId: string, prompt: string): Promise<string | null> {
+  /** Runs one turn, writes its failure into `result`, and returns the follow-up message of the mode, if any. */
+  private async runTurn(sessionId: string, prompt: string, result: TurnResult): Promise<string | null> {
     // The record is read once at the start, so a change made during the turn cannot move it (lesson 48).
     const session = this.get(sessionId);
     const engine = this.options.engines.find((candidate) => candidate.name === session.engine);
@@ -691,6 +808,8 @@ export class SessionManager {
       this.expireApprovals(sessionId);
     });
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    // An object, as only the timer callback sets it.
+    const timeLimit = { reached: false };
     let releaseFolder = (): void => undefined;
     let historyLost = false;
     try {
@@ -698,12 +817,21 @@ export class SessionManager {
       this.lastActivity.set(sessionId, this.options.now().getTime());
       // After the wait: the other turn may itself run up to the time-out.
       timeout = setTimeout(() => {
+        timeLimit.reached = true;
         controller.abort();
       }, this.options.turnTimeoutMs);
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);
       const prepared = await preparer.prepare(session, {
-        ask: (question, detail) => this.requestApproval(sessionId, question, detail),
+        ask: (question, detail) => this.requestApproval(sessionId, question, detail, controller.signal),
       });
+      if (controller.signal.aborted) {
+        // A stop of the person wins: after a time-out alone, nobody pressed Stop, so the reason must not say so.
+        throw new Error(
+          timeLimit.reached && !runtime.stopped
+            ? "The turn ran past its time limit before the engine started."
+            : "The turn stopped before the engine started.",
+        );
+      }
       const history = this.historyOf(session);
       // A continue after failed turns only: the engine may never have created its session. Its
       // lost-history retry then starts one, and nothing was lost, so the person sees no notice.
@@ -727,7 +855,9 @@ ${prompt}`,
         trusted: prepared.trusted,
         environment: prepared.environment,
         requestApproval: async (request) =>
-          (await this.requestApproval(sessionId, request.toolName, request.summary)) === "allow" ? "allow" : "deny",
+          (await this.requestApproval(sessionId, request.toolName, request.summary, controller.signal)) === "allow"
+            ? "allow"
+            : "deny",
         signal: controller.signal,
       });
       for await (const raw of stream) {
@@ -776,7 +906,6 @@ ${prompt}`,
         steps = addStep(steps, payload);
         this.turnSteps.set(sessionId, steps);
         if (payload.kind === "turn_finished") {
-          finished = payload;
           const recorded = {
             userText: this.options.redactor.redact(prompt),
             answerText: answerParts.join("\n\n"),
@@ -796,6 +925,8 @@ ${prompt}`,
             payload,
             lastText,
           );
+          // Only after the record: a save that throws makes the turn fail, and the front ends see turn_failed.
+          finished = payload;
           if (firstLineTitle !== null) {
             this.nameInBackground(sessionId, firstLineTitle, {
               engine: session.engine,
@@ -816,6 +947,10 @@ ${prompt}`,
       runtime.turnRunning = false;
       this.forgetRunningTurn(sessionId);
     }
+    // Before the work after the turn, which can throw. Each unfinished turn sent one turn_failed.
+    result.failure = finished === null ? (this.lastFailure.get(sessionId) ?? "The turn failed.") : null;
+    // A batch with a message clears the flag at its start, so only a stop of this turn counts.
+    result.stopped = runtime.stopped;
     if (finished === null)
       this.recordFailure(
         session.id,
@@ -974,7 +1109,14 @@ ${prompt}`,
     });
   }
 
-  private requestApproval(sessionId: string, toolName: string, summary: string): Promise<PrepareAnswer> {
+  private requestApproval(
+    sessionId: string,
+    toolName: string,
+    summary: string,
+    signal: AbortSignal,
+  ): Promise<PrepareAnswer> {
+    // The stop already expired the open questions, so a later one would wait for nobody.
+    if (signal.aborted) return Promise.resolve("expired");
     const requestId = this.options.newId();
     return new Promise<PrepareAnswer>((resolve) => {
       const timer = setTimeout(() => {
@@ -1000,7 +1142,22 @@ ${prompt}`,
       seq: this.sequence.next(),
       at: this.options.now().toISOString(),
     };
-    for (const listener of this.listeners) listener(stamped);
+    for (const listener of this.listeners) {
+      // One broken front end must not break a turn, or keep the event from the other front ends.
+      try {
+        listener(stamped);
+        this.brokenListeners.delete(listener);
+      } catch (error) {
+        // Once until it works again: a listener that fails on each event would fill the log.
+        if (this.brokenListeners.has(listener)) continue;
+        this.brokenListeners.add(listener);
+        this.options.logger?.log("error", "A front end failed on a chat event.", {
+          sessionId,
+          kind: stamped.kind,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   private runtimeOf(sessionId: string): SessionRuntime {
@@ -1018,7 +1175,7 @@ function createBatch(): PendingBatch {
   const done = new Promise<void>((settle) => {
     resolve = settle;
   });
-  return { texts: [], messages: [], done, resolve };
+  return { texts: [], messages: [], outcome: { failure: null, stopped: false }, done, resolve };
 }
 
 function titleOf(prompt: string): string {

@@ -1,7 +1,9 @@
 /** `eva chat`: a conversation in the terminal, as a client of the local API. */
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
+import { EvaError } from "../../shared/errors.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
+import { refusalOf } from "./client.ts";
 
 export interface ChatOptions {
   readonly baseUrl: string;
@@ -29,7 +31,10 @@ export async function runChat(options: ChatOptions): Promise<void> {
       ...(options.clone === undefined ? {} : { clone: options.clone }),
     }),
   });
-  if (!created.ok) throw new Error(`Eva refused the chat: ${await created.text()}`);
+  if (!created.ok) {
+    const refusal = await refusalOf(created);
+    throw new EvaError(refusal.code, `Eva refused the chat: ${refusal.message}`);
+  }
   const session = (await created.json()) as { id: string; startFolder: string };
   options.write(`Chat ${session.id} in ${session.startFolder}. Type /rename <title> to name it, or /exit to leave.\n`);
 
@@ -57,6 +62,19 @@ export async function runChat(options: ChatOptions): Promise<void> {
   const turn = { over: false };
   // A function, so TypeScript reads the flag that the socket listener sets, not the value it last saw here.
   const turnIsOver = (): boolean => turn.over;
+  // A stream that drops, such as when Eva restarts, sends no turn end: without this the loop waits for good.
+  const stream = { closed: false, leaving: false };
+  const streamIsClosed = (): boolean => stream.closed;
+  let markClosed: (closed: null) => void = () => undefined;
+  const closed = new Promise<null>((resolve) => (markClosed = resolve));
+  socket.addEventListener("close", () => {
+    if (stream.leaving) return;
+    stream.closed = true;
+    markClosed(null);
+    wake?.();
+  });
+  // A prompt that waits for a line must not outlive the stream: a line typed then would go nowhere.
+  const readLineOrClose = (): Promise<string | null> => Promise.race([options.readLine(), closed]);
   const questions: string[] = [];
   const print = createEventPrinter();
   socket.addEventListener("message", (message) => {
@@ -73,10 +91,10 @@ export async function runChat(options: ChatOptions): Promise<void> {
   const nextChange = (): Promise<void> => new Promise<void>((resolve) => (wake = resolve));
 
   try {
-    for (;;) {
+    while (!streamIsClosed()) {
       options.write("\n> ");
-      const line = await options.readLine();
-      if (line === null || line.trim() === "/exit") break;
+      const line = await readLineOrClose();
+      if (line === null || line.trim() === "/exit" || streamIsClosed()) break;
       if (line.trim() === "") continue;
       if (/^\/rename(\s|$)/.test(line.trim())) {
         options.write(await renameChat(options.baseUrl, headers, session.id, line.trim().slice("/rename".length)));
@@ -89,18 +107,19 @@ export async function runChat(options: ChatOptions): Promise<void> {
         body: JSON.stringify({ text: line }),
       });
       if (!sent.ok) {
-        options.write(`Eva refused the message: ${await sent.text()}\n`);
+        options.write(`Eva refused the message: ${(await refusalOf(sent)).message}\n`);
         continue;
       }
       // Wait for the turn end; answer each approval here, with y or n.
-      while (!turnIsOver()) {
+      while (!turnIsOver() && !streamIsClosed()) {
         const requestId = questions.shift();
         if (requestId === undefined) {
           await nextChange();
           continue;
         }
         options.write("  Allow it? [y/N] ");
-        const answer = (await options.readLine())?.trim().toLowerCase().startsWith("y") === true ? "allow" : "deny";
+        const answer = (await readLineOrClose())?.trim().toLowerCase().startsWith("y") === true ? "allow" : "deny";
+        if (streamIsClosed()) break;
         await fetch(`${options.baseUrl}/api/approvals/${encodeURIComponent(requestId)}`, {
           method: "POST",
           headers,
@@ -108,7 +127,10 @@ export async function runChat(options: ChatOptions): Promise<void> {
         });
       }
     }
+    // The person did not leave, so the chat failed: `eva chat` exits 1.
+    if (streamIsClosed()) throw new EvaError("request_failed", "Eva closed the connection.");
   } finally {
+    stream.leaving = true;
     socket.close();
   }
 }
@@ -126,7 +148,7 @@ async function renameChat(
     headers,
     body: JSON.stringify({ title }),
   });
-  if (!renamed.ok) return `Eva refused the new title: ${await renamed.text()}\n`;
+  if (!renamed.ok) return `Eva refused the new title: ${(await refusalOf(renamed)).message}\n`;
   return `The chat is now called ${((await renamed.json()) as { title: string }).title}.\n`;
 }
 

@@ -22,7 +22,7 @@ import type { SessionEvent } from "../../shared/events.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
 import type { Logger } from "../../shared/logger.ts";
-import type { TelegramApi } from "./telegram-api.ts";
+import { TelegramError, type TelegramApi } from "./telegram-api.ts";
 import { TelegramFiles } from "./telegram-files.ts";
 import { splitForTelegram } from "./telegram-format.ts";
 import {
@@ -38,7 +38,15 @@ import {
   type TelegramUpdate,
 } from "./telegram-messages.ts";
 import { PollHealth, sleepUntilAborted, type TelegramPollState } from "./telegram-poll.ts";
-import { isTopicNotModified, messageLimit, TelegramSender, telegramMessageLimit } from "./telegram-sender.ts";
+import {
+  isTopicNotModified,
+  messageLimit,
+  noRepeatPolicy,
+  noRetryPolicy,
+  sendPolicy,
+  TelegramSender,
+  telegramMessageLimit,
+} from "./telegram-sender.ts";
 import { isScheduleTopic, loadBotState, saveBotState, targetOf, type BotState } from "./telegram-state.ts";
 import { TelegramChats } from "./telegram-chats.ts";
 import { TelegramConflicts } from "./telegram-conflicts.ts";
@@ -252,7 +260,8 @@ export class TelegramBot {
   }
 
   async registerCommands(): Promise<void> {
-    await this.sender.quietCall("setMyCommands", { commands });
+    // It runs once, before the first poll: a menu that gives up stays missing until the next start.
+    await this.sender.quietCall("setMyCommands", { commands }, sendPolicy);
   }
 
   /** Polls until stop() is called. Telegram is the owner's only way in, so no error ends the loop. */
@@ -301,9 +310,30 @@ export class TelegramBot {
         await this.handle(update);
       } catch (error) {
         this.options.logger?.log("error", "A Telegram update failed.", { reason: String(error) });
+        await this.replyToFailedUpdate(update, error);
       }
     }
     return 0;
+  }
+
+  /**
+   * Every problem must reach the phone, so a failed message or button gets the reason. Only the
+   * paired chat hears it: the bot is private (lessons 63, 127). The reply gets one try and never
+   * throws: the failure can be a flood, and a wait would hold the poll loop again.
+   */
+  private async replyToFailedUpdate(update: TelegramUpdate, error: unknown): Promise<void> {
+    const message = update.message ?? update.callback_query?.message;
+    const senderId = update.message === undefined ? update.callback_query?.from?.id : update.message.from?.id;
+    if (message?.chat.id !== this.allowedChatId || !this.isAllowedSender(senderId)) return;
+    await this.sender.quietCall(
+      "sendMessage",
+      {
+        chat_id: message.chat.id,
+        text: `The message failed: ${this.describeError(error)}`.slice(0, telegramMessageLimit),
+        ...threadOf(topicOf(message)),
+      },
+      noRetryPolicy,
+    );
   }
 
   /** Sends an alert to the main chat; before pairing, there is no chat to send it to. */
@@ -475,7 +505,7 @@ export class TelegramBot {
     const name = (rawName ?? "").split("@")[0];
     switch (name) {
       case "new":
-        await this.openChat(chatId);
+        await this.openChat(chatId, topicId);
         return;
       case "delete":
         if (topicId === null) {
@@ -604,15 +634,25 @@ export class TelegramBot {
   }
 
   /** /new: a topic with its own chat, and the model picker first (lessons 41, 61). */
-  private async openChat(chatId: number): Promise<void> {
+  private async openChat(chatId: number, fromTopicId: number | null): Promise<void> {
     let topicId: number | null = null;
     try {
-      const topic = await this.options.api.call<{ message_thread_id: number }>("createForumTopic", {
-        chat_id: chatId,
-        name: "New chat",
-      });
+      const topic = await this.sender.callWithRetry<{ message_thread_id: number }>(
+        "createForumTopic",
+        {
+          chat_id: chatId,
+          name: "New chat",
+        },
+        noRepeatPolicy,
+      );
       topicId = topic.message_thread_id;
-    } catch {
+    } catch (error) {
+      // Only a 400 means "no topics" (lesson 61); a short Telegram problem must not reset the main chat.
+      if (!(error instanceof TelegramError && error.code === 400)) {
+        const reason = this.describeError(error).replace(/(?<![.!?])$/, ".");
+        await this.send(chatId, fromTopicId, `Telegram did not open the topic: ${reason} Send /new again.`);
+        return;
+      }
       await this.send(
         chatId,
         null,

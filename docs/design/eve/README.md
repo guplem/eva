@@ -16,7 +16,7 @@ The rest of this guide describes the web page as the code builds it. Where the c
 - Copy the reference as closely as possible. Change the code to match the design, not the design to match the code.
 - When the reference shows a feature that Eva does not have, build it if it is small and clearly useful. Otherwise, adapt the design to what exists, and write down the gap in the issue.
 - When Eva has a feature that the reference does not show, design it with the same parts: the same tokens, components and expressions.
-- Keep the existing rules of the web client: `role` and `aria-label` names that the end-to-end tests use, 44 px touch targets on a phone, and the theme and density settings.
+- Keep the existing rules of the web client: `role` and `aria-label` names that the end-to-end tests use, 44 px touch targets on a phone (36 px in the compact density), and the theme and density settings.
 
 ## Principles
 
@@ -135,7 +135,7 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
 - **Card shadow (dark):** a 1 px ring in `--line`, plus `0 12px 30px oklch(0 0 0 / 0.4)`. Dark surfaces need the ring, because a shadow does not show on a dark ground.
 - **Main area background:** `radial-gradient(ellipse 90% 70% at 50% 0%, var(--bg), var(--bg2) 120%)`. The top is light, and the bottom is a little darker and more tinted.
 - **Main button:** `--accent` fill. Some main buttons also glow, with `0 6px 18px -6px var(--glow)` (`--button-glow`). They are on the login page, the new-device notice, the Schedules page and its sheet, and the update dialog.
-- **Send button:** a small visor, 40 px (44 px on a phone). It uses the visor gradient, a 2 px `--shell` ring and `0 0 18px -2px var(--glow)`. The arrow is in `--eye` and glows as the eyes do. When the box is empty, the button is a flat `--chip` disc with a `--muted` arrow. When the browser can record and the box is empty, a microphone button takes its place. If voice notes are not set up, it opens their setup. While a turn runs and the box is empty, the button becomes a Stop button in `--ink`, at the same place.
+- **Send button:** a small visor, 40 px (the touch target on a phone: 44 px, or 36 px in the compact density). It uses the visor gradient, a 2 px `--shell` ring and `0 0 18px -2px var(--glow)`. The arrow is in `--eye` and glows as the eyes do. When the box is empty, the button is a flat `--chip` disc with a `--muted` arrow. When the browser can record and the box is empty, a microphone button takes its place. If voice notes are not set up, it opens their setup. While a turn runs and the box is empty, the button becomes a Stop button in `--ink`, at the same place.
 - **Visor:** `radial-gradient(ellipse at 50% 22%, var(--visor), var(--visor2) 72%)`.
 - **Eyes:** `filter: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow))` on the wrapper of the two eyes, so that every eye shape glows the same way.
 - **Scrim behind a dialog:** `oklch(0.25 0.03 h / 0.32)`. Dark: `oklch(0.05 0.01 h / 0.55)`. The chat details sheet and the new-device, schedule and update dialogs add a 3 px backdrop blur.

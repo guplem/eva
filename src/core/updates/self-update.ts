@@ -167,10 +167,25 @@ async function publishedReleases(inputs: ReleaseSource): Promise<Release[]> {
   }
   if (!response.ok)
     throw new EvaError("update_failed", `GitHub answered ${String(response.status)} for the list of releases.`);
-  const releases = (await response.json()) as Release[];
+  let releases: unknown;
+  try {
+    releases = await response.json();
+  } catch {
+    releases = null;
+  }
+  // A proxy or an outage page can answer 200 with HTML, or with an object instead of the list.
+  if (!Array.isArray(releases))
+    throw new EvaError("update_failed", "GitHub sent a list of releases that Eva cannot read.");
   return releases
+    .filter(isRelease)
     .filter((release) => release.draft !== true && release.prerelease !== true && releaseTag.test(release.tag_name))
     .sort((left, right) => (isNewerVersion(left.tag_name, right.tag_name) ? -1 : 1));
+}
+
+function isRelease(value: unknown): value is Release {
+  if (value === null || typeof value !== "object") return false;
+  const { tag_name: tag, assets } = value as Partial<Record<keyof Release, unknown>>;
+  return typeof tag === "string" && Array.isArray(assets);
 }
 
 async function download(

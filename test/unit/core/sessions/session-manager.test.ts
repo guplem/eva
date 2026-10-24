@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,6 +20,9 @@ import { FakeEngine } from "../../../support/fake-engine.ts";
 let folder: string;
 let events: SessionEvent[];
 let followUps: (string | null)[];
+/** The next work after a turn throws this error once, such as a vault save that breaks. */
+let afterTurnError: Error | null;
+let logged: string[];
 
 const preparer: TurnPreparer = {
   prepare: (session) =>
@@ -32,7 +35,11 @@ const preparer: TurnPreparer = {
       trusted: true,
       environment: { PATH: "/bin" },
     }),
-  afterTurn: () => Promise.resolve(followUps.shift() ?? null),
+  afterTurn: () => {
+    const error = afterTurnError;
+    afterTurnError = null;
+    return error === null ? Promise.resolve(followUps.shift() ?? null) : Promise.reject(error);
+  },
 };
 
 function createManager(
@@ -42,9 +49,11 @@ function createManager(
     redactor?: Redactor;
     turnTimeoutMs?: number;
     nameChat?: SessionManagerOptions["nameChat"];
+    /** Where the ids start, so a second manager on the same store makes new ones. */
+    firstId?: number;
   } = {},
 ): SessionManager {
-  let nextId = 0;
+  let nextId = overrides.firstId ?? 0;
   const manager = new SessionManager({
     engines: [engine],
     store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
@@ -60,6 +69,7 @@ function createManager(
     approvalTimeoutMs: overrides.approvalTimeoutMs ?? 1_000,
     turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
     ...(overrides.nameChat === undefined ? {} : { nameChat: overrides.nameChat }),
+    logger: { log: (level, message, details) => logged.push(`${level} ${message} ${JSON.stringify(details)}`) },
   });
   manager.subscribe((event) => events.push(event));
   return manager;
@@ -88,6 +98,8 @@ beforeEach(() => {
   folder = mkdtempSync(join(tmpdir(), "eva-sessions-"));
   events = [];
   followUps = [];
+  afterTurnError = null;
+  logged = [];
 });
 afterEach(() => {
   rmSync(folder, { recursive: true, force: true });
@@ -649,6 +661,63 @@ describe("renames (issue 46)", () => {
   });
 });
 
+describe("a chat that continues another chat from a summary (#522)", () => {
+  test("it links the old chat, keeps a redacted draft, takes a title from the old chat, and survives a restart", () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-telegram-token-value");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const oldId = newAssistantSession(manager);
+    manager.rename(oldId, "Trip plans");
+    const newId = newAssistantSession(manager);
+    const linked = manager.continueFrom(newId, oldId, "Goal: book a flight. Key the-telegram-token-value");
+    expect(linked).toMatchObject({
+      continuedFrom: oldId,
+      firstMessageDraft: "Goal: book a flight. Key [redacted]",
+      title: "Trip plans (continued)",
+    });
+    expect(createManager(new FakeEngine()).get(newId)).toMatchObject({ continuedFrom: oldId });
+  });
+
+  test("an empty summary gives no draft, and a long title is cut", () => {
+    const manager = createManager(new FakeEngine());
+    const oldId = newAssistantSession(manager);
+    manager.rename(oldId, "x".repeat(60));
+    const newId = newAssistantSession(manager);
+    const linked = manager.continueFrom(newId, oldId, null);
+    expect(linked.firstMessageDraft).toBeNull();
+    expect(linked.title).toBe(`${"x".repeat(59)}…`);
+  });
+
+  test("the turns of a fork start with its parent's turns up to the fork point", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "one");
+    await manager.send(rootId, "two");
+    const fork = manager.fork(rootId, manager.get(rootId).turns[0]?.lastMessageId ?? "");
+    await manager.send(fork.id, "other two");
+    expect(manager.branchTurns(fork.id).map((turn) => turn.userText)).toEqual(["one", "other two"]);
+    expect(manager.branchTurns(rootId).map((turn) => turn.userText)).toEqual(["one", "two"]);
+    // A retry of the first turn starts with none of its parent's turns.
+    const retried = await manager.retry(rootId, 0);
+    await waitUntil(() => manager.get(retried.id).turns.length === 1 && !manager.isBusy(retried.id));
+    expect(manager.branchTurns(retried.id).map((turn) => turn.userText)).toEqual(["one"]);
+  });
+
+  test("a chat with turns cannot continue another chat", async () => {
+    const manager = createManager(new FakeEngine());
+    const oldId = newAssistantSession(manager);
+    const newId = newAssistantSession(manager);
+    await manager.send(newId, "Hello");
+    let caught: unknown;
+    try {
+      manager.continueFrom(newId, oldId, "summary");
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "session_busy")).toBe(true);
+  });
+});
+
 describe("archived chats (issue 388)", () => {
   test("an archive saves the flag, tells every front end, and survives a restart", () => {
     const manager = createManager(new FakeEngine());
@@ -941,6 +1010,7 @@ describe("forks and retries", () => {
     const original = manager.get(sessionId);
 
     const retry = await manager.retry(sessionId, 1);
+    await waitUntil(() => !manager.isActive(retry.id));
     expect(engine.requests[2]?.prompt).toBe("two");
     expect(engine.requests[2]?.history).toEqual({
       kind: "fork",
@@ -957,9 +1027,113 @@ describe("forks and retries", () => {
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "one");
     const retry = await manager.retry(sessionId, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
     expect(engine.requests[1]?.history.kind).toBe("new");
     expect(engine.requests[1]?.prompt).toBe("one");
     expect(manager.get(retry.id).parentId).toBe(sessionId);
+  });
+
+  test("a retry answers with its branch at once, before the turn ends", async () => {
+    let release = (): void => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const engine = new FakeEngine(async function* (request, turnNumber) {
+      if (turnNumber === 2) await released;
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    const retry = await manager.retry(sessionId, 0);
+    expect(manager.isActive(retry.id)).toBe(true);
+    expect(retry.turns).toEqual([]);
+    release();
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(manager.get(retry.id).turns).toHaveLength(1);
+  });
+
+  test("a retry after a failed turn branches at the newest answer before it, so the history stays", async () => {
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 2 ? [{ kind: "turn_failed", reason: "offline" }] : FakeEngine.answer(request, "ok"),
+    );
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    await manager.send(sessionId, "two");
+    await manager.send(sessionId, "three");
+    const original = manager.get(sessionId);
+    expect(original.turns[1]?.lastMessageId).toBeNull();
+
+    const retry = await manager.retry(sessionId, 2);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(engine.requests[3]?.prompt).toBe("three");
+    expect(engine.requests[3]?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: original.engineSessionId,
+      atMessageId: original.turns[0]!.lastMessageId!,
+    });
+  });
+
+  test("a retry of a fork's first turn branches where the fork did, so the parent's history stays", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const parentId = newAssistantSession(manager);
+    await manager.send(parentId, "one");
+    const parent = manager.get(parentId);
+    const atMessageId = parent.turns[0]!.lastMessageId!;
+    const fork = manager.fork(parentId, atMessageId);
+    await manager.send(fork.id, "another path");
+
+    const retry = await manager.retry(fork.id, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(engine.requests[2]?.prompt).toBe("another path");
+    expect(engine.requests[2]?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: parent.engineSessionId,
+      atMessageId,
+    });
+    expect(manager.get(retry.id)).toMatchObject({ parentId, forkAtMessageId: atMessageId });
+  });
+
+  test("a retry of the first turn of a fork of a fork branches the middle fork where the last one did", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "one");
+    const middle = manager.fork(rootId, manager.get(rootId).turns[0]!.lastMessageId!);
+    await manager.send(middle.id, "two");
+    const middleRecord = manager.get(middle.id);
+    const atMessageId = middleRecord.turns[0]!.lastMessageId!;
+    const last = manager.fork(middle.id, atMessageId);
+    await manager.send(last.id, "three");
+
+    const retry = await manager.retry(last.id, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(engine.requests[3]?.prompt).toBe("three");
+    expect(engine.requests[3]?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: middleRecord.engineSessionId,
+      atMessageId,
+    });
+    expect(manager.get(retry.id)).toMatchObject({ parentId: middle.id, forkAtMessageId: atMessageId });
+  });
+
+  test("a retry of a fork whose parent is gone starts from nothing, as a root chat does", async () => {
+    const engine = new FakeEngine();
+    const first = createManager(engine);
+    const parentId = newAssistantSession(first);
+    await first.send(parentId, "one");
+    const fork = first.fork(parentId, first.get(parentId).turns[0]!.lastMessageId!);
+    await first.send(fork.id, "another path");
+    // Only a damaged file holds a fork without its parent: a delete removes the forks too.
+    new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }).delete(parentId);
+    const manager = createManager(engine, { firstId: 100 });
+
+    const retry = await manager.retry(fork.id, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(engine.requests[2]?.history.kind).toBe("new");
+    expect(manager.get(retry.id).parentId).toBe(fork.id);
   });
 
   test("a retry of a turn that does not exist is refused", async () => {
@@ -1069,10 +1243,17 @@ describe("approvals", () => {
 
   function askingManager(
     answers: string[],
-    overrides: { approvalTimeoutMs?: number; turnTimeoutMs?: number } = {},
+    overrides: {
+      approvalTimeoutMs?: number;
+      turnTimeoutMs?: number;
+      engine?: FakeEngine;
+      /** The mode waits for it before it asks, as for a vault pull. */
+      beforeAsk?: Promise<void>;
+    } = {},
   ): SessionManager {
     const asking: TurnPreparer = {
       prepare: async (session, context) => {
+        await overrides.beforeAsk;
         answers.push(await context.ask("Trust this repository", "example"));
         return preparer.prepare(session, context);
       },
@@ -1080,7 +1261,7 @@ describe("approvals", () => {
     };
     let nextId = 0;
     const manager = new SessionManager({
-      engines: [new FakeEngine()],
+      engines: [overrides.engine ?? new FakeEngine()],
       store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
       preparers: { assistant: asking, project: asking },
       now: () => new Date("2026-10-14T12:00:00Z"),
@@ -1116,6 +1297,50 @@ describe("approvals", () => {
     await turn;
     expect(answers).toEqual(["expired"]);
     expect(events.find((event) => event.kind === "approval_resolved")).toMatchObject({ answer: "deny" });
+  });
+
+  test("a stop before the mode asks expires the question at once, and the engine never starts", async () => {
+    const answers: string[] = [];
+    let pulled = (): void => undefined;
+    const beforeAsk = new Promise<void>((resolve) => {
+      pulled = resolve;
+    });
+    const engine = new FakeEngine();
+    const manager = askingManager(answers, { engine, beforeAsk });
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => manager.isTurnRunning(sessionId));
+    expect(manager.stop(sessionId)).toBe(true);
+    pulled();
+    await turn;
+    expect(answers).toEqual(["expired"]);
+    expect(events.some((event) => event.kind === "approval_needed")).toBe(false);
+    expect(manager.pendingApprovals()).toEqual([]);
+    expect(engine.requests).toEqual([]);
+    expect(manager.get(sessionId).turns).toMatchObject([{ failure: "The turn stopped before the engine started." }]);
+  });
+
+  test("a stop and then a time-out while the mode prepares says that the person stopped the turn", async () => {
+    const manager = askingManager([], { beforeAsk: Bun.sleep(60), turnTimeoutMs: 20 });
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => manager.isTurnRunning(sessionId));
+    manager.stop(sessionId);
+    await turn;
+    expect(manager.get(sessionId).turns).toMatchObject([{ failure: "The turn stopped before the engine started." }]);
+  });
+
+  test("a time-out while the mode prepares says so, not that someone stopped the turn", async () => {
+    const answers: string[] = [];
+    const engine = new FakeEngine();
+    const manager = askingManager(answers, { engine, beforeAsk: Bun.sleep(60), turnTimeoutMs: 20 });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(answers).toEqual(["expired"]);
+    expect(engine.requests).toEqual([]);
+    expect(manager.get(sessionId).turns).toMatchObject([
+      { failure: "The turn ran past its time limit before the engine started." },
+    ]);
   });
 
   test("a mode's question that the person answers gets that answer", async () => {
@@ -1374,6 +1599,176 @@ describe("after a turn", () => {
     await manager.send(sessionId, "start the skill");
     expect(engine.requests.map((request) => request.prompt)).toEqual(["start the skill", "continue the skill run"]);
     expect(engine.requests[1]?.history.kind).toBe("continue");
+  });
+
+  test("a send with a result gives the failure of its own turn, though a later message's turn succeeds", async () => {
+    let release = (): void => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const engine = new FakeEngine(async function* (request, turnNumber) {
+      if (turnNumber === 1) {
+        await released;
+        yield { kind: "turn_failed", reason: "You hit the usage limit." };
+        return;
+      }
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const scheduled = manager.sendWithResult(sessionId, "Plan my day.", "schedule");
+    await waitUntil(() => engine.requests.length === 1);
+    const personal = manager.send(sessionId, "And the weather?", "api");
+    release();
+    expect(await scheduled).toBe("You hit the usage limit.");
+    await personal;
+    expect(manager.get(sessionId).turns.map((turn) => turn.failure)).toEqual(["You hit the usage limit.", null]);
+  });
+
+  test("a send with a result gives null when the person stopped its turn: a stop is no failure", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => {
+        request.signal.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const scheduled = manager.sendWithResult(sessionId, "Plan my day.", "schedule");
+    await waitUntil(() => engine.requests.length === 1);
+    manager.stop(sessionId);
+    expect(await scheduled).toBeNull();
+  });
+
+  test("a send with a result gives null for a good turn, though a follow-up of the mode fails", async () => {
+    followUps = ["continue the skill run", null];
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 1 ? FakeEngine.answer(request, "ok") : [{ kind: "turn_failed", reason: "offline" }],
+    );
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    expect(await manager.sendWithResult(sessionId, "start the skill", "schedule")).toBeNull();
+    expect(engine.requests).toHaveLength(2);
+  });
+
+  test("a send with a result gives the failure even when the failed turn cannot be saved", async () => {
+    const engine = new FakeEngine(() => {
+      // A folder where the session list was: each save of the list fails.
+      const listPath = join(folder, "sessions.json");
+      rmSync(listPath, { force: true });
+      mkdirSync(listPath);
+      return [{ kind: "turn_failed", reason: "You hit the usage limit." }];
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    expect(await manager.sendWithResult(sessionId, "Plan my day.", "schedule")).toBe("You hit the usage limit.");
+    expect(logged.join("\n")).toContain("The work after a turn failed.");
+  });
+
+  test("a good answer that cannot be saved is a failure: the result says so, and no follow-up starts", async () => {
+    followUps = ["continue the skill run"];
+    const engine = new FakeEngine((request) => {
+      const listPath = join(folder, "sessions.json");
+      rmSync(listPath, { force: true });
+      mkdirSync(listPath);
+      return FakeEngine.answer(request, "ok");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const failure = await manager.sendWithResult(sessionId, "Plan my day.", "schedule");
+    expect(failure).not.toBeNull();
+    expect(events.filter((event) => event.kind === "turn_failed")).toHaveLength(1);
+    expect(events.some((event) => event.kind === "turn_finished")).toBe(false);
+    expect(engine.requests).toHaveLength(1);
+  });
+
+  test("an error after a turn is logged, and a message that waits still gets its turn", async () => {
+    let release = (): void => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const engine = new FakeEngine(async function* (request, turnNumber) {
+      if (turnNumber === 1) await released;
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    afterTurnError = new Error("The vault save broke.");
+    const first = manager.send(sessionId, "one");
+    await waitUntil(() => engine.requests.length === 1);
+    const second = manager.send(sessionId, "two");
+    release();
+    await Promise.all([first, second]);
+    await waitUntil(() => !manager.isActive(sessionId));
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["one", "two"]);
+    expect(manager.get(sessionId).turns).toHaveLength(2);
+    expect(logged.join("\n")).toContain("The vault save broke.");
+  });
+
+  test("a listener that throws breaks no turn: each message still gets its turn", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    let thrown = false;
+    manager.subscribe((event) => {
+      if (thrown || event.kind !== "message_received") return;
+      thrown = true;
+      // A message that comes while the chat is busy, just before the throw.
+      void manager.send(sessionId, "two");
+      throw new Error("A front end broke.");
+    });
+    const later: string[] = [];
+    manager.subscribe((event) => later.push(event.kind));
+    await manager.send(sessionId, "one");
+    await waitUntil(() => !manager.isActive(sessionId));
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["one", "two"]);
+    expect(logged.join("\n")).toContain("A front end broke.");
+    // A listener after the broken one still hears each event.
+    expect(later.filter((kind) => kind === "message_received" || kind === "turn_finished")).toEqual([
+      "message_received",
+      "turn_finished",
+      "message_received",
+      "turn_finished",
+    ]);
+  });
+
+  test("a listener that always throws is logged once, and once again after it worked in between", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    let broken = true;
+    manager.subscribe(() => {
+      if (broken) throw new Error("A front end broke.");
+    });
+    await manager.send(sessionId, "one");
+    const failures = (): number => logged.filter((line) => line.includes("A front end broke.")).length;
+    expect(failures()).toBe(1);
+    broken = false;
+    await manager.send(sessionId, "two");
+    broken = true;
+    await manager.send(sessionId, "three");
+    expect(failures()).toBe(2);
+  });
+
+  test("a stopped turn gets no follow-up from the mode", async () => {
+    followUps = ["continue the skill run"];
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => {
+        request.signal.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "start the skill");
+    await waitUntil(() => manager.isTurnRunning(sessionId) && engine.requests.length === 1);
+    manager.stop(sessionId);
+    await turn;
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["start the skill"]);
+    expect(manager.isActive(sessionId)).toBe(false);
   });
 
   test("the idle listener hears once, after the follow-ups, and hears whether the person stopped a turn", async () => {

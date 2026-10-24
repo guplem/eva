@@ -22,13 +22,15 @@ import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/loca
 import { describeFailure, runCli, type CliWiring } from "../../../../src/frontends/cli/commands.ts";
 import { terminalDeviceApprover } from "../../../../src/frontends/cli/devices.ts";
 import { evaCommand } from "../../../../src/frontends/cli/host.ts";
-import { updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
+import type { SyncNowState } from "../../../../src/core/vault/vault-upkeep.ts";
+import { syncExitCode, updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
 import { restartMethodNow } from "../../../../src/frontends/cli/service.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import { exitCodes } from "../../../../src/shared/exit-codes.ts";
 import type { LongProcessStarter } from "../../../../src/shared/long-process.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { fakeHost, scriptedRunner, type FakeHost } from "../../../support/fake-host.ts";
+import { fakeTray } from "../../../support/fake-tray.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
 
 let root: string;
@@ -49,6 +51,9 @@ const noWiring: CliWiring = {
   serve: () => Promise.reject(new Error("serve is not part of this test")),
   startLongProcess: () => {
     throw new Error("no long process in this test");
+  },
+  startLineProcess: () => {
+    throw new Error("no line process in this test");
   },
 };
 
@@ -355,11 +360,103 @@ describe("with a running Eva", () => {
     expect(printed(host)).not.toContain("\u001b[");
     expect(await run(host, "projects")).toBe(exitCodes.clean);
     expect(await run(host, "work", "missing-project", "do it")).toBe(exitCodes.crash);
+    // Eva answered, so the refusal needs no hint to start her.
+    expect(host.errors.join("")).not.toContain("Is Eva running?");
+    expect(host.errors.join("")).not.toContain("{");
+  });
+
+  test("a refusal of the token keeps the status and the hint: another Eva may hold the port", async () => {
+    saveSecrets(paths, { localApiToken: "token-of-another-eva" });
+    expect(await run(host, "status")).toBe(exitCodes.crash);
+    expect(host.errors.join("")).toContain("Eva answered 401: ");
+    expect(host.errors.join("")).toContain("Is Eva running?");
   });
 
   test("chat talks to the running Eva until the input ends", async () => {
     const chatting = fakeHost({ isProcessAlive: () => true }, ["/exit"]);
     expect(await run(chatting, "chat")).toBe(exitCodes.clean);
+  });
+
+  test("an update that fails in the running Eva exits with a failure, as it does here", async () => {
+    const failing = new Eva({
+      paths,
+      config: loadSettings(paths).config,
+      secrets: { localApiToken: "running-token" },
+      engines: [],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.reject(new Error("The release server did not answer.")),
+        apply: () => Promise.reject(new Error("not used")),
+      },
+    });
+    const failingApi = startLocalApi({
+      eva: failing,
+      port: 0,
+      token: "running-token",
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: Number(new URL(failingApi.url).port) });
+      expect(await run(host, "update", "--check")).toBe(exitCodes.crash);
+      expect(printed(host)).toContain("The release server did not answer.");
+    } finally {
+      failingApi.stop();
+      failing.stop();
+    }
+  });
+
+  test("a client command exits as any other command for the same refusal", async () => {
+    const refusing = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => Response.json({ error: "The config is invalid.", code: "config_invalid" }, { status: 400 }),
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: refusing.port ?? 0 });
+      const chatting = fakeHost({ isProcessAlive: () => true }, ["/exit"]);
+      expect(await run(chatting, "chat")).toBe(exitCodes.badConfig);
+      expect(chatting.errors.join("")).toBe("Eva refused the chat: The config is invalid.\n");
+    } finally {
+      await refusing.stop(true);
+    }
+  });
+
+  test("chat exits 1, with one line, when Eva drops the event stream", async () => {
+    // An Eva that opens the chat, then drops the stream while the person has not typed yet.
+    const dropping = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request, bunServer) =>
+        new URL(request.url).pathname === "/api/events"
+          ? bunServer.upgrade(request)
+            ? undefined
+            : new Response(null, { status: 400 })
+          : Response.json({ id: "s1", startFolder: "vault" }, { status: 201 }),
+      websocket: {
+        open: (socket) => {
+          setTimeout(() => {
+            socket.close();
+          }, 50);
+        },
+        message: () => undefined,
+      },
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: dropping.port ?? 0 });
+      const waiting = fakeHost({
+        isProcessAlive: () => true,
+        withPrompt: (work) => work(() => new Promise<string>(() => undefined)),
+      });
+      expect(await run(waiting, "chat")).toBe(exitCodes.crash);
+      expect(waiting.errors.join("")).toBe("Eva closed the connection.\n");
+    } finally {
+      await dropping.stop(true);
+    }
   });
 
   test("open opens this computer's browser with a login link that works once (#407)", async () => {
@@ -414,6 +511,13 @@ describe("with a running Eva", () => {
     expect(String(failure)).toContain("no update channel");
   });
 
+  test("a sync that fails in the running Eva exits with a failure, as it does here", async () => {
+    const vault = loadSettings(paths).config.vaultPath ?? "";
+    sandbox.git(vault, "remote", "set-url", "origin", join(vault, "no-such-remote"));
+    expect(await run(host, "sync")).toBe(exitCodes.crash);
+    expect(printed(host)).toContain("Vault sync: offline");
+  });
+
   test("setup restarts a running Eva when it changed her files, so she uses the new answers", async () => {
     const answering = fakeHost({
       isProcessAlive: () => true,
@@ -460,6 +564,37 @@ describe("with a running Eva", () => {
     expect(printed(host)).toContain("Saved updates.frequency in the vault, for every machine. Eva uses it now.");
     expect(await run(host, "settings", "set", "port", "7425")).toBe(exitCodes.clean);
     expect(printed(host)).toContain("Saved port on this machine. Restart Eva to use it.");
+  });
+
+  test("a refusal of the running Eva prints its message, with no stack trace", async () => {
+    const failure = await run(host, "settings", "set", "port", "5").then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const described = describeFailure(failure);
+    expect(described.exitCode).toBe(exitCodes.badConfig);
+    expect(described.text).not.toContain("Eva stopped on an error");
+    expect(described.text).not.toContain("{");
+  });
+});
+
+describe("syncExitCode", () => {
+  const state: SyncNowState = {
+    status: "ok",
+    lastCommitAt: null,
+    lastPushAt: null,
+    lastError: null,
+    withheldFiles: [],
+  };
+
+  test("a busy Eva postpones the sync, which is no failure; no vault is a bad config; other skips fail", () => {
+    expect(syncExitCode(state)).toBe(exitCodes.clean);
+    // The Assistant runs `eva sync` inside its own turn, where the sync always waits for the turn.
+    expect(syncExitCode({ ...state, status: "skipped", skipReason: "assistant_busy" })).toBe(exitCodes.clean);
+    expect(syncExitCode({ ...state, status: "skipped", skipReason: "no_vault" })).toBe(exitCodes.badConfig);
+    // A vault on another branch, or an older Eva that names no reason.
+    expect(syncExitCode({ ...state, status: "skipped" })).toBe(exitCodes.crash);
+    expect(syncExitCode({ ...state, status: "offline" })).toBe(exitCodes.crash);
   });
 });
 
@@ -669,6 +804,134 @@ describe("service install and supervise", () => {
     expect(printed(notStarted)).toContain("She did not start now: busy");
   });
 
+  test("on Windows, supervise shows the tray icon, and its menu opens, restarts and quits Eva (#457)", async () => {
+    const tray = fakeTray();
+    const eva = heldEva();
+    const restarts: string[] = [];
+    const api = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/api/restart") {
+          restarts.push(path);
+          // Eva stops by herself, as after the Restart button of her page.
+          eva.exit(exitCodes.update);
+          return Response.json({ restarting: true }, { status: 202 });
+        }
+        if (path === "/api/approvals") return Response.json([{ id: "a" }]);
+        if (path === "/api/devices/link") return Response.json({ secret: "s", expiresAt: "later" });
+        return Response.json({ problems: [], busySessionIds: [], chatBlocker: null });
+      },
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: api.port ?? 0 });
+      saveSecrets(paths, { localApiToken: "test-token" });
+      acquireInstanceLock(paths.lock, { pid: 999_999, bootId: null, isProcessAlive: () => false });
+      const host = fakeHost({
+        platform: "win32",
+        environment: { ...gitEnvironment, SystemRoot: "C:\\Windows" },
+        isProcessAlive: () => true,
+        sleep: (ms) => Bun.sleep(Math.min(ms, 10)),
+      });
+      const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+        ...noWiring,
+        startLongProcess: eva.start,
+        startLineProcess: tray.start,
+      });
+      await waitFor(() => tray.faces().includes("firm"));
+      expect(tray.command[0]).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+      expect(tray.faces()[0]).toBe("listening");
+      tray.choose("open");
+      await waitFor(() => host.commands.some((command) => command[0] === "rundll32.exe"));
+      expect(host.commands.find((command) => command[0] === "rundll32.exe")?.[2]).toContain("/#login=s");
+      tray.choose("restart");
+      await waitFor(() => eva.starts() === 2);
+      await waitFor(() => restarts.length === 1);
+      tray.choose("quit");
+      expect(await done).toBe(exitCodes.clean);
+      await waitFor(() => restarts.length === 2);
+      expect(eva.starts()).toBe(2);
+      expect(tray.closed()).toBe(true);
+    } finally {
+      await api.stop(true);
+      rmSync(paths.lock, { force: true });
+    }
+  });
+
+  test("on Windows, the icon stays after Eva stops for good, and Restart Eva starts her again", async () => {
+    const tray = fakeTray();
+    const eva = heldEva([exitCodes.badConfig]);
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: eva.start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => tray.faces().includes("error"));
+    expect(tray.closed()).toBe(false);
+    tray.choose("restart");
+    await waitFor(() => eva.starts() === 2);
+    for (const handler of host.stopHandlers) handler();
+    expect(await done).toBe(exitCodes.clean);
+    expect(tray.closed()).toBe(true);
+  });
+
+  test("on Windows, after Eva stops for good, Quit Eva ends the supervisor and its icon", async () => {
+    const tray = fakeTray();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: heldEva([exitCodes.clean]).start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => tray.faces().includes("asleep"));
+    tray.choose("quit");
+    expect(await done).toBe(exitCodes.clean);
+    expect(tray.closed()).toBe(true);
+  });
+
+  test("on Windows, an icon that ends while Eva is stopped ends the supervisor", async () => {
+    const tray = fakeTray();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: heldEva([exitCodes.badConfig]).start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => tray.faces().includes("error"));
+    tray.end("the script failed");
+    expect(await done).toBe(exitCodes.badConfig);
+  });
+
+  test("on Windows, with no icon left, a stop for good ends the supervisor: nobody could restart Eva", async () => {
+    const tray = fakeTray();
+    const eva = heldEva();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: eva.start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => eva.starts() === 1);
+    tray.end("the script failed");
+    await Bun.sleep(20);
+    eva.exit(exitCodes.badConfig);
+    expect(await done).toBe(exitCodes.badConfig);
+  });
+
+  test("on Windows, a second copy of the same Eva ends its supervisor and its icon", async () => {
+    const tray = fakeTray();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: heldEva([exitCodes.secondInstance]).start,
+      startLineProcess: tray.start,
+    });
+    expect(await done).toBe(exitCodes.secondInstance);
+    expect(tray.closed()).toBe(true);
+  });
+
   test("supervise runs Eva with this home, and a stop signal ends it", async () => {
     const started: string[][] = [];
     let exit: (code: number) => void = () => undefined;
@@ -692,3 +955,34 @@ describe("service install and supervise", () => {
     expect(await done).toBe(exitCodes.clean);
   });
 });
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let round = 0; round < 500 && !condition(); round += 1) await Bun.sleep(10);
+  expect(condition()).toBe(true);
+}
+
+/** Eva under the supervisor: each start ends with the next code of `exits`, then she runs until a stop. */
+function heldEva(exits: number[] = []): {
+  start: LongProcessStarter;
+  exit: (code: number) => void;
+  starts: () => number;
+} {
+  let starts = 0;
+  let exit: (code: number) => void = () => undefined;
+  const start: LongProcessStarter = () => {
+    starts += 1;
+    const next = exits.shift();
+    const exited = next === undefined ? Promise.withResolvers<number>() : null;
+    if (exited !== null) exit = exited.resolve;
+    const ended = exited?.promise ?? Promise.resolve(next ?? 0);
+    return {
+      exited: ended,
+      // As on Windows: a stop only waits, and the hard stop ends a child that did not stop.
+      stop: async () => {
+        await Promise.race([ended, Bun.sleep(50)]);
+        exited?.resolve(1);
+      },
+    };
+  };
+  return { start, exit: (code) => exit(code), starts: () => starts };
+}

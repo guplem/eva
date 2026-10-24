@@ -125,6 +125,7 @@ machine state/sessions.json sessions
 machine state/sessions.json sessions[].archived
 machine state/sessions.json sessions[].clone
 machine state/sessions.json sessions[].closed
+machine state/sessions.json sessions[].continuedFrom
 machine state/sessions.json sessions[].createdAt
 machine state/sessions.json sessions[].effort
 machine state/sessions.json sessions[].effort=default
@@ -137,6 +138,7 @@ machine state/sessions.json sessions[].engine
 machine state/sessions.json sessions[].engine=claude-code
 machine state/sessions.json sessions[].engine=pi
 machine state/sessions.json sessions[].engineSessionId
+machine state/sessions.json sessions[].firstMessageDraft
 machine state/sessions.json sessions[].forkAtMessageId
 machine state/sessions.json sessions[].forkFromEngineSessionId
 machine state/sessions.json sessions[].historyLost

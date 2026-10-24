@@ -19,7 +19,7 @@ import { readJsonTolerant, writeFileAtomic } from "../shared/files.ts";
 import { readRecentLogEntries, type LogEntry, type Logger, type RecentLogQuery } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import { systemTerminalProcessStarter, type TerminalProcessStarter } from "../shared/terminal-process.ts";
-import type { TurnUsage } from "../shared/events.ts";
+import type { SessionEvent, TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
@@ -27,6 +27,7 @@ import { ChatNotifications, type NotificationKind } from "./alerts/chat-notifica
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
+  engineLoginProblem,
   engineMissingProblem,
   engineRestartProblem,
   engineUpdateProblem,
@@ -119,6 +120,7 @@ import type { GithubRequest } from "./projects/repository-facts.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { ChatNamer } from "./sessions/chat-namer.ts";
+import { ChatSummarizer } from "./sessions/chat-summary.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
@@ -131,7 +133,7 @@ import {
   type VaultConflictReport,
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
-import { VaultUpkeep } from "./vault/vault-upkeep.ts";
+import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
 import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
@@ -419,6 +421,7 @@ export class Eva {
   private readonly gitEnvironmentForReads: Readonly<Record<string, string>>;
   private readonly settings: LiveSettings;
   private readonly projectWork: ProjectWork;
+  private readonly chatSummaries: ChatSummarizer;
   private readonly vaultSetup: VaultSetup;
   private readonly trustStore: TrustStore;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -574,6 +577,10 @@ export class Eva {
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
     this.chatNames = chatNamer;
+    this.chatSummaries = new ChatSummarizer({
+      modelCalls: this.modelCalls,
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    });
     this.assistantRules =
       vaultPath === null
         ? null
@@ -602,6 +609,7 @@ export class Eva {
         ...(options.logger === undefined ? {} : { logger: options.logger }),
       }),
       stepDetails: new StepDetailsStore(options.paths.stepDetails),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
@@ -673,6 +681,7 @@ export class Eva {
     this.sessions.subscribe((event) => {
       if (event.kind === "turn_failed")
         options.logger?.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
+      if (event.kind === "turn_failed" || event.kind === "turn_finished") this.reportEngineLogin(event);
       if (event.kind !== "turn_finished") return;
       this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
       // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
@@ -714,7 +723,7 @@ export class Eva {
             now: options.now,
             chats: {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
-              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt, "schedule"),
+              send: (sessionId, prompt) => this.sessions.sendWithResult(sessionId, prompt, "schedule"),
             },
             reportFiring: (schedule, failure) => {
               this.alerts.report(
@@ -830,7 +839,7 @@ export class Eva {
   }
 
   /** "Sync now": brings the remote's changes in, then commits and pushes this machine's changes. */
-  syncVault(): Promise<VaultSyncState> {
+  syncVault(): Promise<SyncNowState> {
     return this.vault.syncNow();
   }
 
@@ -1056,6 +1065,15 @@ export class Eva {
     this.recentAlerts.unshift({ alert: { ...alert, seq: this.pushedCount }, endpoints: new Set(endpoints) });
     this.recentAlerts.splice(recentAlertCount);
     await this.webPush.notify(endpoints);
+  }
+
+  /** A turn end of an engine tells whether its login works. Another failure says nothing about it. */
+  private reportEngineLogin(event: Extract<SessionEvent, { kind: "turn_failed" | "turn_finished" }>): void {
+    if (event.kind === "turn_failed" && event.loginExpired !== true) return;
+    // A chat that was deleted meanwhile no longer names its engine.
+    const engine = this.sessions.list().find((session) => session.id === event.sessionId)?.engine;
+    if (engine === undefined) return;
+    this.alerts.report(`engine_login:${engine}`, event.kind === "turn_failed" ? engineLoginProblem(engine) : null);
   }
 
   /** A front end reports a problem that only it can see, such as a Telegram poll that fails. */
@@ -1420,6 +1438,36 @@ export class Eva {
   /** A Project chat in the named clone, or in a free clone, or in a new clone. */
   createProjectSession(input: NewProjectChatInput): Promise<SessionRecord> {
     return this.projectWork.createSession(input);
+  }
+
+  /**
+   * Opens a new chat that goes on from a summary of another chat (issue 522). An Assistant chat
+   * goes on in the vault, and a Project chat in a clone that the usual choice picks. A failed
+   * summary still opens the chat, with no draft, and gives the reason.
+   */
+  async continueFromSummary(
+    sessionId: string,
+    source: SessionRecord["source"],
+  ): Promise<{ readonly session: SessionRecord; readonly summaryFailure: string | null }> {
+    const old = this.sessions.get(sessionId);
+    const gitState = old.mode === "project" ? await this.projectWork.gitState(old.startFolder) : null;
+    const summary = await this.chatSummaries.summarize({
+      engine: old.engine,
+      model: old.modelAlias,
+      turns: this.sessions.branchTurns(old.id),
+      gitState,
+    });
+    // The summary takes long, and the person may delete the old chat meanwhile: then no new chat opens.
+    this.sessions.get(old.id);
+    const input = { source, model: old.modelAlias, effort: old.effort, engine: old.engine };
+    let created: SessionRecord;
+    if (old.mode === "assistant") created = this.createAssistantSession(input);
+    else if (old.projectId === null) throw new EvaError("project_not_found", "This Project chat names no project.");
+    else created = await this.createProjectSession({ ...input, projectId: old.projectId });
+    return {
+      session: this.sessions.continueFrom(created.id, old.id, summary.ok ? summary.text : null),
+      summaryFailure: summary.ok ? null : summary.reason,
+    };
   }
 
   /**

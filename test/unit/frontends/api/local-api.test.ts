@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginEvent, DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
-import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
+import { loggedPath, startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -297,6 +297,12 @@ describe("device login", () => {
     expect((await call("/api/login/device/unknown", { headers: noAccount })).status).toBe(403);
     expect((await call("/api/login/device", { method: "PUT", headers: tailnet })).status).toBe(404);
     expect(asked).toEqual([]);
+  });
+
+  test("a bad escape in the login id is the client's fault: 400, not a crash", async () => {
+    const answer = await call("/api/login/device/%E0", { headers: {} });
+    expect(answer.status).toBe(400);
+    expect(await json<unknown>(answer)).toEqual({ error: "The address is invalid." });
   });
 
   test("the page on Eva's own computer asks too, only the terminal answers, and only that browser collects the cookie", async () => {
@@ -827,6 +833,24 @@ describe("routes", () => {
     expect(retry.status).toBe(200);
   });
 
+  test("opens a new chat from a summary of a chat, and a 404 for an unknown chat (#522)", async () => {
+    turnScript = (request) => FakeEngine.answer(request, request.mode === "model-call" ? "Goal: a trip." : "Sure.");
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "Plan a trip");
+    const response = await call(`/api/sessions/${session.id}/summary-chat`, { method: "POST", body: {} });
+    expect(response.status).toBe(201);
+    const made = await json<{ session: { continuedFrom: string; firstMessageDraft: string }; summaryFailure: null }>(
+      response,
+    );
+    expect(made.session.continuedFrom).toBe(session.id);
+    expect(made.session.firstMessageDraft).toContain("Goal: a trip.");
+    expect(made.summaryFailure).toBeNull();
+    const missing = await call("/api/sessions/missing/summary-chat", { method: "POST", body: {} });
+    expect(missing.status).toBe(404);
+  });
+
   test("gives the whole input and output of a step, null for an unknown step, and a 404 for an unknown chat", async () => {
     turnScript = (request) => [
       { kind: "tool_started", toolUseId: "t1", name: "Read", category: "tool", summary: "Read x", input: "{}" },
@@ -1140,6 +1164,32 @@ describe("web routes", () => {
     expect(second.status).toBe(409);
     release();
     expect(await json<{ message: string }>(await first)).toEqual({ message: "Add the readme" });
+  });
+
+  test("a push of a clone with a conflict is refused before a model writes its message", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const { name, path: clonePath } = await json<{ name: string; path: string }>(
+      await call(`${path}/clones`, { method: "POST", body: {} }),
+    );
+    const other = sandbox.clone("other");
+    sandbox.write(other, "AGENTS.md", "# Remote\n");
+    sandbox.git(other, "commit", "-q", "-am", "remote work");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    const repository = join(clonePath, "remote");
+    sandbox.write(repository, "AGENTS.md", "# Local\n");
+    sandbox.git(repository, "commit", "-q", "-am", "local work");
+    sandbox.git(repository, "fetch", "-q");
+    expect(() => sandbox.git(repository, "merge", "-q", "origin/main")).toThrow();
+    const asked = engine.requests.length;
+
+    const pushed = await call(`${path}/clones/${name}/repos/remote/push`, { method: "POST", body: {} });
+    expect(pushed.status).toBe(409);
+    expect(engine.requests.length).toBe(asked);
   });
 
   test("a project's AGENTS.md: read it, save its details, save it whole", async () => {
@@ -1871,6 +1921,60 @@ describe("without a vault", () => {
       expect(await received.json()).toMatchObject({ code: "vault_not_found" });
     } finally {
       bareApi.stop();
+    }
+  });
+});
+
+describe("loggedPath", () => {
+  test("keeps the route, and leaves out the id of a device login, which lets a browser in", () => {
+    expect(loggedPath("/api/settings/setup")).toBe("/api/settings/setup");
+    expect(loggedPath("/api/login/device/secret-id")).toBe("/api/login/device/…");
+    expect(loggedPath("/api/login/device")).toBe("/api/login/device");
+    // The page answers the same pending request by its id.
+    expect(loggedPath("/api/devices/requests/secret-id")).toBe("/api/devices/requests/…");
+    expect(loggedPath("/api/devices/requests")).toBe("/api/devices/requests");
+  });
+});
+
+describe("an unexpected error", () => {
+  test("answers a plain 500, and logs the redacted message and stack for the person to read", async () => {
+    const logged: { level: string; message: string; details: Readonly<Record<string, unknown>> | undefined }[] = [];
+    const brokenVault = join(home, "broken-vault");
+    mkdirSync(brokenVault);
+    const broken = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: brokenVault, sync: { ...defaultConfig.sync, enabled: false } },
+      secrets: {},
+      engines: [engine],
+      // A runner that fails as no EvaError does, so the setup progress fails as a bug would.
+      runner: { run: () => Promise.reject(new Error("token ghp_abcdefghijklmnopqrstuvwxyz0123456789 leaked")) },
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+    });
+    const brokenApi = startLocalApi({
+      eva: broken,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+      logger: { log: (level, message, details) => logged.push({ level, message, details }) },
+    });
+    try {
+      const response = await fetch(`${brokenApi.url}/api/settings/setup`, { headers: headers() });
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "Eva failed to handle the request." });
+      expect(logged).toHaveLength(1);
+      expect(logged[0]?.level).toBe("error");
+      expect(logged[0]?.message).toBe("A request failed: GET /api/settings/setup");
+      const reason = String(logged[0]?.details?.["reason"]);
+      expect(reason).toContain("leaked");
+      // The stack, so the log shows where it failed.
+      expect(reason).toMatch(/\n\s+at /);
+      expect(reason).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+    } finally {
+      brokenApi.stop();
+      broken.stop();
     }
   });
 });

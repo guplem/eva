@@ -127,8 +127,7 @@ export async function createClone(options: CreateCloneOptions): Promise<Clone> {
   try {
     for (const url of options.repositoryUrls) await cloneRepository(path, url, options);
   } catch (error) {
-    // Retries, because a virus scanner or an indexer on Windows can hold a file for a moment.
-    rmSync(path, { recursive: true, force: true, maxRetries: 5 });
+    removeFailedClone(path);
     throw error;
   }
   return { name, path, index: Number(name.slice("clone-".length)), repositories: listRepositories(path) };
@@ -146,17 +145,20 @@ export async function cloneRepository(
   // A failed clone removes its folder, so it must never start in a folder that holds someone's files.
   if (existsSync(path))
     throw new EvaError("git_failed", `Could not clone ${repositoryUrl}: the folder ${name} is already there.`);
-  // Eva's credential helper, so a private project repository clones with the GitHub token too.
-  const result = await options.runner.run(
-    ["git", ...githubCredentialArguments, "clone", "-q", "--", repositoryUrl, path],
-    {
+  let result: Awaited<ReturnType<ProcessRunner["run"]>>;
+  try {
+    // Eva's credential helper, so a private project repository clones with the GitHub token too.
+    result = await options.runner.run(["git", ...githubCredentialArguments, "clone", "-q", "--", repositoryUrl, path], {
       cwd: clonePath,
       environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
       timeoutMs: cloneTimeoutMs,
-    },
-  );
+    });
+  } catch (error) {
+    removeFailedClone(path);
+    throw error;
+  }
   if (result.exitCode !== 0) {
-    rmSync(path, { recursive: true, force: true, maxRetries: 5 });
+    removeFailedClone(path);
     throw new EvaError("git_failed", `Could not clone ${repositoryUrl}: ${failureReason(result, "git")}`);
   }
   options.origins.recordClone(path, repositoryUrl);
@@ -170,6 +172,18 @@ export async function cloneRepository(
 function checkRepositoryUrl(repositoryUrl: string): void {
   if (repositoryUrl.startsWith("-"))
     throw new EvaError("project_invalid", `A repository URL cannot start with "-": ${repositoryUrl}`);
+}
+
+/**
+ * A clone that a timeout or a kill stopped leaves a half-filled folder, and the next clone choice
+ * could reuse it. The folder is new, so it holds none of the person's files.
+ */
+function removeFailedClone(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    // A file that Windows still holds stays. The clone error matters more than this one.
+  }
 }
 
 export interface RepositoryBranch extends CloneRepository {
@@ -238,6 +252,30 @@ export async function countChanges(
     );
     if (status.exitCode !== 0) return null;
     return status.stdout.split("\n").filter((line) => line.trim().length > 0).length;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The branch, the changed files and the last commits of a folder, as git prints them, for a chat
+ * summary (issue 522). Null when git fails, such as for a deleted clone.
+ */
+export async function readGitState(
+  folder: string,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<string | null> {
+  const options = { cwd: folder, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: gitTimeoutMs };
+  try {
+    // No index refresh, so no index.lock (lesson 81).
+    const status = await runner.run(["git", "--no-optional-locks", "status", "--porcelain=v1", "--branch"], options);
+    if (status.exitCode !== 0) return null;
+    const log = await runner.run(["git", "log", "--oneline", "-10"], options);
+    const commits = log.exitCode === 0 ? log.stdout.trim() : "";
+    return [status.stdout.trim(), commits.length === 0 ? "" : `Last commits:\n${commits}`]
+      .filter((part) => part.length > 0)
+      .join("\n\n");
   } catch {
     return null;
   }

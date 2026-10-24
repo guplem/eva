@@ -42,6 +42,8 @@ function session(id: string): SessionRecord {
     seenTurns: 0,
     archived: false,
     closed: false,
+    continuedFrom: null,
+    firstMessageDraft: null,
   };
 }
 
@@ -117,6 +119,19 @@ describe("SessionStore", () => {
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), archived: "yes" }] }));
     expect(openStore().get("one")?.archived).toBe(false);
     expect(openStore().get("two")?.archived).toBe(false);
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a session from before the summary link, or with a bad one, continues no chat and has no draft (#522)", () => {
+    const { continuedFrom: _from, firstMessageDraft: _draft, ...old } = session("one");
+    writeFileSync(
+      path,
+      JSON.stringify({ version: 1, sessions: [old, { ...session("two"), continuedFrom: 7, firstMessageDraft: [] }] }),
+    );
+    for (const id of ["one", "two"]) {
+      expect(openStore().get(id)?.continuedFrom).toBeNull();
+      expect(openStore().get(id)?.firstMessageDraft).toBeNull();
+    }
     expect(corruptCopies()).toEqual([]);
   });
 

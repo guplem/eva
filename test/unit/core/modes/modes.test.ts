@@ -69,6 +69,8 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     seenTurns: 0,
     archived: false,
     closed: false,
+    continuedFrom: null,
+    firstMessageDraft: null,
     turns: [],
     ...overrides,
   };
@@ -207,6 +209,19 @@ describe("Assistant mode", () => {
     const failures: string[] = [];
     expect(await assistant(missing, new FakeSync(), failures).afterTurn(session(), { finished: true })).toBeNull();
     expect(failures[0]).toContain("pskill could not run");
+  });
+
+  test("a turn that did not finish saves the vault but asks pskill for no follow-up", async () => {
+    sandbox.write(vault, ".pskill/pskill.py", "# runner\n");
+    const runner = new FakeRunner(() => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ hookSpecificOutput: { additionalContext: "Continue run r1." } }),
+      stderr: "",
+    }));
+    const sync = new FakeSync();
+    expect(await assistant(runner, sync).afterTurn(session(), { finished: false })).toBeNull();
+    expect(sync.calls).toEqual(["save"]);
+    expect(runner.runs).toEqual([]);
   });
 
   test("a vault with no pskill runs no check", async () => {

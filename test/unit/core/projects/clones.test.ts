@@ -8,6 +8,7 @@ import {
   countChanges,
   createClone,
   describeRepository,
+  readGitState,
   githubSlug,
   isTrustedByDefault,
   listClones,
@@ -15,7 +16,7 @@ import {
   TrustStore,
 } from "../../../../src/core/projects/clones.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
-import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
@@ -197,6 +198,33 @@ describe("clone folders", () => {
     expect(String(error)).toContain("git ended with exit code 128 and wrote no error.");
   });
 
+  test("a clone that stops partway leaves no folder for the next clone to reuse", async () => {
+    const path = join(project, "repos", "clone-0", "example-app");
+    /** A clone that fills part of its folder, then fails or throws, as a timeout kill does. */
+    const halfClone = (finish: () => ReturnType<ProcessRunner["run"]>): ProcessRunner => ({
+      run: () => {
+        mkdirSync(join(path, ".git"), { recursive: true });
+        writeFileSync(join(path, "README.md"), "half\n");
+        return finish();
+      },
+    });
+    for (const runner of [
+      halfClone(() => Promise.resolve({ exitCode: 143, stdout: "", stderr: "killed" })),
+      halfClone(() => Promise.reject(new Error("timed out"))),
+    ]) {
+      const error: unknown = await createClone({
+        projectPath: project,
+        repositoryUrls: ["https://github.com/example/example-app"],
+        runner,
+        environment: gitEnvironment,
+        origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+      }).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect(existsSync(path)).toBe(false);
+      expect(existsSync(join(project, "repos", "clone-0"))).toBe(false);
+    }
+  });
+
   test("refuses a repository URL that git would read as an option, and runs nothing", async () => {
     const commands: (readonly string[])[] = [];
     const error: unknown = await createClone({
@@ -276,6 +304,24 @@ describe("clone folders", () => {
       pullRequest: null,
     });
     expect(await countChanges(repository, failing, gitEnvironment)).toBeNull();
+  });
+
+  test("the git state of a clone names its branch, its changed files and its last commits (#522)", async () => {
+    const clone = await createClone({
+      projectPath: project,
+      repositoryUrls: [sandbox.remote],
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    const repository = join(clone.path, "remote");
+    writeFileSync(join(repository, "new.txt"), "new\n");
+    const state = await readGitState(repository, systemProcessRunner, gitEnvironment);
+    expect(state).toStartWith("## main...origin/main\n?? new.txt\n\nLast commits:\n");
+    const failing = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "not a git repository" }) };
+    expect(await readGitState(repository, failing, gitEnvironment)).toBeNull();
+    const throwing = { run: () => Promise.reject(new Error("no git")) };
+    expect(await readGitState(repository, throwing, gitEnvironment)).toBeNull();
   });
 });
 

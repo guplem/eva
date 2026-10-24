@@ -21,6 +21,8 @@ import {
   describeRepository,
   githubSlug,
   listClones,
+  listRepositories,
+  readGitState,
   repositoryName,
   type Clone,
   type CloneDetails,
@@ -29,7 +31,6 @@ import {
   type RepositoryBranch,
 } from "./clones.ts";
 import {
-  changedFiles,
   commitAndPush,
   describeChanges,
   fallbackCommitMessage,
@@ -38,6 +39,7 @@ import {
   hasLocalWork,
   pullClone,
   readSyncState,
+  readyToPush,
   switchToBranch,
 } from "./clone-sync.ts";
 import type { Project } from "./project-catalog.ts";
@@ -153,6 +155,7 @@ export class ProjectWork {
         mode: "project",
         engine: input.engine ?? this.options.defaultEngine,
         model: input.model,
+        ...(input.effort === undefined ? {} : { effort: input.effort }),
         startFolder: clone.path,
         source: input.source,
         projectId: project.id,
@@ -180,6 +183,21 @@ export class ProjectWork {
     }
     // The chat exists before the next choice starts, so its creation already keeps the clone.
     return this.oneCloneChoiceAtATime(project, async () => inClone(await this.freeOrNewClone(project)));
+  }
+
+  /**
+   * The git state of each repository of a Project chat's clone folder, for a chat summary, or null when
+   * git fails for each one. The clone folder itself is no repository: git there would read the vault.
+   */
+  async gitState(folder: string): Promise<string | null> {
+    const states = await Promise.all(
+      listRepositories(folder).map(async (repository) => {
+        const state = await readGitState(repository.path, this.options.runner, this.options.gitEnvironment);
+        return state === null ? null : `Repository ${repository.name}:\n${state}`;
+      }),
+    );
+    const known = states.filter((state) => state !== null);
+    return known.length === 0 ? null : known.join("\n\n");
   }
 
   /**
@@ -365,7 +383,8 @@ export class ProjectWork {
     const { runner, gitEnvironment } = this.options;
     return this.oneSyncAtATime(repository, async () => {
       const trimmed = note.trim();
-      const files = await changedFiles(repository, runner, gitEnvironment);
+      // A repository that Eva cannot push safely fails here, before a model call that would be lost.
+      const { files } = await readyToPush(repository, runner, gitEnvironment);
       const message = trimmed.length > 0 || files.length === 0 ? trimmed : await this.commitMessage(repository);
       // The model call takes seconds, and a chat may start a turn meanwhile.
       this.idleRepository(projectId, cloneName, repositoryName);

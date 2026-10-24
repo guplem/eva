@@ -107,6 +107,11 @@ export function SettingsView({
       .setupState()
       .then(setSetup)
       .catch(() => undefined);
+    // A card reads the open problems, such as an expired login that a restart clears.
+    api
+      .status()
+      .then(setStatus)
+      .catch(() => undefined);
     onSetupChanged?.();
   }, [onSetupChanged]);
 

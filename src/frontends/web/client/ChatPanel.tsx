@@ -10,6 +10,7 @@ import {
   contextShare,
   engineLabel,
   branchForkPoint,
+  chatLinks,
   latestContext,
   taskStatus,
   titleCase,
@@ -59,6 +60,8 @@ export interface ChatProps {
   readonly onChanged: () => Promise<void>;
   /** The branch that the page shows. "Fork this chat" forks it. */
   readonly shownId?: string | null;
+  /** Every chat, so the details can link the chats that one continues from a summary. */
+  readonly sessions: readonly SessionRecord[];
 }
 
 /** A conic gradient fills the ring with the share. Only a known window gives a share, so the ring is never a guess. */
@@ -118,8 +121,14 @@ function ForkButton({
   );
 }
 
-function ChatDetails({ tree, tasks, onChanged, shownId = null }: ChatProps): ReactElement {
+/** The address of a chat opens it in its own view, whatever its mode. */
+function ChatLink({ chat }: { readonly chat: SessionRecord }): ReactElement {
+  return <a href={`#/chat/${encodeURIComponent(chat.id)}`}>{chat.title}</a>;
+}
+
+function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatProps): ReactElement {
   const root = tree[0];
+  const links = chatLinks(tree, sessions);
   return (
     <>
       {root !== undefined && (
@@ -141,6 +150,24 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null }: ChatProps): Rea
               {tree.reduce((sum, session) => sum + session.turns.length, 0)}
               {tree.length > 1 ? `, with ${String(tree.length - 1)} fork${tree.length === 2 ? "" : "s"}` : ""}
             </dd>
+            {links.from !== null && (
+              <>
+                <dt>Continues</dt>
+                <dd>
+                  <ChatLink chat={links.from} />
+                </dd>
+              </>
+            )}
+            {links.next.length > 0 && (
+              <>
+                <dt>Continued in</dt>
+                {links.next.map((next) => (
+                  <dd key={next.id}>
+                    <ChatLink chat={next} />
+                  </dd>
+                ))}
+              </>
+            )}
           </dl>
         </>
       )}

@@ -23,6 +23,7 @@ import { systemClock } from "../../shared/clock.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
 import { readTextTolerant } from "../../shared/files.ts";
+import type { LineProcessStarter } from "../../shared/line-process.ts";
 import type { LongProcessStarter } from "../../shared/long-process.ts";
 import { Redactor } from "../../shared/redaction.ts";
 import { evaVersion } from "../../shared/version.ts";
@@ -35,6 +36,7 @@ import {
   isAnswering,
   requestDeviceAllow,
   requestRestart,
+  startHint,
   startProjectWork,
 } from "./client.ts";
 import { allowDevice, canOpenBrowser, openEva, openLoggedIn } from "./devices.ts";
@@ -61,6 +63,8 @@ export interface CliWiring {
   readonly serve: (paths: HomePaths) => Promise<number>;
   /** Starts Eva under `eva supervise`. */
   readonly startLongProcess: LongProcessStarter;
+  /** Starts the tray icon of `eva supervise` on Windows. */
+  readonly startLineProcess: LineProcessStarter;
 }
 
 /** Runs one `eva` command and gives the process's exit code. */
@@ -116,7 +120,7 @@ async function runCommand(command: CliCommand, host: CliHost, wiring: CliWiring)
     case "service-install":
       return installService(host, paths);
     case "supervise":
-      return supervise(host, paths, wiring.startLongProcess);
+      return supervise(host, paths, wiring);
     case "update":
       return update(host, paths, command.checkOnly, command.version);
     case "sync":
@@ -390,9 +394,13 @@ async function runClientCommand(
     return exitCodes.clean;
   } catch (error) {
     if (isEvaError(error, "prompt_stopped")) throw error;
-    host.writeError(
-      `${error instanceof Error ? error.message : String(error)}\nIs Eva running? Start her with \`eva\`.\n`,
-    );
+    // An EvaError is a refusal. One that may not come from this Eva carries the start hint itself.
+    if (isEvaError(error)) {
+      const failure = describeFailure(error);
+      host.writeError(failure.text);
+      return failure.exitCode;
+    }
+    host.writeError(`${error instanceof Error ? error.message : String(error)}\n${startHint}\n`);
     return exitCodes.crash;
   }
 }

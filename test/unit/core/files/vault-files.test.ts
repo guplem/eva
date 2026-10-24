@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import {
   existsSync,
   mkdirSync,
@@ -197,6 +198,24 @@ describe("received files and the scratch cleanup", () => {
     expect(cleanScratch(vault, now)).toBe(1);
     expect(existsSync(join(vault, "Scratch", "old.pdf"))).toBe(false);
     expect(existsSync(join(vault, "Scratch", "received", "new.jpg"))).toBe(true);
+  });
+
+  test("a file that goes away during the cleanup is skipped, and the cleanup goes on", () => {
+    write("Scratch/a-gone.pdf", "gone");
+    write("Scratch/b-old.pdf", "old");
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60_000);
+    utimesSync(join(vault, "Scratch", "b-old.pdf"), eightDaysAgo, eightDaysAgo);
+    const real = fs.statSync;
+    const stat = spyOn(fs, "statSync").mockImplementation(((path: string, ...rest: unknown[]) => {
+      if (path.endsWith("a-gone.pdf")) throw Object.assign(new Error("ENOENT: gone"), { code: "ENOENT" });
+      return (real as (...args: unknown[]) => unknown)(path, ...rest);
+    }) as typeof fs.statSync);
+    try {
+      expect(cleanScratch(vault, new Date())).toBe(1);
+    } finally {
+      stat.mockRestore();
+    }
+    expect(existsSync(join(vault, "Scratch", "b-old.pdf"))).toBe(false);
   });
 
   test("a vault without Scratch cleans nothing", () => {

@@ -78,6 +78,17 @@ describe("discoverProjects", () => {
     expect(projects.find((project) => project.id === "2019-03-old-tool")?.parsedId.precision).toBe("month");
   });
 
+  test("an entry that Eva cannot read is skipped, and the other projects still show (lesson 54)", () => {
+    addProject("2025-03-02-1015-example-app", "created: 2025-03-02T10:15\nstatus: active");
+    // A folder named AGENTS.md, and an extra root that is a file: both throw on read, even for root.
+    mkdirSync(join(vault, "Projects", "2025-04-01-0900-broken", "AGENTS.md"), { recursive: true });
+    const fileRoot = join(vault, "not-a-folder");
+    writeFileSync(fileRoot, "text\n");
+
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [fileRoot] });
+    expect(projects.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);
+  });
+
   test("a fence closes only on the same marker, at least as long", () => {
     for (const body of [
       "```\n~~~\n# in\n```\n# real\n",

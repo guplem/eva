@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { isOtherMachineProblem, problemAction } from "../../../../../src/frontends/web/client/problem-actions.ts";
+import {
+  claudeLoginExpired,
+  isOtherMachineProblem,
+  problemAction,
+} from "../../../../../src/frontends/web/client/problem-actions.ts";
 
 describe("problemAction", () => {
   test("a vault conflict opens the note picker", () => {
@@ -34,8 +38,22 @@ describe("problemAction", () => {
     expect(problemAction("update", "ok", "schedules")).toBe("open_settings");
   });
 
+  test("an expired Claude Code login opens its card, where the person logs in again", () => {
+    expect(problemAction("engine_login:claude-code", "ok")).toBe("open_claude_login");
+    expect(problemAction("engine_login:claude-code", "ok", "settings")).toBeNull();
+  });
+
   test("every other problem opens Settings", () => {
     expect(problemAction("update", "ok")).toBe("open_settings");
     expect(problemAction("telegram_poll", "ok")).toBe("open_settings");
+  });
+});
+
+describe("claudeLoginExpired", () => {
+  test("is true only while the Claude Code login problem is open", () => {
+    expect(claudeLoginExpired([{ key: "update" }, { key: "engine_login:claude-code" }])).toBe(true);
+    expect(
+      claudeLoginExpired([{ key: "engine_login:pi" }, { key: "machine:example-pc:engine_login:claude-code" }]),
+    ).toBe(false);
   });
 });

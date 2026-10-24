@@ -385,6 +385,7 @@ export function ProjectView({
   const chatDetails = {
     tree,
     shownId: branch.id,
+    sessions,
     onChanged,
     tasks: tasksOf(
       live.tasks,

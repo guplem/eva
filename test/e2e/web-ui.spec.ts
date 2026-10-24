@@ -564,11 +564,23 @@ async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
     .not.toContain(chatId);
 }
 
+/**
+ * The id of the chat with this title. The page shows an answer as it streams, and a chat takes its
+ * title only when Eva records the turn, which a Project turn's snapshot delays (issue 523). So it waits.
+ */
 async function chatIdNamed(page: Page, title: string): Promise<string> {
-  const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
-  const found = sessions.find((session) => session.title === title);
-  if (found === undefined) throw new Error(`no chat named ${title}`);
-  return found.id;
+  let id: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
+        id = sessions.find((session) => session.title === title)?.id;
+        return id;
+      },
+      { message: `no chat named ${title}` },
+    )
+    .toBeDefined();
+  return id ?? "";
 }
 
 /** A new Assistant chat with one answer. Each screen size names its own chats, on the shared demo server. */

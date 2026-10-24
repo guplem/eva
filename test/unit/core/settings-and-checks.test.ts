@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runCheck, type CheckInputs } from "../../../src/core/checks.ts";
-import { Eva } from "../../../src/core/eva.ts";
+import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, engineFolders, homePaths, loadSecrets } from "../../../src/core/settings/home.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
@@ -980,6 +980,120 @@ describe("the Claude Code login from the page", () => {
   test("says so when this machine has no claude program", async () => {
     const error = await eva.startClaudeLogin().catch((caught: unknown) => caught);
     expect(String(error)).toContain("did not find the claude program");
+  });
+});
+
+describe("program installs from the page (#242)", () => {
+  /** Each installer marks its program as there; `--version` answers only after that. */
+  const installRunner = (): ProcessRunner & { readonly installed: Set<string> } => {
+    const installed = new Set<string>();
+    const base = fakeGh(systemProcessRunner);
+    const answer = (ok: boolean): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+      Promise.resolve(ok ? { exitCode: 0, stdout: "1.0.0\n", stderr: "" } : { exitCode: 1, stdout: "", stderr: "" });
+    return {
+      installed,
+      run: (command, options) => {
+        const line = command.join(" ");
+        if (line.includes("claude.ai/install.sh")) installed.add("claude");
+        else if (line.includes("astral.sh/uv/install.sh")) installed.add("uv");
+        else if (command[1] === "--version") {
+          const program = (command[0] ?? "").split("/").at(-1) ?? "";
+          return answer(installed.has(program === "uvx" ? "uv" : program));
+        } else return base.run(command, options);
+        return answer(true);
+      },
+    };
+  };
+  const make = (runner: ProcessRunner, overrides: Partial<EvaOptions> = {}): Eva =>
+    new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      toolPlaces: { platform: "linux", userHome: home, standalone: false },
+      toolInstall: { arch: "x64" },
+      ...overrides,
+    });
+
+  test("with no engine program, the page installs Claude Code, and the step moves on to the login", async () => {
+    const runner = installRunner();
+    const started: (readonly string[])[] = [];
+    const instance = make(runner, {
+      startTerminal: (command) => {
+        started.push(command);
+        throw new Error("No terminal in a test.");
+      },
+    });
+    const engineStep = async (): Promise<string> =>
+      (await instance.setupState()).progress.find((step) => step.key === "engine")?.detail ?? "";
+    try {
+      expect((await instance.setupState()).engines).toEqual([]);
+      expect(await engineStep()).toContain("Install Claude Code");
+      expect(await engineStep()).not.toContain("eva setup");
+      const before = await instance.startClaudeLogin().catch((caught: unknown) => String(caught));
+      expect(before).toContain("Install Claude Code");
+      expect(before).not.toContain("eva setup");
+      expect((await instance.installTool("claude")).ok).toBe(true);
+      const after = await instance.setupState();
+      expect(after.engines).toEqual(["claude-code"]);
+      // The engines start with Eva, so a chat needs a restart.
+      expect(after.restartNeeded).toBe(true);
+      expect(await engineStep()).toContain("Start the login");
+      await instance.startClaudeLogin().catch(() => undefined);
+      expect(started[0]?.at(-1)).toBe("setup-token");
+      expect(instance.status().chatBlocker).toBe("engine");
+      await instance.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
+      expect(instance.status().chatBlocker).toBe("restart");
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("with a Google account and no uv, the setup state offers the uv install", async () => {
+    const runner = installRunner();
+    const signedOut = make(runner);
+    try {
+      expect((await signedOut.setupState()).uvMissing).toBe(false);
+    } finally {
+      signedOut.stop();
+    }
+    const instance = make(runner, {
+      config: {
+        ...defaultConfig,
+        vaultPath: vault,
+        timeZone: "UTC",
+        google: { ...defaultConfig.google, email: "person@example.com" },
+      },
+    });
+    try {
+      expect((await instance.setupState()).uvMissing).toBe(true);
+      expect(await instance.installTool("uv")).toMatchObject({ ok: true });
+      const after = await instance.setupState();
+      expect(after.uvMissing).toBe(false);
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("a failed install says what went wrong, and adds no engine", async () => {
+    const instance = make({
+      run: (command, options) =>
+        command.join(" ").includes("claude.ai/install.sh")
+          ? Promise.resolve({ exitCode: 1, stdout: "", stderr: "curl: could not resolve host" })
+          : systemProcessRunner.run(command, options),
+    });
+    try {
+      const result = await instance.installTool("claude");
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain("could not resolve host");
+      expect((await instance.setupState()).engines).toEqual([]);
+    } finally {
+      instance.stop();
+    }
   });
 });
 

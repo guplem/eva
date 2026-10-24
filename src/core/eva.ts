@@ -40,7 +40,7 @@ import {
 import { machineReportFile, readMachineReports, writeMachineReport } from "./alerts/machine-reports.ts";
 import { runMigrations, type MigrationRun, type MigrationStore } from "./migrations/migration-runner.ts";
 import { migrations, vaultAhead, type StartMigrations } from "./migrations/migrations.ts";
-import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
+import { runCheck, uvRuns, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import { engineFolders, loadConfig, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
 import { defaultVoiceModelPath, withMachineDefaults } from "./settings/machine-defaults.ts";
@@ -326,6 +326,8 @@ export interface EvaSetupState extends SetupState {
   readonly restartNeeded: boolean;
   /** True for a new vault with a commit and no remote: the vault step offers its push. */
   readonly vaultNeedsPush: boolean;
+  /** True when a Google account is set but no chat can run uv, which starts the Google tools. */
+  readonly uvMissing: boolean;
 }
 
 /** Each engine's permissions, with its name. */
@@ -385,6 +387,11 @@ export class Eva {
   /** The gh logins and logouts, one after the other. */
   private githubCliChanges: Promise<void>;
   private toolInstallRuns: boolean;
+  /**
+   * Each program that the page installed since the start, with its path. The engines start with
+   * Eva, so a new engine program waits for a restart, but its login need not.
+   */
+  private readonly installedPrograms: Map<InstallableTool, string>;
   /** The lookup of each latest tool version, and when it started. A running lookup is shared. */
   private readonly latestToolCache: Map<string, { readonly lookup: Promise<string | null>; readonly at: number }>;
   /** The changelog, kept as the latest tool versions are, so each dialog open does not use up GitHub's limit. */
@@ -521,12 +528,13 @@ export class Eva {
     });
     this.claudeLogin = new ClaudeLogin({
       start: options.startTerminal ?? systemTerminalProcessStarter,
-      program: options.claudeExecutable ?? null,
+      program: () => options.claudeExecutable ?? this.installedPrograms.get("claude") ?? null,
       cwd: options.paths.root,
       environment: () => engineToolEnvironment(this.facts),
     });
     this.githubCliChanges = Promise.resolve();
     this.toolInstallRuns = false;
+    this.installedPrograms = new Map();
     this.latestToolCache = new Map();
     this.changelogCache = null;
     this.githubLogin = new GitHubBrowserLogin({
@@ -1279,13 +1287,14 @@ export class Eva {
     this.toolInstallRuns = true;
     try {
       const inputs = this.toolInstallInputs();
-      await (program === "claude"
+      const path = await (program === "claude"
         ? installEngine("claude-code", { ...inputs, configured: this.options.claudeExecutable ?? null })
         : program === "pi"
           ? installEngine("pi", { ...inputs, configured: this.options.config.engines.pi.executable })
           : program === "uv"
             ? installUv(inputs)
             : installGh(inputs));
+      this.installedPrograms.set(program, path);
       const restart = program === "claude" || program === "pi" ? " Press Restart Eva so that chats use it." : "";
       return { ok: true, message: `Installed ${program}.${restart}` };
     } catch (error) {
@@ -1588,15 +1597,36 @@ export class Eva {
     const saved = this.settings.saved().secrets;
     // The engines, git and Telegram read the tokens at start, so a token saved since then waits for a restart.
     // The vault folder too: sync, the schedules and the Assistant read it at start.
+    // An engine program that the page installed starts with the next Eva.
     const restartNeeded =
       pageSecretNames.some((name) => saved[name] !== this.options.secrets[name]) ||
-      this.savedVaultPath() !== this.options.config.vaultPath;
+      this.savedVaultPath() !== this.options.config.vaultPath ||
+      this.newEngines().length > 0;
+    const google = this.settings.saved().config.google.email !== null;
     return {
       ...(await this.settings.setupState()),
+      engines: [...this.options.engines.map((engine) => engine.name), ...this.newEngines()],
       progress: this.setupProgress(),
       restartNeeded,
       vaultNeedsPush: await this.vaultSetup.needsPush(),
+      // Only a Google account needs uv, so Eva asks for it only then.
+      uvMissing:
+        google &&
+        !this.installedPrograms.has("uv") &&
+        !(await uvRuns(this.options.runner, engineEnvironment(this.facts, this.settings.secrets))),
     };
+  }
+
+  /** The engines whose program the page installed since the start, which no engine runs yet. */
+  private newEngines(): EngineName[] {
+    const started = new Set(this.options.engines.map((engine) => engine.name));
+    const installed: readonly [InstallableTool, EngineName][] = [
+      ["claude", "claude-code"],
+      ["pi", "pi"],
+    ];
+    return installed.flatMap(([program, engine]) =>
+      this.installedPrograms.has(program) && !started.has(engine) ? [engine] : [],
+    );
   }
 
   /** The person's GitHub repositories, for the vault step; see `VaultSetup`. */
@@ -1641,20 +1671,20 @@ export class Eva {
 
   /** Each setup step, from the files as they are now: `eva setup` may have saved a step meanwhile. */
   setupProgress(): ProgressStep[] {
-    return this.progressWith(this.settings.saved().secrets);
+    return this.progressWith(this.settings.saved().secrets, this.newEngines());
   }
 
   /**
    * The step that stops every chat. The engines read the Claude token at start, so the running
-   * login decides. A token that only the files hold needs a restart first.
+   * login decides. A token that only the files hold, or a new engine program, needs a restart first.
    */
   private chatBlocker(progress: readonly ProgressStep[]): ChatBlocker | null {
-    const running = chatBlocker(this.progressWith(this.options.secrets));
+    const running = chatBlocker(this.progressWith(this.options.secrets, []));
     if (running !== "engine") return running;
     return chatBlocker(progress) === "engine" ? "engine" : "restart";
   }
 
-  private progressWith(secrets: EvaSecrets): ProgressStep[] {
+  private progressWith(secrets: EvaSecrets, newEngines: readonly EngineName[]): ProgressStep[] {
     const { config } = this.settings.saved();
     const secretsSet = {
       claudeOauthToken: secrets.claudeOauthToken !== undefined,
@@ -1665,7 +1695,7 @@ export class Eva {
     // A saved but empty folder holds no vault yet, as after a failed clone: the step offers it again.
     const vaultReady = vaultPath !== null && holdsFiles(vaultPath);
     const folders = engineFolders(this.options.paths);
-    const found = new Set(this.options.engines.map((engine) => engine.name));
+    const found = new Set([...this.options.engines.map((engine) => engine.name), ...newEngines]);
     const loggedIn = {
       "claude-code": secretsSet.claudeOauthToken || claudeLoggedIn(folders.claude),
       pi: piLoginState(folders.piAgent) === "ok",

@@ -151,7 +151,7 @@ function engineStep(input: ProgressInput, make: Make): ProgressStep {
       "engine",
       "An AI engine",
       "missing",
-      "Run `eva setup` on Eva's computer: it installs Claude Code and pi.",
+      "Eva found no engine program on this machine. Open Settings, AI engines, on Eva's page, and press Install Claude Code.",
       input.defaultEngine,
     );
   return make(

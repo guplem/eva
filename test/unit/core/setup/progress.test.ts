@@ -98,7 +98,7 @@ describe("setupProgress", () => {
     expect(step(piOnly, "engine")).toMatchObject({ state: "done", check: "pi" });
   });
 
-  test("with no engine program, the step says that setup installs them", () => {
+  test("with no engine program, the step points to the Install button on the page", () => {
     const none: ProgressInput = {
       ...fresh,
       engines: [
@@ -106,7 +106,8 @@ describe("setupProgress", () => {
         { name: "pi", found: false, loggedIn: false },
       ],
     };
-    expect(step(none, "engine")?.detail).toContain("eva setup");
+    expect(step(none, "engine")?.detail).toContain("Install Claude Code");
+    expect(step(none, "engine")?.detail).not.toContain("eva setup");
   });
 
   test("a missing vault leads to this page, not to a terminal", () => {

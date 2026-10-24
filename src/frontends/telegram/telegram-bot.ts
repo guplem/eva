@@ -300,9 +300,21 @@ export class TelegramBot {
         await this.handle(update);
       } catch (error) {
         this.options.logger?.log("error", "A Telegram update failed.", { reason: String(error) });
+        await this.replyToFailedUpdate(update, error);
       }
     }
     return 0;
+  }
+
+  /**
+   * Every problem must reach the phone, so a failed message or button gets the reason. Only the
+   * paired chat hears it: the bot is private (lessons 63, 127). `send` logs its own failure.
+   */
+  private async replyToFailedUpdate(update: TelegramUpdate, error: unknown): Promise<void> {
+    const message = update.message ?? update.callback_query?.message;
+    const senderId = update.message === undefined ? update.callback_query?.from?.id : update.message.from?.id;
+    if (message?.chat.id !== this.allowedChatId || !this.isAllowedSender(senderId)) return;
+    await this.send(message.chat.id, topicOf(message), `The message failed: ${this.describeError(error)}`);
   }
 
   /** Sends an alert to the main chat; before pairing, there is no chat to send it to. */

@@ -37,6 +37,7 @@ function createEva(
   script?: FakeTurnScript,
   runner: ProcessRunner = systemProcessRunner,
   extra: Partial<EvaOptions> = {},
+  vaultPath: string | null = sandbox.root + "/vault",
 ): void {
   engine = new FakeEngine(script);
   eva = new Eva({
@@ -46,7 +47,7 @@ function createEva(
     // The sync tests of the bot use /sync and /conflicts, which run with the setting off too.
     config: {
       ...defaultConfig,
-      vaultPath: sandbox.root + "/vault",
+      vaultPath,
       timeZone: "UTC",
       sync: { ...defaultConfig.sync, enabled: false },
     },
@@ -145,6 +146,18 @@ describe("access (lessons 63, 127)", () => {
     expect(telegram.sentTexts().at(-1)).toContain("Paired");
     telegram.sendText(owner, "now I am in");
     await settle(bot, () => engine.requests.length > 0);
+  });
+
+  test("a message that fails gets a reply with the reason, in its own topic", async () => {
+    eva.stop();
+    createEva(undefined, systemProcessRunner, {}, null);
+    const bot = createBot();
+    telegram.sendText(owner, "hi", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The message failed:")));
+    const reply = telegram.callsTo("sendMessage").at(-1);
+    expect(String(reply?.params["text"])).toContain("Eva needs your vault.");
+    expect(reply?.params["message_thread_id"]).toBe(500);
+    expect(logs.some((log) => log.message === "A Telegram update failed.")).toBe(true);
   });
 });
 

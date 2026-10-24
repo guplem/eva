@@ -5,7 +5,7 @@
 import { useState, type ReactElement } from "react";
 import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
-import { useLeaveGuard } from "./leave-guard.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { TemplateAlignmentCard } from "./TemplateAlignmentCard.tsx";

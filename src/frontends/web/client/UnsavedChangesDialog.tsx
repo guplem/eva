@@ -1,19 +1,26 @@
 /**
- * Asks the person to save or discard the changes of a page before they leave it.
- * `leave-guard.ts` decides when it opens.
+ * Asks the person to save or discard their changes before they lose them. `leave-guard.ts`
+ * decides when it opens. `useLeaveGuard` lets a form hold a guard.
  */
-import { useState, useSyncExternalStore, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { Dialog } from "./ChatPanel.tsx";
-import { answerLeave, isAskingToLeave, subscribeToLeave } from "./leave-guard.ts";
+import {
+  answerLeave,
+  holdLeave,
+  leaveQuestion,
+  subscribeToLeave,
+  type LeaveHold,
+  type LeaveMove,
+} from "./leave-guard.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 
 const ignore = (): void => undefined;
 const stay = (): void => void answerLeave("stay");
 
 export function UnsavedChangesDialog(): ReactElement | null {
-  const asking = useSyncExternalStore(subscribeToLeave, isAskingToLeave);
+  const question = useSyncExternalStore(subscribeToLeave, leaveQuestion);
   const [saving, setSaving] = useState(false);
-  if (!asking) return null;
+  if (question === null) return null;
 
   const save = async (): Promise<void> => {
     setSaving(true);
@@ -27,18 +34,48 @@ export function UnsavedChangesDialog(): ReactElement | null {
   return (
     // While the save runs, Escape and Stay do nothing: the dialog closes when it ends.
     <Dialog label="Unsaved changes" onClose={saving ? ignore : stay} closeLabel="Stay">
-      <h2>Save your changes?</h2>
-      <p>This page has changes that you did not save. Discarded changes are lost.</p>
+      <h2>{question.canSave ? "Save your changes?" : "Discard your changes?"}</h2>
+      <p>You have changes that you did not save. Discarded changes are lost.</p>
       <div className="button-row">
-        <button className="primary" disabled={saving} aria-busy={saving} onClick={() => void save()}>
-          {saving && <ButtonSpinner />}
-          Save and leave
-        </button>
+        {question.canSave && (
+          <button className="primary" disabled={saving} aria-busy={saving} onClick={() => void save()}>
+            {saving && <ButtonSpinner />}
+            Save and {question.move}
+          </button>
+        )}
         <button className="danger" disabled={saving} onClick={() => void answerLeave("discard")}>
-          Discard and leave
+          Discard and {question.move}
         </button>
       </div>
       {saving && <ProgressBar label="Eva saves your changes…" />}
     </Dialog>
   );
+}
+
+/**
+ * Holds a guard while `unsaved` is true. The latest `save` runs, so it sees the latest values.
+ * A null `save` offers no save, for a form whose save would create or act.
+ * Gives a function that asks about this form only, such as before its dialog closes.
+ */
+export function useLeaveGuard(
+  unsaved: boolean,
+  save: (() => Promise<boolean>) | null,
+): (move: () => void, name?: LeaveMove) => void {
+  const latest = useRef(save);
+  latest.current = save;
+  const held = useRef<LeaveHold | null>(null);
+  const canSave = save !== null;
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    const hold = holdLeave(canSave ? () => latest.current?.() ?? Promise.resolve(false) : null);
+    held.current = hold;
+    return () => {
+      hold.release();
+      held.current = null;
+    };
+  }, [unsaved, canSave]);
+  return useCallback((move, name = "close") => {
+    if (held.current === null) move();
+    else held.current.ask(move, name);
+  }, []);
 }

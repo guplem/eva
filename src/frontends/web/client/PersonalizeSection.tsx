@@ -22,7 +22,7 @@ import {
 } from "./cues.ts";
 import { palettes } from "./cue-palettes.ts";
 import { Icon, type IconName } from "./icons.tsx";
-import { useLeaveGuard } from "./leave-guard.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { Card, ChoiceChips, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
 import { SaveButton } from "./SaveButton.tsx";

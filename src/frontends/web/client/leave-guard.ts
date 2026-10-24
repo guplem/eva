@@ -1,18 +1,37 @@
 /**
- * Asks before the person leaves a page with unsaved changes. A form holds the guard while it
- * has a change. Each way out of a page asks first: a link inside the page, the main navigation,
- * the back button, a reload and a closed tab. The person then saves, discards or stays.
+ * Asks before the person loses unsaved changes. A form holds the guard while it has a change.
+ * Each way out of a page asks first: a link inside the page, the main navigation, the back
+ * button, a reload and a closed tab. A form can also ask about its own changes only, such as
+ * when its dialog closes. The person then saves, discards or stays.
  */
-import { useEffect, useRef } from "react";
+/** The move that the question names, as in "Discard and close". */
+export type LeaveMove = "leave" | "close" | "load again";
+
+export interface LeaveQuestion {
+  readonly move: LeaveMove;
+  /** False when a form's save would create or act, such as a push: the question offers no save then. */
+  readonly canSave: boolean;
+}
 
 interface Guard {
-  /** True means that the save worked. */
-  readonly save: () => Promise<boolean>;
+  /** True means that the save worked. Null when the form offers no save. */
+  readonly save: (() => Promise<boolean>) | null;
+}
+
+export interface LeaveHold {
+  readonly release: () => void;
+  /** Asks about this guard only, then makes the move. With the guard released, the move runs at once. */
+  readonly ask: (move: () => void, name: LeaveMove) => void;
+}
+
+interface Waiting {
+  readonly move: () => void;
+  readonly guards: readonly Guard[];
+  readonly question: LeaveQuestion;
 }
 
 const guards = new Set<Guard>();
-/** The move that waits for the person's answer, or null. */
-let waiting: (() => void) | null = null;
+let waiting: Waiting | null = null;
 const listeners = new Set<() => void>();
 /** True while a move that the person allowed runs, so it does not ask again. */
 let passing = false;
@@ -21,12 +40,23 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
-/** Holds a guard until the returned function runs. */
-export function holdLeave(save: () => Promise<boolean>): () => void {
+function ask(move: () => void, asked: readonly Guard[], name: LeaveMove): void {
+  if (passing || asked.length === 0) {
+    move();
+    return;
+  }
+  waiting = { move, guards: asked, question: { move: name, canSave: asked.every((guard) => guard.save !== null) } };
+  notify();
+}
+
+export function holdLeave(save: (() => Promise<boolean>) | null): LeaveHold {
   const guard: Guard = { save };
   guards.add(guard);
-  return () => {
-    guards.delete(guard);
+  return {
+    release: () => {
+      guards.delete(guard);
+    },
+    ask: (move, name) => ask(move, guards.has(guard) ? [guard] : [], name),
   };
 }
 
@@ -36,17 +66,16 @@ export function hasUnsavedChanges(): boolean {
 
 /** Makes the move at once when nothing is unsaved. Otherwise the move waits for the person's answer. */
 export function askToLeave(move: () => void): void {
-  if (passing || guards.size === 0) {
-    move();
-    return;
-  }
-  waiting = move;
-  notify();
+  ask(move, [...guards], "leave");
 }
 
-/** True while a move waits for the person's answer. */
 export function isAskingToLeave(): boolean {
   return waiting !== null;
+}
+
+/** The open question, or null. The same object until the question changes, for `useSyncExternalStore`. */
+export function leaveQuestion(): LeaveQuestion | null {
+  return waiting?.question ?? null;
 }
 
 /** For `useSyncExternalStore`. */
@@ -62,11 +91,11 @@ export function subscribeToLeave(listener: () => void): () => void {
  * the page, and the form shows why. True means that the move ran.
  */
 export async function answerLeave(answer: "save" | "discard" | "stay"): Promise<boolean> {
-  const move = waiting;
-  if (move === null) return false;
+  const asked = waiting;
+  if (asked === null) return false;
   if (answer === "save") {
-    for (const guard of [...guards]) {
-      if (!(await guard.save())) {
+    for (const guard of asked.guards) {
+      if (guard.save === null || !(await guard.save())) {
         waiting = null;
         notify();
         return false;
@@ -76,11 +105,10 @@ export async function answerLeave(answer: "save" | "discard" | "stay"): Promise<
   waiting = null;
   notify();
   if (answer === "stay") return false;
-  // The forms forget their changes only when they close, so the move must not ask again.
-  guards.clear();
+  // Each form releases its guard when it closes or saves. A form that stays open keeps asking.
   passing = true;
   try {
-    move();
+    asked.move();
   } finally {
     passing = false;
   }
@@ -114,11 +142,4 @@ export function watchLeaving(target: LeaveWindow): void {
   target.addEventListener("beforeunload", (event) => {
     if (guards.size > 0) event.preventDefault();
   });
-}
-
-/** Holds a guard while `unsaved` is true. The latest `save` runs, so it sees the latest values. */
-export function useLeaveGuard(unsaved: boolean, save: () => Promise<boolean>): void {
-  const latest = useRef(save);
-  latest.current = save;
-  useEffect(() => (unsaved ? holdLeave(() => latest.current()) : undefined), [unsaved]);
 }

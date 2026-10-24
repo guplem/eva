@@ -270,10 +270,17 @@ export function Dialog({
   readonly children: ReactNode;
 }): ReactElement {
   const close = useRef<HTMLButtonElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     close.current?.focus();
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      // One Escape closes only the top dialog, such as the unsaved changes question over a form.
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      if (dialogs[dialogs.length - 1] !== box.current) return;
+      // The sheets listen on the window, after the document: they must not close too.
+      event.stopPropagation();
+      onClose();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -284,7 +291,7 @@ export function Dialog({
       // A tap on the scrim closes the sheet; a tap inside it does not.
       onClick={sheet ? (event) => event.target === event.currentTarget && onClose() : undefined}
     >
-      <div className={sheet ? "dialog sheet" : "dialog"} role="dialog" aria-modal="true" aria-label={label}>
+      <div ref={box} className={sheet ? "dialog sheet" : "dialog"} role="dialog" aria-modal="true" aria-label={label}>
         {children}
         <div className="message-actions">
           <button ref={close} onClick={onClose}>

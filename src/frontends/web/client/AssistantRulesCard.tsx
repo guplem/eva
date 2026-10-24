@@ -9,7 +9,7 @@ import type { AssistantRulesView } from "../../../core/modes/assistant-rules.ts"
 import { api, ApiError } from "./api.ts";
 import { Dialog } from "./ChatPanel.tsx";
 import { DiffLines } from "./DiffLines.tsx";
-import { useLeaveGuard } from "./leave-guard.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { diffLines, type DiffRow } from "./line-diff.ts";
 import { ProgressBar } from "./Loading.tsx";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";

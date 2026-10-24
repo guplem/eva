@@ -3918,7 +3918,12 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   // The whole file waits while the form has a change, and the form waits for the whole file.
   await file.fill(`${await file.inputValue()}\nDraft line.\n`);
   await expect(page.getByRole("button", { name: "Save details" })).toBeDisabled();
+  // Load again would replace the change, so it asks first.
   await page.getByRole("button", { name: "Load again" }).click();
+  await page
+    .getByRole("dialog", { name: "Unsaved changes" })
+    .getByRole("button", { name: "Discard and load again" })
+    .click();
   await expect(file).not.toHaveValue(/Draft line/);
 
   // Another device saves meanwhile: this page's save is refused, and says so.
@@ -3936,6 +3941,10 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await page.getByRole("button", { name: "Save details" }).click();
   await expect(page.getByRole("alert")).toContainText("The file changed since you opened it");
   await page.getByRole("button", { name: "Load again" }).click();
+  await page
+    .getByRole("dialog", { name: "Unsaved changes" })
+    .getByRole("button", { name: "Discard and load again" })
+    .click();
   await expect(file).toHaveValue(/From another device/);
   await expect(page.getByLabel("Title")).toHaveValue(`Renamed ${run}`);
 

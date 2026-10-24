@@ -5,19 +5,23 @@ import {
   hasUnsavedChanges,
   holdLeave,
   isAskingToLeave,
+  leaveQuestion,
   subscribeToLeave,
   watchLeaving,
+  type LeaveHold,
   type LeaveWindow,
 } from "../../../../../src/frontends/web/client/leave-guard.ts";
 
-const releases: (() => void)[] = [];
-const hold = (save: () => Promise<boolean> = () => Promise.resolve(true)): void => {
-  releases.push(holdLeave(save));
+const holds: LeaveHold[] = [];
+const hold = (save: (() => Promise<boolean>) | null = () => Promise.resolve(true)): LeaveHold => {
+  const held = holdLeave(save);
+  holds.push(held);
+  return held;
 };
 
 afterEach(async () => {
   await answerLeave("stay");
-  for (const release of releases.splice(0)) release();
+  for (const held of holds.splice(0)) held.release();
 });
 
 describe("askToLeave", () => {
@@ -35,16 +39,58 @@ describe("askToLeave", () => {
     let moved = false;
     askToLeave(() => (moved = true));
     expect(moved).toBe(false);
-    expect(isAskingToLeave()).toBe(true);
+    expect(leaveQuestion()).toEqual({ move: "leave", canSave: true });
     expect(heard).toBe(1);
     stop();
   });
 
   test("a released guard asks no more", () => {
-    const release = holdLeave(() => Promise.resolve(true));
+    const held = holdLeave(() => Promise.resolve(true));
     expect(hasUnsavedChanges()).toBe(true);
-    release();
+    held.release();
     expect(hasUnsavedChanges()).toBe(false);
+  });
+
+  test("a guard with no save hides Save for the whole question", () => {
+    hold();
+    hold(null);
+    askToLeave(() => undefined);
+    expect(leaveQuestion()).toEqual({ move: "leave", canSave: false });
+  });
+});
+
+describe("LeaveHold.ask", () => {
+  test("asks about its own guard only, with the name of the move", async () => {
+    const saved: string[] = [];
+    hold(() => {
+      saved.push("page");
+      return Promise.resolve(true);
+    });
+    const dialog = hold(() => {
+      saved.push("dialog");
+      return Promise.resolve(true);
+    });
+    let closed = false;
+    dialog.ask(() => (closed = true), "close");
+    expect(leaveQuestion()).toEqual({ move: "close", canSave: true });
+    expect(await answerLeave("save")).toBe(true);
+    expect(saved).toEqual(["dialog"]);
+    expect(closed).toBe(true);
+  });
+
+  test("a guard with no save under a page with one still hides Save only for itself", () => {
+    hold(null);
+    const page = hold();
+    page.ask(() => undefined, "load again");
+    expect(leaveQuestion()).toEqual({ move: "load again", canSave: true });
+  });
+
+  test("after its release, the move runs at once", () => {
+    const held = holdLeave(() => Promise.resolve(true));
+    held.release();
+    let moved = false;
+    held.ask(() => (moved = true), "close");
+    expect(moved).toBe(true);
   });
 });
 
@@ -59,18 +105,24 @@ describe("answerLeave", () => {
     expect(hasUnsavedChanges()).toBe(true);
   });
 
-  test("Discard makes the move without a save, and the move asks no more", async () => {
+  test("Discard makes the move without a save, and the move itself asks no more", async () => {
     let saves = 0;
     hold(() => {
       saves++;
       return Promise.resolve(true);
     });
-    let moved = false;
-    askToLeave(() => (moved = true));
+    let inner = false;
+    askToLeave(() => askToLeave(() => (inner = true)));
     expect(await answerLeave("discard")).toBe(true);
-    expect(moved).toBe(true);
+    expect(inner).toBe(true);
     expect(saves).toBe(0);
-    expect(hasUnsavedChanges()).toBe(false);
+  });
+
+  test("Discard keeps each guard until its form releases it, so a form that stays still asks later", async () => {
+    hold();
+    askToLeave(() => undefined);
+    await answerLeave("discard");
+    expect(hasUnsavedChanges()).toBe(true);
   });
 
   test("Save runs every save, then makes the move", async () => {
@@ -98,6 +150,14 @@ describe("answerLeave", () => {
     expect(moved).toBe(false);
     expect(isAskingToLeave()).toBe(false);
     expect(hasUnsavedChanges()).toBe(true);
+  });
+
+  test("Save does nothing for a guard with no save", async () => {
+    hold(null);
+    let moved = false;
+    askToLeave(() => (moved = true));
+    expect(await answerLeave("save")).toBe(false);
+    expect(moved).toBe(false);
   });
 
   test("with no move waiting, an answer does nothing", async () => {

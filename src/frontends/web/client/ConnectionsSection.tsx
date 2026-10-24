@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { api } from "./api.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
-import { useLeaveGuard } from "./leave-guard.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { LoggedIn, reloadAfterSave, type LoginWords } from "./LoggedIn.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { cardId, parseSettingsHash } from "./settings-routes.ts";

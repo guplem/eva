@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, ApiError, type ProjectDetails, type ProjectFile } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
-import { useLeaveGuard } from "./leave-guard.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { BackButton } from "./ProjectPage.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
@@ -76,14 +76,14 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
   const textChanged = loaded !== null && text !== loaded.text;
   /** The save of the part with a change. A hook cannot wait for the load, so the render below sets it. */
   let saveChanges = (): Promise<boolean> => Promise.resolve(false);
-  useLeaveGuard(formChanged || textChanged, () => saveChanges());
+  const askFirst = useLeaveGuard(formChanged || textChanged, () => saveChanges());
 
   const loading = !("version" in file) && file.state === "loading";
   const header = (title: string): ReactElement => (
     <div className="main-header">
       <BackButton label="Back" onClick={onBack} />
       <h1>{title} · Details</h1>
-      <button className="outline" onClick={() => void load()} disabled={busy || loading}>
+      <button className="outline" onClick={() => askFirst(() => void load(), "load again")} disabled={busy || loading}>
         <Icon name="restart" />
         Load again
       </button>

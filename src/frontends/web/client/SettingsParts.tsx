@@ -13,7 +13,7 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
-import { useLeaveGuard } from "./leave-guard.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { restartNote, type Note } from "./notes.ts";

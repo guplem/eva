@@ -1,7 +1,7 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
 import { useState, type ReactElement, type ReactNode } from "react";
 import { api, type PublicSettings } from "./api.ts";
-import { useLeaveGuard } from "./leave-guard.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { PermissionsCard } from "./PermissionsCard.tsx";

@@ -121,6 +121,45 @@ describe("Eva", () => {
     expect(instance.status().vaultAutoSync).toBe(true);
   });
 
+  test("a retry with undo restores the files of the retried answers and pushes the undo (#525)", async () => {
+    // Only the first two answers write: the new answer of the retry writes nothing.
+    const engine = new FakeEngine((request, turnNumber) => {
+      if (turnNumber <= 2) writeFileSync(join(request.startFolder, "Plan.md"), `Plan ${String(turnNumber)}.\n`);
+      return FakeEngine.answer(request, "Done.");
+    });
+    const instance = start(engine, { sync: syncOn });
+    const session = instance.createAssistantSession({ source: "web", model: "default" });
+    await instance.sessions.send(session.id, "Write a plan.");
+    await instance.sessions.send(session.id, "Change the plan.");
+
+    expect(await instance.retryUndoPreview(session.id, 1)).toEqual({ restore: ["Plan.md"], changed: [], notKept: [] });
+    expect(await instance.retryUndoPreview(session.id, 0)).toEqual({ restore: ["Plan.md"], changed: [], notKept: [] });
+
+    const branch = await instance.retryTurn(session.id, 0, true);
+    await instance.idle();
+    expect(existsSync(join(vault, "Plan.md"))).toBe(false);
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).not.toContain("Plan.md");
+    expect(instance.sessions.get(branch.id).turns).toHaveLength(1);
+
+    // A delete of the chats takes their snapshots with them.
+    instance.sessions.delete(branch.id);
+    instance.sessions.delete(session.id);
+    await waitFor(() => sandbox.git(vault, "for-each-ref", "refs/eva") === "");
+  });
+
+  test("a retry without undo keeps the files (#525)", async () => {
+    const engine = new FakeEngine((request, turnNumber) => {
+      if (turnNumber <= 1) writeFileSync(join(request.startFolder, "Plan.md"), "Plan.\n");
+      return FakeEngine.answer(request, "Done.");
+    });
+    const instance = start(engine, { sync: syncOn });
+    const session = instance.createAssistantSession({ source: "web", model: "default" });
+    await instance.sessions.send(session.id, "Write a plan.");
+    await instance.retryTurn(session.id, 0, false);
+    await instance.idle();
+    expect(readFileSync(join(vault, "Plan.md"), "utf-8")).toBe("Plan.\n");
+  });
+
   test("with sync off, an Assistant turn neither pulls nor pushes the vault, but Sync now still works", async () => {
     const engine = new FakeEngine((request) => {
       writeFileSync(join(request.startFolder, "Methods", "New.md"), "A new note.\n");

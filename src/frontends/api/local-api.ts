@@ -80,7 +80,7 @@ const maxVoiceNoteBytes = 25 * 1024 * 1024;
 /** Above the 20 MB that Telegram lets Eva download, so the web chat takes at least what Telegram takes. */
 const maxReceivedFileBytes = 25 * 1024 * 1024;
 const forkSchema = z.object({ atMessageId: z.string().min(1) });
-const retrySchema = z.object({ turnIndex: z.number().int().min(0) });
+const retrySchema = z.object({ turnIndex: z.number().int().min(0), undo: z.boolean().default(false) });
 const renameSchema = z.object({ title: z.string() });
 const seenSchema = z.object({ turnCount: z.number().int().min(0) });
 const archiveSchema = z.object({ archived: z.boolean() });
@@ -540,6 +540,17 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     return json({ input: detail?.input ?? null, output: detail?.output ?? null });
   }
   if (
+    method === "GET" &&
+    parts[0] === "api" &&
+    parts[1] === "sessions" &&
+    parts[2] !== undefined &&
+    parts[3] === "retry-undo" &&
+    parts[4] === undefined
+  ) {
+    const turnIndex = z.coerce.number().int().min(0).parse(url.searchParams.get("turnIndex"));
+    return json(await eva.retryUndoPreview(decodeURIComponent(parts[2]), turnIndex));
+  }
+  if (
     method === "DELETE" &&
     parts[0] === "api" &&
     parts[1] === "sessions" &&
@@ -567,8 +578,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       return json({ stopped: eva.sessions.stop(sessionId) });
     }
     if (action === "retry") {
-      const { turnIndex } = retrySchema.parse(await request.json());
-      return json(await eva.sessions.retry(sessionId, turnIndex));
+      const { turnIndex, undo } = retrySchema.parse(await request.json());
+      return json(await eva.retryTurn(sessionId, turnIndex, undo));
     }
     if (action === "rename") {
       const { title } = renameSchema.parse(await request.json());

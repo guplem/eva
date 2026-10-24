@@ -55,6 +55,6 @@ For each file that an answer changed (the difference between its two snapshots):
 1. **Which later answers?** The issue does not say how forks count. Decision: every turn of the chat tree that ended at or after the retried turn. This follows "every Assistant chat shares the one vault".
 2. **Files that git does not keep.** Listing every ignored file is slow: `Projects/*/repos/` holds whole clones. Decision: track Scratch files and the files that the sync withholds. Other ignored files are not tracked and not named.
 3. **A question with only "not kept" files.** Nothing could be undone, so Eva asks nothing, as with no change (assumption 1).
-4. **Sync off.** The restore still writes the files. The save is skipped, as after a turn.
+4. **Sync off.** Eva runs no git step of her own, so she takes no snapshot, and a retry asks nothing.
 5. **Telegram.** Out of scope (assumption 9).
 6. **Old turns.** Turns from before this change have no snapshot. Their retry asks nothing.

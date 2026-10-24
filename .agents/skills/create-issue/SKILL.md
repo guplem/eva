@@ -11,8 +11,9 @@ An issue says what the person wants. It also shows which parts the person decide
 
 1. **Research first.** Read the related code, docs and issues, so the issue names the real files and behavior. When the request depends on an outside tool or service, read its current documentation. Tell the person what is possible before you ask what they want.
 2. **Look for a duplicate.** Search open and closed issues by meaning, not only by the exact words. Prefer to reopen or comment on a matching issue.
-3. **Settle the open decisions.** List each choice that the request and the code do not settle.
-   - When the person is there, interview them. See [Interview the person](#interview-the-person).
+3. **Settle the open decisions.** List each choice and each gap that the request leaves open.
+   - When the code, the docs or the project goals settle a choice with high confidence, decide it yourself. Do not spend the person's time on it. Write it as an assumption, and name its source, such as a rule in `AGENTS.md` or a pattern in the code.
+   - For each choice that is left, interview the person when they are there. See [Interview the person](#interview-the-person).
    - When nobody is there, choose the most likely meaning, and write it as an assumption.
 4. **Split the work.** Make one issue for each result that a person can check alone. When an issue must wait for another one, write "Blocked by #N" near its top, and set a GitHub "blocked by" link. When no tool can set the link, tell the person.
 5. **Write the title.** Start it with the type, then say the result in plain words:

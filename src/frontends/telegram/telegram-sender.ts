@@ -10,7 +10,8 @@ export const messageLimit = 3_500;
 export const telegramMessageLimit = 4_096;
 export const firstRetryMs = 1_000;
 const sendRetries = 3;
-const maxSendRetryMs = 30_000;
+/** Telegram flood waits are mostly under a minute; a longer wait would hold the poll loop too long. */
+const maxSendRetryMs = 120_000;
 
 export interface TelegramSenderOptions {
   readonly api: TelegramApi;
@@ -101,11 +102,15 @@ export class TelegramSender {
 
 /**
  * The wait before a retry of a sending call, or null when a retry cannot help. A 429 waits what
- * Telegram asks for, up to 30 seconds; a network error (code 0) waits 1, 2, then 4 seconds.
+ * Telegram asks for. Past two minutes it gives up: Telegram refuses any call before the wait ends.
+ * A network error (code 0) waits 1, 2, then 4 seconds.
  */
 function sendRetryMs(error: unknown, retry: number): number | null {
   if (!(error instanceof TelegramError)) return null;
-  if (error.code === 429) return Math.min((error.retryAfterSeconds ?? 1) * 1_000, maxSendRetryMs);
+  if (error.code === 429) {
+    const waitMs = (error.retryAfterSeconds ?? 1) * 1_000;
+    return waitMs > maxSendRetryMs ? null : waitMs;
+  }
   if (error.code === 0) return firstRetryMs * 2 ** retry;
   return null;
 }

@@ -447,13 +447,22 @@ describe("chats", () => {
     expect(logs.some((log) => log.level === "warn")).toBe(true);
   });
 
-  test("a message refused with 429 waits the time Telegram asks for, at most 30 seconds, then goes again", async () => {
+  test("a message refused with 429 waits the whole time Telegram asks for, then goes again", async () => {
     const bot = createBot();
-    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 120", 1, 120);
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 90", 1, 90);
     telegram.sendText(owner, "/help");
     await settle(bot, () => telegram.callsTo("sendMessage").length >= 2);
-    expect(sleeps).toEqual([30_000]);
+    expect(sleeps).toEqual([90_000]);
     expect(telegram.sentTexts()[1]).toBe(telegram.sentTexts()[0]);
+  });
+
+  test("a message refused with a 429 wait past two minutes gives up at once, since an early retry only fails", async () => {
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 600", 1, 600);
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(sleeps).toEqual([]);
+    expect(telegram.callsTo("sendMessage")).toHaveLength(1);
   });
 
   test("a message gives up after three retries", async () => {

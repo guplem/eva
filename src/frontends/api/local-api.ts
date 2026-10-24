@@ -847,7 +847,9 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer, answers } = approvalAnswerSchema.parse(await request.json());
-    eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer, answers);
+    // zod gives an absent text as undefined, and the core type has no undefined value.
+    const fitted = answers?.map(({ selected, other }) => (other === undefined ? { selected } : { selected, other }));
+    eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer, fitted);
     return new Response(null, { status: 204 });
   }
   return json({ error: "Not found." }, 404);

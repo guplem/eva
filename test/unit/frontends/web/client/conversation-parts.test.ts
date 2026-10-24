@@ -7,12 +7,16 @@ import {
   elapsedText,
   engineLabel,
   foldSteps,
+  followsBottom,
   inputFields,
   liveFace,
   missingDetail,
   stepState,
   modelLabel,
-  shownPending,
+  keptPending,
+  restoredText,
+  sendsOnEnter,
+  sentTurnCount,
   stepIcon,
   stepOrigin,
   stepParts,
@@ -187,17 +191,89 @@ describe("chipLock", () => {
   });
 });
 
-describe("shownPending", () => {
-  test("shows the sent text while the stored turns are the ones from before the send", () => {
-    expect(shownPending({ text: "Hello", turnCount: 2 }, 2)).toBe("Hello");
+describe("keptPending", () => {
+  const texts = (pending: readonly { text: string }[]): string[] => pending.map((message) => message.text);
+
+  test("keeps the sent text while the stored turns are the ones from before the send", () => {
+    expect(texts(keptPending([{ text: "Hello", turnCount: 2 }], 2))).toEqual(["Hello"]);
   });
 
-  test("hides the sent text once its stored turn arrives, before any effect clears it", () => {
-    expect(shownPending({ text: "Hello", turnCount: 2 }, 3)).toBeNull();
+  test("drops the sent text once its stored turn arrives, before any effect clears it", () => {
+    expect(keptPending([{ text: "Hello", turnCount: 2 }], 3)).toEqual([]);
   });
 
-  test("shows nothing when nothing waits", () => {
-    expect(shownPending(null, 0)).toBeNull();
+  test("keeps a message sent during a turn when that turn is stored, and drops it with its own turn", () => {
+    const running = [
+      { text: "First", turnCount: 2 },
+      { text: "Queued", turnCount: sentTurnCount(2, true) },
+    ];
+    expect(texts(keptPending(running, 2))).toEqual(["First", "Queued"]);
+    expect(texts(keptPending(running, 3))).toEqual(["Queued"]);
+    expect(keptPending(running, 4)).toEqual([]);
+  });
+});
+
+describe("sentTurnCount", () => {
+  test("waits for the next stored turn when no turn runs, since Eva gathers such messages into it", () => {
+    expect(sentTurnCount(2, false)).toBe(2);
+  });
+
+  test("waits for one more stored turn while a turn runs, since the running turn is stored first", () => {
+    expect(sentTurnCount(2, true)).toBe(3);
+  });
+});
+
+describe("followsBottom", () => {
+  const place = (top: number): { top: number; height: number; visible: number } => ({
+    top,
+    height: 2_000,
+    visible: 500,
+  });
+
+  test("stops following as soon as the person scrolls up, even near the bottom", () => {
+    expect(followsBottom(1_500, place(1_490))).toBe(false);
+  });
+
+  test("follows again once the person scrolls back near the bottom", () => {
+    expect(followsBottom(1_300, place(1_450))).toBe(true);
+  });
+
+  test("does not follow while the person scrolls down far from the bottom", () => {
+    expect(followsBottom(500, place(800))).toBe(false);
+  });
+
+  test("follows when shorter content pulls the view up to the very bottom", () => {
+    expect(followsBottom(1_800, place(1_500))).toBe(true);
+  });
+});
+
+describe("sendsOnEnter", () => {
+  const key = { key: "Enter", shiftKey: false, isComposing: false, keyCode: 13 };
+
+  test("sends on Enter with a keyboard", () => {
+    expect(sendsOnEnter(key, false)).toBe(true);
+  });
+
+  test("keeps Shift+Enter and any Enter on a touch screen for a new line", () => {
+    expect(sendsOnEnter({ ...key, shiftKey: true }, false)).toBe(false);
+    expect(sendsOnEnter(key, true)).toBe(false);
+  });
+
+  test("leaves an Enter that ends an IME composition to the input method", () => {
+    expect(sendsOnEnter({ ...key, isComposing: true }, false)).toBe(false);
+    // Safari ends the composition before its keydown, and marks that key with the code 229.
+    expect(sendsOnEnter({ ...key, keyCode: 229 }, false)).toBe(false);
+  });
+});
+
+describe("restoredText", () => {
+  test("puts the failed message back in an empty box", () => {
+    expect(restoredText("Hello", "")).toBe("Hello");
+    expect(restoredText("Hello", "  \n")).toBe("Hello");
+  });
+
+  test("keeps the text typed during the send after the failed message", () => {
+    expect(restoredText("Hello", "And more")).toBe("Hello\n\nAnd more");
   });
 });
 

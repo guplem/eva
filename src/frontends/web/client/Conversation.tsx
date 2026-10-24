@@ -23,8 +23,10 @@ import {
   composerPlaceholder,
   elapsedText,
   foldSteps,
+  followsBottom,
+  keptPending,
   liveFace,
-  shownPending,
+  sentTurnCount,
   type PendingMessage,
 } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
@@ -40,8 +42,6 @@ import { toWebHtml } from "./web-format.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 
-/** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
-const stickToBottomPx = 80;
 /** How long a Copy button says "Copied". */
 const copiedMs = 2_000;
 /** The voice notes of this tab, so a sent message can play what the person said. */
@@ -90,6 +90,8 @@ export function Conversation({
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
+  // Each render scrolls down while the view follows, so only a move up tells that the person reads.
+  const lastTop = useRef(0);
 
   // A layout effect, so it runs before the scroll to a picked turn in the same commit.
   useLayoutEffect(() => {
@@ -119,7 +121,12 @@ export function Conversation({
       ref={scroller}
       onScroll={(event) => {
         const element = event.currentTarget;
-        isAtBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < stickToBottomPx;
+        isAtBottom.current = followsBottom(lastTop.current, {
+          top: element.scrollTop,
+          height: element.scrollHeight,
+          visible: element.clientHeight,
+        });
+        lastTop.current = element.scrollTop;
       }}
     >
       {tree.length > 1 && (
@@ -177,8 +184,8 @@ function Branch({
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
   // The New chat page sent this message before the chat opened here, so the chat starts with it.
-  const [sent, setSent] = useState<PendingMessage | null>(
-    firstMessage === null ? null : { text: firstMessage, turnCount: 0 },
+  const [sent, setSent] = useState<readonly PendingMessage[]>(
+    firstMessage === null ? [] : [{ text: firstMessage, turnCount: 0 }],
   );
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<PathStep<SessionRecord> | "running" | null>(null);
@@ -190,38 +197,40 @@ function Branch({
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
   const showError = useShowError();
-  const pending = shownPending(sent, turnCount);
+  const pending = keptPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
   /**
    * True once this send's turn sent a step. Its end removes the live steps before the list
    * brings the stored answer, so the working card must not come back in that gap.
    */
   const [sawLiveSteps, setSawLiveSteps] = useState(false);
-  const working = liveSteps !== undefined || (pending !== null && !sawLiveSteps);
+  const working = liveSteps !== undefined || (pending.length > 0 && !sawLiveSteps);
   const startedAt = useStartTime(working);
 
-  // Only a new stored turn clears the message. The first render must keep the message of the New chat page.
-  const storedTurns = useRef(turnCount);
+  // Only the stored turn of a message clears it. A message sent during a turn outlives that turn.
   useEffect(() => {
-    if (storedTurns.current === turnCount) return;
-    storedTurns.current = turnCount;
-    setSent(null);
+    setSent((current) => {
+      const kept = keptPending(current, turnCount);
+      return kept.length === current.length ? current : kept;
+    });
   }, [turnCount]);
   useEffect(() => {
     if (liveSteps !== undefined) setSawLiveSteps(true);
   }, [liveSteps]);
+  const turnEnd = useTurnEndNotice(liveSteps !== undefined);
   const usageLimit = live.usageLimits[session.id];
   const notes = live.notes[session.id] ?? [];
 
   const send = async (message: string, recording?: string): Promise<boolean> => {
     if (recording !== undefined) recordings.keep(session.id, message, recording);
-    setSent({ text: message, turnCount });
+    const entry = { text: message, turnCount: sentTurnCount(turnCount, liveSteps !== undefined) };
+    setSent((current) => [...current, entry]);
     setSawLiveSteps(false);
     try {
       await api.send(session.id, message);
       return true;
     } catch (caught) {
-      setSent(null);
+      setSent((current) => current.filter((candidate) => candidate !== entry));
       showError(caught);
       return false;
     }
@@ -299,10 +308,32 @@ function Branch({
           </div>
         );
       })}
-      {pending !== null && <UserMessage text={pending} recording={recordings.find(session.id, pending)} />}
+      {pending
+        .filter((message) => message.turnCount === turnCount)
+        .map((message, index) => (
+          <UserMessage
+            key={`sent-${String(index)}`}
+            text={message.text}
+            recording={recordings.find(session.id, message.text)}
+          />
+        ))}
+      {/* A live region on the streaming text would read the whole answer again at each token. */}
+      <span className="visually-hidden" role="status">
+        {turnEnd}
+      </span>
       {working && (
         <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
       )}
+      {/* A message sent during a turn waits for that turn to end, so it shows below the running answer. */}
+      {pending
+        .filter((message) => message.turnCount > turnCount)
+        .map((message, index) => (
+          <UserMessage
+            key={`queued-${String(index)}`}
+            text={message.text}
+            recording={recordings.find(session.id, message.text)}
+          />
+        ))}
       {waiting.length > 0 && (
         <ApprovalRequests approvals={waiting} place={approvalPlace(session)} onAnswer={approvals.onAnswer} />
       )}
@@ -334,7 +365,7 @@ function Branch({
       )}
       {session.parentId === null &&
         turnCount === 0 &&
-        pending === null &&
+        pending.length === 0 &&
         !working &&
         (blocker !== null ? (
           // A project chat needs the engine and the vault too.
@@ -451,6 +482,8 @@ function AnswerBody({
   const { listed, lastMessage } = foldSteps(steps);
   const canShowWhole = lastMessage !== undefined && wholeAnswer !== lastMessage.text;
   const body = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  // Each streamed token and each clock tick render every answer, so parse only a changed text.
+  const html = useMemo(() => toWebHtml(body), [body]);
   return (
     <>
       <StepFold
@@ -462,11 +495,7 @@ function AnswerBody({
       />
       {body !== "" && (
         // toWebHtml escapes all text and adds only its own tags, so the HTML is safe.
-        <div
-          className="answer-body"
-          aria-live={live ? "polite" : undefined}
-          dangerouslySetInnerHTML={{ __html: toWebHtml(body) }}
-        />
+        <div className="answer-body" dangerouslySetInnerHTML={{ __html: html }} />
       )}
       {canShowWhole && (
         <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
@@ -517,6 +546,21 @@ function LiveAnswer({
       </div>
     </EvaMessage>
   );
+}
+
+/**
+ * The words that a screen reader says once when a turn ends, or "". A new turn clears them, so the
+ * same words at the next end are a change that the reader says again.
+ */
+function useTurnEndNotice(turnRunning: boolean): string {
+  const [notice, setNotice] = useState("");
+  const wasRunning = useRef(turnRunning);
+  useEffect(() => {
+    if (wasRunning.current === turnRunning) return;
+    wasRunning.current = turnRunning;
+    setNotice(turnRunning ? "" : "The turn ended.");
+  }, [turnRunning]);
+  return notice;
 }
 
 /** When the page first saw the running turn, with a render each second while it runs. */

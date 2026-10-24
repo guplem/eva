@@ -18,12 +18,15 @@ import {
   effortName,
   engineLabel,
   modelLabel,
+  restoredText,
+  sendsOnEnter,
 } from "./conversation-parts.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { setupBlock } from "./new-chat.ts";
+import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType } from "./voice-notes.ts";
 
@@ -33,7 +36,7 @@ const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns">;
 
 /** The unsent text of each chat in this tab, by its draft key. */
-const unsentTexts = new Map<string, string>();
+const unsentTexts = new UnsentTexts(() => window.sessionStorage);
 
 /** How the chip changes the engine and the model of a chat that has no turn yet, and the effort of any chat. */
 export interface ChatChoices {
@@ -84,12 +87,12 @@ export function Composer({
   placeholder = composerPlaceholder(null),
   draftKey,
 }: ComposerProps): ReactElement {
-  const [text, setTypedText] = useState(() => (draftKey === undefined ? "" : (unsentTexts.get(draftKey) ?? "")));
+  const [text, setTypedText] = useState(() => (draftKey === undefined ? "" : unsentTexts.get(draftKey)));
+  // A send awaits the core, so its failure reads the text typed since then here, not from its closure.
+  const typed = useRef(text);
   const setText = (value: string): void => {
-    if (draftKey !== undefined) {
-      if (value === "") unsentTexts.delete(draftKey);
-      else unsentTexts.set(draftKey, value);
-    }
+    if (draftKey !== undefined) unsentTexts.set(draftKey, value);
+    typed.current = value;
     setTypedText(value);
   };
   const [sending, setSending] = useState(false);
@@ -97,7 +100,7 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const voice = useVoiceNote(async (heard, recording) => {
     // The person must not lose what they said.
-    if (!(await onSend(heard, recording))) setText(heard);
+    if (!(await onSend(heard, recording))) setText(restoredText(heard, typed.current));
   });
 
   const uploading = files.attachments.some((attachment) => attachment.note === null);
@@ -114,7 +117,7 @@ export function Composer({
     files.set([]);
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
-      setText(text);
+      setText(restoredText(text, typed.current));
       files.set(attached);
     }
     setSending(false);
@@ -170,8 +173,14 @@ export function Composer({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
-            // On a touch screen, Enter starts a new line; the Send button sends.
-            if (event.key === "Enter" && !event.shiftKey && !isTouchScreen()) {
+            const press = {
+              key: event.key,
+              shiftKey: event.shiftKey,
+              isComposing: event.nativeEvent.isComposing,
+              // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's Enter only with this code.
+              keyCode: event.keyCode,
+            };
+            if (sendsOnEnter(press, isTouchScreen())) {
               event.preventDefault();
               void send();
             }

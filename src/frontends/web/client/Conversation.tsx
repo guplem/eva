@@ -217,6 +217,7 @@ function Branch({
   useEffect(() => {
     if (liveSteps !== undefined) setSawLiveSteps(true);
   }, [liveSteps]);
+  const turnEnd = useTurnEndNotice(liveSteps !== undefined);
   const usageLimit = live.usageLimits[session.id];
   const notes = live.notes[session.id] ?? [];
 
@@ -316,6 +317,10 @@ function Branch({
             recording={recordings.find(session.id, message.text)}
           />
         ))}
+      {/* A live region on the streaming text would read the whole answer again at each token. */}
+      <span className="visually-hidden" role="status">
+        {turnEnd}
+      </span>
       {working && (
         <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
       )}
@@ -490,11 +495,7 @@ function AnswerBody({
       />
       {body !== "" && (
         // toWebHtml escapes all text and adds only its own tags, so the HTML is safe.
-        <div
-          className="answer-body"
-          aria-live={live ? "polite" : undefined}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <div className="answer-body" dangerouslySetInnerHTML={{ __html: html }} />
       )}
       {canShowWhole && (
         <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
@@ -545,6 +546,21 @@ function LiveAnswer({
       </div>
     </EvaMessage>
   );
+}
+
+/**
+ * The words that a screen reader says once when a turn ends, or "". A new turn clears them, so the
+ * same words at the next end are a change that the reader says again.
+ */
+function useTurnEndNotice(turnRunning: boolean): string {
+  const [notice, setNotice] = useState("");
+  const wasRunning = useRef(turnRunning);
+  useEffect(() => {
+    if (wasRunning.current === turnRunning) return;
+    wasRunning.current = turnRunning;
+    setNotice(turnRunning ? "" : "The turn ended.");
+  }, [turnRunning]);
+  return notice;
 }
 
 /** When the page first saw the running turn, with a render each second while it runs. */

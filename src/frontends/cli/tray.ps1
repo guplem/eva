@@ -99,11 +99,14 @@ $icons = @{}
 function Show-View($view) {
   $face = [string]$view.face
   if (-not $icons.ContainsKey($face)) { $icons[$face] = New-FaceIcon $face }
-  $notifyIcon.Icon = $icons[$face]
-  $notifyIcon.Text = [string]$view.tooltip
+  # Each change of a visible icon is a call to the taskbar, which can wait for seconds when the
+  # taskbar is busy. So only a real change makes one.
+  if (-not [object]::ReferenceEquals($notifyIcon.Icon, $icons[$face])) { $notifyIcon.Icon = $icons[$face] }
+  $tooltip = [string]$view.tooltip
+  if ($notifyIcon.Text -ne $tooltip) { $notifyIcon.Text = $tooltip }
   $titleItem.Text = [string]$view.title
   $openItem.Enabled = [bool]$view.canOpen
-  $notifyIcon.Visible = $true
+  if (-not $notifyIcon.Visible) { $notifyIcon.Visible = $true }
 }
 
 # Eva writes the newest view to a file. Windows PowerShell never reads a line from the input pipe

@@ -328,7 +328,46 @@ describe.if(process.platform === "win32")("tray.ps1 on Windows", () => {
     expect(result.exitCode).toBe(0);
   }, 60_000);
 
-  test("the script shows each view from the file, and ends with no other error when the file goes", async () => {
+  test("the script draws each face", async () => {
+    const script = Buffer.from(trayCommand(systemRoot).at(-1) ?? "", "base64").toString("utf16le");
+    const file = join(folder, "tray.ps1");
+    writeFileSync(file, script);
+    // Runs only the drawing parts of the script, with no tray: the taskbar of a test runner is slow.
+    const check = join(folder, "draw.ps1");
+    writeFileSync(
+      check,
+      [
+        "$ErrorActionPreference = 'Stop'",
+        "Add-Type -AssemblyName System.Drawing",
+        "$tokens = $null; $errors = $null",
+        "$ast = [System.Management.Automation.Language.Parser]::ParseFile($env:EVA_TRAY_FILE, [ref]$tokens, [ref]$errors)",
+        "$names = @('Draw-Eye', 'Draw-Cross', 'Draw-Eyes', 'New-FaceIcon')",
+        "$colours = @('$visorTop', '$visorBottom', '$eyeColour')",
+        "$parts = $ast.FindAll({ param($node) ($node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -contains $node.Name) -or ($node -is [System.Management.Automation.Language.AssignmentStatementAst] -and $colours -contains $node.Left.Extent.Text) }, $false)",
+        "foreach ($part in $parts) { . ([scriptblock]::Create($part.Extent.Text)) }",
+        "foreach ($face in $env:EVA_TRAY_FACES.Split(',')) { $icon = New-FaceIcon $face; [Console]::Out.WriteLine(\"$face $($icon.Width)\") }",
+      ].join("\r\n"),
+    );
+    const result = await systemProcessRunner.run(
+      [
+        trayCommand(systemRoot)[0] ?? "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        check,
+      ],
+      {
+        cwd: folder,
+        environment: { ...environment, EVA_TRAY_FILE: file, EVA_TRAY_FACES: trayFaces.join(",") },
+        timeoutMs: 60_000,
+      },
+    );
+    expect(`${result.stdout}${result.stderr}`.trim().split(/\r?\n/)).toEqual(trayFaces.map((face) => `${face} 32`));
+  }, 60_000);
+
+  test("the script shows a view from the file, and ends with no other error when the file goes", async () => {
     // The trace shows how far the script got, if it fails.
     const child = systemLineProcessStarter(trayCommand(systemRoot), {
       cwd: folder,
@@ -341,26 +380,32 @@ describe.if(process.platform === "win32")("tray.ps1 on Windows", () => {
     });
     const count = (text: string): number => child.stderrTail().split(text).length - 1;
     const report = (): string => `exit code ${String(exitCode)}, error output:\n${child.stderrTail()}`;
-    // One deadline for all the waits: the first start of PowerShell can take seconds.
-    const deadline = Date.now() + 60_000;
+    // One deadline for all the waits: a test runner's taskbar can take seconds for each change.
+    const deadline = Date.now() + 120_000;
     const waitUntil = async (done: () => boolean): Promise<void> => {
       while (!done() && exitCode === null && Date.now() < deadline) await Bun.sleep(100);
       if (!done()) throw new Error(`The tray script did not get there. ${report()}`);
     };
-    for (const [index, face] of trayFaces.entries()) {
-      const view = JSON.stringify({ face, tooltip: "Eva (example)\nA test…", title: "Eva (example)", canOpen: true });
+    try {
+      const view = JSON.stringify({
+        face: "neutral",
+        tooltip: "Eva (example)\nA test…",
+        title: "Eva (example)",
+        canOpen: true,
+      });
       // A write fails while the script reads the file: it goes again.
       await waitUntil(() => child.publish(view));
-      await waitUntil(() => count("trace: view shown") > index);
+      await waitUntil(() => count("trace: view shown") > 0);
+      // A line that is not JSON makes the script write an error, and the script runs on.
+      await waitUntil(() => child.publish("not json"));
+      await waitUntil(() => count("could not show a view") > 0);
+    } finally {
+      // A script that still runs would keep the test folder locked.
+      await child.close(30_000);
+      await child.exited;
     }
-    // A line that is not JSON makes the script write an error, and the script runs on.
-    child.publish("not json");
-    await waitUntil(() => count("could not show a view") > 0);
-    await child.close(10_000);
-    await child.exited;
     expect(report()).toStartWith("exit code 0,");
-    expect(count("trace: view shown")).toBe(trayFaces.length);
     expect(report()).toContain("trace: view file removed");
     expect(report()).not.toContain("Exception calling");
-  }, 90_000);
+  }, 180_000);
 });

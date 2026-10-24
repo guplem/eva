@@ -1,9 +1,9 @@
 /**
- * One core process for each instance home (lesson 20). The lock is a
- * file that holds the owner's pid and, on Linux, the boot id. It is created exclusively,
+ * One core process for each instance home (lesson 20). The lock is a file that holds the
+ * owner's pid, the boot id on Linux, and the uptime on Windows. It is created exclusively,
  * and a lock whose owner no longer runs is taken over, so a crash never blocks the next start.
  */
-import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { uptime } from "node:os";
 import { EvaError } from "../../shared/errors.ts";
 
@@ -15,8 +15,8 @@ export interface InstanceLock {
 export interface LockProbe {
   /** This boot's id, or null where the platform gives none. */
   readonly bootId: string | null;
-  /** When this boot started, in milliseconds. By default, Eva reads it from the uptime on Windows only. */
-  readonly bootTimeMs?: number;
+  /** The seconds since this boot, or null to ignore them. By default, `readUptime` on this platform. */
+  readonly uptimeSeconds?: number | null;
   readonly isProcessAlive: (pid: number) => boolean;
 }
 
@@ -27,13 +27,10 @@ export interface LockOwner extends LockProbe {
 interface LockHolder {
   readonly pid: number;
   readonly bootId: string | null;
-  /** When the lock file was written. */
-  readonly writtenAtMs: number;
+  readonly uptimeSeconds: number | null;
 }
 
 const linuxBootIdPath = "/proc/sys/kernel/random/boot_id";
-/** A clock correction after the boot can move the boot time later; this margin keeps a live lock. */
-const clockChangeMarginMs = 2 * 60_000;
 
 export function acquireInstanceLock(lockPath: string, owner: LockOwner): InstanceLock {
   if (!tryCreate(lockPath, owner)) {
@@ -81,6 +78,14 @@ export function readBootId(platform: NodeJS.Platform, bootIdPath: string = linux
   }
 }
 
+/**
+ * The seconds since this boot on Windows, which gives no boot id; null elsewhere. The uptime
+ * does not follow the wall clock, so a clock change never makes a live lock look stale.
+ */
+export function readUptime(platform: NodeJS.Platform, read: () => number = uptime): number | null {
+  return platform === "win32" ? read() : null;
+}
+
 /** The pid of the Eva that holds the lock now, or null when none runs. */
 export function runningInstancePid(lockPath: string, probe: LockProbe): number | null {
   const holder = readHolder(lockPath);
@@ -90,29 +95,31 @@ export function runningInstancePid(lockPath: string, probe: LockProbe): number |
 /**
  * After a reboot, an unrelated process can have the old pid. The boot id tells such a lock
  * apart: without this check, Eva exits with code 3 and systemd never starts her again.
- * Where a side has no boot id, such as on Windows, a lock file older than this boot is stale.
+ * Without a boot id, an uptime lower than the lock's own is possible only after a reboot.
  */
 function isHolderRunning(holder: LockHolder, probe: LockProbe): boolean {
-  if (holder.bootId !== null && probe.bootId !== null) {
-    if (holder.bootId !== probe.bootId) return false;
-  } else {
-    const bootTime = probe.bootTimeMs ?? windowsBootTimeMs();
-    if (bootTime !== null && holder.writtenAtMs < bootTime - clockChangeMarginMs) return false;
-  }
+  if (holder.bootId !== null && probe.bootId !== null) return holder.bootId === probe.bootId && alive(holder, probe);
+  const now = probeUptime(probe);
+  if (holder.uptimeSeconds !== null && now !== null && now < holder.uptimeSeconds) return false;
+  return alive(holder, probe);
+}
+
+function alive(holder: LockHolder, probe: LockProbe): boolean {
   return probe.isProcessAlive(holder.pid);
 }
 
-/**
- * Only the Windows uptime counts the time in sleep. On Linux the uptime leaves sleep out, so a
- * live lock from before a suspend would look older than the boot.
- */
-function windowsBootTimeMs(): number | null {
-  return process.platform === "win32" ? Date.now() - uptime() * 1000 : null;
+function probeUptime(probe: LockProbe): number | null {
+  return probe.uptimeSeconds === undefined ? readUptime(process.platform) : probe.uptimeSeconds;
 }
 
 function tryCreate(lockPath: string, owner: LockOwner): boolean {
   try {
-    const content = owner.bootId === null ? String(owner.pid) : `${String(owner.pid)}\n${owner.bootId}\n`;
+    const uptimeSeconds = probeUptime(owner);
+    // The boot id stays on the second line, where an older Eva reads it.
+    const content =
+      owner.bootId === null && uptimeSeconds === null
+        ? String(owner.pid)
+        : `${String(owner.pid)}\n${owner.bootId ?? ""}\n${uptimeSeconds === null ? "" : String(uptimeSeconds)}\n`;
     writeFileSync(lockPath, content, { flag: "wx" });
     return true;
   } catch {
@@ -122,11 +129,17 @@ function tryCreate(lockPath: string, owner: LockOwner): boolean {
 
 function readHolder(lockPath: string): LockHolder | null {
   try {
-    const [pidLine = "", bootIdLine = ""] = readFileSync(lockPath, "utf-8").split("\n");
+    const [pidLine = "", bootIdLine = "", uptimeLine = ""] = readFileSync(lockPath, "utf-8").split("\n");
     const pid = Number.parseInt(pidLine.trim(), 10);
     if (!Number.isSafeInteger(pid) || pid <= 0) return null;
     const bootId = bootIdLine.trim();
-    return { pid, bootId: bootId.length > 0 ? bootId : null, writtenAtMs: statSync(lockPath).mtimeMs };
+    // An older lock has no uptime, and counts as live while its pid runs.
+    const uptimeSeconds = Number.parseFloat(uptimeLine.trim());
+    return {
+      pid,
+      bootId: bootId.length > 0 ? bootId : null,
+      uptimeSeconds: Number.isFinite(uptimeSeconds) ? uptimeSeconds : null,
+    };
   } catch {
     return null;
   }

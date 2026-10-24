@@ -31,6 +31,8 @@ const turnSchema = z.object({
   steps: z.array(stepSchema).catch([]),
   /** How many early steps the turn dropped to keep the list short. */
   omittedSteps: z.number().int().min(0).catch(0),
+  /** The turn's notices, such as an MCP server that did not start (issue 157). A turn from before the field has none. */
+  notes: z.array(z.string()).catch([]),
   /** How full the context was after the turn, or null when the engine did not say. */
   contextTokens: z.number().int().min(0).nullable().catch(null),
   /** The size of the context window of the model that answered, or null when the engine did not say. */

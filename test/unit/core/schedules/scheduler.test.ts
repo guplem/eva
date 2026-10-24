@@ -553,6 +553,26 @@ describe("Scheduler", () => {
     expect(logged).toContain("error A scheduled prompt failed.");
   });
 
+  test("a failure still counts when the person edits the schedule while its prompt runs", async () => {
+    writeSchedules([morning]);
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    let endTurn = (_failure: string | null): void => undefined;
+    heldSend = new Promise((resolve) => {
+      endTurn = resolve;
+    });
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    // The new card skips the slot that is due now, so the last fired slot moves.
+    writeSchedules([{ ...morning, at: "07:40" }]);
+    clock = new Date("2026-07-01T05:45:00Z");
+    await scheduler.tick();
+    endTurn("You hit the usage limit.");
+    await Bun.sleep(0);
+    expect(firings).toContainEqual({ name: "Morning", failure: "You hit the usage limit." });
+    expect(scheduler.list().schedules[0]?.lastRun).toEqual({ slot: "2026-07-01T07:30", failed: true });
+  });
+
   test("a failed run is recorded even when its report throws", async () => {
     writeSchedules([morning]);
     failingSends = true;

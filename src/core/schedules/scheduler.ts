@@ -371,7 +371,8 @@ export class Scheduler {
   private promptFailed(schedule: Schedule, slot: string, failure: string): void {
     this.options.logger?.log("error", "A scheduled prompt failed.", { scheduleId: schedule.id, reason: failure });
     // A turn can end after the next slot fired. That newer run owns the result and the alert now.
-    if (this.state.peek(schedule.id)?.lastFired !== slot) return;
+    // Not lastFired: a new setup card moves it to a skipped slot, which is no run.
+    if (this.state.peek(schedule.id)?.lastResult?.slot !== slot) return;
     // The alert first: a state file that cannot be written must not hide the failure from the phone.
     try {
       this.options.reportFiring?.(schedule, failure);

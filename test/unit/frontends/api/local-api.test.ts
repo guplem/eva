@@ -832,6 +832,15 @@ describe("routes", () => {
     const retry = await call(`/api/sessions/${session.id}/retry`, { method: "POST", body: { turnIndex: 0 } });
     expect(retry.status).toBe(200);
     expect(await json<{ notice: null }>(retry)).toMatchObject({ notice: null });
+    const preview = await call(`/api/sessions/${session.id}/retry-undo?turnIndex=0`);
+    expect(await json(preview)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
+    const undone = await call(`/api/sessions/${session.id}/retry`, {
+      method: "POST",
+      body: { turnIndex: 0, undo: true },
+    });
+    expect(undone.status).toBe(200);
+    expect((await call(`/api/sessions/${session.id}/retry-undo?turnIndex=x`)).status).toBe(400);
+    expect((await call(`/api/sessions/${session.id}/retry-undo`)).status).toBe(400);
   });
 
   test("a fork or a retry refuses a choice of files that it does not know", async () => {

@@ -36,6 +36,10 @@ class FakeSync {
     this.calls.push("save");
     return Promise.resolve(okState);
   }
+  snapshot(ref: string): Promise<void> {
+    this.calls.push(`snapshot ${ref}`);
+    return Promise.resolve();
+  }
 }
 
 class FakeRunner implements ProcessRunner {
@@ -121,7 +125,7 @@ describe("Assistant mode", () => {
   test("pulls the vault, then joins the base prompt and the person's rules", async () => {
     const sync = new FakeSync();
     const prepared = await assistant(silentRunner, sync).prepare(session());
-    expect(sync.calls).toEqual(["pull"]);
+    expect(sync.calls).toEqual(["pull", "snapshot refs/eva/turns/s1/0/before"]);
     expect(prepared).toMatchObject({
       startFolder: vault,
       appendSystemPrompt: "Base rules.\n\n# You are Eva\n",
@@ -168,6 +172,22 @@ describe("Assistant mode", () => {
   test("no plugin folder when .eva/ has no plugin manifest", async () => {
     rmSync(join(vault, ".eva", ".claude-plugin"), { recursive: true });
     expect((await assistant(silentRunner).prepare(session())).pluginFolders).toEqual([]);
+  });
+
+  test("snapshots the vault after the pull and before the save, under the index of the turn (#525)", async () => {
+    const sync = new FakeSync();
+    const preparer = assistant(silentRunner, sync);
+    const done = { userText: "hi", lastMessageId: "m1", at: "2026-10-14T10:00:00.000Z" };
+    const earlier = session({ turns: [done as SessionRecord["turns"][number]] });
+    await preparer.prepare(earlier);
+    // The turn is in the record when its work ends.
+    await preparer.afterTurn(session({ turns: [...earlier.turns, ...earlier.turns] }), { finished: false });
+    expect(sync.calls).toEqual([
+      "pull",
+      "snapshot refs/eva/turns/s1/1/before",
+      "snapshot refs/eva/turns/s1/1/after",
+      "save",
+    ]);
   });
 
   test("after a turn it saves the vault", async () => {

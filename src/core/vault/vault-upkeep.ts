@@ -2,6 +2,7 @@
  * The vault sync of a running Eva: "sync now", the idle sweep, the timed pull, and the log
  * lines and alert of a sync problem. No step runs under an Assistant turn (lessons 22, 30).
  */
+import { EvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { AlertProblem } from "../alerts/alert-center.ts";
 import { vaultSyncProblem } from "../alerts/problem-rules.ts";
@@ -13,6 +14,7 @@ import type {
   VaultSync,
   VaultSyncState,
 } from "./vault-sync.ts";
+import { emptyUndo, type UndoAnswer, type UndoPreview } from "./vault-snapshots.ts";
 
 export const noVaultState: VaultSyncState = {
   status: "skipped",
@@ -130,6 +132,46 @@ export class VaultUpkeep {
     this.options.logger?.log("info", "A vault conflict got a pick.", { path, choice, found: result.found });
     return { ...result, state: this.logSyncState(result.state) };
   }
+
+  /** Saves the files of the vault under a hidden ref, before and after an Assistant turn. With sync off, Eva runs no git step of her own. */
+  async snapshot(ref: string): Promise<void> {
+    if (this.options.syncEnabled()) await this.options.vaultSync?.snapshot(ref);
+  }
+
+  /** What an undo of these answers would do now, for the question before a retry. */
+  async undoPreview(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
+    // With sync off, Eva runs no git step of her own, so a retry asks nothing.
+    if (!this.options.syncEnabled()) return emptyUndo;
+    return (await this.options.vaultSync?.undoPreview(answers)) ?? emptyUndo;
+  }
+
+  /**
+   * Undoes the file changes of these answers before a retry. It waits for the end of every
+   * Assistant turn, as a pick does: a turn can write the same files. The pull first brings the
+   * remote's changes, so a file that changed there stays. The save then commits the undo.
+   */
+  async undo(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
+    const vaultSync = this.options.vaultSync;
+    if (vaultSync === null || !this.options.syncEnabled()) return emptyUndo;
+    if (this.options.assistantBusy()) throw busyUndo();
+    await this.pull();
+    // A turn can start during the pull.
+    if (this.options.assistantBusy()) throw busyUndo();
+    const result = await vaultSync.undo(answers);
+    this.options.logger?.log("info", "A retry undid the file changes of its answers.", {
+      restored: result.restore.length,
+      changed: result.changed.length,
+      notKept: result.notKept.length,
+    });
+    await this.save();
+    return result;
+  }
+
+  /** Deletes the snapshots of a deleted chat. */
+  async deleteSnapshots(sessionId: string): Promise<void> {
+    await this.options.vaultSync?.deleteSnapshots(sessionId);
+  }
+
   /** Saves changes made outside a turn. It never runs during an Assistant turn (lessons 22, 30). */
   async sweep(): Promise<VaultSyncState["status"]> {
     const vaultSync = this.options.vaultSync;
@@ -192,4 +234,8 @@ export class VaultUpkeep {
     }
     return state;
   }
+}
+
+function busyUndo(): EvaError {
+  return new EvaError("session_busy", "Eva is working in an Assistant chat. Retry again when it ends.");
 }

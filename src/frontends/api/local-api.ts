@@ -84,8 +84,10 @@ const forkSchema = z.object({
   atMessageId: z.string().min(1),
   files: z.enum(["snapshot-clone", "clean-clone", "same-clone"]).optional(),
 });
+/** `undo` restores the vault files of an Assistant chat (#525). `files` chooses the clone files of a Project chat (#523). */
 const retrySchema = z.object({
   turnIndex: z.number().int().min(0),
+  undo: z.boolean().default(false),
   files: z.enum(["undo", "keep", "new-clone"]).optional(),
 });
 const renameSchema = z.object({ title: z.string() });
@@ -548,6 +550,17 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     return json({ input: detail?.input ?? null, output: detail?.output ?? null });
   }
   if (
+    method === "GET" &&
+    parts[0] === "api" &&
+    parts[1] === "sessions" &&
+    parts[2] !== undefined &&
+    parts[3] === "retry-undo" &&
+    parts[4] === undefined
+  ) {
+    const turnIndex = z.string().regex(/^\d+$/).transform(Number).parse(url.searchParams.get("turnIndex"));
+    return json(await eva.retryUndoPreview(decodeURIComponent(parts[2]), turnIndex));
+  }
+  if (
     method === "DELETE" &&
     parts[0] === "api" &&
     parts[1] === "sessions" &&
@@ -575,8 +588,12 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       return json({ stopped: eva.sessions.stop(sessionId) });
     }
     if (action === "retry") {
-      const { turnIndex, files } = retrySchema.parse(await request.json());
-      return json(await eva.retryChat(sessionId, turnIndex, files));
+      const { turnIndex, undo, files } = retrySchema.parse(await request.json());
+      return json(
+        files === undefined
+          ? { session: await eva.retryTurn(sessionId, turnIndex, undo), notice: null }
+          : await eva.retryChat(sessionId, turnIndex, files),
+      );
     }
     if (action === "rename") {
       const { title } = renameSchema.parse(await request.json());

@@ -50,7 +50,7 @@ export function BranchChoiceDialog({
     try {
       const result =
         request.kind === "retry"
-          ? await api.retry(request.sessionId, request.turnIndex, value as "undo" | "keep" | "new-clone")
+          ? await api.retry(request.sessionId, request.turnIndex, { files: value as "undo" | "keep" | "new-clone" })
           : await api.fork(
               request.sessionId,
               request.atMessageId,

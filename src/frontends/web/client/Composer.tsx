@@ -25,6 +25,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { setupBlock } from "./new-chat.ts";
+import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType } from "./voice-notes.ts";
 
@@ -34,7 +35,7 @@ const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns">;
 
 /** The unsent text of each chat in this tab, by its draft key. */
-const unsentTexts = new Map<string, string>();
+const unsentTexts = new UnsentTexts(() => window.sessionStorage);
 
 /** How the chip changes the engine and the model of a chat that has no turn yet, and the effort of any chat. */
 export interface ChatChoices {
@@ -85,12 +86,9 @@ export function Composer({
   placeholder = composerPlaceholder(null),
   draftKey,
 }: ComposerProps): ReactElement {
-  const [text, setTypedText] = useState(() => (draftKey === undefined ? "" : (unsentTexts.get(draftKey) ?? "")));
+  const [text, setTypedText] = useState(() => (draftKey === undefined ? "" : unsentTexts.get(draftKey)));
   const setText = (value: string): void => {
-    if (draftKey !== undefined) {
-      if (value === "") unsentTexts.delete(draftKey);
-      else unsentTexts.set(draftKey, value);
-    }
+    if (draftKey !== undefined) unsentTexts.set(draftKey, value);
     setTypedText(value);
   };
   const [sending, setSending] = useState(false);

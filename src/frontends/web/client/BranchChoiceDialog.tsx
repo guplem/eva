@@ -17,18 +17,16 @@ export type BranchRequest =
   | { readonly kind: "fork"; readonly sessionId: string; readonly atMessageId: string; readonly turn: Turn };
 
 /**
- * Shows the notice of a branch that lost its history, opens a branch in another clone, and loads the
- * chats again. The notice is no failure of the action, but the person must see it.
+ * Loads the chats again, and opens a branch in another clone in its own view. A branch that lost its
+ * history says so in a note of its own view, which stays until its first message, so no toast is needed.
  */
 export function useFinishBranch(onChanged: () => Promise<void>): (result: BranchResult) => Promise<void> {
-  const showError = useShowError();
   return useCallback(
     async (result: BranchResult): Promise<void> => {
-      if (result.notice !== null) showError(new Error(result.notice));
       await onChanged();
       if (movedToOtherClone(result.session)) window.location.hash = `#/chat/${encodeURIComponent(result.session.id)}`;
     },
-    [onChanged, showError],
+    [onChanged],
   );
 }
 
@@ -73,6 +71,7 @@ export function BranchChoiceDialog({
     <Dialog
       label={request.kind === "retry" ? "Retry this answer" : "Fork at this answer"}
       onClose={busy ? ignore : onClose}
+      closeDisabled={busy}
       closeLabel="Cancel"
     >
       <h2>{request.kind === "retry" ? "Retry this answer" : "Fork at this answer"}</h2>

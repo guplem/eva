@@ -79,3 +79,16 @@ export function forkedFromText(chat: Pick<SessionRecord, "forkedFrom">, title: s
   const place = from.clone === null ? "" : ` in ${from.clone}`;
   return `Forked from ${title ?? "a deleted chat"}${place}`;
 }
+
+/**
+ * Why a chat from another clone starts with no conversation, or null. Eva could not take the
+ * conversation along, so the chat continues its parent from a summary. The note stays until the first message.
+ */
+export function historyNotice(
+  chat: Pick<SessionRecord, "forkedFrom" | "continuedFrom" | "firstMessageDraft" | "turns">,
+): string | null {
+  if (chat.forkedFrom === null || chat.continuedFrom === null || chat.turns.length > 0) return null;
+  return chat.firstMessageDraft === null
+    ? "Eva could not take the conversation to this clone, and its summary failed. This chat starts with no history."
+    : "Eva could not take the conversation to this clone, so this chat starts from a summary. Read it in the message box, then send it.";
+}

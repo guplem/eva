@@ -17,7 +17,7 @@ import {
   type PathStep,
 } from "./branch-path.ts";
 import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
-import { forkedFromText } from "./branch-choices.ts";
+import { forkedFromText, historyNotice } from "./branch-choices.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
@@ -240,6 +240,7 @@ function Branch({
   const [branching, setBranching] = useState<BranchRequest | null>(null);
   const closeBranching = useCallback(() => setBranching(null), []);
   const finishBranch = useFinishBranch(onChanged);
+  const historyNote = historyNotice(session);
   const tasks = tasksOf(live.tasks, [session.id]);
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
@@ -296,6 +297,11 @@ function Branch({
             <a href={`#/chat/${encodeURIComponent(forkedFrom.chatId)}`}>{forkedFrom.text}</a>
           )}
         </p>
+      )}
+      {historyNote !== null && (
+        <div className="callout" role="status">
+          {historyNote}
+        </div>
       )}
       {start !== null && (
         <BranchSwitcher point={start} names={names} states={states} label="Branches from the start" onShow={onShow} />

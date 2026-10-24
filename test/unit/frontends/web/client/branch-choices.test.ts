@@ -3,6 +3,7 @@ import {
   defaultChoice,
   forkChoices,
   forkedFromText,
+  historyNotice,
   movedToOtherClone,
   retryChoices,
 } from "../../../../../src/frontends/web/client/branch-choices.ts";
@@ -61,5 +62,22 @@ describe("forkedFromText", () => {
 
   test("is null for a chat that came from no other clone", () => {
     expect(forkedFromText({ forkedFrom: null }, "Any")).toBeNull();
+  });
+});
+
+describe("historyNotice", () => {
+  const forkedFrom = { sessionId: "s1", clone: "clone-0", engineSessionId: null, atMessageId: null };
+
+  test("tells why a chat from another clone starts from a summary, or with nothing", () => {
+    const chat = { forkedFrom, continuedFrom: "s1", firstMessageDraft: "Summary", turns: [] };
+    expect(historyNotice(chat)).toContain("starts from a summary");
+    expect(historyNotice({ ...chat, firstMessageDraft: null })).toContain("starts with no history");
+  });
+
+  test("is null for a chat that kept its history, or after its first message", () => {
+    expect(historyNotice({ forkedFrom, continuedFrom: null, firstMessageDraft: null, turns: [] })).toBeNull();
+    expect(historyNotice({ forkedFrom: null, continuedFrom: "s1", firstMessageDraft: "x", turns: [] })).toBeNull();
+    const turn = {} as never;
+    expect(historyNotice({ forkedFrom, continuedFrom: "s1", firstMessageDraft: "x", turns: [turn] })).toBeNull();
   });
 });

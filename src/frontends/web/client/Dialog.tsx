@@ -9,12 +9,15 @@ export function Dialog({
   onClose,
   sheet = false,
   closeLabel = "Close",
+  closeDisabled = false,
   children,
 }: {
   readonly label: string;
   readonly onClose: () => void;
   /** Such as "Cancel", when the dialog asks the person to confirm something. */
   readonly closeLabel?: string;
+  /** True while the dialog waits for work that it cannot stop, so the close button is off. */
+  readonly closeDisabled?: boolean;
   /** A bottom sheet, which slides up from the bottom of a phone screen. */
   readonly sheet?: boolean;
   readonly children: ReactNode;
@@ -46,7 +49,7 @@ export function Dialog({
       <div ref={box} className={sheet ? "dialog sheet" : "dialog"} role="dialog" aria-modal="true" aria-label={label}>
         {children}
         <div className="message-actions">
-          <button ref={close} onClick={onClose}>
+          <button ref={close} onClick={onClose} disabled={closeDisabled}>
             {closeLabel}
           </button>
         </div>

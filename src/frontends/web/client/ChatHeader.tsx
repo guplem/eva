@@ -138,19 +138,21 @@ export function ChatHeader({
   const isPhone = useIsPhone();
   const archiveItem = useArchiveItem(onArchived ?? onChanged);
   const [renaming, setRenaming] = useState(startWith === "rename");
-  const [infoOpen, setInfoOpen] = useState(false);
+  // The chat whose info sheet is open. A fork that opens another chat closes the sheet (issue 523).
+  const [infoChat, setInfoChat] = useState<string | null>(null);
+  const infoOpen = infoChat === chat.id;
   const [asking, setAsking] = useState(startWith === "delete");
   const [summarizing, setSummarizing] = useState(false);
   const moreButton = useRef<HTMLButtonElement>(null);
   // A chosen menu item leaves the page, so focus goes back to the button that opened the sheet or the question.
   const opener = useRef<HTMLElement | null>(null);
   const closeInfo = useCallback(() => {
-    setInfoOpen(false);
+    setInfoChat(null);
     opener.current?.focus();
   }, []);
   const openInfo = (from: HTMLElement | null): void => {
     opener.current = from;
-    setInfoOpen(true);
+    setInfoChat(chat.id);
   };
 
   const items: MenuItem[] = [{ label: "Rename", icon: "pen", onChoose: () => setRenaming(true) }];

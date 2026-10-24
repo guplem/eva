@@ -309,6 +309,27 @@ describe("VaultSync.save", () => {
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "master")).toContain("note.md");
   });
 
+  test("with no origin/HEAD, asks the remote for its default: master, even when main exists too (#505)", async () => {
+    sandbox.git(vault, "switch", "-q", "-c", "master");
+    sandbox.git(vault, "push", "-q", "-u", "origin", "master");
+    sandbox.git(sandbox.remote, "symbolic-ref", "HEAD", "refs/heads/master");
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "master")).toContain("note.md");
+    expect(remoteFiles()).not.toContain("note.md");
+  });
+
+  test("with no origin/HEAD and an unreachable remote, falls back to the remote's main (#505)", async () => {
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("offline");
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (1 file)");
+  });
+
   test("with no origin/HEAD, stays out of a second branch that has an upstream, while the remote has main (#505)", async () => {
     sandbox.git(vault, "remote", "set-head", "origin", "-d");
     sandbox.git(vault, "switch", "-q", "-c", "ideas");

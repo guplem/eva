@@ -703,9 +703,14 @@ export class VaultSync {
   }
 
   private async defaultBranch(current: string): Promise<string> {
-    const head = await this.git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], localTimeoutMs);
-    const name = head.stdout.trim();
-    if (head.exitCode === 0 && name.startsWith("origin/")) return name.slice("origin/".length);
+    const known = await this.originHead();
+    if (known !== null) return known;
+    // A vault made by hand has no origin/HEAD. Only the remote knows its default branch: a guess
+    // could sync main on one machine and master on another (#505). Once the answer is stored,
+    // this network step never runs again; offline, it fails as the fetch after it would.
+    await this.git(["remote", "set-head", "origin", "--auto"], networkTimeoutMs);
+    const asked = await this.originHead();
+    if (asked !== null) return asked;
     // A vault made with git init and a first push -u has no origin/HEAD, and can use master (#505).
     // The remote's main or master comes first: the upstream of a second branch would pass any branch.
     for (const candidate of ["main", "master"]) {
@@ -722,6 +727,12 @@ export class VaultSync {
     const remote = await this.git(["remote", "get-url", "origin"], localTimeoutMs);
     if (remote.exitCode !== 0 && (current === "main" || current === "master")) return current;
     return "main";
+  }
+
+  private async originHead(): Promise<string | null> {
+    const head = await this.git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], localTimeoutMs);
+    const name = head.stdout.trim();
+    return head.exitCode === 0 && name.startsWith("origin/") ? name.slice("origin/".length) : null;
   }
 
   private async statusEntries(): Promise<StatusEntry[]> {

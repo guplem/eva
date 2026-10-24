@@ -99,6 +99,55 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
   );
 }
 
+/** The less common actions of a part of the page. Escape or a tap outside closes it; the arrow keys move between the items. */
+export function MoreMenu({
+  items,
+  label,
+  toggle,
+}: {
+  readonly items: readonly MenuItem[];
+  /** The name that a screen reader reads for the open menu, such as "Chat actions". */
+  readonly label: string;
+  /** Pass a ref when the caller must move the focus back to the button, for example after a dialog closes. */
+  readonly toggle?: RefObject<HTMLButtonElement | null>;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const own = useRef<HTMLButtonElement>(null);
+  const button = toggle ?? own;
+  const close = (refocus: boolean): void => {
+    setOpen(false);
+    if (refocus) button.current?.focus();
+  };
+  // A press outside keeps the focus where it went. A chosen item unmounts with the focus, so the
+  // button takes it back, unless the item moved it, as a dialog does.
+  const closeList = (refocus: boolean): void => {
+    close(refocus);
+    if (refocus) return;
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) button.current?.focus();
+    });
+  };
+  useDismissOutside(open, root, close);
+
+  return (
+    <div className="more-picker" ref={root}>
+      <button
+        ref={button}
+        className="icon-button"
+        aria-label="More actions"
+        data-tooltip="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((isOpen) => !isOpen)}
+      >
+        <Icon name="more" />
+      </button>
+      {open && <MenuList items={items} label={label} className="more-menu" onClose={closeList} />}
+    </div>
+  );
+}
+
 /** Calls `onDismiss` on a press outside `root` or on Escape, for as long as `open` is true. */
 export function useDismissOutside(
   open: boolean,
@@ -115,7 +164,10 @@ export function useDismissOutside(
     };
     // The list reads Escape too. This one works when a press on the list's edge took the focus away.
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") dismiss.current(true);
+      if (event.key !== "Escape") return;
+      // The page's own Escape, such as the large file view, ignores a key that closed a menu.
+      event.preventDefault();
+      dismiss.current(true);
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);

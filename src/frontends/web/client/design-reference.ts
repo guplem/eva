@@ -314,6 +314,8 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   panel: "Hide or show the chat details",
   expand: "Make the file preview large",
   shrink: "Make the file preview small again",
+  wrap: "Wrap the long lines of a file",
+  code: "Show the plain text or the formatted view of a file",
   star: "A favorite file or folder: filled when it is one",
   archive: "Archive a chat, the archived chats",
   bubbles: "The Coin sound palette",

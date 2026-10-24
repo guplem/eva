@@ -4520,6 +4520,12 @@ test("Settings: a paired Telegram bot shows as connected, and disconnects after 
   await expect(card.getByLabel("Telegram bot token", { exact: true })).toBeVisible();
 });
 
+/** Opens the "More actions" menu of the open file and picks an item. */
+async function chooseFileAction(page: Page, item: string): Promise<void> {
+  await page.getByRole("region", { name: "File text" }).getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: item, exact: true }).click();
+}
+
 test("Files: folders open, a Markdown file shows formatted or plain, and Back returns to the last folder (issue 253)", async ({
   page,
 }) => {
@@ -4533,7 +4539,7 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
     .click();
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
-  await page.getByRole("button", { name: "Show plain text" }).click();
+  await chooseFileAction(page, "Show plain text");
   await expect(file.getByRole("heading", { name: "Example app" })).toHaveCount(0);
   await expect(file.getByText("# Example app")).toBeVisible();
   // The address holds the path, so a reload keeps the file and Back goes up a folder.
@@ -4559,13 +4565,30 @@ test("Files: a wide screen shows each folder of the path as a column, and the fi
   await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
   // The open folder of each column is marked, so the path shows at a glance.
   await expect(vaultList.getByRole("link", { name: "Projects" })).toHaveAttribute("aria-current", "true");
-  await file.getByRole("button", { name: "Make the file large" }).click();
+  await chooseFileAction(page, "Make the file large");
   await expect(vaultList).toBeHidden();
   await page.keyboard.press("Escape");
   await expect(vaultList).toBeVisible();
-  await file.getByRole("button", { name: "Make the file large" }).click();
-  await file.getByRole("button", { name: "Make the file small" }).click();
+  await chooseFileAction(page, "Make the file large");
+  // Escape closes the open menu first, and the file stays large.
+  const more = file.getByRole("button", { name: "More actions" });
+  await more.click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "File actions" })).toHaveCount(0);
+  await expect(vaultList).toBeHidden();
+  await chooseFileAction(page, "Make the file small");
   await expect(vaultList).toBeVisible();
+  // A choice from the keyboard keeps the focus on the menu button, so the person goes on from there.
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(file.getByRole("heading", { name: "Example app" })).toHaveCount(0);
+  await expect(more).toBeFocused();
+  // A tap outside only closes the menu: the person picked nothing, so the focus stays where the tap left it.
+  await more.click();
+  await file.locator(".files-file-bar > .files-size").click();
+  await expect(page.getByRole("menu", { name: "File actions" })).toHaveCount(0);
+  await expect(more).not.toBeFocused();
 });
 
 test("Files: a file shows its type in colour, and a long name loses the part that the person picks", async ({
@@ -4657,7 +4680,12 @@ test("Files: the one folder view shows only the open folder, and the path leads 
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Contents of Vault" })).toBeHidden();
-  await expect(page.getByRole("button", { name: "Make the file large" })).toBeHidden();
+  await file.getByRole("button", { name: "More actions" }).click();
+  await expect(
+    page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Download" }),
+  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Make the file large" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Projects" }).click();
   await expect(page.getByRole("list", { name: "Contents of Projects" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Contents of Vault" })).toBeHidden();
@@ -4670,7 +4698,13 @@ test("Files: a phone shows only the open folder (issue 308)", async ({ page }, t
   await page.goto("/#/files/Projects");
   await expect(page.getByRole("list", { name: "Contents of Projects" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Contents of Vault" })).toBeHidden();
-  await expect(page.getByRole("button", { name: "Make the file large" })).toHaveCount(0);
+  // The file fills the phone already, so its menu has no large item.
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  await page.getByRole("region", { name: "File text" }).getByRole("button", { name: "More actions" }).click();
+  await expect(
+    page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Download" }),
+  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Make the file large" })).toHaveCount(0);
 });
 
 test("Files: on a phone, the buttons leave the folder name room for whole words", async ({ page }, testInfo) => {
@@ -4799,8 +4833,62 @@ test("Files: JSON shows indented, and its plain text shows as on disk (issue 308
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.locator("pre")).toHaveText('{\n  "theme": "dark",\n  "size": 2\n}');
   await expect(file.locator(".code-key").first()).toHaveText('"theme"');
-  await file.getByRole("button", { name: "Show plain text" }).click();
+  await chooseFileAction(page, "Show plain text");
   await expect(file.locator("pre")).toHaveText('{"theme":"dark","size":2}');
+});
+
+test("Files: long lines wrap, and the More actions menu turns the wrap off and on (issue 484)", async ({ page }) => {
+  const text = `${"word ".repeat(400)}\nshort line\n`;
+  await page.route("**/api/files?path=Notes%2Flong.txt", (route) =>
+    route.fulfill({
+      json: { kind: "file", path: "Notes/long.txt", size: text.length, text, version: "v1", editable: true },
+    }),
+  );
+  await logIn(page);
+  await page.goto("/#/files/Notes/long.txt");
+  const shown = page.getByRole("region", { name: "File text" }).locator("pre");
+  const overflows = (): Promise<boolean> => shown.evaluate((element) => element.scrollWidth > element.clientWidth);
+  await expect(shown).toContainText("short line");
+  expect(await overflows()).toBe(false);
+  await chooseFileAction(page, "Do not wrap long lines");
+  await expect.poll(overflows).toBe(true);
+  // The choice stays for the next file, as the large view does.
+  await page.goto("/#/files/Notes/settings.json");
+  await page.goto("/#/files/Notes/long.txt");
+  await expect(shown).toContainText("short line");
+  expect(await overflows()).toBe(true);
+  await chooseFileAction(page, "Wrap long lines");
+  await expect.poll(overflows).toBe(false);
+});
+
+test("Files: a code block in a formatted note wraps too (issue 484)", async ({ page }) => {
+  const text = `# Setup\n\n\`\`\`sh\n${"echo word ".repeat(80)}\n\`\`\`\n`;
+  await page.route("**/api/files?path=Notes%2Fsetup.md", (route) =>
+    route.fulfill({
+      json: { kind: "file", path: "Notes/setup.md", size: text.length, text, version: "v1", editable: true },
+    }),
+  );
+  await logIn(page);
+  await page.goto("/#/files/Notes/setup.md");
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Setup" })).toBeVisible();
+  const block = file.locator(".files-markdown pre");
+  const overflows = (): Promise<boolean> => block.evaluate((element) => element.scrollWidth > element.clientWidth);
+  expect(await overflows()).toBe(false);
+  await chooseFileAction(page, "Do not wrap long lines");
+  await expect.poll(overflows).toBe(true);
+});
+
+test("Files: the editor has no wrap item, because a text area wraps by itself (issue 484)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/Notes/settings.json");
+  const file = page.getByRole("region", { name: "File text" });
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByRole("button", { name: "More actions" }).click();
+  const menu = page.getByRole("menu", { name: "File actions" });
+  await expect(menu.getByRole("menuitem", { name: "Download" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /wrap/ })).toHaveCount(0);
+  await expect(menu.getByRole("menuitem", { name: "Show plain text" })).toHaveCount(0);
 });
 
 test("Files: a path that the core tidies still shows its folder (issue 253)", async ({ page }) => {
@@ -4913,8 +5001,14 @@ test("Files: a file and a folder download from their own button, and a failed do
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
   const fileDownload = page.waitForEvent("download");
-  await file.getByRole("button", { name: "Download this file" }).click();
+  await chooseFileAction(page, "Download");
   expect((await fileDownload).suggestedFilename()).toBe("AGENTS.md");
+  // The menu closes as the download starts, so the error shows under the file bar.
+  await page.route("**/api/files/download?path=Projects%2F2025-03-02-1015-example-app%2FAGENTS.md", (route) =>
+    route.fulfill({ status: 409, json: { error: "The file changed while Eva read it." } }),
+  );
+  await chooseFileAction(page, "Download");
+  await expect(file.getByRole("alert").filter({ hasText: "The file changed" })).toBeVisible();
 
   await page.goto("/#/files/Projects");
   const folderDownload = page.waitForEvent("download");

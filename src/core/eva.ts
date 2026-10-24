@@ -1456,6 +1456,8 @@ export class Eva {
       turns: this.sessions.branchTurns(old.id),
       gitState,
     });
+    // The summary takes long, and the person may delete the old chat meanwhile: then no new chat opens.
+    this.sessions.get(old.id);
     const input = { source, model: old.modelAlias, effort: old.effort, engine: old.engine };
     let created: SessionRecord;
     if (old.mode === "assistant") created = this.createAssistantSession(input);

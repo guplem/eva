@@ -8,6 +8,7 @@ import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
 import { templateParts } from "../../../src/core/vault/vault-template.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
+import { isEvaError } from "../../../src/shared/errors.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGh } from "../../support/fake-gh.ts";
@@ -864,6 +865,20 @@ describe("Eva", () => {
     });
     const call = engine.requests.find((request) => request.mode === "model-call");
     expect(call?.prompt).toContain("<git-state>\n## main...origin/main");
+  });
+
+  test("a chat deleted while its summary is written opens no new chat (#522)", async () => {
+    let oldId = "";
+    const engine = new FakeEngine((request) => {
+      if (request.mode === "model-call") eva?.sessions.delete(oldId);
+      return FakeEngine.answer(request, "Goal: something.");
+    });
+    const instance = start(engine);
+    oldId = instance.createAssistantSession({ source: "web", model: "default" }).id;
+    await instance.sessions.send(oldId, "Hello");
+    const error: unknown = await instance.continueFromSummary(oldId, "web").catch((caught: unknown) => caught);
+    expect(isEvaError(error, "session_not_found")).toBe(true);
+    expect(instance.sessions.list()).toHaveLength(0);
   });
 
   test("a failed summary still opens the new chat, with the link, no draft and the reason (#522)", async () => {

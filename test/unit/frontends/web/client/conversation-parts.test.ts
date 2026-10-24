@@ -14,6 +14,7 @@ import {
   stepState,
   modelLabel,
   keptPending,
+  restoredText,
   sendsOnEnter,
   sentTurnCount,
   stepIcon,
@@ -262,6 +263,17 @@ describe("sendsOnEnter", () => {
     expect(sendsOnEnter({ ...key, isComposing: true }, false)).toBe(false);
     // Safari ends the composition before its keydown, and marks that key with the code 229.
     expect(sendsOnEnter({ ...key, keyCode: 229 }, false)).toBe(false);
+  });
+});
+
+describe("restoredText", () => {
+  test("puts the failed message back in an empty box", () => {
+    expect(restoredText("Hello", "")).toBe("Hello");
+    expect(restoredText("Hello", "  \n")).toBe("Hello");
+  });
+
+  test("keeps the text typed during the send after the failed message", () => {
+    expect(restoredText("Hello", "And more")).toBe("Hello\n\nAnd more");
   });
 });
 

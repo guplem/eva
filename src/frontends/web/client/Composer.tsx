@@ -18,6 +18,7 @@ import {
   effortName,
   engineLabel,
   modelLabel,
+  restoredText,
   sendsOnEnter,
 } from "./conversation-parts.ts";
 import { playCue } from "./cues.ts";
@@ -87,8 +88,11 @@ export function Composer({
   draftKey,
 }: ComposerProps): ReactElement {
   const [text, setTypedText] = useState(() => (draftKey === undefined ? "" : unsentTexts.get(draftKey)));
+  // A send awaits the core, so its failure reads the text typed since then here, not from its closure.
+  const typed = useRef(text);
   const setText = (value: string): void => {
     if (draftKey !== undefined) unsentTexts.set(draftKey, value);
+    typed.current = value;
     setTypedText(value);
   };
   const [sending, setSending] = useState(false);
@@ -96,7 +100,7 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const voice = useVoiceNote(async (heard, recording) => {
     // The person must not lose what they said.
-    if (!(await onSend(heard, recording))) setText(heard);
+    if (!(await onSend(heard, recording))) setText(restoredText(heard, typed.current));
   });
 
   const uploading = files.attachments.some((attachment) => attachment.note === null);
@@ -113,7 +117,7 @@ export function Composer({
     files.set([]);
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
-      setText(text);
+      setText(restoredText(text, typed.current));
       files.set(attached);
     }
     setSending(false);

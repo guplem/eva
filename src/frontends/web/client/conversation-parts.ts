@@ -241,6 +241,14 @@ export function sendsOnEnter(press: ComposerKey, touchScreen: boolean): boolean 
   return !press.isComposing && press.keyCode !== inputMethodKeyCode;
 }
 
+/**
+ * The text of the message box after a failed send. The person gets the message back, and keeps
+ * what they typed during the send after it.
+ */
+export function restoredText(failed: string, typedSince: string): string {
+  return typedSince.trim() === "" ? failed : `${failed}\n\n${typedSince}`;
+}
+
 /** The empty message box names who answers: Eva in an Assistant chat, the project's harness in a project chat. */
 export function composerPlaceholder(projectTitle: string | null): string {
   return `Message ${projectTitle ?? "Eva"}`;

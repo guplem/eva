@@ -101,6 +101,17 @@ export function Composer({
    */
   const restore = (failed: string): void =>
     setText(draftKey === undefined ? restoredText(failed, typed.current) : unsentTexts.restore(draftKey, failed));
+  // A failed send of a box that is gone restores its text to the store, so this box follows the store.
+  useEffect(() => {
+    if (draftKey === undefined) return;
+    const follow = (): void => {
+      const stored = unsentTexts.get(draftKey);
+      typed.current = stored;
+      setTypedText(stored);
+    };
+    follow();
+    return unsentTexts.subscribe(draftKey, follow);
+  }, [draftKey]);
   const [sending, setSending] = useState(false);
   const files = useAttachments();
   const picker = useRef<HTMLInputElement>(null);

@@ -87,6 +87,17 @@ describe("UnsentTexts", () => {
     expect(texts.restore("chat-2", "Hi")).toBe("Hi");
   });
 
+  test("tells the message box of a chat when its text changes, so a restore from an old box shows", () => {
+    const texts = new UnsentTexts(memoryStorage);
+    const seen: string[] = [];
+    const stop = texts.subscribe("chat-1", () => seen.push(texts.get("chat-1")));
+    texts.set("chat-2", "Other chat");
+    texts.restore("chat-1", "Hello");
+    stop();
+    texts.set("chat-1", "After the stop");
+    expect(seen).toEqual(["Hello"]);
+  });
+
   test("a page with no storage at all still keeps the text in memory", () => {
     const texts = new UnsentTexts(() => {
       throw new Error("Access to sessionStorage is denied.");

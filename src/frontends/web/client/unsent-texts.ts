@@ -14,11 +14,27 @@ const keyPrefix = "eva-unsent:";
 export class UnsentTexts {
   private readonly storage: () => TextStorage;
   private readonly memory: Map<string, string>;
+  private readonly listeners: Map<string, Set<() => void>>;
 
   /** `storage` is a function, because the browser can throw at the access itself. */
   constructor(storage: () => TextStorage) {
     this.storage = storage;
     this.memory = new Map();
+    this.listeners = new Map();
+  }
+
+  /**
+   * Calls `listener` at each change of a chat's text, and gives the function that stops it. A failed
+   * send can restore the text from a message box that is gone, so the box on the page follows the store.
+   */
+  subscribe(draftKey: string, listener: () => void): () => void {
+    const listeners = this.listeners.get(draftKey) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(draftKey, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.listeners.delete(draftKey);
+    };
   }
 
   /**
@@ -55,5 +71,6 @@ export class UnsentTexts {
     } catch {
       // A full or blocked storage loses the text only at a reload.
     }
+    for (const listener of this.listeners.get(draftKey) ?? []) listener();
   }
 }

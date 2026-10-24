@@ -630,6 +630,43 @@ describe("topics", () => {
     expect(telegram.callsTo("answerCallbackQuery")).toHaveLength(1);
   });
 
+  test("a model button changes the model of a started chat, and says what the change costs (#545)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi", 500);
+    await settle(bot, () => eva.sessions.get(session.id).turns.length === 1 && !eva.sessions.isBusy(session.id));
+
+    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("without the cache")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
+    const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("opus"));
+    expect(notice?.params["message_thread_id"]).toBe(500);
+  });
+
+  test("a model button says why it waits while a turn runs (#545)", async () => {
+    let release = (): void => undefined;
+    createEva(async function* (request) {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi", 500);
+    await settle(bot, () => eva.sessions.isBusy(session.id) && engine.requests.length === 1);
+
+    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("default");
+    release();
+    await settle(bot, () => !eva.sessions.isBusy(session.id));
+  });
+
   test("the first message renames a topic that Eva opened (lesson 125)", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/new");

@@ -18,6 +18,7 @@ import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 
 import type { ModelAlias } from "../../shared/engine-port.ts";
+import { isEvaError } from "../../shared/errors.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
@@ -681,6 +682,30 @@ export class TelegramBot {
     });
   }
 
+  /**
+   * A button of the /new picker. The picker stays in the topic, so a later press changes the model
+   * of a started chat (issue 545). That loses the cache (lesson 41), so the phone hears the cost.
+   */
+  private async chooseModel(
+    chatId: number,
+    topicId: number | null,
+    sessionId: string,
+    model: ModelAlias,
+  ): Promise<void> {
+    try {
+      const session = this.options.eva.sessions.setModel(sessionId, model);
+      if (session.turns.length === 0) return;
+      await this.send(
+        chatId,
+        topicId,
+        `The next answer uses ${model}. It reads the whole chat again without the cache, so it costs more.`,
+      );
+    } catch (error) {
+      if (!isEvaError(error, "session_busy")) throw error;
+      await this.send(chatId, topicId, "Eva is still working in this chat. Change the model when she finishes.");
+    }
+  }
+
   private async forward(chatId: number, topicId: number | null, text: string): Promise<void> {
     const key = keyOf(chatId, topicId);
     let entry = this.state.topics[key];
@@ -731,11 +756,7 @@ export class TelegramBot {
     } else if (isDeviceAnswer) {
       await this.closeQuestion(first, answerText);
     } else if (kind === "m" && first !== undefined && models.includes(second as ModelAlias)) {
-      try {
-        this.options.eva.sessions.setModel(first, second as ModelAlias);
-      } catch {
-        // The chat already started; its model stays.
-      }
+      await this.chooseModel(chatId, topicOf(query.message), first, second as ModelAlias);
     } else if (kind === "d" && first !== undefined) {
       if (first === "main") await this.chats.deleteMainChat(chatId);
       else await this.chats.deleteTopic(chatId, Number(first));

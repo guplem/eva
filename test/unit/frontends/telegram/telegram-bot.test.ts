@@ -160,6 +160,25 @@ describe("access (lessons 63, 127)", () => {
     expect(logs.some((log) => log.message === "A Telegram update failed.")).toBe(true);
   });
 
+  test("a button press that fails gets a reply in the topic of its message", async () => {
+    const bot = createBot();
+    // Data that is no text makes the handler throw, as any bug in a button's work would.
+    telegram.pressButton(owner, 5 as unknown as string, 700);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The message failed:")));
+    expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBe(700);
+  });
+
+  test("a failure from another chat, or from another person in the paired chat, gets no reply", async () => {
+    const bot = createBot(owner, { allowedUserId: owner });
+    // A text that is no string makes the handler throw before it checks who sent it.
+    telegram.sendMessageWith(999, { text: 5 });
+    telegram.sendMessageWith(owner, { text: 5, from: { id: 777 } });
+    telegram.sendMessageWith(owner, { text: 5 });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The message failed:")));
+    expect(logs.filter((log) => log.message === "A Telegram update failed.")).toHaveLength(3);
+    expect(telegram.callsTo("sendMessage").map((call) => call.params["chat_id"])).toEqual([owner]);
+  });
+
   test("the reply to a failed message goes once, with no wait, since the failure can be a flood", async () => {
     eva.stop();
     createEva(undefined, systemProcessRunner, {}, null);

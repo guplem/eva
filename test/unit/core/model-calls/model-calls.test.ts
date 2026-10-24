@@ -202,7 +202,7 @@ describe("a model call", () => {
         stopGraceMs: 20,
       });
       expect(await calls([pi]).ask({ ...question, engine: "pi", timeoutMs: 20 })).toMatchObject({ failure: "late" });
-      await Bun.sleep(100);
+      await waitFor(() => deaf.closeTimeouts.length > 0);
       expect(deaf.closeTimeouts[0]).toBe(0);
     } finally {
       rmSync(workFolder, { recursive: true, force: true });

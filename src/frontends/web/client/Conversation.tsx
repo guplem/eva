@@ -27,7 +27,7 @@ import {
   keptPending,
   stopsFollowing,
   liveFace,
-  runningSince,
+  runningUntil,
   sawStepsAfterSend,
   sentTurnCount,
   turnEndNotice,
@@ -602,11 +602,14 @@ function useTurnEndNotice(turnRunning: boolean): string {
 
 /** True from the start of a turn until its stored turn arrives. */
 function useTurnRuns(liveRunning: boolean, turnCount: number): boolean {
-  const [since, setSince] = useState(() => runningSince(null, liveRunning, turnCount));
-  const next = runningSince(since, liveRunning, turnCount);
+  const [state, setState] = useState(() => ({
+    until: runningUntil(null, false, liveRunning, turnCount),
+    wasLive: liveRunning,
+  }));
+  const until = runningUntil(state.until, state.wasLive, liveRunning, turnCount);
   // Set during the render, so a send in this frame already sees the new state.
-  if (next !== since) setSince(next);
-  return next !== null;
+  if (until !== state.until || liveRunning !== state.wasLive) setState({ until, wasLive: liveRunning });
+  return until !== null;
 }
 
 /** When the page first saw the running turn, with a render each second while it runs. */

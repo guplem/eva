@@ -192,13 +192,14 @@ export function sentTurnCount(turnCount: number, turnRunning: boolean): number {
 }
 
 /**
- * The stored turn count when the running turn started, or null when no turn runs. The live steps
- * end a moment before the list brings the stored turn, so the turn runs until its stored turn arrives.
+ * The stored turn count at which every started turn is stored, or null when no turn runs. The live
+ * steps end a moment before the list brings the stored turn, so a turn runs until its stored turn
+ * arrives. Each start of the live steps is one more turn. The list can also bring a turn before its
+ * live steps end, and then nothing runs after them.
  */
-export function runningSince(since: number | null, liveRunning: boolean, turnCount: number): number | null {
-  if (since !== null && turnCount > since) return liveRunning ? turnCount : null;
-  if (since === null && liveRunning) return turnCount;
-  return since;
+export function runningUntil(until: number | null, wasLive: boolean, live: boolean, turnCount: number): number | null {
+  const next = live && !wasLive ? Math.max(until ?? 0, turnCount) + 1 : until;
+  return next !== null && turnCount >= next ? null : next;
 }
 
 /**

@@ -15,7 +15,7 @@ import {
   modelLabel,
   keptPending,
   restoredText,
-  runningSince,
+  runningUntil,
   sawStepsAfterSend,
   sendsOnEnter,
   sentTurnCount,
@@ -217,27 +217,35 @@ describe("keptPending", () => {
   });
 });
 
-describe("runningSince", () => {
-  test("a turn that starts records the stored turn count of its start", () => {
-    expect(runningSince(null, true, 2)).toBe(2);
+describe("runningUntil", () => {
+  test("a turn that starts runs until one more turn is stored", () => {
+    expect(runningUntil(null, false, true, 2)).toBe(3);
   });
 
   test("stays running after the live steps end, until the stored turn arrives", () => {
     // The live steps go away at the turn end, a moment before the list brings the stored turn.
-    expect(runningSince(2, false, 2)).toBe(2);
-    expect(runningSince(2, false, 3)).toBeNull();
+    expect(runningUntil(3, true, false, 2)).toBe(3);
+    expect(runningUntil(3, false, false, 3)).toBeNull();
   });
 
-  test("a turn that runs when the stored turn arrives is the next one", () => {
-    expect(runningSince(2, true, 3)).toBe(3);
+  test("a turn that starts before the stored turn of the one before arrives waits for both", () => {
+    expect(runningUntil(3, false, true, 2)).toBe(4);
+    expect(runningUntil(4, true, true, 3)).toBe(4);
+  });
+
+  test("a stored turn that arrives before the live steps end leaves nothing running after them", () => {
+    // The list can read the record after the save and before the turn's end event.
+    const stored = runningUntil(3, true, true, 3);
+    expect(stored).toBeNull();
+    expect(runningUntil(stored, true, false, 3)).toBeNull();
   });
 
   test("nothing runs while no turn started", () => {
-    expect(runningSince(null, false, 2)).toBeNull();
+    expect(runningUntil(null, false, false, 2)).toBeNull();
   });
 
   test("a message sent in the end gap waits for the turn after the ended one", () => {
-    expect(sentTurnCount(2, runningSince(2, false, 2) !== null)).toBe(3);
+    expect(sentTurnCount(2, runningUntil(3, true, false, 2) !== null)).toBe(3);
   });
 });
 

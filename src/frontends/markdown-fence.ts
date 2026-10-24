@@ -10,3 +10,9 @@ export function closesFence(line: string, opening: string): boolean {
   const run = bareFencePattern.exec(line)?.[1] ?? "";
   return run.length >= opening.length && run.startsWith(opening.charAt(0));
 }
+
+/**
+ * The opening line of a fenced code block: its indent, its fence and its language. As in
+ * CommonMark, a backtick fence has no backtick after it, so "```npm i```" on one line is inline code.
+ */
+export const openingFencePattern = /^(\s*)(`{3,}(?!.*`)|~{3,})\s*([\w+#.-]*)/;

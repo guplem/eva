@@ -26,14 +26,10 @@ Add the `auto-developing` label to the issue, and assign yourself. Do the same f
 8. **Prepare the PR.** Delete the plan file: the branch history keeps it. Write what changed, why, and the effects, with links to the related issues. Mark the PR as ready for review.
 9. **Show the change to the user interface.** Do this step when a capture of a screen on `origin/main` and a capture on the PR branch would look different: the PR adds or removes a screen, or changes its layout, its style or its parts. Skip it when no screen looks different, such as a change to logic, tests or docs. Skip it also for a change of a few words. The section [Before and after captures](#before-and-after-captures) gives the steps.
 10. **Turn on auto-merge.** Update a branch that is behind `main` once, so the checks run on the newest code. Then turn on auto-merge. Do not update the branch again when other PRs merge. Never bypass the merge ruleset, for example with an admin merge.
-11. **Watch the PR until it merges or closes.** Do not end your work while the PR is open and has a problem that you can fix. Wait for the checks to finish, for example with `gh pr checks <number> --watch`. Then look at the whole PR:
+11. **Watch the PR until it merges or closes, or only a human approval is missing.** Do not end your work while the PR is open and has a problem that you can fix. Wait for the checks to finish, for example with `gh pr checks <number> --watch`. Then look at the whole PR:
     - **A red check:** find the cause in the log. When the cause is outside this PR, look for a fix on `main`. If `main` has the fix, merge `main` into the PR branch: this is the one reason to update the branch again. Otherwise, fix the cause in this PR. Treat a flaky test as a bug: make it reliable. Push, and watch again. Run a job again only when it stopped before its steps ran, such as a lost runner.
     - **A merge conflict:** merge the default branch into the PR branch, resolve the conflict, push, and watch again.
-    - **A review comment:** fix a small, clear request and push. Ask the person about a large or unclear one.
-    - **Green, but not merged:** the PR waits for a human approval. Tell the person once, then stop. Their approval merges it.
-
-    If you cannot stay until the checks finish, tell the person which checks are still running.
-
+    - **A review comment:** fix it and push. Ask the person first when the comment changes the scope of the issue.
 12. **Clean up.** Remove the `auto-developing` label from the issue and the PR when the PR merges or closes. When the PR waits for a human, remove the label before you stop: you no longer work on it.
 
 ## Before and after captures

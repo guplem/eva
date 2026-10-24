@@ -468,8 +468,10 @@ a.files-entry[aria-current="true"] {
   tab-size: 4;
 }
 
-/* Wrap breaks a long line to fit the width, so a phone reads it with no sideways scroll. */
-.files-text.wrap {
+/* Wrap breaks a long line to fit the width, so a phone reads it with no sideways scroll. A code
+   block of a formatted note keeps its lines as code does. */
+.files-text.wrap,
+.files-markdown.wrap pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

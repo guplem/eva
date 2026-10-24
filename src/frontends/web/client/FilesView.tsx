@@ -787,14 +787,12 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
   const isPhone = useIsPhone();
   /** The Appearance setting changes on the Settings page, so the file reads it once, as it opens. */
   const [oneFolder] = useState(() => readAppearance().filesView === "single");
-  // Formatted Markdown flows as a page, so only its front matter keeps its lines.
-  const keepsLines = plain || view !== "markdown" || splitFrontMatter(file.text).frontMatter !== null;
   const items: MenuItem[] = [];
   if (draft === null && (view === "markdown" || view === "json")) {
     items.push({ label: plain ? "Show formatted" : "Show plain text", icon: "code", onChoose: () => setPlain(!plain) });
   }
   // A text area wraps by itself, so the editor needs no wrap item.
-  if (draft === null && keepsLines) {
+  if (draft === null) {
     items.push({
       label: wrap ? "Do not wrap long lines" : "Wrap long lines",
       icon: "wrap",
@@ -926,7 +924,10 @@ function FileText({
       <>
         {frontMatter !== null && <pre className={`${textClass} files-front-matter`}>{frontMatter}</pre>}
         {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
-        <div className="answer-body files-markdown" dangerouslySetInnerHTML={{ __html: toWebHtml(body) }} />
+        <div
+          className={wrap ? "answer-body files-markdown wrap" : "answer-body files-markdown"}
+          dangerouslySetInnerHTML={{ __html: toWebHtml(body) }}
+        />
       </>
     );
   }

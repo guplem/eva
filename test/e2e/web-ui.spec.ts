@@ -4858,19 +4858,22 @@ test("Files: long lines wrap, and the More actions menu turns the wrap off and o
   await expect.poll(overflows).toBe(false);
 });
 
-test("Files: formatted Markdown has no wrap item, and its plain text has one (issue 484)", async ({ page }) => {
+test("Files: a code block in a formatted note wraps too (issue 484)", async ({ page }) => {
+  const text = `# Setup\n\n\`\`\`sh\n${"echo word ".repeat(80)}\n\`\`\`\n`;
+  await page.route("**/api/files?path=Notes%2Fsetup.md", (route) =>
+    route.fulfill({
+      json: { kind: "file", path: "Notes/setup.md", size: text.length, text, version: "v1", editable: true },
+    }),
+  );
   await logIn(page);
-  await page.goto("/#/files/Journal/2027-trips.md");
+  await page.goto("/#/files/Notes/setup.md");
   const file = page.getByRole("region", { name: "File text" });
-  await expect(file.getByRole("heading", { name: "Trips" })).toBeVisible();
-  const more = file.getByRole("button", { name: "More actions" });
-  const menu = page.getByRole("menu", { name: "File actions" });
-  await more.click();
-  await expect(menu.getByRole("menuitem", { name: "Show plain text" })).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: /wrap/ })).toHaveCount(0);
-  await menu.getByRole("menuitem", { name: "Show plain text" }).click();
-  await more.click();
-  await expect(menu.getByRole("menuitem", { name: "Do not wrap long lines" })).toBeVisible();
+  await expect(file.getByRole("heading", { name: "Setup" })).toBeVisible();
+  const block = file.locator(".files-markdown pre");
+  const overflows = (): Promise<boolean> => block.evaluate((element) => element.scrollWidth > element.clientWidth);
+  expect(await overflows()).toBe(false);
+  await chooseFileAction(page, "Do not wrap long lines");
+  await expect.poll(overflows).toBe(true);
 });
 
 test("Files: the editor has no wrap item, because a text area wraps by itself (issue 484)", async ({ page }) => {

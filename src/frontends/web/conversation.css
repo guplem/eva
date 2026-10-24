@@ -964,8 +964,8 @@ button.ghost .icon {
   }
 
   .branch-switcher .icon-button {
-    min-width: 44px;
-    height: 44px;
+    min-width: var(--touch-target);
+    height: var(--touch-target);
   }
 
   /* The reference hides the visor on a phone, so the cards get the whole width. */
@@ -977,9 +977,17 @@ button.ghost .icon {
     max-width: 100%;
   }
 
-  /* A phone button is 44 px tall for the finger. Its empty lower half fills the card's padding, but never goes past the card. */
+  /* A phone button is tall for the finger. Its empty lower half fills the card's padding, but never goes past the card.
+     Narrow sides keep the four actions on one row, so each answer is one button row shorter. */
   .answer-actions {
+    gap: 2px;
+    margin-left: -4px;
     margin-bottom: calc(-1 * var(--bubble-padding-block));
+  }
+
+  .answer-actions button.ghost {
+    gap: 4px;
+    padding-inline: 4px;
   }
 
   .message.user {
@@ -1034,12 +1042,12 @@ button.ghost .icon {
   }
 
   .send {
-    width: 44px;
-    height: 44px;
+    width: var(--touch-target);
+    height: var(--touch-target);
   }
 
   .composer .chip {
-    min-height: 44px;
+    min-height: var(--touch-target);
     padding: 4px 14px;
   }
 
@@ -1049,7 +1057,7 @@ button.ghost .icon {
 
   /* Each step opens its dialog, so a finger needs a full target. */
   .step-row {
-    min-height: 44px;
+    min-height: var(--touch-target);
   }
 }
 

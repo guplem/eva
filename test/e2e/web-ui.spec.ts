@@ -1417,9 +1417,22 @@ test("on a phone, the project list is the page, and Back to the list returns to 
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
   const heights = await page
-    .locator("button:visible")
+    .locator("button:visible:not(.filter-chip)")
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
   expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+  // A filter is a small pill, but an invisible margin keeps its tap target at 44 px.
+  const filters = await page.locator(".filter-chip:visible").evaluateAll((chips) =>
+    chips.map((chip) => {
+      const box = chip.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const middle = box.top + box.height / 2;
+      const hits = [middle - 20, middle + 20].map((y) => document.elementFromPoint(x, y)?.closest(".filter-chip"));
+      return { height: box.height, hit: hits.every((hit) => hit === chip) };
+    }),
+  );
+  expect(filters.length).toBeGreaterThan(0);
+  for (const filter of filters) expect(filter.hit).toBe(true);
+  expect(Math.max(...filters.map((filter) => filter.height))).toBeLessThan(44);
   await page.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
@@ -1761,6 +1774,23 @@ test("Settings: in compact density on a narrow phone, the tab bar fits and butto
   const edit = await page.getByRole("button", { name: "Edit", exact: true }).boundingBox();
   expect(edit).not.toBeNull();
   expect(edit?.width ?? 0).toBeGreaterThan(edit?.height ?? 0);
+});
+
+test("Settings: compact density makes the phone buttons shorter, but keeps a finger's target", async ({ page }) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  await openSettings(page, "Personalize");
+  const heights = (): Promise<number[]> =>
+    page
+      .locator("main button:visible")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+  const comfortable = await page.getByRole("button", { name: "Restart Eva" }).boundingBox();
+  expect(comfortable?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await page.getByRole("group", { name: "Density" }).getByRole("button", { name: "Compact" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  const compact = await page.getByRole("button", { name: "Restart Eva" }).boundingBox();
+  expect(compact?.height ?? 0).toBeLessThan(44);
+  expect(Math.min(...(await heights()))).toBeGreaterThanOrEqual(36);
 });
 
 test("Settings: a seed colour changes the whole palette and stays in this browser", async ({ page }) => {
@@ -3868,6 +3898,16 @@ test.describe("on a phone", () => {
     expect(iconBox?.width ?? 0).toBeGreaterThanOrEqual(44);
     await page.getByRole("button", { name: "Close the list" }).click({ position: { x: 360, y: 200 } });
     await expect(sidebar).toBeHidden();
+  });
+
+  test("the actions under an answer fit on one row, so each answer stays short", async ({ page }) => {
+    await logIn(page);
+    await newAnsweredChat(page, "Answer actions row");
+    const actions = page.locator(".message.answer").first().locator(".answer-actions button");
+    await expect(actions.getByText("Copy")).toBeVisible();
+    const tops = await actions.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
+    expect(tops.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(tops).size).toBe(1);
   });
 
   test("the tab bar sits at the bottom, with a label under each icon, and needs no drawer", async ({ page }) => {

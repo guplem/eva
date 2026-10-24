@@ -22,7 +22,7 @@ import type { SessionEvent } from "../../shared/events.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
 import type { Logger } from "../../shared/logger.ts";
-import type { TelegramApi } from "./telegram-api.ts";
+import { TelegramError, type TelegramApi } from "./telegram-api.ts";
 import { TelegramFiles } from "./telegram-files.ts";
 import { splitForTelegram } from "./telegram-format.ts";
 import {
@@ -606,12 +606,17 @@ export class TelegramBot {
   private async openChat(chatId: number): Promise<void> {
     let topicId: number | null = null;
     try {
-      const topic = await this.options.api.call<{ message_thread_id: number }>("createForumTopic", {
+      const topic = await this.sender.callWithRetry<{ message_thread_id: number }>("createForumTopic", {
         chat_id: chatId,
         name: "New chat",
       });
       topicId = topic.message_thread_id;
-    } catch {
+    } catch (error) {
+      // Only a 400 means "no topics" (lesson 61); a short Telegram problem must not reset the main chat.
+      if (!(error instanceof TelegramError && error.code === 400)) {
+        await this.send(chatId, null, `Telegram did not open the topic: ${this.describeError(error)} Send /new again.`);
+        return;
+      }
       await this.send(
         chatId,
         null,

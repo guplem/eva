@@ -666,6 +666,30 @@ describe("topics", () => {
     expect(eva.sessions.list()[0]?.telegramTopicId).toBeNull();
   });
 
+  test("/new keeps the main chat when Telegram fails for a reason other than topics", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    await eva.idle();
+    const before = eva.sessions.list().map((session) => session.id);
+    telegram.failNext("createForumTopic", 500, "Internal Server Error");
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    expect(telegram.sentTexts().at(-1)).toContain("Send /new again.");
+    expect(eva.sessions.list().map((session) => session.id)).toEqual(before);
+    telegram.sendText(owner, "still the main chat");
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+  });
+
+  test("/new retries a topic that Telegram rate-limits", async () => {
+    const bot = createBot();
+    telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 3", 1, 3);
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    expect(sleeps).toEqual([3_000]);
+    expect(eva.sessions.list()[0]?.telegramTopicId).not.toBeNull();
+  });
+
   test("/delete asks first, then deletes the topic and forgets its chat", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/new");

@@ -509,7 +509,7 @@ export function ProjectView({
                   {page.clone.name}
                   {page.clone.repositories.map((repository) =>
                     repository.branch === null ? null : (
-                      <span key={repository.path}>
+                      <span key={repository.path} className="crumb-detail">
                         {" · "}
                         {page.clone.repositories.length > 1 && `${repository.name}: `}
                         <span className="mono">{repository.branch}</span>

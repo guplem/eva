@@ -221,8 +221,14 @@ A request from Eva's own computer can come from any program there, so only the t
   - Tick **Create a private GitHub repository** to get a repository in your GitHub account. It takes the folder name without the date and time.
   - Tick **Create a Google Drive folder** to get a folder in your Drive. It needs the Drive access "Read and change", in **Settings > Connections > Google**.
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
-- **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. Claude Code then loads no hooks, `.claude/settings.json` or `.mcp.json` of a repository: it reads those only in its start folder. Git hooks still run.
-- **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone when its work is on GitHub, no turn runs, and a small model says that its chat has finished. She then closes the old chat: you can read it, but it takes no new message. She puts each repository on its default branch, up to date with GitHub, and keeps the installed dependencies. Otherwise she makes a new clone.
+- **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
+- **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
+  - All its work is on GitHub.
+  - No turn runs in it.
+  - A small model says that its chat has finished.
+
+  Eva then closes the old chat. You can read it, but it takes no new message. She puts each repository on its default branch, up to date with GitHub. The installed dependencies stay. When no clone is free, she makes a new clone.
+
 - **Trusted repositories:** a project chat runs the hooks, settings and MCP servers of its clone only when Eva trusts every repository in it. Eva trusts the repositories of the GitHub account that she logs in with. She also trusts the owners in `trust.trustedRepositoryOwners`. She asks about any other repository once, and keeps your answer. **Settings > Trusted repositories** lists the trusted accounts and the saved answers. Add or remove one there. A change applies to the next project chat.
 - **What Eva may do:** **Settings > AI engines > What Eva may do** lists, for each engine and each kind of chat, what runs with no question, what Eva asks you first and what never runs. It also lists your own Claude Code `allow`, `ask` and `deny` rules apart, with the file that holds them: the `settings.json` in this Eva's Claude Code folder, and `.claude/settings.json` in your vault.
 

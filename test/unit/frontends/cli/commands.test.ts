@@ -355,6 +355,9 @@ describe("with a running Eva", () => {
     expect(printed(host)).not.toContain("\u001b[");
     expect(await run(host, "projects")).toBe(exitCodes.clean);
     expect(await run(host, "work", "missing-project", "do it")).toBe(exitCodes.crash);
+    // Eva answered, so the refusal needs no hint to start her.
+    expect(host.errors.join("")).not.toContain("Is Eva running?");
+    expect(host.errors.join("")).not.toContain("{");
   });
 
   test("chat talks to the running Eva until the input ends", async () => {

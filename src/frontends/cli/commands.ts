@@ -390,6 +390,11 @@ async function runClientCommand(
     return exitCodes.clean;
   } catch (error) {
     if (isEvaError(error, "prompt_stopped")) throw error;
+    // An EvaError is Eva's own refusal: she runs, so the hint to start her would mislead.
+    if (isEvaError(error)) {
+      host.writeError(`${error.message}\n`);
+      return exitCodes.crash;
+    }
     host.writeError(
       `${error instanceof Error ? error.message : String(error)}\nIs Eva running? Start her with \`eva\`.\n`,
     );

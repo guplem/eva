@@ -3815,6 +3815,16 @@ test.describe("on a phone", () => {
     await expect(sidebar).toBeHidden();
   });
 
+  test("the actions under an answer fit on one row, so each answer stays short", async ({ page }) => {
+    await logIn(page);
+    await newAnsweredChat(page, "Answer actions row");
+    const actions = page.locator(".message.answer").first().locator(".answer-actions button");
+    await expect(actions.getByText("Copy")).toBeVisible();
+    const tops = await actions.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
+    expect(tops.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(tops).size).toBe(1);
+  });
+
   test("the tab bar sits at the bottom, with a label under each icon, and needs no drawer", async ({ page }) => {
     await logIn(page);
     const tabs = page.getByRole("navigation", { name: "Main" });

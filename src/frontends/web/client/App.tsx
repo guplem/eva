@@ -29,7 +29,7 @@ import {
   emptyLiveState,
   forgetTaskEvents,
   startRecovery,
-  withoutRunningTurns,
+  afterFailedTurnsRead,
   withRunningTurns,
   withTasks,
   type LiveState,
@@ -271,10 +271,18 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
           const snapshot = await api.runningTurns();
           setLive((state) => withRunningTurns(state, id, snapshot));
         } catch (error) {
-          // An older Eva has no such route. The page shows the steps that come from now on.
-          if (error instanceof ApiError && error.status === 404) setLive((state) => withRunningTurns(state, id, null));
-          // A slow network or a time limit says nothing about the turns: keep the steps that the page has.
-          else setLive((state) => withoutRunningTurns(state, id));
+          if (error instanceof ApiError && error.status === 404) {
+            setLive((state) => afterFailedTurnsRead(state, id, { kind: "no_route" }));
+            return;
+          }
+          // The chat list says which chats still run, so a turn whose end the page missed stops showing as working.
+          let running: string[] | null = null;
+          try {
+            running = (await api.sessions()).filter((session) => session.running).map((session) => session.id);
+          } catch {
+            // The page keeps what it knows. The next recovery tries again.
+          }
+          setLive((state) => afterFailedTurnsRead(state, id, { kind: "failed", running }));
         }
       })(),
       refreshSessions(),

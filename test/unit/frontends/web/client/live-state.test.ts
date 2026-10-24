@@ -5,7 +5,7 @@ import {
   forgetTaskEvents,
   stepsWithDraft,
   startRecovery,
-  withoutRunningTurns,
+  afterFailedTurnsRead,
   withRunningTurns,
   withTasks,
   type LiveState,
@@ -331,18 +331,40 @@ describe("withRunningTurns", () => {
   });
 });
 
-describe("withoutRunningTurns", () => {
-  test("a read that timed out keeps the steps that the page knows, and stops keeping events", () => {
+describe("afterFailedTurnsRead", () => {
+  test("an older Eva with no such route ends the recovery with no snapshot, as before", () => {
     let state = startRecovery(run([{ kind: "text", text: "Old.", messageId: "m0" }]), 1);
     state = applyEvent(state, event({ kind: "text", text: "New.", messageId: "m1" }));
-    const after = withoutRunningTurns(state, 1);
+    expect(afterFailedTurnsRead(state, 1, { kind: "no_route" })).toEqual(withRunningTurns(state, 1, null));
+  });
+
+  test("a slow read keeps the steps of the chats that still run, and stops keeping events", () => {
+    let state = run([{ kind: "text", text: "Still working.", messageId: "m0" }], "s1");
+    state = startRecovery(state, 1);
+    const after = afterFailedTurnsRead(state, 1, { kind: "failed", running: ["s1"] });
     expect(after.steps).toEqual(state.steps);
     expect(after.recovery).toBeNull();
   });
 
+  test("a turn whose end the page missed stops showing as working, and the running chat stays", () => {
+    // The page slept through the turn_finished of s1. s2 still runs, with a draft.
+    let state = run([{ kind: "text", text: "Done long ago.", messageId: "m0" }], "s1");
+    state = applyEvent(state, event({ kind: "text", text: "Working.", messageId: "m1" }, "s2"));
+    state = applyEvent(state, event({ kind: "text_delta", text: "Here is " }, "s2"));
+    state = startRecovery(state, 1);
+    const after = afterFailedTurnsRead(state, 1, { kind: "failed", running: ["s2"] });
+    expect(Object.keys(after.steps)).toEqual(["s2"]);
+    expect(after.drafts).toEqual({ s2: "Here is " });
+  });
+
+  test("with no list of running chats, the page keeps what it knows", () => {
+    const state = startRecovery(run([{ kind: "text", text: "Working.", messageId: "m0" }]), 1);
+    expect(afterFailedTurnsRead(state, 1, { kind: "failed", running: null }).steps).toEqual(state.steps);
+  });
+
   test("the end of an older recovery changes nothing", () => {
     const state = startRecovery(startRecovery(emptyLiveState, 1), 2);
-    expect(withoutRunningTurns(state, 1)).toBe(state);
+    expect(afterFailedTurnsRead(state, 1, { kind: "failed", running: [] })).toBe(state);
   });
 });
 

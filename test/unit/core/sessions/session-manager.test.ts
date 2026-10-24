@@ -1571,10 +1571,19 @@ describe("after a turn", () => {
       void manager.send(sessionId, "two");
       throw new Error("A front end broke.");
     });
+    const later: string[] = [];
+    manager.subscribe((event) => later.push(event.kind));
     await manager.send(sessionId, "one");
     await waitUntil(() => !manager.isActive(sessionId));
     expect(engine.requests.map((request) => request.prompt)).toEqual(["one", "two"]);
     expect(logged.join("\n")).toContain("A front end broke.");
+    // A listener after the broken one still hears each event.
+    expect(later.filter((kind) => kind === "message_received" || kind === "turn_finished")).toEqual([
+      "message_received",
+      "turn_finished",
+      "message_received",
+      "turn_finished",
+    ]);
   });
 
   test("a stopped turn gets no follow-up from the mode", async () => {

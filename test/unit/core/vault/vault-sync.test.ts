@@ -274,6 +274,22 @@ describe("VaultSync.save", () => {
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "ideas")).not.toContain("note.md");
   });
 
+  test("a vault with no remote on master commits and reports no branch mismatch (#505)", async () => {
+    sandbox.git(vault, "remote", "remove", "origin");
+    sandbox.git(vault, "switch", "-q", "-c", "master");
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("offline");
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (1 file)");
+  });
+
+  test("a vault with no remote stays out of a branch that is neither main nor master (#505)", async () => {
+    sandbox.git(vault, "remote", "remove", "origin");
+    sandbox.git(vault, "switch", "-q", "-c", "ideas");
+    sandbox.write(vault, "note.md", "kept\n");
+    expect((await createSync(vault).save()).status).toBe("skipped");
+  });
+
   test("never commits a cloned project repository", async () => {
     sandbox.write(vault, ".gitignore", "Projects/*/repos/\n");
     sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/app-0/code.ts", "x\n");

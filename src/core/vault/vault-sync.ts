@@ -493,8 +493,8 @@ export class VaultSync {
 
   private async checkedDefaultBranch(): Promise<string | null> {
     if (this.rebaseInProgress() && !(await this.abortLeftoverRebase())) return null;
-    const defaultBranch = await this.defaultBranch();
     const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
+    const defaultBranch = await this.defaultBranch(current);
     if (current !== defaultBranch) {
       this.update({ status: "skipped", lastError: `The vault is on ${current}, not on ${defaultBranch}.` });
       return null;
@@ -701,7 +701,7 @@ export class VaultSync {
     return count.exitCode !== 0 || count.stdout.trim() !== "0";
   }
 
-  private async defaultBranch(): Promise<string> {
+  private async defaultBranch(current: string): Promise<string> {
     const head = await this.git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], localTimeoutMs);
     const name = head.stdout.trim();
     if (head.exitCode === 0 && name.startsWith("origin/")) return name.slice("origin/".length);
@@ -716,7 +716,11 @@ export class VaultSync {
       localTimeoutMs,
     );
     const tracked = upstream.stdout.trim();
-    return upstream.exitCode === 0 && tracked.startsWith("origin/") ? tracked.slice("origin/".length) : "main";
+    if (upstream.exitCode === 0 && tracked.startsWith("origin/")) return tracked.slice("origin/".length);
+    // With no remote, nothing tells main from master, and a skip would ask for a main that does not exist.
+    const remote = await this.git(["remote", "get-url", "origin"], localTimeoutMs);
+    if (remote.exitCode !== 0 && (current === "main" || current === "master")) return current;
+    return "main";
   }
 
   private async statusEntries(): Promise<StatusEntry[]> {

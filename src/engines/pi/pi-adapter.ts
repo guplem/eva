@@ -8,7 +8,8 @@
  * - **Fork:** Eva writes the branch file herself (see pi-session-files.ts).
  * - **Turn end:** `agent_end` is final unless the last answer failed with a retryable error.
  *   pi emits `auto_retry_start` in the same tick as `agent_end`, so a `get_state` answer that
- *   arrives first means that no retry follows.
+ *   arrives first means that no retry follows. After a good `agent_end`, Eva also asks for
+ *   `get_state`, because only its model names the context window.
  * - **Approvals:** the extension in pi-approval-extension.ts asks before each tool call; the
  *   shared outward-action rule decides.
  * - **MCP servers:** pi has no MCP support, so the bridge in pi-mcp-bridge.ts runs Eva's
@@ -68,6 +69,8 @@ type TurnEnd = { readonly kind: "finished" } | { readonly kind: "failed"; readon
 
 const promptRequestId = "eva-prompt";
 const settleRequestId = "eva-settle";
+/** Asks pi for its state after a good turn: pi names the context window there, not in its turn events. */
+const stateRequestId = "eva-state";
 /** Extension dialogs that wait for an answer; Eva answers the ones that are not hers with a cancel. */
 const answeredDialogMethods: readonly string[] = ["confirm", "select", "input", "editor"];
 
@@ -187,12 +190,15 @@ export class PiEngine implements EnginePort {
     const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     let costUsd = 0;
     let contextTokens: number | null = null;
+    let contextWindow: number | null = null;
     let model: string | null = null;
     let answers = 0;
     // True from the start of an answer until its first text piece.
     let messageStarts = false;
     let pendingError: string | null = null;
     let end: TurnEnd | null = null;
+    // The run ended well; the turn ends with pi's state answer.
+    let finished = false;
 
     pi.send({ id: promptRequestId, type: "prompt", message: request.prompt });
     for await (const record of pi.records) {
@@ -206,6 +212,9 @@ export class PiEngine implements EnginePort {
         end = { kind: "failed", reason: typeof error === "string" ? error : "pi refused the message." };
       } else if (type === "response" && record["id"] === settleRequestId && pendingError !== null) {
         end = { kind: "failed", reason: pendingError };
+      } else if (type === "response" && record["id"] === stateRequestId && finished) {
+        contextWindow = contextWindowOf(record["data"]);
+        end = { kind: "finished" };
       } else if (type === "message_start") {
         // The final text joins every text part of a message, so a new message starts the block.
         if ((record["message"] as PiMessage | undefined)?.role === "assistant") messageStarts = true;
@@ -263,11 +272,14 @@ export class PiEngine implements EnginePort {
         } else if (last?.stopReason === "aborted") {
           end = { kind: "failed", reason: "The turn was stopped." };
         } else {
-          end = { kind: "finished" };
+          finished = true;
+          pi.send({ id: stateRequestId, type: "get_state" });
         }
       }
       if (end !== null) break;
     }
+    // The answers are complete without the state, so a pi that stops before it answers still finished.
+    if (end === null && finished) end = { kind: "finished" };
     await pi.close(this.options.closeTimeoutMs ?? 5_000);
 
     if (end === null) {
@@ -282,8 +294,7 @@ export class PiEngine implements EnginePort {
         usage,
         costUsd,
         contextTokens,
-        // pi names no context window in its turn events, so the panel shows the count only.
-        contextWindow: null,
+        contextWindow,
         model,
       };
     }
@@ -400,6 +411,12 @@ function parseToolCall(message: unknown): { toolName: string; input: Record<stri
 function contextOf(message: PiMessage): number | null {
   const total = (message.usage?.input ?? 0) + (message.usage?.cacheRead ?? 0) + (message.usage?.cacheWrite ?? 0);
   return total > 0 ? total : null;
+}
+
+/** The context window of pi's current model, from a `get_state` answer; null when pi names none. */
+function contextWindowOf(state: unknown): number | null {
+  const window = (state as { model?: { contextWindow?: unknown } } | undefined)?.model?.contextWindow;
+  return typeof window === "number" && Number.isInteger(window) && window > 0 ? window : null;
 }
 
 function addUsage(usage: { -readonly [Key in keyof TurnUsage]: number }, message: PiMessage): void {

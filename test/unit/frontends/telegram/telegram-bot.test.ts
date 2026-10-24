@@ -159,6 +159,17 @@ describe("access (lessons 63, 127)", () => {
     expect(reply?.params["message_thread_id"]).toBe(500);
     expect(logs.some((log) => log.message === "A Telegram update failed.")).toBe(true);
   });
+
+  test("the reply to a failed message goes once, with no wait, since the failure can be a flood", async () => {
+    eva.stop();
+    createEva(undefined, systemProcessRunner, {}, null);
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 5", 1, 5);
+    telegram.sendText(owner, "hi");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(sleeps).toEqual([]);
+    expect(telegram.callsTo("sendMessage")).toHaveLength(1);
+  });
 });
 
 describe("device login", () => {

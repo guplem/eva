@@ -42,6 +42,7 @@ import {
   isTopicNotModified,
   messageLimit,
   noRepeatPolicy,
+  noRetryPolicy,
   TelegramSender,
   telegramMessageLimit,
 } from "./telegram-sender.ts";
@@ -314,13 +315,22 @@ export class TelegramBot {
 
   /**
    * Every problem must reach the phone, so a failed message or button gets the reason. Only the
-   * paired chat hears it: the bot is private (lessons 63, 127). `send` logs its own failure.
+   * paired chat hears it: the bot is private (lessons 63, 127). The reply gets one try and never
+   * throws: the failure can be a flood, and a wait would hold the poll loop again.
    */
   private async replyToFailedUpdate(update: TelegramUpdate, error: unknown): Promise<void> {
     const message = update.message ?? update.callback_query?.message;
     const senderId = update.message === undefined ? update.callback_query?.from?.id : update.message.from?.id;
     if (message?.chat.id !== this.allowedChatId || !this.isAllowedSender(senderId)) return;
-    await this.send(message.chat.id, topicOf(message), `The message failed: ${this.describeError(error)}`);
+    await this.sender.quietCall(
+      "sendMessage",
+      {
+        chat_id: message.chat.id,
+        text: `The message failed: ${this.describeError(error)}`.slice(0, telegramMessageLimit),
+        ...threadOf(topicOf(message)),
+      },
+      noRetryPolicy,
+    );
   }
 
   /** Sends an alert to the main chat; before pairing, there is no chat to send it to. */

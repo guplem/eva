@@ -31,6 +31,8 @@ interface RetryPolicy {
 
 /** For a call that must not run twice, such as createForumTopic: only a 429 goes again. */
 export const noRepeatPolicy: RetryPolicy = { waitBudgetMs: sendWaitBudgetMs, retryNetworkErrors: false };
+/** For a best-effort call, such as the reply to a failure that may itself be a flood: one try. */
+export const noRetryPolicy: RetryPolicy = { waitBudgetMs: 0, retryNetworkErrors: false };
 
 export interface TelegramSenderOptions {
   readonly api: TelegramApi;
@@ -93,9 +95,13 @@ export class TelegramSender {
   }
 
   /** A call that only logs its failure. */
-  async quietCall(method: string, params: Record<string, unknown>): Promise<void> {
+  async quietCall(
+    method: string,
+    params: Record<string, unknown>,
+    policy: RetryPolicy = { waitBudgetMs: quietWaitBudgetMs },
+  ): Promise<void> {
     try {
-      await this.callWithRetry(method, params, { waitBudgetMs: quietWaitBudgetMs });
+      await this.callWithRetry(method, params, policy);
     } catch (error) {
       this.logFailedCall(method, error);
     }

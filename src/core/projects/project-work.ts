@@ -26,13 +26,13 @@ import {
   type CloneOriginStore,
 } from "./clones.ts";
 import {
-  changedFiles,
   commitAndPush,
   describeChanges,
   fallbackCommitMessage,
   fetchClone,
   pullClone,
   readSyncState,
+  readyToPush,
 } from "./clone-sync.ts";
 import type { Project } from "./project-catalog.ts";
 import {
@@ -313,7 +313,8 @@ export class ProjectWork {
     const { runner, gitEnvironment } = this.options;
     return this.oneSyncAtATime(clone, async () => {
       const trimmed = note.trim();
-      const files = await changedFiles(clone, runner, gitEnvironment);
+      // A clone that Eva cannot push safely fails here, before a model call that would be lost.
+      const { files } = await readyToPush(clone, runner, gitEnvironment);
       const message = trimmed.length > 0 || files.length === 0 ? trimmed : await this.commitMessage(clone);
       // The model call takes seconds, and a chat may start a turn meanwhile.
       this.idleClone(projectId, cloneName);

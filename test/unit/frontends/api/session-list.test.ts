@@ -13,6 +13,7 @@ function turn(text: string): Turn {
     taskCount: 0,
     steps: [{ kind: "message", text, isError: false, id: text }],
     omittedSteps: 2,
+    notes: [],
     contextTokens: null,
     contextWindow: null,
     model: null,

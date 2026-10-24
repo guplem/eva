@@ -24,6 +24,7 @@ function turn(at: string, contextTokens: number | null, extra: Partial<Turn> = {
     taskCount: 0,
     steps: [],
     omittedSteps: 0,
+    notes: [],
     contextTokens,
     contextWindow: null,
     model: null,

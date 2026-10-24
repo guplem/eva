@@ -150,6 +150,18 @@ describe("SessionStore", () => {
     });
   });
 
+  test("a turn from before the notes, or with bad notes, has none and keeps its session (issue 157)", () => {
+    const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
+    const sessions = [
+      { ...session("one"), turns: [turn] },
+      { ...session("two"), turns: [{ ...turn, notes: "lost" }] },
+    ];
+    writeFileSync(path, JSON.stringify({ version: 1, sessions }));
+    expect(openStore().get("one")?.turns[0]?.notes).toEqual([]);
+    expect(openStore().get("two")?.turns[0]?.notes).toEqual([]);
+    expect(corruptCopies()).toEqual([]);
+  });
+
   test("starts empty with no file, and makes no copy (lesson 54)", () => {
     expect(openStore().list()).toEqual([]);
     expect(corruptCopies()).toEqual([]);

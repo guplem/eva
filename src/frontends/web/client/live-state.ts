@@ -1,7 +1,7 @@
 /** What the web UI learns from the event stream while turns run. */
 import type { TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
-import { addStep, type TurnStep } from "../../../shared/turn-steps.ts";
+import { addNote, addStep, type TurnStep } from "../../../shared/turn-steps.ts";
 import type { UsageLimit } from "../../../shared/usage-limit.ts";
 
 export interface LiveState {
@@ -17,8 +17,8 @@ export interface LiveState {
    */
   readonly usageLimits: Readonly<Record<string, UsageLimit>>;
   /**
-   * The notices of each chat's last turn, such as an MCP server that did not start, by session id.
-   * They outlive the turn, because a short turn ends before the person reads them.
+   * The notes of each running turn, such as an MCP server that did not start, by session id. At
+   * the turn end, the stored turn shows them.
    */
   readonly notes: Readonly<Record<string, readonly string[]>>;
   /** The text of the block that the engine writes now, by session id. It is live only: the core never stores it. */
@@ -39,8 +39,6 @@ export const emptyLiveState: LiveState = {
   drafts: {},
   recovery: null,
 };
-
-const historyLostNote = "The earlier history of this chat is lost.";
 
 /**
  * The state with the core's tasks, read after a reload or a reconnect, in place of the ones this
@@ -157,8 +155,8 @@ function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["
   // The core's own events are no step of a turn: the list shows their effect after a reload.
   if (event.kind === "message_received" || event.kind === "session_deleted" || event.kind === "project_work_started")
     return steps;
-  // A turn whose first event is a piece runs too. So does a turn that waits for another chat in its clone.
-  if (event.kind === "text_delta" || event.kind === "notice")
+  // A turn whose first event is a piece or a note runs too, such as a turn that waits for another chat in its clone.
+  if (event.kind === "text_delta" || event.kind === "notice" || event.kind === "history_lost")
     return event.sessionId in steps ? steps : { ...steps, [event.sessionId]: [] };
   if (event.kind === "turn_finished" || event.kind === "turn_failed") {
     if (!(event.sessionId in steps)) return steps;
@@ -167,29 +165,23 @@ function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["
     return rest;
   }
   const current = steps[event.sessionId] ?? [];
-  const next =
-    event.kind === "history_lost"
-      ? [...current, { kind: "message" as const, text: historyLostNote, isError: false, id: null }]
-      : addStep(current, event);
+  const next = addStep(current, event);
   return next === current ? steps : { ...steps, [event.sessionId]: next };
 }
 
-/** A notice is no step: the answer must stay the last message, and the whole answer must not hold it. */
+/** The notes of each running turn. The stored turn keeps them, so they end with the turn (issue 157). */
 function applyToNotes(state: LiveState, event: SessionEvent): LiveState {
   const id = event.sessionId;
-  if (event.kind === "notice") {
+  if (event.kind === "notice" || event.kind === "history_lost") {
     const current = state.notes[id] ?? [];
-    // A follow-up turn starts with no message_received, so it can send the same notice again.
-    if (current.includes(event.text)) return state;
-    return { ...state, notes: { ...state.notes, [id]: [...current, event.text] } };
+    const next = addNote(current, event);
+    return next === current ? state : { ...state, notes: { ...state.notes, [id]: next } };
   }
-  // A new turn brings its own notices.
-  if ((event.kind === "message_received" || event.kind === "session_deleted") && id in state.notes) {
-    const notes = { ...state.notes };
-    Reflect.deleteProperty(notes, id);
-    return { ...state, notes };
-  }
-  return state;
+  const ends = event.kind === "turn_finished" || event.kind === "turn_failed" || event.kind === "session_deleted";
+  if (!ends || !(id in state.notes)) return state;
+  const notes = { ...state.notes };
+  Reflect.deleteProperty(notes, id);
+  return { ...state, notes };
 }
 
 function applyToTurn(state: LiveState, event: SessionEvent): LiveState {

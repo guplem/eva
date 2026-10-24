@@ -899,7 +899,12 @@ describe("Eva", () => {
       expect(await named()).toMatchObject({ code: "session_busy" });
       await instance.sessions.send(first.id, "fix it");
       instance.sessions.close(first.id);
+      // A reset that failed after the close left the clone on the old branch: the named chat resets it too.
+      const repository = join(first.startFolder, "remote");
+      sandbox.git(repository, "checkout", "-q", "-b", "feature");
+      sandbox.git(repository, "push", "-q", "-u", "origin", "feature");
       expect(await named()).toMatchObject({ clone: "clone-0" });
+      expect(sandbox.git(repository, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
     });
   });
   test("an unknown project is an EvaError", async () => {

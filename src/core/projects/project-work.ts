@@ -162,11 +162,20 @@ export class ProjectWork {
     if (input.cloneName !== undefined) {
       const name = input.cloneName;
       // Inside the clone choice, so a reuse cannot reset the clone under the new chat.
-      return this.oneCloneChoiceAtATime(project, () => {
+      return this.oneCloneChoiceAtATime(project, async () => {
         const clone = listClones(project.path).find((candidate) => candidate.name === name);
         if (clone !== undefined && this.reservedClones.has(clone.path))
           throw new EvaError("session_busy", `Eva is preparing clone ${clone.name}. Try again in a moment.`);
-        return Promise.resolve(inClone(clone));
+        // A clone with only closed chats gets the same reset as a free one, so no new chat starts on an old branch.
+        const chats = clone === undefined ? [] : this.chatsIn(clone);
+        if (clone === undefined || chats.length === 0 || chats.some((chat) => !chat.closed)) return inClone(clone);
+        const ready = await this.reuse(project, clone);
+        if (ready === null)
+          throw new EvaError(
+            "session_busy",
+            `Eva could not prepare clone ${clone.name} for a new chat. Start a new chat instead.`,
+          );
+        return inClone(ready);
       });
     }
     // The chat exists before the next choice starts, so its creation already keeps the clone.

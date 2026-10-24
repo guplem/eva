@@ -774,12 +774,18 @@ button.ghost .icon {
   color: var(--muted);
 }
 
-/* The track looks like the progress bar: its filled part ends at the thumb. */
+/* The track takes the progress bar's look. */
 .effort-slider {
+  --thumb: 18px;
+  /* The filled part ends at the centre of the thumb, which travels one thumb less than the track. */
+  --fill: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--share));
   flex: 1;
   min-width: 0;
-  height: var(--space-6);
+  height: 24px;
   margin: 0;
+  /* The shared field look of every input does not fit a slider. */
+  padding: 0;
+  border: 0;
   appearance: none;
   background: transparent;
   cursor: pointer;
@@ -804,10 +810,11 @@ button.ghost .icon {
 }
 
 .effort-slider::-webkit-slider-thumb {
-  width: 18px;
-  height: 18px;
-  /* Centres the thumb on the track. */
-  margin-top: calc((var(--space-2) - 18px) / 2);
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
+  /* Chromium puts the top of the thumb at the top of the track. */
+  margin-top: calc((var(--space-2) - var(--thumb)) / 2);
   appearance: none;
   border: 3px solid var(--panel);
   border-radius: var(--radius-pill);
@@ -816,17 +823,18 @@ button.ghost .icon {
 }
 
 .effort-slider::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
   border: 3px solid var(--panel);
   border-radius: var(--radius-pill);
   background: var(--accent);
   box-shadow: 0 0 8px var(--glow);
 }
 
-/* As wide as the longest name, so the slider does not move when the name changes. */
+/* As wide as the longest name and the spinner, so the slider does not move when they change. */
 .effort-name {
-  min-width: 5.5em;
+  min-width: 7em;
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--ink);

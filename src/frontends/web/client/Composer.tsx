@@ -459,7 +459,7 @@ function EffortSlider({
         value={index}
         aria-label="Effort"
         aria-valuetext={effortName(shown)}
-        style={{ "--fill": `${(index / (effortLevels.length - 1)) * 100}%` } as CSSProperties}
+        style={{ "--share": index / (effortLevels.length - 1) } as CSSProperties}
         onChange={(event) => setShown(effortLevels[event.target.valueAsNumber] ?? shown)}
       />
       {/* The slider already gives its name to a screen reader. */}

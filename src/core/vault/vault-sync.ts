@@ -96,6 +96,11 @@ const maxCommittedFileBytes = 50 * 1024 * 1024;
 const maxComparedTextBytes = 200_000;
 /** The `git status --porcelain` codes of a path with a merge conflict. */
 const unmergedCodes: ReadonlySet<string> = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
+/**
+ * Paths go on stdin, never on the command line: Windows limits a command line to 32,767
+ * characters, so a save of some hundred files would fail each time (#505).
+ */
+const pathsOnStdin: readonly string[] = ["--pathspec-from-file=-", "--pathspec-file-nul"];
 
 interface GitResult {
   readonly exitCode: number;
@@ -546,7 +551,8 @@ export class VaultSync {
     // it ("did not match any files"). Its removal is staged already; the commit still takes it.
     const stagedSources = new Set(entries.filter((entry) => entry.isStagedSource === true).map((entry) => entry.path));
     const toAdd = kept.filter((path) => !stagedSources.has(path));
-    const add = toAdd.length === 0 ? null : await this.git(["add", "-A", "--", ...toAdd], localTimeoutMs);
+    const add =
+      toAdd.length === 0 ? null : await this.git(["add", "-A", ...pathsOnStdin], localTimeoutMs, {}, toAdd.join("\0"));
     if (add !== null && add.exitCode !== 0) {
       this.update({ status: "error", lastError: `git add failed: ${failureReason(add, "git")}` });
       return false;
@@ -560,11 +566,13 @@ export class VaultSync {
     // git refuses a full commit while a file has conflict markers, and a pick or a person can stage
     // a withheld or Scratch file: --only commits just the kept files.
     const needsOnly = unmerged.length > 0 || withheld.length > 0 || stagedScratch;
-    const onlyKept = needsOnly ? ["--only", "--", ...committed] : [];
+    const onlyKept = needsOnly ? ["--only", ...pathsOnStdin] : [];
     const commit = await this.git(
       // --no-verify: a git hook in the vault must never block an autosave (lesson 27).
       ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(committed.length)} ${plural})`, ...onlyKept],
       localTimeoutMs,
+      {},
+      needsOnly ? committed.join("\0") : undefined,
     );
     if (commit.exitCode !== 0) {
       this.update({ status: "error", lastError: `git commit failed: ${failureReason(commit, "git")}` });
@@ -757,11 +765,13 @@ export class VaultSync {
     arguments_: readonly string[],
     timeoutMs: number,
     environment: Readonly<Record<string, string>> = {},
+    stdin?: string,
   ): Promise<GitResult> {
     const identity = committingCommands.has(arguments_[0] ?? "") ? await this.identityEnvironment() : {};
     try {
       return await this.options.runner.run(["git", ...arguments_], {
         cwd: this.options.vaultPath,
+        ...(stdin === undefined ? {} : { stdin }),
         // Literal pathspecs: a note named "n*.md" must never match "nb.md".
         environment: {
           ...this.options.environment,

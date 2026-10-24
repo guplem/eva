@@ -215,6 +215,28 @@ describe("VaultSync.save", () => {
     expect(sandbox.git(vault, "status", "--porcelain")).toContain("note.md");
   });
 
+  test("passes the paths on stdin, so many files never exceed the Windows command line (#505)", async () => {
+    const commands: { command: readonly string[]; stdin: string | undefined }[] = [];
+    const recording: ProcessRunner = {
+      run(command, options) {
+        commands.push({ command, stdin: options.stdin });
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    // A held-back secret makes the commit name its files with --only.
+    sandbox.write(vault, "Toolbox/keys.md", "token ghp_" + "c".repeat(36) + "\n");
+    for (let index = 0; index < 40; index += 1) sandbox.write(vault, `Notes/n ${String(index)}.md`, "x\n");
+    const state = await createSync(vault, { runner: recording }).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).toContain("Notes/n 39.md");
+    expect(remoteFiles()).not.toContain("Toolbox/keys.md");
+    for (const step of ["add", "commit"]) {
+      const run = commands.find(({ command }) => command[1] === step);
+      expect(run?.command.some((part) => part.includes("Notes/"))).toBe(false);
+      expect(run?.stdin?.split("\0")).toContain("Notes/n 39.md");
+    }
+  });
+
   test("never commits a cloned project repository", async () => {
     sandbox.write(vault, ".gitignore", "Projects/*/repos/\n");
     sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/app-0/code.ts", "x\n");

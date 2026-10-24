@@ -75,6 +75,24 @@ describe("asksThePerson", () => {
       "gh api -XPOST repos/x/y",
       "gh api -X GET search/issues -f q=x",
       "gh api graphql -f query='{viewer{login}}'",
+      // A backslash at the end of a line continues the same command.
+      "curl -s https://example.com \\\n  -H 'Content-Type: application/json' \\\n  -d '{}'",
+      "gh api repos/x/y/issues \\\r\n  -f title=t",
+      // A redirect or an escaped `&` does not end the command.
+      "curl https://example.com 2>&1 -d x",
+      "curl https://example.com &>/dev/null -d x",
+      "curl https://example.com/?a=1\\&b=2 -d x",
+      "curl -H 'it's' https://example.com -d x",
+      // curl takes a unique start of a long option, such as --jso for --json.
+      "curl --jso '{}' https://example.com",
+      "curl --form-s a=b https://example.com",
+      "curl --req POST https://example.com",
+      // A config file can hold data or a method.
+      "curl -K request.cfg https://example.com",
+      "curl --config request.cfg https://example.com",
+      'curl -X "$METHOD" https://example.com',
+      "gh --repo x/y api repos/x/y -f a=b",
+      "gh.exe api repos/x/y -f a=b",
     ];
     for (const command of sends)
       expect({ command, asks: asksThePerson("Bash", { command }) }).toEqual({ command, asks: true });
@@ -87,7 +105,11 @@ describe("asksThePerson", () => {
       "curl -fsSL https://example.com -o out.html",
       "curl -I https://example.com",
       "curl -X GET https://example.com",
+      "curl -L -X HEAD https://example.com",
+      "curl -s https://example.com 2>&1",
       "curl -H 'Accept: text/html' https://example.com",
+      "curl --dump-header - https://example.com",
+      "curl --connect-timeout 5 https://example.com",
       "curl 'https://example.com/?a=1&b=2'",
       "curl https://example.com/data-file",
       "gh api repos/x/y",
@@ -103,6 +125,13 @@ describe("asksThePerson", () => {
     ];
     for (const command of reads)
       expect({ command, asks: asksThePerson("Bash", { command }) }).toEqual({ command, asks: false });
+  });
+
+  test("many quoted words or redirects do not make the check slow", () => {
+    // With two ways to match each word, these took longer than the test timeout.
+    expect(asksThePerson("Bash", { command: `curl ${"'a' ".repeat(40)}| jq .` })).toBe(false);
+    expect(asksThePerson("Bash", { command: `gh --repo x/y api ${'"a" '.repeat(40)}| jq .` })).toBe(false);
+    expect(asksThePerson("Bash", { command: `curl ${"2>&1 ".repeat(40)}| jq .` })).toBe(false);
   });
 });
 

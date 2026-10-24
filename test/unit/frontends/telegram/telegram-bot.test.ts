@@ -37,6 +37,7 @@ function createEva(
   script?: FakeTurnScript,
   runner: ProcessRunner = systemProcessRunner,
   extra: Partial<EvaOptions> = {},
+  vaultPath: string | null = sandbox.root + "/vault",
 ): void {
   engine = new FakeEngine(script);
   eva = new Eva({
@@ -46,7 +47,7 @@ function createEva(
     // The sync tests of the bot use /sync and /conflicts, which run with the setting off too.
     config: {
       ...defaultConfig,
-      vaultPath: sandbox.root + "/vault",
+      vaultPath,
       timeZone: "UTC",
       sync: { ...defaultConfig.sync, enabled: false },
     },
@@ -94,8 +95,15 @@ async function runUntil(bot: TelegramBot, until: () => boolean): Promise<void> {
   if (!until()) throw new Error("the poll loop never reached the expected state");
 }
 
-async function settle(bot: TelegramBot, until: () => boolean, rounds = 400): Promise<void> {
-  for (let round = 0; round < rounds && !until(); round += 1) {
+/**
+ * The wait for a Telegram call. A turn chain with git on a busy Windows runner can take more than
+ * 5 seconds, so the limit is a time below the 30-second test timeout, not a count of polls.
+ */
+const settleLimitMs = 20_000;
+
+async function settle(bot: TelegramBot, until: () => boolean): Promise<void> {
+  const deadline = Date.now() + settleLimitMs;
+  while (Date.now() < deadline && !until()) {
     await bot.pollOnce();
     await Bun.sleep(10);
   }
@@ -145,6 +153,58 @@ describe("access (lessons 63, 127)", () => {
     expect(telegram.sentTexts().at(-1)).toContain("Paired");
     telegram.sendText(owner, "now I am in");
     await settle(bot, () => engine.requests.length > 0);
+  });
+
+  test("a message that fails gets a reply with the reason, in its own topic", async () => {
+    eva.stop();
+    createEva(undefined, systemProcessRunner, {}, null);
+    const bot = createBot();
+    telegram.sendText(owner, "hi", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The message failed:")));
+    const reply = telegram.callsTo("sendMessage").at(-1);
+    expect(String(reply?.params["text"])).toContain("Eva needs your vault.");
+    expect(reply?.params["message_thread_id"]).toBe(500);
+    expect(logs.some((log) => log.message === "A Telegram update failed.")).toBe(true);
+  });
+
+  test("a button press that fails gets a reply in the topic of its message", async () => {
+    const bot = createBot();
+    // Data that is no text makes the handler throw, as any bug in a button's work would.
+    telegram.pressButton(owner, 5 as unknown as string, 700);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The message failed:")));
+    expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBe(700);
+  });
+
+  test("a failure from another chat, or from another person in the paired chat, gets no reply", async () => {
+    const bot = createBot(owner, { allowedUserId: owner });
+    // A text that is no string makes the handler throw before it checks who sent it.
+    telegram.sendMessageWith(999, { text: 5 });
+    telegram.sendMessageWith(owner, { text: 5, from: { id: 777 } });
+    telegram.sendMessageWith(owner, { text: 5 });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The message failed:")));
+    expect(logs.filter((log) => log.message === "A Telegram update failed.")).toHaveLength(3);
+    expect(telegram.callsTo("sendMessage").map((call) => call.params["chat_id"])).toEqual([owner]);
+  });
+
+  test("the reply to a failed message goes once, with no wait, since the failure can be a flood", async () => {
+    eva.stop();
+    createEva(undefined, systemProcessRunner, {}, null);
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 5", 1, 5);
+    telegram.sendText(owner, "hi");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(sleeps).toEqual([]);
+    expect(telegram.callsTo("sendMessage")).toHaveLength(1);
+  });
+
+  test("the reply to a failed message goes once even when Telegram asks for no wait", async () => {
+    eva.stop();
+    createEva(undefined, systemProcessRunner, {}, null);
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 0", 3, 0);
+    telegram.sendText(owner, "hi");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(telegram.callsTo("sendMessage")).toHaveLength(1);
   });
 });
 
@@ -447,13 +507,39 @@ describe("chats", () => {
     expect(logs.some((log) => log.level === "warn")).toBe(true);
   });
 
-  test("a message refused with 429 waits the time Telegram asks for, at most 30 seconds, then goes again", async () => {
+  test("a message refused with 429 waits the whole time Telegram asks for, then goes again", async () => {
     const bot = createBot();
-    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 120", 1, 120);
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 90", 1, 90);
     telegram.sendText(owner, "/help");
     await settle(bot, () => telegram.callsTo("sendMessage").length >= 2);
-    expect(sleeps).toEqual([30_000]);
+    expect(sleeps).toEqual([90_000]);
     expect(telegram.sentTexts()[1]).toBe(telegram.sentTexts()[0]);
+  });
+
+  test("the retries of one message wait two minutes at most in all, so the poll loop goes on", async () => {
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 100", 3, 100);
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(sleeps.reduce((sum, ms) => sum + ms, 0)).toBeLessThanOrEqual(120_000);
+    expect(sleeps).toEqual([100_000]);
+  });
+
+  test("a call that only logs its failure waits 30 seconds at most, so a button answer never comes late", async () => {
+    const bot = createBot();
+    telegram.failNext("answerCallbackQuery", 429, "Too Many Requests: retry after 60", 1, 60);
+    telegram.pressButton(owner, "x:unknown");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(sleeps).toEqual([]);
+  });
+
+  test("a message refused with a 429 wait past two minutes gives up at once, since an early retry only fails", async () => {
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 600", 1, 600);
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(sleeps).toEqual([]);
+    expect(telegram.callsTo("sendMessage")).toHaveLength(1);
   });
 
   test("a message gives up after three retries", async () => {
@@ -655,6 +741,61 @@ describe("topics", () => {
     telegram.sendText(owner, "/new");
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Topics are not available")));
     expect(eva.sessions.list()[0]?.telegramTopicId).toBeNull();
+  });
+
+  test("/new keeps the main chat when Telegram fails for a reason other than topics", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    await eva.idle();
+    const before = eva.sessions.list().map((session) => session.id);
+    telegram.failNext("createForumTopic", 500, "Internal Server Error");
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    expect(telegram.sentTexts().at(-1)).toEndWith("(500): Internal Server Error. Send /new again.");
+    expect(eva.sessions.list().map((session) => session.id)).toEqual(before);
+    telegram.sendText(owner, "still the main chat");
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+  });
+
+  test("/new never opens a topic twice after a network error, since the first create may have worked", async () => {
+    const http = new HttpTelegramApi({ token: telegram.token, baseUrl: telegram.baseUrl });
+    let creates = 0;
+    const slow: TelegramApi = {
+      call: <Result>(method: string, params?: Readonly<Record<string, unknown>>): Promise<Result> => {
+        if (method === "createForumTopic") {
+          creates += 1;
+          return Promise.reject(new TelegramError(method, 0, "The operation timed out."));
+        }
+        return http.call<Result>(method, params);
+      },
+      upload: (method, params, file) => http.upload(method, params, file),
+      download: (filePath) => http.download(filePath),
+    };
+    const bot = createBot(owner, { api: slow });
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    expect(creates).toBe(1);
+    expect(telegram.sentTexts().at(-1)).toEndWith("The operation timed out. Send /new again.");
+    expect(sleeps).toEqual([]);
+    expect(eva.sessions.list()).toEqual([]);
+  });
+
+  test("/new from a topic tells that topic when Telegram fails", async () => {
+    const bot = createBot();
+    telegram.failNext("createForumTopic", 500, "Internal Server Error");
+    telegram.sendText(owner, "/new", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBe(500);
+  });
+
+  test("/new retries a topic that Telegram rate-limits", async () => {
+    const bot = createBot();
+    telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 3", 1, 3);
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    expect(sleeps).toEqual([3_000]);
+    expect(eva.sessions.list()[0]?.telegramTopicId).not.toBeNull();
   });
 
   test("/delete asks first, then deletes the topic and forgets its chat", async () => {
@@ -1605,6 +1746,14 @@ describe("approvals and commands", () => {
     const bot = createBot();
     await bot.registerCommands();
     expect(JSON.stringify(telegram.callsTo("setMyCommands")[0]?.params)).toContain("new");
+  });
+
+  test("the commands wait out a long 429 at the start, so the menu shows with no restart", async () => {
+    const bot = createBot();
+    telegram.failNext("setMyCommands", 429, "Too Many Requests: retry after 60", 1, 60);
+    await bot.registerCommands();
+    expect(sleeps).toEqual([60_000]);
+    expect(telegram.callsTo("setMyCommands")).toHaveLength(2);
   });
 });
 

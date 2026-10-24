@@ -529,11 +529,11 @@ a.files-entry[aria-current="true"] {
   box-shadow: inset 0 -1px 0 var(--line);
 }
 
-/* A thumb needs a 44 px target. */
+/* A thumb needs a target of --touch-target. */
 @media (pointer: coarse) {
   .files-up {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
   }
 }
 

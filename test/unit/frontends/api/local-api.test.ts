@@ -1147,6 +1147,31 @@ describe("web routes", () => {
     expect(await json<{ message: string }>(await first)).toEqual({ message: "Add the readme" });
   });
 
+  test("a push of a clone with a conflict is refused before a model writes its message", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const { name, path: clonePath } = await json<{ name: string; path: string }>(
+      await call(`${path}/clones`, { method: "POST", body: {} }),
+    );
+    const other = sandbox.clone("other");
+    sandbox.write(other, "AGENTS.md", "# Remote\n");
+    sandbox.git(other, "commit", "-q", "-am", "remote work");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    sandbox.write(clonePath, "AGENTS.md", "# Local\n");
+    sandbox.git(clonePath, "commit", "-q", "-am", "local work");
+    sandbox.git(clonePath, "fetch", "-q");
+    expect(() => sandbox.git(clonePath, "merge", "-q", "origin/main")).toThrow();
+    const asked = engine.requests.length;
+
+    const pushed = await call(`${path}/clones/${name}/push`, { method: "POST", body: {} });
+    expect(pushed.status).toBe(409);
+    expect(engine.requests.length).toBe(asked);
+  });
+
   test("a project's AGENTS.md: read it, save its details, save it whole", async () => {
     const path = "/api/projects/2025-03-02-1015-example-app";
     const read = await json<{ text: string; version: string }>(await call(`${path}/file`));

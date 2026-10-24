@@ -5,11 +5,13 @@ import {
   forgetTaskEvents,
   stepsWithDraft,
   startRecovery,
+  afterFailedTurnsRead,
   withRunningTurns,
   withTasks,
   type LiveState,
 } from "../../../../../src/frontends/web/client/live-state.ts";
 import type { EngineEventPayload, SessionEvent } from "../../../../../src/shared/events.ts";
+import { historyLostNote } from "../../../../../src/shared/turn-steps.ts";
 
 const finished = {
   engineSessionId: "e1",
@@ -81,10 +83,10 @@ describe("applyEvent", () => {
     expect(applyEvent(drafting, event({ kind: "turn_finished", ...finished })).drafts).toEqual({});
   });
 
-  test("a lost history is a message step, so the person sees the note", () => {
-    const state = run([{ kind: "history_lost" }]);
-    expect(state.steps["s1"]?.[0]?.kind).toBe("message");
-    expect(state.steps["s1"]?.[0]?.text).toContain("lost");
+  test("a lost history is a note of its turn, never a step, so the whole answer does not hold it (issue 157)", () => {
+    const state = run([{ kind: "history_lost" }, { kind: "text", text: "Hi.", messageId: "m1" }]);
+    expect(state.steps["s1"]?.map((step) => step.text)).toEqual(["Hi."]);
+    expect(state.notes["s1"]).toEqual([historyLostNote]);
   });
 
   test("a notice is a note of its chat, never a step, so the answer stays the last message", () => {
@@ -108,7 +110,7 @@ describe("applyEvent", () => {
     ).toHaveLength(1);
   });
 
-  test("the same notice of a follow-up turn shows once", () => {
+  test("the same notice shows once", () => {
     const state = run([
       { kind: "notice", text: "one" },
       { kind: "notice", text: "one" },
@@ -116,25 +118,13 @@ describe("applyEvent", () => {
     expect(state.notes["s1"]).toEqual(["one"]);
   });
 
-  test("a notice outlives its turn, until the chat's next turn starts or the chat goes", () => {
+  test("the notes end with their turn, because the stored turn shows them (issue 157)", () => {
     const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
-    const ended = run([
-      { kind: "notice", text: "one" },
-      {
-        kind: "turn_finished",
-        engineSessionId: "e1",
-        lastMessageId: null,
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        costUsd: null,
-        contextTokens: null,
-        contextWindow: null,
-        model: null,
-      },
-    ]);
-    expect(ended.notes["s1"]).toEqual(["one"]);
-    const next = applyEvent(ended, { ...stamp, kind: "message_received", text: "Again", origin: "api" });
-    expect(next.notes["s1"]).toBeUndefined();
-    expect(applyEvent(ended, { ...stamp, kind: "session_deleted" }).notes["s1"]).toBeUndefined();
+    const noted = run([{ kind: "notice", text: "one" }]);
+    expect(applyEvent(noted, event({ kind: "turn_finished", ...finished })).notes["s1"]).toBeUndefined();
+    expect(applyEvent(noted, event({ kind: "turn_failed", reason: "stopped" })).notes["s1"]).toBeUndefined();
+    expect(applyEvent(noted, { ...stamp, kind: "session_deleted" }).notes["s1"]).toBeUndefined();
+    expect(applyEvent(noted, event({ kind: "turn_failed", reason: "x" }, "s2")).notes["s1"]).toEqual(["one"]);
   });
 
   test("a usage limit outlives its turn and the next one, until a newer limit or a delete (issue #67)", () => {
@@ -327,6 +317,43 @@ describe("withRunningTurns", () => {
   test("with no recovery, events are not kept", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
     expect(state.recovery).toBeNull();
+  });
+});
+
+describe("afterFailedTurnsRead", () => {
+  test("an older Eva with no such route ends the recovery with no snapshot, as before", () => {
+    let state = startRecovery(run([{ kind: "text", text: "Old.", messageId: "m0" }]), 1);
+    state = applyEvent(state, event({ kind: "text", text: "New.", messageId: "m1" }));
+    expect(afterFailedTurnsRead(state, 1, { kind: "no_route" })).toEqual(withRunningTurns(state, 1, null));
+  });
+
+  test("a slow read keeps the steps of the chats that still run, and stops keeping events", () => {
+    let state = run([{ kind: "text", text: "Still working.", messageId: "m0" }], "s1");
+    state = startRecovery(state, 1);
+    const after = afterFailedTurnsRead(state, 1, { kind: "failed", running: ["s1"] });
+    expect(after.steps).toEqual(state.steps);
+    expect(after.recovery).toBeNull();
+  });
+
+  test("a turn whose end the page missed stops showing as working, and the running chat stays", () => {
+    // The page slept through the turn_finished of s1. s2 still runs, with a draft.
+    let state = run([{ kind: "text", text: "Done long ago.", messageId: "m0" }], "s1");
+    state = applyEvent(state, event({ kind: "text", text: "Working.", messageId: "m1" }, "s2"));
+    state = applyEvent(state, event({ kind: "text_delta", text: "Here is " }, "s2"));
+    state = startRecovery(state, 1);
+    const after = afterFailedTurnsRead(state, 1, { kind: "failed", running: ["s2"] });
+    expect(Object.keys(after.steps)).toEqual(["s2"]);
+    expect(after.drafts).toEqual({ s2: "Here is " });
+  });
+
+  test("with no list of running chats, the page keeps what it knows", () => {
+    const state = startRecovery(run([{ kind: "text", text: "Working.", messageId: "m0" }]), 1);
+    expect(afterFailedTurnsRead(state, 1, { kind: "failed", running: null }).steps).toEqual(state.steps);
+  });
+
+  test("the end of an older recovery changes nothing", () => {
+    const state = startRecovery(startRecovery(emptyLiveState, 1), 2);
+    expect(afterFailedTurnsRead(state, 1, { kind: "failed", running: [] })).toBe(state);
   });
 });
 

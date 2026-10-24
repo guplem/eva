@@ -19,7 +19,7 @@ import { readJsonTolerant, writeFileAtomic } from "../shared/files.ts";
 import { readRecentLogEntries, type LogEntry, type Logger, type RecentLogQuery } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import { systemTerminalProcessStarter, type TerminalProcessStarter } from "../shared/terminal-process.ts";
-import type { TurnUsage } from "../shared/events.ts";
+import type { SessionEvent, TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
@@ -27,6 +27,7 @@ import { ChatNotifications, type NotificationKind } from "./alerts/chat-notifica
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
+  engineLoginProblem,
   engineMissingProblem,
   engineRestartProblem,
   engineUpdateProblem,
@@ -673,6 +674,7 @@ export class Eva {
     this.sessions.subscribe((event) => {
       if (event.kind === "turn_failed")
         options.logger?.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
+      if (event.kind === "turn_failed" || event.kind === "turn_finished") this.reportEngineLogin(event);
       if (event.kind !== "turn_finished") return;
       this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
       // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
@@ -1056,6 +1058,15 @@ export class Eva {
     this.recentAlerts.unshift({ alert: { ...alert, seq: this.pushedCount }, endpoints: new Set(endpoints) });
     this.recentAlerts.splice(recentAlertCount);
     await this.webPush.notify(endpoints);
+  }
+
+  /** A turn end of an engine tells whether its login works. Another failure says nothing about it. */
+  private reportEngineLogin(event: Extract<SessionEvent, { kind: "turn_failed" | "turn_finished" }>): void {
+    if (event.kind === "turn_failed" && event.loginExpired !== true) return;
+    // A chat that was deleted meanwhile no longer names its engine.
+    const engine = this.sessions.list().find((session) => session.id === event.sessionId)?.engine;
+    if (engine === undefined) return;
+    this.alerts.report(`engine_login:${engine}`, event.kind === "turn_failed" ? engineLoginProblem(engine) : null);
   }
 
   /** A front end reports a problem that only it can see, such as a Telegram poll that fails. */

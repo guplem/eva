@@ -29,6 +29,7 @@ import {
   emptyLiveState,
   forgetTaskEvents,
   startRecovery,
+  afterFailedTurnsRead,
   withRunningTurns,
   withTasks,
   type LiveState,
@@ -40,6 +41,7 @@ import { useIsPhone } from "./ChatHeader.tsx";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
+import { isLongHide } from "./event-stream.ts";
 import type { ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
@@ -262,31 +264,55 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     lastRecovery.current += 1;
     const id = lastRecovery.current;
     setLive((state) => startRecovery({ ...forgetTaskEvents(state), notes: {} }, id));
-    try {
-      const snapshot = await api.runningTurns();
-      setLive((state) => withRunningTurns(state, id, snapshot));
-    } catch {
-      // An older Eva has no such route. The page shows the steps that come from now on.
-      setLive((state) => withRunningTurns(state, id, null));
-    }
-    await refreshSessions();
-    await refreshProblems();
-    try {
-      setApprovals(await api.pendingApprovals());
-    } catch {
-      // The next reconnect or the next visit tries again.
-    }
-    try {
-      setDeviceRequests(await api.deviceRequests());
-    } catch {
-      // The next reconnect or the next visit tries again.
-    }
-    try {
-      const snapshot = await api.backgroundTasks();
-      setLive((state) => withTasks(state, snapshot));
-    } catch {
-      // The next reconnect or the next visit tries again.
-    }
+    // The reads do not depend on each other. In parallel, one slow read does not hold the approvals.
+    await Promise.all([
+      (async (): Promise<void> => {
+        try {
+          const snapshot = await api.runningTurns();
+          setLive((state) => withRunningTurns(state, id, snapshot));
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 404) {
+            setLive((state) => afterFailedTurnsRead(state, id, { kind: "no_route" }));
+            return;
+          }
+          // The chat list says which chats still run, so a turn whose end the page missed stops showing as working.
+          let running: string[] | null = null;
+          try {
+            running = (await api.sessions()).filter((session) => session.running).map((session) => session.id);
+          } catch {
+            // The page keeps what it knows. The next recovery tries again.
+          }
+          setLive((state) => afterFailedTurnsRead(state, id, { kind: "failed", running }));
+        }
+      })(),
+      refreshSessions(),
+      refreshProblems(),
+      // A newer recovery read later, so an older answer could bring back an approval that ended.
+      (async (): Promise<void> => {
+        try {
+          const approvals = await api.pendingApprovals();
+          if (id === lastRecovery.current) setApprovals(approvals);
+        } catch {
+          // The next reconnect or the next visit tries again.
+        }
+      })(),
+      (async (): Promise<void> => {
+        try {
+          const requests = await api.deviceRequests();
+          if (id === lastRecovery.current) setDeviceRequests(requests);
+        } catch {
+          // The next reconnect or the next visit tries again.
+        }
+      })(),
+      (async (): Promise<void> => {
+        try {
+          const snapshot = await api.backgroundTasks();
+          if (id === lastRecovery.current) setLive((state) => withTasks(state, snapshot));
+        } catch {
+          // The next reconnect or the next visit tries again.
+        }
+      })(),
+    ]);
   }, [refreshSessions, refreshProblems]);
 
   const isBlocked = chatBlocker !== null;
@@ -304,11 +330,26 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   useEffect(() => {
     if (authenticated !== true) return undefined;
+    let hiddenAt: number | null = document.visibilityState === "visible" ? null : Date.now();
     const onVisible = (): void => {
-      if (document.visibilityState === "visible") void recover();
+      if (document.visibilityState !== "visible") {
+        hiddenAt = Date.now();
+        return;
+      }
+      void recover();
+      // After a long hide the socket can read open but be dead. A quick tab switch keeps a good socket.
+      if (isLongHide(hiddenAt, Date.now())) events.current?.reconnect();
+      else events.current?.retryNow();
+      hiddenAt = null;
     };
+    // The network changed, such as after flight mode or from Wi-Fi to mobile data: the old socket is dead.
+    const onOnline = (): void => events.current?.reconnect();
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+    };
   }, [authenticated, recover]);
 
   useEffect(() => (authenticated === true ? startPushPresence(browserPresencePage()) : undefined), [authenticated]);
@@ -456,6 +497,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     if (action === "pick_version") setConflictsOpen(true);
     else if (action === "choose_template_version")
       window.location.hash = settingsHash({ section: "vault", item: "template-alignment" });
+    else if (action === "open_claude_login")
+      window.location.hash = settingsHash({ section: "engines", item: "claude-code" });
     else openDestination(action === "open_schedules" ? "schedules" : "settings");
   };
   const notices = (

@@ -13,9 +13,10 @@ import {
   mcpNoticePrefix,
   mcpServersFileVariable,
 } from "../../../../src/engines/pi/pi-mcp-extension.ts";
+import type { PiProcessStarter } from "../../../../src/engines/pi/pi-process.ts";
 import type { ApprovalAnswer, ApprovalRequest, TurnRequest } from "../../../../src/shared/engine-port.ts";
 import type { EngineEventPayload } from "../../../../src/shared/events.ts";
-import { FakePi, loadPiFixture, type PiRecord } from "../../../support/fake-pi.ts";
+import { deafPi, FakePi, loadPiFixture, type PiRecord } from "../../../support/fake-pi.ts";
 
 let folder: string;
 let sessions: string;
@@ -502,6 +503,46 @@ describe("PiEngine", () => {
     const events = await drain(engine(fake).runTurn(request({ signal: controller.signal })));
     expect(fake.runs[0]?.sent.filter((record) => record["type"] === "abort")).toHaveLength(2);
     expect(events.at(-1)).toEqual({ kind: "turn_failed", reason: "The turn was stopped." });
+  });
+
+  test("a stop on a pi that ignores the abort stops the process after a grace time", async () => {
+    const deaf = deafPi();
+    const controller = new AbortController();
+    const turn = drain(
+      engine(new FakePi([]), { start: deaf.start, stopGraceMs: 20 }).runTurn(request({ signal: controller.signal })),
+    );
+    await Bun.sleep(10);
+    controller.abort();
+    expect(await turn).toEqual([{ kind: "turn_failed", reason: "The turn was stopped." }]);
+    expect(deaf.sent).toContainEqual({ type: "abort" });
+    expect(deaf.closeTimeouts[0]).toBe(0);
+  });
+
+  test("a stopped turn that pi ends in time leaves no stop timer behind", async () => {
+    const controller = new AbortController();
+    const fake = new FakePi([{ records: loadPiFixture("abort") }]);
+    const closeTimeouts: number[] = [];
+    const counted: PiProcessStarter = (command, options) => {
+      const pi = fake.start(command, options);
+      return {
+        send: (record) => {
+          pi.send(record);
+        },
+        records: pi.records,
+        close: (timeoutMs) => {
+          closeTimeouts.push(timeoutMs);
+          return pi.close(timeoutMs);
+        },
+        stderrTail: () => pi.stderrTail(),
+      };
+    };
+    for await (const _event of engine(fake, { start: counted, stopGraceMs: 20, closeTimeoutMs: 7 }).runTurn(
+      request({ signal: controller.signal }),
+    )) {
+      controller.abort();
+    }
+    await Bun.sleep(60);
+    expect(closeTimeouts).toEqual([7]);
   });
 
   test("a refused prompt, a dead process and a failed start each end the turn once", async () => {

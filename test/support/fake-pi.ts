@@ -51,6 +51,33 @@ export class FakePi {
   };
 }
 
+/** A pi that never answers, as a stuck pi does: its records end only when Eva closes it. */
+export function deafPi(): { start: PiProcessStarter; sent: PiRecord[]; closeTimeouts: number[] } {
+  const sent: PiRecord[] = [];
+  const closeTimeouts: number[] = [];
+  let closed = (): void => undefined;
+  const whenClosed = new Promise<void>((resolve) => {
+    closed = resolve;
+  });
+  async function* records(): AsyncIterable<PiRecord> {
+    yield { type: "agent_start" };
+    await whenClosed;
+  }
+  const start: PiProcessStarter = () => ({
+    send: (record) => {
+      sent.push(record);
+    },
+    records: records(),
+    close: (timeoutMs) => {
+      closeTimeouts.push(timeoutMs);
+      closed();
+      return Promise.resolve();
+    },
+    stderrTail: () => "",
+  });
+  return { start, sent, closeTimeouts };
+}
+
 class FakePiProcess implements PiProcess {
   readonly records: AsyncIterable<PiRecord>;
   private readonly script: FakePiScript;

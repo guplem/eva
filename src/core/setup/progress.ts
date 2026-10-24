@@ -160,7 +160,7 @@ function engineStep(input: ProgressInput, make: Make): ProgressStep {
       "engine",
       "An AI engine",
       "missing",
-      "For pi, run `pi` on Eva's computer and type /login. For a Claude subscription, open Settings, AI engines, on Eva's page, and press Install Claude Code. Then log in there.",
+      "For a Claude subscription, open Settings, AI engines, on Eva's page. Press Install Claude Code, then log in on the same card. For pi, run `pi` on Eva's computer and type /login.",
       input.defaultEngine,
     );
   return make(

@@ -27,10 +27,11 @@ export function ToolInstallButton({
     setFailure(null);
     try {
       const result = await api.installTool(program);
-      if (result.ok)
-        // The engines start with Eva, so a chat uses a new engine program after a restart.
-        context.noteAndReload(program === "claude" || program === "pi" ? restartNote(result.message) : result.message);
-      else setFailure(result.message);
+      if (!result.ok) setFailure(result.message);
+      // The engines start with Eva, so a chat uses a new engine program after a restart.
+      else if (program === "claude" || program === "pi")
+        context.noteAndReload(restartNote(`Installed ${name}. Log in on its card, then restart Eva.`));
+      else context.noteAndReload(`Installed ${name}.`);
     } catch (error) {
       setFailure(errorText(error));
     } finally {

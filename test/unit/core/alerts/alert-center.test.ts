@@ -247,11 +247,15 @@ describe("AlertCenter hidden problems (#541)", () => {
 });
 
 describe("AlertCenter saved marks after a start (#541)", () => {
-  test("forgets the saved marks of problems that are not open, and keeps the others", () => {
-    const run = harness(undefined, { update: "warn", "machine:laptop:update": "warn" });
-    run.center.report("update", offline);
-    run.center.forgetHiddenUnlessOpen();
-    expect(run.saved).toEqual([{ update: "warn" }]);
+  test("forgets the saved marks that apply and whose problems are not open, and keeps the others", () => {
+    const run = harness(undefined, {
+      "machine:pc:update": "warn",
+      "machine:laptop:update": "warn",
+      "engine_login:pi": "error",
+    });
+    run.center.report("machine:pc:update", offline);
+    run.center.forgetHiddenUnlessOpen((key) => key.startsWith("machine:"));
+    expect(run.saved).toEqual([{ "machine:pc:update": "warn", "engine_login:pi": "error" }]);
     run.center.report("machine:laptop:update", offline);
     expect(run.alerts.map((alert) => alert.key)).toEqual(["machine:laptop:update"]);
   });
@@ -259,7 +263,7 @@ describe("AlertCenter saved marks after a start (#541)", () => {
   test("saves nothing when every mark is open", () => {
     const run = harness(undefined, { update: "warn" });
     run.center.report("update", offline);
-    run.center.forgetHiddenUnlessOpen();
+    run.center.forgetHiddenUnlessOpen(() => true);
     expect(run.saved).toEqual([]);
   });
 });

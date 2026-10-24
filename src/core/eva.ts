@@ -450,7 +450,7 @@ export class Eva {
   private pushedCount: number;
   /** The keys of the problems that this hub relays now, by report file. */
   private relayed = new Map<string, ReadonlySet<string>>();
-  /** True after the first background round has dropped the stale hidden marks. */
+  /** True after the first read of the machine reports has dropped the stale relayed hidden marks. */
   private hiddenMarksChecked: boolean;
   private reportNameTaken = false;
 
@@ -826,11 +826,6 @@ export class Eva {
       if (engineUpdater !== null) this.runEngineUpdate(() => engineUpdater.tick());
       await this.updater?.tick();
       this.noticeUpdateState();
-      // The first round re-reported each open problem, so a saved mark with no open problem is stale.
-      if (!this.hiddenMarksChecked) {
-        this.alerts.forgetHiddenUnlessOpen();
-        this.hiddenMarksChecked = true;
-      }
     } finally {
       this.backgroundTicking = false;
     }
@@ -2146,7 +2141,10 @@ export class Eva {
     if (written === "no_vault") return;
     this.noticeReportName(written === "name_taken");
 
-    if (!isHub) return;
+    if (!isHub) {
+      this.forgetStaleRelayedMarks();
+      return;
+    }
     const relayed = new Map<string, ReadonlySet<string>>();
     for (const { file, report } of readMachineReports(vaultPath)) {
       if (report === null) {
@@ -2160,17 +2158,29 @@ export class Eva {
       for (const problem of report.problems) {
         const key = `machine:${report.machine}:${problem.key}`;
         keys.add(key);
+        // The person hid it on that machine, so the hub sends no alert for it either.
+        if (problem.hidden === true) this.alerts.markHidden(key, problem.level);
         this.alerts.report(
           key,
           relayedProblem(report.machine, this.machine, machineReportFile(report.machine), problem),
         );
-        if (problem.hidden === true) this.alerts.hide(key);
       }
       relayed.set(file, keys);
     }
     for (const [file, keys] of this.relayed)
       for (const key of keys) if (relayed.get(file)?.has(key) !== true) this.alerts.report(key, null);
     this.relayed = relayed;
+    this.forgetStaleRelayedMarks();
+  }
+
+  /**
+   * Once, after the first read of the machine reports. A relayed problem that cleared while Eva
+   * was off never reports "resolved" here, so its saved mark would silence its next failure.
+   */
+  private forgetStaleRelayedMarks(): void {
+    if (this.hiddenMarksChecked) return;
+    this.hiddenMarksChecked = true;
+    this.alerts.forgetHiddenUnlessOpen((key) => key.startsWith("machine:"));
   }
 
   /** Logs once when another machine's report holds the file of this machine's name. */

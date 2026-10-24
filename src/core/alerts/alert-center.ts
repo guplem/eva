@@ -119,11 +119,19 @@ export class AlertCenter {
   hide(key: string): boolean {
     const current = this.open.get(key);
     if (current === undefined) return false;
-    // The hub hides a relayed problem again at each sync, so an unchanged mark saves nothing.
-    if (this.hidden.get(key) === current.problem.level) return true;
-    this.hidden.set(key, current.problem.level);
-    this.saveHidden();
+    this.markHidden(key, current.problem.level);
     return true;
+  }
+
+  /**
+   * Marks a problem at this level as hidden, open or not. The hub calls it before it reports a
+   * problem that another machine hid, so the report sends no alert.
+   */
+  markHidden(key: string, level: AlertLevel): void {
+    // The hub marks a relayed problem again at each sync, so an unchanged mark saves nothing.
+    if (this.hidden.get(key) === level) return;
+    this.hidden.set(key, level);
+    this.saveHidden();
   }
 
   /**
@@ -165,12 +173,12 @@ export class AlertCenter {
   }
 
   /**
-   * Forgets each saved mark whose problem is not open. Eva calls it once, after her first round of
-   * checks: a problem that cleared while she was off reports no "resolved", so its mark would stay
-   * and silence the next real failure.
+   * Forgets each saved mark that `applies` to and whose problem is not open. Eva calls it once for
+   * the relayed problems, after her first read of the machine reports: a problem that cleared
+   * while she was off reports no "resolved", so its mark would stay and silence the next failure.
    */
-  forgetHiddenUnlessOpen(): void {
-    const stale = [...this.hidden.keys()].filter((key) => !this.open.has(key));
+  forgetHiddenUnlessOpen(applies: (key: string) => boolean): void {
+    const stale = [...this.hidden.keys()].filter((key) => applies(key) && !this.open.has(key));
     for (const key of stale) this.hidden.delete(key);
     if (stale.length > 0) this.saveHidden();
   }

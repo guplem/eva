@@ -18,6 +18,8 @@ let failingChats: Set<string>;
 let failingSends: boolean;
 /** A send that rejects, which only a bug can cause. */
 let rejectingSends: boolean;
+/** Runs in each send, such as to break the state file while the turn runs. */
+let duringSend: () => void;
 /** Each firing result: the schedule name and the failure, or null for a success. */
 let firings: { name: string; failure: string | null }[];
 /** What the test listener answers: true when it showed the event to the person. */
@@ -30,6 +32,7 @@ beforeEach(() => {
   failingChats = new Set();
   failingSends = false;
   rejectingSends = false;
+  duringSend = () => undefined;
   firings = [];
   shows = true;
   cardReports = [];
@@ -65,6 +68,7 @@ function createScheduler(isHub = true): Scheduler {
       },
       send: (sessionId, prompt) => {
         sent.push({ sessionId, prompt });
+        duringSend();
         if (rejectingSends) return Promise.reject(new Error("the engine is gone"));
         return Promise.resolve(failingSends ? "You hit the usage limit." : null);
       },
@@ -489,6 +493,27 @@ describe("Scheduler", () => {
       { name: "Morning", failure: "You hit the usage limit." },
     ]);
     expect(logged).toContain("error A scheduled prompt failed.");
+  });
+
+  test("a failed prompt still reaches the alert when its run cannot be recorded", async () => {
+    writeSchedules([morning]);
+    failingSends = true;
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    // A folder where the state file was: each write of the state fails.
+    const statePath = join(folder, "state", "schedules-state.json");
+    duringSend = () => {
+      rmSync(statePath, { force: true });
+      mkdirSync(statePath);
+    };
+    await scheduler.tick();
+    await Bun.sleep(0);
+    expect(firings).toEqual([
+      { name: "Morning", failure: null },
+      { name: "Morning", failure: "You hit the usage limit." },
+    ]);
+    expect(logged).toContain("error Eva could not record the failed run.");
   });
 
   test("a send that rejects reports a failed firing too", async () => {

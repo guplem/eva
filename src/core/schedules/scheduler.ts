@@ -370,8 +370,16 @@ export class Scheduler {
 
   private promptFailed(schedule: Schedule, slot: string, failure: string): void {
     this.options.logger?.log("error", "A scheduled prompt failed.", { scheduleId: schedule.id, reason: failure });
-    this.recordResult(schedule.id, slot, true);
+    // The alert first: a state file that cannot be written must not hide the failure from the phone.
     this.options.reportFiring?.(schedule, failure);
+    try {
+      this.recordResult(schedule.id, slot, true);
+    } catch (error) {
+      this.options.logger?.log("error", "Eva could not record the failed run.", {
+        scheduleId: schedule.id,
+        reason: errorText(error),
+      });
+    }
   }
 
   private recordResult(scheduleId: string, slot: string, failed: boolean): void {

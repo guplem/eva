@@ -564,11 +564,23 @@ async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
     .not.toContain(chatId);
 }
 
+/**
+ * The id of the chat with this title. The page shows an answer as it streams, and a chat takes its
+ * title only when Eva records the turn, which a Project turn's snapshot delays (issue 523). So it waits.
+ */
 async function chatIdNamed(page: Page, title: string): Promise<string> {
-  const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
-  const found = sessions.find((session) => session.title === title);
-  if (found === undefined) throw new Error(`no chat named ${title}`);
-  return found.id;
+  let id: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
+        id = sessions.find((session) => session.title === title)?.id;
+        return id;
+      },
+      { message: `no chat named ${title}` },
+    )
+    .toBeDefined();
+  return id ?? "";
 }
 
 /** A new Assistant chat with one answer. Each screen size names its own chats, on the shared demo server. */
@@ -1367,6 +1379,12 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
   await page.getByRole("button", { name: "Retry" }).first().click();
+  // A Project chat asks where the retry runs and from which files (issue 523).
+  const choices = page.getByRole("dialog", { name: "Retry this answer" });
+  await expect(choices.getByRole("button", { name: /^Undo and retry here/ })).toBeVisible();
+  await expect(choices.getByRole("button", { name: /^Retry in a new clone/ })).toBeVisible();
+  await choices.getByRole("button", { name: /^Retry here/ }).click();
+  await expect(choices).toHaveCount(0);
   await expect(page.getByRole("group", { name: "Branches from the start" })).toContainText("Fork 1");
   let forkId: string | undefined;
   await expect
@@ -1381,6 +1399,27 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   await page.goto(`/#/chat/${forkId ?? ""}`);
   await expect(page.getByText("Project mode")).toBeVisible();
   await expect(page.locator(".message.user").first()).toContainText(title);
+});
+
+test("a fork of a project chat in a new clone opens there, and names the chat it came from", async ({ page }) => {
+  // Not "new clone": other tests find the New clone button by that name.
+  const title = `Fork with the files at an answer (${test.info().project.name})`;
+  await logIn(page);
+  await openExampleApp(page);
+  await newProjectChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(title);
+  await composer.press("Enter");
+  await answerInNewClone(page, title);
+  const chatId = await chatIdNamed(page, title);
+  await waitUntilIdle(page, chatId);
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  const choices = page.getByRole("dialog", { name: "Fork at this answer" });
+  await expect(choices.getByRole("button", { name: /^This clone/ })).toBeVisible();
+  await choices.getByRole("button", { name: /^New clone at this answer/ }).click();
+  // The fork is the first chat of its clone, so the page opens it.
+  await expect(page.locator(".forked-from")).toContainText(`Forked from ${title} in clone-`);
+  await expect(page.locator(".message.user")).toHaveCount(0);
 });
 
 test("the address of a fork opens that fork, even when another branch is newer", async ({ page }) => {

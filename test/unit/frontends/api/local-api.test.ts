@@ -825,12 +825,13 @@ describe("routes", () => {
     );
     await eva.sessions.send(session.id, "one");
     const atMessageId = eva.sessions.get(session.id).turns[0]?.lastMessageId;
-    const fork = await json<{ parentId: string }>(
+    const fork = await json<{ session: { parentId: string }; notice: string | null }>(
       await call(`/api/sessions/${session.id}/fork`, { method: "POST", body: { atMessageId } }),
     );
-    expect(fork.parentId).toBe(session.id);
+    expect(fork).toMatchObject({ session: { parentId: session.id }, notice: null });
     const retry = await call(`/api/sessions/${session.id}/retry`, { method: "POST", body: { turnIndex: 0 } });
     expect(retry.status).toBe(200);
+    expect(await json<{ notice: null }>(retry)).toMatchObject({ notice: null });
     const preview = await call(`/api/sessions/${session.id}/retry-undo?turnIndex=0`);
     expect(await json(preview)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
     const undone = await call(`/api/sessions/${session.id}/retry`, {
@@ -840,6 +841,22 @@ describe("routes", () => {
     expect(undone.status).toBe(200);
     expect((await call(`/api/sessions/${session.id}/retry-undo?turnIndex=x`)).status).toBe(400);
     expect((await call(`/api/sessions/${session.id}/retry-undo`)).status).toBe(400);
+  });
+
+  test("a fork or a retry refuses a choice of files that it does not know", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const fork = await call(`/api/sessions/${session.id}/fork`, {
+      method: "POST",
+      body: { atMessageId: "m1", files: "somewhere" },
+    });
+    expect(fork.status).toBe(400);
+    const retry = await call(`/api/sessions/${session.id}/retry`, {
+      method: "POST",
+      body: { turnIndex: 0, files: "somewhere" },
+    });
+    expect(retry.status).toBe(400);
   });
 
   test("opens a new chat from a summary of a chat, and a 404 for an unknown chat (#522)", async () => {

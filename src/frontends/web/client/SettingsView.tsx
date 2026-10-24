@@ -6,7 +6,7 @@
 import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
 import { AccessSection } from "./AccessSection.tsx";
 import { api, type EvaSetupState, type EvaStatus, type ProgressStep, type PublicSettings } from "./api.ts";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { ConnectionsSection } from "./ConnectionsSection.tsx";
 import { DesignReference } from "./DesignReference.tsx";
 import { DeveloperSection } from "./DeveloperSection.tsx";

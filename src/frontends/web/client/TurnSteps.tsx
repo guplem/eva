@@ -8,7 +8,7 @@
 import { useEffect, useId, useState, type ReactElement } from "react";
 import type { StepDetail, TurnStep } from "../../../shared/turn-steps.ts";
 import { api } from "./api.ts";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import {
   hasToolDetails,
   inputFields,

@@ -399,7 +399,7 @@ function newFileStart(path: string): string {
  * A hooks folder that does not exist. Eva's git holds the GitHub token, and the clone's hooks are
  * the repository's code, so they never run in Eva's own commits, pulls and pushes.
  */
-function noHooks(): string[] {
+export function noHooks(): string[] {
   return ["-c", `core.hooksPath=${join(tmpdir(), `eva-no-hooks-${randomUUID()}`)}`];
 }
 

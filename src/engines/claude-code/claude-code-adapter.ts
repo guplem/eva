@@ -11,8 +11,9 @@ import {
   type SDKRateLimitInfo,
 } from "@anthropic-ai/claude-agent-sdk";
 import { dirname, join, resolve } from "node:path";
-import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
+import type { ApprovalAnswer, CarryHistoryInput, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
 import { readTextTolerant } from "../../shared/files.ts";
+import { carryClaudeHistory } from "./claude-code-history.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
@@ -63,6 +64,10 @@ export class ClaudeCodeEngine implements EnginePort {
 
   describePermissions(context: PermissionContext): EnginePermissions {
     return describeClaudePermissions(this.options.permissionMode ?? "auto", context);
+  }
+
+  carryHistory(input: CarryHistoryInput): boolean {
+    return carryClaudeHistory(input);
   }
 
   async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {

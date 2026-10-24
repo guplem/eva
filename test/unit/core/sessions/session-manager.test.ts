@@ -41,9 +41,11 @@ function createManager(
     redactor?: Redactor;
     turnTimeoutMs?: number;
     nameChat?: SessionManagerOptions["nameChat"];
+    /** Where the ids start, so a second manager on the same store makes new ones. */
+    firstId?: number;
   } = {},
 ): SessionManager {
-  let nextId = 0;
+  let nextId = overrides.firstId ?? 0;
   const manager = new SessionManager({
     engines: [engine],
     store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
@@ -901,6 +903,66 @@ describe("forks and retries", () => {
     release();
     await waitUntil(() => !manager.isActive(retry.id));
     expect(manager.get(retry.id).turns).toHaveLength(1);
+  });
+
+  test("a retry after a failed turn branches at the newest answer before it, so the history stays", async () => {
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 2 ? [{ kind: "turn_failed", reason: "offline" }] : FakeEngine.answer(request, "ok"),
+    );
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    await manager.send(sessionId, "two");
+    await manager.send(sessionId, "three");
+    const original = manager.get(sessionId);
+    expect(original.turns[1]?.lastMessageId).toBeNull();
+
+    const retry = await manager.retry(sessionId, 2);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(engine.requests[3]?.prompt).toBe("three");
+    expect(engine.requests[3]?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: original.engineSessionId,
+      atMessageId: original.turns[0]!.lastMessageId!,
+    });
+  });
+
+  test("a retry of a fork's first turn branches where the fork did, so the parent's history stays", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const parentId = newAssistantSession(manager);
+    await manager.send(parentId, "one");
+    const parent = manager.get(parentId);
+    const atMessageId = parent.turns[0]!.lastMessageId!;
+    const fork = manager.fork(parentId, atMessageId);
+    await manager.send(fork.id, "another path");
+
+    const retry = await manager.retry(fork.id, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(engine.requests[2]?.prompt).toBe("another path");
+    expect(engine.requests[2]?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: parent.engineSessionId,
+      atMessageId,
+    });
+    expect(manager.get(retry.id)).toMatchObject({ parentId, forkAtMessageId: atMessageId });
+  });
+
+  test("a retry of a fork whose parent is gone starts from nothing, as a root chat does", async () => {
+    const engine = new FakeEngine();
+    const first = createManager(engine);
+    const parentId = newAssistantSession(first);
+    await first.send(parentId, "one");
+    const fork = first.fork(parentId, first.get(parentId).turns[0]!.lastMessageId!);
+    await first.send(fork.id, "another path");
+    // Only a damaged file holds a fork without its parent: a delete removes the forks too.
+    new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }).delete(parentId);
+    const manager = createManager(engine, { firstId: 100 });
+
+    const retry = await manager.retry(fork.id, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(engine.requests[2]?.history.kind).toBe("new");
+    expect(manager.get(retry.id).parentId).toBe(fork.id);
   });
 
   test("a retry of a turn that does not exist is refused", async () => {

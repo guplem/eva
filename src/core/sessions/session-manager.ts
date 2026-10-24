@@ -498,11 +498,7 @@ export class SessionManager {
       const turn = session.turns[turnIndex];
       if (turn === undefined)
         throw new EvaError("session_not_found", `Session ${sessionId} has no turn ${String(turnIndex)}.`);
-      const previous = session.turns[turnIndex - 1];
-      const branch =
-        previous === undefined || previous.lastMessageId === null
-          ? this.retryFromStart(session)
-          : this.fork(sessionId, previous.lastMessageId);
+      const branch = this.retryBranch(session, turnIndex);
       // The send never rejects: a failure of the turn is its turn_failed event.
       void this.send(branch.id, turn.userText);
       return this.get(branch.id);
@@ -558,6 +554,20 @@ export class SessionManager {
     for (const [requestId, pending] of this.approvals) {
       if (pending.question.sessionId === sessionId) this.resolveApproval(requestId, "expired");
     }
+  }
+
+  /**
+   * The branch for a retry, with all the history before the turn. A failed turn has no message
+   * to branch at, so the branch starts at the newest answer before it. A fork's history before
+   * its own turns is in its parent.
+   */
+  private retryBranch(session: SessionRecord, turnIndex: number): SessionRecord {
+    const earlier = session.turns.slice(0, turnIndex).findLast((turn) => turn.lastMessageId !== null);
+    const atMessageId = earlier?.lastMessageId ?? null;
+    if (atMessageId !== null) return this.fork(session.id, atMessageId);
+    const parent = session.parentId === null ? undefined : this.options.store.get(session.parentId);
+    if (parent !== undefined && session.forkAtMessageId !== null) return this.fork(parent.id, session.forkAtMessageId);
+    return this.retryFromStart(session);
   }
 
   private retryFromStart(session: SessionRecord): SessionRecord {

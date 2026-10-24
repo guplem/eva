@@ -456,6 +456,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     if (action === "pick_version") setConflictsOpen(true);
     else if (action === "choose_template_version")
       window.location.hash = settingsHash({ section: "vault", item: "template-alignment" });
+    else if (action === "open_claude_login")
+      window.location.hash = settingsHash({ section: "engines", item: "claude-code" });
     else openDestination(action === "open_schedules" ? "schedules" : "settings");
   };
   const notices = (

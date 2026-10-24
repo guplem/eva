@@ -169,6 +169,7 @@ machine state/sessions.json sessions[].turns[].contextWindow
 machine state/sessions.json sessions[].turns[].failure
 machine state/sessions.json sessions[].turns[].lastMessageId
 machine state/sessions.json sessions[].turns[].model
+machine state/sessions.json sessions[].turns[].notes
 machine state/sessions.json sessions[].turns[].omittedSteps
 machine state/sessions.json sessions[].turns[].steps
 machine state/sessions.json sessions[].turns[].steps[].id

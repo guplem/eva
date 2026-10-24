@@ -47,7 +47,10 @@ export const systemPiProcessStarter: PiProcessStarter = (command, options) => {
     },
     records: readJsonLines(child.stdout),
     close: async (timeoutMs) => {
-      await child.stdin.end();
+      // Not awaited: the end waits for pi to read what is left in the pipe, and a stuck pi never does.
+      void Promise.resolve()
+        .then(() => child.stdin.end())
+        .catch(() => undefined);
       const exited = await Promise.race([child.exited.then(() => true), Bun.sleep(timeoutMs).then(() => false)]);
       if (!exited) stopProcessTree(child.pid);
     },

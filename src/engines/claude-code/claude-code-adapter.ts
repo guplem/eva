@@ -239,6 +239,8 @@ async function* mapEachTurn(
   let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   // After a refusal, the engine repeats the limit in its own words with a UTC time. Eva's line says it in local time.
   let refused = false;
+  // The engine's own line after a failed login says "run /login", a fix that needs a terminal.
+  let loginFailed = false;
   for await (const message of messages) {
     switch (message.type) {
       case "assistant": {
@@ -251,7 +253,8 @@ async function* mapEachTurn(
           contextTokens = callContext;
           answeringModel = message.message.model;
         }
-        if (refused && message.message.model === syntheticModel) break;
+        if (message.error === "authentication_failed") loginFailed = true;
+        if ((refused || loginFailed) && message.message.model === syntheticModel) break;
         for (const block of message.message.content) {
           if (block.type === "text" && block.text.length > 0) {
             lastMessageId = message.uuid;
@@ -324,6 +327,14 @@ async function* mapEachTurn(
               text: `Eva could not start the MCP server "${server.name}": it was still starting when the model answered.`,
             };
           }
+        }
+        if (loginFailed && (message.subtype !== "success" || message.is_error)) {
+          yield {
+            kind: "turn_failed",
+            reason: "The Claude Code login expired. Log in again in Settings, AI engines, Claude Code.",
+            loginExpired: true,
+          };
+          return;
         }
         if (refused && (message.subtype !== "success" || message.is_error)) {
           yield { kind: "turn_failed", reason: "Claude Code refused the turn at the usage limit." };

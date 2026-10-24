@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { EngineEventPayload } from "../../../src/shared/events.ts";
 import {
+  addNote,
   addStep,
+  historyLostNote,
   splitSteps,
   stepDetails,
   storedSteps,
@@ -196,5 +198,27 @@ describe("step details", () => {
 
   test("stepDetails gives the details of each step that has some, by id", () => {
     expect(stepDetails(stepsOf(payloads))).toEqual([{ id: "t1", input: '{"command":"ls"}', output: "Notes.md\n" }]);
+  });
+});
+
+describe("addNote", () => {
+  test("a notice and a lost history each add one note, and the same note adds nothing (issue 157)", () => {
+    const payloads: EngineEventPayload[] = [
+      { kind: "notice", text: "Eva could not start the MCP server" },
+      { kind: "text", text: "No calendar today.", messageId: "m1" },
+      { kind: "history_lost" },
+      { kind: "notice", text: "Eva could not start the MCP server" },
+      { kind: "history_lost" },
+    ];
+    expect(payloads.reduce<readonly string[]>(addNote, [])).toEqual([
+      "Eva could not start the MCP server",
+      historyLostNote,
+    ]);
+  });
+
+  test("an event that adds no note returns the same list", () => {
+    const notes = ["one"];
+    expect(addNote(notes, { kind: "text", text: "Hi.", messageId: "m1" })).toBe(notes);
+    expect(addNote(notes, { kind: "notice", text: "one" })).toBe(notes);
   });
 });

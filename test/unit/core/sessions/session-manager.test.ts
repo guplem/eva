@@ -14,6 +14,7 @@ import type { EngineEventPayload, SessionEvent } from "../../../../src/shared/ev
 import { maxDetailLength, maxTurnDetailLength } from "../../../../src/shared/tool-details.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { Redactor } from "../../../../src/shared/redaction.ts";
+import { historyLostNote } from "../../../../src/shared/turn-steps.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
 
 let folder: string;
@@ -124,6 +125,7 @@ describe("a conversation", () => {
         taskCount: 0,
         steps: [{ kind: "message", text: "answer 1", isError: false, id: `${record.engineSessionId}:answer 1` }],
         omittedSteps: 0,
+        notes: [],
         contextTokens: 15,
         contextWindow: 200_000,
         model: "claude-opus-5-5",
@@ -1774,6 +1776,35 @@ describe("stops, failures and lost histories (security and lesson review)", () =
     expect(manager.get(sessionId)).toMatchObject({ historyLost: false });
   });
 
+  test("a turn keeps its notices and a lost history as notes, never in its answer (issue 157)", async () => {
+    const engine = new FakeEngine((request) => [
+      { kind: "notice", text: 'Eva could not start the MCP server "google"' },
+      { kind: "history_lost" },
+      { kind: "notice", text: 'Eva could not start the MCP server "google"' },
+      ...FakeEngine.answer(request, "No calendar today."),
+    ]);
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "What is on today?");
+    const turn = manager.get(sessionId).turns[0];
+    expect(turn?.notes).toEqual(['Eva could not start the MCP server "google"', historyLostNote]);
+    expect(turn?.answerText).toBe("No calendar today.");
+    expect(turn?.steps.map((step) => step.text)).toEqual(["No calendar today."]);
+  });
+
+  test("a failed turn keeps its notes too, redacted", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const engine = new FakeEngine(() => [
+      { kind: "notice", text: "Eva could not start the MCP server: the-secret-value-123" },
+      { kind: "turn_failed", reason: "offline" },
+    ]);
+    const manager = createManager(engine, { redactor });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    expect(manager.get(sessionId).turns[0]?.notes).toEqual(["Eva could not start the MCP server: [redacted]"]);
+  });
+
   test("a fork whose first turn failed forks again on the next message", async () => {
     const engine = new FakeEngine((request, turnNumber) =>
       turnNumber === 2 ? [{ kind: "turn_failed", reason: "offline" }] : FakeEngine.answer(request, "ok"),
@@ -1992,6 +2023,8 @@ describe("one turn per clone (issue 356)", () => {
     await Promise.all([running, waiting]);
     expect(engine.requests.map((request) => request.prompt)).toEqual(["long", "short"]);
     expect(manager.get(second).turns[0]?.failure).toBeNull();
+    // The wait is over once the turn starts, so the turn does not keep the notice.
+    expect(manager.get(second).turns[0]?.notes).toEqual([]);
   });
 
   test("a wait never blocks another clone or an Assistant chat", async () => {

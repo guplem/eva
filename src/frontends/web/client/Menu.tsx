@@ -117,11 +117,13 @@ export function MoreMenu({
   const button = toggle ?? own;
   const close = (refocus: boolean): void => {
     setOpen(false);
-    if (refocus) {
-      button.current?.focus();
-      return;
-    }
-    // A chosen item unmounts with the focus. An item that opens a dialog moves the focus itself.
+    if (refocus) button.current?.focus();
+  };
+  // A press outside keeps the focus where it went. A chosen item unmounts with the focus, so the
+  // button takes it back, unless the item moved it, as a dialog does.
+  const closeList = (refocus: boolean): void => {
+    close(refocus);
+    if (refocus) return;
     requestAnimationFrame(() => {
       if (document.activeElement === document.body) button.current?.focus();
     });
@@ -141,7 +143,7 @@ export function MoreMenu({
       >
         <Icon name="more" />
       </button>
-      {open && <MenuList items={items} label={label} className="more-menu" onClose={close} />}
+      {open && <MenuList items={items} label={label} className="more-menu" onClose={closeList} />}
     </div>
   );
 }

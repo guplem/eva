@@ -4581,6 +4581,11 @@ test("Files: a wide screen shows each folder of the path as a column, and the fi
   await page.keyboard.press("Enter");
   await expect(file.getByRole("heading", { name: "Example app" })).toHaveCount(0);
   await expect(more).toBeFocused();
+  // A tap outside only closes the menu: the person picked nothing, so the focus stays where the tap left it.
+  await more.click();
+  await file.locator(".files-file-bar > .files-size").click();
+  await expect(page.getByRole("menu", { name: "File actions" })).toHaveCount(0);
+  await expect(more).not.toBeFocused();
 });
 
 test("Files: a file shows its type in colour, and a long name loses the part that the person picks", async ({

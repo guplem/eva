@@ -95,12 +95,18 @@ export function Composer({
     typed.current = value;
     setTypedText(value);
   };
+  /**
+   * Puts the message of a failed send back. A chat's box can mount again during the send, so the
+   * stored draft of the chat is newer than this box's text.
+   */
+  const restore = (failed: string): void =>
+    setText(draftKey === undefined ? restoredText(failed, typed.current) : unsentTexts.restore(draftKey, failed));
   const [sending, setSending] = useState(false);
   const files = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
   const voice = useVoiceNote(async (heard, recording) => {
     // The person must not lose what they said.
-    if (!(await onSend(heard, recording))) setText(restoredText(heard, typed.current));
+    if (!(await onSend(heard, recording))) restore(heard);
   });
 
   const uploading = files.attachments.some((attachment) => attachment.note === null);
@@ -117,7 +123,7 @@ export function Composer({
     files.set([]);
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
-      setText(restoredText(text, typed.current));
+      restore(text);
       files.set(attached);
     }
     setSending(false);

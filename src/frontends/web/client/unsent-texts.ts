@@ -4,6 +4,8 @@
  * so each access has a fallback in memory.
  */
 
+import { restoredText } from "./conversation-parts.ts";
+
 /** The part of the browser's `Storage` that the texts use. */
 export type TextStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -31,6 +33,16 @@ export class UnsentTexts {
     } catch {
       return "";
     }
+  }
+
+  /**
+   * Puts the message of a failed send back, before the chat's newest draft, and gives the new text.
+   * The message box that sent can be gone by then, so the kept draft is the newest one.
+   */
+  restore(draftKey: string, failed: string): string {
+    const text = restoredText(failed, this.get(draftKey));
+    this.set(draftKey, text);
+    return text;
   }
 
   /** Keeps the text of a chat. An empty text removes it. */

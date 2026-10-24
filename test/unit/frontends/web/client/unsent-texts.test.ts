@@ -77,6 +77,16 @@ describe("UnsentTexts", () => {
     expect(texts.get("chat-1")).toBe("");
   });
 
+  test("a failed send puts its message back before the newest draft, even one from another message box", () => {
+    const storage = memoryStorage();
+    // The box that sent is gone, and a new box of the same chat keeps a newer draft.
+    new UnsentTexts(() => storage).set("chat-1", "Typed later");
+    const texts = new UnsentTexts(() => storage);
+    expect(texts.restore("chat-1", "Hello")).toBe("Hello\n\nTyped later");
+    expect(texts.get("chat-1")).toBe("Hello\n\nTyped later");
+    expect(texts.restore("chat-2", "Hi")).toBe("Hi");
+  });
+
   test("a page with no storage at all still keeps the text in memory", () => {
     const texts = new UnsentTexts(() => {
       throw new Error("Access to sessionStorage is denied.");

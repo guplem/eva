@@ -360,6 +360,7 @@ function startWindowsTray(
     start,
     command: trayCommand(windowsSystemRoot(host)),
     cwd: paths.root,
+    viewFile: join(paths.stateFolder, "tray-view.json"),
     // No PSModulePath: one from PowerShell 7 breaks the modules of Windows PowerShell, which finds its own.
     environment: buildChildEnvironment(host.environment, baseEnvironmentAllowlist),
     instance: instanceNameOf(paths),

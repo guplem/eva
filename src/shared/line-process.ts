@@ -1,19 +1,29 @@
 /**
- * The seam for a long child that speaks text lines on its input and output, such as the
- * Windows tray icon. A ProcessRunner run has a timeout and reads the output only at the end,
- * and a LongProcess has no pipes. Like a LongProcess, it has no run timeout: every close is
- * bounded instead (lesson 81).
+ * The seam for a long child that shows Eva's newest line and answers with lines on its output,
+ * such as the Windows tray icon. A ProcessRunner run has a timeout and reads the output only at
+ * the end, and a LongProcess has no pipes. Like a LongProcess, it has no run timeout: every
+ * close is bounded instead (lesson 81).
+ *
+ * The newest line waits in a file, not in the child's input: Windows PowerShell, a .NET
+ * Framework program, never reads a line from the input pipe that Bun gives it (#457).
  */
+import { rmSync } from "node:fs";
+import { writeFileAtomic } from "./files.ts";
 import { EvaError } from "./errors.ts";
 import { stopProcessTree } from "./process-runner.ts";
 
+/** The child reads the newest line from the file that this variable names. */
+const lineFileVariable = "EVA_LINE_FILE";
+/** Eva's pid: the child ends when this process is gone, also after a hard stop of Eva. */
+const lineParentVariable = "EVA_LINE_PARENT";
+
 export interface LineProcess {
-  /** Writes one line to the child's input. Does nothing after the child ended. */
-  send(line: string): void;
+  /** Replaces the line that the child reads. False when the write failed: publish it again later. */
+  publish(line: string): boolean;
   /** Each output line, with no line end and with no empty line. Ends when the child exits. */
   readonly lines: AsyncIterable<string>;
   readonly exited: Promise<number>;
-  /** Ends the child's input, which asks it to stop, and stops it hard after the timeout. */
+  /** Removes the line file, which asks the child to stop, and stops it hard after the timeout. */
   close(timeoutMs: number): Promise<void>;
   /** The last part of the error output, for a log line. It is complete once `exited` settles. */
   stderrTail(): string;
@@ -23,6 +33,8 @@ export interface LineProcessOptions {
   readonly cwd: string;
   /** The whole environment of the child. Build it with buildChildEnvironment (lesson 96). */
   readonly environment: Readonly<Record<string, string>>;
+  /** Where the newest line waits for the child. Only one child may use it. */
+  readonly lineFile: string;
 }
 
 export type LineProcessStarter = (command: readonly string[], options: LineProcessOptions) => LineProcess;
@@ -31,12 +43,18 @@ const stderrLimit = 2_000;
 const stderrWaitMs = 1_000;
 
 export const systemLineProcessStarter: LineProcessStarter = (command, options) => {
-  let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
+  // A file from a child before a hard stop would show an old line to the new child.
+  removeLineFile(options.lineFile);
+  let child: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {
     child = Bun.spawn([...command], {
       cwd: options.cwd,
-      env: { ...options.environment },
-      stdin: "pipe",
+      env: {
+        ...options.environment,
+        [lineFileVariable]: options.lineFile,
+        [lineParentVariable]: String(process.pid),
+      },
+      stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
       // Its own process group, so a hard stop reaches its children too (lesson 81).
@@ -57,34 +75,23 @@ export const systemLineProcessStarter: LineProcessStarter = (command, options) =
     await Promise.race([stderrRead, Bun.sleep(stderrWaitMs)]);
     return code;
   });
-  let inputOpen = true;
-  const endInput = async (): Promise<void> => {
-    if (!inputOpen) return;
-    inputOpen = false;
-    try {
-      await child.stdin.end();
-    } catch {
-      // The child already closed its input.
-    }
-  };
-  void child.exited.then(() => {
-    inputOpen = false;
-  });
+  let closed = false;
   return {
-    send: (line) => {
-      if (!inputOpen) return;
+    publish: (line) => {
+      if (closed) return true;
       try {
-        void child.stdin.write(`${line}\n`);
-        // A pipe that broke as the child ended can fail the flush: the child is gone, so it does not matter.
-        void Promise.resolve(child.stdin.flush()).catch(() => undefined);
+        writeFileAtomic(options.lineFile, `${line}\n`);
+        return true;
       } catch {
-        // The child ended between the check and the write.
+        // On Windows, a rename fails while the child reads the file.
+        return false;
       }
     },
     lines: readLines(child.stdout),
     exited,
     close: async (timeoutMs) => {
-      await endInput();
+      closed = true;
+      removeLineFile(options.lineFile);
       const ended = await Promise.race([child.exited.then(() => true), Bun.sleep(timeoutMs).then(() => false)]);
       if (ended) return;
       stopProcessTree(child.pid);
@@ -94,6 +101,15 @@ export const systemLineProcessStarter: LineProcessStarter = (command, options) =
     stderrTail: () => stderr,
   };
 };
+
+/** A file that cannot go, such as one in a folder that is gone, never stops a start or a close. */
+function removeLineFile(path: string): void {
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    // Nothing to remove.
+  }
+}
 
 /** Splits a byte stream into lines on LF. Windows programs end a line with CRLF, so a CR goes too. */
 async function* readLines(stream: ReadableStream<Uint8Array>): AsyncIterable<string> {

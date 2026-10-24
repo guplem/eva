@@ -1,6 +1,7 @@
 # Eva's icon in the Windows system tray. src/frontends/cli/tray.ts runs this script and owns
-# every decision. Each input line is a JSON view: face, tooltip, title and canOpen. Each menu
-# choice writes one output line: open, restart or quit. When the input ends, the icon goes away.
+# every decision. The file in EVA_LINE_FILE holds the newest JSON view: face, tooltip, title and
+# canOpen. Each menu choice writes one output line: open, restart or quit. When the file goes
+# away, or Eva's supervisor ends, the icon goes away.
 $ErrorActionPreference = 'Stop'
 # A progress record would reach the error output, where Eva reads only real errors.
 $ProgressPreference = 'SilentlyContinue'
@@ -105,30 +106,41 @@ function Show-View($view) {
   $notifyIcon.Visible = $true
 }
 
-# WinForms needs this thread for its message loop, so a timer reads the input between messages.
-# Not [Console]::In: its ReadLineAsync waits for the line, and the menu would freeze. Eva writes UTF-8.
-$reader = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), (New-Object System.Text.UTF8Encoding($false)))
-$pending = $reader.ReadLineAsync()
-Write-Trace 'reading'
+# Eva writes the newest view to a file. Windows PowerShell never reads a line from the input pipe
+# that Eva gives it, so the input is not used (#457).
+$viewFile = $env:EVA_LINE_FILE
+# The tray ends with Eva's supervisor, also after a hard stop that leaves the view file behind.
+$parent = $null
+try { $parent = [System.Diagnostics.Process]::GetProcessById([int]$env:EVA_LINE_PARENT) } catch { }
+$script:lastText = ''
+$script:seenFile = $false
+
+function Stop-Tray($reason) {
+  Write-Trace $reason
+  $timer.Stop()
+  [System.Windows.Forms.Application]::Exit()
+}
+
+# WinForms needs this thread for its message loop, so a timer reads the file between messages.
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 200
 $timer.add_Tick({
-  if (-not $script:ticked) { $script:ticked = $true; Write-Trace 'first tick' }
-  while ($pending.IsCompleted) {
-    $line = if ($pending.IsFaulted) { $null } else { $pending.Result }
-    if ($null -eq $line) {
-      Write-Trace 'input ended'
-      $timer.Stop()
-      [System.Windows.Forms.Application]::Exit()
-      return
-    }
-    try {
-      Show-View ($line | ConvertFrom-Json)
-      Write-Trace 'view shown'
-    } catch {
-      [Console]::Error.WriteLine("The tray icon could not show a view: $($_.Exception.Message)")
-    }
-    $script:pending = $reader.ReadLineAsync()
+  if ($null -eq $parent -or $parent.HasExited) { Stop-Tray 'parent ended'; return }
+  if (-not [System.IO.File]::Exists($viewFile)) {
+    # Eva removes the file to close the icon. Before her first view, there is no file yet.
+    if ($script:seenFile) { Stop-Tray 'view file removed' }
+    return
+  }
+  $script:seenFile = $true
+  # A failed read, such as during Eva's write, waits for the next tick.
+  try { $text = [System.IO.File]::ReadAllText($viewFile) } catch { return }
+  if ($text -eq $script:lastText) { return }
+  $script:lastText = $text
+  try {
+    Show-View ($text | ConvertFrom-Json)
+    Write-Trace 'view shown'
+  } catch {
+    [Console]::Error.WriteLine("The tray icon could not show a view: $($_.Exception.Message)")
   }
 })
 $timer.Start()

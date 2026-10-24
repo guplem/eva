@@ -98,7 +98,7 @@ export function trayView(input: TrayInput): TrayView {
 /**
  * The command that runs the tray script. `-EncodedCommand` carries the script itself, so no
  * file and no execution policy matter. `-Sta` is the thread model that WinForms needs.
- * `-InputFormat None` keeps PowerShell itself from reading the input, which the script reads.
+ * `-InputFormat None`: the script gets its views from a file, so PowerShell waits for no input.
  */
 export function trayCommand(systemRoot: string): string[] {
   const encoded = Buffer.from(trayScript, "utf16le").toString("base64");
@@ -123,6 +123,8 @@ export interface TrayOptions {
   readonly command: readonly string[];
   readonly cwd: string;
   readonly environment: Readonly<Record<string, string>>;
+  /** Where the newest view waits for the script. */
+  readonly viewFile: string;
   readonly instance: string;
   /** Eva's answer, or null when she does not answer. */
   readonly read: () => Promise<TrayReading | null>;
@@ -156,7 +158,11 @@ function reasonOf(error: unknown): string {
 export function startTray(options: TrayOptions): Tray | null {
   let child: LineProcess;
   try {
-    child = options.start(options.command, { cwd: options.cwd, environment: options.environment });
+    child = options.start(options.command, {
+      cwd: options.cwd,
+      environment: options.environment,
+      lineFile: options.viewFile,
+    });
   } catch (error) {
     options.log(`The tray icon did not start: ${reasonOf(error)}`);
     return null;
@@ -175,8 +181,8 @@ export function startTray(options: TrayOptions): Tray | null {
     const line = JSON.stringify(trayView({ instance: options.instance, phase: state.phase, reading: state.reading }));
     // The same line again would only redraw the icon.
     if (line === state.shown) return;
-    state.shown = line;
-    child.send(line);
+    // A failed write keeps the old line as shown, so the next poll writes the view again.
+    if (child.publish(line)) state.shown = line;
   };
   show();
 

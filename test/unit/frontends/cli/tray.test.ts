@@ -126,6 +126,7 @@ function trayOptions(
     command: ["powershell.exe"],
     cwd: "/h",
     environment: {},
+    viewFile: "/h/tray-view.json",
     instance: "example",
     read: () => Promise.resolve(null),
     onChoice: (choice) => choices.push(choice),
@@ -258,7 +259,7 @@ describe("startTray", () => {
     let closed = false;
     const { options, logs } = trayOptions(fakeTray(), {
       start: () => ({
-        send: () => undefined,
+        publish: () => true,
         lines: (async function* (): AsyncIterable<string> {
           await Promise.resolve();
           yield* [];
@@ -327,26 +328,34 @@ describe.if(process.platform === "win32")("tray.ps1 on Windows", () => {
     expect(result.exitCode).toBe(0);
   }, 60_000);
 
-  test("the script reads every line, draws each face, and ends with no other error when its input ends", async () => {
+  test("the script shows each view from the file, and ends with no other error when the file goes", async () => {
     // The trace shows how far the script got, if it fails.
     const child = systemLineProcessStarter(trayCommand(systemRoot), {
       cwd: folder,
       environment: { ...environment, EVA_TRAY_TRACE: "1" },
+      lineFile: join(folder, "tray-view.json"),
     });
-    for (const face of trayFaces)
-      child.send(JSON.stringify({ face, tooltip: "Eva (example)\nA test…", title: "Eva (example)", canOpen: true }));
-    // A line that is not JSON makes the script write an error: so the last line reached it.
-    child.send("not json");
-    // The first start of PowerShell can be slow, so the test waits for the error, with a bound.
-    const shown = (): boolean => child.stderrTail().includes("could not show a view");
-    for (let waited = 0; waited < 30_000 && !shown(); waited += 200) await Bun.sleep(200);
+    const count = (text: string): number => child.stderrTail().split(text).length - 1;
+    // Waits with a bound: the first start of PowerShell can take seconds.
+    const waitUntil = async (done: () => boolean): Promise<void> => {
+      for (let waited = 0; waited < 30_000 && !done(); waited += 100) await Bun.sleep(100);
+    };
+    for (const [index, face] of trayFaces.entries()) {
+      const view = JSON.stringify({ face, tooltip: "Eva (example)\nA test…", title: "Eva (example)", canOpen: true });
+      // A write fails while the script reads the file: it goes again.
+      await waitUntil(() => child.publish(view));
+      await waitUntil(() => count("trace: view shown") > index);
+    }
+    // A line that is not JSON makes the script write an error, and the script runs on.
+    child.publish("not json");
+    await waitUntil(() => count("could not show a view") > 0);
     await child.close(10_000);
     // With the error output in the text, a failure shows why.
     const result = `${String(await child.exited)} ${child.stderrTail()}`;
     expect(result).toStartWith("0 ");
-    expect(result).toContain("trace: view shown");
+    expect(count("trace: view shown")).toBe(trayFaces.length);
     expect(result).toContain("The tray icon could not show a view:");
-    expect(result).toContain("trace: input ended");
+    expect(result).toContain("trace: view file removed");
     expect(result).not.toContain("Exception calling");
-  }, 60_000);
+  }, 90_000);
 });

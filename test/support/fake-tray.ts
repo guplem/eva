@@ -47,7 +47,10 @@ export function fakeTray(): FakeTray {
     start: (started) => {
       command.push(...started);
       return {
-        send: (line) => sent.push(line),
+        publish: (line) => {
+          sent.push(line);
+          return true;
+        },
         lines: lines(),
         exited: exited.promise,
         close: () => {

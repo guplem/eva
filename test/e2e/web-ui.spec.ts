@@ -2430,9 +2430,12 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   // A stored answer keeps no details in the session list, so the dialog fetches them.
   const dialog = page.getByRole("dialog", { name: "Step: Command" });
   await expect(dialog.locator(".status-pill")).toHaveText("Done");
-  await expect(dialog.locator(".step-detail pre")).toHaveText(['{\n  "command": "ls"\n}', "Journal\nNotes"]);
-  // The output opens at once. The input waits in its fold.
-  await expect(dialog.locator(".step-detail").nth(0)).not.toHaveAttribute("open");
+  await expect(dialog.locator(".facts")).toContainText("The shell");
+  // The input shows each field once, so the short copy of the command does not show above it.
+  await expect(dialog.locator(".step-fields dt")).toHaveText(["command"]);
+  await expect(dialog.locator(".step-detail pre")).toHaveText(["ls", "Journal\nNotes"]);
+  await expect(dialog.locator(".step-dialog-text")).toHaveCount(0);
+  await expect(dialog.locator(".step-detail").nth(0)).toHaveAttribute("open");
   await expect(dialog.locator(".step-detail").nth(1)).toHaveAttribute("open");
   await dialog.getByText("Output").click();
   await expect(dialog.locator(".step-detail").nth(1)).not.toHaveAttribute("open");

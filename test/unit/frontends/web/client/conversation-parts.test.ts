@@ -7,12 +7,14 @@ import {
   elapsedText,
   engineLabel,
   foldSteps,
+  inputFields,
   liveFace,
   missingDetail,
   stepState,
   modelLabel,
   shownPending,
   stepIcon,
+  stepOrigin,
   stepParts,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
@@ -71,6 +73,57 @@ describe("stepParts", () => {
     expect(stepParts(step("command", "git status"))).toEqual({ action: "Command", detail: "git status" });
     expect(stepParts(step("message", "Let me look."))).toEqual({ action: "Message", detail: "Let me look." });
     expect(stepParts(step("task", "Search the notes"))).toEqual({ action: "Task", detail: "Search the notes" });
+  });
+});
+
+describe("stepOrigin", () => {
+  test("names an MCP tool and its server", () => {
+    expect(stepOrigin(step("tool", 'mcp__demo__list_notes {"limit":5}'))).toEqual({
+      tool: "mcp__demo__list_notes",
+      from: "The MCP server demo",
+    });
+  });
+
+  test("names a tool of the engine, and a command of the shell", () => {
+    expect(stepOrigin(step("tool", "Read /demo-vault/Life/Notes.md"))).toEqual({
+      tool: "Read",
+      from: "The engine",
+    });
+    expect(stepOrigin(step("command", "ls"))).toEqual({ tool: null, from: "The shell" });
+  });
+
+  test("names nothing for a stored tool step without a name, a message and a task", () => {
+    expect(stepOrigin(step("tool", '{"skill":"eva:about-me"}'))).toBeNull();
+    expect(stepOrigin(step("message", "Hi"))).toBeNull();
+    expect(stepOrigin(step("task", "Search"))).toBeNull();
+  });
+});
+
+describe("inputFields", () => {
+  test("splits a JSON object into its description and its other fields", () => {
+    const input = JSON.stringify({ command: "ls\npwd", description: "List the files", limit: 5, flags: ["-a"] });
+    expect(inputFields(input)).toEqual({
+      description: "List the files",
+      fields: [
+        { key: "command", value: "ls\npwd" },
+        { key: "limit", value: "5" },
+        { key: "flags", value: '[\n  "-a"\n]' },
+      ],
+    });
+  });
+
+  test("gives no fields for an input that is no JSON object", () => {
+    expect(inputFields(undefined)).toBeNull();
+    expect(inputFields("not json")).toBeNull();
+    expect(inputFields("[1, 2]")).toBeNull();
+    expect(inputFields('"text"')).toBeNull();
+  });
+
+  test("keeps a description that is no text as a field", () => {
+    expect(inputFields('{"description": 3}')).toEqual({
+      description: null,
+      fields: [{ key: "description", value: "3" }],
+    });
   });
 });
 

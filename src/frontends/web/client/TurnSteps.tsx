@@ -2,13 +2,22 @@
  * The steps of an answer, folded into one line: the count, the last step and an arrow. A tap
  * opens the list, one line for each message, command, tool and task: a pill says what the step
  * did, and plain text says what it did it to, such as the file that it read. A tap on a step
- * opens a dialog with all of it: a tool's whole input and output, each in a fold.
+ * opens a dialog with all of it: where the tool comes from, its description, and its whole input
+ * and output, each in a fold.
  */
 import { useEffect, useId, useState, type ReactElement } from "react";
 import type { StepDetail, TurnStep } from "../../../shared/turn-steps.ts";
 import { api } from "./api.ts";
 import { Dialog } from "./ChatPanel.tsx";
-import { hasToolDetails, missingDetail, stepIcon, stepParts, stepState } from "./conversation-parts.ts";
+import {
+  hasToolDetails,
+  inputFields,
+  missingDetail,
+  stepIcon,
+  stepOrigin,
+  stepParts,
+  stepState,
+} from "./conversation-parts.ts";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { errorText } from "./SettingsParts.tsx";
@@ -145,6 +154,11 @@ function StepDialog({
   const { action, detail } = stepParts(step);
   const state = stepState(step, live);
   const details: Details = carried ? { input: step.input, output: step.output } : fetched;
+  const read = details !== "loading" && !("failed" in details) ? details : null;
+  const fields = inputFields(read?.input);
+  const origin = stepOrigin(step);
+  const tool = origin?.tool ?? null;
+  const description = fields?.description ?? null;
   return (
     <Dialog label={`Step: ${action}`} onClose={onClose} sheet>
       <div className="step-dialog-title">
@@ -153,7 +167,30 @@ function StepDialog({
           {state}
         </span>
       </div>
-      {detail !== "" && <p className="step-dialog-text">{detail}</p>}
+      {(origin !== null || description !== null) && (
+        <dl className="facts">
+          {tool !== null && (
+            <>
+              <dt>Tool</dt>
+              <dd className="step-dialog-text">{tool}</dd>
+            </>
+          )}
+          {origin !== null && (
+            <>
+              <dt>From</dt>
+              <dd>{origin.from}</dd>
+            </>
+          )}
+          {description !== null && (
+            <>
+              <dt>Description</dt>
+              <dd>{description}</dd>
+            </>
+          )}
+        </dl>
+      )}
+      {/* The text is a short copy of the input, so it shows only when the input cannot. */}
+      {detail !== "" && fields === null && <p className="step-dialog-text">{detail}</p>}
       {hasToolDetails(step) &&
         (details === "loading" ? (
           <ProgressBar label="Eva reads the details of the step." />
@@ -163,7 +200,27 @@ function StepDialog({
           </div>
         ) : (
           <>
-            <DetailFold title="Input" text={details.input} missing={missingDetail("input", live)} />
+            {fields === null ? (
+              <DetailFold title="Input" text={details.input} missing={missingDetail("input", live)} />
+            ) : (
+              <details className="step-detail" open>
+                <summary>Input</summary>
+                {fields.fields.length === 0 ? (
+                  <p className="muted">Empty.</p>
+                ) : (
+                  <dl className="step-fields">
+                    {fields.fields.map(({ key, value }) => (
+                      <div key={key}>
+                        <dt>{key}</dt>
+                        <dd>
+                          <pre>{value}</pre>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              </details>
+            )}
             <DetailFold title="Output" text={details.output} missing={missingDetail("output", live)} open />
           </>
         ))}

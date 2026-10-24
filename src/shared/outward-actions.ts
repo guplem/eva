@@ -10,24 +10,56 @@ import type { ToolCategory } from "./events.ts";
 const outwardCommandPattern = /\b(git\s+push|gh\s+(issue|pr|release|gist)\s+(create|comment|edit|close|merge))/i;
 /**
  * The rest of one command: it stops at an unquoted `|`, `;`, `&` or new line, so a flag of the
- * next command does not count. A continued line, an escaped character, a redirect such as `2>&1`
- * and quoted text do not end it. A lone quote also does not end it, so a typo cannot hide a flag.
- * Each text has only one way to match: overlapping choices make a failed match take seconds.
+ * next command does not count. A continued line, an escaped character, a redirect such as `2>&1`,
+ * quoted text and a command in `$(...)` or backticks do not end it. A lone quote also does not end
+ * it, so a typo cannot hide a flag. Each text has only one way to match: overlapping choices make
+ * a failed match take seconds.
  */
-const commandRest = String.raw`(?:\\\r\n|\\[\s\S]|>&|&>|[^|;&\n'"\\]|'[^']*'|'(?![^']*')|"(?:\\[\s\S]|[^"\\])*"|"(?!(?:\\[\s\S]|[^"\\])*"))*?`;
+const commandPart = String.raw`(?:\\\r\n|\\[\s\S]|>&|(?<!>)&>|[^|;&\n'"\\$\`]|'[^']*'|'(?![^']*')|"(?:\\[\s\S]|[^"\\])*"|"(?!(?:\\[\s\S]|[^"\\])*")|\$\([^)]*\)|\$(?!\([^)]*\))|\`[^\`]*\`|\`(?![^\`]*\`))`;
+const commandRest = `${commandPart}*?`;
+const commandEnd = new RegExp(`${commandPart}*`, "y");
+/** A flag follows a space. After a continued line with no indent, only the new line is left. */
+const flagStart = String.raw`(?<=\s)`;
 /** Each method except GET and HEAD asks, so an unknown method, such as `$METHOD`, fails safe. */
-const sendingMethod = String.raw`[\s=]*(?!["']?(?:GET|HEAD)\b)\S`;
+const sendingMethod = String.raw`(?!["']?(?:GET|HEAD)\b)\S`;
+/** `-XPOST`, `-X POST` or `-X=POST`. Each form has one way to match, so `-X=GET` reads as GET. */
+const shortMethodFlag = String.raw`-[A-Za-z]*X(?:=|\s+|(?![\s=]))${sendingMethod}`;
 // curl and gh api send a POST by themselves when the command carries data (issue #451). Short
 // flags can share one dash (`-sd`) and take an attached value (`-d@file`). Case matters:
 // `curl -f` only fails on an error, but `curl -F` sends a form. curl takes a unique start of a
-// long option (`--jso`), and a config file (`-K`) can hold data.
-const curlSendsPattern = new RegExp(
-  String.raw`\bcurl\b${commandRest}\s(?:-[A-Za-z]*[dFTK]|--(?:da|js|fo|up|conf)[\w-]*(?=[\s=]|$)|(?:-[A-Za-z]*X|--req[\w-]*)${sendingMethod})`,
-);
+// long option (`--jso`), and from version 8.3 an `--expand-` form of each option. A config file
+// (`-K`) can hold data.
+const curlSends = {
+  start: /\bcurl\b/g,
+  flag: new RegExp(
+    String.raw`${commandRest}${flagStart}(?:-[A-Za-z]*[dFTK]|--(?:expand-)?(?:da|js|form|up|conf)[\w-]*(?=[\s=]|$)|${shortMethodFlag}|--req(?:u(?:e(?:st?)?)?)?(?:=|\s+)${sendingMethod})`,
+    "y",
+  ),
+};
 // gh takes global flags, such as `--repo`, before `api`.
-const ghApiSendsPattern = new RegExp(
-  String.raw`\bgh(?:\.exe)?(?:\s+-\S+(?:\s+[^\s-]\S*)?)*?\s+api\b${commandRest}\s(?:-[A-Za-z]*[fF]|--(?:field|raw-field|input)(?=[\s=]|$)|(?:-[A-Za-z]*X|--method)${sendingMethod})`,
-);
+const ghApiSends = {
+  start: /\bgh(?:\.exe)?(?:\s+-\S+(?:\s+(?:'[^']*'|"[^"]*"|[^\s'"-]\S*))?)*?\s+api\b/g,
+  flag: new RegExp(
+    String.raw`${commandRest}${flagStart}(?:-[A-Za-z]*[fF]|--(?:field|raw-field|input)(?=[\s=]|$)|${shortMethodFlag}|--method(?:=|\s+)${sendingMethod})`,
+    "y",
+  ),
+};
+
+/**
+ * Tests the flags of each command that the program starts. The search then goes on after the end
+ * of that command: a new search from each later `curl` word in the same command took seconds.
+ */
+function programSends(command: string, program: { start: RegExp; flag: RegExp }): boolean {
+  program.start.lastIndex = 0;
+  for (let found = program.start.exec(command); found; found = program.start.exec(command)) {
+    program.flag.lastIndex = program.start.lastIndex;
+    if (program.flag.test(command)) return true;
+    commandEnd.lastIndex = program.start.lastIndex;
+    commandEnd.exec(command);
+    program.start.lastIndex = Math.max(commandEnd.lastIndex, program.start.lastIndex);
+  }
+  return false;
+}
 const outwardMcpPattern = /^mcp__.*(send|share|invite|post|reply|forward|permission|access|comment|reaction)/i;
 /** A calendar event reaches other people only when it has guests or sends updates. */
 const calendarEventToolPattern = /^mcp__.*manage_event$/;
@@ -39,8 +71,10 @@ const schedulesFilePattern = /\.eva[\\/]schedules\.json/i;
 export const askedActionWords: readonly string[] = [
   "Push commits with git push",
   "Create, comment on, edit, close or merge a GitHub issue, pull request, release or gist",
-  "Send data with gh api: -f, -F, --field, --raw-field, --input, or a method other than GET or HEAD",
-  "Send data with curl: -d, --data, --json, -F, --form, -T (upload a file), -K (a config file), or a method other than GET or HEAD",
+  "Send data with gh api: -f, -F, --field, --raw-field or --input",
+  "Send data with curl: -d, --data, --json, -F or --form",
+  "Upload a file with curl -T, or read a curl config file with -K",
+  "Use curl or gh api with a request method other than GET or HEAD, such as -X POST",
   "A tool that sends, shares, invites, posts, replies, forwards, comments, reacts or changes access",
   "A calendar event with guests or updates, and an answer to an invitation",
   "A change to the schedules in .eva/schedules.json, also a shell command that names that file",
@@ -70,7 +104,7 @@ function reachesOtherPeople(toolName: string, input: Readonly<Record<string, unk
   const command = typeof input["command"] === "string" ? input["command"] : "";
   return (
     (isShellTool(toolName) &&
-      (outwardCommandPattern.test(command) || curlSendsPattern.test(command) || ghApiSendsPattern.test(command))) ||
+      (outwardCommandPattern.test(command) || programSends(command, curlSends) || programSends(command, ghApiSends))) ||
     outwardMcpPattern.test(toolName) ||
     (calendarEventToolPattern.test(toolName) && eventReachesOthers(input))
   );

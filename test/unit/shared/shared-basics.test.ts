@@ -92,7 +92,15 @@ describe("asksThePerson", () => {
       "curl --config request.cfg https://example.com",
       'curl -X "$METHOD" https://example.com',
       "gh --repo x/y api repos/x/y -f a=b",
+      "gh --repo 'x y' api repos/x/y -f a=b",
       "gh.exe api repos/x/y -f a=b",
+      // A continued line with no indent, and a `|` inside a command substitution.
+      "curl https://example.com \\\n-d x",
+      "gh api repos/x/y \\\n-f a=b",
+      "curl $(echo u | tr a b) -d x",
+      "curl `echo u | tr a b` -d x",
+      // curl 8.3 and later can expand variables in each option.
+      "curl --expand-data '{{a}}' https://example.com",
     ];
     for (const command of sends)
       expect({ command, asks: asksThePerson("Bash", { command }) }).toEqual({ command, asks: true });
@@ -115,6 +123,10 @@ describe("asksThePerson", () => {
       "gh api repos/x/y",
       "gh api repos/x/y --jq .name",
       "gh api -X GET repos/x/y",
+      "gh api --method=GET repos/x/y",
+      "curl -X=GET https://example.com",
+      "curl --request-target /x https://example.com",
+      "curl --follow https://example.com",
       "gh api --paginate repos/x/y/issues",
       "gh api repos/x/y-fix",
       "curl https://example.com | jq -f prog.jq",
@@ -132,6 +144,13 @@ describe("asksThePerson", () => {
     expect(asksThePerson("Bash", { command: `curl ${"'a' ".repeat(40)}| jq .` })).toBe(false);
     expect(asksThePerson("Bash", { command: `gh --repo x/y api ${'"a" '.repeat(40)}| jq .` })).toBe(false);
     expect(asksThePerson("Bash", { command: `curl ${"2>&1 ".repeat(40)}| jq .` })).toBe(false);
+    const start = performance.now();
+    expect(asksThePerson("Bash", { command: `curl ${">&".repeat(5000)}>` })).toBe(false);
+    // A new search from each later `curl` word took seconds.
+    expect(asksThePerson("Bash", { command: "curl ".repeat(5000) })).toBe(false);
+    expect(asksThePerson("Bash", { command: "gh api ".repeat(5000) })).toBe(false);
+    // Two ways to match `>&>` made the first command take about one second.
+    expect(performance.now() - start).toBeLessThan(500);
   });
 });
 

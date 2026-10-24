@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnvironmentWithToken } from "../../../../src/core/instance/child-environments.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
@@ -213,6 +213,161 @@ describe("VaultSync.save", () => {
     const state = await createSync(vault).save();
     expect(state.status).toBe("skipped");
     expect(sandbox.git(vault, "status", "--porcelain")).toContain("note.md");
+  });
+
+  test("passes the paths on stdin, so many files never exceed the Windows command line (#505)", async () => {
+    const commands: { command: readonly string[]; stdin: string | undefined }[] = [];
+    const recording: ProcessRunner = {
+      run(command, options) {
+        commands.push({ command, stdin: options.stdin });
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    // A held-back secret makes the commit name its files with --only.
+    sandbox.write(vault, "Toolbox/keys.md", "token ghp_" + "c".repeat(36) + "\n");
+    for (let index = 0; index < 40; index += 1) sandbox.write(vault, `Notes/n ${String(index)}.md`, "x\n");
+    const state = await createSync(vault, { runner: recording }).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).toContain("Notes/n 39.md");
+    expect(remoteFiles()).not.toContain("Toolbox/keys.md");
+    for (const step of ["add", "commit"]) {
+      const run = commands.find(({ command }) => command[1] === step);
+      expect(run?.command.some((part) => part.includes("Notes/"))).toBe(false);
+      expect(run?.stdin?.split("\0")).toContain("Notes/n 39.md");
+    }
+    // A status that a timeout kills must leave no index.lock (lesson 81).
+    const status = commands.find(({ command }) => command.includes("status"));
+    expect(status?.command.slice(1, 3)).toEqual(["--no-optional-locks", "status"]);
+  });
+
+  test("a name with accents and spaces reaches the remote through the paths on stdin (#505)", async () => {
+    // A held-back secret makes the commit name its files with --only.
+    sandbox.write(vault, "Toolbox/keys.md", "token ghp_" + "d".repeat(36) + "\n");
+    sandbox.write(vault, "Notes/Café del mar ñ.md", "x\n");
+    expect((await createSync(vault).save()).status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "-c", "core.quotePath=false", "ls-tree", "-r", "--name-only", "main")).toContain(
+      "Notes/Café del mar ñ.md",
+    );
+  });
+
+  // Windows forbids "*" in a file name.
+  test.skipIf(process.platform === "win32")(
+    "a path on stdin matches literally: n*.md never pulls in a held-back nb.md (#505)",
+    async () => {
+      sandbox.write(vault, "Notes/n*.md", "x\n");
+      sandbox.write(vault, "Notes/nb.md", "token ghp_" + "e".repeat(36) + "\n");
+      const state = await createSync(vault).save();
+      expect(state.status).toBe("ok");
+      expect(state.withheldFiles).toEqual([{ path: "Notes/nb.md", reason: "secret" }]);
+      expect(remoteFiles()).toContain("Notes/n*.md");
+      expect(remoteFiles()).not.toContain("Notes/nb.md");
+    },
+  );
+
+  test("removes an index.lock that a killed git left long ago, and keeps a fresh one (#505)", async () => {
+    const lock = join(vault, ".git", "index.lock");
+    sandbox.write(vault, "note.md", "kept\n");
+    writeFileSync(lock, "");
+    expect((await createSync(vault).save()).status).toBe("error");
+    expect(existsSync(lock)).toBe(true);
+    const hourAgo = new Date(Date.now() - 60 * 60_000);
+    utimesSync(lock, hourAgo, hourAgo);
+    expect((await createSync(vault).save()).status).toBe("ok");
+    expect(existsSync(lock)).toBe(false);
+    expect(remoteFiles()).toContain("note.md");
+  });
+
+  test("keeps an index.lock just under 30 minutes old, and removes one just over, with a warning (#505)", async () => {
+    const lock = join(vault, ".git", "index.lock");
+    const logged: { level: string; message: string }[] = [];
+    const logger: Logger = { log: (level, message) => logged.push({ level, message }) };
+    sandbox.write(vault, "note.md", "kept\n");
+    writeFileSync(lock, "");
+    // A person's git commit holds the lock while its editor is open.
+    const underLimit = new Date(Date.now() - 29 * 60_000);
+    utimesSync(lock, underLimit, underLimit);
+    expect((await createSync(vault, { logger }).save()).status).toBe("error");
+    expect(existsSync(lock)).toBe(true);
+    expect(logged.some(({ message }) => message.includes("index.lock"))).toBe(false);
+    const overLimit = new Date(Date.now() - 31 * 60_000);
+    utimesSync(lock, overLimit, overLimit);
+    expect((await createSync(vault, { logger }).save()).status).toBe("ok");
+    expect(existsSync(lock)).toBe(false);
+    expect(logged).toContainEqual({ level: "warn", message: "Eva removed a stale index.lock from the vault." });
+  });
+
+  test("syncs a vault on master with no origin/HEAD, when the remote has only master (#505)", async () => {
+    sandbox.git(vault, "switch", "-q", "-c", "master");
+    sandbox.git(vault, "push", "-q", "-u", "origin", "master");
+    // The remote has only master, as after git init and a first push -u.
+    sandbox.git(sandbox.remote, "symbolic-ref", "HEAD", "refs/heads/master");
+    sandbox.git(vault, "push", "-q", "origin", "--delete", "main");
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "master")).toContain("note.md");
+  });
+
+  test("with no origin/HEAD, asks the remote for its default: master, even when main exists too (#505)", async () => {
+    sandbox.git(vault, "switch", "-q", "-c", "master");
+    sandbox.git(vault, "push", "-q", "-u", "origin", "master");
+    sandbox.git(sandbox.remote, "symbolic-ref", "HEAD", "refs/heads/master");
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "master")).toContain("note.md");
+    expect(remoteFiles()).not.toContain("note.md");
+  });
+
+  test("offline with no origin/HEAD, never takes a branch's upstream as the default (#505)", async () => {
+    sandbox.git(vault, "switch", "-q", "-c", "trunk");
+    sandbox.git(vault, "push", "-q", "-u", "origin", "trunk");
+    sandbox.git(sandbox.remote, "symbolic-ref", "HEAD", "refs/heads/trunk");
+    sandbox.git(vault, "push", "-q", "origin", "--delete", "main");
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    sandbox.write(vault, "note.md", "kept\n");
+    expect((await createSync(vault).save()).status).toBe("skipped");
+  });
+
+  test("with no origin/HEAD and an unreachable remote, falls back to the remote's main (#505)", async () => {
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("offline");
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (1 file)");
+  });
+
+  test("with no origin/HEAD, stays out of a second branch that has an upstream, while the remote has main (#505)", async () => {
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.git(vault, "switch", "-q", "-c", "ideas");
+    sandbox.git(vault, "push", "-q", "-u", "origin", "ideas");
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("skipped");
+    expect(state.lastError).toBe(
+      "Eva syncs main, but the vault is on ideas. If main is right, ask the Assistant to switch the vault back to it.",
+    );
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "ideas")).not.toContain("note.md");
+  });
+
+  test("a vault with no remote on master commits and reports no branch mismatch (#505)", async () => {
+    sandbox.git(vault, "remote", "remove", "origin");
+    sandbox.git(vault, "switch", "-q", "-c", "master");
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("offline");
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (1 file)");
+  });
+
+  test("a vault with no remote stays out of a branch that is neither main nor master (#505)", async () => {
+    sandbox.git(vault, "remote", "remove", "origin");
+    sandbox.git(vault, "switch", "-q", "-c", "ideas");
+    sandbox.write(vault, "note.md", "kept\n");
+    expect((await createSync(vault).save()).status).toBe("skipped");
   });
 
   test("never commits a cloned project repository", async () => {

@@ -1885,6 +1885,9 @@ describe("loggedPath", () => {
     expect(loggedPath("/api/settings/setup")).toBe("/api/settings/setup");
     expect(loggedPath("/api/login/device/secret-id")).toBe("/api/login/device/…");
     expect(loggedPath("/api/login/device")).toBe("/api/login/device");
+    // The page answers the same pending request by its id.
+    expect(loggedPath("/api/devices/requests/secret-id")).toBe("/api/devices/requests/…");
+    expect(loggedPath("/api/devices/requests")).toBe("/api/devices/requests");
   });
 });
 

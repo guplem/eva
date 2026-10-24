@@ -963,10 +963,13 @@ async function scheduleCardsRoute(
   return json({ error: "Not found." }, 404);
 }
 
-/** The path of a request for the log, without the id of a device login: that id lets a browser in. */
+/** The routes that carry the id of a pending device login, which lets a browser in. */
+const deviceLoginIdPrefixes = ["/api/login/device/", "/api/devices/requests/"] as const;
+
+/** The path of a request for the log, without the id of a pending device login. */
 export function loggedPath(pathname: string): string {
-  const devicePrefix = "/api/login/device/";
-  return pathname.startsWith(devicePrefix) ? `${devicePrefix}…` : pathname;
+  const prefix = deviceLoginIdPrefixes.find((each) => pathname.startsWith(each));
+  return prefix === undefined ? pathname : `${prefix}…`;
 }
 
 /** An EvaError message can hold a value from the request or from git, so it is redacted first (lesson 95). */

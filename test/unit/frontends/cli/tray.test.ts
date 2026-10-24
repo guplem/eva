@@ -12,6 +12,7 @@ import {
   type TrayPhase,
   type TrayReading,
   type TrayView,
+  startPolls,
 } from "../../../../src/frontends/cli/tray.ts";
 import { buildChildEnvironment, baseEnvironmentAllowlist } from "../../../../src/shared/environment.ts";
 import { systemLineProcessStarter } from "../../../../src/shared/line-process.ts";
@@ -227,6 +228,7 @@ describe("startTray", () => {
     await tray?.ended;
     expect(logs).toEqual(["The tray icon stopped: Add-Type failed"]);
     expect(tray?.alive()).toBe(false);
+    expect(fake.closed()).toBe(true);
     const quiet = fakeTray();
     const second = trayOptions(quiet);
     await startTray(second.options)?.close();
@@ -234,17 +236,56 @@ describe("startTray", () => {
     expect(second.logs).toEqual([]);
   });
 
-  test("a choice that throws is logged, and ends the icon", async () => {
+  test("a choice that throws is logged, and the icon stays", async () => {
     const fake = fakeTray();
-    const { options, logs } = trayOptions(fake, {
-      onChoice: () => {
-        throw new Error("broken");
+    const { options, logs, choices } = trayOptions(fake, {
+      onChoice: (choice) => {
+        if (choice === "open") throw new Error("broken");
+        choices.push(choice);
       },
     });
     const tray = startTray(options);
     fake.choose("open");
+    fake.choose("quit");
+    await settle();
+    expect(logs).toEqual(["The tray menu choice open failed: broken"]);
+    expect(choices).toEqual(["quit"]);
+    expect(tray?.alive()).toBe(true);
+    await tray?.close();
+  });
+
+  test("an output that fails is logged, and the script is closed", async () => {
+    let closed = false;
+    const { options, logs } = trayOptions(fakeTray(), {
+      start: () => ({
+        send: () => undefined,
+        lines: (async function* (): AsyncIterable<string> {
+          await Promise.resolve();
+          yield* [];
+          throw new Error("pipe broke");
+        })(),
+        exited: Promise.resolve(1),
+        close: () => {
+          closed = true;
+          return Promise.resolve();
+        },
+        stderrTail: () => "",
+      }),
+    });
+    const tray = startTray(options);
     await tray?.ended;
-    expect(logs[0]).toBe("The tray icon failed: broken");
+    expect(logs).toEqual(["The tray icon failed: pipe broke", "The tray icon stopped."]);
+    expect(closed).toBe(true);
+  });
+
+  test("a start with no answer for about a minute shows as a hang", async () => {
+    const fake = fakeTray();
+    const { options, nextPoll } = trayOptions(fake);
+    const tray = startTray(options);
+    await settle();
+    for (let poll = 1; poll < startPolls; poll += 1) await nextPoll();
+    expect(fake.faces()).toEqual(["listening", "worried"]);
+    await tray?.close();
   });
 
   test("a script that cannot start gives no tray, and Eva keeps running", () => {
@@ -287,16 +328,25 @@ describe.if(process.platform === "win32")("tray.ps1 on Windows", () => {
   }, 60_000);
 
   test("the script reads every line, draws each face, and ends with no other error when its input ends", async () => {
-    const child = systemLineProcessStarter(trayCommand(systemRoot), { cwd: folder, environment });
+    // The trace shows how far the script got, if it fails.
+    const child = systemLineProcessStarter(trayCommand(systemRoot), {
+      cwd: folder,
+      environment: { ...environment, EVA_TRAY_TRACE: "1" },
+    });
     for (const face of trayFaces)
       child.send(JSON.stringify({ face, tooltip: "Eva (example)\nA test…", title: "Eva (example)", canOpen: true }));
     // A line that is not JSON makes the script write an error: so the last line reached it.
     child.send("not json");
-    // The timer of the script reads the input every 200 ms.
-    await Bun.sleep(5_000);
-    await child.close(30_000);
+    // The first start of PowerShell can be slow, so the test waits for the error, with a bound.
+    const shown = (): boolean => child.stderrTail().includes("could not show a view");
+    for (let waited = 0; waited < 30_000 && !shown(); waited += 200) await Bun.sleep(200);
+    await child.close(10_000);
     // With the error output in the text, a failure shows why.
-    expect(`${String(await child.exited)} ${child.stderrTail()}`).toMatch(/^0 \S/);
-    expect(child.stderrTail()).not.toContain("Exception calling");
+    const result = `${String(await child.exited)} ${child.stderrTail()}`;
+    expect(result).toStartWith("0 ");
+    expect(result).toContain("trace: view shown");
+    expect(result).toContain("The tray icon could not show a view:");
+    expect(result).toContain("trace: input ended");
+    expect(result).not.toContain("Exception calling");
   }, 60_000);
 });

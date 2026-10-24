@@ -144,6 +144,8 @@ export interface Tray {
 
 /** How often the icon reads Eva's status while she runs. */
 export const trayPollMs = 5_000;
+/** After this many reads with no answer, about a minute, the icon shows a start as a hang. */
+export const startPolls = 12;
 const trayCloseTimeoutMs = 5_000;
 
 function reasonOf(error: unknown): string {
@@ -181,21 +183,31 @@ export function startTray(options: TrayOptions): Tray | null {
   const ended = (async () => {
     try {
       for await (const line of child.lines) {
-        if (line === "open" || line === "restart" || line === "quit") options.onChoice(line);
+        if (line !== "open" && line !== "restart" && line !== "quit") continue;
+        // One failed choice must not end the icon.
+        try {
+          options.onChoice(line);
+        } catch (error) {
+          options.log(`The tray menu choice ${line} failed: ${reasonOf(error)}`);
+        }
       }
     } catch (error) {
       options.log(`The tray icon failed: ${reasonOf(error)}`);
     }
     state.ended = true;
-    if (!state.closed) {
-      const reason = child.stderrTail().trim();
-      options.log(`The tray icon stopped${reason === "" ? "." : `: ${reason}`}`);
-    }
+    if (state.closed) return;
+    // A script whose output ended may still show a frozen icon: it must go.
+    await child.close(trayCloseTimeoutMs);
+    await child.exited;
+    const reason = child.stderrTail().trim();
+    options.log(`The tray icon stopped${reason === "" ? "." : `: ${reason}`}`);
   })();
 
   // A function, so the loop reads an end that happens while it awaits.
   const isOver = (): boolean => state.closed || state.ended;
   void (async () => {
+    // The reads with no answer since the last start.
+    let unanswered = 0;
     while (!isOver()) {
       if (state.phase.kind === "starting" || state.phase.kind === "running") {
         const count = state.phaseCount;
@@ -205,11 +217,13 @@ export function startTray(options: TrayOptions): Tray | null {
         });
         if (isOver()) return;
         if (count === state.phaseCount) {
+          unanswered = reading === null ? unanswered + 1 : 0;
           state.reading = reading;
-          // The first answer shows that Eva runs; a lost answer later shows that she hangs.
-          if (reading !== null) state.phase = { kind: "running" };
+          // The first answer shows that Eva runs; a lost answer later shows that she hangs. A start
+          // with no answer for a long time is a hang too.
+          if (reading !== null || unanswered >= startPolls) state.phase = { kind: "running" };
           show();
-        }
+        } else unanswered = 0;
       }
       await options.sleep(trayPollMs);
     }

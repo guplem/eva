@@ -62,6 +62,15 @@ describe("systemLineProcessStarter", () => {
     await child.exited;
   });
 
+  test("the error output is complete once the exit settles", async () => {
+    const child = systemLineProcessStarter([bun, "-e", "process.stderr.write('broken'); process.exit(2)"], {
+      cwd: process.cwd(),
+      environment,
+    });
+    expect(await child.exited).toBe(2);
+    expect(child.stderrTail()).toBe("broken");
+  });
+
   test("a send after the child ended does nothing", async () => {
     const child = systemLineProcessStarter([bun, "-e", "process.exit(0)"], { cwd: process.cwd(), environment });
     await child.exited;

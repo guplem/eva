@@ -27,7 +27,7 @@ import { requestApprovalCount, requestRestart, requestStatus } from "./client.ts
 import { openLoggedIn } from "./devices.ts";
 import { childEnvironment, evaCommand, writeLine, type CliHost } from "./host.ts";
 import { runningClient } from "./local-commands.ts";
-import { startTray, trayCommand, type Tray, type TrayChoice } from "./tray.ts";
+import { startTray, trayCommand, type Tray, type TrayChoice, type TrayReading } from "./tray.ts";
 
 const serviceStepTimeoutMs = 30_000;
 
@@ -275,7 +275,11 @@ export async function supervise(host: CliHost, paths: HomePaths, starters: Super
     if (choice === "quit") quit();
     else if (choice === "restart") {
       if (state.supervisor === null) state.next.resolve("restart");
-      else state.supervisor.restart();
+      else {
+        // The old Eva can take a while to stop: meanwhile, the icon shows a start, not a hang.
+        tray?.setPhase({ kind: "starting" });
+        state.supervisor.restart();
+      }
     } else openFromTray(host, paths, log);
   };
   const tray =
@@ -349,6 +353,9 @@ function startWindowsTray(
   log: (message: string) => void,
   onChoice: (choice: TrayChoice) => void,
 ): Tray | null {
+  // A hung Eva never answers, and the wait for her ends before her request does. One request at
+  // a time keeps such requests from piling up.
+  let open: Promise<TrayReading | null> | null = null;
   return startTray({
     start,
     command: trayCommand(windowsSystemRoot(host)),
@@ -356,15 +363,21 @@ function startWindowsTray(
     // No PSModulePath: one from PowerShell 7 breaks the modules of Windows PowerShell, which finds its own.
     environment: buildChildEnvironment(host.environment, baseEnvironmentAllowlist),
     instance: instanceNameOf(paths),
-    // A broken settings file throws here. The read then counts as no answer, and the supervisor runs on.
+    // A broken settings file throws here. The read then counts as no answer, and the supervisor keeps running.
     read: async () => {
-      const client = runningClient(host, paths);
-      if (client === null) return null;
-      const reading = Promise.all([requestStatus(client), requestApprovalCount(client)]).then(
-        ([status, approvals]) => ({ status, approvals }),
-        () => null,
-      );
-      return Promise.race([reading, host.sleep(trayStatusWaitMs).then(() => null)]);
+      if (open === null) {
+        const client = runningClient(host, paths);
+        if (client === null) return null;
+        const reading = Promise.all([requestStatus(client), requestApprovalCount(client)]).then(
+          ([status, approvals]) => ({ status, approvals }),
+          () => null,
+        );
+        open = reading;
+        void reading.finally(() => {
+          open = null;
+        });
+      }
+      return Promise.race([open, host.sleep(trayStatusWaitMs).then(() => null)]);
     },
     onChoice,
     sleep: host.sleep,

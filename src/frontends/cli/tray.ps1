@@ -4,8 +4,15 @@
 $ErrorActionPreference = 'Stop'
 # A progress record would reach the error output, where Eva reads only real errors.
 $ProgressPreference = 'SilentlyContinue'
+# EVA_TRAY_TRACE=1 writes each step to the error output, for a test that cannot see the screen.
+function Write-Trace($text) {
+  if ($env:EVA_TRAY_TRACE -eq '1') { [Console]::Error.WriteLine("trace: $text") }
+}
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+# An error in a menu or timer handler would open a dialog that nobody sees, and the icon would hang.
+[System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::ThrowException)
+Write-Trace 'loaded'
 
 # The colours of src/frontends/web/icons/icon.svg: EVE's visor and her blue eyes, with no glow at this size.
 $visorTop = [System.Drawing.Color]::FromArgb(255, 0x1c, 0x25, 0x2d)
@@ -102,21 +109,30 @@ function Show-View($view) {
 # Not [Console]::In: its ReadLineAsync waits for the line, and the menu would freeze. Eva writes UTF-8.
 $reader = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), (New-Object System.Text.UTF8Encoding($false)))
 $pending = $reader.ReadLineAsync()
+Write-Trace 'reading'
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 200
 $timer.add_Tick({
+  if (-not $script:ticked) { $script:ticked = $true; Write-Trace 'first tick' }
   while ($pending.IsCompleted) {
     $line = if ($pending.IsFaulted) { $null } else { $pending.Result }
     if ($null -eq $line) {
+      Write-Trace 'input ended'
       $timer.Stop()
       [System.Windows.Forms.Application]::Exit()
       return
     }
-    try { Show-View ($line | ConvertFrom-Json) } catch { [Console]::Error.WriteLine($_.Exception.Message) }
+    try {
+      Show-View ($line | ConvertFrom-Json)
+      Write-Trace 'view shown'
+    } catch {
+      [Console]::Error.WriteLine("The tray icon could not show a view: $($_.Exception.Message)")
+    }
     $script:pending = $reader.ReadLineAsync()
   }
 })
 $timer.Start()
+Write-Trace 'ready'
 try {
   [System.Windows.Forms.Application]::Run()
 } finally {

@@ -15,7 +15,7 @@ export interface LineProcess {
   readonly exited: Promise<number>;
   /** Ends the child's input, which asks it to stop, and stops it hard after the timeout. */
   close(timeoutMs: number): Promise<void>;
-  /** The last part of the error output, for a log line. */
+  /** The last part of the error output, for a log line. It is complete once `exited` settles. */
   stderrTail(): string;
 }
 
@@ -28,6 +28,7 @@ export interface LineProcessOptions {
 export type LineProcessStarter = (command: readonly string[], options: LineProcessOptions) => LineProcess;
 
 const stderrLimit = 2_000;
+const stderrWaitMs = 1_000;
 
 export const systemLineProcessStarter: LineProcessStarter = (command, options) => {
   let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
@@ -45,11 +46,17 @@ export const systemLineProcessStarter: LineProcessStarter = (command, options) =
     throw new EvaError("process_failed", `Could not start ${command[0] ?? "a process"}.`, { cause: error });
   }
   let stderr = "";
-  void (async () => {
+  const stderrRead = (async () => {
     for await (const text of child.stderr.pipeThrough(new TextDecoderStream())) {
       stderr = (stderr + text).slice(-stderrLimit);
     }
   })().catch(() => undefined);
+  // The exit can come before the last error output: a reader of stderrTail waits for both. A child
+  // of the child can keep the error output open, so that wait has a bound.
+  const exited = child.exited.then(async (code) => {
+    await Promise.race([stderrRead, Bun.sleep(stderrWaitMs)]);
+    return code;
+  });
   let inputOpen = true;
   const endInput = async (): Promise<void> => {
     if (!inputOpen) return;
@@ -75,7 +82,7 @@ export const systemLineProcessStarter: LineProcessStarter = (command, options) =
       }
     },
     lines: readLines(child.stdout),
-    exited: child.exited,
+    exited,
     close: async (timeoutMs) => {
       await endInput();
       const ended = await Promise.race([child.exited.then(() => true), Bun.sleep(timeoutMs).then(() => false)]);

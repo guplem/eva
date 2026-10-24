@@ -716,10 +716,10 @@ describe("service install and supervise", () => {
       expect(host.commands.find((command) => command[0] === "rundll32.exe")?.[2]).toContain("/#login=s");
       tray.choose("restart");
       await waitFor(() => eva.starts() === 2);
-      expect(restarts).toHaveLength(1);
+      await waitFor(() => restarts.length === 1);
       tray.choose("quit");
       expect(await done).toBe(exitCodes.clean);
-      expect(restarts).toHaveLength(2);
+      await waitFor(() => restarts.length === 2);
       expect(eva.starts()).toBe(2);
       expect(tray.closed()).toBe(true);
     } finally {
@@ -744,6 +744,33 @@ describe("service install and supervise", () => {
     for (const handler of host.stopHandlers) handler();
     expect(await done).toBe(exitCodes.clean);
     expect(tray.closed()).toBe(true);
+  });
+
+  test("on Windows, after Eva stops for good, Quit Eva ends the supervisor and its icon", async () => {
+    const tray = fakeTray();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: heldEva([exitCodes.clean]).start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => tray.faces().includes("asleep"));
+    tray.choose("quit");
+    expect(await done).toBe(exitCodes.clean);
+    expect(tray.closed()).toBe(true);
+  });
+
+  test("on Windows, an icon that ends while Eva is stopped ends the supervisor", async () => {
+    const tray = fakeTray();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: heldEva([exitCodes.badConfig]).start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => tray.faces().includes("error"));
+    tray.end("the script failed");
+    expect(await done).toBe(exitCodes.badConfig);
   });
 
   test("on Windows, with no icon left, a stop for good ends the supervisor: nobody could restart Eva", async () => {

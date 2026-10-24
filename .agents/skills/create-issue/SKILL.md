@@ -29,15 +29,17 @@ An issue says what the person wants. It also shows which parts the person decide
    - **Proposed solution:** only when the person proposed one.
    - **Done when:** behavior that a person can see, not implementation steps. Cover each decision and each assumption. Name a front end only when it has the feature.
 7. **Add labels.** Add `waiting-for-human-check` when an agent wrote the issue. Add `requires-human-intervention` when only a person can do the next step. Add no other label.
-8. **Check the references.** After you create several issues, read each one again. Fix each reference to a wrong issue number.
-9. **Review the issues.** Skip this step for a small issue with no open decision. For each issue, start a sub-agent that did not write it. Give it the issue number and each decision, with the answers that led to it. The sub-agent changes nothing. It reports:
-   - a decision that is missing, wrong or contradicted;
-   - an assumption that the issue shows as a decision of the person;
-   - a claim about the code that is not true;
-   - a gap that an implementer would hit;
-   - a "Done when" item that is missing or that a person cannot see.
-
-   Fix each valid finding. Ask the person about each finding that changes what they want. Then name the assumptions that matter most, so the person checks them first.
+8. **Review each issue.** Do this step for every issue.
+   - Read the issue again yourself, against the code and the decisions. Check each reference to another issue.
+   - Start 2 sub-agents for each issue (1 mid-tier, 1 top-tier). Give them only the issue number and each decision, with the answers that led to it. Do not give them your reasoning: they read the issue and the code by themselves. They change nothing, and they report:
+     - a decision that is missing, wrong or contradicted;
+     - an assumption that the issue shows as a decision of the person;
+     - a claim about the code that is not true;
+     - a gap that an implementer would hit;
+     - a "Done when" item that is missing or that a person cannot see.
+   - Judge each finding against the code and the decisions. Fix each valid finding in the issue.
+   - Ask the person about each finding that changes what they want.
+   - Name the assumptions that matter most, so the person checks them first.
 
 ## Interview the person
 

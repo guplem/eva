@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { runCheck, type CheckInputs } from "../../../src/core/checks.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, engineFolders, homePaths, loadSecrets } from "../../../src/core/settings/home.ts";
@@ -1048,7 +1048,8 @@ describe("program installs from the page (#242)", () => {
       expect(after.restartNeeded).toBe(true);
       expect(await engineStep()).toContain("Start the login");
       await instance.startClaudeLogin().catch(() => undefined);
-      expect(started[0]).toEqual([join(home, ".local", "bin", "claude"), "setup-token"]);
+      // The tool places say Linux, so the program path uses Linux separators, also on Windows.
+      expect(started[0]).toEqual([posix.join(home, ".local", "bin", "claude"), "setup-token"]);
       expect(instance.status().chatBlocker).toBe("engine");
       await instance.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
       expect(instance.status().chatBlocker).toBe("restart");

@@ -395,6 +395,11 @@ async function postJson<Body>(options: ClientOptions, path: string, body: unknow
   return (await response.json()) as Body;
 }
 
+/** How many approvals wait, of any chat. */
+export async function requestApprovalCount(options: ClientOptions): Promise<number> {
+  return (await getJson<readonly unknown[]>(options, "/api/approvals")).length;
+}
+
 async function getJson<Body>(options: ClientOptions, path: string): Promise<Body> {
   const response = await fetch(`${options.baseUrl}${path}`, { headers: { authorization: `Bearer ${options.token}` } });
   if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);

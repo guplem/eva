@@ -26,10 +26,10 @@ import { updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
 import { restartMethodNow } from "../../../../src/frontends/cli/service.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import { exitCodes } from "../../../../src/shared/exit-codes.ts";
-import type { LineProcessStarter } from "../../../../src/shared/line-process.ts";
 import type { LongProcessStarter } from "../../../../src/shared/long-process.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { fakeHost, scriptedRunner, type FakeHost } from "../../../support/fake-host.ts";
+import { fakeTray } from "../../../support/fake-tray.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
 
 let root: string;
@@ -674,7 +674,7 @@ describe("service install and supervise", () => {
   });
 
   test("on Windows, supervise shows the tray icon, and its menu opens, restarts and quits Eva (#457)", async () => {
-    const tray = fakeTrayProcess();
+    const tray = fakeTray();
     const eva = heldEva();
     const restarts: string[] = [];
     const api = Bun.serve({
@@ -688,6 +688,7 @@ describe("service install and supervise", () => {
           eva.exit(exitCodes.update);
           return Response.json({ restarting: true }, { status: 202 });
         }
+        if (path === "/api/approvals") return Response.json([{ id: "a" }]);
         if (path === "/api/devices/link") return Response.json({ secret: "s", expiresAt: "later" });
         return Response.json({ problems: [], busySessionIds: [], chatBlocker: null });
       },
@@ -707,7 +708,7 @@ describe("service install and supervise", () => {
         startLongProcess: eva.start,
         startLineProcess: tray.start,
       });
-      await waitFor(() => tray.faces().includes("neutral"));
+      await waitFor(() => tray.faces().includes("firm"));
       expect(tray.command[0]).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
       expect(tray.faces()[0]).toBe("listening");
       tray.choose("open");
@@ -728,7 +729,7 @@ describe("service install and supervise", () => {
   });
 
   test("on Windows, the icon stays after Eva stops for good, and Restart Eva starts her again", async () => {
-    const tray = fakeTrayProcess();
+    const tray = fakeTray();
     const eva = heldEva([exitCodes.badConfig]);
     const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
     const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
@@ -745,8 +746,24 @@ describe("service install and supervise", () => {
     expect(tray.closed()).toBe(true);
   });
 
+  test("on Windows, with no icon left, a stop for good ends the supervisor: nobody could restart Eva", async () => {
+    const tray = fakeTray();
+    const eva = heldEva();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: eva.start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => eva.starts() === 1);
+    tray.end("the script failed");
+    await Bun.sleep(20);
+    eva.exit(exitCodes.badConfig);
+    expect(await done).toBe(exitCodes.badConfig);
+  });
+
   test("on Windows, a second copy of the same Eva ends its supervisor and its icon", async () => {
-    const tray = fakeTrayProcess();
+    const tray = fakeTray();
     const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
     const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
       ...noWiring,
@@ -810,55 +827,4 @@ function heldEva(exits: number[] = []): {
     };
   };
   return { start, exit: (code) => exit(code), starts: () => starts };
-}
-
-/** The tray script: it records each view, and writes the menu choices of the test. */
-function fakeTrayProcess(): {
-  start: LineProcessStarter;
-  command: string[];
-  faces: () => string[];
-  choose: (choice: string) => void;
-  closed: () => boolean;
-} {
-  const command: string[] = [];
-  const views: string[] = [];
-  const choices: string[] = [];
-  let wake: () => void = () => undefined;
-  let closed = false;
-  const exited = Promise.withResolvers<number>();
-  const lines = async function* (): AsyncIterable<string> {
-    while (!closed) {
-      const choice = choices.shift();
-      if (choice !== undefined) yield choice;
-      else
-        await new Promise<void>((resolve) => {
-          wake = resolve;
-        });
-    }
-  };
-  const start: LineProcessStarter = (started) => {
-    command.push(...started);
-    return {
-      send: (line) => views.push(line),
-      lines: lines(),
-      exited: exited.promise,
-      close: () => {
-        closed = true;
-        wake();
-        exited.resolve(0);
-        return Promise.resolve();
-      },
-      stderrTail: () => "",
-    };
-  };
-  return {
-    start,
-    command,
-    faces: () => views.map((line) => (JSON.parse(line) as { face: string }).face),
-    choose: (choice) => {
-      choices.push(choice);
-      wake();
-    },
-    closed: () => closed,
-  };
 }

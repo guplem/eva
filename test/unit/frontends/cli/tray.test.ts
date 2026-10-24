@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
-import type { EvaStatus } from "../../../../src/core/eva.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   startTray,
   trayCommand,
@@ -8,24 +10,25 @@ import {
   type TrayChoice,
   type TrayOptions,
   type TrayPhase,
+  type TrayReading,
   type TrayView,
 } from "../../../../src/frontends/cli/tray.ts";
 import { buildChildEnvironment, baseEnvironmentAllowlist } from "../../../../src/shared/environment.ts";
-import type { LineProcess, LineProcessStarter } from "../../../../src/shared/line-process.ts";
 import { systemLineProcessStarter } from "../../../../src/shared/line-process.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { fakeTray, type FakeTray } from "../../../support/fake-tray.ts";
 
-function status(fields: Partial<EvaStatus> = {}): EvaStatus {
-  return { problems: [], busySessionIds: [], chatBlocker: null, ...fields } as unknown as EvaStatus;
+function reading(fields: Partial<TrayReading["status"]> = {}, approvals = 0): TrayReading {
+  return { status: { problems: [], busySessionIds: [], chatBlocker: null, ...fields }, approvals };
 }
 
-function view(phase: TrayPhase, eva: EvaStatus | null = null): TrayView {
-  return trayView({ instance: "example", phase, status: eva });
+function view(phase: TrayPhase, answer: TrayReading | null = null): TrayView {
+  return trayView({ instance: "example", phase, reading: answer });
 }
 
 describe("trayView", () => {
   test("a running Eva with nothing to do has her face at rest, and her page opens", () => {
-    expect(view({ kind: "running" }, status())).toEqual({
+    expect(view({ kind: "running" }, reading())).toEqual({
       face: "neutral",
       tooltip: "Eva (example)\nEva is online, and nothing runs",
       title: "Eva (example)",
@@ -33,12 +36,15 @@ describe("trayView", () => {
     });
   });
 
-  test("a running Eva shows her work, a problem, and a setup step that stops the chats", () => {
-    expect(view({ kind: "running" }, status({ busySessionIds: ["a", "b"] })).face).toBe("thinking");
-    const problem = view({ kind: "running" }, status({ problems: ["The GitHub login expired."] }));
+  test("a running Eva shows her work, an approval, a problem, and a setup step that stops the chats", () => {
+    expect(view({ kind: "running" }, reading({ busySessionIds: ["a", "b"] })).face).toBe("thinking");
+    const approval = view({ kind: "running" }, reading({}, 2));
+    expect(approval.face).toBe("firm");
+    expect(approval.tooltip).toContain("2 approvals wait for you");
+    const problem = view({ kind: "running" }, reading({ problems: ["The GitHub login expired."] }));
     expect(problem.face).toBe("error");
     expect(problem.tooltip).toContain("1 problem needs you");
-    const blocked = view({ kind: "running" }, status({ chatBlocker: {} as EvaStatus["chatBlocker"] }));
+    const blocked = view({ kind: "running" }, reading({ chatBlocker: "engine" }));
     expect(blocked.face).toBe("asleep");
     expect(blocked.tooltip).toContain("A setup step stops the chats");
   });
@@ -56,15 +62,15 @@ describe("trayView", () => {
     expect(states[2]?.tooltip).toContain("Starts in 5 s.");
   });
 
-  test("a status read before a stop never shows over the stop", () => {
-    expect(view({ kind: "stopped", settingsNeedYou: false }, status()).face).toBe("asleep");
+  test("an answer from before a stop never shows over the stop", () => {
+    expect(view({ kind: "stopped", settingsNeedYou: false }, reading()).face).toBe("asleep");
   });
 
   test("cuts a tooltip to the 63 characters that Windows allows", () => {
     const long = trayView({
       instance: "a-very-long-instance-name-for-a-test",
       phase: { kind: "waiting", afterMs: 30_000 },
-      status: null,
+      reading: null,
     });
     expect(long.tooltip.length).toBe(63);
     expect(long.tooltip.endsWith("…")).toBe(true);
@@ -77,9 +83,10 @@ describe("trayView", () => {
       view({ kind: "waiting", afterMs: 0 }),
       view({ kind: "stopped", settingsNeedYou: false }),
       view({ kind: "stopped", settingsNeedYou: true }),
-      view({ kind: "running" }, status()),
-      view({ kind: "running" }, status({ busySessionIds: ["a"] })),
-      view({ kind: "running" }, status({ problems: ["x"] })),
+      view({ kind: "running" }, reading()),
+      view({ kind: "running" }, reading({}, 1)),
+      view({ kind: "running" }, reading({ busySessionIds: ["a"] })),
+      view({ kind: "running" }, reading({ problems: ["x"] })),
     ].map((state) => state.face);
     for (const face of shown) expect(trayFaces).toContain(face);
   });
@@ -90,6 +97,11 @@ describe("trayCommand", () => {
     const command = trayCommand("C:\\Windows");
     expect(command[0]).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
     expect(command).toContain("-Sta");
+    // PowerShell must leave the input to the script.
+    expect(command.slice(command.indexOf("-InputFormat"), command.indexOf("-InputFormat") + 2)).toEqual([
+      "-InputFormat",
+      "None",
+    ]);
     const script = Buffer.from(command.at(-1) ?? "", "base64").toString("utf16le");
     expect(script).toContain("NotifyIcon");
     // Windows refuses a command line longer than 32,767 characters.
@@ -97,72 +109,12 @@ describe("trayCommand", () => {
   });
 });
 
-interface FakeTrayProcess {
-  readonly start: LineProcessStarter;
-  readonly sent: string[];
-  /** Writes a line as the script would, after a menu choice. */
-  choose(line: string): void;
-  /** Ends the script by itself. */
-  end(stderr?: string): void;
-  readonly closed: () => boolean;
-}
-
-function fakeTrayProcess(): FakeTrayProcess {
-  const sent: string[] = [];
-  const queue: string[] = [];
-  let wake: (() => void) | null = null;
-  let ended = false;
-  let closed = false;
-  let stderr = "";
-  const exited = Promise.withResolvers<number>();
-  const lines = async function* (): AsyncIterable<string> {
-    for (;;) {
-      const line = queue.shift();
-      if (line !== undefined) {
-        yield line;
-        continue;
-      }
-      if (ended) return;
-      await new Promise<void>((resolve) => {
-        wake = resolve;
-      });
-    }
-  };
-  const process: LineProcess = {
-    send: (line) => sent.push(line),
-    lines: lines(),
-    exited: exited.promise,
-    close: () => {
-      closed = true;
-      ended = true;
-      wake?.();
-      exited.resolve(0);
-      return Promise.resolve();
-    },
-    stderrTail: () => stderr,
-  };
-  return {
-    start: () => process,
-    sent,
-    choose: (line) => {
-      queue.push(line);
-      wake?.();
-    },
-    end: (text = "") => {
-      stderr = text;
-      ended = true;
-      wake?.();
-    },
-    closed: () => closed,
-  };
-}
-
 async function settle(): Promise<void> {
   for (let round = 0; round < 10; round += 1) await Bun.sleep(0);
 }
 
 function trayOptions(
-  fake: FakeTrayProcess,
+  fake: FakeTray,
   overrides: Partial<TrayOptions> = {},
 ): { options: TrayOptions; choices: TrayChoice[]; logs: string[]; nextPoll: () => Promise<void> } {
   const choices: TrayChoice[] = [];
@@ -174,7 +126,7 @@ function trayOptions(
     cwd: "/h",
     environment: {},
     instance: "example",
-    readStatus: () => Promise.resolve(null),
+    read: () => Promise.resolve(null),
     onChoice: (choice) => choices.push(choice),
     // Each poll waits until the test lets it go on.
     sleep: () =>
@@ -191,53 +143,73 @@ function trayOptions(
   return { options, choices, logs, nextPoll };
 }
 
-function shownFaces(fake: FakeTrayProcess): string[] {
-  return fake.sent.map((line) => (JSON.parse(line) as TrayView).face);
-}
-
 describe("startTray", () => {
   test("shows Eva starting, then her state once she answers, and sends a view only when it changes", async () => {
-    const fake = fakeTrayProcess();
-    const answers: (EvaStatus | null)[] = [null, status(), status(), status({ busySessionIds: ["a"] })];
-    const { options, nextPoll } = trayOptions(fake, { readStatus: () => Promise.resolve(answers.shift() ?? null) });
+    const fake = fakeTray();
+    const answers: (TrayReading | null)[] = [null, reading(), reading(), reading({ busySessionIds: ["a"] })];
+    const { options, nextPoll } = trayOptions(fake, { read: () => Promise.resolve(answers.shift() ?? null) });
     const tray = startTray(options);
     await settle();
-    expect(shownFaces(fake)).toEqual(["listening"]);
+    expect(fake.faces()).toEqual(["listening"]);
     await nextPoll();
     await nextPoll();
     await nextPoll();
-    expect(shownFaces(fake)).toEqual(["listening", "neutral", "thinking"]);
+    expect(fake.faces()).toEqual(["listening", "neutral", "thinking"]);
     await nextPoll();
-    expect(shownFaces(fake).at(-1)).toBe("worried");
+    expect(fake.faces().at(-1)).toBe("worried");
     await tray?.close();
   });
 
-  test("the supervisor's phase replaces the old status, and no status is read while Eva is stopped", async () => {
-    const fake = fakeTrayProcess();
+  test("the supervisor's phase replaces the old answer, and nothing is read while Eva is stopped", async () => {
+    const fake = fakeTray();
     let reads = 0;
     const { options, nextPoll } = trayOptions(fake, {
-      readStatus: () => {
+      read: () => {
         reads += 1;
-        return Promise.resolve(status());
+        return Promise.resolve(reading());
       },
     });
     const tray = startTray(options);
     await settle();
-    expect(shownFaces(fake).at(-1)).toBe("neutral");
+    expect(fake.faces().at(-1)).toBe("neutral");
     tray?.setPhase({ kind: "stopped", settingsNeedYou: false });
     const readsAtStop = reads;
     await nextPoll();
     await nextPoll();
     expect(reads).toBe(readsAtStop);
-    expect(shownFaces(fake).at(-1)).toBe("asleep");
+    expect(fake.faces().at(-1)).toBe("asleep");
     tray?.setPhase({ kind: "starting" });
     await nextPoll();
-    expect(shownFaces(fake).slice(-2)).toEqual(["listening", "neutral"]);
+    expect(fake.faces().slice(-2)).toEqual(["listening", "neutral"]);
     await tray?.close();
   });
 
+  test("an answer that comes after a new phase never overwrites it", async () => {
+    const fake = fakeTray();
+    const late = Promise.withResolvers<TrayReading | null>();
+    const { options } = trayOptions(fake, { read: () => late.promise });
+    const tray = startTray(options);
+    await settle();
+    tray?.setPhase({ kind: "stopped", settingsNeedYou: false });
+    late.resolve(reading());
+    await settle();
+    expect(fake.faces()).toEqual(["listening", "asleep"]);
+    await tray?.close();
+  });
+
+  test("a read that fails counts as no answer, and is logged", async () => {
+    const fake = fakeTray();
+    const { options, logs } = trayOptions(fake, { read: () => Promise.reject(new Error("config_invalid")) });
+    const tray = startTray(options);
+    await settle();
+    expect(logs).toEqual(["The tray icon could not read Eva's status: config_invalid"]);
+    expect(tray?.alive()).toBe(true);
+    await tray?.close();
+    expect(tray?.alive()).toBe(false);
+  });
+
   test("passes each menu choice on, and skips a line that is no choice", async () => {
-    const fake = fakeTrayProcess();
+    const fake = fakeTray();
     const { options, choices } = trayOptions(fake);
     const tray = startTray(options);
     for (const line of ["open", "hello", "restart", "quit"]) fake.choose(line);
@@ -247,24 +219,37 @@ describe("startTray", () => {
     expect(fake.closed()).toBe(true);
   });
 
-  test("logs a script that ends by itself, with its error, but not a close", async () => {
-    const fake = fakeTrayProcess();
+  test("logs a script that ends by itself, with its error, and is no longer alive; a close logs nothing", async () => {
+    const fake = fakeTray();
     const { options, logs } = trayOptions(fake);
-    startTray(options);
+    const tray = startTray(options);
     fake.end("Add-Type failed");
-    await settle();
+    await tray?.ended;
     expect(logs).toEqual(["The tray icon stopped: Add-Type failed"]);
-    const quiet = fakeTrayProcess();
+    expect(tray?.alive()).toBe(false);
+    const quiet = fakeTray();
     const second = trayOptions(quiet);
     await startTray(second.options)?.close();
     await settle();
     expect(second.logs).toEqual([]);
   });
 
-  test("a script that cannot start gives no tray, and Eva runs on", () => {
+  test("a choice that throws is logged, and ends the icon", async () => {
+    const fake = fakeTray();
+    const { options, logs } = trayOptions(fake, {
+      onChoice: () => {
+        throw new Error("broken");
+      },
+    });
+    const tray = startTray(options);
+    fake.choose("open");
+    await tray?.ended;
+    expect(logs[0]).toBe("The tray icon failed: broken");
+  });
+
+  test("a script that cannot start gives no tray, and Eva keeps running", () => {
     const logs: string[] = [];
-    const fake = fakeTrayProcess();
-    const { options } = trayOptions(fake, {
+    const { options } = trayOptions(fakeTray(), {
       start: () => {
         throw new Error("no powershell");
       },
@@ -277,35 +262,41 @@ describe("startTray", () => {
 
 describe.if(process.platform === "win32")("tray.ps1 on Windows", () => {
   const systemRoot = process.env["SystemRoot"] ?? "C:\\Windows";
+  const environment = buildChildEnvironment(process.env, baseEnvironmentAllowlist);
+  let folder: string;
+  beforeEach(() => {
+    folder = mkdtempSync(join(tmpdir(), "eva-tray-"));
+  });
+  afterEach(() => {
+    rmSync(folder, { recursive: true, force: true });
+  });
 
   test("Windows PowerShell parses the script with no error", async () => {
     const script = Buffer.from(trayCommand(systemRoot).at(-1) ?? "", "base64").toString("utf16le");
+    const file = join(folder, "tray.ps1");
+    writeFileSync(file, script);
+    // The path goes through the environment: quotes and backslashes in a command can break on Windows.
     const check =
-      "$errors = $null; [void][System.Management.Automation.Language.Parser]::ParseInput([Console]::In.ReadToEnd(), [ref]$null, [ref]$errors); $errors | ForEach-Object { $_.ToString() }; exit $errors.Count";
+      "$errors = $null; $tokens = $null; [void][System.Management.Automation.Language.Parser]::ParseFile($env:EVA_TRAY_FILE, [ref]$tokens, [ref]$errors); if ($tokens.Count -lt 100) { 'no script'; exit 99 }; $errors | ForEach-Object { $_.ToString() }; exit $errors.Count";
     const result = await systemProcessRunner.run(
       [trayCommand(systemRoot)[0] ?? "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", check],
-      {
-        cwd: process.cwd(),
-        environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist),
-        timeoutMs: 60_000,
-        stdin: script,
-      },
+      { cwd: folder, environment: { ...environment, EVA_TRAY_FILE: file }, timeoutMs: 60_000 },
     );
     expect(result.stdout.trim()).toBe("");
     expect(result.exitCode).toBe(0);
   }, 60_000);
 
-  test("the script draws each face, and ends with no error when its input ends", async () => {
-    const child = systemLineProcessStarter(trayCommand(systemRoot), {
-      cwd: process.cwd(),
-      environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist),
-    });
+  test("the script reads every line, draws each face, and ends with no other error when its input ends", async () => {
+    const child = systemLineProcessStarter(trayCommand(systemRoot), { cwd: folder, environment });
     for (const face of trayFaces)
       child.send(JSON.stringify({ face, tooltip: "Eva (example)\nA test…", title: "Eva (example)", canOpen: true }));
+    // A line that is not JSON makes the script write an error: so the last line reached it.
+    child.send("not json");
     // The timer of the script reads the input every 200 ms.
-    await Bun.sleep(3_000);
+    await Bun.sleep(5_000);
     await child.close(30_000);
-    expect(child.stderrTail()).toBe("");
-    expect(await child.exited).toBe(0);
+    // With the error output in the text, a failure shows why.
+    expect(`${String(await child.exited)} ${child.stderrTail()}`).toMatch(/^0 \S/);
+    expect(child.stderrTail()).not.toContain("Exception calling");
   }, 60_000);
 });

@@ -23,7 +23,7 @@ import { FileLogger } from "../../shared/logger.ts";
 import type { LongProcessStarter } from "../../shared/long-process.ts";
 import type { ProcessResult } from "../../shared/process-runner.ts";
 import { Redactor } from "../../shared/redaction.ts";
-import { requestRestart, requestStatus } from "./client.ts";
+import { requestApprovalCount, requestRestart, requestStatus } from "./client.ts";
 import { openLoggedIn } from "./devices.ts";
 import { childEnvironment, evaCommand, writeLine, type CliHost } from "./host.ts";
 import { runningClient } from "./local-commands.ts";
@@ -285,13 +285,15 @@ export async function supervise(host: CliHost, paths: HomePaths, starters: Super
     state.supervisor = superviseOnce(host, paths, starters.startLongProcess, log, tray);
     const exitCode = await state.supervisor.done;
     state.supervisor = null;
-    // After a second instance, the other copy of this Eva runs, with her own icon.
-    if (tray === null || state.quit || exitCode === exitCodes.secondInstance) {
+    // After a second instance, the other copy of this Eva runs, with her own icon. With no
+    // icon, nobody could ask for a restart, so the supervisor ends.
+    if (tray === null || !tray.alive() || state.quit || exitCode === exitCodes.secondInstance) {
       await tray?.close();
       return exitCode;
     }
     tray.setPhase({ kind: "stopped", settingsNeedYou: exitCode === exitCodes.badConfig });
-    if ((await state.next.promise) === "quit") {
+    const iconGone = tray.ended.then(() => "quit" as const);
+    if ((await Promise.race([state.next.promise, iconGone])) === "quit") {
       await tray.close();
       return exitCode;
     }
@@ -329,10 +331,10 @@ function superviseOnce(
             const client = runningClient(host, paths);
             if (client !== null) await requestRestart(client);
           },
-          // Eva runs for the icon only once she answers.
+          // The icon shows Eva as running only after her first answer.
           onPhase: (phase: SupervisorPhase) => {
             tray.setPhase(
-              phase.kind === "running" ? { kind: "starting" } : { kind: "waiting", afterMs: phase.afterMs },
+              phase.kind === "started" ? { kind: "starting" } : { kind: "waiting", afterMs: phase.afterMs },
             );
           },
         }),
@@ -354,10 +356,15 @@ function startWindowsTray(
     // No PSModulePath: one from PowerShell 7 breaks the modules of Windows PowerShell, which finds its own.
     environment: buildChildEnvironment(host.environment, baseEnvironmentAllowlist),
     instance: instanceNameOf(paths),
-    readStatus: async () => {
+    // A broken settings file throws here. The read then counts as no answer, and the supervisor runs on.
+    read: async () => {
       const client = runningClient(host, paths);
       if (client === null) return null;
-      return Promise.race([requestStatus(client).catch(() => null), host.sleep(trayStatusWaitMs).then(() => null)]);
+      const reading = Promise.all([requestStatus(client), requestApprovalCount(client)]).then(
+        ([status, approvals]) => ({ status, approvals }),
+        () => null,
+      );
+      return Promise.race([reading, host.sleep(trayStatusWaitMs).then(() => null)]);
     },
     onChoice,
     sleep: host.sleep,
@@ -367,9 +374,11 @@ function startWindowsTray(
 
 /** Open Eva in the tray menu: her page in this computer's browser, logged in, as `eva open` does. */
 function openFromTray(host: CliHost, paths: HomePaths, log: (message: string) => void): void {
-  const client = runningClient(host, paths);
-  if (client === null) return;
-  void openLoggedIn(host, client, null).catch((error: unknown) => {
+  // Async, so a broken settings file in runningClient becomes a log line, not a crash of the supervisor.
+  void (async () => {
+    const client = runningClient(host, paths);
+    if (client !== null) await openLoggedIn(host, client, null);
+  })().catch((error: unknown) => {
     log(`Eva's page did not open: ${error instanceof Error ? error.message : String(error)}`);
   });
 }

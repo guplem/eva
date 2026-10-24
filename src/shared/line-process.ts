@@ -49,7 +49,7 @@ export const systemLineProcessStarter: LineProcessStarter = (command, options) =
     for await (const text of child.stderr.pipeThrough(new TextDecoderStream())) {
       stderr = (stderr + text).slice(-stderrLimit);
     }
-  })();
+  })().catch(() => undefined);
   let inputOpen = true;
   const endInput = async (): Promise<void> => {
     if (!inputOpen) return;
@@ -68,7 +68,8 @@ export const systemLineProcessStarter: LineProcessStarter = (command, options) =
       if (!inputOpen) return;
       try {
         void child.stdin.write(`${line}\n`);
-        void child.stdin.flush();
+        // A pipe that broke as the child ended can fail the flush: the child is gone, so it does not matter.
+        void Promise.resolve(child.stdin.flush()).catch(() => undefined);
       } catch {
         // The child ended between the check and the write.
       }

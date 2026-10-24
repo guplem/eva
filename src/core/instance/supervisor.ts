@@ -52,12 +52,11 @@ export interface SupervisorOptions {
    * signal for another process, so there the supervisor asks through her local API.
    */
   readonly askStop?: () => Promise<void>;
-  /** Hears each start of Eva, and each wait after a crash, such as for the Windows tray icon. */
+  /** Is called at each start of Eva, and at each wait after a crash, such as for the Windows tray icon. */
   readonly onPhase?: (phase: SupervisorPhase) => void;
 }
 
-export type SupervisorPhase =
-  { readonly kind: "running" } | { readonly kind: "waiting"; readonly afterMs: number; readonly exitCode: number };
+export type SupervisorPhase = { readonly kind: "started" } | { readonly kind: "waiting"; readonly afterMs: number };
 
 export interface Supervisor {
   /** The supervisor's exit code: Eva's own when she stops for good, 0 after a stop. */
@@ -110,7 +109,7 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
       let exitCode: number;
       try {
         state.child = options.start(options.command, { cwd: options.cwd, environment });
-        options.onPhase?.({ kind: "running" });
+        options.onPhase?.({ kind: "started" });
         exitCode = await Promise.race([state.child.exited, runEnded.promise]);
       } catch (error) {
         options.log(`Eva could not start: ${error instanceof Error ? error.message : String(error)}`);
@@ -129,7 +128,7 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
       if (decision.kind === "stop") return decision.exitCode;
       if (decision.crash) {
         crashes += 1;
-        options.onPhase?.({ kind: "waiting", afterMs: decision.afterMs, exitCode });
+        options.onPhase?.({ kind: "waiting", afterMs: decision.afterMs });
       }
       options.log(
         decision.crash

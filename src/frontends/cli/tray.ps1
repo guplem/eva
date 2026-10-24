@@ -2,6 +2,8 @@
 # every decision. Each input line is a JSON view: face, tooltip, title and canOpen. Each menu
 # choice writes one output line: open, restart or quit. When the input ends, the icon goes away.
 $ErrorActionPreference = 'Stop'
+# A progress record would reach the error output, where Eva reads only real errors.
+$ProgressPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 

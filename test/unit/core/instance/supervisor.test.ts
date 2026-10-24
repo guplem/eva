@@ -237,10 +237,10 @@ describe("superviseEva", () => {
     const fake = fakeSupervisor([{ exit: 1 }, { exit: 4 }, { exit: 0 }], { onPhase: (phase) => phases.push(phase) });
     await fake.supervisor.done;
     expect(phases).toEqual([
-      { kind: "running" },
-      { kind: "waiting", afterMs: 5_000, exitCode: 1 },
-      { kind: "running" },
-      { kind: "running" },
+      { kind: "started" },
+      { kind: "waiting", afterMs: 5_000 },
+      { kind: "started" },
+      { kind: "started" },
     ]);
   });
 });

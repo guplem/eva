@@ -76,6 +76,54 @@
   height: 16px;
 }
 
+/* The model's questions: one group for each question, in the same card (issue #544). */
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.question legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+
+.question-text {
+  min-width: 0;
+}
+
+/* The native radio or check box shows the choice by its shape, not by colour alone. */
+.question-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--chip);
+  cursor: pointer;
+}
+
+.question-option input {
+  margin: 3px 0 0;
+}
+
+.question-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 /* A request of a chat that is not on screen: a line under the top of the page, never a dialog. */
 .approval-notice {
   display: flex;

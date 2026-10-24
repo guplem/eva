@@ -124,6 +124,30 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, `The person answered: ${answer}`);
     return;
   }
+  if (lastLine.includes("ask me")) {
+    const outcome = await request.askQuestions("AskUserQuestion", [
+      {
+        question: "Which format should the review take?",
+        header: "Format",
+        options: [
+          { label: "A one-to-one talk", description: "A talk with each person." },
+          { label: "A form with scores", description: "A template with criteria and a score." },
+        ],
+        multiSelect: false,
+      },
+      {
+        question: "Which notes should Eva read?",
+        header: "Notes",
+        options: [
+          { label: "Journal", description: "" },
+          { label: "Ideas", description: "" },
+        ],
+        multiSelect: true,
+      },
+    ]);
+    yield* FakeEngine.answer(request, `The person answered: ${JSON.stringify(outcome)}`);
+    return;
+  }
   yield { kind: "task_changed", taskId: `task-${String(turnNumber)}`, description: "Search the notes", state: "done" };
   if (lastLine.includes("limit")) {
     // The real engine sends the limit after the first answer text.

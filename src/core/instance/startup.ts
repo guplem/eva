@@ -22,7 +22,7 @@ import { loadSettings } from "../settings/settings.ts";
 import { VaultSync, type VaultSyncStatus } from "../vault/vault-sync.ts";
 import { gitEnvironmentWithToken } from "./child-environments.ts";
 import { commitIdentity } from "./commit-identity.ts";
-import { claimHubIfUnclaimed, hubFilePath, machineRole } from "./hub.ts";
+import { claimHubIfUnclaimed, machineRole } from "./hub.ts";
 
 const remoteListTimeoutMs = 20_000;
 
@@ -48,8 +48,6 @@ export interface PreparedStart {
   readonly notes: readonly StartNote[];
   /** Eva reports them after the Telegram bot starts, so that a failure reaches the phone. */
   readonly migrations: StartMigrations;
-  /** True when the pull failed and no machine has claimed the hub: Eva claims after a later good pull. */
-  readonly hubClaimPending: boolean;
 }
 
 export interface PrepareStartOptions {
@@ -66,14 +64,14 @@ export async function prepareStart(options: PrepareStartOptions): Promise<Prepar
   const { paths } = options;
   const secrets: EvaSecrets = { ...loadSecrets(paths) };
   const notes: StartNote[] = [];
-  const { migrations, hubClaimPending } = await migrateAfterPull(options, secrets, notes);
+  const migrations = await migrateAfterPull(options, secrets, notes);
   const loaded = loadSettings(paths);
   const config = loaded.config;
   if (loaded.problem !== null)
     notes.push({ level: "warn", message: "The vault's settings were not used.", fields: { problem: loaded.problem } });
   const localApiToken = secrets.localApiToken ?? options.newToken();
   if (secrets.localApiToken === undefined) saveSecrets(paths, { ...secrets, localApiToken });
-  return { config, secrets: { ...secrets, localApiToken }, notes, migrations, hubClaimPending };
+  return { config, secrets: { ...secrets, localApiToken }, notes, migrations };
 }
 
 /**
@@ -85,7 +83,7 @@ async function migrateAfterPull(
   options: PrepareStartOptions,
   secrets: EvaSecrets,
   notes: StartNote[],
-): Promise<{ migrations: StartMigrations; hubClaimPending: boolean }> {
+): Promise<StartMigrations> {
   // The machine defaults find the vault in the home folder when config.json names none.
   const machineConfig = withMachineDefaults(loadConfig(options.paths), {
     homeRoot: options.paths.root,
@@ -94,7 +92,6 @@ async function migrateAfterPull(
   const machine = machineConfig.machineName ?? options.hostName;
   const configuredVault = machineConfig.vaultPath;
   const vaultPath = configuredVault !== null && existsSync(configuredVault) ? configuredVault : null;
-  let hubClaimPending = false;
   if (vaultPath !== null) {
     const environment = gitEnvironmentWithToken(
       options.processEnvironment,
@@ -105,7 +102,6 @@ async function migrateAfterPull(
     // A failed pull may hide a claim that another machine pushed. A vault with no remote has no such claim.
     // A vault with an unpushed merge commit skips the fetch, and "ok" is then the state before the pull.
     const canClaim = pulled.status === "ok" || (await hasNoOrigin(vaultPath, options.runner, environment));
-    hubClaimPending = !canClaim && !existsSync(hubFilePath(vaultPath));
     if (!canClaim)
       notes.push({
         level: "warn",
@@ -115,16 +111,14 @@ async function migrateAfterPull(
     else if (claimHubIfUnclaimed(vaultPath, machine, options.now()))
       notes.push({ level: "info", message: "No machine was the hub yet, so this machine claimed it." });
   }
-  const migrations = runStartMigrations({
+  return runStartMigrations({
     paths: options.paths,
     // A machine migration waits for a vault that is not cloned yet; the vault store runs only on a clone.
     vaultPath: configuredVault,
-    // With no claim, the vault migrations wait for the claim after a good pull: the vault may be behind.
-    isHub: () => vaultPath !== null && !hubClaimPending && machineRole(vaultPath, machine, "satellite") === "hub",
+    isHub: () => vaultPath !== null && machineRole(vaultPath, machine, "satellite") === "hub",
     version: evaVersion,
     now: options.now,
   });
-  return { migrations, hubClaimPending };
 }
 
 /**

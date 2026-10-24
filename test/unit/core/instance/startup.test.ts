@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readHubClaim } from "../../../../src/core/instance/hub.ts";
@@ -111,15 +111,6 @@ describe("prepareStart with a vault", () => {
     expect(prepared.notes.find((note) => note.level === "warn")?.message).toBe(
       "The vault is not on its default branch, so this machine did not claim the hub yet.",
     );
-  });
-
-  test("runs no vault migration on a vault that the pull could not bring up to date", async () => {
-    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
-    saveConfig(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
-    const prepared = await start();
-    expect(prepared.migrations.vault).toBeNull();
-    expect(existsSync(vaultSettingsPath(vault))).toBe(false);
-    expect(prepared.hubClaimPending).toBe(true);
   });
 
   test("claims the hub in a vault with no remote, where no other machine can push a claim", async () => {

@@ -162,6 +162,42 @@ describe("openEventStream", () => {
     expect(sockets).toHaveLength(2);
   });
 
+  test("ignores a late open and a late frame of a socket that a new try replaced", () => {
+    const { place, sockets, fire } = fakePlace();
+    const changes: boolean[] = [];
+    const events: unknown[] = [];
+    const stream = openEventStream(
+      place,
+      (event) => events.push(event),
+      (connected) => changes.push(connected),
+    );
+    stream.retryNow();
+    opened(sockets[0]);
+    sockets[0]?.handlers.onMessage(JSON.stringify({ kind: "turn_started" }));
+    expect(changes).toEqual([]);
+    expect(events).toEqual([]);
+    // The open timer of the new socket still runs.
+    fire(openLimitMs);
+    expect(sockets).toHaveLength(3);
+  });
+
+  test("two quick tries leave one live socket, and the late closes start no timer", () => {
+    const { place, sockets, fire } = fakePlace();
+    const stream = openEventStream(
+      place,
+      () => undefined,
+      () => undefined,
+    );
+    stream.retryNow();
+    stream.retryNow();
+    expect(sockets).toHaveLength(3);
+    expect(sockets.map((socket) => socket.closed)).toEqual([true, true, false]);
+    sockets[0]?.handlers.onClose();
+    sockets[1]?.handlers.onClose();
+    fire(retryDelayMs);
+    expect(sockets).toHaveLength(3);
+  });
+
   test("close stops every later try", () => {
     const { place, sockets, fire } = fakePlace();
     const changes: boolean[] = [];

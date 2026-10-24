@@ -57,12 +57,16 @@ export function openEventStream(
     place.clearTimer(openTimer);
     // A retry that a timer started can run after the page closed the stream, such as at a logout.
     if (closed) return;
+    // A socket that a new try replaced can still open, send or close late. It must change nothing.
+    const isCurrent = (): boolean => !closed && socket === opened;
     const opened = place.open({
       onOpen: () => {
+        if (!isCurrent()) return;
         place.clearTimer(openTimer);
         onConnectionChange(true);
       },
       onMessage: (data) => {
+        if (!isCurrent()) return;
         let event: unknown;
         try {
           event = JSON.parse(data);
@@ -73,8 +77,7 @@ export function openEventStream(
         onEvent(event);
       },
       onClose: () => {
-        // A socket that a new try replaced closes late, and must not start a second retry.
-        if (closed || socket !== opened) return;
+        if (!isCurrent()) return;
         place.clearTimer(openTimer);
         onConnectionChange(false);
         retryTimer = place.setTimer(connect, retryDelayMs);

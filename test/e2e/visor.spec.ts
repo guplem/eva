@@ -1,7 +1,8 @@
 import { expect, test, type Locator, type Page, type WebSocketRoute } from "@playwright/test";
+import { e2ePorts } from "./e2e-ports.ts";
 
 /** The test page of `visor-gallery.html`, served by `serve-demo.ts`. */
-const galleryUrl = "http://127.0.0.1:7498/";
+const galleryUrl = `http://127.0.0.1:${String(e2ePorts().gallery)}/`;
 
 const faces = [
   "neutral",

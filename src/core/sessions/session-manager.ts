@@ -26,6 +26,7 @@ import { SequenceCounter } from "../../shared/clock.ts";
 import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
 import { boundedDetail, maxTurnDetailLength, redactedJsonText } from "../../shared/tool-details.ts";
 import {
+  addNote,
   addStep,
   stepDetails,
   storedSteps,
@@ -186,6 +187,8 @@ interface TurnActivity {
   readonly taskCount: number;
   readonly steps: TurnStep[];
   readonly omittedSteps: number;
+  /** The notices of the turn, apart from its answer. */
+  readonly notes: string[];
 }
 
 const defaultTitle = "New chat";
@@ -632,6 +635,7 @@ export class SessionManager {
     // A task sends several events as its state changes, so each task counts once.
     const taskIds = new Set<string>();
     let steps: readonly TurnStep[] = [];
+    let notes: readonly string[] = [];
     // The characters of tool details that the turn kept so far.
     let detailLength = 0;
     const draft = new TextStreamRedactor(this.options.redactor);
@@ -739,6 +743,7 @@ ${prompt}`,
           // The engine names a task, so two chats may use the same id.
           this.tasks.set(`${sessionId}\n${taskId}`, { taskId, sessionId, description, state });
         }
+        notes = addNote(notes, payload);
         steps = addStep(steps, payload);
         this.turnSteps.set(sessionId, steps);
         if (payload.kind === "turn_finished") {
@@ -754,6 +759,7 @@ ${prompt}`,
               ...recorded,
               ...activity,
               ...this.keptSteps(sessionId, steps),
+              notes: [...notes],
               contextTokens: payload.contextTokens,
               contextWindow: payload.contextWindow,
               model: payload.model,
@@ -786,7 +792,7 @@ ${prompt}`,
         session.id,
         prompt,
         answerParts,
-        { ...activity, ...this.keptSteps(sessionId, steps) },
+        { ...activity, ...this.keptSteps(sessionId, steps), notes: [...notes] },
         historyLost,
       );
 

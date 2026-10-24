@@ -242,6 +242,8 @@ export function ProjectView({
     try {
       const chat = await api.newProjectChat(project.id, "default");
       await onChanged();
+      // Eva may have made a new clone, and the list counts the chats of the clones that it knows.
+      setListVersion((version) => version + 1);
       const clone = (await api.clones(project.id)).find((candidate) => candidate.name === chat.clone);
       if (clone === undefined) throw new Error("The new chat's clone is not on this computer.");
       open({ kind: "chat", project, clone, chatId: chat.id });

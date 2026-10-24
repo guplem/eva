@@ -10,6 +10,7 @@ import {
   type LiveState,
 } from "../../../../../src/frontends/web/client/live-state.ts";
 import type { EngineEventPayload, SessionEvent } from "../../../../../src/shared/events.ts";
+import { historyLostNote } from "../../../../../src/shared/turn-steps.ts";
 
 const finished = {
   engineSessionId: "e1",
@@ -81,10 +82,10 @@ describe("applyEvent", () => {
     expect(applyEvent(drafting, event({ kind: "turn_finished", ...finished })).drafts).toEqual({});
   });
 
-  test("a lost history is a message step, so the person sees the note", () => {
-    const state = run([{ kind: "history_lost" }]);
-    expect(state.steps["s1"]?.[0]?.kind).toBe("message");
-    expect(state.steps["s1"]?.[0]?.text).toContain("lost");
+  test("a lost history is a note of its turn, never a step, so the whole answer does not hold it (issue 157)", () => {
+    const state = run([{ kind: "history_lost" }, { kind: "text", text: "Hi.", messageId: "m1" }]);
+    expect(state.steps["s1"]?.map((step) => step.text)).toEqual(["Hi."]);
+    expect(state.notes["s1"]).toEqual([historyLostNote]);
   });
 
   test("a notice is a note of its chat, never a step, so the answer stays the last message", () => {
@@ -108,7 +109,7 @@ describe("applyEvent", () => {
     ).toHaveLength(1);
   });
 
-  test("the same notice of a follow-up turn shows once", () => {
+  test("the same notice shows once", () => {
     const state = run([
       { kind: "notice", text: "one" },
       { kind: "notice", text: "one" },
@@ -116,25 +117,13 @@ describe("applyEvent", () => {
     expect(state.notes["s1"]).toEqual(["one"]);
   });
 
-  test("a notice outlives its turn, until the chat's next turn starts or the chat goes", () => {
+  test("the notes end with their turn, because the stored turn shows them (issue 157)", () => {
     const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
-    const ended = run([
-      { kind: "notice", text: "one" },
-      {
-        kind: "turn_finished",
-        engineSessionId: "e1",
-        lastMessageId: null,
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        costUsd: null,
-        contextTokens: null,
-        contextWindow: null,
-        model: null,
-      },
-    ]);
-    expect(ended.notes["s1"]).toEqual(["one"]);
-    const next = applyEvent(ended, { ...stamp, kind: "message_received", text: "Again", origin: "api" });
-    expect(next.notes["s1"]).toBeUndefined();
-    expect(applyEvent(ended, { ...stamp, kind: "session_deleted" }).notes["s1"]).toBeUndefined();
+    const noted = run([{ kind: "notice", text: "one" }]);
+    expect(applyEvent(noted, event({ kind: "turn_finished", ...finished })).notes["s1"]).toBeUndefined();
+    expect(applyEvent(noted, event({ kind: "turn_failed", reason: "stopped" })).notes["s1"]).toBeUndefined();
+    expect(applyEvent(noted, { ...stamp, kind: "session_deleted" }).notes["s1"]).toBeUndefined();
+    expect(applyEvent(noted, event({ kind: "turn_failed", reason: "x" }, "s2")).notes["s1"]).toEqual(["one"]);
   });
 
   test("a usage limit outlives its turn and the next one, until a newer limit or a delete (issue #67)", () => {

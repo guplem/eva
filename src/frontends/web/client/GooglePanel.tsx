@@ -18,6 +18,7 @@ import { api } from "./api.ts";
 import { LoggedIn } from "./LoggedIn.tsx";
 import { restartNote } from "./notes.ts";
 import { stepMark } from "./setup-summary.ts";
+import { ToolInstallButton } from "./ToolInstallButton.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import {
   Card,
@@ -98,6 +99,14 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       description="Eva can use your Google Calendar, Drive, Contacts, Tasks and Gmail. Google needs an OAuth client: a key that lets an app ask for access to your account. Each person makes their own, for free."
       aside={<StatusPill state={google.email === null ? "optional" : "done"} />}
     >
+      {context.setup?.uvMissing === true && (
+        <>
+          <div className="callout warning">
+            Chats start the Google tools with uv, and this machine has none. Press Install uv, and Eva installs it.
+          </div>
+          <ToolInstallButton program="uv" name="uv" context={context} />
+        </>
+      )}
       {children}
     </Card>
   );

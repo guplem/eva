@@ -89,7 +89,7 @@ function makeLogin(
 ): { login: ClaudeLogin; terminals: FakeTerminal[] } {
   const terminals: FakeTerminal[] = [];
   const login = new ClaudeLogin({
-    program: "/opt/example/claude",
+    program: () => "/opt/example/claude",
     cwd: "/tmp/example-eva/engines/claude",
     environment: () => ({ CLAUDE_CONFIG_DIR: "/tmp/example-eva/engines/claude" }),
     start: (command, options) => {
@@ -139,10 +139,11 @@ describe("ClaudeLogin", () => {
   });
 
   test("says so when no claude program is on this machine", async () => {
-    const { login } = makeLogin(happyScript, { program: null });
+    const { login } = makeLogin(happyScript, { program: () => null });
     const error = await failure(login.start());
     expect(isEvaError(error, "claude_login_failed")).toBe(true);
-    expect((error as Error).message).toContain("eva setup");
+    expect((error as Error).message).toContain("Install Claude Code");
+    expect((error as Error).message).not.toContain("eva setup");
   });
 
   test("stops the program and says so when no address comes", async () => {
@@ -476,7 +477,7 @@ describe("ClaudeLogin with a full output buffer", () => {
       for (const listener of listeners) listener();
     };
     const login = new ClaudeLogin({
-      program: "claude",
+      program: () => "claude",
       cwd: "/tmp/example-eva",
       environment: () => ({}),
       waitMs: 500,

@@ -340,7 +340,7 @@ describe("with a running Eva", () => {
     saveConfig(paths, { ...config, port: Number(new URL(api.url).port) });
     saveSecrets(paths, { localApiToken: "running-token" });
     // This process holds the lock, so setup, which asks the real system, sees Eva run and keeps her port.
-    writeFileSync(paths.lock, String(process.pid));
+    writeFileSync(paths.lock, `${String(process.pid)}\n\nheartbeat\n`);
     host = fakeHost({ isProcessAlive: () => true });
   }, gitHookTimeoutMs);
   afterEach(async () => {

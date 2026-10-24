@@ -111,7 +111,7 @@ describe("acquireInstanceLock", () => {
     expect(calls()).toBe(0);
   });
 
-  test("on Windows, takes over a lock with no heartbeat when another process has its pid (#528)", async () => {
+  test("on Windows, takes over a lock whose file never changes, when another process has its pid (#528)", async () => {
     const lockPath = join(home, "eva.lock");
     writeFileSync(lockPath, "4242\n\nheartbeat\n");
     const { sleep, calls } = countedSleep();
@@ -149,18 +149,39 @@ describe("acquireInstanceLock", () => {
     lock.release();
   });
 
-  test("the live core touches its lock at each beat", async () => {
+  test("the live core touches its own lock at each beat, and stops on release", async () => {
     const lockPath = join(home, "eva.lock");
-    const lock = await acquireInstanceLock(lockPath, owner({ pid: process.pid, heartbeatMs: 10 }));
+    let tick: () => void = () => undefined;
+    let stopped = false;
+    const lock = await acquireInstanceLock(
+      lockPath,
+      owner({
+        pid: 4242,
+        setInterval: (beat) => {
+          tick = beat;
+          return {
+            stop: () => {
+              stopped = true;
+            },
+          };
+        },
+      }),
+    );
     const old = new Date(Date.UTC(2020, 0, 1));
     touch(lockPath, old);
-    await Bun.sleep(100);
+    tick();
     expect(statSync(lockPath).mtimeMs).not.toBe(old.getTime());
-    lock.release();
+
+    // After a takeover, the lock names another core: its file time stays as that core set it.
     writeFileSync(lockPath, "5151\n\nheartbeat\n");
     touch(lockPath, old);
-    await Bun.sleep(50);
+    tick();
     expect(statSync(lockPath).mtimeMs).toBe(old.getTime());
+
+    rmSync(lockPath);
+    tick();
+    lock.release();
+    expect(stopped).toBe(true);
   });
 
   test("release leaves the lock of another core in place", async () => {

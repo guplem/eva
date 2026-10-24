@@ -1,7 +1,8 @@
 /**
  * One core process for each instance home (lesson 20). The lock is a
- * file that holds the owner's pid and, on Linux, the boot id. It is created exclusively,
- * and a lock whose owner no longer runs is taken over, so a crash never blocks the next start.
+ * file that holds the owner's pid, the boot id on Linux, and a `heartbeat` line. It is created
+ * exclusively, and a lock whose owner no longer runs is taken over, so a crash never blocks the
+ * next start. The live core touches the file at each beat, so a start can tell her from a reused pid.
  */
 import { readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { EvaError } from "../../shared/errors.ts";
@@ -24,6 +25,8 @@ export interface LockOwner extends LockProbe {
   readonly heartbeatMs?: number;
   /** How long a lock with no touch must stay still before a start takes it over. */
   readonly staleAfterMs?: number;
+  /** The timer seam; the default is the global `setInterval`. */
+  readonly setInterval?: (tick: () => void, ms: number) => { stop(): void };
 }
 
 interface LockHolder {
@@ -41,14 +44,20 @@ const defaultStaleAfterMs = 60_000;
 export async function acquireInstanceLock(lockPath: string, owner: LockOwner): Promise<InstanceLock> {
   const heartbeatMs = owner.heartbeatMs ?? defaultHeartbeatMs;
   if (!tryCreate(lockPath, owner)) {
+    const before = lockState(lockPath);
     const holder = readHolder(lockPath);
     if (holder !== null && holder.pid !== owner.pid && isHolderRunning(holder, owner)) {
-      if (!holder.beats || bootIdDecides(holder, owner) || (await holderBeats(lockPath, owner, heartbeatMs))) {
+      if (!holder.beats || bootIdDecides(holder, owner) || (await holderBeats(lockPath, before, owner, heartbeatMs))) {
         throw new EvaError(
           "instance_locked",
           `Another Eva (pid ${String(holder.pid)}) already runs with this home folder.`,
         );
       }
+    }
+    // Two starts can watch the same stale lock. The one that comes second must not delete the new lock of the first.
+    const after = lockState(lockPath);
+    if (after !== null && after !== before) {
+      throw new EvaError("instance_locked", "Another Eva started with this home folder at the same moment.");
     }
     rmSync(lockPath, { force: true });
     if (!tryCreate(lockPath, owner)) {
@@ -56,7 +65,9 @@ export async function acquireInstanceLock(lockPath: string, owner: LockOwner): P
     }
   }
 
-  const heartbeat = setInterval(() => {
+  const heartbeat = (owner.setInterval ?? unrefInterval)(() => {
+    // A touch on the lock of another core would make that lock look live after its core ends.
+    if (readHolder(lockPath)?.pid !== owner.pid) return;
     try {
       const now = new Date();
       utimesSync(lockPath, now, now);
@@ -64,15 +75,25 @@ export async function acquireInstanceLock(lockPath: string, owner: LockOwner): P
       // A missing lock is no reason to stop Eva: the next start simply finds no holder.
     }
   }, heartbeatMs);
-  heartbeat.unref();
   let released = false;
   return {
     release() {
       if (released) return;
       released = true;
-      clearInterval(heartbeat);
+      heartbeat.stop();
       // A core that lost its lock to a takeover must not delete the lock of the new core.
       if (readHolder(lockPath)?.pid === owner.pid) rmSync(lockPath, { force: true });
+    },
+  };
+}
+
+function unrefInterval(tick: () => void, ms: number): { stop(): void } {
+  const handle = setInterval(tick, ms);
+  // The heartbeat alone must not keep Eva running after her work ends.
+  handle.unref();
+  return {
+    stop() {
+      clearInterval(handle);
     },
   };
 }
@@ -122,8 +143,12 @@ function bootIdDecides(holder: LockHolder, probe: LockProbe): boolean {
  * Only a live Eva touches her lock. The watch compares one file time with the next, never with
  * the clock: a clock step cannot make a live lock look stale (#509).
  */
-async function holderBeats(lockPath: string, owner: LockOwner, heartbeatMs: number): Promise<boolean> {
-  const first = lockState(lockPath);
+async function holderBeats(
+  lockPath: string,
+  first: string | null,
+  owner: LockOwner,
+  heartbeatMs: number,
+): Promise<boolean> {
   const beats = Math.ceil((owner.staleAfterMs ?? defaultStaleAfterMs) / heartbeatMs);
   for (let beat = 0; beat < beats; beat += 1) {
     await owner.sleep(heartbeatMs);

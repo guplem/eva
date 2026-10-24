@@ -11,6 +11,7 @@ import { factQuestion, greeting, setupBlock, suggestions, type FactQuestion, typ
 import { usePersonalFacts, useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) => void }): ReactElement {
   // Null until the settings answer, so the cards do not jump from three to four.
@@ -121,6 +122,8 @@ function FactQuestionCard({
   const field = useRef<HTMLInputElement>(null);
   // A stable function: the dialog focuses its Cancel button each time its onClose changes.
   const close = useCallback(() => setOpen(false), []);
+  // Cancel keeps the answer for the next open, so only a page move asks. A save would send it to Eva.
+  useLeaveGuard(open && answer.trim() !== "", null);
   // The dialog focuses Cancel when it opens. This effect runs after it, so the field gets the focus.
   useEffect(() => {
     if (open) field.current?.focus();

@@ -643,6 +643,14 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   await page.getByLabel("Chat title").fill("Draft");
   await page.getByLabel("Chat title").press("Escape");
+  // A changed title asks first. Escape closes only the question, so the rename stays open.
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await expect(question).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(question).toHaveCount(0);
+  await expect(page.getByLabel("Chat title")).toHaveValue("Draft");
+  await page.getByLabel("Chat title").press("Escape");
+  await question.getByRole("button", { name: "Discard and close" }).click();
   await expect(rename).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
 
@@ -4005,6 +4013,39 @@ test("a page with unsaved changes asks to save or discard them before the person
   await model.fill("");
   await page.getByRole("button", { name: "Save the model" }).click();
   await expect(page.getByRole("button", { name: "Save the model" })).toBeDisabled();
+});
+
+test("a dialog with typed text asks before it closes, and a create offers no save", async ({ page }) => {
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const sheet = page.getByRole("dialog", { name: "New project" });
+  await sheet.getByLabel("Name").fill("Half typed");
+
+  // Create would make the project, so the question offers only Discard and Stay.
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  await expect(question).toBeVisible();
+  await expect(question.getByRole("heading")).toHaveText("Discard your changes?");
+  await expect(question.getByRole("button", { name: /^Save/ })).toHaveCount(0);
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
+
+  // Escape asks too, and closes only the question on top.
+  await sheet.getByLabel("Name").press("Escape");
+  await expect(question).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(question).toHaveCount(0);
+  await expect(sheet).toBeVisible();
+  await sheet.getByLabel("Name").press("Escape");
+  await question.getByRole("button", { name: "Discard and close" }).click();
+  await expect(sheet).toHaveCount(0);
+
+  // An empty form closes at once.
+  await page.getByRole("button", { name: "New project" }).click();
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(question).toHaveCount(0);
 });
 
 test("Settings: Google sets up from the page, with a pasted login and a Test", async ({ page }) => {

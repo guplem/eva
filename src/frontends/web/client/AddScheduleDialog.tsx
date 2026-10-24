@@ -8,6 +8,7 @@ import { api } from "./api.ts";
 import { emptyScheduleForm, entryOf, fieldsOf, formOf, weekDays, type Unit } from "./schedule-form.ts";
 import { intervalUnits } from "./schedule-words.ts";
 import { ChoiceChips } from "./SettingsParts.tsx";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 /** `now` is the instance's wall clock, so the first run that the form offers is in the instance's time zone. */
 export function AddScheduleDialog(props: {
@@ -18,32 +19,35 @@ export function AddScheduleDialog(props: {
   onSaved: (saved: Schedule) => void;
 }): ReactElement {
   const original = props.schedule ?? null;
-  const [form, setForm] = useState(() =>
-    original === null ? emptyScheduleForm(props.now) : formOf(original, props.now),
-  );
+  const [opened] = useState(() => (original === null ? emptyScheduleForm(props.now) : formOf(original, props.now)));
+  const [form, setForm] = useState(opened);
   const [error, setError] = useState<string | null>(null);
   const { onClose } = props;
   const title = original === null ? "Add schedule" : "Edit schedule";
   const picked = form.days;
   const repeat = form.repeat;
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const save = async (): Promise<void> => {
+  const save = async (): Promise<boolean> => {
     try {
       props.onSaved(
         original === null ? await api.saveSchedule(entryOf(form)) : await api.editSchedule(original.id, fieldsOf(form)),
       );
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
+      return false;
     }
   };
+  // A new schedule starts to run, so only an edit offers a save.
+  const askFirst = useLeaveGuard(JSON.stringify(form) !== JSON.stringify(opened), original === null ? null : save);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") askFirst(onClose);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, askFirst]);
 
   const field = (name: "id" | "name" | "at", label: string, placeholder: string, readOnly = false): ReactElement => (
     <label>
@@ -180,7 +184,7 @@ export function AddScheduleDialog(props: {
               Save schedule
             </button>
             <span className="spacer" />
-            <button type="button" onClick={onClose}>
+            <button type="button" onClick={() => askFirst(onClose)}>
               Cancel
             </button>
           </div>

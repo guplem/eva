@@ -12,6 +12,7 @@ import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { MenuList, useDismissOutside, type MenuItem } from "./Menu.tsx";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 /** A header action that a list asks for, such as Rename from the context menu of a chat in the list. */
 export type ChatAction = "rename" | "delete";
@@ -226,7 +227,7 @@ function useEscape(onEscape: () => void, busy: boolean): void {
   }, [onEscape, busy]);
 }
 
-/** Asks for a new title. Enter saves; Escape or Cancel keeps the old title. */
+/** Asks for a new title. Enter saves. Escape or Cancel keeps the old title, after a question when the title changed. */
 function RenameDialog({
   chat,
   onEnd,
@@ -241,21 +242,26 @@ function RenameDialog({
   // A second Enter while the request runs must not send it again.
   const [saving, setSaving] = useState(false);
   const showError = useShowError();
-  useEscape(onEnd, saving);
 
-  const save = async (): Promise<void> => {
-    if (saving) return;
+  /** True means that the title saved. */
+  const save = async (): Promise<boolean> => {
+    if (saving) return false;
     setSaving(true);
     try {
       await api.rename(chat.id, draft);
       await onChanged();
       onEnd();
+      return true;
     } catch (caught) {
       // The dialog stays open, so the person can try again.
       showError(caught);
       setSaving(false);
+      return false;
     }
   };
+  const askFirst = useLeaveGuard(draft.trim() !== "" && draft !== chat.title, save);
+  const cancel = useCallback(() => askFirst(onEnd), [askFirst, onEnd]);
+  useEscape(cancel, saving);
 
   return (
     // A tap beside the dialog does not close it, so a slip never loses a half-written title.
@@ -284,7 +290,7 @@ function RenameDialog({
               Save
             </button>
             <span className="spacer" />
-            <button type="button" onClick={onEnd} disabled={saving}>
+            <button type="button" onClick={cancel} disabled={saving}>
               Cancel
             </button>
           </div>

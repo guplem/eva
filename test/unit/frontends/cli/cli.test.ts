@@ -161,6 +161,13 @@ describe("parseArguments", () => {
     expect(parseArguments(["settings", "remove", "x"])).toMatchObject({ command: "usage-error" });
   });
 
+  test("--model takes a tier, or its alias; the old default means the settings' model (#550)", () => {
+    expect(parseArguments(["chat", "--model", "fast"])).toMatchObject({ command: "chat", model: "haiku" });
+    expect(parseArguments(["chat", "--model", "Smart"])).toMatchObject({ command: "chat", model: "opus" });
+    expect(parseArguments(["chat", "--model", "sonnet"])).toMatchObject({ command: "chat", model: "sonnet" });
+    expect(parseArguments(["chat", "--model", "default"])).toEqual({ command: "chat", instance: undefined });
+  });
+
   test("an unknown command or a bad option is a usage error", () => {
     expect(parseArguments(["fly"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["chat", "--model", "giant"])).toMatchObject({ command: "usage-error" });
@@ -1736,7 +1743,7 @@ repos:
     expect(before).toContain("Last turn: none since start");
     // The versions of Claude Code and the other tools show too, as on the Updates page.
     expect(before).toMatch(/\nTools: /);
-    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    const session = eva.createAssistantSession({ source: "cli" });
     await eva.sessions.send(session.id, "hi");
     // The cache counts show in every status, so a broken prompt cache is visible (lesson 120).
     expect(await describeStatus({ baseUrl: api.url, token: "chat-token" })).toContain(
@@ -1782,7 +1789,6 @@ repos:
       baseUrl: api.url,
       token: "chat-token",
       mode: "assistant",
-      model: "default",
       readLine: () => Promise.resolve(lines.shift() ?? null),
       write: (text) => output.push(text),
     });
@@ -1796,7 +1802,6 @@ repos:
       baseUrl: api.url,
       token: "wrong",
       mode: "assistant",
-      model: "default",
       readLine: () => Promise.resolve(null),
       write: () => undefined,
     }).catch((caught: unknown) => caught);
@@ -1813,7 +1818,6 @@ repos:
       baseUrl: api.url,
       token: "chat-token",
       mode: "assistant",
-      model: "default",
       readLine: () => Promise.resolve(lines.shift() ?? null),
       write: (text) => output.push(text),
     });
@@ -1830,7 +1834,6 @@ repos:
       baseUrl: api.url,
       token: "chat-token",
       mode: "assistant",
-      model: "default",
       readLine: () => Promise.resolve(lines.shift() ?? null),
       write: (text) => output.push(text),
     });

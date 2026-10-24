@@ -1,5 +1,7 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
 import { useState, type ReactElement, type ReactNode } from "react";
+import { effortLevels, modelAliases, modelTierName, type ModelAlias } from "../../../shared/engine-port.ts";
+import { effortName } from "./conversation-parts.ts";
 import { api, type PublicSettings } from "./api.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
@@ -23,7 +25,6 @@ import {
 } from "./SettingsParts.tsx";
 
 type EngineName = PublicSettings["config"]["engines"]["default"];
-type ModelAlias = PublicSettings["config"]["engines"]["claudeCode"]["defaultModel"];
 type PermissionMode = PublicSettings["config"]["engines"]["claudeCode"]["permissionMode"];
 
 const engineChoices: readonly { value: EngineName; label: string }[] = [
@@ -31,12 +32,15 @@ const engineChoices: readonly { value: EngineName; label: string }[] = [
   { value: "pi", label: "pi" },
 ];
 
-const modelChoices: readonly { value: ModelAlias; label: string }[] = [
-  { value: "default", label: "Claude Code's default" },
-  { value: "opus", label: "Opus" },
-  { value: "sonnet", label: "Sonnet" },
-  { value: "haiku", label: "Haiku" },
-];
+/** Each tier also names its Claude Code model, so the person knows what a tier runs. */
+const claudeModels: Readonly<Record<ModelAlias, string>> = { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" };
+
+const modelChoices = modelAliases.map((model) => ({
+  value: model,
+  label: `${modelTierName(model)} (${claudeModels[model]} in Claude Code)`,
+}));
+
+const effortChoices = effortLevels.map((effort) => ({ value: effort, label: effortName(effort) }));
 
 const permissionModeChoices: readonly { value: PermissionMode; label: string }[] = [
   { value: "auto", label: "Auto" },
@@ -73,8 +77,8 @@ function DefaultEngineCard({ context }: { readonly context: SettingsContext }): 
   return (
     <Card
       item="default-engine"
-      title="Engine for new chats"
-      description="The engine is the AI program that answers you. One with a login is enough."
+      title="New chats"
+      description="The engine, the model and the effort that each new chat starts with. The engine is the AI program that answers you. One with a login is enough."
     >
       <SelectField
         label="Engine for new chats"
@@ -83,10 +87,18 @@ function DefaultEngineCard({ context }: { readonly context: SettingsContext }): 
         onChange={(value) => void context.saveNow({ engines: { default: value } })}
       />
       <SelectField
-        label="Claude Code model"
-        value={config.engines.claudeCode.defaultModel}
+        label="Model for new chats"
+        value={config.engines.defaultModel}
         choices={modelChoices}
-        onChange={(value) => void context.saveNow({ engines: { claudeCode: { defaultModel: value } } })}
+        hint="Each chat can still pick another model before its first message."
+        onChange={(value) => void context.saveNow({ engines: { defaultModel: value } })}
+      />
+      <SelectField
+        label="Effort for new chats"
+        value={config.engines.defaultEffort}
+        choices={effortChoices}
+        hint="How much the model reasons before it answers. A model with no effort choice, such as Fast in Claude Code, ignores it."
+        onChange={(value) => void context.saveNow({ engines: { defaultEffort: value } })}
       />
       <SelectField
         label="Claude Code permission mode"
@@ -298,15 +310,13 @@ function ClaudeLoginSteps({
 }
 
 function PiCard({ context }: { readonly context: SettingsContext }): ReactElement {
-  const initial = context.settings.config.engines.pi.models.default ?? "";
-  const [model, setModel] = useState(initial);
+  const initial = piModelTexts(context.settings.config.engines.pi.models);
+  const [models, setModels] = useState(initial);
   const installed = found(context, "pi");
-  const save = (): Promise<boolean> => {
-    const trimmed = model.trim();
-    return context.saveNow({ engines: { pi: { models: { default: trimmed === "" ? null : trimmed } } } });
-  };
+  const save = (): Promise<boolean> => context.saveNow({ engines: { pi: { models: piModels(models) } } });
   // The save trims, so a space at the end is no change.
-  useLeaveGuard(model.trim() !== initial, save);
+  const changed = modelAliases.some((model) => models[model].trim() !== initial[model]);
+  useLeaveGuard(changed, save);
   return (
     <Card item="pi" title="pi" description="pi runs models of other providers, such as OpenAI. It is optional.">
       <div className="callout">
@@ -332,16 +342,35 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
           <ToolInstallButton program="pi" name="pi" context={context} />
         </>
       )}
-      <div className="inline-form">
-        <label className="field grow">
-          <span className="field-label">pi model, such as openai/gpt-5 (empty: pi&apos;s own default)</span>
-          <input value={model} onChange={(event) => setModel(event.target.value)} />
+      <p className="field-hint">
+        The pi model of each tier, such as openai/gpt-5. An empty field uses pi&apos;s own default.
+      </p>
+      {modelAliases.map((model) => (
+        <label key={model} className="field">
+          <span className="field-label">{modelTierName(model)} model in pi</span>
+          <input
+            value={models[model]}
+            onChange={(event) => setModels((texts) => ({ ...texts, [model]: event.target.value }))}
+          />
         </label>
-        <SaveButton className="primary" disabled={model === initial} onSave={save}>
-          Save the model
+      ))}
+      <div className="button-row">
+        <SaveButton className="primary" disabled={!changed} onSave={save}>
+          Save the models
         </SaveButton>
       </div>
       <CheckRow name="pi" label="Test pi" />
     </Card>
   );
+}
+
+type PiModels = PublicSettings["config"]["engines"]["pi"]["models"];
+
+function piModelTexts(models: PiModels): Record<ModelAlias, string> {
+  return { opus: models.opus ?? "", sonnet: models.sonnet ?? "", haiku: models.haiku ?? "" };
+}
+
+function piModels(texts: Readonly<Record<ModelAlias, string>>): PiModels {
+  const model = (text: string): string | null => (text.trim() === "" ? null : text.trim());
+  return { opus: model(texts.opus), sonnet: model(texts.sonnet), haiku: model(texts.haiku) };
 }

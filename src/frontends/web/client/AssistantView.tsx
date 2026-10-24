@@ -188,7 +188,7 @@ export function AssistantView({
     creating.current = true;
     try {
       // The composer chip picks another model before the first message (lesson 41).
-      await openNewChat(await api.newAssistantChat("default"));
+      await openNewChat(await api.newAssistantChat());
     } catch (caught) {
       showError(caught);
     } finally {

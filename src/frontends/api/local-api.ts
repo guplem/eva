@@ -7,7 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
-import { effortLevels } from "../../shared/engine-port.ts";
+import { effortLevels, modelAliases } from "../../shared/engine-port.ts";
 import { notificationKinds } from "../../core/alerts/chat-notifications.ts";
 import { checkNames } from "../../core/checks.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
@@ -64,11 +64,16 @@ interface SocketData {
   deviceToken: string | null;
 }
 
-const modelSchema = z.enum(["default", "opus", "sonnet", "haiku"]).default("default");
+const modelSchema = z.enum(modelAliases);
+/** No model, or the old `default` of an older page: the settings' model for new chats (#550). */
+const newChatModelSchema = z
+  .enum([...modelAliases, "default"])
+  .optional()
+  .transform((model) => (model === "default" ? undefined : model));
 const engineSchema = z.enum(["claude-code", "pi"]);
 const newSessionSchema = z.object({
   mode: z.enum(["assistant", "project"]),
-  model: modelSchema,
+  model: newChatModelSchema,
   effort: z.enum(effortLevels).optional(),
   engine: engineSchema.optional(),
   projectId: z.string().min(1).optional(),
@@ -514,13 +519,14 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     const engine = input.engine === undefined ? {} : { engine: input.engine };
     if (input.mode === "assistant") {
       const effort = input.effort === undefined ? {} : { effort: input.effort };
-      return json(eva.createAssistantSession({ source: "web", model: input.model, ...effort, ...engine }), 201);
+      const model = input.model === undefined ? {} : { model: input.model };
+      return json(eva.createAssistantSession({ source: "web", ...model, ...effort, ...engine }), 201);
     }
     if (input.projectId === undefined) return json({ error: "A Project chat needs a projectId." }, 400);
     const session = await eva.createProjectSession({
       projectId: input.projectId,
       source: "web",
-      model: input.model,
+      ...(input.model === undefined ? {} : { model: input.model }),
       ...engine,
       ...(input.clone === undefined ? {} : { cloneName: input.clone }),
     });
@@ -593,7 +599,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       return json(eva.sessions.setArchived(sessionId, archived));
     }
     if (action === "model") {
-      const { model } = z.object({ model: modelSchema.unwrap() }).parse(await request.json());
+      const { model } = z.object({ model: modelSchema }).parse(await request.json());
       return json(eva.sessions.setModel(sessionId, model));
     }
     if (action === "effort") {

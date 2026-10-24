@@ -2,7 +2,7 @@
  * The Test buttons of the settings page: one real, small check for each
  * part Eva depends on. A check never shows a secret, even in its error text.
  */
-import type { EngineName, EnginePort } from "../shared/engine-port.ts";
+import type { EngineName, EnginePort, ModelAlias } from "../shared/engine-port.ts";
 import { failureReason, type ProcessRunner } from "../shared/process-runner.ts";
 import { checkGoogle, type GoogleCheckInputs } from "./google/google-check.ts";
 import { engineLabels, ModelCalls } from "./model-calls/model-calls.ts";
@@ -27,6 +27,8 @@ export interface CheckInputs {
   readonly engines: readonly EnginePort[];
   /** The environment of a real turn: the engine's login, and no GitHub token (lesson 96). */
   readonly engineEnvironment: Readonly<Record<string, string>>;
+  /** The model of new chats, so the check proves the model that chats use. */
+  readonly model: ModelAlias;
   readonly redact: (text: string) => string;
   readonly telegramToken: string | null;
   /** The Bot API address; a test points it at a fake server. */
@@ -74,7 +76,7 @@ async function checkEngine(name: EngineName, inputs: CheckInputs): Promise<Check
   });
   const result = await calls.ask({
     engine: name,
-    model: "default",
+    model: inputs.model,
     systemPrompt: engineSystemPrompt,
     prompt: enginePrompt,
   });

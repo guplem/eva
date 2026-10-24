@@ -125,7 +125,6 @@ async function chatUntilEnd(url: string, lines: string[]): Promise<unknown> {
     baseUrl: url,
     token: "token",
     mode: "assistant",
-    model: "default",
     readLine: () => {
       const line = lines.shift();
       return line === undefined ? new Promise<string | null>(() => undefined) : Promise.resolve(line);

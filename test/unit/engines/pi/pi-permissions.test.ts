@@ -23,7 +23,7 @@ describe("describePiPermissions", () => {
     const engine = new PiEngine({
       command: ["pi"],
       workFolder: "/eva-pi",
-      models: { default: null, opus: null, sonnet: null, haiku: null },
+      models: { opus: null, sonnet: null, haiku: null },
     });
     expect(engine.describePermissions()).toEqual(describePiPermissions());
   });

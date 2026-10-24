@@ -5,7 +5,7 @@
  */
 import { copyFileSync } from "node:fs";
 import { z } from "zod";
-import { effortLevels } from "../../shared/engine-port.ts";
+import { effortLevels, modelAliases } from "../../shared/engine-port.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { stepKinds } from "../../shared/turn-steps.ts";
@@ -51,9 +51,10 @@ export const sessionSchema = z
     engineSessionId: z.string(),
     engine: z.enum(["claude-code", "pi"]),
     mode: z.enum(["assistant", "project"]),
-    modelAlias: z.enum(["default", "opus", "sonnet", "haiku"]),
-    /** How much the model reasons (issue 419). An older record, or a bad value, keeps the engine's own level. */
-    effort: z.enum(effortLevels).default("default").catch("default"),
+    /** The old `default` alias let the engine login choose; it reads as Smart (#550). */
+    modelAlias: z.preprocess((value) => (value === "default" ? "opus" : value), z.enum(modelAliases)),
+    /** How much the model reasons (issue 419). An older record, the old `default`, or a bad value reads as Medium. */
+    effort: z.enum(effortLevels).default("medium").catch("medium"),
     startFolder: z.string(),
     projectId: z.string().nullable(),
     clone: z.string().nullable(),

@@ -8,7 +8,7 @@ import type { ModelAlias } from "../../../../src/shared/engine-port.ts";
 let folder: string;
 let vault: string;
 let clock: Date;
-let chats: { name: string; model: ModelAlias; sessionId: string }[];
+let chats: { name: string; model: ModelAlias | undefined; sessionId: string }[];
 let sent: { sessionId: string; prompt: string }[];
 let events: ScheduleEvent[];
 let logged: string[];
@@ -144,7 +144,7 @@ describe("Scheduler", () => {
     expect(chats.map((chat) => chat.sessionId)).toEqual(["session-1", "session-2"]);
   });
 
-  test("a schedule without a prompt fires without a chat, and an unknown model means the default", async () => {
+  test("a schedule without a prompt fires without a chat, and an unknown model means the settings' model", async () => {
     writeSchedules([
       { id: "water", name: "Water", at: "07:30", text: "Drink." },
       { ...morning, model: "gpt" },
@@ -156,7 +156,7 @@ describe("Scheduler", () => {
     await scheduler.tick();
     const fired = events.filter((event) => event.kind === "schedule_fired");
     expect(fired.map((event) => event.sessionId)).toEqual([null, "session-1"]);
-    expect(chats[0]?.model).toBe("default");
+    expect(chats[0]?.model).toBeUndefined();
   });
 
   test("a changed schedule gets a card that names the change, once", async () => {

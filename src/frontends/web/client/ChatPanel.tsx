@@ -4,6 +4,7 @@
  * inspector column. A phone shows the same content in a bottom sheet from the chat header.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { takesEffort } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import {
   contextFigure,
@@ -140,9 +141,13 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatP
             <dd>{engineLabel(root.engine)}</dd>
             <dt>Model</dt>
             <dd>{modelLabel(root.modelAlias, answeredModel(root.turns))}</dd>
-            <dt>Effort</dt>
-            {/* Each branch has its own composer, so a fork can have its own effort. */}
-            <dd>{[...new Set(tree.map((session) => effortName(session.effort)))].join(", ")}</dd>
+            {takesEffort(root.engine, root.modelAlias) && (
+              <>
+                <dt>Effort</dt>
+                {/* Each branch has its own composer, so a fork can have its own effort. */}
+                <dd>{[...new Set(tree.map((session) => effortName(session.effort)))].join(", ")}</dd>
+              </>
+            )}
             <dt>Mode</dt>
             <dd>{titleCase(root.mode)}</dd>
             <dt>Answers</dt>

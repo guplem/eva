@@ -57,8 +57,9 @@ import { evaluateSetup, unreadableReport, type RepositoryFacts, type SetupReport
 
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
-  readonly model: ModelAlias;
-  /** Without one, the engine's own level. */
+  /** Without one, the settings' model for new chats. */
+  readonly model?: ModelAlias;
+  /** Without one, the settings' effort for new chats. */
   readonly effort?: EffortLevel;
   /** The engine of this chat; without one, the configured default. */
   readonly engine?: EngineName;
@@ -154,7 +155,7 @@ export class ProjectWork {
       return this.options.sessions.createSession({
         mode: "project",
         engine: input.engine ?? this.options.defaultEngine,
-        model: input.model,
+        ...(input.model === undefined ? {} : { model: input.model }),
         ...(input.effort === undefined ? {} : { effort: input.effort }),
         startFolder: clone.path,
         source: input.source,
@@ -216,7 +217,6 @@ export class ProjectWork {
     const session = sessions.createSession({
       mode: "project",
       engine: this.options.defaultEngine,
-      model: "default",
       startFolder: clone.path,
       source: "cli",
       projectId: project.id,
@@ -401,7 +401,7 @@ export class ProjectWork {
     const engine = this.options.defaultEngine;
     const result = await modelCalls.ask({
       engine,
-      model: cheapestModel(engine, "default"),
+      model: "haiku",
       systemPrompt: commitMessagePrompt,
       prompt: "Write the commit message for these changes.",
       context: {
@@ -671,7 +671,7 @@ export class ProjectWork {
     const engine = chats[0]?.engine ?? this.options.defaultEngine;
     const result = await modelCalls.ask({
       engine,
-      model: cheapestModel(engine, chats[0]?.modelAlias ?? "default"),
+      model: cheapestModel(engine, chats[0]?.modelAlias ?? "haiku"),
       systemPrompt: finishedPrompt,
       prompt: "Has the task of this chat finished?",
       context: { chat: chats.map(chatText).join("\n\n") },

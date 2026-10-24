@@ -155,27 +155,28 @@ describe("liveFace", () => {
 });
 
 describe("labels", () => {
-  test("names the engines and models as people say them", () => {
+  test("names the engines and the model tiers as people say them (#550)", () => {
     expect(engineLabel("claude-code")).toBe("Claude Code");
     expect(engineLabel("pi")).toBe("pi");
-    expect(modelLabel("default")).toBe("Default model");
-    expect(modelLabel("sonnet")).toBe("Sonnet");
+    expect(modelLabel("opus")).toBe("Smart");
+    expect(modelLabel("sonnet")).toBe("Balanced");
+    expect(modelLabel("haiku")).toBe("Fast");
   });
 
-  test("names the model that answered, so the default model is no mystery (#419)", () => {
-    expect(modelLabel("default", "claude-opus-5-5")).toBe("Default · Opus 5.5");
-    expect(modelLabel("haiku", "claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
-    expect(modelLabel("sonnet", "claude-sonnet-4-6[1m]")).toBe("Sonnet 4.6");
+  test("names the model that answered beside its tier (#419, #550)", () => {
+    expect(modelLabel("opus", "claude-opus-5-5")).toBe("Smart · Opus 5.5");
+    expect(modelLabel("haiku", "claude-haiku-4-5-20251001")).toBe("Fast · Haiku 4.5");
+    expect(modelLabel("sonnet", "claude-sonnet-4-6[1m]")).toBe("Balanced · Sonnet 4.6");
     // A date is no minor version.
-    expect(modelLabel("default", "claude-opus-4-20250514")).toBe("Default · Opus 4");
-    expect(modelLabel("opus", "claude-opus-4-1-20250805")).toBe("Opus 4.1");
+    expect(modelLabel("opus", "claude-opus-4-20250514")).toBe("Smart · Opus 4");
+    expect(modelLabel("opus", "claude-opus-4-1-20250805")).toBe("Smart · Opus 4.1");
     // A pi model keeps its own id.
-    expect(modelLabel("default", "fake-model")).toBe("Default · fake-model");
-    expect(modelLabel("opus", null)).toBe("Opus");
+    expect(modelLabel("opus", "fake-model")).toBe("Smart · fake-model");
+    expect(modelLabel("opus", null)).toBe("Smart");
   });
 
   test("names each effort level in plain words (#419)", () => {
-    expect(effortLabel("default")).toBe("Default effort");
+    expect(effortLabel("medium")).toBe("Medium effort");
     expect(effortLabel("xhigh")).toBe("Extra high effort");
     expect(effortLabel("max")).toBe("Max effort");
   });

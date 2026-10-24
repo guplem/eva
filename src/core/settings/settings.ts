@@ -18,11 +18,18 @@ export const sharedSettingKeys: readonly string[] = [
   "sync.pullIntervalMinutes",
   "updates",
   "engines.default",
-  "engines.claudeCode.defaultModel",
+  "engines.defaultModel",
+  "engines.defaultEffort",
   "engines.pi.models",
   "google.email",
   "voice.language",
 ];
+
+/**
+ * Vault keys from before a migration. Eva still reads them, so a satellite reads a vault that the hub
+ * did not migrate yet. `parseConfig` moves each one to its new key.
+ */
+const oldSharedSettingKeys: readonly string[] = ["engines.claudeCode.defaultModel"];
 
 type SettingsObject = Record<string, unknown>;
 
@@ -55,7 +62,8 @@ export function withVaultSettings(config: EvaConfig): LoadedSettings {
   if (!read.ok) return { config, problem: read.reason === "missing" ? null : `${file} is not valid JSON.` };
   if (!isObject(read.value)) return { config, problem: `${file} does not hold a JSON object.` };
   try {
-    return { config: parseConfig(mergeSettings(config, pickKeys(read.value, sharedSettingKeys)), file), problem: null };
+    const vaultSettings = pickKeys(read.value, [...sharedSettingKeys, ...oldSharedSettingKeys]);
+    return { config: parseConfig(mergeSettings(config, vaultSettings), file), problem: null };
   } catch (error) {
     return { config, problem: error instanceof Error ? error.message : String(error) };
   }

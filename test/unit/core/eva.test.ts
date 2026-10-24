@@ -118,7 +118,7 @@ describe("Eva", () => {
     });
     mkdirSync(join(vault, "Methods"));
     const instance = start(engine, { sync: syncOn });
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     await instance.sessions.send(session.id, "Store a note.");
 
     expect(engine.requests[0]?.startFolder).toBe(vault);
@@ -135,7 +135,7 @@ describe("Eva", () => {
       return FakeEngine.answer(request, "Done.");
     });
     const instance = start(engine, { sync: syncOn });
-    const session = instance.createAssistantSession({ source: "web", model: "default" });
+    const session = instance.createAssistantSession({ source: "web" });
     await instance.sessions.send(session.id, "Write a plan.");
     await instance.sessions.send(session.id, "Change the plan.");
 
@@ -170,7 +170,7 @@ describe("Eva", () => {
       return FakeEngine.answer(request, "Done.");
     });
     const instance = start(engine, { sync: syncOn });
-    const session = instance.createAssistantSession({ source: "web", model: "default" });
+    const session = instance.createAssistantSession({ source: "web" });
     await instance.sessions.send(session.id, "Write a plan.");
     await instance.retryTurn(session.id, 0, false);
     await instance.idle();
@@ -189,7 +189,7 @@ describe("Eva", () => {
     sandbox.git(other, "commit", "-q", "-m", "remote note");
     sandbox.git(other, "push", "-q", "origin", "main");
     const instance = start(engine, { sync: syncOff });
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     await instance.sessions.send(session.id, "Store a note.");
 
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).not.toContain("Methods/New.md");
@@ -210,7 +210,7 @@ describe("Eva", () => {
     mkdirSync(join(vault, "Methods"));
     const instance = start(engine, { sync: syncOn });
     expect(instance.updateSettings({ sync: { enabled: false } }).restartNeeded).toBe(true);
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     await instance.sessions.send(session.id, "Store a note.");
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Methods/New.md");
   });
@@ -231,7 +231,7 @@ describe("Eva", () => {
   test("the engine gets an allowlisted environment with the Claude token, and no other secret (lesson 96)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine);
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     await instance.sessions.send(session.id, "hi");
     const environment = engine.requests[0]?.environment ?? {};
     expect(environment["CLAUDE_CODE_OAUTH_TOKEN"]).toBe("oauth-token-value-for-tests");
@@ -241,7 +241,7 @@ describe("Eva", () => {
   test("each instance gets its own Claude, pi and gh config folders (lesson 111)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine);
-    await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
+    await instance.sessions.send(instance.createAssistantSession({ source: "cli" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
     expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBe(join(home, "engines", "pi-agent"));
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
@@ -250,7 +250,7 @@ describe("Eva", () => {
   test("the agent's git gets the instance's own global config, so a push uses the instance's gh login", async () => {
     const engine = new FakeEngine();
     const instance = start(engine);
-    await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
+    await instance.sessions.send(instance.createAssistantSession({ source: "cli" }).id, "hi");
     const gitConfig = join(home, "engines", "git", "gitconfig");
     expect(engine.requests[0]?.environment["GIT_CONFIG_GLOBAL"]).toBe(gitConfig);
     expect(readFileSync(gitConfig, "utf-8")).toContain("helper = !gh auth git-credential");
@@ -290,7 +290,6 @@ describe("Eva", () => {
     const session = await instance.createProjectSession({
       projectId: "2025-03-02-1015-example-app",
       source: "cli",
-      model: "default",
     });
     expect(session.clone).toBe("clone-0");
     await instance.sessions.send(session.id, "fix it");
@@ -317,7 +316,6 @@ describe("Eva", () => {
     const session = await instance.createProjectSession({
       projectId: "2025-03-02-1015-example-app",
       source: "cli",
-      model: "default",
     });
     sandbox.git(join(session.startFolder, "remote"), "remote", "set-url", "origin", "https://github.com/trusted/x.git");
     await instance.sessions.send(session.id, "fix it");
@@ -341,7 +339,6 @@ describe("Eva", () => {
     const session = await instance.createProjectSession({
       projectId: "2025-03-02-1015-example-app",
       source: "cli",
-      model: "default",
     });
     expect(session.clone).toBe("clone-1");
   });
@@ -358,7 +355,7 @@ describe("Eva", () => {
     const instance = start(engine);
     const events: SessionEvent[] = [];
     instance.sessions.subscribe((event) => events.push(event));
-    const assistantChat = instance.createAssistantSession({ source: "telegram", model: "default" });
+    const assistantChat = instance.createAssistantSession({ source: "telegram" });
     const work = await instance.startProjectWork({
       projectId: "2025-03-02-1015-example-app",
       request: "Fix the login bug.",
@@ -406,7 +403,7 @@ describe("Eva", () => {
     instance.sessions.subscribe((event) => {
       if (event.kind === "approval_needed") instance.sessions.answerApproval(event.requestId, "deny");
     });
-    const asking = instance.createAssistantSession({ source: "web", model: "default" });
+    const asking = instance.createAssistantSession({ source: "web" });
     const work = await instance.startProjectWork({
       projectId: "2025-03-02-1015-example-app",
       request: "Fix it.",
@@ -456,7 +453,7 @@ describe("Eva", () => {
       `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
     );
     const instance = start(new FakeEngine());
-    const chat = await instance.createProjectSession({ projectId, source: "cli", model: "default" });
+    const chat = await instance.createProjectSession({ projectId, source: "cli" });
     await instance.sessions.send(chat.id, "hello");
     const fork = instance.sessions.fork(chat.id, instance.sessions.get(chat.id).turns[0]?.lastMessageId ?? "");
     await instance.newClone(projectId);
@@ -464,7 +461,6 @@ describe("Eva", () => {
       projectId,
       cloneName: "clone-1",
       source: "cli",
-      model: "default",
     });
 
     expect(await instance.deleteClone(projectId, "clone-0")).toEqual({ deletedChats: [chat.id, fork.id] });
@@ -487,7 +483,7 @@ describe("Eva", () => {
       yield* FakeEngine.answer(request, "ok");
     });
     const instance = start(engine);
-    const chat = await instance.createProjectSession({ projectId, source: "cli", model: "default" });
+    const chat = await instance.createProjectSession({ projectId, source: "cli" });
     const running = instance.sessions.send(chat.id, "long task");
     await waitFor(() => engine.requests.length >= 1);
     expect(await instance.deleteClone(projectId, "clone-0").catch((caught: unknown) => caught)).toMatchObject({
@@ -690,7 +686,7 @@ describe("Eva", () => {
     instance.sessions.subscribe((event) => {
       if (event.kind === "approval_needed") instance.sessions.answerApproval(event.requestId, "deny");
     });
-    const assistantChat = instance.createAssistantSession({ source: "telegram", model: "default" });
+    const assistantChat = instance.createAssistantSession({ source: "telegram" });
     await instance.startProjectWork({
       projectId: "2025-03-02-1015-example-app",
       request: "Fix it.",
@@ -715,7 +711,7 @@ describe("Eva", () => {
       request.mode === "project" ? [{ kind: "turn_failed", reason: "no login" }] : FakeEngine.answer(request, "ok"),
     );
     const instance = start(engine);
-    const assistantChat = instance.createAssistantSession({ source: "cli", model: "default" });
+    const assistantChat = instance.createAssistantSession({ source: "cli" });
     await instance.startProjectWork({
       projectId: "2025-03-02-1015-example-app",
       request: "Fix it.",
@@ -747,7 +743,7 @@ describe("Eva", () => {
     });
     await eva.sweep();
     expect(environments.some((environment) => environment["EVA_GITHUB_TOKEN"] === "github-token-for-tests")).toBe(true);
-    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    const session = eva.createAssistantSession({ source: "cli" });
     await eva.sessions.send(session.id, "hi");
     expect(engine.requests[0]?.environment["EVA_GITHUB_TOKEN"]).toBeUndefined();
   });
@@ -769,7 +765,7 @@ describe("Eva", () => {
       basePrompt: "Base.",
       gatherMs: 5,
     });
-    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    const session = eva.createAssistantSession({ source: "cli" });
     await eva.sessions.send(session.id, "hi");
     const google = engine.requests[0]?.mcpServers["google"];
     expect(google?.environment["GOOGLE_OAUTH_CLIENT_ID"]).toBe("123456789012-clientid.apps.googleusercontent.com");
@@ -791,7 +787,7 @@ describe("Eva", () => {
       gatherMs: 5,
       evaCommand: ["/opt/bun", "/opt/eva/src/main.ts"],
     });
-    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    const session = eva.createAssistantSession({ source: "cli" });
     await eva.sessions.send(session.id, "hi");
     const environment = engine.requests[0]?.environment ?? {};
     expect(environment["EVA_HOME"]).toBe(home);
@@ -812,7 +808,7 @@ describe("Eva", () => {
     const projectFile = (repositories: readonly string[]): string =>
       `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n${repositories.map((url) => `  - ${url}\n`).join("")}---\n`;
     const newChat = (instance: Eva): Promise<SessionRecord> =>
-      instance.createProjectSession({ projectId, source: "cli", model: "default" });
+      instance.createProjectSession({ projectId, source: "cli" });
 
     beforeEach(() => {
       sandbox.write(vault, `Projects/${projectId}/AGENTS.md`, projectFile([sandbox.remote]));
@@ -945,7 +941,7 @@ describe("Eva", () => {
       const first = await newChat(instance);
       const named = (): Promise<unknown> =>
         instance
-          .createProjectSession({ projectId, cloneName: "clone-0", source: "cli", model: "default" })
+          .createProjectSession({ projectId, cloneName: "clone-0", source: "cli" })
           .catch((caught: unknown) => caught);
       expect(await named()).toMatchObject({ code: "session_busy" });
       await instance.sessions.send(first.id, "fix it");
@@ -996,7 +992,6 @@ describe("Eva", () => {
     const old = await instance.createProjectSession({
       projectId: "2025-03-02-1015-example-app",
       source: "web",
-      model: "default",
     });
     await instance.sessions.send(old.id, "fix login");
     const { session } = await instance.continueFromSummary(old.id, "web");
@@ -1017,7 +1012,7 @@ describe("Eva", () => {
       return FakeEngine.answer(request, "Goal: something.");
     });
     const instance = start(engine);
-    oldId = instance.createAssistantSession({ source: "web", model: "default" }).id;
+    oldId = instance.createAssistantSession({ source: "web" }).id;
     await instance.sessions.send(oldId, "Hello");
     const error: unknown = await instance.continueFromSummary(oldId, "web").catch((caught: unknown) => caught);
     expect(isEvaError(error, "session_not_found")).toBe(true);
@@ -1031,7 +1026,7 @@ describe("Eva", () => {
         : FakeEngine.answer(request, "Sure."),
     );
     const instance = start(engine);
-    const old = instance.createAssistantSession({ source: "web", model: "default" });
+    const old = instance.createAssistantSession({ source: "web" });
     await instance.sessions.send(old.id, "Hello");
     const { session, summaryFailure } = await instance.continueFromSummary(old.id, "web");
     expect(summaryFailure).toBe("Rate limited.");
@@ -1041,7 +1036,7 @@ describe("Eva", () => {
   test("an unknown project is an EvaError", async () => {
     const instance = start(new FakeEngine());
     const error: unknown = await instance
-      .createProjectSession({ projectId: "2020-01-01-0000-missing", source: "cli", model: "default" })
+      .createProjectSession({ projectId: "2020-01-01-0000-missing", source: "cli" })
       .catch((caught: unknown) => caught);
     expect((error as Error).message).toContain("2020-01-01-0000-missing");
   });
@@ -1075,7 +1070,7 @@ describe("Eva", () => {
       {},
       { logger: { log: (level, message, details) => lines.push(`${level} ${message} ${JSON.stringify(details)}`) } },
     );
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     await instance.sessions.send(session.id, "hi");
     await instance.sessions.send(session.id, "again");
     const turnLines = lines.filter((line) => line.includes("A turn"));
@@ -1140,7 +1135,7 @@ describe("Eva", () => {
       yield* FakeEngine.answer(request, "ok");
     });
     const instance = start(engine, { sync: syncOff });
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     const turn = instance.sessions.send(session.id, "go");
     await waitFor(() => engine.requests.length >= 1);
     clock = new Date(Date.now() + 8 * 24 * 60 * 60_000);
@@ -1243,7 +1238,7 @@ describe("Eva", () => {
       },
       restartForUpdate: () => restarts.push("restart"),
     });
-    const session = eva.createAssistantSession({ source: "schedule", model: "default" });
+    const session = eva.createAssistantSession({ source: "schedule" });
     const turn = eva.sessions.send(session.id, "Plan my day.");
     expect((await eva.updateNow())?.phase).toBe("waiting_for_idle");
     await turn;
@@ -1324,7 +1319,7 @@ describe("Eva", () => {
       restartForUpdate: () => restarts.push("restart"),
     });
     eva = instance;
-    const turn = instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "go");
+    const turn = instance.sessions.send(instance.createAssistantSession({ source: "cli" }).id, "go");
     await waitFor(() => engine.requests.length >= 1);
     expect(instance.updateEngine()?.phase).toBe("waiting_for_idle");
     release();
@@ -1650,7 +1645,7 @@ describe("Eva", () => {
       yield* FakeEngine.answer(request, "ok");
     });
     const instance = start(engine);
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     const turn = instance.sessions.send(session.id, "go");
     await waitFor(() => engine.requests.length >= 1);
     sandbox.write(vault, "half.md", "half written\n");
@@ -1663,7 +1658,7 @@ describe("Eva", () => {
     const instance = start(new FakeEngine());
     const events: SessionEvent[] = [];
     instance.sessions.subscribe((event) => events.push(event));
-    await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
+    await instance.sessions.send(instance.createAssistantSession({ source: "cli" }).id, "hi");
     expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
   });
 
@@ -1680,9 +1675,9 @@ describe("Eva", () => {
       gatherMs: 5,
     });
     expect(eva.status().vaultPath).toBeNull();
-    expect(() => eva?.createAssistantSession({ source: "cli", model: "default" })).toThrow("vault");
+    expect(() => eva?.createAssistantSession({ source: "cli" })).toThrow("vault");
     // The page and Telegram read this text too, and neither can run a terminal command.
-    expect(() => eva?.createAssistantSession({ source: "web", model: "default" })).toThrow(
+    expect(() => eva?.createAssistantSession({ source: "web" })).toThrow(
       "Finish the setup in Settings, on Eva's page.",
     );
   });
@@ -1721,7 +1716,7 @@ describe("Eva alerts", () => {
       yield* FakeEngine.answer(request, "ok");
     });
     const instance = start(engine);
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     const turn = instance.sessions.send(session.id, "go");
     await waitFor(() => engine.requests.length >= 1);
     const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
@@ -1739,7 +1734,7 @@ describe("Eva alerts", () => {
       yield* FakeEngine.answer(request, "ok");
     });
     const instance = start(engine);
-    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const session = instance.createAssistantSession({ source: "cli" });
     const turn = instance.sessions.send(session.id, "go");
     await waitFor(() => engine.requests.length >= 1);
     const busy = await instance.syncVault();
@@ -1988,7 +1983,7 @@ describe("Eva alerts", () => {
     );
     const instance = start(engine);
     const alerts = collectAlerts(instance);
-    const chat = instance.createAssistantSession({ source: "cli", model: "default" });
+    const chat = instance.createAssistantSession({ source: "cli" });
     await instance.sessions.send(chat.id, "hello");
     await instance.idle();
     expect(instance.status().problemDetails).toEqual([
@@ -2010,7 +2005,7 @@ describe("Eva alerts", () => {
   test("a turn that fails for another reason leaves the login problem alone", async () => {
     const engine = new FakeEngine(() => [{ kind: "turn_failed", reason: "The network is down." }]);
     const instance = start(engine);
-    const chat = instance.createAssistantSession({ source: "cli", model: "default" });
+    const chat = instance.createAssistantSession({ source: "cli" });
     await instance.sessions.send(chat.id, "hello");
     await instance.idle();
     expect(instance.status().problemDetails).toEqual([]);
@@ -2233,7 +2228,7 @@ describe("migrations (#119)", () => {
     instance.subscribePush(desk, "Desk", null);
     instance.setPushKinds(laptop.endpoint, ["alerts"]);
     instance.markPushInView(desk.endpoint, "desk-tab", true);
-    const session = instance.createAssistantSession({ source: "web", model: "default", title: "Weekly report" });
+    const session = instance.createAssistantSession({ source: "web", title: "Weekly report" });
     await instance.sessions.send(session.id, "Write the report.", "api");
     await Bun.sleep(10);
     expect(pushed).toEqual([phone.endpoint]);

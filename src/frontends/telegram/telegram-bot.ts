@@ -17,7 +17,7 @@ import { extractFileMarkers, receivedFileNote, saveReceivedFile } from "../../co
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 
-import type { ModelAlias } from "../../shared/engine-port.ts";
+import { modelAliases, modelTierName, type ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
@@ -93,7 +93,6 @@ interface UsageLine {
 
 const confirmAttempts = 3;
 
-const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 const deviceExpiredText = "This request expired.";
 const closedChatText = "Eva closed this chat to reuse its clone. Start a new chat to go on.";
 const pollProblemKey = "telegram_poll";
@@ -667,7 +666,6 @@ export class TelegramBot {
     }
     const session = this.options.eva.createAssistantSession({
       source: "telegram",
-      model: "default",
       ...(topicId === null ? {} : { telegramTopicId: topicId }),
     });
     this.state.topics[keyOf(chatId, topicId)] = {
@@ -677,7 +675,9 @@ export class TelegramBot {
     };
     this.saveState();
     await this.send(chatId, topicId, "Which model for this chat?", {
-      inline_keyboard: [models.map((model) => ({ text: model, callback_data: `m:${session.id}:${model}` }))],
+      inline_keyboard: [
+        modelAliases.map((model) => ({ text: modelTierName(model), callback_data: `m:${session.id}:${model}` })),
+      ],
     });
   }
 
@@ -687,7 +687,6 @@ export class TelegramBot {
     if (entry === undefined || !this.sessionExists(entry.sessionId)) {
       const session = this.options.eva.createAssistantSession({
         source: "telegram",
-        model: "default",
         ...(topicId === null ? {} : { telegramTopicId: topicId }),
       });
       entry = { sessionId: session.id, openedByEva: false, renamed: true };
@@ -730,7 +729,7 @@ export class TelegramBot {
       this.options.eva.sessions.answerApproval(first, second);
     } else if (isDeviceAnswer) {
       await this.closeQuestion(first, answerText);
-    } else if (kind === "m" && first !== undefined && models.includes(second as ModelAlias)) {
+    } else if (kind === "m" && first !== undefined && modelAliases.includes(second as ModelAlias)) {
       try {
         this.options.eva.sessions.setModel(first, second as ModelAlias);
       } catch {

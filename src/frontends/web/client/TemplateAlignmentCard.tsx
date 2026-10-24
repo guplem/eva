@@ -47,7 +47,7 @@ export function TemplateAlignmentCard({ context }: { readonly context: SettingsC
   const merge = async (part: TemplatePartView): Promise<void> => {
     setBusy(part.path);
     try {
-      const chat = await api.newAssistantChat("default");
+      const chat = await api.newAssistantChat();
       await api.send(chat.id, mergeMessage(part));
       await api.chooseTemplateVersion(part.path, "mine");
       reloadSetup();

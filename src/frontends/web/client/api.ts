@@ -168,17 +168,17 @@ export const api = {
   /** The whole input and output of one step of a stored answer. Null when Eva kept none. */
   stepDetail: (sessionId: string, stepId: string): Promise<{ input: string | null; output: string | null }> =>
     request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(stepId)}`),
-  /** With no engine, Eva starts the chat on her default engine. */
-  newAssistantChat: (model: ModelAlias, engine?: EngineName, effort?: EffortLevel): Promise<SessionRecord> =>
+  /** With no engine, model or effort, Eva starts the chat with the ones from her settings. */
+  newAssistantChat: (model?: ModelAlias, engine?: EngineName, effort?: EffortLevel): Promise<SessionRecord> =>
     request("POST", "/api/sessions", {
       mode: "assistant",
-      model,
+      ...(model === undefined ? {} : { model }),
       ...(engine === undefined ? {} : { engine }),
       ...(effort === undefined ? {} : { effort }),
     }),
   /** Eva picks the clone: a free one, or a new one (issue 521). */
-  newProjectChat: (projectId: string, model: ModelAlias): Promise<SessionRecord> =>
-    request("POST", "/api/sessions", { mode: "project", projectId, model }),
+  newProjectChat: (projectId: string): Promise<SessionRecord> =>
+    request("POST", "/api/sessions", { mode: "project", projectId }),
   /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */
   setEngine: (sessionId: string, engine: EngineName): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),

@@ -171,6 +171,41 @@ describe("security settings stay on the machine", () => {
   });
 });
 
+describe("the model and the effort of new chats (#550)", () => {
+  test("a new instance gives new chats Smart and Medium, and the vault holds both", () => {
+    expect(defaultConfig.engines).toMatchObject({ defaultModel: "opus", defaultEffort: "medium" });
+    expect(isSharedSettingKey("engines.defaultModel")).toBe(true);
+    expect(isSharedSettingKey("engines.defaultEffort")).toBe(true);
+  });
+
+  test("an old vault's Claude Code model applies to new chats, and its Default reads as Smart", () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    mkdirSync(join(vault, ".eva"));
+    const old = (model: string): string => JSON.stringify({ engines: { claudeCode: { defaultModel: model } } });
+    writeFileSync(vaultSettingsPath(vault), old("sonnet"));
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("sonnet");
+    writeFileSync(vaultSettingsPath(vault), old("default"));
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("opus");
+  });
+
+  test("the old single pi model fills each tier that names no model, and a save writes the new form", () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    mkdirSync(join(vault, ".eva"));
+    const models = { default: "openai/gpt-5-mini", opus: "openai/gpt-5", sonnet: null };
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ engines: { pi: { models } } }));
+    const config = loadSettings(paths).config;
+    expect(config.engines.pi.models).toEqual({
+      opus: "openai/gpt-5",
+      sonnet: "openai/gpt-5-mini",
+      haiku: "openai/gpt-5-mini",
+    });
+    saveSettings(paths, config);
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({
+      engines: { defaultModel: "opus", defaultEffort: "medium", pi: { models: { haiku: "openai/gpt-5-mini" } } },
+    });
+    expect(JSON.stringify(readJson(vaultSettingsPath(vault)))).not.toContain('"default":"openai');
+  });
+});
 describe("settings by command", () => {
   test("a dotted key names a setting, and the vault's keys are known", () => {
     expect(isSettingKey("updates.frequency")).toBe(true);

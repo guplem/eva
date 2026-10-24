@@ -3,15 +3,16 @@
  * forks and retries, approvals, and exactly one end event per turn
  * (lessons 44, 47, 48, 49, 51, 114).
  */
-import type {
-  ApprovalAnswer,
-  EffortLevel,
-  EngineName,
-  EnginePort,
-  McpServerSpec,
-  ModelAlias,
-  SessionMode,
-  TurnHistory,
+import {
+  takesEffort,
+  type ApprovalAnswer,
+  type EffortLevel,
+  type EngineName,
+  type EnginePort,
+  type McpServerSpec,
+  type ModelAlias,
+  type SessionMode,
+  type TurnHistory,
 } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import {
@@ -74,7 +75,9 @@ export interface TurnPreparer {
 export interface NewSessionInput {
   readonly mode: SessionMode;
   readonly engine: EngineName;
-  readonly model: ModelAlias;
+  /** Without one, the settings' model for new chats. */
+  readonly model?: ModelAlias;
+  /** Without one, the settings' effort for new chats. */
   readonly effort?: EffortLevel;
   readonly startFolder: string;
   readonly source: SessionRecord["source"];
@@ -83,6 +86,12 @@ export interface NewSessionInput {
   readonly telegramTopicId?: number;
   /** A fixed title, such as a schedule's name. Without one, the first message names the chat. */
   readonly title?: string;
+}
+
+/** What the person's settings choose for a new chat. */
+export interface ChatDefaults {
+  readonly model: ModelAlias;
+  readonly effort: EffortLevel;
 }
 
 /** A chat's first finished turn, for a name from a model. */
@@ -102,6 +111,8 @@ export interface SessionManagerOptions {
    */
   readonly nameChat?: (turn: FirstTurn) => Promise<string | null>;
   readonly engines: readonly EnginePort[];
+  /** The model and the effort of a new chat that names none, read at each new chat. Default: Smart, Medium. */
+  readonly chatDefaults?: () => ChatDefaults;
   readonly store: SessionStore;
   /** Keeps the whole input and output of each tool step. Without it, Eva keeps none. */
   readonly stepDetails?: StepDetailsStore;
@@ -238,13 +249,14 @@ export class SessionManager {
   }
 
   createSession(input: NewSessionInput): SessionRecord {
+    const defaults = this.options.chatDefaults?.() ?? { model: "opus", effort: "medium" };
     const record: SessionRecord = {
       id: this.options.newId(),
       engineSessionId: this.options.newId(),
       engine: input.engine,
       mode: input.mode,
-      modelAlias: input.model,
-      effort: input.effort ?? "default",
+      modelAlias: input.model ?? defaults.model,
+      effort: input.effort ?? defaults.effort,
       startFolder: input.startFolder,
       projectId: input.projectId ?? null,
       clone: input.clone ?? null,
@@ -848,7 +860,7 @@ export class SessionManager {
 
 ${prompt}`,
         model: session.modelAlias,
-        effort: session.effort,
+        effort: takesEffort(session.engine, session.modelAlias) ? session.effort : null,
         appendSystemPrompt: prepared.appendSystemPrompt,
         pluginFolders: prepared.pluginFolders,
         mcpServers: prepared.mcpServers,

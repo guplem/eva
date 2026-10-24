@@ -68,6 +68,11 @@ describe("toTelegramHtml", () => {
     expect(toTelegramHtml("```\na\n`````\nafter")).toBe("<pre>a</pre>\nafter");
   });
 
+  test("a backtick fence with a backtick after it on its line is inline code, not a block (CommonMark)", () => {
+    expect(toTelegramHtml("```bash ls```\nafter")).toBe("<code>bash ls</code>\nafter");
+    expect(keepFencesWhole(["```bash ls```", "after"])).toEqual(["```bash ls```", "after"]);
+  });
+
   test("a table becomes aligned columns in pre; a pipe line alone is no table", () => {
     expect(toTelegramHtml("| Name | Age |\n|---|---|\n| **Ann** | 30 |")).toBe(
       "<pre>Name  Age\n----  ---\nAnn   30</pre>",

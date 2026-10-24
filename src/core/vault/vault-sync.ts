@@ -96,12 +96,13 @@ const maxCommittedFileBytes = 50 * 1024 * 1024;
 const maxComparedTextBytes = 200_000;
 /** The `git status --porcelain` codes of a path with a merge conflict. */
 const unmergedCodes: ReadonlySet<string> = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
-/**
- * Paths go on stdin, never on the command line: Windows limits a command line to 32,767
- * characters, so a save of some hundred files would fail each time (#505).
- */
 /** An index.lock older than this is left over from a git that was stopped (#505). */
 const staleIndexLockMs = 30 * 60_000;
+/**
+ * Paths go on stdin, never on the command line: Windows limits a command line to 32,767
+ * characters, so a save of some hundred files would fail each time (#505). With
+ * --pathspec-file-nul, git reads each path as it is, with no quoting.
+ */
 const pathsOnStdin: readonly string[] = ["--pathspec-from-file=-", "--pathspec-file-nul"];
 
 interface GitResult {

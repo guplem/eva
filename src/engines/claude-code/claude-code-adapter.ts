@@ -50,6 +50,18 @@ export interface ClaudeCodeEngineOptions {
  */
 const lostHistoryMarker = "No conversation found with session ID";
 
+/**
+ * Claude Code's question form. Through the SDK, its answers come only from canUseTool, and an
+ * allow with no answers tells the model that the person did not answer (issue #544). Eva has no
+ * form, so the model asks in its reply, and every front end, also Telegram, shows the question.
+ */
+const askUserQuestionTool = "AskUserQuestion";
+
+const askInTextMessage =
+  "Eva cannot show this question form, and the person did not see it. " +
+  "Ask the same questions in your reply as plain text, with the options in a numbered list. " +
+  "Then end your turn and wait for the person's answer in the chat.";
+
 const lostHistoryPreamble =
   "(The earlier part of this conversation is lost, because the engine no longer has it. Say so if the message refers to it.)\n\n";
 
@@ -96,6 +108,7 @@ export class ClaudeCodeEngine implements EnginePort {
     const options: Options = {
       ...buildQueryOptions(request, this.options.executable, this.options.permissionMode),
       canUseTool: async (toolName, input) => {
+        if (toolName === askUserQuestionTool) return { behavior: "deny", message: askInTextMessage };
         const decision = await decidePermission(request, toolName, input);
         return decision === "allow"
           ? { behavior: "allow", updatedInput: input }

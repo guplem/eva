@@ -1034,6 +1034,39 @@ describe("ClaudeCodeEngine", () => {
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
   });
 
+  test("AskUserQuestion never becomes an approval, and the model asks in its reply instead (issue #544)", async () => {
+    let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;
+    const asked: string[] = [];
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: ({ options }) => {
+        canUseTool = (options as { canUseTool: typeof canUseTool }).canUseTool;
+        return (async function* () {
+          await Promise.resolve();
+          yield resultOf("resumed-turn");
+        })();
+      },
+    });
+    const questionRequest = (mode: TurnRequest["mode"]): TurnRequest =>
+      request({
+        mode,
+        requestApproval: (approval) => {
+          asked.push(approval.toolName);
+          return Promise.resolve("allow");
+        },
+      });
+    const input = { questions: [{ question: "Which format?", header: "Format", options: [], multiSelect: false }] };
+    for (const mode of ["assistant", "project"] as const) {
+      await drain(engine.runTurn(questionRequest(mode)));
+      // An allow with no answers gives the model "The user did not answer the questions".
+      expect(await canUseTool?.("AskUserQuestion", input)).toMatchObject({
+        behavior: "deny",
+        message: expect.stringContaining("plain text") as unknown,
+      });
+    }
+    expect(asked).toEqual([]);
+  });
+
   test("A model call denies every tool without a question", async () => {
     let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;
     const asked: string[] = [];

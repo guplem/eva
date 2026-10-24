@@ -1,6 +1,6 @@
 /** `eva chat`: a conversation in the terminal, as a client of the local API. */
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
-import type { SessionEvent } from "../../shared/events.ts";
+import type { ApprovalQuestion, QuestionAnswer, SessionEvent } from "../../shared/events.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { refusalOf } from "./client.ts";
@@ -75,15 +75,16 @@ export async function runChat(options: ChatOptions): Promise<void> {
   });
   // A prompt that waits for a line must not outlive the stream: a line typed then would go nowhere.
   const readLineOrClose = (): Promise<string | null> => Promise.race([options.readLine(), closed]);
-  const questions: string[] = [];
+  const questions: Extract<SessionEvent, { kind: "approval_needed" }>[] = [];
   const print = createEventPrinter();
   socket.addEventListener("message", (message) => {
     const event = JSON.parse(String(message.data)) as SessionEvent;
     if (event.sessionId !== session.id) return;
     const text = print(event);
     if (text !== null) options.write(text);
-    if (event.kind === "approval_needed") questions.push(event.requestId);
-    const answered = event.kind === "approval_resolved" ? questions.indexOf(event.requestId) : -1;
+    if (event.kind === "approval_needed") questions.push(event);
+    const answered =
+      event.kind === "approval_resolved" ? questions.findIndex((asked) => asked.requestId === event.requestId) : -1;
     if (answered !== -1) questions.splice(answered, 1);
     if (event.kind === "turn_finished" || event.kind === "turn_failed") turn.over = true;
     wake?.();
@@ -110,20 +111,22 @@ export async function runChat(options: ChatOptions): Promise<void> {
         options.write(`Eva refused the message: ${(await refusalOf(sent)).message}\n`);
         continue;
       }
-      // Wait for the turn end; answer each approval here, with y or n.
+      // Wait for the turn end; answer each approval here, with y or n, and each question of the model.
       while (!turnIsOver() && !streamIsClosed()) {
-        const requestId = questions.shift();
-        if (requestId === undefined) {
+        const asked = questions.shift();
+        if (asked === undefined) {
           await nextChange();
           continue;
         }
-        options.write("  Allow it? [y/N] ");
-        const answer = (await readLineOrClose())?.trim().toLowerCase().startsWith("y") === true ? "allow" : "deny";
-        if (streamIsClosed()) break;
-        await fetch(`${options.baseUrl}/api/approvals/${encodeURIComponent(requestId)}`, {
+        const body =
+          asked.questions === undefined
+            ? await readApproval(readLineOrClose, options.write)
+            : await readQuestionAnswers(asked.questions, readLineOrClose, options.write);
+        if (body === null || streamIsClosed()) break;
+        await fetch(`${options.baseUrl}/api/approvals/${encodeURIComponent(asked.requestId)}`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ answer }),
+          body: JSON.stringify(body),
         });
       }
     }
@@ -133,6 +136,76 @@ export async function runChat(options: ChatOptions): Promise<void> {
     stream.leaving = true;
     socket.close();
   }
+}
+
+type ApprovalBody = { answer: "allow"; answers: QuestionAnswer[] } | { answer: "allow" | "deny" };
+
+/** Null when the input ended before an answer. */
+async function readApproval(
+  readLine: () => Promise<string | null>,
+  write: (text: string) => void,
+): Promise<ApprovalBody | null> {
+  write("  Allow it? [y/N] ");
+  const line = await readLine();
+  if (line === null) return null;
+  return { answer: line.trim().toLowerCase().startsWith("y") ? "allow" : "deny" };
+}
+
+/** One answer for each question, or a skip of them all. Null when the input ended before the end. */
+async function readQuestionAnswers(
+  questions: readonly ApprovalQuestion[],
+  readLine: () => Promise<string | null>,
+  write: (text: string) => void,
+): Promise<ApprovalBody | null> {
+  const answers: QuestionAnswer[] = [];
+  for (const [index, question] of questions.entries()) {
+    for (;;) {
+      const which = questions.length === 1 ? "" : ` ${String(index + 1)}`;
+      write(`  Answer${which} (a number, or your own text; an empty line skips): `);
+      const line = await readLine();
+      if (line === null) return null;
+      const read = readQuestionAnswer(question, line);
+      if (read.kind === "skip") return { answer: "deny" };
+      if (read.kind === "answer") {
+        answers.push(read.answer);
+        break;
+      }
+      write(`  ${read.message}\n`);
+    }
+  }
+  return { answer: "allow", answers };
+}
+
+/**
+ * Reads one typed answer. Numbers in range pick options, with commas for several. Other text is an
+ * own answer. A number out of range asks again, so a typo never becomes an own answer.
+ */
+export function readQuestionAnswer(
+  question: ApprovalQuestion,
+  line: string,
+): { kind: "answer"; answer: QuestionAnswer } | { kind: "skip" } | { kind: "again"; message: string } {
+  const text = line.trim();
+  if (text === "") return { kind: "skip" };
+  if (!/^\d+(\s*,\s*\d+)*$/.test(text)) return { kind: "answer", answer: { selected: [], other: text } };
+  const picked = [...new Set(text.split(",").map((part) => Number(part.trim()) - 1))].sort((a, b) => a - b);
+  if (picked.some((option) => option < 0 || option >= question.options.length)) {
+    return { kind: "again", message: `Pick a number from 1 to ${String(question.options.length)}.` };
+  }
+  if (!question.multiSelect && picked.length > 1) return { kind: "again", message: "Pick one option." };
+  return { kind: "answer", answer: { selected: picked } };
+}
+
+/** The questions with their numbered options, as `eva chat` asks them. */
+function describeQuestions(questions: readonly ApprovalQuestion[]): string {
+  const intro = questions.length === 1 ? "Eva has a question." : `Eva has ${String(questions.length)} questions.`;
+  const lines = questions.flatMap((question) => [
+    `    ${question.header === "" ? "" : `[${question.header}] `}${question.question}${question.multiSelect ? " (one or more)" : ""}`,
+    ...question.options.map(
+      (option, index) =>
+        `      ${String(index + 1)}. ${option.label}${option.description === "" ? "" : `: ${option.description}`}`,
+    ),
+  ]);
+  return [`  ? ${intro}`, ...lines].join("\n") + "\n";
 }
 
 /** Renames the chat and returns the line to show: the new title, or the reason Eva refused it. */
@@ -192,6 +265,7 @@ export function describeEvent(event: SessionEvent): string | null {
     case "task_changed":
       return `  · task ${event.state}: ${event.description}\n`;
     case "approval_needed":
+      if (event.questions !== undefined) return describeQuestions(event.questions);
       return `  ! Eva wants to run ${event.toolName}: ${event.summary}\n`;
     case "notice":
       return `  (${event.text})\n`;

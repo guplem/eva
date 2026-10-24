@@ -4567,8 +4567,20 @@ test("Files: a wide screen shows each folder of the path as a column, and the fi
   await page.keyboard.press("Escape");
   await expect(vaultList).toBeVisible();
   await chooseFileAction(page, "Make the file large");
+  // Escape closes the open menu first, and the file stays large.
+  const more = file.getByRole("button", { name: "More actions" });
+  await more.click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "File actions" })).toHaveCount(0);
+  await expect(vaultList).toBeHidden();
   await chooseFileAction(page, "Make the file small");
   await expect(vaultList).toBeVisible();
+  // A choice from the keyboard keeps the focus on the menu button, so the person goes on from there.
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(file.getByRole("heading", { name: "Example app" })).toHaveCount(0);
+  await expect(more).toBeFocused();
 });
 
 test("Files: a file shows its type in colour, and a long name loses the part that the person picks", async ({

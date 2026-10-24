@@ -776,7 +776,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
   useEffect(() => {
     if (!large) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onLarge(false);
+      if (event.key === "Escape" && !event.defaultPrevented) onLarge(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

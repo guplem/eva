@@ -108,7 +108,7 @@ export function MoreMenu({
   readonly items: readonly MenuItem[];
   /** The name that a screen reader reads for the open menu, such as "Chat actions". */
   readonly label: string;
-  /** A caller that moves the focus back to the button after a dialog passes its own ref. */
+  /** Pass a ref when the caller must move the focus back to the button, for example after a dialog closes. */
   readonly toggle?: RefObject<HTMLButtonElement | null>;
 }): ReactElement {
   const [open, setOpen] = useState(false);
@@ -117,7 +117,14 @@ export function MoreMenu({
   const button = toggle ?? own;
   const close = (refocus: boolean): void => {
     setOpen(false);
-    if (refocus) button.current?.focus();
+    if (refocus) {
+      button.current?.focus();
+      return;
+    }
+    // A chosen item unmounts with the focus. An item that opens a dialog moves the focus itself.
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) button.current?.focus();
+    });
   };
   useDismissOutside(open, root, close);
 
@@ -155,7 +162,10 @@ export function useDismissOutside(
     };
     // The list reads Escape too. This one works when a press on the list's edge took the focus away.
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") dismiss.current(true);
+      if (event.key !== "Escape") return;
+      // The page's own Escape, such as the large file view, ignores a key that closed a menu.
+      event.preventDefault();
+      dismiss.current(true);
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);

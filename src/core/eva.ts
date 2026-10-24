@@ -631,6 +631,7 @@ export class Eva {
           trustedOwners: () => this.trustedOwners(),
           environment: agentEnvironment,
           readRemote: (folder) => readOriginUrl(folder, options.runner, ownGitEnvironment),
+          snapshots: { runner: options.runner, environment: ownGitEnvironment },
         }),
       },
       now: options.now,

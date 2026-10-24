@@ -15,6 +15,8 @@ import {
   type CloneOriginStore,
   type TrustStore,
 } from "../projects/clones.ts";
+import { EvaError } from "../../shared/errors.ts";
+import { restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
 import type { PrepareContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
@@ -27,6 +29,8 @@ export interface ProjectPreparerOptions {
   readonly environment: Readonly<Record<string, string>>;
   /** The `origin` URL of a clone, or null when it has none. Only a folder that Eva did not clone uses it. */
   readonly readRemote: (cloneFolder: string) => Promise<string | null>;
+  /** Eva's own git for the snapshots of a clone's files (issue 523). Without it, a turn keeps none. */
+  readonly snapshots?: SnapshotRun;
 }
 
 export class ProjectPreparer implements TurnPreparer {
@@ -50,6 +54,18 @@ export class ProjectPreparer implements TurnPreparer {
 
   afterTurn(_session: SessionRecord, _outcome: TurnOutcome): Promise<string | null> {
     return Promise.resolve(null);
+  }
+
+  /** Keeps the files of every repository of the clone, so a retry or a fork can go back to them. */
+  snapshot(session: SessionRecord, id: string): Promise<boolean> {
+    const run = this.options.snapshots;
+    return run === undefined ? Promise.resolve(false) : takeSnapshot(session.startFolder, id, run);
+  }
+
+  restore(session: SessionRecord, id: string): Promise<void> {
+    const run = this.options.snapshots;
+    if (run === undefined) return Promise.reject(new EvaError("snapshot_missing", "This Eva keeps no snapshots."));
+    return restoreSnapshot(session.startFolder, id, run);
   }
 
   /**

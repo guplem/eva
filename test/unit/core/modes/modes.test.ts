@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ApprovalAnswer } from "../../../../src/shared/engine-port.ts";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
@@ -12,7 +12,8 @@ import type { SessionRecord } from "../../../../src/core/sessions/session-store.
 import type { VaultSyncState } from "../../../../src/core/vault/vault-sync.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import type { ProcessResult, ProcessRunner, ProcessRunOptions } from "../../../../src/shared/process-runner.ts";
-import { createGitSandbox, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
+import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 
 let sandbox: GitSandbox;
 let vault: string;
@@ -538,5 +539,30 @@ describe("Project mode", () => {
 
   test("after a turn nothing happens", async () => {
     expect(await project(["owner"]).afterTurn(session({ mode: "project" }), { finished: true })).toBeNull();
+  });
+
+  test("keeps and brings back the files of the clone (issue 523)", async () => {
+    const preparer = new ProjectPreparer({
+      trustStore: new TrustStore(join(sandbox.root, "trust.json")),
+      cloneOrigins: origins,
+      trustedOwners: () => [],
+      environment: { PATH: "/bin" },
+      readRemote: () => Promise.resolve(null),
+      snapshots: { runner: systemProcessRunner, environment: gitEnvironment },
+    });
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder });
+    sandbox.write(clone, "draft.txt", "first\n");
+    expect(await preparer.snapshot(cloneSession, "s1")).toBe(true);
+    sandbox.write(clone, "draft.txt", "second\n");
+    await preparer.restore(cloneSession, "s1");
+    expect(readFileSync(join(clone, "draft.txt"), "utf8")).toBe("first\n");
+  });
+
+  test("without Eva's git it keeps no snapshot, and refuses a restore", async () => {
+    const preparer = project(["owner"]);
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder });
+    expect(await preparer.snapshot(cloneSession, "s1")).toBe(false);
+    const error: unknown = await preparer.restore(cloneSession, "s1").catch((caught: unknown) => caught);
+    expect(isEvaError(error, "snapshot_missing")).toBe(true);
   });
 });

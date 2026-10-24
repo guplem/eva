@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  isLongHide,
+  longHideMs,
   openEventStream,
   openLimitMs,
   retryDelayMs,
@@ -214,5 +216,45 @@ describe("openEventStream", () => {
     stream.retryNow();
     expect(sockets).toHaveLength(1);
     expect(changes).toEqual([]);
+  });
+
+  test("reconnect replaces a socket that reads open, which a network change can leave dead", () => {
+    const { place, sockets, fire } = fakePlace();
+    const changes: boolean[] = [];
+    const stream = openEventStream(
+      place,
+      () => undefined,
+      (connected) => changes.push(connected),
+    );
+    opened(sockets[0]);
+    stream.reconnect();
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]?.closed).toBe(true);
+    // The late close of the dead socket starts no retry, and the page hears of the new socket.
+    sockets[0]?.handlers.onClose();
+    fire(retryDelayMs);
+    expect(sockets).toHaveLength(2);
+    opened(sockets[1]);
+    expect(changes).toEqual([true, true]);
+  });
+
+  test("reconnect does nothing after close", () => {
+    const { place, sockets } = fakePlace();
+    const stream = openEventStream(
+      place,
+      () => undefined,
+      () => undefined,
+    );
+    stream.close();
+    stream.reconnect();
+    expect(sockets).toHaveLength(1);
+  });
+});
+
+describe("isLongHide", () => {
+  test("is true only when the page was hidden for the long time or more", () => {
+    expect(isLongHide(null, 100_000)).toBe(false);
+    expect(isLongHide(100_000, 100_000 + longHideMs - 1)).toBe(false);
+    expect(isLongHide(100_000, 100_000 + longHideMs)).toBe(true);
   });
 });

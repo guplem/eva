@@ -31,6 +31,11 @@ export interface EventSubscription {
   readonly close: () => void;
   /** Tries to connect at once, instead of at the next timed try. */
   readonly retryNow: () => void;
+  /**
+   * Opens a new socket at once, also when the current one reads open. After a network change a
+   * socket can read open but be dead, and the browser sees it only minutes later.
+   */
+  readonly reconnect: () => void;
 }
 
 /** Opens the event stream, and opens it again after a drop or a hung open. */
@@ -44,12 +49,15 @@ export function openEventStream(
   let retryTimer: unknown;
   let openTimer: unknown;
 
-  const retryNow = (): void => {
-    if (socket?.isOpen() === true) return;
+  const reconnect = (): void => {
     const stale = socket;
     place.clearTimer(retryTimer);
     connect();
     stale?.close();
+  };
+
+  const retryNow = (): void => {
+    if (socket?.isOpen() !== true) reconnect();
   };
 
   const connect = (): void => {
@@ -96,5 +104,17 @@ export function openEventStream(
       socket?.close();
     },
     retryNow,
+    reconnect,
   };
+}
+
+/**
+ * A page hidden this long may have a dead socket that still reads open: the phone slept, or
+ * changed networks. A quick switch of tabs stays under it, so it does not replace a good socket.
+ */
+export const longHideMs = 30_000;
+
+/** True when the page, hidden at `hiddenAt`, was hidden for `longHideMs` or more. */
+export function isLongHide(hiddenAt: number | null, now: number): boolean {
+  return hiddenAt !== null && now - hiddenAt >= longHideMs;
 }

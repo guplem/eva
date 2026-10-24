@@ -40,6 +40,7 @@ import { useIsPhone } from "./ChatHeader.tsx";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
+import { isLongHide } from "./event-stream.ts";
 import type { ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
@@ -315,14 +316,20 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   useEffect(() => {
     if (authenticated !== true) return undefined;
+    let hiddenAt: number | null = document.visibilityState === "visible" ? null : Date.now();
     const onVisible = (): void => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible") {
+        hiddenAt = Date.now();
+        return;
+      }
       void recover();
-      // A phone that woke has a dead socket, or one that hangs while it opens: do not wait for the timed try.
-      events.current?.retryNow();
+      // After a long hide the socket can read open but be dead. A quick tab switch keeps a good socket.
+      if (isLongHide(hiddenAt, Date.now())) events.current?.reconnect();
+      else events.current?.retryNow();
+      hiddenAt = null;
     };
-    // The network came back, such as after flight mode or a change of Wi-Fi.
-    const onOnline = (): void => events.current?.retryNow();
+    // The network changed, such as after flight mode or from Wi-Fi to mobile data: the old socket is dead.
+    const onOnline = (): void => events.current?.reconnect();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", onOnline);
     return () => {

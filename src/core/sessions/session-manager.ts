@@ -206,6 +206,8 @@ const maxFollowUps = 20;
 export class SessionManager {
   private readonly options: SessionManagerOptions;
   private readonly listeners = new Set<EventListener>();
+  /** The listeners whose last call threw, so their error is logged once. */
+  private readonly brokenListeners = new WeakSet<EventListener>();
   private readonly idleListeners = new Set<IdleListener>();
   private readonly runtimes = new Map<string, SessionRuntime>();
   private readonly approvals = new Map<
@@ -1063,7 +1065,11 @@ ${prompt}`,
       // One broken front end must not break a turn, or keep the event from the other front ends.
       try {
         listener(stamped);
+        this.brokenListeners.delete(listener);
       } catch (error) {
+        // Once until it works again: a listener that fails on each event would fill the log.
+        if (this.brokenListeners.has(listener)) continue;
+        this.brokenListeners.add(listener);
         this.options.logger?.log("error", "A front end failed on a chat event.", {
           sessionId,
           kind: stamped.kind,

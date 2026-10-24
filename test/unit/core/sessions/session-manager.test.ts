@@ -1586,6 +1586,23 @@ describe("after a turn", () => {
     ]);
   });
 
+  test("a listener that always throws is logged once, and once again after it worked in between", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    let broken = true;
+    manager.subscribe(() => {
+      if (broken) throw new Error("A front end broke.");
+    });
+    await manager.send(sessionId, "one");
+    const failures = (): number => logged.filter((line) => line.includes("A front end broke.")).length;
+    expect(failures()).toBe(1);
+    broken = false;
+    await manager.send(sessionId, "two");
+    broken = true;
+    await manager.send(sessionId, "three");
+    expect(failures()).toBe(2);
+  });
+
   test("a stopped turn gets no follow-up from the mode", async () => {
     followUps = ["continue the skill run"];
     const engine = new FakeEngine(async function* (request) {

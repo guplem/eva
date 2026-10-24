@@ -1,4 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import { e2ePorts, resolveAutoPorts } from "./test/e2e/e2e-ports.ts";
+
+// The test workers load this file again, and by then each `auto` is a number.
+await resolveAutoPorts(process.env);
+const demoUrl = `http://127.0.0.1:${String(e2ePorts().demo)}`;
 
 /** Browser tests of the web UI, at desktop size and at 375 px. */
 export default defineConfig({
@@ -12,14 +17,14 @@ export default defineConfig({
   // One stuck dialog can fail every later test at its full timeout, for hours: stop early instead.
   maxFailures: 10,
   reporter: [["list"]],
-  use: { baseURL: "http://127.0.0.1:7499", trace: "retain-on-failure" },
+  use: { baseURL: demoUrl, trace: "retain-on-failure" },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 }, isMobile: false } },
   ],
   webServer: {
     command: "bun run test/e2e/serve-demo.ts",
-    url: "http://127.0.0.1:7499/",
+    url: `${demoUrl}/`,
     reuseExistingServer: false,
     timeout: 60_000,
   },

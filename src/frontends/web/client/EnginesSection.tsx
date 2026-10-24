@@ -8,6 +8,7 @@ import { PermissionsCard } from "./PermissionsCard.tsx";
 import { restartNote } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
 import { stepMark } from "./setup-summary.ts";
+import { ToolInstallButton } from "./ToolInstallButton.tsx";
 import {
   Card,
   CheckRow,
@@ -58,7 +59,12 @@ function chosenMode(context: SettingsContext): { value: string; words: string } 
 }
 
 function found(context: SettingsContext, engine: EngineName): boolean {
-  return context.setup === null || context.setup.engines.some((name) => name === engine);
+  // An engine that the page installed has no chats until a restart, but its login works at once.
+  return (
+    context.setup === null ||
+    context.setup.engines.some((name) => name === engine) ||
+    context.setup.installedEngines.some((name) => name === engine)
+  );
 }
 
 function DefaultEngineCard({ context }: { readonly context: SettingsContext }): ReactElement {
@@ -130,10 +136,13 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
   return card(
     <>
       {!installed && (
-        <div className="callout warning">
-          Eva did not find the claude program on this machine. Run <code>eva setup</code> on Eva&apos;s computer to
-          install it.
-        </div>
+        <>
+          <div className="callout warning">
+            Eva did not find the claude program on this machine. Press Install Claude Code, and Eva installs it. Then
+            log in here.
+          </div>
+          <ToolInstallButton program="claude" name="Claude Code" context={context} />
+        </>
       )}
       {installed && failed && (
         <div className="callout warning">The last test of the Claude Code token failed. Log in again.</div>
@@ -310,7 +319,12 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
           <li>Come back here and press Test.</li>
         </Steps>
       ) : (
-        <div className="callout">Eva did not find the pi program on this machine.</div>
+        <>
+          <div className="callout">
+            Eva did not find the pi program on this machine. Press Install pi, and Eva installs it.
+          </div>
+          <ToolInstallButton program="pi" name="pi" context={context} />
+        </>
       )}
       <div className="inline-form">
         <label className="field grow">

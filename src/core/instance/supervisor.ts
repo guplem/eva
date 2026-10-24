@@ -47,13 +47,25 @@ export interface SupervisorOptions {
   readonly stopTimeoutMs: number;
   /** The supervisor's own pid. */
   readonly pid: number;
+  /**
+   * Asks the running Eva to stop by herself, before the bounded stop. Windows has no gentle
+   * signal for another process, so there the supervisor asks through her local API.
+   */
+  readonly askStop?: () => Promise<void>;
+  /** Hears each start of Eva, and each wait after a crash, such as for the Windows tray icon. */
+  readonly onPhase?: (phase: SupervisorPhase) => void;
 }
+
+export type SupervisorPhase =
+  { readonly kind: "running" } | { readonly kind: "waiting"; readonly afterMs: number; readonly exitCode: number };
 
 export interface Supervisor {
   /** The supervisor's exit code: Eva's own when she stops for good, 0 after a stop. */
   readonly done: Promise<number>;
   /** Stops Eva and the supervisor. Eva does not start again. */
   stop(): void;
+  /** Stops Eva and starts her again at once, also during the wait after a crash. */
+  restart(): void;
 }
 
 /**
@@ -61,39 +73,78 @@ export interface Supervisor {
  * of crashes. The phone is often the only way in, and each new Eva reports the crash there.
  */
 export function superviseEva(options: SupervisorOptions): Supervisor {
-  const state: { stopping: boolean; child: LongProcess | null } = { stopping: false, child: null };
-  // A function, so the loop reads a stop that happens while it awaits.
+  const state: {
+    stopping: boolean;
+    restarting: boolean;
+    child: LongProcess | null;
+    // The child's stop is bounded, but its exit may never come: this ends the wait for it.
+    runEnded: PromiseWithResolvers<number> | null;
+    // Ends the wait after a crash.
+    wake: PromiseWithResolvers<undefined> | null;
+  } = { stopping: false, restarting: false, child: null, runEnded: null, wake: null };
+  // Functions, so the loop reads a stop or a restart that happens while it awaits.
   const isStopping = (): boolean => state.stopping;
-  const stopAsked = Promise.withResolvers<undefined>();
-  // The child's stop is bounded, but its exit may never come: this ends the wait for it.
-  const stopEnded = Promise.withResolvers<number>();
+  const isRestarting = (): boolean => state.restarting;
   const environment = { ...options.environment, [supervisedVariable]: String(options.pid) };
+
+  const stopChild = (): void => {
+    const { child, runEnded } = state;
+    if (child === null) return;
+    void options.askStop?.().catch(() => undefined);
+    void child
+      .stop(options.stopTimeoutMs)
+      .catch((error: unknown) => {
+        options.log(`Eva could not be stopped: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => {
+        runEnded?.resolve(exitCodes.clean);
+      });
+  };
 
   const done = (async () => {
     let crashes = 0;
     for (;;) {
       const startedAt = options.now();
+      const runEnded = Promise.withResolvers<number>();
+      state.runEnded = runEnded;
       let exitCode: number;
       try {
         state.child = options.start(options.command, { cwd: options.cwd, environment });
-        exitCode = await Promise.race([state.child.exited, stopEnded.promise]);
+        options.onPhase?.({ kind: "running" });
+        exitCode = await Promise.race([state.child.exited, runEnded.promise]);
       } catch (error) {
         options.log(`Eva could not start: ${error instanceof Error ? error.message : String(error)}`);
         exitCode = exitCodes.crash;
       }
       state.child = null;
       if (isStopping()) return exitCodes.clean;
+      if (isRestarting()) {
+        state.restarting = false;
+        crashes = 0;
+        options.log("Eva restarts on request.");
+        continue;
+      }
       if (options.now() - startedAt >= healthyRunMs) crashes = 0;
       const decision = restartDecision(exitCode, crashes);
       if (decision.kind === "stop") return decision.exitCode;
-      if (decision.crash) crashes += 1;
+      if (decision.crash) {
+        crashes += 1;
+        options.onPhase?.({ kind: "waiting", afterMs: decision.afterMs, exitCode });
+      }
       options.log(
         decision.crash
           ? `Eva stopped with exit code ${String(exitCode)}. She starts again in ${String(decision.afterMs / 1000)} s.`
           : "Eva stopped for an update. She starts again now.",
       );
-      await Promise.race([options.sleep(decision.afterMs), stopAsked.promise]);
+      const wake = Promise.withResolvers<undefined>();
+      state.wake = wake;
+      await Promise.race([options.sleep(decision.afterMs), wake.promise]);
+      state.wake = null;
       if (isStopping()) return exitCodes.clean;
+      if (isRestarting()) {
+        state.restarting = false;
+        crashes = 0;
+      }
     }
   })();
 
@@ -102,14 +153,14 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
     stop: () => {
       if (state.stopping) return;
       state.stopping = true;
-      stopAsked.resolve(undefined);
-      void (state.child?.stop(options.stopTimeoutMs) ?? Promise.resolve())
-        .catch((error: unknown) => {
-          options.log(`Eva could not be stopped: ${error instanceof Error ? error.message : String(error)}`);
-        })
-        .finally(() => {
-          stopEnded.resolve(exitCodes.clean);
-        });
+      state.wake?.resolve(undefined);
+      stopChild();
+    },
+    restart: () => {
+      if (state.stopping || state.restarting) return;
+      state.restarting = true;
+      state.wake?.resolve(undefined);
+      stopChild();
     },
   };
 }

@@ -202,6 +202,15 @@ export function runningSince(since: number | null, liveRunning: boolean, turnCou
 }
 
 /**
+ * The words that a screen reader says once when a turn ends, after a change of the running state.
+ * A new turn clears them, so the same words at the next end are a change that the reader says again.
+ */
+export function turnEndNotice(wasRunning: boolean, running: boolean, current: string): string {
+  if (wasRunning === running) return current;
+  return running ? "" : "The turn ended.";
+}
+
+/**
  * Whether the view still counts the steps of a turn as seen after a send. A send with no running
  * turn shows the working card until its own turn sends a step. A send during a turn keeps the mark:
  * the running turn may send no more step, and its end would then leave the card and its clock on.

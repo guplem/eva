@@ -23,6 +23,7 @@ import {
   stopsFollowing,
   stepOrigin,
   stepParts,
+  turnEndNotice,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
 
@@ -237,6 +238,21 @@ describe("runningSince", () => {
 
   test("a message sent in the end gap waits for the turn after the ended one", () => {
     expect(sentTurnCount(2, runningSince(2, false, 2) !== null)).toBe(3);
+  });
+});
+
+describe("turnEndNotice", () => {
+  test("says once that the turn ended, also for a turn that failed before its first step", () => {
+    expect(turnEndNotice(true, false, "")).toBe("The turn ended.");
+  });
+
+  test("a new turn clears the words, so the next end is a change that the reader says", () => {
+    expect(turnEndNotice(false, true, "The turn ended.")).toBe("");
+  });
+
+  test("keeps the words while nothing changes", () => {
+    expect(turnEndNotice(false, false, "The turn ended.")).toBe("The turn ended.");
+    expect(turnEndNotice(true, true, "")).toBe("");
   });
 });
 

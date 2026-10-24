@@ -30,6 +30,7 @@ import {
   runningSince,
   sawStepsAfterSend,
   sentTurnCount,
+  turnEndNotice,
   type PendingMessage,
 } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
@@ -236,7 +237,8 @@ function Branch({
   useEffect(() => {
     if (liveSteps !== undefined) setSawLiveSteps(true);
   }, [liveSteps]);
-  const turnEnd = useTurnEndNotice(liveSteps !== undefined);
+  // The stored turn shows the answer, or why the turn failed, so the notice waits for it.
+  const turnEnd = useTurnEndNotice(turnRuns);
   const usageLimit = live.usageLimits[session.id];
   const notes = live.notes[session.id] ?? [];
 
@@ -567,17 +569,14 @@ function LiveAnswer({
   );
 }
 
-/**
- * The words that a screen reader says once when a turn ends, or "". A new turn clears them, so the
- * same words at the next end are a change that the reader says again.
- */
+/** The words that a screen reader says once when a turn ends, or "". */
 function useTurnEndNotice(turnRunning: boolean): string {
   const [notice, setNotice] = useState("");
   const wasRunning = useRef(turnRunning);
   useEffect(() => {
-    if (wasRunning.current === turnRunning) return;
+    const was = wasRunning.current;
     wasRunning.current = turnRunning;
-    setNotice(turnRunning ? "" : "The turn ended.");
+    setNotice((current) => turnEndNotice(was, turnRunning, current));
   }, [turnRunning]);
   return notice;
 }

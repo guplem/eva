@@ -220,5 +220,7 @@ export function describeEvent(event: SessionEvent): string | null {
     case "session_archived":
       // Only the web app has a list with unread and archived chats.
       return null;
+    case "session_closed":
+      return "Eva closed this chat to reuse its clone. Start a new chat to go on.\n";
   }
 }

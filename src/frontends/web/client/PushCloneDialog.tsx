@@ -1,26 +1,28 @@
 /**
- * The "Push" form of a clone card, in the sheet of the "Add schedule" form. Eva commits every
+ * The "Push" form of one repository of a clone card, in the sheet of the "Add schedule" form. Eva commits every
  * change with the note as its message, then pushes the branch. An empty note lets a model write
  * the message from the changes.
  */
 import { useEffect, useState, type ReactElement } from "react";
-import type { CloneDetails } from "./api.ts";
+import type { RepositoryDetails } from "./api.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { countOf } from "./project-format.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 interface PushCloneDialogProps {
-  readonly clone: CloneDetails;
+  readonly cloneName: string;
+  readonly repository: RepositoryDetails;
   readonly onClose: () => void;
   /** Runs the push. A failure comes back as a thrown error, and the sheet shows it. */
   readonly onPush: (note: string) => Promise<void>;
 }
 
-export function PushCloneDialog({ clone, onClose, onPush }: PushCloneDialogProps): ReactElement {
+export function PushCloneDialog({ cloneName, repository, onClose, onPush }: PushCloneDialogProps): ReactElement {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const changes = clone.changes ?? 0;
+  const changes = repository.changes ?? 0;
+  const name = `${cloneName}/${repository.name}`;
 
   // A save would push, so the question offers no save. While the push runs, the guard waits.
   const askFirst = useLeaveGuard(note.trim() !== "" && !busy, null);
@@ -47,12 +49,12 @@ export function PushCloneDialog({ clone, onClose, onPush }: PushCloneDialogProps
   return (
     // A tap beside the sheet does not close it, so a slip never loses a half-written note.
     <div className="dialog-backdrop schedule-backdrop">
-      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={`Push ${clone.name}`}>
-        <h2>Push {clone.name}</h2>
+      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={`Push ${name}`}>
+        <h2>Push {name}</h2>
         <p className="muted">
           {changes > 0
-            ? `Eva commits ${countOf(changes, "change")} and pushes ${clone.branch ?? "the branch"}.`
-            : `Eva pushes the commits of ${clone.branch ?? "the branch"}. There is no change to commit.`}
+            ? `Eva commits ${countOf(changes, "change")} and pushes ${repository.branch ?? "the branch"}.`
+            : `Eva pushes the commits of ${repository.branch ?? "the branch"}. There is no change to commit.`}
         </p>
         <form
           className="schedule-form"

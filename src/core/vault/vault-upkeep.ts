@@ -43,6 +43,11 @@ export interface VaultUpkeepOptions {
   readonly reportProblem: (problem: AlertProblem | null) => void;
   /** Runs after each sync step, such as the check for a vault record from a newer Eva. */
   readonly afterSync?: () => void;
+  /**
+   * Runs after a timed pull or "Sync now" that fetched and ended "ok", with sync on and no
+   * Assistant turn, such as the hub claim that a start could not make (#529).
+   */
+  readonly afterFetch?: () => void;
   readonly logger?: Logger;
 }
 
@@ -96,7 +101,8 @@ export class VaultUpkeep {
         skipReason: "assistant_busy",
       };
     this.lastPullAt = this.options.now();
-    this.logSyncState(await vaultSync.pull());
+    // Between the pull and the save, so the save pushes what afterFetch writes.
+    await this.pullThenAfterFetch(vaultSync, this.options.syncEnabled());
     return this.logSyncState(await vaultSync.save());
   }
 
@@ -188,7 +194,17 @@ export class VaultUpkeep {
     // A pull never changes the files under a running Assistant turn (lessons 22, 30).
     if (this.options.assistantBusy()) return;
     this.lastPullAt = now;
-    this.logSyncState(await vaultSync.pull());
+    await this.pullThenAfterFetch(vaultSync, true);
+  }
+
+  /** A conflict read or pick never fetches, so it never comes here. */
+  private async pullThenAfterFetch(vaultSync: VaultSync, syncEnabled: boolean): Promise<VaultSyncState> {
+    const freshBefore = vaultSync.freshPulls;
+    const state = this.logSyncState(await vaultSync.pull());
+    // An Assistant turn can start while git fetches.
+    if (syncEnabled && state.status === "ok" && vaultSync.freshPulls > freshBefore && !this.options.assistantBusy())
+      this.options.afterFetch?.();
+    return state;
   }
 
   private noticeSyncProblem(state: VaultSyncState): void {

@@ -23,8 +23,14 @@ import {
   composerPlaceholder,
   elapsedText,
   foldSteps,
+  followsBottom,
+  keptPending,
+  snapsToBottom,
   liveFace,
-  shownPending,
+  runningUntil,
+  isWorking,
+  sentTurnCount,
+  turnEndNotice,
   undoQuestion,
   type PendingMessage,
 } from "./conversation-parts.ts";
@@ -42,8 +48,6 @@ import { toWebHtml } from "./web-format.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 
-/** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
-const stickToBottomPx = 80;
 /** How long a Copy button says "Copied". */
 const copiedMs = 2_000;
 /** The voice notes of this tab, so a sent message can play what the person said. */
@@ -92,16 +96,40 @@ export function Conversation({
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
+  // Each render scrolls down while the view follows, so only a move up tells that the person reads.
+  const lastScroll = useRef({ top: 0, height: 0 });
+  // True while a finger is on the chat, so a render does not pull back its drag.
+  const fingerDown = useRef(false);
 
   // A layout effect, so it runs before the scroll to a picked turn in the same commit.
   useLayoutEffect(() => {
     isAtBottom.current = true;
   }, [root.id, branch.id]);
 
+  /**
+   * Snaps a view that follows to the newest message, and keeps the place as the base of the next
+   * scroll event. Shorter content pulls the view up, and its scroll event can come only after the
+   * content grew again. The base must hold the pulled place, or that event looks like the person's.
+   */
+  const settle = useCallback((element: HTMLDivElement): void => {
+    if (snapsToBottom(isAtBottom.current, fingerDown.current)) element.scrollTop = element.scrollHeight;
+    lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
+  }, []);
+
   useLayoutEffect(() => {
-    const element = scroller.current;
-    if (element !== null && isAtBottom.current) element.scrollTop = element.scrollHeight;
+    if (scroller.current !== null) settle(scroller.current);
   });
+
+  // A part of the chat can change its height with no render of this view, such as the message box.
+  const hasMap = tree.length > 1;
+  useEffect(() => {
+    const element = scroller.current;
+    if (element === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => settle(element));
+    observer.observe(element);
+    for (const child of element.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [settle, branch.id, hasMap]);
 
   // A pick brings its turn into view, after the branch of the pick renders. A pick from before
   // this view opened, such as on another page, is done.
@@ -121,7 +149,23 @@ export function Conversation({
       ref={scroller}
       onScroll={(event) => {
         const element = event.currentTarget;
-        isAtBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < stickToBottomPx;
+        isAtBottom.current = followsBottom(isAtBottom.current, lastScroll.current, {
+          top: element.scrollTop,
+          height: element.scrollHeight,
+          visible: element.clientHeight,
+        });
+        lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
+      }}
+      onTouchStart={(event) => {
+        // A drag in the message box moves no chat.
+        const target = event.target;
+        fingerDown.current = !(target instanceof Element && target.closest(".composer") !== null);
+      }}
+      onTouchEnd={() => {
+        fingerDown.current = false;
+      }}
+      onTouchCancel={() => {
+        fingerDown.current = false;
       }}
     >
       {tree.length > 1 && (
@@ -179,8 +223,8 @@ function Branch({
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
   // The New chat page sent this message before the chat opened here, so the chat starts with it.
-  const [sent, setSent] = useState<PendingMessage | null>(
-    firstMessage === null ? null : { text: firstMessage, turnCount: 0 },
+  const [sent, setSent] = useState<readonly PendingMessage[]>(
+    firstMessage === null ? [] : [{ text: firstMessage, turnCount: 0 }],
   );
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<PathStep<SessionRecord> | "running" | null>(null);
@@ -200,38 +244,33 @@ function Branch({
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
   const showError = useShowError();
-  const pending = shownPending(sent, turnCount);
+  const pending = keptPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
-  /**
-   * True once this send's turn sent a step. Its end removes the live steps before the list
-   * brings the stored answer, so the working card must not come back in that gap.
-   */
-  const [sawLiveSteps, setSawLiveSteps] = useState(false);
-  const working = liveSteps !== undefined || (pending !== null && !sawLiveSteps);
+  const turnRuns = useTurnRuns(liveSteps !== undefined, turnCount);
+  const working = isWorking({ live: liveSteps !== undefined, turnRuns, pending, turnCount });
   const startedAt = useStartTime(working);
 
-  // Only a new stored turn clears the message. The first render must keep the message of the New chat page.
-  const storedTurns = useRef(turnCount);
+  // Only the stored turn of a message clears it. A message sent during a turn outlives that turn.
   useEffect(() => {
-    if (storedTurns.current === turnCount) return;
-    storedTurns.current = turnCount;
-    setSent(null);
+    setSent((current) => {
+      const kept = keptPending(current, turnCount);
+      return kept.length === current.length ? current : kept;
+    });
   }, [turnCount]);
-  useEffect(() => {
-    if (liveSteps !== undefined) setSawLiveSteps(true);
-  }, [liveSteps]);
+  // The stored turn shows the answer, or why the turn failed, so the notice waits for it.
+  const turnEnd = useTurnEndNotice(turnRuns);
   const usageLimit = live.usageLimits[session.id];
   const notes = live.notes[session.id] ?? [];
 
   const send = async (message: string, recording?: string): Promise<boolean> => {
     if (recording !== undefined) recordings.keep(session.id, message, recording);
-    setSent({ text: message, turnCount });
-    setSawLiveSteps(false);
+    const entry = { text: message, turnCount: sentTurnCount(turnCount, turnRuns) };
+    setSent((current) => [...current, entry]);
     try {
       await api.send(session.id, message);
       return true;
     } catch (caught) {
-      setSent(null);
+      setSent((current) => current.filter((candidate) => candidate !== entry));
       showError(caught);
       return false;
     }
@@ -303,11 +342,14 @@ function Branch({
                         {counted(turn.taskCount, "background task")}
                       </button>
                     )}
-                    <button className="ghost" onClick={() => retryAnswer(owner, index)}>
-                      <Icon name="restart" />
-                      Retry
-                    </button>
-                    {turn.lastMessageId !== null && turn.failure === null && (
+                    {/* A closed chat takes no new turn, so it offers no way to start one. */}
+                    {!owner.closed && (
+                      <button className="ghost" onClick={() => retryAnswer(owner, index)}>
+                        <Icon name="restart" />
+                        Retry
+                      </button>
+                    )}
+                    {!owner.closed && turn.lastMessageId !== null && turn.failure === null && (
                       <button
                         className="ghost"
                         onClick={() => runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))}
@@ -336,10 +378,32 @@ function Branch({
           </div>
         );
       })}
-      {pending !== null && <UserMessage text={pending} recording={recordings.find(session.id, pending)} />}
+      {pending
+        .filter((message) => message.turnCount === turnCount)
+        .map((message, index) => (
+          <UserMessage
+            key={`sent-${String(index)}`}
+            text={message.text}
+            recording={recordings.find(session.id, message.text)}
+          />
+        ))}
+      {/* A live region on the streaming text would read the whole answer again at each token. */}
+      <span className="visually-hidden" role="status">
+        {turnEnd}
+      </span>
       {working && (
         <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
       )}
+      {/* A message sent during a turn waits for that turn to end, so it shows below the running answer. */}
+      {pending
+        .filter((message) => message.turnCount > turnCount)
+        .map((message, index) => (
+          <UserMessage
+            key={`queued-${String(index)}`}
+            text={message.text}
+            recording={recordings.find(session.id, message.text)}
+          />
+        ))}
       {waiting.length > 0 && (
         <ApprovalRequests approvals={waiting} place={approvalPlace(session)} onAnswer={approvals.onAnswer} />
       )}
@@ -375,7 +439,7 @@ function Branch({
       )}
       {session.parentId === null &&
         turnCount === 0 &&
-        pending === null &&
+        pending.length === 0 &&
         !working &&
         (blocker !== null ? (
           // A project chat needs the engine and the vault too.
@@ -384,18 +448,26 @@ function Branch({
           // The suggestions are Assistant work; a project chat stays a plain harness (AGENTS.md).
           session.mode === "assistant" && <NewChatGreeting onPick={(text) => void send(text)} />
         ))}
-      <Composer
-        session={session}
-        draftKey={session.id}
-        choices={storedChoices(session.id)}
-        running={working}
-        onSend={send}
-        onStop={() => runAction(() => api.stop(session.id))}
-        onChanged={onChanged}
-        blocker={blocker}
-        voiceNotes={voiceNotes}
-        placeholder={composerPlaceholder(projectTitle)}
-      />
+      {session.closed ? (
+        // Eva reused the clone of this chat for a new chat (issue 521), so a message here would run on other work.
+        <div className="callout" role="status">
+          Eva closed this chat to reuse its clone. You can read it, but it takes no new message. Start a new chat in the
+          project to go on.
+        </div>
+      ) : (
+        <Composer
+          session={session}
+          draftKey={session.id}
+          choices={storedChoices(session.id)}
+          running={working}
+          onSend={send}
+          onStop={() => runAction(() => api.stop(session.id))}
+          onChanged={onChanged}
+          blocker={blocker}
+          voiceNotes={voiceNotes}
+          placeholder={composerPlaceholder(projectTitle)}
+        />
+      )}
     </section>
   );
 }
@@ -514,6 +586,8 @@ function AnswerBody({
   const { listed, lastMessage } = foldSteps(steps);
   const canShowWhole = lastMessage !== undefined && wholeAnswer !== lastMessage.text;
   const body = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  // Each streamed token and each clock tick render every answer, so parse only a changed text.
+  const html = useMemo(() => toWebHtml(body), [body]);
   return (
     <>
       <StepFold
@@ -525,11 +599,7 @@ function AnswerBody({
       />
       {body !== "" && (
         // toWebHtml escapes all text and adds only its own tags, so the HTML is safe.
-        <div
-          className="answer-body"
-          aria-live={live ? "polite" : undefined}
-          dangerouslySetInnerHTML={{ __html: toWebHtml(body) }}
-        />
+        <div className="answer-body" dangerouslySetInnerHTML={{ __html: html }} />
       )}
       {canShowWhole && (
         <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
@@ -580,6 +650,30 @@ function LiveAnswer({
       </div>
     </EvaMessage>
   );
+}
+
+/** The words that a screen reader says once when a turn ends, or "". */
+function useTurnEndNotice(turnRunning: boolean): string {
+  const [notice, setNotice] = useState("");
+  const wasRunning = useRef(turnRunning);
+  useEffect(() => {
+    const was = wasRunning.current;
+    wasRunning.current = turnRunning;
+    setNotice((current) => turnEndNotice(was, turnRunning, current));
+  }, [turnRunning]);
+  return notice;
+}
+
+/** True from the start of a turn until its stored turn arrives. */
+function useTurnRuns(liveRunning: boolean, turnCount: number): boolean {
+  const [state, setState] = useState(() => ({
+    until: runningUntil(null, false, liveRunning, turnCount),
+    wasLive: liveRunning,
+  }));
+  const until = runningUntil(state.until, state.wasLive, liveRunning, turnCount);
+  // Set during the render, so a send in this frame already sees the new state.
+  if (until !== state.until || liveRunning !== state.wasLive) setState({ until, wasLive: liveRunning });
+  return until !== null;
 }
 
 /** When the page first saw the running turn, with a render each second while it runs. */

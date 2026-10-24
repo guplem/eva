@@ -149,14 +149,14 @@ describe("discoverProjects", () => {
 
   test("names the clone folders of each project", () => {
     addProject("2025-03-02-1015-example-app", "status: active");
-    mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "example-app-0"), { recursive: true });
-    mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "example-app-1"), { recursive: true });
+    mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "clone-0"), { recursive: true });
+    mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "clone-1"), { recursive: true });
     mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "notes"), { recursive: true });
     addProject("2025-03-03-1015-empty", "status: idea");
     const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
     expect(projects.find((project) => project.id === "2025-03-02-1015-example-app")?.clones).toEqual([
-      "example-app-0",
-      "example-app-1",
+      "clone-0",
+      "clone-1",
     ]);
     expect(projects.find((project) => project.id === "2025-03-03-1015-empty")?.clones).toEqual([]);
   });

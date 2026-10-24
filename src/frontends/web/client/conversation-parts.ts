@@ -178,18 +178,125 @@ export function chipLock(
   return null;
 }
 
-/** A sent message whose stored turn has not come yet, and the turn count when it was sent. */
+/** A sent message whose stored turn has not come yet. It shows while the stored turns are at most `turnCount`. */
 export interface PendingMessage {
   readonly text: string;
   readonly turnCount: number;
 }
 
 /**
- * The text of the sent message to show, or null. The stored turn arrives one render before an
- * effect can clear the pending message, so the turn count hides it in that render.
+ * The stored turn count that a new message waits beyond. Eva gathers the messages sent before a
+ * turn starts into that turn. A message sent while a turn runs goes into the turn after it.
  */
-export function shownPending(pending: PendingMessage | null, turnCount: number): string | null {
-  return pending !== null && pending.turnCount === turnCount ? pending.text : null;
+export function sentTurnCount(turnCount: number, turnRunning: boolean): number {
+  return turnRunning ? turnCount + 1 : turnCount;
+}
+
+/**
+ * The stored turn count at which every started turn is stored, or null when no turn runs. The live
+ * steps end a moment before the list brings the stored turn, so a turn runs until its stored turn
+ * arrives. Each start of the live steps is one more turn. The list can also bring a turn before its
+ * live steps end, and then nothing runs after them.
+ */
+export function runningUntil(until: number | null, wasLive: boolean, live: boolean, turnCount: number): number | null {
+  const next = live && !wasLive ? Math.max(until ?? 0, turnCount) + 1 : until;
+  return next !== null && turnCount >= next ? null : next;
+}
+
+/**
+ * The words that a screen reader says once when a turn ends, after a change of the running state.
+ * A new turn clears them, so the same words at the next end are a change that the reader says again.
+ */
+export function turnEndNotice(wasRunning: boolean, running: boolean, current: string): string {
+  if (wasRunning === running) return current;
+  return running ? "" : "The turn ended.";
+}
+
+/**
+ * True when the chat shows the working card and Stop. A sent message waits for the next turn, so it
+ * shows the card once no turn runs: at once after an idle send, and for a queued message once the
+ * turn before it is stored, while Eva still saves the vault. In the moment before that stored turn
+ * arrives the card is off, so the next turn starts its own clock.
+ */
+export function isWorking(chat: {
+  readonly live: boolean;
+  readonly turnRuns: boolean;
+  readonly pending: readonly PendingMessage[];
+  readonly turnCount: number;
+}): boolean {
+  if (chat.live) return true;
+  return !chat.turnRuns && chat.pending.some((message) => message.turnCount === chat.turnCount);
+}
+
+/**
+ * The sent messages whose stored turn has not come yet, so the view shows them. The stored turn
+ * arrives one render before an effect can clear its message, so the turn count hides it in that render.
+ */
+export function keptPending(pending: readonly PendingMessage[], turnCount: number): readonly PendingMessage[] {
+  return pending.filter((message) => message.turnCount >= turnCount);
+}
+
+/** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
+const stickToBottomPx = 80;
+
+/** Where the chat view is scrolled: the scroll top, the whole height and the visible height. */
+export interface ScrollPlace {
+  readonly top: number;
+  readonly height: number;
+  readonly visible: number;
+}
+
+/**
+ * True when the view must follow the newest message after a scroll. A move up of the person stops
+ * the follow, so they can read while an answer streams. A move up that comes with new content
+ * height is the browser's, such as at a switch of chat, so it keeps the follow. Shorter content can
+ * pull the view up to the very bottom, and that keeps the follow too.
+ */
+export function followsBottom(
+  following: boolean,
+  previous: { readonly top: number; readonly height: number },
+  place: ScrollPlace,
+): boolean {
+  const distance = place.height - place.top - place.visible;
+  if (distance <= 1) return true;
+  if (place.top < previous.top && place.height === previous.height) return false;
+  return following || distance < stickToBottomPx;
+}
+
+/**
+ * True when a render scrolls the view to the newest message. A render can come between a drag and
+ * its scroll event, so a finger on the chat pauses the snap. The scroll itself then decides the follow.
+ */
+export function snapsToBottom(following: boolean, fingerDown: boolean): boolean {
+  return following && !fingerDown;
+}
+
+/** The parts of a key press in the message box that decide a send. */
+export interface ComposerKey {
+  readonly key: string;
+  readonly shiftKey: boolean;
+  readonly isComposing: boolean;
+  readonly keyCode: number;
+}
+
+/** The code that a browser gives a key press that an input method handles. */
+const inputMethodKeyCode = 229;
+
+/**
+ * True when a key press sends the message. On a touch screen, Enter starts a new line and the Send
+ * button sends. An Enter that picks the word of an input method, such as for Japanese, must not send.
+ */
+export function sendsOnEnter(press: ComposerKey, touchScreen: boolean): boolean {
+  if (press.key !== "Enter" || press.shiftKey || touchScreen) return false;
+  return !press.isComposing && press.keyCode !== inputMethodKeyCode;
+}
+
+/**
+ * The text of the message box after a failed send. The person gets the message back, and keeps
+ * what they typed during the send after it.
+ */
+export function restoredText(failed: string, typedSince: string): string {
+  return typedSince.trim() === "" ? failed : `${failed}\n\n${typedSince}`;
 }
 
 /** The empty message box names who answers: Eva in an Assistant chat, the project's harness in a project chat. */

@@ -7,16 +7,24 @@ import {
   elapsedText,
   engineLabel,
   foldSteps,
+  followsBottom,
   inputFields,
   liveFace,
   missingDetail,
   stepState,
   modelLabel,
-  shownPending,
+  keptPending,
+  restoredText,
+  runningUntil,
+  isWorking,
+  sendsOnEnter,
+  sentTurnCount,
   undoQuestion,
   stepIcon,
+  snapsToBottom,
   stepOrigin,
   stepParts,
+  turnEndNotice,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
 
@@ -188,17 +196,184 @@ describe("chipLock", () => {
   });
 });
 
-describe("shownPending", () => {
-  test("shows the sent text while the stored turns are the ones from before the send", () => {
-    expect(shownPending({ text: "Hello", turnCount: 2 }, 2)).toBe("Hello");
+describe("keptPending", () => {
+  const texts = (pending: readonly { text: string }[]): string[] => pending.map((message) => message.text);
+
+  test("keeps the sent text while the stored turns are the ones from before the send", () => {
+    expect(texts(keptPending([{ text: "Hello", turnCount: 2 }], 2))).toEqual(["Hello"]);
   });
 
-  test("hides the sent text once its stored turn arrives, before any effect clears it", () => {
-    expect(shownPending({ text: "Hello", turnCount: 2 }, 3)).toBeNull();
+  test("drops the sent text once its stored turn arrives, before any effect clears it", () => {
+    expect(keptPending([{ text: "Hello", turnCount: 2 }], 3)).toEqual([]);
   });
 
-  test("shows nothing when nothing waits", () => {
-    expect(shownPending(null, 0)).toBeNull();
+  test("keeps a message sent during a turn when that turn is stored, and drops it with its own turn", () => {
+    const running = [
+      { text: "First", turnCount: 2 },
+      { text: "Queued", turnCount: sentTurnCount(2, true) },
+    ];
+    expect(texts(keptPending(running, 2))).toEqual(["First", "Queued"]);
+    expect(texts(keptPending(running, 3))).toEqual(["Queued"]);
+    expect(keptPending(running, 4)).toEqual([]);
+  });
+});
+
+describe("runningUntil", () => {
+  test("a turn that starts runs until one more turn is stored", () => {
+    expect(runningUntil(null, false, true, 2)).toBe(3);
+  });
+
+  test("stays running after the live steps end, until the stored turn arrives", () => {
+    // The live steps go away at the turn end, a moment before the list brings the stored turn.
+    expect(runningUntil(3, true, false, 2)).toBe(3);
+    expect(runningUntil(3, false, false, 3)).toBeNull();
+  });
+
+  test("a turn that starts before the stored turn of the one before arrives waits for both", () => {
+    expect(runningUntil(3, false, true, 2)).toBe(4);
+    expect(runningUntil(4, true, true, 3)).toBe(4);
+  });
+
+  test("a stored turn that arrives before the live steps end leaves nothing running after them", () => {
+    // The list can read the record after the save and before the turn's end event.
+    const stored = runningUntil(3, true, true, 3);
+    expect(stored).toBeNull();
+    expect(runningUntil(stored, true, false, 3)).toBeNull();
+  });
+
+  test("nothing runs while no turn started", () => {
+    expect(runningUntil(null, false, false, 2)).toBeNull();
+  });
+
+  test("a message sent in the end gap waits for the turn after the ended one", () => {
+    expect(sentTurnCount(2, runningUntil(3, true, false, 2) !== null)).toBe(3);
+  });
+});
+
+describe("turnEndNotice", () => {
+  test("says once that the turn ended, also for a turn that failed before its first step", () => {
+    expect(turnEndNotice(true, false, "")).toBe("The turn ended.");
+  });
+
+  test("a new turn clears the words, so the next end is a change that the reader says", () => {
+    expect(turnEndNotice(false, true, "The turn ended.")).toBe("");
+  });
+
+  test("keeps the words while nothing changes", () => {
+    expect(turnEndNotice(false, false, "The turn ended.")).toBe("The turn ended.");
+    expect(turnEndNotice(true, true, "")).toBe("");
+  });
+});
+
+describe("isWorking", () => {
+  const sent = (turnCount: number): { text: string; turnCount: number } => ({ text: "Hi", turnCount });
+
+  test("a send with no running turn shows the working card at once", () => {
+    expect(isWorking({ live: false, turnRuns: false, pending: [sent(2)], turnCount: 2 })).toBe(true);
+  });
+
+  test("a running turn shows the card", () => {
+    expect(isWorking({ live: true, turnRuns: true, pending: [], turnCount: 2 })).toBe(true);
+  });
+
+  test("a queued message keeps the card off until the turn before it is stored, so its clock starts fresh", () => {
+    // The live steps of the turn before ended, and its stored turn has not come yet.
+    expect(isWorking({ live: false, turnRuns: true, pending: [sent(3)], turnCount: 2 })).toBe(false);
+  });
+
+  test("a queued message shows the card once the turn before it is stored, while Eva saves the vault", () => {
+    expect(isWorking({ live: false, turnRuns: false, pending: [sent(3)], turnCount: 3 })).toBe(true);
+  });
+
+  test("no card when nothing runs and nothing waits", () => {
+    expect(isWorking({ live: false, turnRuns: false, pending: [], turnCount: 3 })).toBe(false);
+  });
+});
+
+describe("sentTurnCount", () => {
+  test("waits for the next stored turn when no turn runs, since Eva gathers such messages into it", () => {
+    expect(sentTurnCount(2, false)).toBe(2);
+  });
+
+  test("waits for one more stored turn while a turn runs, since the running turn is stored first", () => {
+    expect(sentTurnCount(2, true)).toBe(3);
+  });
+});
+
+describe("followsBottom", () => {
+  const place = (top: number): { top: number; height: number; visible: number } => ({
+    top,
+    height: 2_000,
+    visible: 500,
+  });
+
+  const before = (top: number, height = 2_000): { top: number; height: number } => ({ top, height });
+
+  test("stops following as soon as the person scrolls up, even near the bottom", () => {
+    expect(followsBottom(true, before(1_500), place(1_490))).toBe(false);
+  });
+
+  test("follows again once the person scrolls back near the bottom", () => {
+    expect(followsBottom(false, before(1_300), place(1_450))).toBe(true);
+  });
+
+  test("does not follow while the person scrolls down far from the bottom", () => {
+    expect(followsBottom(false, before(500), place(800))).toBe(false);
+  });
+
+  test("follows when shorter content pulls the view up to the very bottom", () => {
+    expect(followsBottom(true, before(1_800, 2_300), place(1_500))).toBe(true);
+  });
+
+  test("keeps the follow when a change of the content, not the person, moves the view up", () => {
+    // Another chat opens, or the browser keeps a line in place while the content above it changes.
+    const changed = { top: 600, height: 3_000, visible: 500 };
+    expect(followsBottom(true, before(1_500), changed)).toBe(true);
+    expect(followsBottom(false, before(1_500), changed)).toBe(false);
+  });
+});
+
+describe("snapsToBottom", () => {
+  test("a view that follows snaps to the newest message", () => {
+    expect(snapsToBottom(true, false)).toBe(true);
+  });
+
+  test("a finger on the chat pauses the snap, so a render cannot pull back its drag", () => {
+    expect(snapsToBottom(true, true)).toBe(false);
+  });
+
+  test("a view that does not follow never snaps", () => {
+    expect(snapsToBottom(false, false)).toBe(false);
+  });
+});
+
+describe("sendsOnEnter", () => {
+  const key = { key: "Enter", shiftKey: false, isComposing: false, keyCode: 13 };
+
+  test("sends on Enter with a keyboard", () => {
+    expect(sendsOnEnter(key, false)).toBe(true);
+  });
+
+  test("keeps Shift+Enter and any Enter on a touch screen for a new line", () => {
+    expect(sendsOnEnter({ ...key, shiftKey: true }, false)).toBe(false);
+    expect(sendsOnEnter(key, true)).toBe(false);
+  });
+
+  test("leaves an Enter that ends an IME composition to the input method", () => {
+    expect(sendsOnEnter({ ...key, isComposing: true }, false)).toBe(false);
+    // Safari ends the composition before its keydown, and marks that key with the code 229.
+    expect(sendsOnEnter({ ...key, keyCode: 229 }, false)).toBe(false);
+  });
+});
+
+describe("restoredText", () => {
+  test("puts the failed message back in an empty box", () => {
+    expect(restoredText("Hello", "")).toBe("Hello");
+    expect(restoredText("Hello", "  \n")).toBe("Hello");
+  });
+
+  test("keeps the text typed during the send after the failed message", () => {
+    expect(restoredText("Hello", "And more")).toBe("Hello\n\nAnd more");
   });
 });
 

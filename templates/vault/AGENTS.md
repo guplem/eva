@@ -93,4 +93,4 @@ repos:
 
 The text under the front matter says what an agent must know about the project. The project's notes sit beside it.
 
-`Projects/<id>/repos/<repo>-<n>/` holds clones of the project's repositories. Git ignores those clones: each one is its own repository. Never edit a clone as part of note work.
+`Projects/<id>/repos/clone-<n>/` holds a clone of the project: one folder for each repository, such as `repos/clone-0/<repo>/`. Git ignores those clones: each repository is its own git repository. Never edit a clone as part of note work.

@@ -4,7 +4,15 @@
  * repository setup.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
-import { api, type ChatBlocker, type CloneDetails, type CloneFetch, type Project, type SessionRecord } from "./api.ts";
+import {
+  api,
+  type ChatBlocker,
+  type CloneDetails,
+  type CloneFetch,
+  type Project,
+  type RepositoryDetails,
+  type SessionRecord,
+} from "./api.ts";
 import { PushCloneDialog } from "./PushCloneDialog.tsx";
 import { Toast } from "./Toast.tsx";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
@@ -142,8 +150,13 @@ export function ProjectView({
   const openProjectRef = useRef<string | null>(null);
   openProjectRef.current = page?.project.id ?? null;
   const [pulling, setPulling] = useState<string | null>(null);
+  // Eva may check a chat with a model, reset a clone or clone every repository, which takes seconds.
+  const [startingChat, setStartingChat] = useState(false);
   /** The clone whose Push sheet is open. */
-  const [pushing, setPushing] = useState<CloneDetails | null>(null);
+  const [pushing, setPushing] = useState<{
+    readonly clone: CloneDetails;
+    readonly repository: RepositoryDetails;
+  } | null>(null);
   /** The message of the last push, for a toast. */
   const [pushed, setPushed] = useState<string | null>(null);
   useEffect(() => {
@@ -203,10 +216,14 @@ export function ProjectView({
     (clone: CloneDetails): SessionRecord[] => roots.filter((session) => session.startFolder === clone.path),
     [roots],
   );
-  // The same rule as the clone cards: a chat counts when its clone folder is still there.
+  // The same rule as the clone cards: a chat counts when its clone folder is still there. A closed chat takes no work.
   const chatCount = (project: Project): number =>
     roots.filter(
-      (session) => session.projectId === project.id && session.clone !== null && project.clones.includes(session.clone),
+      (session) =>
+        session.projectId === project.id &&
+        !session.closed &&
+        session.clone !== null &&
+        project.clones.includes(session.clone),
     ).length;
 
   // The details page can hold unsaved changes, so each move away from it asks first.
@@ -219,13 +236,21 @@ export function ProjectView({
       onNavigate();
     });
 
-  const startChat = async (project: Project, clone: CloneDetails): Promise<void> => {
+  // Eva picks the clone, so the cards load again to find it.
+  const startChat = async (project: Project): Promise<void> => {
+    setStartingChat(true);
     try {
-      const chat = await api.newProjectChat(project.id, clone.name, "default");
+      const chat = await api.newProjectChat(project.id, "default");
       await onChanged();
+      // Eva may have made a new clone, and the list counts the chats of the clones that it knows.
+      setListVersion((version) => version + 1);
+      const clone = (await api.clones(project.id)).find((candidate) => candidate.name === chat.clone);
+      if (clone === undefined) throw new Error("The new chat's clone is not on this computer.");
       open({ kind: "chat", project, clone, chatId: chat.id });
     } catch (caught) {
       showError(caught);
+    } finally {
+      setStartingChat(false);
     }
   };
 
@@ -256,10 +281,10 @@ export function ProjectView({
     void syncAll(openProjectId, "Eva checks the remote of each clone.", () => api.fetchClones(openProjectId));
   }, [openProjectId, syncAll]);
 
-  const pullOne = async (project: Project, clone: CloneDetails): Promise<void> => {
-    setPulling(clone.name);
+  const pullOne = async (project: Project, clone: CloneDetails, repository: RepositoryDetails): Promise<void> => {
+    setPulling(`${clone.name}/${repository.name}`);
     try {
-      await api.pullClone(project.id, clone.name);
+      await api.pullClone(project.id, clone.name, repository.name);
       setCloneVersion((version) => version + 1);
     } catch (caught) {
       showError(caught);
@@ -268,11 +293,16 @@ export function ProjectView({
     }
   };
 
-  const pushOne = async (project: Project, clone: CloneDetails, note: string): Promise<void> => {
-    const { message } = await api.pushClone(project.id, clone.name, note);
+  const pushOne = async (
+    project: Project,
+    clone: CloneDetails,
+    repository: RepositoryDetails,
+    note: string,
+  ): Promise<void> => {
+    const { message } = await api.pushClone(project.id, clone.name, repository.name, note);
     setPushing(null);
     const subject = message.split("\n")[0] ?? "";
-    setPushed(subject === "" ? `Pushed ${clone.name}.` : `Pushed ${clone.name}: ${subject}`);
+    setPushed(subject === "" ? `Pushed ${repository.name}.` : `Pushed ${repository.name}: ${subject}`);
     setCloneVersion((version) => version + 1);
   };
 
@@ -480,17 +510,26 @@ export function ProjectView({
                   </button>
                   {" › "}
                   {page.clone.name}
-                  {page.clone.branch !== null && (
-                    <>
-                      {" · "}
-                      <span className="mono">{page.clone.branch}</span>
-                    </>
+                  {page.clone.repositories.map((repository) =>
+                    repository.branch === null ? null : (
+                      <span key={repository.path} className="crumb-detail">
+                        {" · "}
+                        {page.clone.repositories.length > 1 && `${repository.name}: `}
+                        <span className="mono">{repository.branch}</span>
+                      </span>
+                    ),
                   )}
                 </span>
               }
               extra={
                 <>
-                  {page.clone.pullRequest !== null && <span className="pill idle">PR #{page.clone.pullRequest}</span>}
+                  {page.clone.repositories.map((repository) =>
+                    repository.pullRequest === null ? null : (
+                      <span key={repository.path} className="pill idle">
+                        {page.clone.repositories.length > 1 && `${repository.name} `}PR #{repository.pullRequest}
+                      </span>
+                    ),
+                  )}
                   {/* Eva adds no prompt and no skill here: the chip only says which mode runs. */}
                   <span className="mode-chip soft">
                     <Icon name="briefcase" /> <span className="mode-chip-label">Project mode</span>
@@ -533,7 +572,8 @@ export function ProjectView({
               else actionRequest.ask(picked.id, action);
               open({ kind: "chat", project: page.project, clone, chatId: picked.id });
             }}
-            onNewChat={(clone) => void startChat(page.project, clone)}
+            onNewChat={() => void startChat(page.project)}
+            startingChat={startingChat}
             onDeleteClone={(clone) => deleteClone(page.project, clone)}
             syncWork={syncWork?.projectId === page.project.id ? syncWork.label : null}
             pulling={pulling}
@@ -547,15 +587,16 @@ export function ProjectView({
                 api.pullClones(page.project.id),
               )
             }
-            onPull={(clone) => void pullOne(page.project, clone)}
-            onPush={setPushing}
+            onPull={(clone, repository) => void pullOne(page.project, clone, repository)}
+            onPush={(clone, repository) => setPushing({ clone, repository })}
           />
         )}
         {pushing !== null && page?.kind === "project" && (
           <PushCloneDialog
-            clone={pushing}
+            cloneName={pushing.clone.name}
+            repository={pushing.repository}
             onClose={() => setPushing(null)}
-            onPush={(note) => pushOne(page.project, pushing, note)}
+            onPush={(note) => pushOne(page.project, pushing.clone, pushing.repository, note)}
           />
         )}
         {pushed !== null && <Toast message={pushed} onClose={() => setPushed(null)} />}

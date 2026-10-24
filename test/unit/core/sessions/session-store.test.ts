@@ -41,6 +41,7 @@ function session(id: string): SessionRecord {
     turns: [],
     seenTurns: 0,
     archived: false,
+    closed: false,
     continuedFrom: null,
     firstMessageDraft: null,
   };

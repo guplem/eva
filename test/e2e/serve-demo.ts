@@ -29,11 +29,15 @@ export const demoToken = "e2e-demo-token";
 const sandbox = createGitSandbox();
 const vault = sandbox.clone("vault");
 const appRemote = createGitSandbox();
+// A clone holds every repository of the project (issue 521). The demo never reaches the real GitHub,
+// so a clone of the GitHub repository of the Example app copies a local remote instead.
+const githubAppUrl = "https://github.com/example-owner/example-app";
+const githubAppRemote = createGitSandbox();
 sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
 sandbox.write(
   vault,
   "Projects/2025-03-02-1015-example-app/AGENTS.md",
-  `---\ncreated: 2025-03-02T10:15\nstatus: active\ntags: [web]\nrepos:\n  - ${appRemote.remote}\n  - https://github.com/example-owner/example-app\n---\n# Example app\n\nA web app for the client portal.\n`,
+  `---\ncreated: 2025-03-02T10:15\nstatus: active\ntags: [web]\nrepos:\n  - ${appRemote.remote}\n  - ${githubAppUrl}\n---\n# Example app\n\nA web app for the client portal.\n`,
 );
 sandbox.write(
   vault,
@@ -170,11 +174,17 @@ await demoRemoteAccess.refresh();
 const demoGh = fakeGh(systemProcessRunner);
 const demoRunner: ProcessRunner = {
   run: (command, options) =>
-    command[0] === "uvx"
-      ? Promise.resolve({ exitCode: 0, stdout: "uv 0.9.0\n", stderr: "" })
-      : command[0] === "gh" && command[1] === "auth"
-        ? demoGh.run(command, options)
-        : systemProcessRunner.run(command, options),
+    // An exact argument of the command, never a part of a longer text.
+    command[0] === "git" && command.includes("clone") && command.some((part) => part === githubAppUrl)
+      ? systemProcessRunner.run(
+          command.map((part) => (part === githubAppUrl ? githubAppRemote.remote : part)),
+          options,
+        )
+      : command[0] === "uvx"
+        ? Promise.resolve({ exitCode: 0, stdout: "uv 0.9.0\n", stderr: "" })
+        : command[0] === "gh" && command[1] === "auth"
+          ? demoGh.run(command, options)
+          : systemProcessRunner.run(command, options),
 };
 
 // Google allows every scope that Eva asks for, so the Test passes after the login.

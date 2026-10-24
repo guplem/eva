@@ -1846,6 +1846,26 @@ describe("migrations (#119)", () => {
     expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(false);
   });
 
+  test("a hub claim that waited at start happens after the first good pull, with the vault migrations", async () => {
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" }, { hubClaimPending: true });
+    await instance.syncVault();
+    expect(existsSync(join(vault, ".eva", "hub.json"))).toBe(false);
+
+    sandbox.git(vault, "remote", "set-url", "origin", sandbox.remote);
+    await instance.syncVault();
+    expect(JSON.parse(readFileSync(join(vault, ".eva", "hub.json"), "utf-8"))).toMatchObject({ machine: "example-pc" });
+    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
+    // The same sync step commits and pushes the claim.
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain(".eva/hub.json");
+  });
+
+  test("a machine whose claim did not wait claims nothing after a pull", async () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    await instance.syncVault();
+    expect(existsSync(join(vault, ".eva", "hub.json"))).toBe(false);
+  });
+
   test("a satellite shows the template parts but leaves the choice to the hub", () => {
     sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
     sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");

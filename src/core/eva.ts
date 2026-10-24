@@ -74,7 +74,7 @@ import {
   type CheckRecord,
   type ProgressStep,
 } from "./setup/progress.ts";
-import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
+import { claimHub, claimHubIfUnclaimed, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
@@ -223,6 +223,8 @@ export interface EvaOptions {
   readonly evaCommand?: readonly string[] | null;
   /** Where Eva's own updates come from. Null: no updates. */
   readonly updateChannel?: UpdateChannel | null;
+  /** The start skipped the hub claim after a failed pull (`PreparedStart`). Eva claims after a later good pull. */
+  readonly hubClaimPending?: boolean;
   /** Stops Eva so that she starts again: after an update, and for a restart on request. */
   readonly restartForUpdate?: () => void;
   /** Phone access through Tailscale, such as the RemoteAccessWatcher. Null: `tailscaleServe` is off. */
@@ -416,6 +418,7 @@ export class Eva {
   private readonly engineUpdater: EngineUpdater | null;
   private readonly machine: string;
   private lastRole: MachineRole;
+  private hubClaimPending: boolean;
   private readonly roleListeners = new Set<(role: MachineRole) => void>();
   private lastTurn: LastTurnStatus | null = null;
   /** A slow git step can outlast a timer period; this flag keeps the tick from running twice at once. */
@@ -490,7 +493,8 @@ export class Eva {
       reportProblem: (problem) => {
         this.alerts.report("vault_sync", problem);
       },
-      afterSync: () => {
+      afterSync: (state) => {
+        this.claimHubAfterGoodPull(state);
         this.noticeVaultAhead();
         this.noticeTemplateParts();
         // A full disk or a reserved file name must not stop the sync step.
@@ -716,6 +720,7 @@ export class Eva {
 
     // A broken claim at start may hide another hub; a satellite never starts a second Telegram bot.
     this.lastRole = machineRole(options.config.vaultPath, this.machine, "satellite");
+    this.hubClaimPending = options.hubClaimPending ?? false;
     const channel = options.updateChannel ?? null;
     this.updater =
       channel === null
@@ -1906,6 +1911,27 @@ export class Eva {
     this.options.removeOldLogs?.();
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath !== null) cleanScratch(vaultPath, now);
+  }
+
+  /**
+   * The start claims the hub only after a good pull, so a machine that starts before the network
+   * claims at its first good sync step. The next save of the vault commits and pushes the claim.
+   */
+  private claimHubAfterGoodPull(state: VaultSyncState): void {
+    const vaultPath = this.options.config.vaultPath;
+    if (!this.hubClaimPending || state.status !== "ok" || vaultPath === null) return;
+    this.hubClaimPending = false;
+    try {
+      if (!claimHubIfUnclaimed(vaultPath, this.machine, this.options.now())) return;
+    } catch (error) {
+      this.options.logger?.log("warn", "This machine could not claim the hub.", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    this.options.logger?.log("info", "No machine was the hub yet, so this machine claimed it.");
+    // The role reads "hub" before and after the claim, so noticeRoleChange runs no vault migration.
+    if (this.runVaultMigrations()?.kind === "done") this.alignTemplate();
   }
 
   private noticeRoleChange(): void {

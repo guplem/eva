@@ -1954,6 +1954,20 @@ describe("Eva alerts", () => {
     ]);
   });
 
+  test("a problem that cleared while Eva was off loses its mark, so its next failure alerts", async () => {
+    const problem = { level: "warn", message: "The laptop failed.", resolvedMessage: "It works." } as const;
+    const first = start(new FakeEngine());
+    first.reportProblem("machine:laptop:update", problem);
+    first.hideProblem("machine:laptop:update");
+    first.stop();
+    const second = start(new FakeEngine());
+    const alerts = collectAlerts(second);
+    await second.backgroundTick();
+    second.reportProblem("machine:laptop:update", problem);
+    expect(alerts.map((alert) => alert.key)).toEqual(["machine:laptop:update"]);
+    expect(second.status().problemDetails[0]?.hidden).toBe(false);
+  });
+
   test("an expired engine login is a problem with its own key until a turn of that engine works", async () => {
     const engine = new FakeEngine((request, turnNumber) =>
       turnNumber === 1

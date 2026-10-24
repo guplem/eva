@@ -450,6 +450,8 @@ export class Eva {
   private pushedCount: number;
   /** The keys of the problems that this hub relays now, by report file. */
   private relayed = new Map<string, ReadonlySet<string>>();
+  /** True after the first background round has dropped the stale hidden marks. */
+  private hiddenMarksChecked: boolean;
   private reportNameTaken = false;
 
   constructor(options: EvaOptions) {
@@ -495,6 +497,7 @@ export class Eva {
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
     this.recentAlerts = [];
+    this.hiddenMarksChecked = false;
     this.pushedCount = 0;
     // Only the hub pushes, as only the hub runs Telegram: it relays the problems of the other
     // machines, so a device that also subscribed on a satellite would get each one twice.
@@ -823,6 +826,11 @@ export class Eva {
       if (engineUpdater !== null) this.runEngineUpdate(() => engineUpdater.tick());
       await this.updater?.tick();
       this.noticeUpdateState();
+      // The first round re-reported each open problem, so a saved mark with no open problem is stale.
+      if (!this.hiddenMarksChecked) {
+        this.alerts.forgetHiddenUnlessOpen();
+        this.hiddenMarksChecked = true;
+      }
     } finally {
       this.backgroundTicking = false;
     }

@@ -158,6 +158,17 @@ export class AlertCenter {
     }));
   }
 
+  /**
+   * Forgets each saved mark whose problem is not open. Eva calls it once, after her first round of
+   * checks: a problem that cleared while she was off reports no "resolved", so its mark would stay
+   * and silence the next real failure.
+   */
+  forgetHiddenUnlessOpen(): void {
+    const stale = [...this.hidden.keys()].filter((key) => !this.open.has(key));
+    for (const key of stale) this.hidden.delete(key);
+    if (stale.length > 0) this.saveHidden();
+  }
+
   private forgetHidden(key: string): void {
     if (this.hidden.delete(key)) this.saveHidden();
   }

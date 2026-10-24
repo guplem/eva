@@ -7,6 +7,7 @@ import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { ChoiceChips, errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 type Path = "existing" | "new";
 
@@ -106,6 +107,8 @@ function PickRepository({
   const [listing, setListing] = useState<Listing>({ state: "loading" });
   const [picked, setPicked] = useState("");
   const [typed, setTyped] = useState("");
+  // A save would clone, so the question offers no save. While the clone runs, the guard waits.
+  useLeaveGuard(typed.trim() !== "" && busy === null, null);
 
   const load = useCallback(async (): Promise<void> => {
     setListing({ state: "loading" });
@@ -188,6 +191,9 @@ function NewVault({
   const [language, setLanguage] = useState("English");
   const [topics, setTopics] = useState("");
   const [repository, setRepository] = useState("vault");
+  // A save would create the vault and its repository, so the question offers no save.
+  const changed = name !== "" || language !== "English" || topics !== "" || repository !== "vault";
+  useLeaveGuard(changed && busy === null, null);
   const create = (): void => {
     onCreate({
       name,
@@ -247,6 +253,8 @@ function NewVault({
 export function VaultPush({ context }: { readonly context: SettingsContext }): ReactElement {
   const [repository, setRepository] = useState("vault");
   const [pushing, setPushing] = useState(false);
+  // A save would push, so the question offers no save.
+  useLeaveGuard(repository !== "vault" && !pushing, null);
   const push = async (): Promise<void> => {
     setPushing(true);
     try {

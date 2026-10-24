@@ -9,6 +9,7 @@ import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { withOwner, withoutOwner } from "./trusted-owners.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 export function TrustSection({ context }: { readonly context: SettingsContext }): ReactElement {
   const [trust, setTrust] = useState<TrustOverview | null>(null);
@@ -122,14 +123,19 @@ function OwnersCard({ trust, context, busy, run }: TrustCardProps): ReactElement
       (await context.saveNow({ trust: { trustedRepositoryOwners: owners } })) ? { ...trust, owners } : null,
     );
 
-  const add = async (): Promise<void> => {
+  /** True means that the owner saved. */
+  const add = async (): Promise<boolean> => {
     const result = withOwner(trust.owners, typed);
     if ("problem" in result) {
       context.notify(result.problem);
-      return;
+      return false;
     }
-    if (await save(result.owners)) setTyped("");
+    const saved = await save(result.owners);
+    if (saved) setTyped("");
+    return saved;
   };
+  // A name typed but not added yet still counts.
+  useLeaveGuard(typed.trim() !== "", add);
 
   const remove = async (owner: string): Promise<void> => {
     if (!window.confirm(`Stop trusting the repositories of ${owner}? Eva then asks about each one.`)) return;

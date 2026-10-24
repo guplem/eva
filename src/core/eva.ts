@@ -28,6 +28,8 @@ import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput }
 import {
   scheduleCardProblem,
   engineLoginProblem,
+  engineMissingProblem,
+  engineRestartProblem,
   engineUpdateProblem,
   heldBackNews,
   machineAheadMessage,
@@ -207,6 +209,8 @@ export interface EvaOptions {
   readonly gatherMs?: number;
   /** The claude program, for the engine update. Null: no engine update. */
   readonly claudeExecutable?: string | null;
+  /** Finds an engine's program on the disk now, so an install after the start ends its alert. Default: none. */
+  readonly locateEngine?: (engine: EngineName) => string | null;
   /** Sends a web push. Tests pass their own; the default posts to the push service. */
   readonly pushSender?: PushSender;
   /** Where background failures and sync problems go (lessons 16, 50). */
@@ -477,6 +481,7 @@ export class Eva {
               runner: options.runner,
               environment: ownGitEnvironment,
               now: options.now,
+              redact: (text) => redactor.redact(text),
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,
@@ -774,6 +779,7 @@ export class Eva {
       await this.vault.pullIfDue({ ...this.settings.config.sync, enabled: this.options.config.sync.enabled });
       this.noticeRoleChange();
       this.cleanUpIfDue();
+      this.noticeDefaultEngine();
       // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
       // its download can take minutes, and the next ticks must still fetch the vault.
       const engineUpdater = this.engineUpdater;
@@ -1137,6 +1143,24 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     if (alignment === null || vaultPath === null || !existsSync(vaultPath)) return;
     this.alerts.report("template_alignment", this.role() === "hub" ? alignmentProblem(alignment.list()) : null);
+  }
+
+  /**
+   * Raises an alert while the default engine has no program, so a failed chat has a reason on the
+   * phone. Call it after the Telegram bot starts. Chats read the engines at start, so the start value counts.
+   */
+  noticeDefaultEngine(): void {
+    const engine = this.options.config.engines.default;
+    const state = this.options.engines.some((loaded) => loaded.name === engine)
+      ? "loaded"
+      : (this.options.locateEngine?.(engine) ?? null) === null
+        ? "missing"
+        : "installed";
+    this.alerts.report(
+      "default_engine",
+      engineMissingProblem(engine, state, this.options.toolPlaces?.platform ?? process.platform),
+    );
+    this.alerts.report("default_engine_restart", engineRestartProblem(engine, state));
   }
 
   /** The start found the marker of a run that never stopped cleanly. */

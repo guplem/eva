@@ -31,6 +31,8 @@ interface RetryPolicy {
   readonly maxRetries?: number;
 }
 
+/** For a send, and for a call that runs once and is worth a wait, such as the command menu. */
+export const sendPolicy: RetryPolicy = { waitBudgetMs: sendWaitBudgetMs };
 /** For a call that must not run twice, such as createForumTopic: only a 429 goes again. */
 export const noRepeatPolicy: RetryPolicy = { waitBudgetMs: sendWaitBudgetMs, retryNetworkErrors: false };
 /** For a best-effort call, such as the reply to a failure that may itself be a flood: one try. */
@@ -117,7 +119,7 @@ export class TelegramSender {
   async callWithRetry<Result>(
     method: string,
     params: Record<string, unknown>,
-    policy: RetryPolicy = { waitBudgetMs: sendWaitBudgetMs },
+    policy: RetryPolicy = sendPolicy,
   ): Promise<Result> {
     let waitedMs = 0;
     for (let retry = 0; ; retry += 1) {

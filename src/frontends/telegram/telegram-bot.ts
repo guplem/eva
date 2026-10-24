@@ -43,6 +43,7 @@ import {
   messageLimit,
   noRepeatPolicy,
   noRetryPolicy,
+  sendPolicy,
   TelegramSender,
   telegramMessageLimit,
 } from "./telegram-sender.ts";
@@ -258,7 +259,8 @@ export class TelegramBot {
   }
 
   async registerCommands(): Promise<void> {
-    await this.sender.quietCall("setMyCommands", { commands });
+    // It runs once, before the first poll: a menu that gives up stays missing until the next start.
+    await this.sender.quietCall("setMyCommands", { commands }, sendPolicy);
   }
 
   /** Polls until stop() is called. Telegram is the owner's only way in, so no error ends the loop. */

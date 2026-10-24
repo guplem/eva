@@ -1740,6 +1740,14 @@ describe("approvals and commands", () => {
     await bot.registerCommands();
     expect(JSON.stringify(telegram.callsTo("setMyCommands")[0]?.params)).toContain("new");
   });
+
+  test("the commands wait out a long 429 at the start, so the menu shows with no restart", async () => {
+    const bot = createBot();
+    telegram.failNext("setMyCommands", 429, "Too Many Requests: retry after 60", 1, 60);
+    await bot.registerCommands();
+    expect(sleeps).toEqual([60_000]);
+    expect(telegram.callsTo("setMyCommands")).toHaveLength(2);
+  });
 });
 
 describe("stop and approvals from elsewhere", () => {

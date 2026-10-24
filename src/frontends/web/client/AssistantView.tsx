@@ -180,12 +180,18 @@ export function AssistantView({
     onNavigate();
   };
 
+  // A second tap before the first chat opens would make a second empty chat.
+  const creating = useRef(false);
   const newChat = async (): Promise<void> => {
+    if (creating.current) return;
+    creating.current = true;
     try {
       // The composer chip picks another model before the first message (lesson 41).
       await openNewChat(await api.newAssistantChat("default"));
     } catch (caught) {
       showError(caught);
+    } finally {
+      creating.current = false;
     }
   };
 

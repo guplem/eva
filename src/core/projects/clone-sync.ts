@@ -3,9 +3,9 @@
  * fetch, a pull, and a commit of every change with a push.
  */
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
@@ -76,6 +76,43 @@ export async function pullClone(clone: Clone, runner: ProcessRunner, environment
     throw new EvaError("git_failed", `Could not pull ${clone.name}: ${failureReason(result, "git")}`);
 }
 
+export interface PushReadiness {
+  /** The changed, staged and new files that a commit would hold. */
+  readonly files: readonly string[];
+  readonly branch: string;
+}
+
+/**
+ * The files and branch of a clone that Eva can commit and push. It throws `git_failed` when Git LFS,
+ * a conflict, an open merge or rebase, or a detached HEAD blocks a safe push.
+ */
+export async function readyToPush(
+  clone: Clone,
+  runner: ProcessRunner,
+  environment: Environment,
+): Promise<PushReadiness> {
+  if (usesLfs(clone)) {
+    throw new EvaError(
+      "git_failed",
+      `${clone.name} uses Git LFS, whose upload needs a hook that Eva does not run. Push it from a chat.`,
+    );
+  }
+  const entries = await statusEntries(clone, runner, environment);
+  // `git add -A` marks a conflict as solved, so the markers would land in the commit and on the remote.
+  if (entries.some((entry) => entry.unmerged)) {
+    throw new EvaError("git_failed", `${clone.name} has files with conflicts. Solve them in a chat, then push.`);
+  }
+  const operation = await openOperation(clone, runner, environment);
+  if (operation !== null) {
+    throw new EvaError("git_failed", `${clone.name} is in the middle of a ${operation}. End it in a chat, then push.`);
+  }
+  // Before any commit, so a clone on no branch gets no commit that Eva cannot push.
+  const branch = await git(clone, runner, environment, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  if (branch.exitCode !== 0 || branch.stdout.trim() === "HEAD")
+    throw new EvaError("git_failed", `${clone.name} is on no branch, so Eva cannot push it.`);
+  return { files: entries.map((entry) => entry.path), branch: branch.stdout.trim() };
+}
+
 /**
  * Commits every change with the message, then pushes the branch to the branch of the same name on
  * `origin`, which becomes its upstream. With no change, it pushes the commits that are there.
@@ -86,13 +123,7 @@ export async function commitAndPush(
   runner: ProcessRunner,
   environment: Environment,
 ): Promise<void> {
-  if (usesLfs(clone)) {
-    throw new EvaError(
-      "git_failed",
-      `${clone.name} uses Git LFS, whose upload needs a hook that Eva does not run. Push it from a chat.`,
-    );
-  }
-  const files = await changedFiles(clone, runner, environment);
+  const { files, branch } = await readyToPush(clone, runner, environment);
   if (files.length > 0) {
     await mustRun(clone, runner, environment, ["add", "-A"], "stage the changes of");
     // A machine with no git identity yet still commits, as the vault's first commit does.
@@ -110,14 +141,11 @@ export async function commitAndPush(
       message.trim().length > 0 ? message : fallbackCommitMessage(files),
     );
   }
-  const branch = await git(clone, runner, environment, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (branch.exitCode !== 0 || branch.stdout.trim() === "HEAD")
-    throw new EvaError("git_failed", `${clone.name} is on no branch, so Eva cannot push it.`);
   const remoteBranch = await git(clone, runner, environment, [
     "rev-parse",
     "--verify",
     "-q",
-    `refs/remotes/origin/${branch.stdout.trim()}`,
+    `refs/remotes/origin/${branch}`,
   ]);
   const head = await git(clone, runner, environment, ["rev-parse", "HEAD"]);
   if (files.length === 0 && remoteBranch.exitCode === 0 && remoteBranch.stdout.trim() === head.stdout.trim()) {
@@ -137,6 +165,32 @@ export async function commitAndPush(
       `Could not push ${clone.name}. The commit stays in the clone. ${failureReason(result, "git")}`,
     );
   }
+}
+
+/** The git folder entries that an unfinished operation leaves, with the name that Eva shows. */
+const operationMarkers: readonly (readonly [string, string])[] = [
+  ["MERGE_HEAD", "merge"],
+  ["rebase-merge", "rebase"],
+  ["rebase-apply", "rebase"],
+  ["CHERRY_PICK_HEAD", "cherry-pick"],
+  ["REVERT_HEAD", "revert"],
+];
+
+/** The merge, rebase, cherry-pick or revert that the clone has not ended, or null. */
+async function openOperation(clone: Clone, runner: ProcessRunner, environment: Environment): Promise<string | null> {
+  // `--git-path` also finds the git folder of a worktree clone, whose `.git` is a file.
+  const result = await git(clone, runner, environment, [
+    "rev-parse",
+    ...operationMarkers.flatMap(([marker]) => ["--git-path", marker]),
+  ]);
+  if (result.exitCode !== 0)
+    throw new EvaError("git_failed", `Could not read ${clone.name}: ${failureReason(result, "git")}`);
+  const paths = result.stdout.split(/\r?\n/);
+  const found = operationMarkers.find((_, index) => {
+    const path = paths[index]?.trim() ?? "";
+    return path.length > 0 && existsSync(resolve(clone.path, path));
+  });
+  return found?.[1] ?? null;
 }
 
 /** Git LFS uploads its files in a pre-push hook, and Eva's push runs no hook. */
@@ -176,15 +230,14 @@ export function fallbackCommitMessage(files: readonly string[]): string {
   return files.length === 0 ? "Update files" : `Update ${String(files.length)} files`;
 }
 
-/** The changed, staged and new files of a clone. */
-export async function changedFiles(clone: Clone, runner: ProcessRunner, environment: Environment): Promise<string[]> {
-  return (await statusEntries(clone, runner, environment)).map((entry) => entry.path);
-}
-
 interface StatusEntry {
   readonly path: string;
   readonly untracked: boolean;
+  /** A conflict that is not solved yet, such as `UU` or `AA`. */
+  readonly unmerged: boolean;
 }
+
+const unmergedCodes = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
 
 async function statusEntries(clone: Clone, runner: ProcessRunner, environment: Environment): Promise<StatusEntry[]> {
   // No index refresh, so no index.lock: a timeout kill would leave the lock (lesson 81).
@@ -203,7 +256,7 @@ async function statusEntries(clone: Clone, runner: ProcessRunner, environment: E
     const field = fields[index] ?? "";
     if (field.length < 4) continue;
     const code = field.slice(0, 2);
-    entries.push({ path: field.slice(3), untracked: code === "??" });
+    entries.push({ path: field.slice(3), untracked: code === "??", unmerged: unmergedCodes.has(code) });
     // A rename or a copy names its old path in the next field.
     if (/[RC]/.test(code)) index += 1;
   }

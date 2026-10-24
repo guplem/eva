@@ -42,6 +42,17 @@ function commitElsewhere(file: string): void {
   sandbox.git(other, "push", "-q", "origin", "main");
 }
 
+/** A local commit and a remote commit that change AGENTS.md apart, then a merge or rebase that stops on it. */
+function startConflict(how: "merge" | "rebase" = "merge"): void {
+  commitElsewhere("AGENTS.md");
+  sandbox.write(clone.path, "AGENTS.md", "# Local\n");
+  sandbox.git(clone.path, "add", "-A");
+  sandbox.git(clone.path, "commit", "-q", "-m", "local work");
+  sandbox.git(clone.path, "fetch", "-q");
+  // Git ends a stopped merge or rebase with a failure exit code.
+  expect(() => sandbox.git(clone.path, how, "-q", "origin/main")).toThrow();
+}
+
 describe("sync state", () => {
   test("a fresh clone is level with its upstream", async () => {
     expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: 0, behind: 0 });
@@ -151,6 +162,49 @@ describe("commit and push", () => {
       (error: unknown) => error,
     );
     expect(isEvaError(failure, "git_failed")).toBe(true);
+  });
+
+  test("a clone with a conflict is refused, and gets no commit", async () => {
+    startConflict();
+    const failure = await commitAndPush(clone, "Push it", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("local work");
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("add AGENTS.md");
+  });
+
+  test("a merge that is not ended yet is refused, even with each conflict solved", async () => {
+    startConflict();
+    sandbox.write(clone.path, "AGENTS.md", "# Solved\n");
+    sandbox.git(clone.path, "add", "-A");
+    const failure = await commitAndPush(clone, "Push it", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("local work");
+  });
+
+  test("a clone in the middle of a rebase is refused, and gets no commit", async () => {
+    startConflict("rebase");
+    sandbox.write(clone.path, "AGENTS.md", "# Solved\n");
+    sandbox.git(clone.path, "add", "-A");
+    const before = sandbox.git(clone.path, "rev-parse", "HEAD");
+    const failure = await commitAndPush(clone, "Push it", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(sandbox.git(clone.path, "rev-parse", "HEAD")).toBe(before);
+  });
+
+  test("a clone on no branch is refused before the commit", async () => {
+    sandbox.git(clone.path, "checkout", "-q", "--detach");
+    sandbox.write(clone.path, "new.txt", "new\n");
+    const failure = await commitAndPush(clone, "Push it", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("seed");
   });
 
   test("a push that the remote refuses keeps the commit, and gives the reason", async () => {

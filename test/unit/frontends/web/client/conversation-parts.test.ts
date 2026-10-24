@@ -13,7 +13,8 @@ import {
   missingDetail,
   stepState,
   modelLabel,
-  shownPending,
+  keptPending,
+  sentTurnCount,
   stepIcon,
   stepOrigin,
   stepParts,
@@ -188,17 +189,35 @@ describe("chipLock", () => {
   });
 });
 
-describe("shownPending", () => {
-  test("shows the sent text while the stored turns are the ones from before the send", () => {
-    expect(shownPending({ text: "Hello", turnCount: 2 }, 2)).toBe("Hello");
+describe("keptPending", () => {
+  const texts = (pending: readonly { text: string }[]): string[] => pending.map((message) => message.text);
+
+  test("keeps the sent text while the stored turns are the ones from before the send", () => {
+    expect(texts(keptPending([{ text: "Hello", turnCount: 2 }], 2))).toEqual(["Hello"]);
   });
 
-  test("hides the sent text once its stored turn arrives, before any effect clears it", () => {
-    expect(shownPending({ text: "Hello", turnCount: 2 }, 3)).toBeNull();
+  test("drops the sent text once its stored turn arrives, before any effect clears it", () => {
+    expect(keptPending([{ text: "Hello", turnCount: 2 }], 3)).toEqual([]);
   });
 
-  test("shows nothing when nothing waits", () => {
-    expect(shownPending(null, 0)).toBeNull();
+  test("keeps a message sent during a turn when that turn is stored, and drops it with its own turn", () => {
+    const running = [
+      { text: "First", turnCount: 2 },
+      { text: "Queued", turnCount: sentTurnCount(2, true) },
+    ];
+    expect(texts(keptPending(running, 2))).toEqual(["First", "Queued"]);
+    expect(texts(keptPending(running, 3))).toEqual(["Queued"]);
+    expect(keptPending(running, 4)).toEqual([]);
+  });
+});
+
+describe("sentTurnCount", () => {
+  test("waits for the next stored turn when no turn runs, since Eva gathers such messages into it", () => {
+    expect(sentTurnCount(2, false)).toBe(2);
+  });
+
+  test("waits for one more stored turn while a turn runs, since the running turn is stored first", () => {
+    expect(sentTurnCount(2, true)).toBe(3);
   });
 });
 

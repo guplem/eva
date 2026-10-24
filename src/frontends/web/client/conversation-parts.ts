@@ -177,18 +177,26 @@ export function chipLock(
   return null;
 }
 
-/** A sent message whose stored turn has not come yet, and the turn count when it was sent. */
+/** A sent message whose stored turn has not come yet. It shows while the stored turns are at most `turnCount`. */
 export interface PendingMessage {
   readonly text: string;
   readonly turnCount: number;
 }
 
 /**
- * The text of the sent message to show, or null. The stored turn arrives one render before an
- * effect can clear the pending message, so the turn count hides it in that render.
+ * The stored turn count that a new message waits beyond. Eva gathers the messages sent before a
+ * turn starts into that turn. A message sent while a turn runs goes into the turn after it.
  */
-export function shownPending(pending: PendingMessage | null, turnCount: number): string | null {
-  return pending !== null && pending.turnCount === turnCount ? pending.text : null;
+export function sentTurnCount(turnCount: number, turnRunning: boolean): number {
+  return turnRunning ? turnCount + 1 : turnCount;
+}
+
+/**
+ * The sent messages whose stored turn has not come yet, so the view shows them. The stored turn
+ * arrives one render before an effect can clear its message, so the turn count hides it in that render.
+ */
+export function keptPending(pending: readonly PendingMessage[], turnCount: number): readonly PendingMessage[] {
+  return pending.filter((message) => message.turnCount >= turnCount);
 }
 
 /** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */

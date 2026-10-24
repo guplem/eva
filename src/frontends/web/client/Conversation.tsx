@@ -24,8 +24,9 @@ import {
   elapsedText,
   foldSteps,
   followsBottom,
+  keptPending,
   liveFace,
-  shownPending,
+  sentTurnCount,
   type PendingMessage,
 } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
@@ -183,8 +184,8 @@ function Branch({
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
   // The New chat page sent this message before the chat opened here, so the chat starts with it.
-  const [sent, setSent] = useState<PendingMessage | null>(
-    firstMessage === null ? null : { text: firstMessage, turnCount: 0 },
+  const [sent, setSent] = useState<readonly PendingMessage[]>(
+    firstMessage === null ? [] : [{ text: firstMessage, turnCount: 0 }],
   );
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<PathStep<SessionRecord> | "running" | null>(null);
@@ -196,22 +197,22 @@ function Branch({
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
   const showError = useShowError();
-  const pending = shownPending(sent, turnCount);
+  const pending = keptPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
   /**
    * True once this send's turn sent a step. Its end removes the live steps before the list
    * brings the stored answer, so the working card must not come back in that gap.
    */
   const [sawLiveSteps, setSawLiveSteps] = useState(false);
-  const working = liveSteps !== undefined || (pending !== null && !sawLiveSteps);
+  const working = liveSteps !== undefined || (pending.length > 0 && !sawLiveSteps);
   const startedAt = useStartTime(working);
 
-  // Only a new stored turn clears the message. The first render must keep the message of the New chat page.
-  const storedTurns = useRef(turnCount);
+  // Only the stored turn of a message clears it. A message sent during a turn outlives that turn.
   useEffect(() => {
-    if (storedTurns.current === turnCount) return;
-    storedTurns.current = turnCount;
-    setSent(null);
+    setSent((current) => {
+      const kept = keptPending(current, turnCount);
+      return kept.length === current.length ? current : kept;
+    });
   }, [turnCount]);
   useEffect(() => {
     if (liveSteps !== undefined) setSawLiveSteps(true);
@@ -221,13 +222,14 @@ function Branch({
 
   const send = async (message: string, recording?: string): Promise<boolean> => {
     if (recording !== undefined) recordings.keep(session.id, message, recording);
-    setSent({ text: message, turnCount });
+    const entry = { text: message, turnCount: sentTurnCount(turnCount, liveSteps !== undefined) };
+    setSent((current) => [...current, entry]);
     setSawLiveSteps(false);
     try {
       await api.send(session.id, message);
       return true;
     } catch (caught) {
-      setSent(null);
+      setSent((current) => current.filter((candidate) => candidate !== entry));
       showError(caught);
       return false;
     }
@@ -305,10 +307,28 @@ function Branch({
           </div>
         );
       })}
-      {pending !== null && <UserMessage text={pending} recording={recordings.find(session.id, pending)} />}
+      {pending
+        .filter((message) => message.turnCount === turnCount)
+        .map((message, index) => (
+          <UserMessage
+            key={`sent-${String(index)}`}
+            text={message.text}
+            recording={recordings.find(session.id, message.text)}
+          />
+        ))}
       {working && (
         <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
       )}
+      {/* A message sent during a turn waits for that turn to end, so it shows below the running answer. */}
+      {pending
+        .filter((message) => message.turnCount > turnCount)
+        .map((message, index) => (
+          <UserMessage
+            key={`queued-${String(index)}`}
+            text={message.text}
+            recording={recordings.find(session.id, message.text)}
+          />
+        ))}
       {waiting.length > 0 && (
         <ApprovalRequests approvals={waiting} place={approvalPlace(session)} onAnswer={approvals.onAnswer} />
       )}
@@ -340,7 +360,7 @@ function Branch({
       )}
       {session.parentId === null &&
         turnCount === 0 &&
-        pending === null &&
+        pending.length === 0 &&
         !working &&
         (blocker !== null ? (
           // A project chat needs the engine and the vault too.

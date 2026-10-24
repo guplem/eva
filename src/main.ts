@@ -162,7 +162,7 @@ async function serve(paths: HomePaths): Promise<number> {
   });
   // Before the migrations, so a second start never changes the files under a running Eva.
   const lock = acquireInstanceLock(paths.lock, { pid: host.pid, bootId: host.bootId, isProcessAlive });
-  const { config, secrets, notes, migrations, hubClaimPending } = await prepareStart({
+  const { config, secrets, notes, migrations } = await prepareStart({
     paths,
     runner: systemProcessRunner,
     processEnvironment: process.env,
@@ -195,7 +195,6 @@ async function serve(paths: HomePaths): Promise<number> {
     processEnvironment: process.env,
     now: () => new Date(),
     basePrompt: assistantBasePrompt,
-    hubClaimPending,
     logger,
     removeOldLogs: () => {
       logger.removeOldFiles();

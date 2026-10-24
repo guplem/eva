@@ -32,7 +32,7 @@ export interface VaultUpkeepOptions {
   readonly assistantBusy: () => boolean;
   readonly reportProblem: (problem: AlertProblem | null) => void;
   /** Runs after each sync step, such as the check for a vault record from a newer Eva. */
-  readonly afterSync?: (state: VaultSyncState) => void;
+  readonly afterSync?: () => void;
   readonly logger?: Logger;
 }
 
@@ -153,7 +153,7 @@ export class VaultUpkeep {
   private logSyncState(state: VaultSyncState): VaultSyncState {
     this.noticeSyncProblem(state);
     // A pull can bring a migration record from a newer Eva at any time.
-    this.options.afterSync?.(state);
+    this.options.afterSync?.();
     if (state.status === "conflict" || state.status === "error" || state.status === "offline") {
       this.options.logger?.log(state.status === "offline" ? "warn" : "error", "Vault sync failed.", {
         status: state.status,

@@ -414,6 +414,13 @@ describe("with a running Eva", () => {
     expect(String(failure)).toContain("no update channel");
   });
 
+  test("a sync that fails in the running Eva exits with a failure, as it does here", async () => {
+    const vault = loadSettings(paths).config.vaultPath ?? "";
+    sandbox.git(vault, "remote", "set-url", "origin", join(vault, "no-such-remote"));
+    expect(await run(host, "sync")).toBe(exitCodes.crash);
+    expect(printed(host)).toContain("Vault sync: offline");
+  });
+
   test("setup restarts a running Eva when it changed her files, so she uses the new answers", async () => {
     const answering = fakeHost({
       isProcessAlive: () => true,

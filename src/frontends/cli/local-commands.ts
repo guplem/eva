@@ -44,8 +44,9 @@ export async function update(
 ): Promise<number> {
   const client = runningClient(host, paths);
   if (client !== null) {
-    writeLine(host, await requestUpdate(client, checkOnly, version));
-    return exitCodes.clean;
+    const { text, status } = await requestUpdate(client, checkOnly, version);
+    writeLine(host, text);
+    return status.lastError === null ? exitCodes.clean : exitCodes.crash;
   }
   const settings = loadSettings(paths).config.updates;
   // The same rules as a running Eva: the policy picks, unless the person names a version.
@@ -74,8 +75,9 @@ export async function update(
 export async function sync(host: CliHost, paths: HomePaths): Promise<number> {
   const client = runningClient(host, paths);
   if (client !== null) {
-    writeLine(host, await requestSync(client));
-    return exitCodes.clean;
+    const state = await requestSync(client);
+    writeLine(host, describeSync(state));
+    return state.status === "ok" ? exitCodes.clean : exitCodes.crash;
   }
   const config = loadConfig(paths);
   const vaultPath = config.vaultPath;

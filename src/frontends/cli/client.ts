@@ -292,17 +292,20 @@ export async function requestUpdate(
   options: ClientOptions,
   checkOnly: boolean,
   version: string | null = null,
-): Promise<string> {
+): Promise<{ readonly text: string; readonly status: UpdateStatus }> {
   const checked = await postJson<UpdateStatus>(options, "/api/update/check", {});
-  if (checkOnly) return describeUpdateWithHint(checked);
+  if (checkOnly) return { text: describeUpdateWithHint(checked), status: checked };
   const release = version === null ? null : describeRelease(checked, version);
   const update = await postJson<UpdateStatus>(options, "/api/update", version === null ? {} : { version });
-  return release === null ? describeUpdateWithHint(update) : `${release}\n\n${describeUpdate(update)}`;
+  return {
+    text: release === null ? describeUpdateWithHint(update) : `${release}\n\n${describeUpdate(update)}`,
+    status: update,
+  };
 }
 
-/** `eva sync` while Eva runs. */
-export async function requestSync(options: ClientOptions): Promise<string> {
-  return describeSync(await postJson<VaultSyncState>(options, "/api/vault/sync", {}));
+/** `eva sync` while Eva runs: her sync state after the sync. */
+export function requestSync(options: ClientOptions): Promise<VaultSyncState> {
+  return postJson<VaultSyncState>(options, "/api/vault/sync", {});
 }
 
 /** `eva settings set` while Eva runs, so the running Eva uses the change too. */

@@ -1757,7 +1757,8 @@ repos:
     expect(
       isEvaError(await requestUpdate(options, false, "1.0.0").catch((caught: unknown) => caught), "request_failed"),
     ).toBe(true);
-    expect(await requestSync(options)).toStartWith("Vault sync: ");
+    // This Eva's runner fakes git, so the sync names no branch and skips.
+    expect(describeSync(await requestSync(options))).toStartWith("Vault sync: skipped");
     expect(await requestHub(options)).toContain("is now the hub.");
     expect((await requestStatus(options)).localUrl).toStartWith("http://127.0.0.1:");
     expect(await requestSettingsChange(options, { updates: { frequency: "weekly" } })).toBe(false);

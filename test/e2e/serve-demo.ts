@@ -167,7 +167,8 @@ await demoRemoteAccess.refresh();
 const demoGh = fakeGh(systemProcessRunner);
 const demoRunner: ProcessRunner = {
   run: (command, options) =>
-    command[0] === "git" && command.includes("clone") && command.includes(githubAppUrl)
+    // An exact argument of the command, never a part of a longer text.
+    command[0] === "git" && command.includes("clone") && command.some((part) => part === githubAppUrl)
       ? systemProcessRunner.run(
           command.map((part) => (part === githubAppUrl ? githubAppRemote.remote : part)),
           options,

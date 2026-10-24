@@ -361,6 +361,13 @@ describe("with a running Eva", () => {
     expect(host.errors.join("")).not.toContain("{");
   });
 
+  test("a refusal of the token keeps the status and the hint: another Eva may hold the port", async () => {
+    saveSecrets(paths, { localApiToken: "token-of-another-eva" });
+    expect(await run(host, "status")).toBe(exitCodes.crash);
+    expect(host.errors.join("")).toContain("Eva answered 401: ");
+    expect(host.errors.join("")).toContain("Is Eva running?");
+  });
+
   test("chat talks to the running Eva until the input ends", async () => {
     const chatting = fakeHost({ isProcessAlive: () => true }, ["/exit"]);
     expect(await run(chatting, "chat")).toBe(exitCodes.clean);

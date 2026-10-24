@@ -390,22 +390,34 @@ function hashTags(tags: readonly string[]): string[] {
   return tags.length === 0 ? [] : [tags.map((tag) => `#${tag}`).join(" ")];
 }
 
+/** The hint for a failure that may not come from this Eva. */
+export const startHint = "Is Eva running? Start her with `eva`.";
+
 /**
  * The running Eva's refusal as an EvaError, so the terminal shows her message with no stack
- * trace. A newer Eva can send a code that this CLI does not know: it stays a plain failure.
+ * trace. A code that this CLI does not know, from a newer Eva, passes through unchanged: the CLI
+ * branches on no such code. An answer that may come from another program keeps its status and
+ * the start hint: one with no JSON `error`, and a 401 or 404 with no code, such as from another
+ * Eva on the same port.
  */
 export async function refusalOf(response: Response): Promise<EvaError> {
   const text = await response.text();
+  let error: string | null = null;
+  let code: string | null = null;
   try {
     const parsed = JSON.parse(text) as { error?: unknown; code?: unknown };
-    if (typeof parsed.error === "string") {
-      const code = typeof parsed.code === "string" ? (parsed.code as EvaErrorCode) : "request_failed";
-      return new EvaError(code, parsed.error);
-    }
+    if (typeof parsed.error === "string") error = parsed.error;
+    if (typeof parsed.code === "string") code = parsed.code;
   } catch {
-    // Not JSON, such as a proxy's page: the status and the start of the text say enough.
+    // Not JSON, such as a page of another program: the start of the text says enough.
   }
-  return new EvaError("request_failed", `Eva answered ${String(response.status)}: ${text.slice(0, 200)}`);
+  if (error !== null && code !== null) return new EvaError(code as EvaErrorCode, error);
+  if (error !== null && response.status !== 401 && response.status !== 404)
+    return new EvaError("request_failed", error);
+  return new EvaError(
+    "request_failed",
+    `Eva answered ${String(response.status)}: ${error ?? text.slice(0, 200)}\n${startHint}`,
+  );
 }
 
 async function postJson<Body>(options: ClientOptions, path: string, body: unknown): Promise<Body> {

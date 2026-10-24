@@ -34,6 +34,7 @@ import {
   requestUpdate,
   heldBackLines,
   refusalOf,
+  startHint,
   startProjectWork,
 } from "../../../../src/frontends/cli/client.ts";
 import { runDoctor, type DoctorOptions } from "../../../../src/frontends/cli/doctor.ts";
@@ -1746,7 +1747,7 @@ repos:
     );
     // An answer with no code still reads as an expected failure, so the CLI prints no stack trace.
     expect(isEvaError(error, "request_failed")).toBe(true);
-    expect((error as Error).message).toBe("A valid token is required.");
+    expect((error as Error).message).toBe(`Eva answered 401: A valid token is required.\n${startHint}`);
   });
 
   test("update, sync and settings commands go through the running Eva", async () => {
@@ -1798,7 +1799,9 @@ repos:
       write: () => undefined,
     }).catch((caught: unknown) => caught);
     expect(isEvaError(failure, "request_failed")).toBe(true);
-    expect((failure as Error).message).toBe("Eva refused the chat: A valid token is required.");
+    expect((failure as Error).message).toBe(
+      `Eva refused the chat: Eva answered 401: A valid token is required.\n${startHint}`,
+    );
   });
 
   test("/rename renames the chat, and a bare /rename shows how to use it (issue 46)", async () => {
@@ -1842,14 +1845,23 @@ describe("refusalOf", () => {
       Response.json({ error: "No such project.", code: "project_not_found" }, { status: 404 }),
     );
     expect([coded.code, coded.message]).toEqual(["project_not_found", "No such project."]);
-    const plain = await refusalOf(Response.json({ error: "Not found." }, { status: 404 }));
-    expect([plain.code, plain.message]).toEqual(["request_failed", "Not found."]);
+    const plain = await refusalOf(Response.json({ error: "This Eva has no update channel." }, { status: 409 }));
+    expect([plain.code, plain.message]).toEqual(["request_failed", "This Eva has no update channel."]);
     const page = await refusalOf(new Response(`<html>${"x".repeat(300)}</html>`, { status: 502 }));
     expect(page.code).toBe("request_failed");
     expect(page.message).toStartWith("Eva answered 502: <html>");
-    expect(page.message.length).toBeLessThan(230);
+    expect(page.message).toEndWith(`\n${startHint}`);
+    expect(page.message.length).toBeLessThan(270);
     const other = await refusalOf(Response.json({ message: "Bad" }, { status: 500 }));
-    expect(other.message).toBe('Eva answered 500: {"message":"Bad"}');
+    expect(other.message).toBe(`Eva answered 500: {"message":"Bad"}\n${startHint}`);
+  });
+
+  test("keeps the status and the start hint for a 401 or a 404 with no code: another program may answer", async () => {
+    // Another Eva on the same port refuses this token; another program has no such path.
+    const token = await refusalOf(Response.json({ error: "A valid token is required." }, { status: 401 }));
+    expect(token.message).toBe(`Eva answered 401: A valid token is required.\n${startHint}`);
+    const path = await refusalOf(Response.json({ error: "Not found." }, { status: 404 }));
+    expect(path.message).toBe(`Eva answered 404: Not found.\n${startHint}`);
   });
 });
 

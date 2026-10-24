@@ -104,12 +104,30 @@ export function Conversation({
     isAtBottom.current = true;
   }, [root.id, branch.id]);
 
+  /**
+   * Snaps a view that follows to the newest message, and keeps the place as the base of the next
+   * scroll event. Shorter content pulls the view up, and its scroll event can come only after the
+   * content grew again. The base must hold the pulled place, or that event looks like the person's.
+   */
+  const settle = useCallback((element: HTMLDivElement): void => {
+    if (snapsToBottom(isAtBottom.current, fingerDown.current)) element.scrollTop = element.scrollHeight;
+    lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
+  }, []);
+
   useLayoutEffect(() => {
-    const element = scroller.current;
-    if (element !== null && snapsToBottom(isAtBottom.current, fingerDown.current)) {
-      element.scrollTop = element.scrollHeight;
-    }
+    if (scroller.current !== null) settle(scroller.current);
   });
+
+  // A part of the chat can change its height with no render of this view, such as the message box.
+  const hasMap = tree.length > 1;
+  useEffect(() => {
+    const element = scroller.current;
+    if (element === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => settle(element));
+    observer.observe(element);
+    for (const child of element.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [settle, branch.id, hasMap]);
 
   // A pick brings its turn into view, after the branch of the pick renders. A pick from before
   // this view opened, such as on another page, is done.

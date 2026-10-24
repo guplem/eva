@@ -56,9 +56,17 @@ describe("vaultSyncProblem", () => {
     expect(vaultSyncProblem(syncState("offline"), vaultOfflineAlertMs + 1)).toMatchObject({ level: "warn" });
   });
 
-  test("ok clears the problem, and skipped keeps whatever was there", () => {
+  test("ok clears the problem, and a skip with no reason keeps whatever was there", () => {
     expect(vaultSyncProblem(syncState("ok"), 0)).toBeNull();
-    expect(vaultSyncProblem(syncState("skipped", "busy"), 0)).toBe("keep");
+    expect(vaultSyncProblem(syncState("skipped"), 0)).toBe("keep");
+  });
+
+  test("a skip on the wrong branch warns, with the reason and a fix from a phone (#505)", () => {
+    const reason =
+      "Eva syncs main, but the vault is on feat/work. If main is right, ask the Assistant to switch the vault back to it.";
+    const problem = vaultSyncProblem(syncState("skipped", reason), 0);
+    expect(problem).toMatchObject({ level: "warn" });
+    expect(problem === "keep" ? "" : problem?.message).toBe(`The vault sync is paused. ${reason} Then send /sync.`);
   });
 });
 

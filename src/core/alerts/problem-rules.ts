@@ -14,8 +14,8 @@ import type { VaultAhead } from "../migrations/migrations.ts";
 export const vaultOfflineAlertMs = 30 * 60_000;
 
 /**
- * The vault sync problem of a state. "keep" leaves the open problem as it is: a skipped sync
- * says nothing new, and a short offline spell is not a problem yet.
+ * The vault sync problem of a state. "keep" leaves the open problem as it is: a skip with no
+ * reason says nothing new, and a short offline spell is not a problem yet.
  */
 export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): AlertProblem | null | "keep" {
   const resolvedMessage = "The vault sync works again.";
@@ -23,7 +23,13 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
     case "ok":
       return null;
     case "skipped":
-      return "keep";
+      // A skip with a reason is a vault on another branch: the sync stops until a person acts (#505).
+      if (state.lastError === null) return "keep";
+      return {
+        level: "warn",
+        message: `The vault sync is paused. ${state.lastError} Then send /sync.`,
+        resolvedMessage,
+      };
     case "offline":
       if (offlineForMs <= vaultOfflineAlertMs) return "keep";
       return {

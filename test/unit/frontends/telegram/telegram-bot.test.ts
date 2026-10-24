@@ -95,8 +95,15 @@ async function runUntil(bot: TelegramBot, until: () => boolean): Promise<void> {
   if (!until()) throw new Error("the poll loop never reached the expected state");
 }
 
-async function settle(bot: TelegramBot, until: () => boolean, rounds = 400): Promise<void> {
-  for (let round = 0; round < rounds && !until(); round += 1) {
+/**
+ * The wait for a Telegram call. A turn chain with git on a busy Windows runner can take more than
+ * 5 seconds, so the limit is a time below the 30-second test timeout, not a count of polls.
+ */
+const settleLimitMs = 20_000;
+
+async function settle(bot: TelegramBot, until: () => boolean): Promise<void> {
+  const deadline = Date.now() + settleLimitMs;
+  while (Date.now() < deadline && !until()) {
     await bot.pollOnce();
     await Bun.sleep(10);
   }

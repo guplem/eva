@@ -704,7 +704,14 @@ export class VaultSync {
   private async defaultBranch(): Promise<string> {
     const head = await this.git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], localTimeoutMs);
     const name = head.stdout.trim();
-    return head.exitCode === 0 && name.startsWith("origin/") ? name.slice("origin/".length) : "main";
+    if (head.exitCode === 0 && name.startsWith("origin/")) return name.slice("origin/".length);
+    // A vault made with git init and a first push -u has no origin/HEAD, and can use master (#505).
+    const upstream = await this.git(
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      localTimeoutMs,
+    );
+    const tracked = upstream.stdout.trim();
+    return upstream.exitCode === 0 && tracked.startsWith("origin/") ? tracked.slice("origin/".length) : "main";
   }
 
   private async statusEntries(): Promise<StatusEntry[]> {

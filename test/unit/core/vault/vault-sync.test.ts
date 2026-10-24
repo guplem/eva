@@ -250,6 +250,16 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).toContain("note.md");
   });
 
+  test("syncs a vault on master with no origin/HEAD, through the branch's upstream (#505)", async () => {
+    sandbox.git(vault, "switch", "-q", "-c", "master");
+    sandbox.git(vault, "push", "-q", "-u", "origin", "master");
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "master")).toContain("note.md");
+  });
+
   test("never commits a cloned project repository", async () => {
     sandbox.write(vault, ".gitignore", "Projects/*/repos/\n");
     sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/app-0/code.ts", "x\n");

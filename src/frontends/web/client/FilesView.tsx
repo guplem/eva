@@ -200,20 +200,30 @@ export function FilesView(): ReactElement {
           )}
         </div>
         <div className="files-search">
-          <label className="search-field">
-            <Icon name="search" />
-            <input
-              type="search"
-              aria-label="Search the vault"
-              placeholder="Search the vault"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-          <label className="files-search-inside">
-            <input type="checkbox" checked={inside} onChange={(event) => setInside(event.target.checked)} />
-            Search inside files
-          </label>
+          {/* A button must not sit in a label, so only the icon and the text box share the label. */}
+          <div className="search-field">
+            <label className="files-search-text">
+              <Icon name="search" />
+              <input
+                type="search"
+                aria-label="Search the vault"
+                placeholder="Search the vault"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="choice-chip files-search-inside"
+              aria-label="Search inside files"
+              aria-pressed={inside}
+              data-tooltip="Also search the text of each file"
+              onClick={() => setInside((on) => !on)}
+            >
+              {inside && <Icon name="check" className="choice-tick" />}
+              Inside files
+            </button>
+          </div>
         </div>
         {query.trim() !== "" ? (
           <SearchResults query={query.trim()} inside={inside} smart={smart} />

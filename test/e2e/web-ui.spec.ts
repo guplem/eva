@@ -4489,7 +4489,15 @@ test("Files: the search finds a name, then the text inside a file, and a match o
   await expect(results.getByRole("link")).toContainText("Journal");
   await field.fill("Shopping");
   await expect(page.getByText("No file or folder has this name.")).toBeVisible();
-  await page.getByRole("checkbox", { name: "Search inside files" }).check();
+  const inside = page.getByRole("button", { name: "Search inside files" });
+  await expect(inside).toHaveAttribute("aria-pressed", "false");
+  // The option sits in the search pill, on the line of the text, also on a phone.
+  const fieldBox = await field.boundingBox();
+  const insideBox = await inside.boundingBox();
+  expect(insideBox?.y ?? 0).toBeLessThan((fieldBox?.y ?? 0) + (fieldBox?.height ?? 0));
+  expect(insideBox?.y ?? 0).toBeGreaterThanOrEqual((fieldBox?.y ?? 0) - (insideBox?.height ?? 0));
+  await inside.click();
+  await expect(inside).toHaveAttribute("aria-pressed", "true");
   const match = results.getByRole("link").filter({ hasText: "# Shopping" }).first();
   await expect(match).toContainText("Line 1:");
   await match.click();

@@ -83,7 +83,7 @@ export const historyLostNote = "The earlier history of this chat is lost.";
  */
 export function addNote(notes: readonly string[], payload: EngineEventPayload): readonly string[] {
   const note = payload.kind === "notice" ? payload.text : payload.kind === "history_lost" ? historyLostNote : null;
-  // The live notes of a chat span its follow-up turns, which can send the same notice again.
+  // The same notice twice tells the person nothing new.
   return note === null || notes.includes(note) ? notes : [...notes, note];
 }
 

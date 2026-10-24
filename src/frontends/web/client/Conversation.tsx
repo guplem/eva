@@ -286,6 +286,7 @@ function Branch({
                 failure={turn.failure}
               />
             </EvaMessage>
+            <TurnNotes notes={turn.notes} />
             {point !== null && (
               <BranchSwitcher
                 point={point}
@@ -322,11 +323,7 @@ function Branch({
           onClose={closeTasks}
         />
       )}
-      {notes.map((note, index) => (
-        <div key={`note-${String(index)}`} className="turn-note" role="status">
-          {note}
-        </div>
-      ))}
+      <TurnNotes notes={notes} live />
       {usageLimit !== undefined && !hasReset(usageLimit, new Date()) && (
         <div className={`usage-limit ${usageLimit.status}`} role="status">
           {describeUsageLimit(usageLimit, new Date())}
@@ -400,6 +397,28 @@ function UserMessage({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The notes of a turn, such as an MCP server that did not start, apart from its answer (issue 157).
+ * Only a running turn's notes are a live region, so a reload does not read out every old note.
+ */
+function TurnNotes({
+  notes,
+  live = false,
+}: {
+  readonly notes: readonly string[];
+  readonly live?: boolean;
+}): ReactElement {
+  return (
+    <>
+      {notes.map((note, index) => (
+        <div key={`note-${String(index)}`} className="turn-note" {...(live ? { role: "status" } : {})}>
+          {note}
+        </div>
+      ))}
+    </>
   );
 }
 

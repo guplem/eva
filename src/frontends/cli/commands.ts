@@ -393,8 +393,9 @@ async function runClientCommand(
     if (isEvaError(error, "prompt_stopped")) throw error;
     // An EvaError is a refusal. One that may not come from this Eva carries the start hint itself.
     if (isEvaError(error)) {
-      host.writeError(`${error.message}\n`);
-      return exitCodes.crash;
+      const failure = describeFailure(error);
+      host.writeError(failure.text);
+      return failure.exitCode;
     }
     host.writeError(`${error instanceof Error ? error.message : String(error)}\n${startHint}\n`);
     return exitCodes.crash;

@@ -373,6 +373,22 @@ describe("with a running Eva", () => {
     expect(await run(chatting, "chat")).toBe(exitCodes.clean);
   });
 
+  test("a client command exits as any other command for the same refusal", async () => {
+    const refusing = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => Response.json({ error: "The config is invalid.", code: "config_invalid" }, { status: 400 }),
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: refusing.port ?? 0 });
+      const chatting = fakeHost({ isProcessAlive: () => true }, ["/exit"]);
+      expect(await run(chatting, "chat")).toBe(exitCodes.badConfig);
+      expect(chatting.errors.join("")).toBe("Eva refused the chat: The config is invalid.\n");
+    } finally {
+      await refusing.stop(true);
+    }
+  });
+
   test("chat exits 1, with one line, when Eva drops the event stream", async () => {
     // An Eva that opens the chat, then drops the stream while the person has not typed yet.
     const dropping = Bun.serve({

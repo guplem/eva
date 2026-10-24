@@ -361,11 +361,12 @@ describe.if(process.platform === "win32")("tray.ps1 on Windows", () => {
       {
         cwd: folder,
         environment: { ...environment, EVA_TRAY_FILE: file, EVA_TRAY_FACES: trayFaces.join(",") },
-        timeoutMs: 60_000,
+        // On a busy Windows runner, this PowerShell run takes 55 seconds or more. It gets the room of the view test.
+        timeoutMs: 170_000,
       },
     );
     expect(`${result.stdout}${result.stderr}`.trim().split(/\r?\n/)).toEqual(trayFaces.map((face) => `${face} 32`));
-  }, 60_000);
+  }, 180_000);
 
   test("the script shows a view from the file, and ends with no other error when the file goes", async () => {
     // The trace shows how far the script got, if it fails.

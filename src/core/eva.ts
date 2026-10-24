@@ -123,6 +123,7 @@ import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
+import { answersToUndo } from "./sessions/retry-undo.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { StepDetailsStore } from "./sessions/step-details-store.ts";
@@ -134,6 +135,7 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
+import type { UndoPreview } from "./vault/vault-snapshots.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
 import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
@@ -616,7 +618,11 @@ export class Eva {
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
-          vaultSync: { pull: () => this.vault.pull(), save: () => this.vault.save() },
+          vaultSync: {
+            pull: () => this.vault.pull(),
+            save: () => this.vault.save(),
+            snapshot: (ref) => this.vault.snapshot(ref),
+          },
           basePrompt: options.basePrompt,
           runner: options.runner,
           environment: agentEnvironment,
@@ -685,6 +691,8 @@ export class Eva {
       if (event.kind === "turn_failed")
         options.logger?.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
       if (event.kind === "turn_failed" || event.kind === "turn_finished") this.reportEngineLogin(event);
+      if (event.kind === "session_deleted")
+        this.inBackground("The delete of the snapshots of a chat", () => this.vault.deleteSnapshots(event.sessionId));
       if (event.kind !== "turn_finished") return;
       this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
       // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
@@ -1436,6 +1444,22 @@ export class Eva {
       ...(input.telegramTopicId === undefined ? {} : { telegramTopicId: input.telegramTopicId }),
       ...(input.title === undefined ? {} : { title: input.title }),
     });
+  }
+
+  /** What the undo before a retry of this turn would do now (#525). A Project chat has nothing to undo. */
+  retryUndoPreview(sessionId: string, turnIndex: number): Promise<UndoPreview> {
+    this.sessions.get(sessionId);
+    return this.vault.undoPreview(answersToUndo(this.sessions.list(), sessionId, turnIndex));
+  }
+
+  /**
+   * Runs a turn again on a new branch. With `undo`, Eva first restores the files that the answers
+   * from this turn on changed. A failed undo refuses the retry, so the person sees why.
+   */
+  async retryTurn(sessionId: string, turnIndex: number, undo: boolean): Promise<SessionRecord> {
+    const answers = undo ? answersToUndo(this.sessions.list(), sessionId, turnIndex) : [];
+    if (answers.length > 0) await this.vault.undo(answers);
+    return this.sessions.retry(sessionId, turnIndex);
   }
 
   /** A Project chat in the named clone, or in a free clone, or in a new clone. */

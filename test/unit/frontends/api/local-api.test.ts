@@ -831,6 +831,15 @@ describe("routes", () => {
     expect(fork.parentId).toBe(session.id);
     const retry = await call(`/api/sessions/${session.id}/retry`, { method: "POST", body: { turnIndex: 0 } });
     expect(retry.status).toBe(200);
+    const preview = await call(`/api/sessions/${session.id}/retry-undo?turnIndex=0`);
+    expect(await json(preview)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
+    const undone = await call(`/api/sessions/${session.id}/retry`, {
+      method: "POST",
+      body: { turnIndex: 0, undo: true },
+    });
+    expect(undone.status).toBe(200);
+    expect((await call(`/api/sessions/${session.id}/retry-undo?turnIndex=x`)).status).toBe(400);
+    expect((await call(`/api/sessions/${session.id}/retry-undo`)).status).toBe(400);
   });
 
   test("opens a new chat from a summary of a chat, and a 404 for an unknown chat (#522)", async () => {

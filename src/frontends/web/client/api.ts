@@ -50,6 +50,7 @@ import type {
   VaultConflictReport,
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
+import type { UndoPreview } from "../../../core/vault/vault-snapshots.ts";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
@@ -67,6 +68,7 @@ export type { PersonalFactsView };
 export type CurrentPlaceView = CurrentPlace;
 
 export type {
+  UndoPreview,
   BrowsedPath,
   ChatBlocker,
   ChangelogEntry,
@@ -199,8 +201,12 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/summary-chat`, {}),
   stop: (sessionId: string): Promise<{ stopped: boolean }> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/stop`, {}),
-  retry: (sessionId: string, turnIndex: number): Promise<SessionRecord> =>
-    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex }),
+  /** With `undo`, Eva first restores the files that the answers from this turn on changed (#525). */
+  retry: (sessionId: string, turnIndex: number, undo = false): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex, undo }),
+  /** What the undo before a retry of this turn would do now. */
+  retryUndo: (sessionId: string, turnIndex: number): Promise<UndoPreview> =>
+    request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/retry-undo?turnIndex=${String(turnIndex)}`),
   deleteChat: (sessionId: string): Promise<{ deleted: string[] }> =>
     request("DELETE", `/api/sessions/${encodeURIComponent(sessionId)}`),
   rename: (sessionId: string, title: string): Promise<SessionRecord> =>

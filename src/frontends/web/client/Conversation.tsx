@@ -4,7 +4,7 @@
  * into one line, and Retry, Fork and Copy under each answer.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
+import { api, type ChatBlocker, type SessionRecord, type UndoPreview } from "./api.ts";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
 import {
@@ -31,6 +31,7 @@ import {
   isWorking,
   sentTurnCount,
   turnEndNotice,
+  undoQuestion,
   type PendingMessage,
 } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
@@ -38,6 +39,7 @@ import { Icon } from "./icons.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
+import { RetryUndoDialog } from "./RetryUndoDialog.tsx";
 import { StepFold } from "./TurnSteps.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -226,6 +228,14 @@ function Branch({
   );
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<PathStep<SessionRecord> | "running" | null>(null);
+  /** The question before a retry that would undo file changes (#525), or null. */
+  const [undoAsk, setUndoAsk] = useState<{
+    readonly sessionId: string;
+    readonly index: number;
+    readonly title: string;
+    readonly preview: UndoPreview;
+  } | null>(null);
+  const closeUndoAsk = useCallback(() => setUndoAsk(null), []);
   const path = pathOf(session, tree);
   const names = branchNames(tree);
   const start = branchesAtStart(session, tree);
@@ -275,6 +285,32 @@ function Branch({
       });
   };
 
+  /**
+   * A retry of an Assistant answer that changed files asks first whether to undo them (#525).
+   * A Project chat runs in its own clone, so its retry never asks.
+   */
+  const retryAnswer = (owner: SessionRecord, index: number): void => {
+    runAction(async () => {
+      const preview = owner.mode === "assistant" ? await api.retryUndo(owner.id, index) : null;
+      const title = preview === null ? null : undoQuestion(preview);
+      if (preview === null || title === null) await api.retry(owner.id, index);
+      else setUndoAsk({ sessionId: owner.id, index, title, preview });
+    });
+  };
+
+  const retryAfterQuestion = async (undo: boolean): Promise<void> => {
+    if (undoAsk === null) return;
+    try {
+      await api.retry(undoAsk.sessionId, undoAsk.index, undo);
+      setUndoAsk(null);
+      await onChanged();
+    } catch (caught) {
+      // A failed undo starts no retry. The question closes, so the person sees why.
+      setUndoAsk(null);
+      showError(caught);
+    }
+  };
+
   return (
     <section className="branch" aria-label={`Branch ${session.title}`}>
       {start !== null && (
@@ -308,7 +344,7 @@ function Branch({
                     )}
                     {/* A closed chat takes no new turn, so it offers no way to start one. */}
                     {!owner.closed && (
-                      <button className="ghost" onClick={() => runAction(() => api.retry(owner.id, index))}>
+                      <button className="ghost" onClick={() => retryAnswer(owner, index)}>
                         <Icon name="restart" />
                         Retry
                       </button>
@@ -385,6 +421,14 @@ function Branch({
           // An older answer comes with no steps, to keep the session list small.
           empty="Eva no longer keeps the details of these tasks."
           onClose={closeTasks}
+        />
+      )}
+      {undoAsk !== null && (
+        <RetryUndoDialog
+          title={undoAsk.title}
+          preview={undoAsk.preview}
+          onRetry={retryAfterQuestion}
+          onClose={closeUndoAsk}
         />
       )}
       <TurnNotes notes={notes} live />

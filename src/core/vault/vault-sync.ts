@@ -143,6 +143,8 @@ export class VaultSync {
   private queue: Promise<unknown>;
   private state: VaultSyncState;
   private hasIdentity: boolean;
+  /** The pulls that reached the remote. A pull that skips its fetch still ends "ok", so "ok" alone proves no fetch. */
+  private pullsThatFetched: number;
   /**
    * The picks of a committed conflict, by path, with the versions at the time of the pick, until
    * every note has one. Memory is enough: a restart loses only these picks, and git still holds
@@ -156,10 +158,15 @@ export class VaultSync {
     this.state = { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] };
     this.picks = new Map();
     this.hasIdentity = false;
+    this.pullsThatFetched = 0;
   }
 
   get currentState(): VaultSyncState {
     return this.state;
+  }
+
+  get fetchedPulls(): number {
+    return this.pullsThatFetched;
   }
 
   /** Brings the remote's commits in, before an Assistant turn. Local edits survive (autostash). */
@@ -175,6 +182,7 @@ export class VaultSync {
       const fetched = await this.git(["fetch", "-q", "origin", branch], networkTimeoutMs);
       if (fetched.exitCode !== 0)
         return this.update({ status: "offline", lastError: `Could not reach the remote: ${firstLine(fetched)}` });
+      this.pullsThatFetched += 1;
       await this.rebaseOnto(branch, { canMerge: false });
       return this.state;
     });

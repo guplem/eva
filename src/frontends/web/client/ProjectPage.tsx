@@ -18,7 +18,7 @@ import {
   type Pill,
 } from "./project-format.ts";
 import { chatTime, type ChatState } from "./chat-list.ts";
-import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, CardsSkeleton, ProgressBar } from "./Loading.tsx";
 import { Dialog } from "./ChatPanel.tsx";
 import { ChatStatePill, chatListItems, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
@@ -45,6 +45,8 @@ interface ProjectPageProps {
   readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
   /** Eva picks the clone of the new chat: a free one, or a new one. */
   readonly onNewChat: () => void;
+  /** True while Eva picks or prepares the clone of a new chat. */
+  readonly startingChat: boolean;
   /** Rejects when Eva cannot delete the clone, so the question stays open. */
   readonly onDeleteClone: (clone: CloneDetails) => Promise<void>;
   /** What Eva does with the remotes now, such as "Eva checks the remotes.", or null. */
@@ -71,6 +73,7 @@ export function ProjectPage({
   onNewClone,
   onOpenChat,
   onNewChat,
+  startingChat,
   onDeleteClone,
   syncWork,
   pulling,
@@ -94,8 +97,8 @@ export function ProjectPage({
           </div>
           <div className="sub mono">{projectFolder(project.path)}</div>
         </div>
-        <button className="primary" onClick={onNewChat}>
-          <Icon name="plus" /> New chat
+        <button className="primary" disabled={startingChat} aria-busy={startingChat} onClick={onNewChat}>
+          {startingChat ? <ButtonSpinner /> : <Icon name="plus" />} New chat
         </button>
         <button className="outline" onClick={onDetails}>
           <Icon name="pen" /> Details
@@ -106,6 +109,7 @@ export function ProjectPage({
       </div>
       <div className="project-page">
         <Warnings project={project} />
+        {startingChat && <ProgressBar label="Eva looks for a free clone, or makes a new one." />}
         <ProjectFacts project={project} />
         {error !== null && (
           <div className="warning-banner" role="alert">
@@ -338,7 +342,7 @@ function RepositoryRow({
 }): ReactElement {
   return (
     <div className="clone-repository" aria-label={`Repository ${repository.name}`}>
-      <div className="clone-head">
+      <div className="repository-head">
         <Icon name="branch" />
         <div className="header-text">
           <b>{repository.name}</b>
@@ -469,6 +473,8 @@ function CloneChat({
       <button className="clone-chat" onClick={() => onOpen()} {...props}>
         <Icon name="chat" />
         <span className="clone-chat-title">{chat.title}</span>
+        {/* Eva reused the clone of a closed chat: it can be read, but takes no message. */}
+        {chat.closed && <span className="pill idle">Closed</span>}
         <ChatStatePill state={state} />
         <span className="muted">{time}</span>
       </button>

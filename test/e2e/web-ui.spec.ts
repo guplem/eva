@@ -84,7 +84,8 @@ async function newProjectChat(page: Page): Promise<string> {
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
   );
-  await page.locator(".main-header").getByRole("button", { name: "New chat", exact: true }).click();
+  // A direct child: the title of an open chat is a "New chat" button inside the heading.
+  await page.locator(".main-header > button").filter({ hasText: "New chat" }).click();
   const clone = ((await (await created).json()) as { clone: string }).clone;
   await expect(page.getByText("Project mode")).toBeVisible();
   return clone;

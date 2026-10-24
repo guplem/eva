@@ -3207,7 +3207,8 @@ a.link-chip:hover {
   min-width: 0;
 }
 
-.clone-head {
+.clone-head,
+.repository-head {
   display: flex;
   align-items: center;
   gap: 10px;

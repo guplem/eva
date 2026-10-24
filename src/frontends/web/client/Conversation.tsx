@@ -267,11 +267,14 @@ function Branch({
                         {counted(turn.taskCount, "background task")}
                       </button>
                     )}
-                    <button className="ghost" onClick={() => runAction(() => api.retry(owner.id, index))}>
-                      <Icon name="restart" />
-                      Retry
-                    </button>
-                    {turn.lastMessageId !== null && turn.failure === null && (
+                    {/* A closed chat takes no new turn, so it offers no way to start one. */}
+                    {!owner.closed && (
+                      <button className="ghost" onClick={() => runAction(() => api.retry(owner.id, index))}>
+                        <Icon name="restart" />
+                        Retry
+                      </button>
+                    )}
+                    {!owner.closed && turn.lastMessageId !== null && turn.failure === null && (
                       <button
                         className="ghost"
                         onClick={() => runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))}

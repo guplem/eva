@@ -150,6 +150,8 @@ export function ProjectView({
   const openProjectRef = useRef<string | null>(null);
   openProjectRef.current = page?.project.id ?? null;
   const [pulling, setPulling] = useState<string | null>(null);
+  // Eva may check a chat with a model, reset a clone or clone every repository, which takes seconds.
+  const [startingChat, setStartingChat] = useState(false);
   /** The clone whose Push sheet is open. */
   const [pushing, setPushing] = useState<{
     readonly clone: CloneDetails;
@@ -214,10 +216,14 @@ export function ProjectView({
     (clone: CloneDetails): SessionRecord[] => roots.filter((session) => session.startFolder === clone.path),
     [roots],
   );
-  // The same rule as the clone cards: a chat counts when its clone folder is still there.
+  // The same rule as the clone cards: a chat counts when its clone folder is still there. A closed chat takes no work.
   const chatCount = (project: Project): number =>
     roots.filter(
-      (session) => session.projectId === project.id && session.clone !== null && project.clones.includes(session.clone),
+      (session) =>
+        session.projectId === project.id &&
+        !session.closed &&
+        session.clone !== null &&
+        project.clones.includes(session.clone),
     ).length;
 
   // The details page can hold unsaved changes, so each move away from it asks first.
@@ -232,15 +238,17 @@ export function ProjectView({
 
   // Eva picks the clone, so the cards load again to find it.
   const startChat = async (project: Project): Promise<void> => {
+    setStartingChat(true);
     try {
       const chat = await api.newProjectChat(project.id, "default");
       await onChanged();
-      setCloneVersion((version) => version + 1);
       const clone = (await api.clones(project.id)).find((candidate) => candidate.name === chat.clone);
       if (clone === undefined) throw new Error("The new chat's clone is not on this computer.");
       open({ kind: "chat", project, clone, chatId: chat.id });
     } catch (caught) {
       showError(caught);
+    } finally {
+      setStartingChat(false);
     }
   };
 
@@ -562,6 +570,7 @@ export function ProjectView({
               open({ kind: "chat", project: page.project, clone, chatId: picked.id });
             }}
             onNewChat={() => void startChat(page.project)}
+            startingChat={startingChat}
             onDeleteClone={(clone) => deleteClone(page.project, clone)}
             syncWork={syncWork?.projectId === page.project.id ? syncWork.label : null}
             pulling={pulling}

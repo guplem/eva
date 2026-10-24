@@ -32,8 +32,8 @@ describe("describeClaudePermissions", () => {
     expect(chat(permissions, "assistant").asks).toEqual(askedActionWords);
     expect(chat(permissions, "assistant").blocks.join(" ")).toContain("safety check");
     expect(chat(permissions, "assistant").runs.join(" ")).toContain(".eva/");
-    // The patterns need an explicit method, so the words name it.
-    expect(chat(permissions, "assistant").asks.join(" ")).toContain("curl -X");
+    // Issue #451: curl sends data without -X too, so the words name the data flags.
+    expect(chat(permissions, "assistant").asks.join(" ")).toContain("curl: -d");
     // Issue #440: a schedule runs a turn later on its own, so a change to one asks first.
     expect(chat(permissions, "assistant").asks.join(" ")).toContain("schedules.json");
   });

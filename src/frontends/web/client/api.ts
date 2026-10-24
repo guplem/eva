@@ -26,7 +26,7 @@ import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts"
 import type { BrowsedPath, FileEntry } from "../../../core/files/file-browser.ts";
 import type { Favorite } from "../../../core/files/vault-favorites.ts";
 import type { SearchResult } from "../../../core/files/vault-search.ts";
-import type { Clone, CloneDetails } from "../../../core/projects/clones.ts";
+import type { Clone, CloneDetails, RepositoryDetails } from "../../../core/projects/clones.ts";
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
@@ -72,6 +72,7 @@ export type {
   ChangelogEntry,
   CheckResult,
   CloneDetails,
+  RepositoryDetails,
   CloneFetch,
   ConflictChoice,
   ConflictResolution,
@@ -137,6 +138,11 @@ async function download(path: string, onShare: (share: number) => void): Promise
   return { name, blob: new Blob(chunks, { type: response.headers.get("content-type") ?? "" }) };
 }
 
+/** The address of one repository of a clone: each one has its own pull and push. */
+function repositoryAddress(projectId: string, clone: string, repository: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}/repos/${encodeURIComponent(repository)}`;
+}
+
 export const api = {
   login: (token: string): Promise<void> => request("POST", "/api/login", { token }),
   logout: (): Promise<void> => request("POST", "/api/logout"),
@@ -168,8 +174,9 @@ export const api = {
       ...(engine === undefined ? {} : { engine }),
       ...(effort === undefined ? {} : { effort }),
     }),
-  newProjectChat: (projectId: string, clone: string, model: ModelAlias): Promise<SessionRecord> =>
-    request("POST", "/api/sessions", { mode: "project", projectId, clone, model }),
+  /** Eva picks the clone: a free one, or a new one (issue 521). */
+  newProjectChat: (projectId: string, model: ModelAlias): Promise<SessionRecord> =>
+    request("POST", "/api/sessions", { mode: "project", projectId, model }),
   /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */
   setEngine: (sessionId: string, engine: EngineName): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),
@@ -231,19 +238,22 @@ export const api = {
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
   deleteClone: (projectId: string, clone: string): Promise<{ deletedChats: string[] }> =>
     request("DELETE", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}`),
-  /** Fetches each clone, so the cards count the commits to pull. A failed fetch is in `problems`. */
+  /** Fetches each repository of each clone, so the cards count the commits to pull. A failed fetch is in `problems`. */
   fetchClones: (projectId: string): Promise<CloneFetch> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/fetch`, {}),
-  /** Pulls each clone that is behind. A failed pull is in `problems`. */
+  /** Pulls each repository that is behind. A failed pull is in `problems`. */
   pullClones: (projectId: string): Promise<CloneFetch> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/pull`, {}),
-  pullClone: (projectId: string, clone: string): Promise<unknown> =>
-    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}/pull`, {}),
-  /** Commits every change and pushes. An empty note lets a model write the message. */
-  pushClone: (projectId: string, clone: string, note: string): Promise<{ readonly message: string }> =>
-    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}/push`, {
-      note,
-    }),
+  pullClone: (projectId: string, clone: string, repository: string): Promise<unknown> =>
+    request("POST", `${repositoryAddress(projectId, clone, repository)}/pull`, {}),
+  /** Commits every change of one repository and pushes. An empty note lets a model write the message. */
+  pushClone: (
+    projectId: string,
+    clone: string,
+    repository: string,
+    note: string,
+  ): Promise<{ readonly message: string }> =>
+    request("POST", `${repositoryAddress(projectId, clone, repository)}/push`, { note }),
   /** A vault folder or file, by its path from the vault root. The empty path is the root. */
   files: (path: string): Promise<BrowsedPath> => request("GET", `/api/files?path=${encodeURIComponent(path)}`),
   /** A file that changed since `version` answers 409 with `file_changed`. */

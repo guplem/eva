@@ -7,9 +7,11 @@ import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
 import { templateParts } from "../../../src/core/vault/vault-template.ts";
+import type { SessionRecord } from "../../../src/core/sessions/session-store.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { isEvaError } from "../../../src/shared/errors.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
+import type { TurnRequest } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGh } from "../../support/fake-gh.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
@@ -50,6 +52,11 @@ function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}, options: 
     if (event.kind === "approval_needed") instance.sessions.answerApproval(event.requestId, "deny");
   });
   return instance;
+}
+
+/** An engine whose chats answer "ok", and whose model calls say that every chat has finished. */
+function finishingEngine(): FakeEngine {
+  return new FakeEngine((request) => FakeEngine.answer(request, request.mode === "model-call" ? "FINISHED" : "ok"));
 }
 
 async function waitFor(condition: () => boolean, timeoutMs = 4_000): Promise<void> {
@@ -236,11 +243,11 @@ describe("Eva", () => {
       source: "cli",
       model: "default",
     });
-    expect(session.clone).toBe("remote-0");
+    expect(session.clone).toBe("clone-0");
     await instance.sessions.send(session.id, "fix it");
     expect(engine.requests[0]).toMatchObject({
       mode: "project",
-      startFolder: join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "remote-0"),
+      startFolder: join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "clone-0"),
       appendSystemPrompt: null,
       trusted: false,
     });
@@ -263,7 +270,7 @@ describe("Eva", () => {
       source: "cli",
       model: "default",
     });
-    sandbox.git(session.startFolder, "remote", "set-url", "origin", "https://github.com/trusted/x.git");
+    sandbox.git(join(session.startFolder, "remote"), "remote", "set-url", "origin", "https://github.com/trusted/x.git");
     await instance.sessions.send(session.id, "fix it");
     expect(engine.requests[0]?.trusted).toBe(false);
     expect(questions.join("\n")).toContain(sandbox.remote);
@@ -279,15 +286,15 @@ describe("Eva", () => {
     const repos = join(vault, "Projects", "2025-03-02-1015-example-app", "repos");
     mkdirSync(repos, { recursive: true });
     // A clone made by hand, or by Eva before she kept records.
-    sandbox.git(repos, "clone", "-q", sandbox.remote, "remote-0");
+    sandbox.git(repos, "clone", "-q", sandbox.remote, join("clone-0", "remote"));
     const instance = start(new FakeEngine());
-    expect((await instance.newClone("2025-03-02-1015-example-app")).name).toBe("remote-1");
+    expect((await instance.newClone("2025-03-02-1015-example-app")).name).toBe("clone-1");
     const session = await instance.createProjectSession({
       projectId: "2025-03-02-1015-example-app",
       source: "cli",
       model: "default",
     });
-    expect(session.clone).toBe("remote-1");
+    expect(session.clone).toBe("clone-1");
   });
 
   test("the assistant gives work to a project, and the result comes back to its chat", async () => {
@@ -308,7 +315,7 @@ describe("Eva", () => {
       request: "Fix the login bug.",
       reportToSessionId: assistantChat.id,
     });
-    expect(work).toMatchObject({ mode: "project", clone: "remote-0" });
+    expect(work).toMatchObject({ mode: "project", clone: "clone-0" });
     // The asking chat learns of the Project chat before its first message, so a front end can show both.
     expect(events).toMatchObject([
       {
@@ -322,7 +329,7 @@ describe("Eva", () => {
     await waitFor(() => instance.sessions.get(assistantChat.id).turns.length === 1, 20_000);
     await instance.idle();
     expect(engine.requests.map((request) => request.mode)).toEqual(["project", "assistant"]);
-    expect(engine.requests[1]?.prompt).toContain(`[Project work finished: 2025-03-02-1015-example-app, clone remote-0`);
+    expect(engine.requests[1]?.prompt).toContain(`[Project work finished: 2025-03-02-1015-example-app, clone clone-0`);
     expect(engine.requests[1]?.prompt).toContain("Fixed the login bug.");
     const missing = await instance
       .startProjectWork({ projectId: "missing", request: "x", reportToSessionId: null })
@@ -369,14 +376,13 @@ describe("Eva", () => {
       "Projects/2025-03-02-1015-example-app/AGENTS.md",
       `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
     );
-    const instance = start(new FakeEngine());
+    const instance = start(finishingEngine());
     const input = { projectId: "2025-03-02-1015-example-app", request: "Fix it.", reportToSessionId: null };
     const works = await Promise.all([instance.startProjectWork(input), instance.startProjectWork(input)]);
-    expect(works.map((work) => work.clone).sort()).toEqual(["remote-0", "remote-1"]);
+    expect(works.map((work) => work.clone).sort()).toEqual(["clone-0", "clone-1"]);
     await instance.idle();
-    clock = new Date("2026-10-14T10:40:00Z");
     const third = await instance.startProjectWork(input);
-    expect(third.clone).toBe("remote-0");
+    expect(third.clone).toBe("clone-0");
   });
 
   test("two new clones at once get two different folders", async () => {
@@ -390,7 +396,7 @@ describe("Eva", () => {
       instance.newClone("2025-03-02-1015-example-app"),
       instance.newClone("2025-03-02-1015-example-app"),
     ]);
-    expect(clones.map((clone) => clone.name).sort()).toEqual(["remote-0", "remote-1"]);
+    expect(clones.map((clone) => clone.name).sort()).toEqual(["clone-0", "clone-1"]);
   });
 
   test("the person deletes a clone, and its chats and their forks go with it", async () => {
@@ -407,16 +413,16 @@ describe("Eva", () => {
     await instance.newClone(projectId);
     const other = await instance.createProjectSession({
       projectId,
-      cloneName: "remote-1",
+      cloneName: "clone-1",
       source: "cli",
       model: "default",
     });
 
-    expect(await instance.deleteClone(projectId, "remote-0")).toEqual({ deletedChats: [chat.id, fork.id] });
+    expect(await instance.deleteClone(projectId, "clone-0")).toEqual({ deletedChats: [chat.id, fork.id] });
     expect(existsSync(chat.startFolder)).toBe(false);
     expect(instance.sessions.list().map((session) => session.id)).toEqual([other.id]);
-    expect((await instance.clones(projectId)).map((clone) => clone.name)).toEqual(["remote-1"]);
-    expect((await instance.newClone(projectId)).name).toBe("remote-0");
+    expect((await instance.clones(projectId)).map((clone) => clone.name)).toEqual(["clone-1"]);
+    expect((await instance.newClone(projectId)).name).toBe("clone-0");
   });
 
   test("a clone where Eva works now, or that does not exist, stays", async () => {
@@ -435,17 +441,17 @@ describe("Eva", () => {
     const chat = await instance.createProjectSession({ projectId, source: "cli", model: "default" });
     const running = instance.sessions.send(chat.id, "long task");
     await waitFor(() => engine.requests.length >= 1);
-    expect(await instance.deleteClone(projectId, "remote-0").catch((caught: unknown) => caught)).toMatchObject({
+    expect(await instance.deleteClone(projectId, "clone-0").catch((caught: unknown) => caught)).toMatchObject({
       code: "session_busy",
     });
     expect(existsSync(chat.startFolder)).toBe(true);
     expect(instance.sessions.list().map((session) => session.id)).toEqual([chat.id]);
     release();
     await running;
-    expect(await instance.deleteClone(projectId, "remote-9").catch((caught: unknown) => caught)).toMatchObject({
+    expect(await instance.deleteClone(projectId, "clone-9").catch((caught: unknown) => caught)).toMatchObject({
       code: "project_not_found",
     });
-    expect(await instance.deleteClone(projectId, "../remote-0").catch((caught: unknown) => caught)).toMatchObject({
+    expect(await instance.deleteClone(projectId, "../clone-0").catch((caught: unknown) => caught)).toMatchObject({
       code: "project_not_found",
     });
   });
@@ -470,7 +476,7 @@ describe("Eva", () => {
     };
     const instance = start(new FakeEngine(), {}, { runner });
     const clone = await instance.newClone(projectId);
-    const pulling = instance.pullClone(projectId, clone.name);
+    const pulling = instance.pullClone(projectId, clone.name, "remote");
     await waitFor(() => pullStarted);
     expect(await instance.deleteClone(projectId, clone.name).catch((caught: unknown) => caught)).toMatchObject({
       code: "session_busy",
@@ -644,7 +650,7 @@ describe("Eva", () => {
     await waitFor(() => engine.requests.length === 2, 20_000);
     await instance.idle();
     const report = engine.requests[1]?.prompt ?? "";
-    expect(report).toContain("clone remote-0, branch main, pull request #42");
+    expect(report).toContain("clone clone-0; remote on branch main with pull request #42");
     expect(report).toContain("The full answer is in the project chat.");
     expect(report).toEndWith("END");
     expect(report).not.toContain("START");
@@ -749,71 +755,159 @@ describe("Eva", () => {
     expect(readFileSync(join(home, "bin", "eva.cmd"), "utf8")).toBe('@"/opt/bun" "/opt/eva/src/main.ts" %*\r\n');
   });
 
-  test("a Project chat reuses a free clone, and skips a clone where a session runs", async () => {
-    sandbox.write(
-      vault,
-      "Projects/2025-03-02-1015-example-app/AGENTS.md",
-      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
-    );
-    let release: () => void = () => undefined;
-    const engine = new FakeEngine(async function* (request, turn) {
-      if (turn === 1) await new Promise<void>((resolve) => (release = resolve));
-      yield* FakeEngine.answer(request, "ok");
-    });
-    const instance = start(engine);
-    const first = await instance.createProjectSession({
-      projectId: "2025-03-02-1015-example-app",
-      source: "cli",
-      model: "default",
-    });
-    const running = instance.sessions.send(first.id, "long task");
-    await waitFor(() => engine.requests.length >= 1);
-    const second = await instance.createProjectSession({
-      projectId: "2025-03-02-1015-example-app",
-      source: "cli",
-      model: "default",
-    });
-    expect([first.clone, second.clone]).toEqual(["remote-0", "remote-1"]);
-    release();
-    await running;
-    clock = new Date("2026-10-14T10:40:00Z");
-    const third = await instance.createProjectSession({
-      projectId: "2025-03-02-1015-example-app",
-      source: "cli",
-      model: "default",
-    });
-    expect(third.clone).toBe("remote-0");
-  });
+  describe("clone reuse (issue 521)", () => {
+    // Not the call that names a chat, which reads its first message too.
+    const isFinishedCheck = (request: TurnRequest): boolean =>
+      request.mode === "model-call" && (request.appendSystemPrompt ?? "").includes("has finished");
+    const projectId = "2025-03-02-1015-example-app";
+    const projectFile = (repositories: readonly string[]): string =>
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n${repositories.map((url) => `  - ${url}\n`).join("")}---\n`;
+    const newChat = (instance: Eva): Promise<SessionRecord> =>
+      instance.createProjectSession({ projectId, source: "cli", model: "default" });
 
-  test("project work skips a clone whose chat was active in the last 10 minutes (issue 356)", async () => {
-    sandbox.write(
-      vault,
-      "Projects/2025-03-02-1015-example-app/AGENTS.md",
-      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
-    );
-    const instance = start(new FakeEngine());
-    const chat = await instance.createProjectSession({
-      projectId: "2025-03-02-1015-example-app",
-      source: "web",
-      model: "default",
+    beforeEach(() => {
+      sandbox.write(vault, `Projects/${projectId}/AGENTS.md`, projectFile([sandbox.remote]));
     });
-    await instance.sessions.send(chat.id, "fix it");
-    // The chat is idle and its clone is clean, but the person may write again at any moment.
-    clock = new Date("2026-10-14T10:39:59Z");
-    const soon = await instance.startProjectWork({
-      projectId: "2025-03-02-1015-example-app",
-      request: "Fix the login bug.",
-      reportToSessionId: null,
+
+    test("a chat in a project with two repositories starts above both, and can read each one", async () => {
+      sandbox.git(sandbox.root, "clone", "-q", "--bare", sandbox.remote, "example-api.git");
+      const api = join(sandbox.root, "example-api.git");
+      sandbox.write(vault, `Projects/${projectId}/AGENTS.md`, projectFile([sandbox.remote, api]));
+      const engine = new FakeEngine();
+      const instance = start(engine);
+      const chat = await newChat(instance);
+      await instance.sessions.send(chat.id, "fix it");
+      const folder = join(vault, "Projects", projectId, "repos", "clone-0");
+      expect(engine.requests[0]?.startFolder).toBe(folder);
+      for (const repository of ["remote", "example-api"])
+        // Git on Windows can turn the line ends of a clone into CRLF, so the test compares the lines only.
+        expect(readFileSync(join(folder, repository, "AGENTS.md"), "utf8").split(/\r?\n/)[0]).toBe("# Vault");
+      const [clone] = await instance.clones(projectId);
+      expect(clone?.repositories.map((repository) => [repository.name, repository.branch])).toEqual([
+        ["example-api", "main"],
+        ["remote", "main"],
+      ]);
     });
-    expect([chat.clone, soon.clone]).toEqual(["remote-0", "remote-1"]);
-    await instance.idle();
-    clock = new Date("2026-10-14T10:50:00Z");
-    const later = await instance.startProjectWork({
-      projectId: "2025-03-02-1015-example-app",
-      request: "Fix the next bug.",
-      reportToSessionId: null,
+
+    test("a running turn keeps the clone, and a finished chat gives it back: Eva closes the chat", async () => {
+      let release: () => void = () => undefined;
+      const engine = new FakeEngine(async function* (request) {
+        if (request.mode === "project" && request.prompt === "long task")
+          await new Promise<void>((resolve) => (release = resolve));
+        yield* FakeEngine.answer(request, request.mode === "model-call" ? "FINISHED" : "ok");
+      });
+      const instance = start(engine);
+      const first = await newChat(instance);
+      const running = instance.sessions.send(first.id, "long task");
+      await waitFor(() => engine.requests.some((request) => request.prompt === "long task"));
+      const second = await newChat(instance);
+      expect([first.clone, second.clone]).toEqual(["clone-0", "clone-1"]);
+      release();
+      await running;
+      // The second chat has no turn yet: the person may be about to write, so its clone stays with it.
+      const third = await newChat(instance);
+      expect(third.clone).toBe("clone-0");
+      expect(instance.sessions.get(first.id).closed).toBe(true);
+      expect(instance.sessions.get(second.id).closed).toBe(false);
+      expect(() => instance.sessions.send(first.id, "go on")).toThrow(/closed/);
+      const call = engine.requests.find((request) => isFinishedCheck(request) && request.prompt.includes("long task"));
+      expect(call?.model).toBe("haiku");
     });
-    expect(later.clone).toBe("remote-0");
+
+    test("a chat that has not finished keeps its clone, and the model is asked once while it does not change", async () => {
+      const engine = new FakeEngine((request) =>
+        FakeEngine.answer(request, request.mode === "model-call" ? "NOT FINISHED" : "ok"),
+      );
+      const instance = start(engine);
+      const first = await newChat(instance);
+      await instance.sessions.send(first.id, "fix it");
+      expect((await newChat(instance)).clone).toBe("clone-1");
+      expect((await newChat(instance)).clone).toBe("clone-2");
+      const checks = engine.requests.filter((request) => isFinishedCheck(request) && request.prompt.includes("fix it"));
+      expect(checks).toHaveLength(1);
+      expect(instance.sessions.get(first.id).closed).toBe(false);
+    });
+
+    test("work that is not on GitHub keeps the clone, whatever the model says", async () => {
+      const instance = start(finishingEngine());
+      const first = await newChat(instance);
+      await instance.sessions.send(first.id, "fix it");
+      const repository = join(first.startFolder, "remote");
+      sandbox.write(repository, "draft.txt", "draft\n");
+      expect((await newChat(instance)).clone).toBe("clone-1");
+      rmSync(join(repository, "draft.txt"));
+      sandbox.git(repository, "checkout", "-q", "-b", "feature");
+      sandbox.write(repository, "feature.txt", "feature\n");
+      sandbox.git(repository, "add", "-A");
+      sandbox.git(repository, "commit", "-q", "-m", "feature");
+      expect((await newChat(instance)).clone).toBe("clone-2");
+      // A file in the clone folder itself is in no repository.
+      sandbox.git(repository, "push", "-q", "origin", "feature");
+      sandbox.write(first.startFolder, "notes.txt", "notes\n");
+      expect((await newChat(instance)).clone).toBe("clone-3");
+      expect(instance.sessions.get(first.id).closed).toBe(false);
+    });
+
+    test("a reused clone is on the default branch, up to date, keeps ignored files, and gets a new repository", async () => {
+      const instance = start(finishingEngine());
+      const first = await newChat(instance);
+      await instance.sessions.send(first.id, "fix it");
+      const repository = join(first.startFolder, "remote");
+      // The work of the old chat: a pushed branch, and dependencies that git ignores.
+      sandbox.git(repository, "checkout", "-q", "-b", "feature");
+      sandbox.write(repository, "feature.txt", "feature\n");
+      sandbox.git(repository, "add", "-A");
+      sandbox.git(repository, "commit", "-q", "-m", "feature");
+      sandbox.git(repository, "push", "-q", "-u", "origin", "feature");
+      sandbox.write(repository, ".git/info/exclude", "node_modules/\n");
+      sandbox.write(repository, "node_modules/kept.js", "kept\n");
+      const other = sandbox.clone("elsewhere");
+      sandbox.write(other, "remote.txt", "from elsewhere\n");
+      sandbox.git(other, "add", "-A");
+      sandbox.git(other, "commit", "-q", "-m", "add remote.txt");
+      sandbox.git(other, "push", "-q", "origin", "main");
+      sandbox.git(sandbox.root, "clone", "-q", "--bare", sandbox.remote, "example-api.git");
+      sandbox.write(
+        vault,
+        `Projects/${projectId}/AGENTS.md`,
+        projectFile([sandbox.remote, join(sandbox.root, "example-api.git")]),
+      );
+      const next = await newChat(instance);
+      expect(next.clone).toBe("clone-0");
+      expect(sandbox.git(repository, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+      expect(sandbox.git(repository, "log", "-1", "--format=%s")).toBe("add remote.txt");
+      expect(existsSync(join(repository, "feature.txt"))).toBe(false);
+      expect(existsSync(join(repository, "node_modules", "kept.js"))).toBe(true);
+      expect(existsSync(join(first.startFolder, "example-api", "AGENTS.md"))).toBe(true);
+      expect(instance.sessions.get(first.id).closed).toBe(true);
+    });
+
+    test("a fetch that fails keeps the chat open, and the new chat gets a new clone", async () => {
+      const instance = start(finishingEngine());
+      const first = await newChat(instance);
+      await instance.sessions.send(first.id, "fix it");
+      sandbox.git(join(first.startFolder, "remote"), "remote", "set-url", "origin", join(sandbox.root, "gone.git"));
+      expect((await newChat(instance)).clone).toBe("clone-1");
+      expect(instance.sessions.get(first.id).closed).toBe(false);
+    });
+
+    test("a named clone with an open chat is refused, and one with a closed chat is not", async () => {
+      const instance = start(finishingEngine());
+      const first = await newChat(instance);
+      const named = (): Promise<unknown> =>
+        instance
+          .createProjectSession({ projectId, cloneName: "clone-0", source: "cli", model: "default" })
+          .catch((caught: unknown) => caught);
+      expect(await named()).toMatchObject({ code: "session_busy" });
+      await instance.sessions.send(first.id, "fix it");
+      instance.sessions.close(first.id);
+      // A reset that failed after the close left the clone on the old branch: the named chat resets it too.
+      const repository = join(first.startFolder, "remote");
+      sandbox.git(repository, "checkout", "-q", "-b", "feature");
+      sandbox.git(repository, "push", "-q", "-u", "origin", "feature");
+      expect(await named()).toMatchObject({ clone: "clone-0" });
+      expect(sandbox.git(repository, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+    });
   });
 
   test("an Assistant chat goes on in a new Assistant chat that starts from a summary (#522)", async () => {
@@ -860,11 +954,11 @@ describe("Eva", () => {
     expect(session).toMatchObject({
       mode: "project",
       projectId: "2025-03-02-1015-example-app",
-      clone: "remote-1",
+      clone: "clone-1",
       continuedFrom: old.id,
     });
     const call = engine.requests.find((request) => request.mode === "model-call");
-    expect(call?.prompt).toContain("<git-state>\n## main...origin/main");
+    expect(call?.prompt).toContain("<git-state>\nRepository remote:\n## main...origin/main");
   });
 
   test("a chat deleted while its summary is written opens no new chat (#522)", async () => {

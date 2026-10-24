@@ -306,11 +306,14 @@ function Branch({
                         {counted(turn.taskCount, "background task")}
                       </button>
                     )}
-                    <button className="ghost" onClick={() => runAction(() => api.retry(owner.id, index))}>
-                      <Icon name="restart" />
-                      Retry
-                    </button>
-                    {turn.lastMessageId !== null && turn.failure === null && (
+                    {/* A closed chat takes no new turn, so it offers no way to start one. */}
+                    {!owner.closed && (
+                      <button className="ghost" onClick={() => runAction(() => api.retry(owner.id, index))}>
+                        <Icon name="restart" />
+                        Retry
+                      </button>
+                    )}
+                    {!owner.closed && turn.lastMessageId !== null && turn.failure === null && (
                       <button
                         className="ghost"
                         onClick={() => runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))}
@@ -401,18 +404,26 @@ function Branch({
           // The suggestions are Assistant work; a project chat stays a plain harness (AGENTS.md).
           session.mode === "assistant" && <NewChatGreeting onPick={(text) => void send(text)} />
         ))}
-      <Composer
-        session={session}
-        draftKey={session.id}
-        choices={storedChoices(session.id)}
-        running={working}
-        onSend={send}
-        onStop={() => runAction(() => api.stop(session.id))}
-        onChanged={onChanged}
-        blocker={blocker}
-        voiceNotes={voiceNotes}
-        placeholder={composerPlaceholder(projectTitle)}
-      />
+      {session.closed ? (
+        // Eva reused the clone of this chat for a new chat (issue 521), so a message here would run on other work.
+        <div className="callout" role="status">
+          Eva closed this chat to reuse its clone. You can read it, but it takes no new message. Start a new chat in the
+          project to go on.
+        </div>
+      ) : (
+        <Composer
+          session={session}
+          draftKey={session.id}
+          choices={storedChoices(session.id)}
+          running={working}
+          onSend={send}
+          onStop={() => runAction(() => api.stop(session.id))}
+          onChanged={onChanged}
+          blocker={blocker}
+          voiceNotes={voiceNotes}
+          placeholder={composerPlaceholder(projectTitle)}
+        />
+      )}
     </section>
   );
 }

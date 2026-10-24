@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -767,6 +767,85 @@ describe("archived chats (issue 388)", () => {
       caught = error;
     }
     expect(isEvaError(caught, "session_not_found")).toBe(true);
+  });
+});
+
+describe("closed chats (issue 521)", () => {
+  function caughtFrom(action: () => unknown): unknown {
+    try {
+      return action();
+    } catch (error) {
+      return error;
+    }
+  }
+
+  test("a close covers the chat and every fork, tells the front ends, and survives a restart", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "one");
+    const fork = manager.fork(rootId, manager.get(rootId).turns[0]?.lastMessageId ?? "");
+    const other = newAssistantSession(manager);
+    events = [];
+    expect(manager.get(rootId).closed).toBe(false);
+    expect(manager.close(rootId).sort()).toEqual([rootId, fork.id].sort());
+    expect(manager.get(rootId).closed).toBe(true);
+    expect(manager.get(fork.id).closed).toBe(true);
+    expect(manager.get(other).closed).toBe(false);
+    expect(events.map((event) => [event.kind, event.sessionId])).toEqual([
+      ["session_closed", rootId],
+      ["session_closed", fork.id],
+    ]);
+    expect(createManager(new FakeEngine()).get(fork.id).closed).toBe(true);
+  });
+
+  test("a closed chat keeps its history, and refuses a message, a fork and a retry", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    manager.close(sessionId);
+    expect(manager.get(sessionId).turns).toHaveLength(1);
+    expect(
+      isEvaError(
+        caughtFrom(() => manager.send(sessionId, "two")),
+        "session_closed",
+      ),
+    ).toBe(true);
+    const messageId = manager.get(sessionId).turns[0]?.lastMessageId ?? "";
+    expect(
+      isEvaError(
+        caughtFrom(() => manager.fork(sessionId, messageId)),
+        "session_closed",
+      ),
+    ).toBe(true);
+    expect(isEvaError(await manager.retry(sessionId, 0).catch((error: unknown) => error), "session_closed")).toBe(true);
+    expect(engine.requests).toHaveLength(1);
+    expect(manager.list()).toHaveLength(1);
+  });
+
+  test("a chat where Eva works now is not closed", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const sent = manager.send(sessionId, "one");
+    expect(
+      isEvaError(
+        caughtFrom(() => manager.close(sessionId)),
+        "session_busy",
+      ),
+    ).toBe(true);
+    await sent;
+    expect(manager.get(sessionId).closed).toBe(false);
+  });
+
+  test("a record from before the field reads as open", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const path = join(folder, "sessions.json");
+    const stored = JSON.parse(readFileSync(path, "utf8")) as { sessions: Record<string, unknown>[] };
+    for (const session of stored.sessions) Reflect.deleteProperty(session, "closed");
+    writeFileSync(path, JSON.stringify(stored));
+    expect(createManager(new FakeEngine()).get(sessionId).closed).toBe(false);
   });
 });
 

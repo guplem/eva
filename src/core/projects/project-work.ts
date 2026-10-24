@@ -4,7 +4,7 @@
  * its `AGENTS.md`.
  */
 import type { EffortLevel, EngineName, ModelAlias } from "../../shared/engine-port.ts";
-import { rmSync } from "node:fs";
+import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -15,25 +15,32 @@ import { evaRepository } from "../../shared/version.ts";
 import type { SessionManager } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 import {
-  createClone,
+  cloneRepository,
   countChanges,
-  describeClone,
+  createClone,
+  describeRepository,
   githubSlug,
-  isCleanFolder,
   listClones,
+  listRepositories,
   readGitState,
+  repositoryName,
   type Clone,
   type CloneDetails,
   type CloneOriginStore,
+  type CloneRepository,
+  type RepositoryBranch,
 } from "./clones.ts";
 import {
   commitAndPush,
   describeChanges,
   fallbackCommitMessage,
   fetchClone,
+  fetchDefaultBranch,
+  hasLocalWork,
   pullClone,
   readSyncState,
   readyToPush,
+  switchToBranch,
 } from "./clone-sync.ts";
 import type { Project } from "./project-catalog.ts";
 import {
@@ -105,25 +112,33 @@ const commitMessagePrompt = [
 /** The number of characters of a project answer that the report to the Assistant chat keeps. */
 const reportTextLimit = 3_000;
 
-/**
- * A clean clone stays with its chat for this time after the chat's last activity. An idle chat
- * keeps no clone, so new work could take it while the person writes again (issue 356).
- */
-const cloneGraceMs = 10 * 60_000;
+const finishedPrompt = [
+  "You read a chat between a person and a coding agent, and judge whether its task has finished.",
+  "A task has finished when the agent did what the person asked, or the person dropped it, and nothing is left to do.",
+  "A task has not finished when the agent asked a question, waits for the person, or listed steps that are still open.",
+  "Answer with FINISHED or NOT FINISHED only.",
+].join("\n");
+
+/** The last turns of a chat that the finished check reads, and the characters of each text it keeps. */
+const finishedTurnLimit = 6;
+const finishedTextLimit = 2_000;
 
 export class ProjectWork {
   private readonly options: ProjectWorkOptions;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
   private readonly reservedClones: Set<string>;
-  /** Clones with a pull or a push running, so two never share one index. */
-  private readonly syncingClones: Set<string>;
+  /** Repositories with a pull or a push running, so two never share one index. */
+  private readonly syncingRepositories: Set<string>;
   /** The last clone choice of each project, so the next choice waits for it (lesson 49). */
   private readonly cloneChoices: Map<string, Promise<unknown>>;
+  /** The finished check of each chat tree, by its turn count, so an unchanged chat costs one model call. */
+  private readonly finishedChecks: Map<string, { readonly turns: number; readonly finished: boolean }>;
 
   constructor(options: ProjectWorkOptions) {
     this.reservedClones = new Set();
-    this.syncingClones = new Set();
+    this.syncingRepositories = new Set();
     this.cloneChoices = new Map();
+    this.finishedChecks = new Map();
     this.options = options;
   }
 
@@ -133,6 +148,9 @@ export class ProjectWork {
     const inClone = (clone: Clone | undefined): SessionRecord => {
       if (clone === undefined)
         throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
+      // A clone has one chat tree (issue 521): a second open chat would share its branches.
+      if (this.chatsIn(clone).some((chat) => !chat.closed))
+        throw new EvaError("session_busy", `Clone ${clone.name} already has an open chat. Start a new chat instead.`);
       return this.options.sessions.createSession({
         mode: "project",
         engine: input.engine ?? this.options.defaultEngine,
@@ -144,15 +162,42 @@ export class ProjectWork {
         clone: clone.name,
       });
     };
-    if (input.cloneName !== undefined)
-      return inClone(listClones(project.path).find((candidate) => candidate.name === input.cloneName));
+    if (input.cloneName !== undefined) {
+      const name = input.cloneName;
+      // Inside the clone choice, so a reuse cannot reset the clone under the new chat.
+      return this.oneCloneChoiceAtATime(project, async () => {
+        const clone = listClones(project.path).find((candidate) => candidate.name === name);
+        if (clone !== undefined && this.reservedClones.has(clone.path))
+          throw new EvaError("session_busy", `Eva is preparing clone ${clone.name}. Try again in a moment.`);
+        // A clone with only closed chats gets the same reset as a free one, so no new chat starts on an old branch.
+        const chats = clone === undefined ? [] : this.chatsIn(clone);
+        if (clone === undefined || chats.length === 0 || chats.some((chat) => !chat.closed)) return inClone(clone);
+        const ready = await this.reuse(project, clone);
+        if (ready === null)
+          throw new EvaError(
+            "session_busy",
+            `Eva could not prepare clone ${clone.name} for a new chat. Start a new chat instead.`,
+          );
+        return inClone(ready);
+      });
+    }
     // The chat exists before the next choice starts, so its creation already keeps the clone.
     return this.oneCloneChoiceAtATime(project, async () => inClone(await this.freeOrNewClone(project)));
   }
 
-  /** The git state of a Project chat's folder, for a chat summary, or null when git fails. */
-  gitState(folder: string): Promise<string | null> {
-    return readGitState(folder, this.options.runner, this.options.gitEnvironment);
+  /**
+   * The git state of each repository of a Project chat's clone folder, for a chat summary, or null when
+   * git fails for each one. The clone folder itself is no repository: git there would read the vault.
+   */
+  async gitState(folder: string): Promise<string | null> {
+    const states = await Promise.all(
+      listRepositories(folder).map(async (repository) => {
+        const state = await readGitState(repository.path, this.options.runner, this.options.gitEnvironment);
+        return state === null ? null : `Repository ${repository.name}:\n${state}`;
+      }),
+    );
+    const known = states.filter((state) => state !== null);
+    return known.length === 0 ? null : known.join("\n\n");
   }
 
   /**
@@ -196,18 +241,20 @@ export class ProjectWork {
       const exists = (id: string): boolean => sessions.list().some((candidate) => candidate.id === id);
       const last = exists(session.id) ? sessions.get(session.id).turns.at(-1) : undefined;
       const result = last?.failure === null ? last.answerText : `It failed: ${last?.failure ?? "no answer"}`;
-      const details = await describeClone(clone, this.options.runner, this.options.gitEnvironment);
+      const details = await Promise.all(
+        listClones(project.path)
+          .find((candidate) => candidate.path === clone.path)
+          ?.repositories.map((repository) =>
+            describeRepository(repository, this.options.runner, this.options.gitEnvironment),
+          ) ?? [],
+      );
       if (!exists(reportTo)) {
         this.options.logger?.log("info", "The project work ended, but its asking chat is gone.", {
           projectChat: session.id,
         });
         return;
       }
-      const place = [
-        `clone ${clone.name}`,
-        ...(details.branch === null ? [] : [`branch ${details.branch}`]),
-        ...(details.pullRequest === null ? [] : [`pull request #${String(details.pullRequest)}`]),
-      ].join(", ");
+      const place = [`clone ${clone.name}`, ...details.map(repositoryPlace)].join("; ");
       await sessions.send(
         reportTo,
         `[Project work finished: ${project.id}, ${place}, chat ${session.id}]\n\n${capReportText(result)}`,
@@ -255,83 +302,99 @@ export class ProjectWork {
     );
   }
 
-  /** The clones of a project, with their branch, pull request and number of changed files. */
+  /** The clones of a project, with the branch, pull request, changes and sync of each repository. */
   async clones(projectId: string): Promise<CloneDetails[]> {
     const project = this.project(projectId);
+    return Promise.all(listClones(project.path).map((clone) => this.describe(clone)));
+  }
+
+  private async describe(clone: Clone): Promise<CloneDetails> {
     const { runner, gitEnvironment } = this.options;
-    return Promise.all(
-      listClones(project.path).map(async (clone) => {
+    const repositories = await Promise.all(
+      clone.repositories.map(async (repository) => {
         const [details, changes, sync] = await Promise.all([
-          describeClone(clone, runner, gitEnvironment),
-          countChanges(clone, runner, gitEnvironment),
-          readSyncState(clone, runner, gitEnvironment),
+          describeRepository(repository, runner, gitEnvironment),
+          countChanges(repository, runner, gitEnvironment),
+          readSyncState(repository, runner, gitEnvironment),
         ]);
         return { ...details, ...sync, changes };
       }),
     );
+    return { name: clone.name, path: clone.path, index: clone.index, repositories };
   }
 
-  /** Fetches each clone, then gives the clones with fresh counts and the fetches that failed. */
+  /** Fetches each repository, then gives the clones with fresh counts and the fetches that failed. */
   async fetchClones(projectId: string): Promise<CloneFetch> {
     const project = this.project(projectId);
     const { runner, gitEnvironment } = this.options;
     const reasons = await Promise.all(
-      listClones(project.path).map(async (clone) => {
-        const reason = await fetchClone(clone, runner, gitEnvironment);
-        return reason === null ? null : `${clone.name}: ${reason}`;
-      }),
+      listClones(project.path).flatMap((clone) =>
+        clone.repositories.map(async (repository) => {
+          const reason = await fetchClone(repository, runner, gitEnvironment);
+          return reason === null ? null : `${clone.name}/${repository.name}: ${reason}`;
+        }),
+      ),
     );
     return { clones: await this.clones(projectId), problems: reasons.filter((reason) => reason !== null) };
   }
 
-  /** A fast-forward pull of one clone. */
-  async pullClone(projectId: string, cloneName: string): Promise<void> {
-    const clone = this.idleClone(projectId, cloneName);
-    await this.oneSyncAtATime(clone, () => pullClone(clone, this.options.runner, this.options.gitEnvironment));
+  /** A fast-forward pull of one repository of a clone. */
+  async pullClone(projectId: string, cloneName: string, repositoryName: string): Promise<void> {
+    const { repository } = this.idleRepository(projectId, cloneName, repositoryName);
+    await this.oneSyncAtATime(repository, () =>
+      pullClone(repository, this.options.runner, this.options.gitEnvironment),
+    );
   }
 
-  /** Pulls each clone that is behind and has no running chat. One failure does not stop the others. */
+  /** Pulls each repository that is behind and has no running chat. One failure does not stop the others. */
   async pullClones(projectId: string): Promise<CloneFetch> {
     const project = this.project(projectId);
     const { runner, gitEnvironment } = this.options;
     const reasons = await Promise.all(
-      (await this.clones(projectId))
-        .filter((clone) => (clone.behind ?? 0) > 0)
-        .map(async (clone) => {
-          try {
-            this.idleClone(project.id, clone.name);
-            await this.oneSyncAtATime(clone, () => pullClone(clone, runner, gitEnvironment));
-            return null;
-          } catch (error) {
-            if (!isEvaError(error)) throw error;
-            return error.message;
-          }
-        }),
+      (await this.clones(projectId)).flatMap((clone) =>
+        clone.repositories
+          .filter((repository) => (repository.behind ?? 0) > 0)
+          .map(async (repository) => {
+            try {
+              this.idleRepository(project.id, clone.name, repository.name);
+              await this.oneSyncAtATime(repository, () => pullClone(repository, runner, gitEnvironment));
+              return null;
+            } catch (error) {
+              if (!isEvaError(error)) throw error;
+              return error.message;
+            }
+          }),
+      ),
     );
     return { clones: await this.clones(projectId), problems: reasons.filter((reason) => reason !== null) };
   }
 
   /**
-   * Commits every change of a clone and pushes its branch. With an empty note, a model writes the
-   * message from the diff, and a plain message stands in when no model answers.
+   * Commits every change of one repository of a clone and pushes its branch. With an empty note, a
+   * model writes the message from the diff, and a plain message stands in when no model answers.
    */
-  async pushClone(projectId: string, cloneName: string, note: string): Promise<{ readonly message: string }> {
-    const clone = this.idleClone(projectId, cloneName);
+  async pushClone(
+    projectId: string,
+    cloneName: string,
+    repositoryName: string,
+    note: string,
+  ): Promise<{ readonly message: string }> {
+    const { repository } = this.idleRepository(projectId, cloneName, repositoryName);
     const { runner, gitEnvironment } = this.options;
-    return this.oneSyncAtATime(clone, async () => {
+    return this.oneSyncAtATime(repository, async () => {
       const trimmed = note.trim();
-      // A clone that Eva cannot push safely fails here, before a model call that would be lost.
-      const { files } = await readyToPush(clone, runner, gitEnvironment);
-      const message = trimmed.length > 0 || files.length === 0 ? trimmed : await this.commitMessage(clone);
+      // A repository that Eva cannot push safely fails here, before a model call that would be lost.
+      const { files } = await readyToPush(repository, runner, gitEnvironment);
+      const message = trimmed.length > 0 || files.length === 0 ? trimmed : await this.commitMessage(repository);
       // The model call takes seconds, and a chat may start a turn meanwhile.
-      this.idleClone(projectId, cloneName);
-      await commitAndPush(clone, message, runner, gitEnvironment);
+      this.idleRepository(projectId, cloneName, repositoryName);
+      await commitAndPush(repository, message, runner, gitEnvironment);
       return { message };
     });
   }
 
-  private async commitMessage(clone: Clone): Promise<string> {
-    const changes = await describeChanges(clone, this.options.runner, this.options.gitEnvironment);
+  private async commitMessage(repository: CloneRepository): Promise<string> {
+    const changes = await describeChanges(repository, this.options.runner, this.options.gitEnvironment);
     const fallback = fallbackCommitMessage(changes.files);
     const modelCalls = this.options.modelCalls;
     if (modelCalls === undefined) return fallback;
@@ -354,33 +417,51 @@ export class ProjectWork {
     return cleanCommitMessage(result.text) ?? fallback;
   }
 
-  private async oneSyncAtATime<Result>(clone: Clone, work: () => Promise<Result>): Promise<Result> {
-    if (this.syncingClones.has(clone.path))
-      throw new EvaError("session_busy", `Eva already pulls or pushes ${clone.name}. Try again when it ends.`);
-    this.syncingClones.add(clone.path);
+  private async oneSyncAtATime<Result>(repository: CloneRepository, work: () => Promise<Result>): Promise<Result> {
+    if (this.syncingRepositories.has(repository.path))
+      throw new EvaError("session_busy", `Eva already pulls or pushes ${repository.name}. Try again when it ends.`);
+    this.syncingRepositories.add(repository.path);
     try {
       return await work();
     } finally {
-      this.syncingClones.delete(clone.path);
+      this.syncingRepositories.delete(repository.path);
     }
   }
 
-  /** A clone of the project with no running chat: git must not change files under a turn. */
-  private idleClone(projectId: string, cloneName: string): Clone {
+  /** True while Eva pulls or pushes any repository of the clone. */
+  private isSyncing(clone: Clone): boolean {
+    return clone.repositories.some((repository) => this.syncingRepositories.has(repository.path));
+  }
+
+  /** A repository of a clone with no running chat: git must not change files under a turn. */
+  private idleRepository(
+    projectId: string,
+    cloneName: string,
+    repositoryName: string,
+  ): { readonly clone: Clone; readonly repository: CloneRepository } {
     const project = this.project(projectId);
     const clone = listClones(project.path).find((candidate) => candidate.name === cloneName);
     if (clone === undefined)
       throw new EvaError("project_not_found", `Project ${project.id} has no clone ${cloneName}.`);
+    // The path comes from the clone's list, never from the name, so a name cannot point outside it.
+    const repository = clone.repositories.find((candidate) => candidate.name === repositoryName);
+    if (repository === undefined)
+      throw new EvaError("project_not_found", `Clone ${clone.name} has no repository ${repositoryName}.`);
     const sessions = this.options.sessions;
-    if (sessions.list().some((session) => session.startFolder === clone.path && sessions.isBusy(session.id)))
-      throw new EvaError("session_busy", `A chat is working in ${clone.name}. Try again when its turn ends.`);
-    return clone;
+    if (this.reservedClones.has(clone.path) || this.chatsIn(clone).some((chat) => sessions.isBusy(chat.id)))
+      throw new EvaError("session_busy", `Eva is working in ${clone.name}. Try again when she finishes.`);
+    return { clone, repository };
   }
 
-  /** Clones a project's repository into its next free folder (the "New clone" button). */
-  async newClone(projectId: string, repositoryUrl?: string): Promise<Clone> {
+  /** The chats of a clone, closed ones and forks too. */
+  private chatsIn(clone: Clone): SessionRecord[] {
+    return this.options.sessions.list().filter((session) => session.startFolder === clone.path);
+  }
+
+  /** Clones every repository of a project into its next free clone folder (the "New clone" button). */
+  async newClone(projectId: string): Promise<Clone> {
     const project = this.project(projectId);
-    return this.oneCloneChoiceAtATime(project, () => this.cloneInto(project, repositoryUrl));
+    return this.oneCloneChoiceAtATime(project, () => this.cloneInto(project));
   }
 
   /**
@@ -396,11 +477,11 @@ export class ProjectWork {
       if (clone === undefined)
         throw new EvaError("project_not_found", `Project ${project.id} has no clone ${cloneName}.`);
       const sessions = this.options.sessions;
-      const chats = sessions.list().filter((session) => session.startFolder === clone.path);
+      const chats = this.chatsIn(clone);
       // An engine that runs in the folder would lose its files, and Windows refuses to delete a folder in use.
       if (
         this.reservedClones.has(clone.path) ||
-        this.syncingClones.has(clone.path) ||
+        this.isSyncing(clone) ||
         chats.some((chat) => sessions.isActive(chat.id))
       )
         throw new EvaError("session_busy", `Eva is still working in ${clone.name}. Stop her chats there first.`);
@@ -457,13 +538,12 @@ export class ProjectWork {
     return project;
   }
 
-  private async cloneInto(project: Project, repositoryUrl?: string): Promise<Clone> {
-    const url = repositoryUrl ?? project.frontMatter.repos[0];
-    if (url === undefined)
+  private async cloneInto(project: Project): Promise<Clone> {
+    if (project.frontMatter.repos.length === 0)
       throw new EvaError("project_not_found", `Project ${project.id} lists no repository to clone.`);
     return createClone({
       projectPath: project.path,
-      repositoryUrl: url,
+      repositoryUrls: project.frontMatter.repos,
       runner: this.options.runner,
       environment: this.options.gitEnvironment,
       origins: this.options.cloneOrigins,
@@ -472,26 +552,137 @@ export class ProjectWork {
 
   /** Call it only inside `oneCloneChoiceAtATime`, or two callers can get the same clone. */
   private async freeOrNewClone(project: Project): Promise<Clone> {
-    // A clone with a record goes first: one with none asks a trust question, and work may run with nobody to answer it.
+    // A clone with a record of each repository goes first: one with none asks a trust question,
+    // and work may run with nobody to answer it.
     const clones = listClones(project.path);
-    const recorded = clones.filter((clone) => {
-      const kind = this.options.cloneOrigins.origin(clone.path)?.kind;
-      return kind === "cloned" || kind === "answered";
-    });
-    const sessions = this.options.sessions;
+    const recorded = clones.filter((clone) =>
+      clone.repositories.every((repository) => {
+        const kind = this.options.cloneOrigins.origin(repository.path)?.kind;
+        return kind === "cloned" || kind === "answered";
+      }),
+    );
     for (const clone of [...recorded, ...clones.filter((clone) => !recorded.includes(clone))]) {
-      const busy =
-        this.reservedClones.has(clone.path) ||
-        sessions
-          .list()
-          .some(
-            (session) =>
-              session.startFolder === clone.path &&
-              (sessions.isBusy(session.id) || sessions.hadActivityWithin(session.id, cloneGraceMs)),
-          );
-      if (!busy && (await isCleanFolder(clone.path, this.options.runner, this.options.gitEnvironment))) return clone;
+      const reused = await this.reuse(project, clone);
+      if (reused !== null) return reused;
     }
     return this.cloneInto(project);
+  }
+
+  /**
+   * Prepares a clone for a new chat, or gives null when the clone is not free (issue 521). A clone is
+   * free when no work of it is only on this computer, nothing runs in it, and its chat has finished.
+   * Eva then closes that chat, puts each repository on its default branch, and clones each repository
+   * that the project gained since.
+   */
+  private async reuse(project: Project, clone: Clone): Promise<Clone | null> {
+    const sessions = this.options.sessions;
+    const isQuiet = (): boolean =>
+      !this.isSyncing(clone) && !this.chatsIn(clone).some((chat) => sessions.isActive(chat.id));
+    if (this.reservedClones.has(clone.path) || !isQuiet()) return null;
+    // From the first check on, so no pull, push or delete runs git in the clone at the same time.
+    this.reservedClones.add(clone.path);
+    try {
+      return await this.prepareForReuse(project, clone, isQuiet);
+    } catch (error) {
+      // The chat stays as it was, or closed when only the last local step failed. A later choice tries again.
+      if (!isEvaError(error)) throw error;
+      this.options.logger?.log("warn", `Eva could not prepare ${clone.name} for a new chat: ${error.message}`, {
+        project: project.id,
+      });
+      return null;
+    } finally {
+      this.reservedClones.delete(clone.path);
+    }
+  }
+
+  /** Call it only from `reuse`, which reserves the clone. */
+  private async prepareForReuse(project: Project, clone: Clone, isQuiet: () => boolean): Promise<Clone | null> {
+    const sessions = this.options.sessions;
+    const openChats = (): SessionRecord[] => this.chatsIn(clone).filter((chat) => !chat.closed);
+    // The ids and turn counts, so a later check sees a new fork or a turn that came and went.
+    const stateOf = (chats: readonly SessionRecord[]): string =>
+      chats
+        .map((chat) => `${chat.id}:${String(chat.turns.length)}`)
+        .sort()
+        .join(" ");
+    if (await this.holdsLocalWork(clone)) return null;
+    const open = openChats();
+    const before = stateOf(open);
+    if (open.length > 0 && !(await this.hasFinished(open))) return null;
+    // The network steps go first: when one fails, the chat stays open and nothing changed.
+    const { runner, gitEnvironment, cloneOrigins } = this.options;
+    const branches = new Map<string, string>();
+    for (const repository of clone.repositories)
+      branches.set(repository.path, await fetchDefaultBranch(repository, runner, gitEnvironment));
+    const present = new Set(clone.repositories.map((repository) => folderKey(repository.name)));
+    for (const url of project.frontMatter.repos) {
+      if (present.has(folderKey(repositoryName(url)))) continue;
+      await cloneRepository(clone.path, url, { runner, environment: gitEnvironment, origins: cloneOrigins });
+    }
+    const current = listClones(project.path).find((candidate) => candidate.path === clone.path);
+    if (current === undefined) return null;
+    // The model call and the network take seconds: a turn, a fork or a commit may have come meanwhile.
+    if (!isQuiet() || stateOf(openChats()) !== before || (await this.holdsLocalWork(current))) return null;
+    for (const chat of open) sessions.close(chat.id);
+    for (const repository of clone.repositories) {
+      const branch = branches.get(repository.path);
+      if (branch !== undefined) await switchToBranch(repository, branch, runner, gitEnvironment);
+    }
+    return current;
+  }
+
+  /**
+   * True when the clone holds anything that is not on a remote. A file in the clone folder itself,
+   * outside every repository, is in no repository, so it counts too. A file that the operating system
+   * writes, such as `desktop.ini`, holds no work.
+   */
+  private async holdsLocalWork(clone: Clone): Promise<boolean> {
+    const repositoryNames = new Set([...clone.repositories.map((repository) => repository.name), ...systemFiles]);
+    let names: string[];
+    try {
+      names = readdirSync(clone.path);
+    } catch {
+      return true;
+    }
+    if (names.some((name) => !repositoryNames.has(name) && !repositoryNames.has(folderKey(name)))) return true;
+    const { runner, gitEnvironment } = this.options;
+    const work = await Promise.all(
+      clone.repositories.map((repository) => hasLocalWork(repository, runner, gitEnvironment)),
+    );
+    return work.some(Boolean);
+  }
+
+  /**
+   * Asks the cheapest model whether the chats of a clone have finished their task. A chat with no
+   * turn has not: the person may be about to write. A failed call counts as not finished, so the
+   * chat keeps its clone.
+   */
+  private async hasFinished(chats: readonly SessionRecord[]): Promise<boolean> {
+    const turns = chats.flatMap((chat) => chat.turns);
+    if (turns.length === 0) return false;
+    const key = chats
+      .map((chat) => chat.id)
+      .sort()
+      .join(" ");
+    const cached = this.finishedChecks.get(key);
+    if (cached?.turns === turns.length) return cached.finished;
+    const modelCalls = this.options.modelCalls;
+    if (modelCalls === undefined) return false;
+    const engine = chats[0]?.engine ?? this.options.defaultEngine;
+    const result = await modelCalls.ask({
+      engine,
+      model: cheapestModel(engine, chats[0]?.modelAlias ?? "default"),
+      systemPrompt: finishedPrompt,
+      prompt: "Has the task of this chat finished?",
+      context: { chat: chats.map(chatText).join("\n\n") },
+    });
+    if (!result.ok) {
+      this.options.logger?.log("warn", `The finished check of a chat failed: ${result.reason}`);
+      return false;
+    }
+    const finished = /^\W*finished\b/i.test(result.text.trim());
+    this.finishedChecks.set(key, { turns: turns.length, finished });
+    return finished;
   }
 
   /**
@@ -543,4 +734,34 @@ function projectText(path: string, projectId: string): string {
   const text = readTextTolerant(path);
   if (text === null) throw new EvaError("project_not_found", `Eva cannot read the AGENTS.md of ${projectId}.`);
   return text;
+}
+
+/** Such as `example-web on branch fix-login with pull request #42`, for the report of project work. */
+function repositoryPlace(repository: RepositoryBranch): string {
+  return [
+    repository.name,
+    ...(repository.branch === null ? [] : [`on branch ${repository.branch}`]),
+    ...(repository.pullRequest === null ? [] : [`with pull request #${String(repository.pullRequest)}`]),
+  ].join(" ");
+}
+
+/** The last turns of a chat, for the finished check. The end of a long text usually holds its result. */
+function chatText(chat: SessionRecord): string {
+  const keepEnd = (text: string): string =>
+    text.length <= finishedTextLimit ? text : `…${text.slice(-finishedTextLimit)}`;
+  return chat.turns
+    .slice(-finishedTurnLimit)
+    .map((turn) => {
+      const answer = turn.failure === null ? turn.answerText : `(The turn failed: ${turn.failure})`;
+      return `Person: ${keepEnd(turn.userText)}\nAgent: ${keepEnd(answer)}`;
+    })
+    .join("\n\n");
+}
+
+/** Files that the operating system writes in a folder that the person opened. */
+const systemFiles = ["desktop.ini", "thumbs.db", ".DS_Store"];
+
+/** Windows folder names ignore case, so a repository folder matches its URL name in any case there. */
+function folderKey(name: string): string {
+  return process.platform === "win32" ? name.toLowerCase() : name;
 }

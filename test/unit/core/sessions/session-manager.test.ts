@@ -958,6 +958,29 @@ describe("forks and retries", () => {
     expect(manager.get(retry.id)).toMatchObject({ parentId, forkAtMessageId: atMessageId });
   });
 
+  test("a retry of the first turn of a fork of a fork branches the middle fork where the last one did", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "one");
+    const middle = manager.fork(rootId, manager.get(rootId).turns[0]!.lastMessageId!);
+    await manager.send(middle.id, "two");
+    const middleRecord = manager.get(middle.id);
+    const atMessageId = middleRecord.turns[0]!.lastMessageId!;
+    const last = manager.fork(middle.id, atMessageId);
+    await manager.send(last.id, "three");
+
+    const retry = await manager.retry(last.id, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(engine.requests[3]?.prompt).toBe("three");
+    expect(engine.requests[3]?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: middleRecord.engineSessionId,
+      atMessageId,
+    });
+    expect(manager.get(retry.id)).toMatchObject({ parentId: middle.id, forkAtMessageId: atMessageId });
+  });
+
   test("a retry of a fork whose parent is gone starts from nothing, as a root chat does", async () => {
     const engine = new FakeEngine();
     const first = createManager(engine);

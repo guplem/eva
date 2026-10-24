@@ -1,6 +1,6 @@
 /**
  * Assistant mode: Eva's own behaviour at the vault root.
- * Before a turn: pull the vault, build the prompt. After a turn: save the vault, and keep
+ * Before a turn: pull the vault, snapshot it, build the prompt. After a turn: snapshot and save the vault, and keep
  * an open pskill run of this session going, since the vault has no hooks.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -15,10 +15,13 @@ import type { VaultSyncState } from "../vault/vault-sync.ts";
 import { moveAssistantPersonality, withMovedSections } from "../migrations/assistant-rules-move.ts";
 import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 import { aboutMeProblemNote, readAboutMe } from "../vault/about-me.ts";
+import { turnSnapshotRef } from "../vault/vault-snapshots.ts";
 
 export interface VaultSyncPort {
   pull(): Promise<VaultSyncState>;
   save(): Promise<VaultSyncState>;
+  /** Saves the files of the vault under a hidden ref. It never fails the turn. */
+  snapshot(ref: string): Promise<void>;
 }
 
 export interface AssistantPreparerOptions {
@@ -43,14 +46,22 @@ export class AssistantPreparer implements TurnPreparer {
   private readonly options: AssistantPreparerOptions;
   /** The appended prompt of each session, read at its first turn. */
   private readonly promptBySession: Map<string, string>;
+  /** The index of the running turn of each session, from its start, for the snapshot after it. */
+  private readonly turnBySession: Map<string, number>;
 
   constructor(options: AssistantPreparerOptions) {
     this.options = options;
     this.promptBySession = new Map();
+    this.turnBySession = new Map();
   }
 
   async prepare(session: SessionRecord): Promise<PreparedTurn> {
     await this.options.vaultSync.pull();
+    // After the pull: the remote's changes are not the answer's. The record gets the turn at its
+    // end, so its index is the count of turns now (#525).
+    const turnIndex = session.turns.length;
+    this.turnBySession.set(session.id, turnIndex);
+    await this.options.vaultSync.snapshot(turnSnapshotRef(session.id, turnIndex, "before"));
     const personalRulesPath = join(this.options.vaultPath, ".eva", "assistant.md");
     if (!existsSync(personalRulesPath)) {
       // An answer from an agent with no identity is worse than an error (lesson 11).
@@ -93,6 +104,9 @@ export class AssistantPreparer implements TurnPreparer {
   }
 
   async afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null> {
+    const turnIndex = this.turnBySession.get(session.id);
+    this.turnBySession.delete(session.id);
+    if (turnIndex !== undefined) await this.options.vaultSync.snapshot(turnSnapshotRef(session.id, turnIndex, "after"));
     await this.options.vaultSync.save();
     // A stopped or failed turn must end the work: a usage limit would fail each follow-up again.
     if (!outcome.finished) return null;

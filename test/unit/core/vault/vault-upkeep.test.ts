@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AlertProblem } from "../../../../src/core/alerts/alert-center.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { VaultUpkeep } from "../../../../src/core/vault/vault-upkeep.ts";
+import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -48,5 +49,46 @@ describe("VaultUpkeep alerts for a skipped sync", () => {
     sandbox.git(vault, "switch", "-q", "main");
     expect(await upkeep.sweep()).toBe("ok");
     expect(state.reports.at(-1)).toBeNull();
+  });
+});
+
+describe("VaultUpkeep undo of answers", () => {
+  const answers = [{ before: "refs/eva/turns/chat/0/before", after: "refs/eva/turns/chat/0/after" }];
+
+  test("undoes the files of an answer, and pushes the undo", async () => {
+    const upkeep = createUpkeep({ busy: false, reports: [] });
+    sandbox.write(vault, "plan.md", "first\n");
+    await upkeep.save();
+    await upkeep.snapshot(answers[0]?.before ?? "");
+    sandbox.write(vault, "plan.md", "bad\n");
+    await upkeep.snapshot(answers[0]?.after ?? "");
+    await upkeep.save();
+
+    expect(await upkeep.undoPreview(answers)).toEqual({ restore: ["plan.md"], changed: [], notKept: [] });
+    expect((await upkeep.undo(answers)).restore).toEqual(["plan.md"]);
+    expect(sandbox.git(sandbox.remote, "show", "main:plan.md")).toBe("first");
+    await upkeep.deleteSnapshots("chat");
+    expect(sandbox.git(vault, "for-each-ref", "refs/eva")).toBe("");
+  });
+
+  test("refuses while an Assistant chat runs a turn", async () => {
+    const caught = await createUpkeep({ busy: true, reports: [] })
+      .undo(answers)
+      .catch((error: unknown) => error);
+    expect(isEvaError(caught, "session_busy")).toBe(true);
+  });
+
+  test("with no vault, nothing to undo", async () => {
+    const upkeep = new VaultUpkeep({
+      vaultSync: null,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      syncEnabled: () => true,
+      assistantBusy: () => false,
+      reportProblem: () => undefined,
+    });
+    await upkeep.snapshot("refs/eva/turns/chat/0/before");
+    await upkeep.deleteSnapshots("chat");
+    expect(await upkeep.undoPreview(answers)).toEqual({ restore: [], changed: [], notKept: [] });
+    expect(await upkeep.undo(answers)).toEqual({ restore: [], changed: [], notKept: [] });
   });
 });

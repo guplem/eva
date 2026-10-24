@@ -400,6 +400,21 @@ describe("chats", () => {
     expect(telegram.sentTexts().join("\n")).not.toContain("stray");
   });
 
+  test("a message to a closed chat gets a reply that says so, and starts no turn (issue 521)", async () => {
+    createEva();
+    const bot = createBot();
+    telegram.sendText(owner, "one");
+    await settle(bot, () => engine.requests.some((request) => request.mode === "assistant"));
+    await eva.idle();
+    const [chat] = eva.sessions.list();
+    if (chat === undefined) throw new Error("The test needs one chat.");
+    eva.sessions.close(chat.id);
+    const turns = engine.requests.length;
+    telegram.sendText(owner, "two");
+    await settle(bot, () => telegram.sentTexts().filter((text) => text.includes("closed this chat")).length >= 2);
+    expect(engine.requests.length).toBe(turns);
+  });
+
   test("a chat that the web app marks as seen never releases a held block early (issue 381)", async () => {
     createEva((request, turnNumber) => {
       const [, end] = FakeEngine.answer(request, "done");

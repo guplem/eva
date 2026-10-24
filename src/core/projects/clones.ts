@@ -1,11 +1,11 @@
 /**
- * Clones live in `Projects/<project>/repos/<repo>-<n>/`. Each one is
- * a parallel workspace. Trust decides whether a clone's own hooks and MCP servers may
- * run.
+ * Clones live in `Projects/<project>/repos/clone-<n>/`. Each one is a parallel place to work, with
+ * one folder for each repository of the project. Trust decides whether a repository's own hooks
+ * and MCP servers may run.
  */
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -13,15 +13,22 @@ import { failureReason, type ProcessRunner } from "../../shared/process-runner.t
 
 const gitTimeoutMs = 20_000;
 
+/** One repository folder inside a clone, such as `clone-0/example-web/`. */
+export interface CloneRepository {
+  readonly name: string;
+  readonly path: string;
+}
+
 export interface Clone {
   readonly name: string;
   readonly path: string;
-  readonly repository: string;
   readonly index: number;
+  /** Sorted by name. */
+  readonly repositories: readonly CloneRepository[];
 }
 
 const cloneTimeoutMs = 10 * 60_000;
-const cloneNamePattern = /^(.+)-(\d+)$/;
+const cloneNamePattern = /^clone-(\d+)$/;
 
 /** The repository part of a git URL or path: `https://github.com/o/app.git` → `app`. */
 export function repositoryName(url: string): string {
@@ -30,11 +37,11 @@ export function repositoryName(url: string): string {
   return parts[parts.length - 1] ?? trimmed;
 }
 
-/** The first free `<repo>-<n>` folder name in the project's `repos/` folder. */
-export function cloneFolderName(projectPath: string, repository: string): string {
+/** The first free `clone-<n>` folder name in the project's `repos/` folder. */
+export function cloneFolderName(projectPath: string): string {
   const reposFolder = join(projectPath, "repos");
   for (let index = 0; ; index += 1) {
-    const name = `${repository}-${String(index)}`;
+    const name = `clone-${String(index)}`;
     if (!existsSync(join(reposFolder, name))) return name;
   }
 }
@@ -48,69 +55,123 @@ function isFolder(path: string): boolean {
   }
 }
 
-/** The clones of a project, sorted by repository and number. */
-export function listClones(projectPath: string): Clone[] {
-  const reposFolder = join(projectPath, "repos");
-  if (!isFolder(reposFolder)) return [];
-  let names: string[];
+/** A `.git` folder, or a `.git` file as in a worktree. */
+function hasGitEntry(folder: string): boolean {
+  return existsSync(join(folder, ".git"));
+}
+
+function readNames(folder: string): string[] {
   try {
-    names = readdirSync(reposFolder);
+    return readdirSync(folder);
   } catch {
     return [];
   }
-  const clones: Clone[] = [];
-  for (const name of names) {
-    const match = cloneNamePattern.exec(name);
-    const path = join(reposFolder, name);
-    if (!match || !isFolder(path)) continue;
-    clones.push({ name, path, repository: match[1] ?? name, index: Number(match[2]) });
-  }
-  return clones.sort(
-    (first, second) => first.repository.localeCompare(second.repository) || first.index - second.index,
-  );
 }
 
-export interface CreateCloneOptions {
-  readonly projectPath: string;
-  readonly repositoryUrl: string;
+/** The repository folders of a clone: each folder in it with its own git entry. */
+export function listRepositories(clonePath: string): CloneRepository[] {
+  return readNames(clonePath)
+    .map((name) => ({ name, path: join(clonePath, name) }))
+    .filter((repository) => isFolder(repository.path) && hasGitEntry(repository.path))
+    .sort((first, second) => first.name.localeCompare(second.name));
+}
+
+/**
+ * The clones of a project, sorted by number. A folder with its own git entry is a clone in the old
+ * one-repository form, even when its name is `clone-<n>`, so it is not listed.
+ */
+export function listClones(projectPath: string): Clone[] {
+  const reposFolder = join(projectPath, "repos");
+  if (!isFolder(reposFolder)) return [];
+  const clones: Clone[] = [];
+  for (const name of readNames(reposFolder)) {
+    const match = cloneNamePattern.exec(name);
+    const path = join(reposFolder, name);
+    if (!match || !isFolder(path) || hasGitEntry(path)) continue;
+    clones.push({ name, path, index: Number(match[1]), repositories: listRepositories(path) });
+  }
+  return clones.sort((first, second) => first.index - second.index);
+}
+
+export interface CloneRepositoryOptions {
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
   readonly origins: CloneOriginStore;
 }
 
-/** Clones the repository into the next free folder, and records the URL it came from. */
+export interface CreateCloneOptions extends CloneRepositoryOptions {
+  readonly projectPath: string;
+  /** Every repository of the project. */
+  readonly repositoryUrls: readonly string[];
+}
+
+/**
+ * Makes the next free clone folder and clones every repository into it. When one repository
+ * fails, the whole folder goes, so no half-filled clone stays for a later chat.
+ */
 export async function createClone(options: CreateCloneOptions): Promise<Clone> {
-  // The URL comes from front matter or the API. Git reads `--upload-pack=<command>` as an option
-  // and runs the command, so refuse it here too, and not only with the `--` below.
-  if (options.repositoryUrl.startsWith("-")) {
-    throw new EvaError("project_invalid", `A repository URL cannot start with "-": ${options.repositoryUrl}`);
+  if (options.repositoryUrls.length === 0)
+    throw new EvaError("project_invalid", "The project lists no repository to clone.");
+  for (const url of options.repositoryUrls) checkRepositoryUrl(url);
+  // Windows folder names ignore case, so `App` and `app` would share one folder there.
+  const names = options.repositoryUrls.map((url) =>
+    process.platform === "win32" ? repositoryName(url).toLowerCase() : repositoryName(url),
+  );
+  const twice = names.find((name, index) => names.indexOf(name) !== index);
+  if (twice !== undefined)
+    throw new EvaError("project_invalid", `Two repositories of the project have the same name: ${twice}.`);
+  const name = cloneFolderName(options.projectPath);
+  const path = join(options.projectPath, "repos", name);
+  // The folder exists at once, so the next choice of a free number skips it.
+  mkdirSync(path, { recursive: true });
+  try {
+    for (const url of options.repositoryUrls) await cloneRepository(path, url, options);
+  } catch (error) {
+    removeFailedClone(path);
+    throw error;
   }
-  const repository = repositoryName(options.repositoryUrl);
-  const name = cloneFolderName(options.projectPath, repository);
-  const reposFolder = join(options.projectPath, "repos");
-  const path = join(reposFolder, name);
-  const existed = existsSync(path);
+  return { name, path, index: Number(name.slice("clone-".length)), repositories: listRepositories(path) };
+}
+
+/** Clones one repository into its folder inside a clone, and records the URL it came from. */
+export async function cloneRepository(
+  clonePath: string,
+  repositoryUrl: string,
+  options: CloneRepositoryOptions,
+): Promise<CloneRepository> {
+  checkRepositoryUrl(repositoryUrl);
+  const name = repositoryName(repositoryUrl);
+  const path = join(clonePath, name);
+  // A failed clone removes its folder, so it must never start in a folder that holds someone's files.
+  if (existsSync(path))
+    throw new EvaError("git_failed", `Could not clone ${repositoryUrl}: the folder ${name} is already there.`);
   let result: Awaited<ReturnType<ProcessRunner["run"]>>;
   try {
     // Eva's credential helper, so a private project repository clones with the GitHub token too.
-    result = await options.runner.run(
-      ["git", ...githubCredentialArguments, "clone", "-q", "--", options.repositoryUrl, path],
-      {
-        cwd: options.projectPath,
-        environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
-        timeoutMs: cloneTimeoutMs,
-      },
-    );
+    result = await options.runner.run(["git", ...githubCredentialArguments, "clone", "-q", "--", repositoryUrl, path], {
+      cwd: clonePath,
+      environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
+      timeoutMs: cloneTimeoutMs,
+    });
   } catch (error) {
-    if (!existed) removeFailedClone(path);
+    removeFailedClone(path);
     throw error;
   }
   if (result.exitCode !== 0) {
-    if (!existed) removeFailedClone(path);
-    throw new EvaError("git_failed", `Could not clone ${options.repositoryUrl}: ${failureReason(result, "git")}`);
+    removeFailedClone(path);
+    throw new EvaError("git_failed", `Could not clone ${repositoryUrl}: ${failureReason(result, "git")}`);
   }
-  options.origins.recordClone(path, options.repositoryUrl);
-  return { name, path, repository, index: Number(name.slice(repository.length + 1)) };
+  options.origins.recordClone(path, repositoryUrl);
+  return { name, path };
+}
+
+/**
+ * The URL comes from front matter or the API. Git reads `--upload-pack=<command>` as an option
+ * and runs the command, so refuse it here too, and not only with the `--` of the clone.
+ */
+function checkRepositoryUrl(repositoryUrl: string): void {
+  if (repositoryUrl.startsWith("-"))
+    throw new EvaError("project_invalid", `A repository URL cannot start with "-": ${repositoryUrl}`);
 }
 
 /**
@@ -125,7 +186,7 @@ function removeFailedClone(path: string): void {
   }
 }
 
-export interface CloneBranch extends Clone {
+export interface RepositoryBranch extends CloneRepository {
   readonly branch: string | null;
   /** The number of the open pull request of the branch, when `gh` finds one. */
   readonly pullRequest: number | null;
@@ -139,18 +200,26 @@ export interface SyncState {
   readonly behind: number | null;
 }
 
-export interface CloneDetails extends CloneBranch, SyncState {
+export interface RepositoryDetails extends RepositoryBranch, SyncState {
   /** The files that `git status` lists: changed, staged or new. Null when git fails. */
   readonly changes: number | null;
 }
 
-/** A clone with its current branch and pull request, for a project work report and the project view. */
-export async function describeClone(
-  clone: Clone,
+/** A clone with the branch, pull request, changes and sync of each repository, for the project view. */
+export interface CloneDetails {
+  readonly name: string;
+  readonly path: string;
+  readonly index: number;
+  readonly repositories: readonly RepositoryDetails[];
+}
+
+/** A repository with its current branch and pull request, for a project work report and the project view. */
+export async function describeRepository(
+  repository: CloneRepository,
   runner: ProcessRunner,
   environment: Readonly<Record<string, string>>,
-): Promise<CloneBranch> {
-  const options = gitOptions(clone, environment);
+): Promise<RepositoryBranch> {
+  const options = gitOptions(repository, environment);
   let branch: string | null = null;
   let pullRequest: number | null = null;
   try {
@@ -160,17 +229,17 @@ export async function describeClone(
     const number = Number.parseInt(view.stdout.trim(), 10);
     if (view.exitCode === 0 && Number.isSafeInteger(number)) pullRequest = number;
   } catch {
-    // No git or no gh: the clone still shows, without the missing detail.
+    // No git or no gh: the repository still shows, without the missing detail.
   }
-  return { ...clone, branch, pullRequest };
+  return { ...repository, branch, pullRequest };
 }
 
 /**
- * The number of changed files of a clone, for its card in the project view, or null when git fails.
- * Apart from describeClone, so a project work report does not wait for it: git is slow on Windows.
+ * The number of changed files of a repository, for its row in the project view, or null when git fails.
+ * Apart from describeRepository, so a project work report does not wait for it: git is slow on Windows.
  */
 export async function countChanges(
-  clone: Clone,
+  repository: CloneRepository,
   runner: ProcessRunner,
   environment: Readonly<Record<string, string>>,
 ): Promise<number | null> {
@@ -179,7 +248,7 @@ export async function countChanges(
     // A new folder counts once, so a big folder that is not ignored stays fast.
     const status = await runner.run(
       ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=normal"],
-      gitOptions(clone, environment),
+      gitOptions(repository, environment),
     );
     if (status.exitCode !== 0) return null;
     return status.stdout.split("\n").filter((line) => line.trim().length > 0).length;
@@ -213,10 +282,10 @@ export async function readGitState(
 }
 
 function gitOptions(
-  clone: Clone,
+  repository: CloneRepository,
   environment: Readonly<Record<string, string>>,
 ): { cwd: string; environment: Record<string, string>; timeoutMs: number } {
-  return { cwd: clone.path, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: 20_000 };
+  return { cwd: repository.path, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: 20_000 };
 }
 
 /** The `origin` URL of a git folder, or null. Through the process seam, so it has a timeout (lessons 81, 102). */
@@ -232,20 +301,6 @@ export async function readOriginUrl(
   });
   const url = result.stdout.trim();
   return result.exitCode === 0 && url.length > 0 ? url : null;
-}
-
-/** Whether a git folder has no change, staged or not, and no untracked file. */
-export async function isCleanFolder(
-  folder: string,
-  runner: ProcessRunner,
-  environment: Readonly<Record<string, string>>,
-): Promise<boolean> {
-  const result = await runner.run(["git", "status", "--porcelain"], {
-    cwd: folder,
-    environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
-    timeoutMs: gitTimeoutMs,
-  });
-  return result.exitCode === 0 && result.stdout.trim().length === 0;
 }
 
 /** `owner/name` of a GitHub repository URL, or null for any other URL. */

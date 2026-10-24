@@ -1709,7 +1709,7 @@ repos:
       request: "fix the bug",
       reportToSessionId: null,
     });
-    expect(started).toMatch(/^Started the work in clone remote-0, chat \S+\.$/);
+    expect(started).toMatch(/^Started the work in clone clone-0, chat \S+\.$/);
   });
 
   test("eva projects filters by status and tag, and shows the tags and the warnings", async () => {

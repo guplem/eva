@@ -1090,12 +1090,12 @@ describe("web routes", () => {
     expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
     const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });
     expect(missing.status).toBe(404);
-    const clonePath = join(eva.status().vaultPath ?? "", "Projects", "2025-03-02-1015-example-app", "repos", "app-0");
+    const clonePath = join(eva.status().vaultPath ?? "", "Projects", "2025-03-02-1015-example-app", "repos", "clone-0");
     mkdirSync(clonePath, { recursive: true });
-    const deleted = await call("/api/projects/2025-03-02-1015-example-app/clones/app-0", { method: "DELETE" });
+    const deleted = await call("/api/projects/2025-03-02-1015-example-app/clones/clone-0", { method: "DELETE" });
     expect(await json(deleted)).toEqual({ deletedChats: [] });
     expect(existsSync(clonePath)).toBe(false);
-    const gone = await call("/api/projects/2025-03-02-1015-example-app/clones/app-0", { method: "DELETE" });
+    const gone = await call("/api/projects/2025-03-02-1015-example-app/clones/clone-0", { method: "DELETE" });
     expect(gone.status).toBe(404);
   });
 
@@ -1116,26 +1116,27 @@ describe("web routes", () => {
     sandbox.git(other, "commit", "-q", "-m", "remote work");
     sandbox.git(other, "push", "-q", "origin", "main");
 
-    const fetched = await json<{ clones: { behind: number }[]; problems: string[] }>(
+    const fetched = await json<{ clones: { repositories: { behind: number }[] }[]; problems: string[] }>(
       await call(`${path}/clones/fetch`, { method: "POST", body: {} }),
     );
-    expect(fetched).toMatchObject({ clones: [{ behind: 1 }], problems: [] });
-    const pulled = await json<{ clones: { behind: number }[]; problems: string[] }>(
+    expect(fetched).toMatchObject({ clones: [{ repositories: [{ behind: 1 }] }], problems: [] });
+    const pulled = await json<{ clones: { repositories: { behind: number }[] }[]; problems: string[] }>(
       await call(`${path}/clones/pull`, { method: "POST", body: {} }),
     );
-    expect(pulled).toMatchObject({ clones: [{ behind: 0 }], problems: [] });
+    expect(pulled).toMatchObject({ clones: [{ repositories: [{ behind: 0 }] }], problems: [] });
 
-    sandbox.write(clonePath, "README.md", "# Example\n");
+    sandbox.write(join(clonePath, "remote"), "README.md", "# Example\n");
     turnScript = (request) => FakeEngine.answer(request, "```\nAdd the readme\n```");
-    const pushed = await call(`${path}/clones/${name}/push`, { method: "POST", body: { note: "  " } });
+    const pushed = await call(`${path}/clones/${name}/repos/remote/push`, { method: "POST", body: { note: "  " } });
     expect(await json<{ message: string }>(pushed)).toEqual({ message: "Add the readme" });
     expect(engine.requests.at(-1)?.prompt).toContain("README.md");
     expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("Add the readme");
 
-    const nothing = await call(`${path}/clones/${name}/push`, { method: "POST", body: { note: "x" } });
+    const nothing = await call(`${path}/clones/${name}/repos/remote/push`, { method: "POST", body: { note: "x" } });
     expect(nothing.status).toBe(409);
-    expect((await call(`${path}/clones/${name}/pull`, { method: "POST", body: {} })).status).toBe(200);
-    expect((await call(`${path}/clones/missing-0/pull`, { method: "POST", body: {} })).status).toBe(404);
+    expect((await call(`${path}/clones/${name}/repos/remote/pull`, { method: "POST", body: {} })).status).toBe(200);
+    expect((await call(`${path}/clones/clone-9/repos/remote/pull`, { method: "POST", body: {} })).status).toBe(404);
+    expect((await call(`${path}/clones/${name}/repos/missing/pull`, { method: "POST", body: {} })).status).toBe(404);
   });
 
   test("a second pull or push of a clone is refused while the first runs", async () => {
@@ -1148,7 +1149,7 @@ describe("web routes", () => {
     const { name, path: clonePath } = await json<{ name: string; path: string }>(
       await call(`${path}/clones`, { method: "POST", body: {} }),
     );
-    sandbox.write(clonePath, "README.md", "# Example\n");
+    sandbox.write(join(clonePath, "remote"), "README.md", "# Example\n");
     let release = (): void => undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -1157,9 +1158,9 @@ describe("web routes", () => {
       await held;
       yield* FakeEngine.answer(request, "Add the readme");
     };
-    const first = call(`${path}/clones/${name}/push`, { method: "POST", body: {} });
+    const first = call(`${path}/clones/${name}/repos/remote/push`, { method: "POST", body: {} });
     while (engine.requests.length === 0) await Bun.sleep(10);
-    const second = await call(`${path}/clones/${name}/pull`, { method: "POST", body: {} });
+    const second = await call(`${path}/clones/${name}/repos/remote/pull`, { method: "POST", body: {} });
     expect(second.status).toBe(409);
     release();
     expect(await json<{ message: string }>(await first)).toEqual({ message: "Add the readme" });
@@ -1179,13 +1180,14 @@ describe("web routes", () => {
     sandbox.write(other, "AGENTS.md", "# Remote\n");
     sandbox.git(other, "commit", "-q", "-am", "remote work");
     sandbox.git(other, "push", "-q", "origin", "main");
-    sandbox.write(clonePath, "AGENTS.md", "# Local\n");
-    sandbox.git(clonePath, "commit", "-q", "-am", "local work");
-    sandbox.git(clonePath, "fetch", "-q");
-    expect(() => sandbox.git(clonePath, "merge", "-q", "origin/main")).toThrow();
+    const repository = join(clonePath, "remote");
+    sandbox.write(repository, "AGENTS.md", "# Local\n");
+    sandbox.git(repository, "commit", "-q", "-am", "local work");
+    sandbox.git(repository, "fetch", "-q");
+    expect(() => sandbox.git(repository, "merge", "-q", "origin/main")).toThrow();
     const asked = engine.requests.length;
 
-    const pushed = await call(`${path}/clones/${name}/push`, { method: "POST", body: {} });
+    const pushed = await call(`${path}/clones/${name}/repos/remote/push`, { method: "POST", body: {} });
     expect(pushed.status).toBe(409);
     expect(engine.requests.length).toBe(asked);
   });

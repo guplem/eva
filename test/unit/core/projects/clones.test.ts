@@ -4,10 +4,11 @@ import { join } from "node:path";
 import {
   CloneOriginStore,
   cloneFolderName,
+  cloneRepository,
   countChanges,
   createClone,
+  describeRepository,
   readGitState,
-  describeClone,
   githubSlug,
   isTrustedByDefault,
   listClones,
@@ -58,27 +59,52 @@ describe("githubSlug", () => {
   });
 });
 
+/** A second "GitHub" repository, a copy of the sandbox remote, so a project can list two. */
+function secondRemote(): string {
+  sandbox.git(sandbox.root, "clone", "-q", "--bare", sandbox.remote, "example-api.git");
+  return join(sandbox.root, "example-api.git");
+}
+
+/** A clone folder with repository folders, as git would leave them, with no git run. */
+function fakeClone(name: string, repositories: readonly string[]): void {
+  for (const repository of repositories)
+    mkdirSync(join(project, "repos", name, repository, ".git"), { recursive: true });
+  mkdirSync(join(project, "repos", name), { recursive: true });
+}
+
 describe("clone folders", () => {
   test("the next folder takes the first free number", () => {
-    expect(cloneFolderName(project, "example-app")).toBe("example-app-0");
-    mkdirSync(join(project, "repos", "example-app-0"), { recursive: true });
-    mkdirSync(join(project, "repos", "example-app-2"), { recursive: true });
-    expect(cloneFolderName(project, "example-app")).toBe("example-app-1");
+    expect(cloneFolderName(project)).toBe("clone-0");
+    mkdirSync(join(project, "repos", "clone-0"), { recursive: true });
+    mkdirSync(join(project, "repos", "clone-2"), { recursive: true });
+    expect(cloneFolderName(project)).toBe("clone-1");
   });
 
-  test("lists the clones of a project, in order", () => {
+  test("lists the clones of a project in order, each with its repositories", () => {
     expect(listClones(project)).toEqual([]);
-    mkdirSync(join(project, "repos", "example-app-1"), { recursive: true });
-    mkdirSync(join(project, "repos", "example-app-0"), { recursive: true });
+    fakeClone("clone-10", ["example-web"]);
+    fakeClone("clone-1", ["example-web", "example-api"]);
+    mkdirSync(join(project, "repos", "clone-1", "notes"), { recursive: true });
     mkdirSync(join(project, "repos", "notes"), { recursive: true });
-    expect(listClones(project).map((clone) => clone.name)).toEqual(["example-app-0", "example-app-1"]);
-    expect(listClones(project)[0]).toMatchObject({ repository: "example-app", index: 0 });
+    expect(listClones(project).map((clone) => clone.name)).toEqual(["clone-1", "clone-10"]);
+    expect(listClones(project)[0]).toMatchObject({ index: 1 });
+    expect(listClones(project)[0]?.repositories.map((repository) => repository.name)).toEqual([
+      "example-api",
+      "example-web",
+    ]);
+    expect(listClones(project)[0]?.repositories[0]?.path).toBe(join(project, "repos", "clone-1", "example-api"));
+  });
+
+  test("a folder in the old one-repository form is not a clone, even when its name is clone-<n>", () => {
+    mkdirSync(join(project, "repos", "example-app-0", ".git"), { recursive: true });
+    mkdirSync(join(project, "repos", "clone-0", ".git"), { recursive: true });
+    expect(listClones(project)).toEqual([]);
   });
 
   test.skipIf(process.platform === "win32")("skips an entry that it cannot read, such as a broken link", () => {
-    mkdirSync(join(project, "repos", "example-app-0"), { recursive: true });
-    symlinkSync(join(project, "gone"), join(project, "repos", "example-app-1"));
-    expect(listClones(project).map((clone) => clone.name)).toEqual(["example-app-0"]);
+    fakeClone("clone-0", ["example-app"]);
+    symlinkSync(join(project, "gone"), join(project, "repos", "clone-1"));
+    expect(listClones(project).map((clone) => clone.name)).toEqual(["clone-0"]);
   });
 
   test("a repos file instead of a folder means no clones", () => {
@@ -86,37 +112,85 @@ describe("clone folders", () => {
     expect(listClones(project)).toEqual([]);
   });
 
-  test("creates a clone in the next free folder, and records the URL it came from", async () => {
+  test("creates a clone with every repository, and records the URL of each", async () => {
     const origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
+    const api = secondRemote();
     const clone = await createClone({
       projectPath: project,
-      repositoryUrl: sandbox.remote,
+      repositoryUrls: [sandbox.remote, api],
       runner: systemProcessRunner,
       environment: gitEnvironment,
       origins,
     });
-    expect(clone.name).toBe("remote-0");
-    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("seed");
-    expect(origins.origin(clone.path)).toEqual({ kind: "cloned", url: sandbox.remote });
+    expect(clone).toMatchObject({ name: "clone-0", path: join(project, "repos", "clone-0"), index: 0 });
+    expect(clone.repositories.map((repository) => repository.name)).toEqual(["example-api", "remote"]);
+    for (const repository of clone.repositories)
+      expect(sandbox.git(repository.path, "log", "-1", "--format=%s")).toBe("seed");
+    expect(origins.origin(join(clone.path, "remote"))).toEqual({ kind: "cloned", url: sandbox.remote });
+    expect(origins.origin(join(clone.path, "example-api"))).toEqual({ kind: "cloned", url: api });
   });
 
-  test("reports a clone that fails, and records nothing", async () => {
+  test("a project with one repository gets the same form", async () => {
+    const clone = await createClone({
+      projectPath: project,
+      repositoryUrls: [sandbox.remote],
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    expect(clone.repositories.map((repository) => repository.path)).toEqual([
+      join(project, "repos", "clone-0", "remote"),
+    ]);
+  });
+
+  test("a repository that fails removes the whole clone folder, and reports why", async () => {
     const origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
     const error: unknown = await createClone({
       projectPath: project,
-      repositoryUrl: join(sandbox.root, "missing.git"),
+      repositoryUrls: [sandbox.remote, join(sandbox.root, "missing.git")],
       runner: systemProcessRunner,
       environment: gitEnvironment,
       origins,
     }).catch((caught: unknown) => caught);
     expect(isEvaError(error, "git_failed")).toBe(true);
-    expect(existsSync(join(sandbox.root, "clone-origins.json"))).toBe(false);
+    expect(existsSync(join(project, "repos", "clone-0"))).toBe(false);
+    expect(listClones(project)).toEqual([]);
+  });
+
+  test("refuses two repositories with the same folder name, and a project with none", async () => {
+    const options = {
+      projectPath: project,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    };
+    const twice: unknown = await createClone({
+      ...options,
+      repositoryUrls: ["https://github.com/one/example-app", "https://github.com/two/example-app.git"],
+    }).catch((caught: unknown) => caught);
+    expect(isEvaError(twice, "project_invalid")).toBe(true);
+    const none: unknown = await createClone({ ...options, repositoryUrls: [] }).catch((caught: unknown) => caught);
+    expect(isEvaError(none, "project_invalid")).toBe(true);
+    expect(existsSync(join(project, "repos"))).toBe(false);
+  });
+
+  test("never clones into a folder that is already there, and keeps that folder", async () => {
+    const clonePath = join(project, "repos", "clone-0");
+    mkdirSync(join(clonePath, "remote"), { recursive: true });
+    writeFileSync(join(clonePath, "remote", "notes.txt"), "mine\n");
+    const error: unknown = await cloneRepository(clonePath, sandbox.remote, {
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    }).catch((caught: unknown) => caught);
+    expect(isEvaError(error, "git_failed")).toBe(true);
+    expect(readFileSync(join(clonePath, "remote", "notes.txt"), "utf8")).toBe("mine\n");
   });
 
   test("a clone that fails with no error output still gives a reason (#430)", async () => {
     const error: unknown = await createClone({
       projectPath: project,
-      repositoryUrl: "https://github.com/example/example-app",
+      repositoryUrls: ["https://github.com/example/example-app"],
       runner: { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "" }) },
       environment: gitEnvironment,
       origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
@@ -125,7 +199,7 @@ describe("clone folders", () => {
   });
 
   test("a clone that stops partway leaves no folder for the next clone to reuse", async () => {
-    const path = join(project, "repos", "example-app-0");
+    const path = join(project, "repos", "clone-0", "example-app");
     /** A clone that fills part of its folder, then fails or throws, as a timeout kill does. */
     const halfClone = (finish: () => ReturnType<ProcessRunner["run"]>): ProcessRunner => ({
       run: () => {
@@ -140,13 +214,14 @@ describe("clone folders", () => {
     ]) {
       const error: unknown = await createClone({
         projectPath: project,
-        repositoryUrl: "https://github.com/example/example-app",
+        repositoryUrls: ["https://github.com/example/example-app"],
         runner,
         environment: gitEnvironment,
         origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
       }).catch((caught: unknown) => caught);
       expect(error).toBeInstanceOf(Error);
       expect(existsSync(path)).toBe(false);
+      expect(existsSync(join(project, "repos", "clone-0"))).toBe(false);
     }
   });
 
@@ -154,7 +229,7 @@ describe("clone folders", () => {
     const commands: (readonly string[])[] = [];
     const error: unknown = await createClone({
       projectPath: project,
-      repositoryUrl: "--upload-pack=touch pwned",
+      repositoryUrls: [sandbox.remote, "--upload-pack=touch pwned"],
       runner: {
         run: (command) => {
           commands.push(command);
@@ -172,7 +247,7 @@ describe("clone folders", () => {
     const commands: (readonly string[])[] = [];
     await createClone({
       projectPath: project,
-      repositoryUrl: "https://github.com/owner/example-app",
+      repositoryUrls: ["https://github.com/owner/example-app"],
       runner: {
         run: (command) => {
           commands.push(command);
@@ -185,29 +260,31 @@ describe("clone folders", () => {
     expect(commands[0]?.slice(-3)).toEqual([
       "--",
       "https://github.com/owner/example-app",
-      join(project, "repos", "example-app-0"),
+      join(project, "repos", "clone-0", "example-app"),
     ]);
   });
 
-  test("describes a clone with its branch, and counts its changed files apart", async () => {
+  test("describes a repository with its branch, and counts its changed files apart", async () => {
     const clone = await createClone({
       projectPath: project,
-      repositoryUrl: sandbox.remote,
+      repositoryUrls: [sandbox.remote],
       runner: systemProcessRunner,
       environment: gitEnvironment,
       origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
     });
-    expect(await describeClone(clone, systemProcessRunner, gitEnvironment)).toMatchObject({ branch: "main" });
-    expect(await countChanges(clone, systemProcessRunner, gitEnvironment)).toBe(0);
-    writeFileSync(join(clone.path, "new.txt"), "new\n");
-    writeFileSync(join(clone.path, "other.txt"), "other\n");
-    expect(await countChanges(clone, systemProcessRunner, gitEnvironment)).toBe(2);
+    const [repository] = clone.repositories;
+    if (repository === undefined) throw new Error("The test needs one repository.");
+    expect(await describeRepository(repository, systemProcessRunner, gitEnvironment)).toMatchObject({
+      name: "remote",
+      branch: "main",
+    });
+    expect(await countChanges(repository, systemProcessRunner, gitEnvironment)).toBe(0);
+    writeFileSync(join(repository.path, "new.txt"), "new\n");
+    writeFileSync(join(repository.path, "other.txt"), "other\n");
+    expect(await countChanges(repository, systemProcessRunner, gitEnvironment)).toBe(2);
   });
 
-  test("describing a clone runs no git status, so the work report stays fast", async () => {
-    mkdirSync(join(project, "repos", "example-app-0"), { recursive: true });
-    const [clone] = listClones(project);
-    if (clone === undefined) throw new Error("The test needs one clone.");
+  test("describing a repository runs no git status, so the work report stays fast", async () => {
     const commands: (readonly string[])[] = [];
     const recording = {
       run: (command: readonly string[]) => {
@@ -215,34 +292,36 @@ describe("clone folders", () => {
         return Promise.resolve({ exitCode: 0, stdout: "main\n", stderr: "" });
       },
     };
-    await describeClone(clone, recording, gitEnvironment);
+    await describeRepository({ name: "example-app", path: project }, recording, gitEnvironment);
     expect(commands.some((command) => command.includes("status"))).toBe(false);
   });
 
-  test("a clone whose git fails has no branch and no change count", async () => {
-    mkdirSync(join(project, "repos", "example-app-0"), { recursive: true });
-    const [clone] = listClones(project);
-    if (clone === undefined) throw new Error("The test needs one clone.");
+  test("a repository whose git fails has no branch and no change count", async () => {
+    const repository = { name: "example-app", path: project };
     const failing = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "not a git repository" }) };
-    expect(await describeClone(clone, failing, gitEnvironment)).toMatchObject({ branch: null, pullRequest: null });
-    expect(await countChanges(clone, failing, gitEnvironment)).toBeNull();
+    expect(await describeRepository(repository, failing, gitEnvironment)).toMatchObject({
+      branch: null,
+      pullRequest: null,
+    });
+    expect(await countChanges(repository, failing, gitEnvironment)).toBeNull();
   });
 
   test("the git state of a clone names its branch, its changed files and its last commits (#522)", async () => {
     const clone = await createClone({
       projectPath: project,
-      repositoryUrl: sandbox.remote,
+      repositoryUrls: [sandbox.remote],
       runner: systemProcessRunner,
       environment: gitEnvironment,
       origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
     });
-    writeFileSync(join(clone.path, "new.txt"), "new\n");
-    const state = await readGitState(clone.path, systemProcessRunner, gitEnvironment);
+    const repository = join(clone.path, "remote");
+    writeFileSync(join(repository, "new.txt"), "new\n");
+    const state = await readGitState(repository, systemProcessRunner, gitEnvironment);
     expect(state).toStartWith("## main...origin/main\n?? new.txt\n\nLast commits:\n");
     const failing = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "not a git repository" }) };
-    expect(await readGitState(clone.path, failing, gitEnvironment)).toBeNull();
+    expect(await readGitState(repository, failing, gitEnvironment)).toBeNull();
     const throwing = { run: () => Promise.reject(new Error("no git")) };
-    expect(await readGitState(clone.path, throwing, gitEnvironment)).toBeNull();
+    expect(await readGitState(repository, throwing, gitEnvironment)).toBeNull();
   });
 });
 

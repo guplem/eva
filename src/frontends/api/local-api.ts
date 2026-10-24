@@ -87,7 +87,6 @@ const archiveSchema = z.object({ archived: z.boolean() });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
-const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
 const pushSchema = z.object({ note: z.string().max(10_000).optional() });
 const updateSchema = z.object({
   version: z
@@ -646,26 +645,25 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     parts[4] !== undefined
   ) {
     const projectId = decodeURIComponent(parts[2]);
-    // A clone name always ends in `-<n>`, so it never equals "fetch" or "pull".
+    // A clone name is always `clone-<n>`, so it never equals "fetch" or "pull".
     if (parts.length === 5 && parts[4] === "fetch") return json(await eva.fetchClones(projectId));
     if (parts.length === 5 && parts[4] === "pull") return json(await eva.pullClones(projectId));
     const cloneName = decodeURIComponent(parts[4]);
-    if (parts.length === 6 && parts[5] === "pull") {
-      await eva.pullClone(projectId, cloneName);
+    // Each repository of a clone has its own pull and push: `clones/<clone>/repos/<repository>/pull`.
+    const repositoryName = parts[5] === "repos" && parts[6] !== undefined ? decodeURIComponent(parts[6]) : null;
+    if (repositoryName !== null && parts.length === 8 && parts[7] === "pull") {
+      await eva.pullClone(projectId, cloneName, repositoryName);
       return json({ ok: true });
     }
-    if (parts.length === 6 && parts[5] === "push") {
+    if (repositoryName !== null && parts.length === 8 && parts[7] === "push") {
       const { note } = pushSchema.parse(await request.json());
-      return json(await eva.pushClone(projectId, cloneName, note ?? ""));
+      return json(await eva.pushClone(projectId, cloneName, repositoryName, note ?? ""));
     }
   }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "clones") {
     const projectId = decodeURIComponent(parts[2]);
     if (method === "GET") return json(await eva.clones(projectId));
-    if (method === "POST") {
-      const { repositoryUrl } = newCloneSchema.parse(await request.json());
-      return json(await eva.newClone(projectId, repositoryUrl), 201);
-    }
+    if (method === "POST") return json(await eva.newClone(projectId), 201);
     if (method === "DELETE" && parts[4] !== undefined && parts.length === 5)
       return json(await eva.deleteClone(projectId, decodeURIComponent(parts[4])));
   }

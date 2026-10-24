@@ -1,0 +1,84 @@
+/**
+ * The unsent text of each chat in this browser tab. The page reloads itself after an update, so the
+ * text lives in the tab's session storage. A private window or a blocked site can refuse the storage,
+ * so each access has a fallback in memory.
+ */
+
+import { restoredText } from "./conversation-parts.ts";
+
+/** The part of the browser's `Storage` that the texts use. */
+export type TextStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+const keyPrefix = "eva-unsent:";
+
+export class UnsentTexts {
+  private readonly storage: () => TextStorage;
+  private readonly memory: Map<string, string>;
+  private readonly listeners: Map<string, Set<() => void>>;
+
+  /** `storage` is a function, because the browser can throw at the access itself. */
+  constructor(storage: () => TextStorage) {
+    this.storage = storage;
+    this.memory = new Map();
+    this.listeners = new Map();
+  }
+
+  /**
+   * Calls `listener` at each change of a chat's text, and gives the function that stops it. A failed
+   * send can restore the text from a message box that is gone, so the box on the page follows the store.
+   */
+  subscribe(draftKey: string, listener: () => void): () => void {
+    const listeners = this.listeners.get(draftKey) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(draftKey, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.listeners.delete(draftKey);
+    };
+  }
+
+  /**
+   * The unsent text of a chat, or "". The memory answers first: a write that the storage refused
+   * would leave an older text there.
+   */
+  get(draftKey: string): string {
+    return this.find(draftKey) ?? "";
+  }
+
+  /** The unsent text of a chat, or undefined when the chat has none, not even a cleared one. */
+  find(draftKey: string): string | undefined {
+    const kept = this.memory.get(draftKey);
+    if (kept !== undefined) return kept;
+    try {
+      return this.storage().getItem(keyPrefix + draftKey) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Puts the message of a failed send back, before the chat's newest draft, and gives the new text.
+   * The message box that sent can be gone by then, so the kept draft is the newest one.
+   */
+  restore(draftKey: string, failed: string): string {
+    const text = restoredText(failed, this.get(draftKey));
+    this.set(draftKey, text);
+    return text;
+  }
+
+  /**
+   * Keeps the text of a chat. An empty text removes it, unless `keepEmpty` keeps the clear: a chat
+   * that starts with a summary would show the summary again.
+   */
+  set(draftKey: string, text: string, keepEmpty = false): void {
+    // An empty text stays in memory too, so a clear that the storage refused still clears.
+    this.memory.set(draftKey, text);
+    try {
+      if (text === "" && !keepEmpty) this.storage().removeItem(keyPrefix + draftKey);
+      else this.storage().setItem(keyPrefix + draftKey, text);
+    } catch {
+      // A full or blocked storage loses the text only at a reload.
+    }
+    for (const listener of this.listeners.get(draftKey) ?? []) listener();
+  }
+}

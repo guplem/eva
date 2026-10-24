@@ -30,6 +30,7 @@ import { exitCodes } from "../../../../src/shared/exit-codes.ts";
 import type { LongProcessStarter } from "../../../../src/shared/long-process.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { fakeHost, scriptedRunner, type FakeHost } from "../../../support/fake-host.ts";
+import { fakeTray } from "../../../support/fake-tray.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
 
 let root: string;
@@ -50,6 +51,9 @@ const noWiring: CliWiring = {
   serve: () => Promise.reject(new Error("serve is not part of this test")),
   startLongProcess: () => {
     throw new Error("no long process in this test");
+  },
+  startLineProcess: () => {
+    throw new Error("no line process in this test");
   },
 };
 
@@ -800,6 +804,134 @@ describe("service install and supervise", () => {
     expect(printed(notStarted)).toContain("She did not start now: busy");
   });
 
+  test("on Windows, supervise shows the tray icon, and its menu opens, restarts and quits Eva (#457)", async () => {
+    const tray = fakeTray();
+    const eva = heldEva();
+    const restarts: string[] = [];
+    const api = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/api/restart") {
+          restarts.push(path);
+          // Eva stops by herself, as after the Restart button of her page.
+          eva.exit(exitCodes.update);
+          return Response.json({ restarting: true }, { status: 202 });
+        }
+        if (path === "/api/approvals") return Response.json([{ id: "a" }]);
+        if (path === "/api/devices/link") return Response.json({ secret: "s", expiresAt: "later" });
+        return Response.json({ problems: [], busySessionIds: [], chatBlocker: null });
+      },
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: api.port ?? 0 });
+      saveSecrets(paths, { localApiToken: "test-token" });
+      acquireInstanceLock(paths.lock, { pid: 999_999, bootId: null, isProcessAlive: () => false });
+      const host = fakeHost({
+        platform: "win32",
+        environment: { ...gitEnvironment, SystemRoot: "C:\\Windows" },
+        isProcessAlive: () => true,
+        sleep: (ms) => Bun.sleep(Math.min(ms, 10)),
+      });
+      const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+        ...noWiring,
+        startLongProcess: eva.start,
+        startLineProcess: tray.start,
+      });
+      await waitFor(() => tray.faces().includes("firm"));
+      expect(tray.command[0]).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+      expect(tray.faces()[0]).toBe("listening");
+      tray.choose("open");
+      await waitFor(() => host.commands.some((command) => command[0] === "rundll32.exe"));
+      expect(host.commands.find((command) => command[0] === "rundll32.exe")?.[2]).toContain("/#login=s");
+      tray.choose("restart");
+      await waitFor(() => eva.starts() === 2);
+      await waitFor(() => restarts.length === 1);
+      tray.choose("quit");
+      expect(await done).toBe(exitCodes.clean);
+      await waitFor(() => restarts.length === 2);
+      expect(eva.starts()).toBe(2);
+      expect(tray.closed()).toBe(true);
+    } finally {
+      await api.stop(true);
+      rmSync(paths.lock, { force: true });
+    }
+  });
+
+  test("on Windows, the icon stays after Eva stops for good, and Restart Eva starts her again", async () => {
+    const tray = fakeTray();
+    const eva = heldEva([exitCodes.badConfig]);
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: eva.start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => tray.faces().includes("error"));
+    expect(tray.closed()).toBe(false);
+    tray.choose("restart");
+    await waitFor(() => eva.starts() === 2);
+    for (const handler of host.stopHandlers) handler();
+    expect(await done).toBe(exitCodes.clean);
+    expect(tray.closed()).toBe(true);
+  });
+
+  test("on Windows, after Eva stops for good, Quit Eva ends the supervisor and its icon", async () => {
+    const tray = fakeTray();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: heldEva([exitCodes.clean]).start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => tray.faces().includes("asleep"));
+    tray.choose("quit");
+    expect(await done).toBe(exitCodes.clean);
+    expect(tray.closed()).toBe(true);
+  });
+
+  test("on Windows, an icon that ends while Eva is stopped ends the supervisor", async () => {
+    const tray = fakeTray();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: heldEva([exitCodes.badConfig]).start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => tray.faces().includes("error"));
+    tray.end("the script failed");
+    expect(await done).toBe(exitCodes.badConfig);
+  });
+
+  test("on Windows, with no icon left, a stop for good ends the supervisor: nobody could restart Eva", async () => {
+    const tray = fakeTray();
+    const eva = heldEva();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: eva.start,
+      startLineProcess: tray.start,
+    });
+    await waitFor(() => eva.starts() === 1);
+    tray.end("the script failed");
+    await Bun.sleep(20);
+    eva.exit(exitCodes.badConfig);
+    expect(await done).toBe(exitCodes.badConfig);
+  });
+
+  test("on Windows, a second copy of the same Eva ends its supervisor and its icon", async () => {
+    const tray = fakeTray();
+    const host = fakeHost({ platform: "win32", sleep: (ms) => Bun.sleep(Math.min(ms, 10)) });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), {
+      ...noWiring,
+      startLongProcess: heldEva([exitCodes.secondInstance]).start,
+      startLineProcess: tray.start,
+    });
+    expect(await done).toBe(exitCodes.secondInstance);
+    expect(tray.closed()).toBe(true);
+  });
+
   test("supervise runs Eva with this home, and a stop signal ends it", async () => {
     const started: string[][] = [];
     let exit: (code: number) => void = () => undefined;
@@ -823,3 +955,34 @@ describe("service install and supervise", () => {
     expect(await done).toBe(exitCodes.clean);
   });
 });
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let round = 0; round < 500 && !condition(); round += 1) await Bun.sleep(10);
+  expect(condition()).toBe(true);
+}
+
+/** Eva under the supervisor: each start ends with the next code of `exits`, then she runs until a stop. */
+function heldEva(exits: number[] = []): {
+  start: LongProcessStarter;
+  exit: (code: number) => void;
+  starts: () => number;
+} {
+  let starts = 0;
+  let exit: (code: number) => void = () => undefined;
+  const start: LongProcessStarter = () => {
+    starts += 1;
+    const next = exits.shift();
+    const exited = next === undefined ? Promise.withResolvers<number>() : null;
+    if (exited !== null) exit = exited.resolve;
+    const ended = exited?.promise ?? Promise.resolve(next ?? 0);
+    return {
+      exited: ended,
+      // As on Windows: a stop only waits, and the hard stop ends a child that did not stop.
+      stop: async () => {
+        await Promise.race([ended, Bun.sleep(50)]);
+        exited?.resolve(1);
+      },
+    };
+  };
+  return { start, exit: (code) => exit(code), starts: () => starts };
+}

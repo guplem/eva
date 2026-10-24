@@ -93,12 +93,21 @@ export function discoverProjects(options: DiscoveryOptions): Project[] {
   const projects: Project[] = [];
   for (const root of roots) {
     if (!existsSync(root)) continue;
-    for (const name of readdirSync(root)) {
+    for (const name of readNames(root)) {
       const project = readProject(join(root, name), name, root === vaultRoot ? `Projects/${name}` : null);
       if (project !== null) projects.push(project);
     }
   }
   return projects;
+}
+
+/** A root that Eva cannot read, such as a file or a folder without rights, holds no project (lesson 54). */
+function readNames(root: string): string[] {
+  try {
+    return readdirSync(root);
+  } catch {
+    return [];
+  }
 }
 
 export interface ProjectQuery {
@@ -160,7 +169,13 @@ function readProject(path: string, name: string, vaultFolder: string | null): Pr
   const agentsFile = join(path, "AGENTS.md");
   if (!isDirectory(path) || !existsSync(agentsFile)) return null;
 
-  const text = readFileSync(agentsFile, "utf-8");
+  let text: string;
+  try {
+    text = readFileSync(agentsFile, "utf-8");
+  } catch {
+    // One project file without rights must not hide every other project (lesson 54).
+    return null;
+  }
   const { frontMatter, warnings } = parseFrontMatter(text);
   if (frontMatter === null) return null;
 

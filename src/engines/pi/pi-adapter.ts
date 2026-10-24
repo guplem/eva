@@ -17,6 +17,8 @@
  *   that the bridge deletes at start. A shell command can read pi's environment, so never there.
  *   The bridge sends each problem, such as a server that did not start, as a `notify` with a
  *   fixed prefix. pi emits it before it reads the prompt.
+ * - **Stop:** Eva sends pi an RPC abort. If the turn has not ended after a grace time, Eva stops
+ *   the process tree. A model call that ends at its deadline relies on this too.
  * - **Exit code:** ignored after the turn end. pi on Windows can crash on exit after a tool
  *   ran, with the session file complete.
  * - **Command-line flags only:** RPC commands such as `set_model` and `set_auto_retry` write
@@ -48,6 +50,8 @@ export interface PiEngineOptions {
   readonly newSessionId?: () => string;
   readonly now?: () => Date;
   readonly closeTimeoutMs?: number;
+  /** How long pi has to answer a stop before Eva stops its process. */
+  readonly stopGraceMs?: number;
 }
 
 interface PiMessage {
@@ -167,14 +171,38 @@ export class PiEngine implements EnginePort {
       return;
     }
 
+    const state = { closed: false };
+    const close = (timeoutMs: number): Promise<void> => {
+      state.closed = true;
+      // A failed stop must not replace the turn's one end event, or reject with nobody to catch it.
+      return pi.close(timeoutMs).catch(() => undefined);
+    };
+    // A stuck pi never answers the abort and never ends its records, so only a hard stop ends the turn.
+    let hardStop: ReturnType<typeof setTimeout> | undefined;
     const onAbort = (): void => {
       pi.send({ type: "abort" });
+      hardStop ??= setTimeout(() => {
+        void close(0);
+      }, this.options.stopGraceMs ?? 15_000);
     };
     request.signal.addEventListener("abort", onAbort);
     if (request.signal.aborted) onAbort();
     try {
-      yield* this.streamTurn(pi, request, engineSessionId, sessionFile(engineSessionId));
+      // Not a spread: a process can be a class, whose methods a spread drops.
+      const tracked: PiProcess = {
+        send: (record) => {
+          pi.send(record);
+        },
+        records: pi.records,
+        close,
+        stderrTail: () => pi.stderrTail(),
+      };
+      yield* this.streamTurn(tracked, request, engineSessionId, sessionFile(engineSessionId));
     } finally {
+      clearTimeout(hardStop);
+      // A caller that leaves the stream early, such as a model call at its deadline, ends it at a
+      // yield, before streamTurn closes pi. A pi left open waits on stdin for good.
+      if (!state.closed) void close(0);
       request.signal.removeEventListener("abort", onAbort);
       // The bridge deletes the file at start. This covers a pi that stopped before it.
       removeSpecs(specsFile);
@@ -282,7 +310,9 @@ export class PiEngine implements EnginePort {
     if (end === null && finished) end = { kind: "finished" };
     await pi.close(this.options.closeTimeoutMs ?? 5_000);
 
-    if (end === null) {
+    if (end === null && request.signal.aborted) {
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    } else if (end === null) {
       yield { kind: "turn_failed", reason: `pi stopped before the turn ended. ${pi.stderrTail().trim()}`.trim() };
     } else if (end.kind === "failed") {
       yield { kind: "turn_failed", reason: end.reason };

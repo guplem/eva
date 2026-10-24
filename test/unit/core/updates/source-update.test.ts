@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sourceUpdateChannel } from "../../../../src/core/updates/source-update.ts";
 import type { UpdateChannel } from "../../../../src/core/updates/updater.ts";
@@ -119,6 +119,14 @@ describe("source update channel", () => {
     expect(await failure(channel().apply())).toContain("has its own commits");
     sandbox.git(checkout, "checkout", "-q", "-b", "feature");
     expect(await failure(channel().check())).toContain("is on feature, not on main");
+  });
+
+  test("a fast-forward that fails for another cause gives git's reason, not own commits", async () => {
+    pushFromOther("src/new.ts", "export {};\n");
+    writeFileSync(join(checkout, ".git", "index.lock"), "");
+    const message = await failure(channel().apply());
+    expect(message).toContain("index.lock");
+    expect(message).not.toContain("has its own commits");
   });
 
   test("an unreachable repository is a failed check", async () => {

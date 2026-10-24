@@ -96,6 +96,14 @@ const maxCommittedFileBytes = 50 * 1024 * 1024;
 const maxComparedTextBytes = 200_000;
 /** The `git status --porcelain` codes of a path with a merge conflict. */
 const unmergedCodes: ReadonlySet<string> = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
+/** An index.lock older than this is left over from a git that was stopped (#505). */
+const staleIndexLockMs = 30 * 60_000;
+/**
+ * Paths go on stdin, never on the command line: Windows limits a command line to 32,767
+ * characters, so a save of some hundred files would fail each time (#505). With
+ * --pathspec-file-nul, git reads each path as it is, with no quoting.
+ */
+const pathsOnStdin: readonly string[] = ["--pathspec-from-file=-", "--pathspec-file-nul"];
 
 interface GitResult {
   readonly exitCode: number;
@@ -486,10 +494,14 @@ export class VaultSync {
 
   private async checkedDefaultBranch(): Promise<string | null> {
     if (this.rebaseInProgress() && !(await this.abortLeftoverRebase())) return null;
-    const defaultBranch = await this.defaultBranch();
     const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
+    const defaultBranch = await this.defaultBranch(current);
     if (current !== defaultBranch) {
-      this.update({ status: "skipped", lastError: `The vault is on ${current}, not on ${defaultBranch}.` });
+      // The person may have meant the switch, so the text names both branches and asks, not orders.
+      this.update({
+        status: "skipped",
+        lastError: `Eva syncs ${defaultBranch}, but the vault is on ${current}. If ${defaultBranch} is right, ask the Assistant to switch the vault back to it.`,
+      });
       return null;
     }
     return defaultBranch;
@@ -546,7 +558,8 @@ export class VaultSync {
     // it ("did not match any files"). Its removal is staged already; the commit still takes it.
     const stagedSources = new Set(entries.filter((entry) => entry.isStagedSource === true).map((entry) => entry.path));
     const toAdd = kept.filter((path) => !stagedSources.has(path));
-    const add = toAdd.length === 0 ? null : await this.git(["add", "-A", "--", ...toAdd], localTimeoutMs);
+    const add =
+      toAdd.length === 0 ? null : await this.git(["add", "-A", ...pathsOnStdin], localTimeoutMs, {}, toAdd.join("\0"));
     if (add !== null && add.exitCode !== 0) {
       this.update({ status: "error", lastError: `git add failed: ${failureReason(add, "git")}` });
       return false;
@@ -560,11 +573,13 @@ export class VaultSync {
     // git refuses a full commit while a file has conflict markers, and a pick or a person can stage
     // a withheld or Scratch file: --only commits just the kept files.
     const needsOnly = unmerged.length > 0 || withheld.length > 0 || stagedScratch;
-    const onlyKept = needsOnly ? ["--only", "--", ...committed] : [];
+    const onlyKept = needsOnly ? ["--only", ...pathsOnStdin] : [];
     const commit = await this.git(
       // --no-verify: a git hook in the vault must never block an autosave (lesson 27).
       ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(committed.length)} ${plural})`, ...onlyKept],
       localTimeoutMs,
+      {},
+      needsOnly ? committed.join("\0") : undefined,
     );
     if (commit.exitCode !== 0) {
       this.update({ status: "error", lastError: `git commit failed: ${failureReason(commit, "git")}` });
@@ -691,14 +706,39 @@ export class VaultSync {
     return count.exitCode !== 0 || count.stdout.trim() !== "0";
   }
 
-  private async defaultBranch(): Promise<string> {
+  private async defaultBranch(current: string): Promise<string> {
+    const known = await this.originHead();
+    if (known !== null) return known;
+    // A vault made by hand has no origin/HEAD. Only the remote knows its default branch: a guess
+    // could sync main on one machine and master on another (#505). Once the answer is stored,
+    // this network step never runs again; offline, it fails as the fetch after it would.
+    await this.git(["remote", "set-head", "origin", "--auto"], networkTimeoutMs);
+    const asked = await this.originHead();
+    if (asked !== null) return asked;
+    // Offline, the remote's main, then its master. Never the upstream of the current branch: any
+    // branch with an upstream would then pass the check.
+    for (const candidate of ["main", "master"]) {
+      const found = await this.git(["rev-parse", "--verify", "-q", `refs/remotes/origin/${candidate}`], localTimeoutMs);
+      if (found.exitCode === 0) return candidate;
+    }
+    // With no remote, nothing tells main from master, and a skip would ask for a main that does not exist.
+    const remote = await this.git(["remote", "get-url", "origin"], localTimeoutMs);
+    if (remote.exitCode !== 0 && (current === "main" || current === "master")) return current;
+    return "main";
+  }
+
+  private async originHead(): Promise<string | null> {
     const head = await this.git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], localTimeoutMs);
     const name = head.stdout.trim();
-    return head.exitCode === 0 && name.startsWith("origin/") ? name.slice("origin/".length) : "main";
+    return head.exitCode === 0 && name.startsWith("origin/") ? name.slice("origin/".length) : null;
   }
 
   private async statusEntries(): Promise<StatusEntry[]> {
-    const status = await this.git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], localTimeoutMs);
+    // No index refresh, so no index.lock: a timeout kill would leave the lock (lesson 81).
+    const status = await this.git(
+      ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+      localTimeoutMs,
+    );
     const fields = status.stdout.split("\0").filter((field) => field.length > 0);
     const entries: StatusEntry[] = [];
     for (let index = 0; index < fields.length; index += 1) {
@@ -748,6 +788,25 @@ export class VaultSync {
     }
   }
 
+  /**
+   * A git that a timeout or a power loss stopped leaves `.git/index.lock` behind (lesson 81).
+   * Each later step that writes the index then fails, and /sync cannot fix it from a phone.
+   * The age alone tells an old lock from a live one. A person's `git commit` holds the lock while
+   * its editor is open, so an editor left open for 30 minutes loses the lock, and that commit fails.
+   * The person can commit again. A lock that stays for good stops each sync with no fix from a phone.
+   */
+  private removeStaleIndexLock(): void {
+    const lock = join(this.options.vaultPath, ".git", "index.lock");
+    try {
+      // The file time comes from the real clock, so the age does too, not from the `now` seam.
+      if (Date.now() - statSync(lock).mtimeMs < staleIndexLockMs) return;
+      rmSync(lock, { force: true });
+      this.options.logger?.log("warn", "Eva removed a stale index.lock from the vault.");
+    } catch {
+      // No lock, or Windows still holds it open: the git step then reports the problem.
+    }
+  }
+
   private rebaseInProgress(): boolean {
     const gitFolder = join(this.options.vaultPath, ".git");
     return pathExists(join(gitFolder, "rebase-merge")) || pathExists(join(gitFolder, "rebase-apply"));
@@ -757,11 +816,13 @@ export class VaultSync {
     arguments_: readonly string[],
     timeoutMs: number,
     environment: Readonly<Record<string, string>> = {},
+    stdin?: string,
   ): Promise<GitResult> {
     const identity = committingCommands.has(arguments_[0] ?? "") ? await this.identityEnvironment() : {};
     try {
       return await this.options.runner.run(["git", ...arguments_], {
         cwd: this.options.vaultPath,
+        ...(stdin === undefined ? {} : { stdin }),
         // Literal pathspecs: a note named "n*.md" must never match "nb.md".
         environment: {
           ...this.options.environment,
@@ -800,7 +861,11 @@ export class VaultSync {
   }
 
   private serialize<Result>(operation: () => Promise<Result>): Promise<Result> {
-    const next = this.queue.then(operation, operation);
+    const run = (): Promise<Result> => {
+      this.removeStaleIndexLock();
+      return operation();
+    };
+    const next = this.queue.then(run, run);
     this.queue = next.catch(() => undefined);
     return next;
   }

@@ -452,7 +452,7 @@
   }
 
   .schedules-page button.schedules-add {
-    width: 44px;
+    width: var(--touch-target);
     padding: 0;
     border-radius: 50%;
     background: var(--chip);
@@ -522,7 +522,7 @@
   }
 
   .schedule-sheet .schedule-days button {
-    min-width: 44px;
+    min-width: var(--touch-target);
     padding: 0 4px;
   }
 }

@@ -26,6 +26,7 @@ import {
   installUv,
   locateEngineProgram,
   pathWithOwnGh,
+  pathWithUvFolder,
   piInstallFolder,
   uvInstallSteps,
   type EngineInstallInputs,
@@ -520,5 +521,20 @@ describe("pathWithOwnGh", () => {
   test("on Windows, reads Path and puts the gh folder of LOCALAPPDATA first", () => {
     const environment = { Path: "C:\\Windows\\System32", LOCALAPPDATA: "D:\\Local" };
     expect(pathWithOwnGh(environment, "win32", windowsHome)).toBe("D:\\Local\\Programs\\gh\\bin;C:\\Windows\\System32");
+  });
+});
+
+describe("pathWithUvFolder", () => {
+  test("puts the folder of uv's installer last, once, so a uv that the page installs needs no restart", () => {
+    const path = pathWithUvFolder({ PATH: "/usr/bin:/bin" }, "linux", posixHome);
+    expect(path).toBe(`/usr/bin:/bin:${posixHome}/.local/bin`);
+    expect(pathWithUvFolder({ PATH: path }, "linux", posixHome)).toBe(path);
+    expect(pathWithUvFolder({}, "linux", posixHome)).toBe(`${posixHome}/.local/bin`);
+  });
+
+  test("on Windows, reads Path and adds the folder under the home", () => {
+    expect(pathWithUvFolder({ Path: "C:\\Windows\\System32" }, "win32", windowsHome)).toBe(
+      "C:\\Windows\\System32;D:\\Homes\\example\\.local\\bin",
+    );
   });
 });

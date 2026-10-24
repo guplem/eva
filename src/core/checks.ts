@@ -169,12 +169,28 @@ async function checkTelegram(inputs: CheckInputs): Promise<CheckResult> {
 async function checkGoogleSetup(inputs: CheckInputs): Promise<CheckResult> {
   const result = await checkGoogle(inputs.google);
   if (!result.ok) return { ok: false, detail: inputs.redact(result.detail) };
-  const uv = await runProgram(["uvx", "--version"], process.cwd(), inputs.engineEnvironment, inputs, null);
-  if (!uv.ok)
+  if (!(await uvRuns(inputs.runner, inputs.engineEnvironment)))
     return {
       ok: false,
       detail:
-        "The Google login works, but this machine has no uv to run the Google tools. Run `eva setup` on the machine: it installs uv.",
+        "The Google login works, but this machine has no uv to run the Google tools. Press Install uv on the Google card in Settings.",
     };
   return { ok: true, detail: inputs.redact(result.detail) };
+}
+
+/** True when a chat can start the Google tools: its engine runs them with `uvx`. */
+export async function uvRuns(
+  runner: ProcessRunner,
+  engineEnvironment: Readonly<Record<string, string>>,
+): Promise<boolean> {
+  try {
+    const result = await runner.run(["uvx", "--version"], {
+      cwd: process.cwd(),
+      environment: engineEnvironment,
+      timeoutMs: checkTimeoutMs,
+    });
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
 }

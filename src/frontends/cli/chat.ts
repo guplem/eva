@@ -77,7 +77,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
   const readLineOrClose = (): Promise<string | null> => Promise.race([options.readLine(), closed]);
   const waiting: Extract<SessionEvent, { kind: "approval_needed" }>[] = [];
   /** The requests that another front end answered, so the terminal stops asking about them. */
-  const resolved = new Set<string>();
+  const resolved = new Map<string, Extract<SessionEvent, { kind: "approval_resolved" }>>();
   const print = createEventPrinter();
   socket.addEventListener("message", (message) => {
     const event = JSON.parse(String(message.data)) as SessionEvent;
@@ -85,7 +85,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
     const text = print(event);
     if (text !== null) options.write(text);
     if (event.kind === "approval_needed") waiting.push(event);
-    if (event.kind === "approval_resolved") resolved.add(event.requestId);
+    if (event.kind === "approval_resolved") resolved.set(event.requestId, event);
     const answered =
       event.kind === "approval_resolved" ? waiting.findIndex((asked) => asked.requestId === event.requestId) : -1;
     if (answered !== -1) waiting.splice(answered, 1);
@@ -128,7 +128,8 @@ export async function runChat(options: ChatOptions): Promise<void> {
             : await readQuestionAnswers(asked.questions, readLineOrClose, options.write, isOpen);
         if (streamIsClosed()) break;
         if (body === null) {
-          options.write("  (Answered elsewhere.)\n");
+          const timedOut = resolved.get(asked.requestId)?.timedOut === true;
+          options.write(timedOut ? "  (Not answered in time.)\n" : "  (Answered elsewhere.)\n");
           continue;
         }
         await fetch(`${options.baseUrl}/api/approvals/${encodeURIComponent(asked.requestId)}`, {

@@ -96,7 +96,7 @@ function fakeLocalApi(handlers: {
   onMessage?: (sockets: readonly FakeSocket[]) => void;
   /** An answer to an approval, with its body. */
   onApproval?: (sockets: readonly FakeSocket[], body: unknown) => void;
-}): { url: string; paths: string[]; stop: () => Promise<void> } {
+}): { url: string; paths: string[]; send: (text: string) => void; stop: () => Promise<void> } {
   const sockets: FakeSocket[] = [];
   const paths: string[] = [];
   const server = Bun.serve({
@@ -119,7 +119,14 @@ function fakeLocalApi(handlers: {
       message: () => undefined,
     },
   });
-  return { url: `http://127.0.0.1:${String(server.port)}`, paths, stop: () => server.stop(true) };
+  return {
+    url: `http://127.0.0.1:${String(server.port)}`,
+    paths,
+    send: (text) => {
+      for (const socket of sockets) socket.send(text);
+    },
+    stop: () => server.stop(true),
+  };
 }
 
 /** Runs a chat with these lines, then a person who types nothing more. Returns what it threw. */
@@ -339,54 +346,61 @@ describe("the model's questions (#544)", () => {
     }
   });
 
-  test("a question answered elsewhere while the terminal waits sends no answer from here", async () => {
-    const paths: string[] = [];
-    const event = (payload: Record<string, unknown>, seqNumber: number): string =>
-      JSON.stringify({ ...payload, sessionId: "s1", seq: seqNumber, at: "2026-10-20T10:00:00.000Z" });
-    const api = fakeLocalApi({
-      onMessage: (sockets) => {
-        for (const socket of sockets) {
-          socket.send(
-            event(
-              {
-                kind: "approval_needed",
-                requestId: "r1",
-                toolName: "AskUserQuestion",
-                summary: "Which format?",
-                questions: [single],
-              },
-              1,
-            ),
-          );
-          // The web app answers while the terminal waits for a line.
-          setTimeout(() => {
-            socket.send(event({ kind: "approval_resolved", requestId: "r1", answer: "allow", timedOut: false }, 2));
-            socket.send(event(finished, 3));
-          }, 30);
-        }
-      },
-      onApproval: () => paths.push("answered"),
-    });
-    const written: string[] = [];
-    try {
-      const lines = ["plan it", "2", "/exit"];
-      await runChat({
-        baseUrl: api.url,
-        token: "token",
-        mode: "assistant",
-        model: "default",
-        // Each line after the first comes late, as a person types.
-        readLine: async () => {
-          const line = lines.shift() ?? null;
-          if (line !== "plan it") await Bun.sleep(100);
-          return line;
+  for (const timedOut of [false, true]) {
+    test(`a question that ends elsewhere while the terminal waits sends no answer from here (timed out: ${String(timedOut)})`, async () => {
+      const paths: string[] = [];
+      const event = (payload: Record<string, unknown>, seqNumber: number): string =>
+        JSON.stringify({ ...payload, sessionId: "s1", seq: seqNumber, at: "2026-10-20T10:00:00.000Z" });
+      const api = fakeLocalApi({
+        onMessage: (sockets) => {
+          for (const socket of sockets) {
+            socket.send(
+              event(
+                {
+                  kind: "approval_needed",
+                  requestId: "r1",
+                  toolName: "AskUserQuestion",
+                  summary: "Which format?",
+                  questions: [single],
+                },
+                1,
+              ),
+            );
+          }
         },
-        write: (text) => written.push(text),
+        onApproval: () => paths.push("answered"),
       });
-      expect(paths).toEqual([]);
-      expect(written.join("")).toContain("(Answered elsewhere.)");
-    } finally {
-      await api.stop();
-    }
-  });
+      // No timers: each step waits for the one before it, so a slow machine keeps the order.
+      let typed: (line: string) => void = () => undefined;
+      const answerLine = new Promise<string>((resolve) => (typed = resolve));
+      const written: string[] = [];
+      const lines: (string | Promise<string>)[] = ["plan it", answerLine, "/exit"];
+      try {
+        await runChat({
+          baseUrl: api.url,
+          token: "token",
+          mode: "assistant",
+          model: "default",
+          readLine: () => Promise.resolve(lines.shift() ?? null),
+          write: (text) => {
+            written.push(text);
+            // The terminal asks: the web app answers now, while the terminal waits for a line.
+            if (text.startsWith("  Answer")) {
+              api.send(
+                event({ kind: "approval_resolved", requestId: "r1", answer: timedOut ? "deny" : "allow", timedOut }, 2),
+              );
+              api.send(event({ kind: "notice", text: "answered" }, 3));
+              api.send(event(finished, 4));
+            }
+            // The notice prints after the answer from elsewhere, so the terminal knows of it. Then the person types.
+            if (text === "  (answered)\n") typed("2");
+          },
+        });
+        expect(paths).toEqual([]);
+        expect(written.join("")).toContain(timedOut ? "(Not answered in time.)" : "(Answered elsewhere.)");
+      } finally {
+        await api.stop();
+      }
+    });
+  }
 });

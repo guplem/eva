@@ -6,9 +6,10 @@
 import { useLayoutEffect, useState, type ReactElement } from "react";
 import type { ApprovalQuestion, QuestionAnswers } from "../../../shared/events.ts";
 import type { PendingApproval } from "./api.ts";
-import { approvalTitle, pickOption, questionAnswers, type QuestionDraft } from "./approvals.ts";
+import { pickOption } from "../../../shared/questions.ts";
+import { approvalTitle, questionAnswers, type QuestionDraft } from "./approvals.ts";
 import { Icon } from "./icons.tsx";
-import { ButtonSpinner } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
@@ -135,8 +136,14 @@ function QuestionForm({
     setDrafts((current) => current.map((draft, at) => (at === index ? { ...draft, ...next } : draft)));
   };
   const answers = questionAnswers(questions, drafts);
+  // A form, so Enter in an own-answer field sends the answers.
   return (
-    <>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (answers !== null && !answering) answer("allow", answers);
+      }}
+    >
       {questions.map((question, index) => {
         const draft = drafts[index] ?? { selected: [], other: "" };
         // The request id keeps two cards of one page from sharing a radio group.
@@ -154,8 +161,12 @@ function QuestionForm({
                   name={group}
                   checked={draft.selected.includes(optionIndex)}
                   disabled={answering}
+                  // A choice and own text never both show: only one of them would reach the model.
                   onChange={() =>
-                    change(index, { selected: pickOption(draft.selected, optionIndex, question.multiSelect) })
+                    change(index, {
+                      selected: pickOption(draft.selected, optionIndex, question.multiSelect),
+                      other: "",
+                    })
                   }
                 />
                 <span className="question-option-text">
@@ -165,33 +176,30 @@ function QuestionForm({
               </label>
             ))}
             <label className="field">
-              <span className="field-hint">Or write your own answer. It replaces the choice above.</span>
+              <span className="field-hint">Or write your own answer in place of a choice.</span>
               <input
                 type="text"
                 value={draft.other}
                 disabled={answering}
-                onChange={(event) => change(index, { other: event.target.value })}
+                onChange={(event) => {
+                  const other = event.target.value;
+                  change(index, other.trim() === "" ? { other } : { other, selected: [] });
+                }}
               />
             </label>
           </fieldset>
         );
       })}
       <div className="approval-actions">
-        <button
-          className="primary"
-          disabled={answering || answers === null}
-          aria-busy={answering}
-          onClick={() => {
-            if (answers !== null) answer("allow", answers);
-          }}
-        >
+        <button type="submit" className="primary" disabled={answering || answers === null} aria-busy={answering}>
           {answering ? <ButtonSpinner /> : <Icon name="check" />} Send answers
         </button>
-        <button className="ghost" disabled={answering} onClick={() => answer("deny")}>
+        <button type="button" className="ghost" disabled={answering} onClick={() => answer("deny")}>
           Skip
         </button>
       </div>
-    </>
+      {answering && <ProgressBar label="Eva sends your answers." />}
+    </form>
   );
 }
 

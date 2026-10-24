@@ -37,14 +37,6 @@ export interface QuestionDraft {
   readonly other: string;
 }
 
-/** A single choice replaces the last one. A multiple choice adds or removes the option. */
-export function pickOption(selected: readonly number[], option: number, multiSelect: boolean): number[] {
-  if (!multiSelect) return [option];
-  return selected.includes(option)
-    ? selected.filter((index) => index !== option)
-    : [...selected, option].sort((a, b) => a - b);
-}
-
 /** Null until each question has a choice or own text. Own text wins, as the core reads it. */
 export function questionAnswers(
   questions: readonly ApprovalQuestion[],

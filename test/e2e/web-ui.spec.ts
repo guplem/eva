@@ -910,9 +910,15 @@ test("the model's questions show as a form in the chat, and Send answers gives t
   await expect(send).toBeDisabled();
   await card.getByRole("checkbox", { name: "Journal" }).check();
   await card.getByRole("checkbox", { name: "Ideas" }).check();
-  await send.click();
+  await expect(send).toBeEnabled();
+  // Own text takes the place of the choice, so the screen never shows two answers.
+  const own = card.getByRole("textbox").first();
+  await own.fill("A short call");
+  await expect(card.getByRole("radio", { name: /A form with scores/ })).not.toBeChecked();
+  // Enter in an own-answer field sends the answers.
+  await own.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(
-    'The person answered: [{"selected":[1]},{"selected":[0,1]}]',
+    'The person answered: [{"selected":[],"other":"A short call"},{"selected":[0,1]}]',
   );
   await expect(card).toHaveCount(0);
 });

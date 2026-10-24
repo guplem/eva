@@ -114,7 +114,7 @@
 }
 
 .question-option input {
-  margin: 3px 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 .question-option-text {

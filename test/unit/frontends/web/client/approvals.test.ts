@@ -5,7 +5,6 @@ import {
   approvalTitle,
   approvalsOutside,
   pendingOf,
-  pickOption,
   questionAnswers,
 } from "../../../../../src/frontends/web/client/approvals.ts";
 import type { PendingApproval } from "../../../../../src/frontends/web/client/api.ts";
@@ -69,12 +68,6 @@ describe("the model's questions", () => {
     expect(approvalTitle("AskUserQuestion", [single, multi])).toBe("Eva has 2 questions");
     expect(approvalNoticeWords([single])).toBe("Eva has a question in");
     expect(approvalNoticeWords(undefined)).toBe("Eva needs your permission in");
-  });
-
-  test("a single choice replaces the last one; a multiple choice toggles", () => {
-    expect(pickOption([0], 1, false)).toEqual([1]);
-    expect(pickOption([0], 1, true)).toEqual([0, 1]);
-    expect(pickOption([0, 1], 0, true)).toEqual([1]);
   });
 
   test("the answers are ready only when each question has a choice or own text", () => {

@@ -1519,6 +1519,23 @@ describe("after a turn", () => {
     expect(logged.join("\n")).toContain("The work after a turn failed.");
   });
 
+  test("a good answer that cannot be saved is a failure: the result says so, and no follow-up starts", async () => {
+    followUps = ["continue the skill run"];
+    const engine = new FakeEngine((request) => {
+      const listPath = join(folder, "sessions.json");
+      rmSync(listPath, { force: true });
+      mkdirSync(listPath);
+      return FakeEngine.answer(request, "ok");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const failure = await manager.sendWithResult(sessionId, "Plan my day.", "schedule");
+    expect(failure).not.toBeNull();
+    expect(events.filter((event) => event.kind === "turn_failed")).toHaveLength(1);
+    expect(events.some((event) => event.kind === "turn_finished")).toBe(false);
+    expect(engine.requests).toHaveLength(1);
+  });
+
   test("an error after a turn is logged, and a message that waits still gets its turn", async () => {
     let release = (): void => undefined;
     const released = new Promise<void>((resolve) => {

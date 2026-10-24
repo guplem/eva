@@ -824,7 +824,6 @@ ${prompt}`,
         steps = addStep(steps, payload);
         this.turnSteps.set(sessionId, steps);
         if (payload.kind === "turn_finished") {
-          finished = payload;
           const recorded = {
             userText: this.options.redactor.redact(prompt),
             answerText: answerParts.join("\n\n"),
@@ -843,6 +842,8 @@ ${prompt}`,
             payload,
             lastText,
           );
+          // Only after the record: a save that throws makes the turn fail, and the front ends see turn_failed.
+          finished = payload;
           if (firstLineTitle !== null) {
             this.nameInBackground(sessionId, firstLineTitle, {
               engine: session.engine,

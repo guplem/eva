@@ -18,6 +18,7 @@ import { api } from "./api.ts";
 import { LoggedIn } from "./LoggedIn.tsx";
 import { restartNote } from "./notes.ts";
 import { stepMark } from "./setup-summary.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import {
   Card,
   CheckRow,
@@ -38,6 +39,8 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
   const [address, setAddress] = useState("");
   // One request at a time: a double tap would start a second login and end the first one.
   const [busy, setBusy] = useState(false);
+  // Finish ends a login, so the question offers no save. While it runs, the guard waits.
+  useLeaveGuard(address.trim() !== "" && !busy, null);
   const steps = googleSetupSteps(google.services);
   const [loggingInAgain, setLoggingInAgain] = useState(false);
   const step = context.setup?.progress.find((each) => each.key === "google");

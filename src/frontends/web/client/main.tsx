@@ -3,7 +3,9 @@ import { api } from "./api.ts";
 import { App } from "./App.tsx";
 import { applyAppearance, readAppearance } from "./appearance.ts";
 import { startCues } from "./cues.ts";
+import { watchLeaving } from "./leave-guard.ts";
 import { logInWithLink, loginLinkOf } from "./login-link.ts";
+import { sameSettingsPage } from "./settings-routes.ts";
 
 // Before the first render, so the page never flashes the other theme.
 applyAppearance(readAppearance());
@@ -12,6 +14,9 @@ startCues();
 const link = loginLinkOf(window.location.hash);
 // Out of the address at once, so the history, a bookmark or a shared address never keeps the secret.
 if (link !== null) window.history.replaceState(null, "", link.address);
+// After the address is clean, so the place of the first entry stays. Before the first render,
+// so its listener runs before the listeners of the views.
+watchLeaving(window, (oldURL, newURL) => sameSettingsPage(new URL(oldURL).hash, new URL(newURL).hash));
 const loginNotice =
   link === null
     ? Promise.resolve(null)

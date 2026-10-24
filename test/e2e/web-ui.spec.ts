@@ -643,6 +643,14 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   await page.getByLabel("Chat title").fill("Draft");
   await page.getByLabel("Chat title").press("Escape");
+  // A changed title asks first. Escape closes only the question, so the rename stays open.
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await expect(question).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(question).toHaveCount(0);
+  await expect(page.getByLabel("Chat title")).toHaveValue("Draft");
+  await page.getByLabel("Chat title").press("Escape");
+  await question.getByRole("button", { name: "Discard and close" }).click();
   await expect(rename).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
 
@@ -1905,6 +1913,11 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await results.getByRole("button", { name: /Appearance/ }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Personalize");
   await expect(page.getByLabel("Theme")).toBeVisible();
+  // A result for the page that is open fires no address change, but still closes the search.
+  await page.getByLabel("Search settings").fill("dark theme");
+  await results.getByRole("button", { name: /Appearance/ }).click();
+  await expect(results).toHaveCount(0);
+  await expect(page.getByLabel("Theme")).toBeVisible();
   await page.getByLabel("Search settings").fill("banana");
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
@@ -2968,7 +2981,8 @@ test("Settings: the vault step lists the repositories and clones the picked one,
   expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
   // The other path stays off after a clone, so a second click never starts a second vault.
   await page.getByRole("button", { name: "Start a new vault" }).click();
-  await expect(page.getByLabel("Your vault's repository")).toHaveCount(0);
+  // The other path is hidden, not closed, so its typed answers stay.
+  await expect(page.getByLabel("Your vault's repository")).toBeHidden();
   await expect(page.getByRole("button", { name: "Create a new vault" })).toBeDisabled();
 });
 
@@ -3921,7 +3935,12 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   // The whole file waits while the form has a change, and the form waits for the whole file.
   await file.fill(`${await file.inputValue()}\nDraft line.\n`);
   await expect(page.getByRole("button", { name: "Save details" })).toBeDisabled();
+  // Load again would replace the change, so it asks first.
   await page.getByRole("button", { name: "Load again" }).click();
+  await page
+    .getByRole("dialog", { name: "Unsaved changes" })
+    .getByRole("button", { name: "Discard and load again" })
+    .click();
   await expect(file).not.toHaveValue(/Draft line/);
 
   // Another device saves meanwhile: this page's save is refused, and says so.
@@ -3939,6 +3958,10 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await page.getByRole("button", { name: "Save details" }).click();
   await expect(page.getByRole("alert")).toContainText("The file changed since you opened it");
   await page.getByRole("button", { name: "Load again" }).click();
+  await page
+    .getByRole("dialog", { name: "Unsaved changes" })
+    .getByRole("button", { name: "Discard and load again" })
+    .click();
   await expect(file).toHaveValue(/From another device/);
   await expect(page.getByLabel("Title")).toHaveValue(`Renamed ${run}`);
 
@@ -3949,6 +3972,107 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await page.getByRole("button", { name: "Back", exact: true }).click();
   if (run === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
   await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
+});
+
+test("a page with unsaved changes asks to save or discard them before the person leaves", async ({ page }) => {
+  const run = test.info().project.name;
+  const dialog = page.getByRole("dialog", { name: "Unsaved changes" });
+  const mainNav = page.getByRole("navigation", { name: "Main" });
+  await logIn(page);
+  await openExampleApp(page);
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  const title = page.getByLabel("Title");
+  await title.fill(`Unsaved ${run}`);
+  await title.blur();
+
+  // Back inside the page asks, and Stay keeps the change.
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Stay" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(title).toHaveValue(`Unsaved ${run}`);
+
+  // The browser's back button asks too, and the address stays until the answer. Stay gives the focus back.
+  await title.focus();
+  await page.goBack();
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/#\/projects$/);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(title).toHaveValue(`Unsaved ${run}`);
+  await expect(title).toBeFocused();
+  await title.blur();
+
+  // The main navigation asks too. Stay keeps one history entry for the page.
+  await mainNav.getByRole("button", { name: /^Files/ }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Stay" }).click();
+  await expect(page).toHaveURL(/#\/projects$/);
+  // So Back asks again, and Discard goes to the page before, with no save.
+  await page.goBack();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Discard and leave" }).click();
+  await expect(page).not.toHaveURL(/#\/projects$/);
+  await openExampleApp(page);
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  await expect(page.getByLabel("Title")).toHaveValue("Example app");
+
+  // Save saves first, then leaves.
+  await openSettings(page, "AI engines");
+  const model = page.getByLabel(/^pi model/);
+  await model.fill("openai/e2e-model");
+  await model.blur();
+  // A search hides the section but keeps its typed values.
+  await page.getByLabel("Search settings").fill("model");
+  await page.getByLabel("Search settings").fill("");
+  await expect(model).toHaveValue("openai/e2e-model");
+  await mainNav.getByRole("button", { name: /^Files/ }).click();
+  await dialog.getByRole("button", { name: "Save and leave" }).click();
+  await expect(page).toHaveURL(/#\/files$/);
+  await openSettings(page, "AI engines");
+  await expect(model).toHaveValue("openai/e2e-model");
+  await model.fill("");
+  await page.getByRole("button", { name: "Save the model" }).click();
+  await expect(page.getByRole("button", { name: "Save the model" })).toBeDisabled();
+});
+
+test("a dialog with typed text asks before it closes, and a create offers no save", async ({ page }) => {
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const sheet = page.getByRole("dialog", { name: "New project" });
+  await sheet.getByLabel("Name").fill("Half typed");
+
+  // Create would make the project, so the question offers only Discard and Stay.
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  await expect(question).toBeVisible();
+  await expect(question.getByRole("heading")).toHaveText("Discard your changes?");
+  await expect(question.getByRole("button", { name: /^Save/ })).toHaveCount(0);
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
+
+  // The back button under the dialog asks about leaving the page.
+  await page.goBack();
+  await expect(question.getByRole("button", { name: "Discard and leave" })).toBeVisible();
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
+
+  // Escape asks too, and closes only the question on top.
+  await sheet.getByLabel("Name").press("Escape");
+  await expect(question).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(question).toHaveCount(0);
+  await expect(sheet).toBeVisible();
+  await sheet.getByLabel("Name").press("Escape");
+  await question.getByRole("button", { name: "Discard and close" }).click();
+  await expect(sheet).toHaveCount(0);
+
+  // An empty form closes at once.
+  await page.getByRole("button", { name: "New project" }).click();
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(question).toHaveCount(0);
 });
 
 test("Settings: Google sets up from the page, with a pasted login and a Test", async ({ page }) => {
@@ -4594,6 +4718,13 @@ test("Files: the person renames a note, and its new address opens it (issue 343)
   await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
   await page.getByRole("button", { name: `Rename ${run}-draft.md` }).click();
   const field = page.getByRole("textbox", { name: `New name of ${run}-draft.md` });
+  // Escape with a changed name asks first, and the question stays open.
+  await field.fill(`${run}-other.md`);
+  await field.press("Escape");
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await expect(question.getByRole("button", { name: "Discard and close" })).toBeVisible();
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(field).toHaveValue(`${run}-other.md`);
   await field.fill("bad:name.md");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("A name cannot hold these characters")).toBeVisible();

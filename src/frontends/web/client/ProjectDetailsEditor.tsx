@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, ApiError, type ProjectDetails, type ProjectFile } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { BackButton } from "./ProjectPage.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
@@ -67,12 +68,22 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
     void load();
   }, [load]);
 
+  const loaded = "version" in file ? file : null;
+  const formChanged =
+    loaded !== null &&
+    loaded.details !== null &&
+    (!sameDetails(details, loaded.details) || tagDraft.trim() !== "" || repoDraft.trim() !== "");
+  const textChanged = loaded !== null && text !== loaded.text;
+  /** The save of the part with a change. A hook cannot wait for the load, so the render below sets it. */
+  let saveChanges = (): Promise<boolean> => Promise.resolve(false);
+  const askFirst = useLeaveGuard(formChanged || textChanged, () => saveChanges());
+
   const loading = !("version" in file) && file.state === "loading";
   const header = (title: string): ReactElement => (
     <div className="main-header">
       <BackButton label="Back" onClick={onBack} />
       <h1>{title} · Details</h1>
-      <button className="outline" onClick={() => void load()} disabled={busy || loading}>
+      <button className="outline" onClick={() => askFirst(() => void load(), "load again")} disabled={busy || loading}>
         <Icon name="restart" />
         Load again
       </button>
@@ -97,10 +108,6 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
       </>
     );
   }
-
-  const formChanged =
-    file.details !== null && (!sameDetails(details, file.details) || tagDraft.trim() !== "" || repoDraft.trim() !== "");
-  const textChanged = text !== file.text;
 
   const save = async (write: (version: string) => Promise<ProjectFile>): Promise<boolean> => {
     setProblem(null);
@@ -135,6 +142,10 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
         repos: [...details.repos, ...splitWords(repoDraft)],
       }),
     );
+
+  const saveFile = (): Promise<boolean> => save((version) => api.saveProjectFile(projectId, version, text));
+  // Only one part can have a change: the other part waits for it.
+  saveChanges = () => (formChanged ? saveDetails() : saveFile());
 
   /** Each edit makes an old "Saved." untrue. */
   const edit = (change: () => void): void => {
@@ -222,9 +233,7 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
             </label>
             {formChanged && <div className="field-hint">The file waits until you save or load again the details.</div>}
             <div className="button-row">
-              <SaveButton onSave={() => save((version) => api.saveProjectFile(projectId, version, text))}>
-                Save the file
-              </SaveButton>
+              <SaveButton onSave={saveFile}>Save the file</SaveButton>
             </div>
           </fieldset>
         </Card>

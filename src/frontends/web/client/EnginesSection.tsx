@@ -1,6 +1,7 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
 import { useState, type ReactElement, type ReactNode } from "react";
 import { api, type PublicSettings } from "./api.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { PermissionsCard } from "./PermissionsCard.tsx";
@@ -187,6 +188,8 @@ function ClaudeLoginSteps({
   const [busy, setBusy] = useState(false);
   const [starting, setStarting] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  // Finish ends a login, so the question offers no save. While it runs, the guard waits.
+  useLeaveGuard(code.trim() !== "" && !busy, null);
 
   const start = async (): Promise<void> => {
     setBusy(true);
@@ -287,6 +290,8 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
     const trimmed = model.trim();
     return context.saveNow({ engines: { pi: { models: { default: trimmed === "" ? null : trimmed } } } });
   };
+  // The save trims, so a space at the end is no change.
+  useLeaveGuard(model.trim() !== initial, save);
   return (
     <Card item="pi" title="pi" description="pi runs models of other providers, such as OpenAI. It is optional.">
       <div className="callout">

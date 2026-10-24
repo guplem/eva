@@ -5,6 +5,7 @@
 import { useState, type ReactElement } from "react";
 import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { TemplateAlignmentCard } from "./TemplateAlignmentCard.tsx";
@@ -95,6 +96,8 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
     }
     return context.saveNow({ sync: { sweepSeconds: seconds } });
   };
+  // The save stores a number, so "060" after a save of 60 is no change.
+  useLeaveGuard(Number(sweepSeconds) !== config.sync.sweepSeconds, saveInterval);
 
   return (
     <Card item="vault-sync" title="Sync" description="Eva saves your notes and fetches the changes of other machines.">
@@ -150,15 +153,14 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
 function ProjectFoldersCard({ context }: { readonly context: SettingsContext }): ReactElement {
   const savedRoots = context.settings.config.projectRoots.join("\n");
   const [projectRoots, setProjectRoots] = useState(savedRoots);
+  const roots = projectRoots
+    .split("\n")
+    .map((root) => root.trim())
+    .filter((root) => root.length > 0);
 
-  const save = async (): Promise<void> => {
-    await context.saveNow({
-      projectRoots: projectRoots
-        .split("\n")
-        .map((root) => root.trim())
-        .filter((root) => root.length > 0),
-    });
-  };
+  const save = (): Promise<boolean> => context.saveNow({ projectRoots: roots });
+  // The save drops empty lines and spaces, so they are no change.
+  useLeaveGuard(roots.join("\n") !== savedRoots, save);
 
   return (
     <Card
@@ -171,7 +173,7 @@ function ProjectFoldersCard({ context }: { readonly context: SettingsContext }):
         <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
       </label>
       <div className="save-bar">
-        <button className="primary" disabled={projectRoots === savedRoots} onClick={() => void save()}>
+        <button className="primary" disabled={roots.join("\n") === savedRoots} onClick={() => void save()}>
           Save the folders
         </button>
       </div>

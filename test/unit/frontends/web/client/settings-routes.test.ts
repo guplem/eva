@@ -5,6 +5,7 @@ import {
   isSettingsHash,
   parentRoute,
   parseSettingsHash,
+  sameSettingsPage,
   searchEntries,
   searchSettings,
   sectionOfStep,
@@ -14,6 +15,26 @@ import {
   settingPlaces,
 } from "../../../../../src/frontends/web/client/settings-routes.ts";
 import { isSettingKey, sharedSettingKeys } from "../../../../../src/core/settings/settings.ts";
+
+describe("sameSettingsPage", () => {
+  test("a link to a card keeps the section's page", () => {
+    expect(sameSettingsPage("#/settings/engines", "#/settings/engines/pi")).toBe(true);
+    expect(sameSettingsPage("#/settings/vault/vault-sync", "#/settings/vault")).toBe(true);
+  });
+
+  test("another section, the home or another destination is another page", () => {
+    expect(sameSettingsPage("#/settings/engines", "#/settings/vault")).toBe(false);
+    expect(sameSettingsPage("#/settings", "#/settings")).toBe(false);
+    expect(sameSettingsPage("#/settings/engines", "#/chats")).toBe(false);
+    expect(sameSettingsPage("#/projects", "#/projects")).toBe(false);
+  });
+
+  test("each setup step and the design reference are pages of their own", () => {
+    expect(sameSettingsPage("#/settings/setup", "#/settings/setup/github")).toBe(false);
+    expect(sameSettingsPage("#/settings/setup/github", "#/settings/setup/github")).toBe(true);
+    expect(sameSettingsPage("#/settings/developer", `#/settings/developer/${designReferenceItem}`)).toBe(false);
+  });
+});
 
 describe("settings addresses", () => {
   test("the home, a section and a step go to an address and back", () => {

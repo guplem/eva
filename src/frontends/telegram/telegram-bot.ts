@@ -38,7 +38,13 @@ import {
   type TelegramUpdate,
 } from "./telegram-messages.ts";
 import { PollHealth, sleepUntilAborted, type TelegramPollState } from "./telegram-poll.ts";
-import { isTopicNotModified, messageLimit, TelegramSender, telegramMessageLimit } from "./telegram-sender.ts";
+import {
+  isTopicNotModified,
+  messageLimit,
+  noRepeatPolicy,
+  TelegramSender,
+  telegramMessageLimit,
+} from "./telegram-sender.ts";
 import { isScheduleTopic, loadBotState, saveBotState, targetOf, type BotState } from "./telegram-state.ts";
 import { TelegramChats } from "./telegram-chats.ts";
 import { TelegramConflicts } from "./telegram-conflicts.ts";
@@ -618,10 +624,14 @@ export class TelegramBot {
   private async openChat(chatId: number): Promise<void> {
     let topicId: number | null = null;
     try {
-      const topic = await this.sender.callWithRetry<{ message_thread_id: number }>("createForumTopic", {
-        chat_id: chatId,
-        name: "New chat",
-      });
+      const topic = await this.sender.callWithRetry<{ message_thread_id: number }>(
+        "createForumTopic",
+        {
+          chat_id: chatId,
+          name: "New chat",
+        },
+        noRepeatPolicy,
+      );
       topicId = topic.message_thread_id;
     } catch (error) {
       // Only a 400 means "no topics" (lesson 61); a short Telegram problem must not reset the main chat.

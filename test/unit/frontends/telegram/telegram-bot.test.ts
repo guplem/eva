@@ -711,6 +711,28 @@ describe("topics", () => {
     await settle(bot, () => telegram.sentTexts().includes("answer 2"));
   });
 
+  test("/new never opens a topic twice after a network error, since the first create may have worked", async () => {
+    const http = new HttpTelegramApi({ token: telegram.token, baseUrl: telegram.baseUrl });
+    let creates = 0;
+    const slow: TelegramApi = {
+      call: <Result>(method: string, params?: Readonly<Record<string, unknown>>): Promise<Result> => {
+        if (method === "createForumTopic") {
+          creates += 1;
+          return Promise.reject(new TelegramError(method, 0, "The operation timed out."));
+        }
+        return http.call<Result>(method, params);
+      },
+      upload: (method, params, file) => http.upload(method, params, file),
+      download: (filePath) => http.download(filePath),
+    };
+    const bot = createBot(owner, { api: slow });
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    expect(creates).toBe(1);
+    expect(sleeps).toEqual([]);
+    expect(eva.sessions.list()).toEqual([]);
+  });
+
   test("/new retries a topic that Telegram rate-limits", async () => {
     const bot = createBot();
     telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 3", 1, 3);

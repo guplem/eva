@@ -22,7 +22,15 @@ const quietWaitBudgetMs = 30_000;
 interface RetryPolicy {
   /** The longest total wait across all retries of the call. */
   readonly waitBudgetMs: number;
+  /**
+   * False for a call that is not safe to repeat. A timeout is a network error too, and the
+   * call may have worked: a second createForumTopic opens a second topic.
+   */
+  readonly retryNetworkErrors?: boolean;
 }
+
+/** For a call that must not run twice, such as createForumTopic: only a 429 goes again. */
+export const noRepeatPolicy: RetryPolicy = { waitBudgetMs: sendWaitBudgetMs, retryNetworkErrors: false };
 
 export interface TelegramSenderOptions {
   readonly api: TelegramApi;
@@ -108,7 +116,7 @@ export class TelegramSender {
       try {
         return await this.options.api.call<Result>(method, params);
       } catch (error) {
-        const waitMs = sendRetryMs(error, retry);
+        const waitMs = sendRetryMs(error, retry, policy);
         if (waitMs === null || retry >= sendRetries || waitedMs + waitMs > policy.waitBudgetMs) throw error;
         waitedMs += waitMs;
         await this.options.sleep(waitMs);
@@ -125,10 +133,10 @@ export class TelegramSender {
  * The wait before a retry of a sending call, or null when a retry cannot help. A 429 waits what
  * Telegram asks for. A network error (code 0) waits 1, 2, then 4 seconds.
  */
-function sendRetryMs(error: unknown, retry: number): number | null {
+function sendRetryMs(error: unknown, retry: number, policy: RetryPolicy): number | null {
   if (!(error instanceof TelegramError)) return null;
   if (error.code === 429) return (error.retryAfterSeconds ?? 1) * 1_000;
-  if (error.code === 0) return firstRetryMs * 2 ** retry;
+  if (error.code === 0 && policy.retryNetworkErrors !== false) return firstRetryMs * 2 ** retry;
   return null;
 }
 

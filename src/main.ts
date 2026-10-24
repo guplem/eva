@@ -29,7 +29,7 @@ import { evaCommand, remoteAccessWatcher, withLinePrompt, writeLine, type CliHos
 import { updateChannel } from "./frontends/cli/local-commands.ts";
 import { restartMethodNow } from "./frontends/cli/service.ts";
 import { HubTelegram, startTelegram } from "./frontends/telegram/telegram-start.ts";
-import type { EnginePort } from "./shared/engine-port.ts";
+import type { EngineName, EnginePort } from "./shared/engine-port.ts";
 import { FileLogger, type Logger } from "./shared/logger.ts";
 import { systemLongProcessStarter } from "./shared/long-process.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
@@ -79,6 +79,22 @@ const host: CliHost = {
   },
 };
 
+/** The engine's program: the one that the settings name, or one found on the disk now. */
+function locateEngine(config: EvaConfig, engine: EngineName): string | null {
+  const configured = engine === "claude-code" ? config.engines.claudeCode.executable : config.engines.pi.executable;
+  // A service keeps the PATH from its install, which can lack the folder of a later engine install.
+  return (
+    configured ??
+    locateEngineProgram(engine, {
+      platform: host.platform,
+      homeFolder: host.userHome,
+      environment: host.environment,
+      which: (name: string) => Bun.which(name),
+      exists: existsSync,
+    })
+  );
+}
+
 /** Only this file may name an engine adapter. Also gives the claude program, for the engine update. */
 function createEngines(
   config: EvaConfig,
@@ -86,22 +102,14 @@ function createEngines(
   logger: Logger,
 ): { engines: EnginePort[]; claudeExecutable: string | null } {
   const engines: EnginePort[] = [];
-  // A service keeps the PATH from its install, which can lack the folder of a later engine install.
-  const places = {
-    platform: host.platform,
-    homeFolder: host.userHome,
-    environment: host.environment,
-    which: (name: string) => Bun.which(name),
-    exists: existsSync,
-  };
-  const claudeExecutable = config.engines.claudeCode.executable ?? locateEngineProgram("claude-code", places);
+  const claudeExecutable = locateEngine(config, "claude-code");
   if (claudeExecutable === null)
     logger.log("warn", "No claude program found; Claude Code chats will fail. Run `eva doctor`.");
   else
     engines.push(
       new ClaudeCodeEngine({ executable: claudeExecutable, permissionMode: config.engines.claudeCode.permissionMode }),
     );
-  const piExecutable = config.engines.pi.executable ?? locateEngineProgram("pi", places);
+  const piExecutable = locateEngine(config, "pi");
   if (piExecutable !== null) {
     engines.push(
       new PiEngine({
@@ -197,6 +205,7 @@ async function serve(paths: HomePaths): Promise<number> {
       stop(exitCodes.update);
     },
     claudeExecutable,
+    locateEngine: (engine) => locateEngine(config, engine),
     remoteAccess,
     toolPlaces: { platform: host.platform, userHome: host.userHome, standalone: host.standalone },
   });
@@ -237,6 +246,7 @@ async function serve(paths: HomePaths): Promise<number> {
   // After the bot starts, so that the alert reaches Telegram too.
   if (startedAfterUncleanExit) eva.reportUncleanExit();
   eva.reportStartMigrations(migrations);
+  eva.noticeDefaultEngine();
   const stopEva = stopSequence({
     stopParts: async () => {
       remoteAccess?.stop();

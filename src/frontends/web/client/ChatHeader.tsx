@@ -3,7 +3,7 @@
  * Chat info, Archive and Delete chat. Rename and Delete chat ask in a dialog. One row leaves the chat its height. A computer also has a button that
  * hides or shows the chat details column. On a phone, a tap on the title opens the chat details.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { api, type SessionRecord } from "./api.ts";
 import { chatStateLabels, type ChatState } from "./chat-list.ts";
 import { ChatInfoSheet, chatPanelId, type ChatProps } from "./ChatPanel.tsx";
@@ -11,7 +11,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { ShowListButton } from "./MainNav.tsx";
-import { MenuList, useDismissOutside, type MenuItem } from "./Menu.tsx";
+import { MoreMenu, type MenuItem } from "./Menu.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 /** A header action that a list asks for, such as Rename from the context menu of a chat in the list. */
@@ -190,7 +190,7 @@ export function ChatHeader({
           <Icon name="panel" />
         </button>
       )}
-      <MoreMenu items={items} toggle={moreButton} />
+      <MoreMenu items={items} label="Chat actions" toggle={moreButton} />
       {renaming && (
         <RenameDialog
           chat={chat}
@@ -359,40 +359,6 @@ export function DeleteQuestion({
         </div>
         {deleting && <ProgressBar label={fork === false ? "Eva deletes the chat." : "Eva deletes the fork."} />}
       </div>
-    </div>
-  );
-}
-
-/** The less common actions of a chat. Escape or a tap outside closes it; the arrow keys move between the items. */
-function MoreMenu({
-  items,
-  toggle,
-}: {
-  readonly items: readonly MenuItem[];
-  readonly toggle: RefObject<HTMLButtonElement | null>;
-}): ReactElement {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const close = (refocus: boolean): void => {
-    setOpen(false);
-    if (refocus) toggle.current?.focus();
-  };
-  useDismissOutside(open, root, close);
-
-  return (
-    <div className="more-picker" ref={root}>
-      <button
-        ref={toggle}
-        className="icon-button"
-        aria-label="More actions"
-        data-tooltip="More actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((isOpen) => !isOpen)}
-      >
-        <Icon name="more" />
-      </button>
-      {open && <MenuList items={items} label="Chat actions" className="more-menu" onClose={close} />}
     </div>
   );
 }

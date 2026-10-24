@@ -99,6 +99,46 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
   );
 }
 
+/** The less common actions of a part of the page. Escape or a tap outside closes it; the arrow keys move between the items. */
+export function MoreMenu({
+  items,
+  label,
+  toggle,
+}: {
+  readonly items: readonly MenuItem[];
+  /** The name that a screen reader reads for the open menu, such as "Chat actions". */
+  readonly label: string;
+  /** A caller that moves the focus back to the button after a dialog passes its own ref. */
+  readonly toggle?: RefObject<HTMLButtonElement | null>;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const own = useRef<HTMLButtonElement>(null);
+  const button = toggle ?? own;
+  const close = (refocus: boolean): void => {
+    setOpen(false);
+    if (refocus) button.current?.focus();
+  };
+  useDismissOutside(open, root, close);
+
+  return (
+    <div className="more-picker" ref={root}>
+      <button
+        ref={button}
+        className="icon-button"
+        aria-label="More actions"
+        data-tooltip="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((isOpen) => !isOpen)}
+      >
+        <Icon name="more" />
+      </button>
+      {open && <MenuList items={items} label={label} className="more-menu" onClose={close} />}
+    </div>
+  );
+}
+
 /** Calls `onDismiss` on a press outside `root` or on Escape, for as long as `open` is true. */
 export function useDismissOutside(
   open: boolean,

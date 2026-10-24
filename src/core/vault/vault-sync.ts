@@ -3,13 +3,28 @@
  * Assistant turn, commit and push after it, and an idle sweep. Nothing here ever
  * discards a change; a conflict stops the pushes and asks a person.
  */
-import { existsSync, lstatSync, readFileSync, rmSync, statSync } from "node:fs";
-import { join, posix } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { join, posix, sep } from "node:path";
 import type { Logger } from "../../shared/logger.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
-import { isEvaError } from "../../shared/errors.ts";
+import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { scratchFolderName } from "../files/vault-files.ts";
+import {
+  changedLeftOut,
+  parseDiffTree,
+  parseSnapshotCommit,
+  planUndo,
+  previewOf,
+  sessionRefPrefix,
+  snapshotMessage,
+  unreadableOid,
+  type AnswerChanges,
+  type LeftOutFile,
+  type UndoAnswer,
+  type UndoPlan,
+  type UndoPreview,
+} from "./vault-snapshots.ts";
 
 export type VaultSyncStatus = "ok" | "offline" | "conflict" | "error" | "skipped";
 
@@ -104,6 +119,8 @@ const staleIndexLockMs = 30 * 60_000;
  * --pathspec-file-nul, git reads each path as it is, with no quoting.
  */
 const pathsOnStdin: readonly string[] = ["--pathspec-from-file=-", "--pathspec-file-nul"];
+/** A snapshot lists at most this many Scratch files: the folder is for files of a chat, and Eva empties it each week. */
+const maxScratchFiles = 1_000;
 
 interface GitResult {
   readonly exitCode: number;
@@ -215,6 +232,190 @@ export class VaultSync {
       }));
       return { state: this.state, conflicts, found };
     });
+  }
+
+  /**
+   * Saves the files of the vault as a commit with no parent under `ref`, for the undo of a retry
+   * (#525). A temporary index builds the tree, so the real index never changes. Scratch and
+   * withheld files stay out, as in a commit; the message lists them. False when git failed.
+   */
+  snapshot(ref: string): Promise<boolean> {
+    return this.serialize(async () => {
+      const leftOut = new Map<string, LeftOutFile>();
+      const paths: string[] = [];
+      for (const { path } of await this.statusEntries()) {
+        // A folder entry is a repository inside the vault, which a commit does not take either.
+        if (path.endsWith("/")) continue;
+        if (!this.isScratchFile(path) && this.withheldReason(path) === null) paths.push(path);
+        else this.addLeftOut(leftOut, path);
+      }
+      for (const path of this.scratchFiles()) this.addLeftOut(leftOut, path);
+      const indexFile = join(this.options.vaultPath, ".git", "eva-snapshot-index");
+      const environment = { GIT_INDEX_FILE: indexFile };
+      rmSync(indexFile, { force: true });
+      try {
+        const head = await this.git(["read-tree", "HEAD"], localTimeoutMs, environment);
+        // A vault with no commit yet has no HEAD.
+        if (head.exitCode !== 0 && !(await this.snapshotStep(["read-tree", "--empty"], environment))) return false;
+        if (
+          paths.length > 0 &&
+          !(await this.snapshotStep(
+            ["update-index", "--add", "--remove", "-z", "--stdin"],
+            environment,
+            paths.join("\0"),
+          ))
+        )
+          return false;
+        const tree = await this.git(["write-tree"], localTimeoutMs, environment);
+        if (tree.exitCode !== 0) return this.logSnapshotFailure("write-tree", tree);
+        const commit = await this.git(
+          ["commit-tree", tree.stdout.trim(), "-F", "-"],
+          localTimeoutMs,
+          {},
+          snapshotMessage([...leftOut.values()]),
+        );
+        if (commit.exitCode !== 0) return this.logSnapshotFailure("commit-tree", commit);
+        return await this.snapshotStep(["update-ref", ref, commit.stdout.trim()], {});
+      } finally {
+        rmSync(indexFile, { force: true });
+      }
+    });
+  }
+
+  /** What an undo of these answers, oldest first, would do now. */
+  undoPreview(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
+    return this.serialize(async () => previewOf(await this.undoPlan(answers)));
+  }
+
+  /**
+   * Restores the files that these answers changed, oldest first, to their state before the
+   * answers. It writes only the files: the index and the history stay. The save after it commits
+   * the result. Throws `git_failed` when a file could not be restored.
+   */
+  undo(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
+    return this.serialize(async () => {
+      const plan = await this.undoPlan(answers);
+      const bySource = new Map<string, string[]>();
+      for (const { path, source } of plan.restore) {
+        if (source === null) {
+          rmSync(join(this.options.vaultPath, path), { force: true });
+          continue;
+        }
+        bySource.set(source, [...(bySource.get(source) ?? []), path]);
+      }
+      for (const [source, paths] of bySource) {
+        // git writes each file through its filters, so line endings stay as on this machine.
+        const restored = await this.git(
+          ["restore", `--source=${source}`, "--worktree", ...pathsOnStdin],
+          localTimeoutMs,
+          {},
+          paths.join("\0"),
+        );
+        if (restored.exitCode !== 0)
+          throw new EvaError("git_failed", `Eva could not restore the files: ${firstLine(restored)}`);
+      }
+      return previewOf(plan);
+    });
+  }
+
+  /** Deletes the snapshots of a deleted chat. */
+  deleteSnapshots(sessionId: string): Promise<void> {
+    return this.serialize(async () => {
+      const listed = await this.git(
+        ["for-each-ref", "--format=%(refname)", sessionRefPrefix(sessionId)],
+        localTimeoutMs,
+      );
+      const refs = listed.stdout.split("\n").filter((line) => line.trim().length > 0);
+      if (listed.exitCode !== 0 || refs.length === 0) return;
+      await this.snapshotStep(["update-ref", "--stdin"], {}, refs.map((ref) => `delete ${ref}\n`).join(""));
+    });
+  }
+
+  /** The changes of each answer with both snapshots, and the plan from the files as they are now. */
+  private async undoPlan(answers: readonly UndoAnswer[]): Promise<UndoPlan> {
+    const changes: AnswerChanges[] = [];
+    for (const { before, after } of answers) {
+      const beforeCommit = await this.git(["cat-file", "commit", before], localTimeoutMs);
+      const afterCommit = await this.git(["cat-file", "commit", after], localTimeoutMs);
+      // A turn from before the snapshots, or a turn whose snapshot failed, adds nothing.
+      if (beforeCommit.exitCode !== 0 || afterCommit.exitCode !== 0) continue;
+      const diff = await this.git(["diff-tree", "-r", "-z", "--no-renames", before, after], localTimeoutMs);
+      if (diff.exitCode !== 0) throw new EvaError("git_failed", `git diff-tree failed: ${firstLine(diff)}`);
+      changes.push({
+        beforeCommit: before,
+        changes: parseDiffTree(diff.stdout),
+        leftOutChanged: changedLeftOut(
+          parseSnapshotCommit(beforeCommit.stdout),
+          parseSnapshotCommit(afterCommit.stdout),
+        ),
+      });
+    }
+    const paths = [...new Set(changes.flatMap((answer) => answer.changes.map((change) => change.path)))];
+    return planUndo(changes, await this.currentObjects(paths));
+  }
+
+  /** The object id of each file as git would store it now, null for an absent file. */
+  private async currentObjects(paths: readonly string[]): Promise<Map<string, string | null>> {
+    const current = new Map<string, string | null>();
+    const hashed: string[] = [];
+    for (const path of paths) {
+      const kind = fileKind(join(this.options.vaultPath, path));
+      // hash-object reads one path per line, so a name with a line break cannot go through it.
+      if (kind === "file" && !path.includes("\n")) hashed.push(path);
+      else current.set(path, kind === "absent" ? null : unreadableOid);
+    }
+    if (hashed.length === 0) return current;
+    const result = await this.git(["hash-object", "--stdin-paths"], localTimeoutMs, {}, `${hashed.join("\n")}\n`);
+    if (result.exitCode !== 0) throw new EvaError("git_failed", `git hash-object failed: ${firstLine(result)}`);
+    const oids = result.stdout.split("\n");
+    for (const [index, path] of hashed.entries()) current.set(path, oids[index]?.trim() ?? unreadableOid);
+    return current;
+  }
+
+  private addLeftOut(leftOut: Map<string, LeftOutFile>, path: string): void {
+    try {
+      const info = lstatSync(join(this.options.vaultPath, path));
+      leftOut.set(path, { path, size: info.size, changedAt: Math.trunc(info.mtimeMs) });
+    } catch {
+      // A removed file is absent from the list, which tells the removal.
+    }
+  }
+
+  /** The files in Scratch. The vault's .gitignore usually hides the folder from git status. */
+  private scratchFiles(): string[] {
+    let root: string | undefined;
+    try {
+      root = readdirSync(this.options.vaultPath).find((name) => name.toLowerCase() === scratchFolderName.toLowerCase());
+    } catch {
+      return [];
+    }
+    if (root === undefined) return [];
+    try {
+      return readdirSync(join(this.options.vaultPath, root), { recursive: true, encoding: "utf-8" })
+        .map((name) => `${root}/${name.split(sep).join("/")}`)
+        .filter((path) => fileKind(join(this.options.vaultPath, path)) === "file")
+        .slice(0, maxScratchFiles);
+    } catch {
+      return [];
+    }
+  }
+
+  /** A failed snapshot only logs: the turn goes on, and its retry then offers no undo. */
+  private async snapshotStep(
+    arguments_: readonly string[],
+    environment: Readonly<Record<string, string>>,
+    stdin?: string,
+  ): Promise<boolean> {
+    const result = await this.git(arguments_, localTimeoutMs, environment, stdin);
+    return result.exitCode === 0 || this.logSnapshotFailure(arguments_[0] ?? "", result);
+  }
+
+  private logSnapshotFailure(name: string, result: GitResult): false {
+    this.options.logger?.log("warn", "Eva could not save a snapshot of the vault.", {
+      step: name,
+      reason: firstLine(result),
+    });
+    return false;
   }
 
   private async commitAndPush(branch: string): Promise<VaultSyncState> {
@@ -916,5 +1117,15 @@ function pathExists(path: string): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** What is at a path, without following a link: a link counts as a file, as git stores it. */
+function fileKind(path: string): "file" | "absent" | "other" {
+  try {
+    const info = lstatSync(path);
+    return info.isFile() || info.isSymbolicLink() ? "file" : "other";
+  } catch {
+    return "absent";
   }
 }

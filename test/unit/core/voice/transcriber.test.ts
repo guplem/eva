@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -107,6 +108,26 @@ describe("createTranscriber (lessons 71, 123)", () => {
     // The program's own last line says why.
     expect(String(failure)).toContain("whisper could not transcribe the voice note: no model");
     expect(readdirSync(folder)).toEqual([]);
+  });
+
+  test("a folder that Windows still holds keeps the real error, and the delete retries", async () => {
+    const remove = spyOn(fs, "rmSync").mockImplementation(() => {
+      throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+    });
+    try {
+      const { runner } = fakeRunner((command) =>
+        command[0] === "whisper-cli" ? { exitCode: 2, stdout: "", stderr: "timed out" } : ok(),
+      );
+      const transcribe = createTranscriber({ tools, runner, environment: {}, temporaryRoot: folder });
+      const failure = await transcribe(new Uint8Array([1])).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(String(failure)).toContain("whisper could not transcribe the voice note: timed out");
+      expect(remove.mock.calls[0]?.[1]).toMatchObject({ recursive: true, force: true, maxRetries: 5 });
+    } finally {
+      remove.mockRestore();
+    }
   });
 
   test("a whisper-cli that lacks a system library says which one, and how to add it", async () => {

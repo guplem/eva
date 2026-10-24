@@ -80,7 +80,19 @@ async function transcribeOnce(options: TranscriberOptions, audio: Uint8Array): P
       throw failure("whisper-cli", "whisper could not transcribe the voice note", result.stderr);
     return result.stdout.replace(nonSpeechPattern, " ").replace(/\s+/g, " ").trim();
   } finally {
-    rmSync(folder, { recursive: true, force: true });
+    removeFolder(folder);
+  }
+}
+
+/**
+ * Never throws: an error here would hide the real one. On Windows, a program that a timeout
+ * stopped can still hold a file for a moment, so the delete retries.
+ */
+function removeFolder(folder: string): void {
+  try {
+    rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    // A folder that stays is in this instance's private folder, and the next note does not use it.
   }
 }
 

@@ -1364,7 +1364,8 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
 });
 
 test("a fork of a project chat in a new clone opens there, and names the chat it came from", async ({ page }) => {
-  const title = `Fork in a new clone (${test.info().project.name})`;
+  // Not "new clone": other tests find the New clone button by that name.
+  const title = `Fork with the files at an answer (${test.info().project.name})`;
   await logIn(page);
   await openExampleApp(page);
   await newProjectChat(page);

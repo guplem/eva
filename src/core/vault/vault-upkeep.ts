@@ -157,10 +157,10 @@ export class VaultUpkeep {
 
   /** A conflict read or pick never fetches, so it never comes here. */
   private async pullThenAfterFetch(vaultSync: VaultSync, syncEnabled: boolean): Promise<VaultSyncState> {
-    const fetchedBefore = vaultSync.fetchedPulls;
+    const freshBefore = vaultSync.freshPulls;
     const state = this.logSyncState(await vaultSync.pull());
     // An Assistant turn can start while git fetches.
-    if (syncEnabled && state.status === "ok" && vaultSync.fetchedPulls > fetchedBefore && !this.options.assistantBusy())
+    if (syncEnabled && state.status === "ok" && vaultSync.freshPulls > freshBefore && !this.options.assistantBusy())
       this.options.afterFetch?.();
     return state;
   }

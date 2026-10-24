@@ -3,7 +3,7 @@
  * steps wait behind Log in again, so a person who is logged in does not see them as a task.
  */
 import { useState, type ReactElement, type ReactNode } from "react";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { restartNote, type Note } from "./notes.ts";
 import { errorText, StatusIcon, type SettingsContext } from "./SettingsParts.tsx";

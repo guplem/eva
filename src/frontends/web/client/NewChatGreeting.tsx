@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useId, useRef, useState, type ReactElement, type SyntheticEvent } from "react";
 import { api, type ChatBlocker } from "./api.ts";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import { factQuestion, greeting, setupBlock, suggestions, type FactQuestion, type Suggestion } from "./new-chat.ts";
 import { usePersonalFacts, useSpecialDay } from "./FestiveDay.tsx";

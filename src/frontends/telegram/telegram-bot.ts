@@ -18,6 +18,7 @@ import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 
 import type { ModelAlias } from "../../shared/engine-port.ts";
+import { isEvaError } from "../../shared/errors.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
@@ -687,6 +688,52 @@ export class TelegramBot {
     });
   }
 
+  /**
+   * A button of the /new picker. The picker stays in the topic, so a later press changes the model
+   * of a started chat (issue 545). That loses the cache (lesson 41), so the phone hears the cost.
+   */
+  private async chooseModel(
+    chatId: number,
+    topicId: number | null,
+    sessionId: string,
+    model: ModelAlias,
+  ): Promise<void> {
+    // A /new without topics sets the main chat's earlier chat aside, but its picker stays on screen.
+    const current = this.state.topics[keyOf(chatId, topicId)];
+    if (current !== undefined && current.sessionId !== sessionId) {
+      await this.send(chatId, topicId, "This button belongs to an earlier chat, so the model stays.");
+      return;
+    }
+    try {
+      const before = this.options.eva.sessions.get(sessionId);
+      // A closed chat takes no next turn, so a new model would never answer.
+      if (before.closed) {
+        await this.send(chatId, topicId, closedChatText);
+        return;
+      }
+      if (before.modelAlias === model) {
+        // A new chat hears nothing, as for any first choice.
+        if (before.turns.length === 0) return;
+        await this.send(chatId, topicId, `This chat already uses ${model}.`);
+        return;
+      }
+      const session = this.options.eva.sessions.setModel(sessionId, model);
+      if (session.turns.length === 0) return;
+      await this.send(
+        chatId,
+        topicId,
+        `The next answer uses ${model}. It reads the whole chat again, so it is slower and costs more.`,
+      );
+    } catch (error) {
+      if (isEvaError(error, "session_not_found")) {
+        await this.send(chatId, topicId, "This chat no longer exists, so the model stays.");
+        return;
+      }
+      if (!isEvaError(error, "session_busy")) throw error;
+      await this.send(chatId, topicId, "Eva is still working in this chat. Change the model when she finishes.");
+    }
+  }
+
   private async forward(chatId: number, topicId: number | null, text: string): Promise<void> {
     const key = keyOf(chatId, topicId);
     let entry = this.state.topics[key];
@@ -750,11 +797,7 @@ export class TelegramBot {
     } else if (isDeviceAnswer) {
       await this.closeQuestion(first, answerText);
     } else if (kind === "m" && first !== undefined && models.includes(second as ModelAlias)) {
-      try {
-        this.options.eva.sessions.setModel(first, second as ModelAlias);
-      } catch {
-        // The chat already started; its model stays.
-      }
+      await this.chooseModel(chatId, topicOf(query.message), first, second as ModelAlias);
     } else if (kind === "d" && first !== undefined) {
       if (first === "main") await this.chats.deleteMainChat(chatId);
       else await this.chats.deleteTopic(chatId, Number(first));

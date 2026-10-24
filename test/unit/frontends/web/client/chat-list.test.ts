@@ -31,6 +31,8 @@ function turn(fields: Partial<Turn>): Turn {
     failure: null,
     lastMessageId: null,
     at: now.toISOString(),
+    startSnapshot: null,
+    endSnapshot: null,
     ...fields,
   };
 }

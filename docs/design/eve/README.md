@@ -358,18 +358,18 @@ Each open gap has an issue that closes it.
 
 The pull requests of #161 chose these differences, each for the reason below. Do not copy these parts of the reference while the reason holds.
 
-| Reference                                          | Today                                               | Why                                                                                                       | Pull request |
-| -------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------ |
-| A six-character pairing code with a dot, `K7Q·4MF` | Four characters, with no dot.                       | Eva's codes have four characters, with no 0, O, 1 or I, so the person can compare them by eye.            | #183         |
-| `+N −N` on each edit, and diffs in the chat        | Each edit is a plain step line.                     | No step carries line counts.                                                                              | #186         |
-| Messages that wait while offline, and a retry time | The text stays in the box, with a "Try now" button. | The owner chose no message queue. The page retries every 2 seconds, so a countdown would only flicker.    | #190         |
-| A time on each background task                     | The state only, with one icon for every task.       | Eva keeps no time and no kind for a task.                                                                 | #191         |
-| Engine and model chips in the chat details         | Plain text.                                         | An open chat keeps its engine and its model (lesson 41). The composer changes them before the first turn. | #191         |
-| Update policy chips in the version dialog          | The policy lives in Settings only.                  | Each setting has one home.                                                                                | #206         |
-| The last use of each device                        | The date when the device was allowed.               | Eva stores only that date. A last use needs a new stored field and a write at each request.               | #205         |
-| Fonts from the internet                            | Fonts bundled with the web client.                  | The executable must work with no internet access.                                                         | #182         |
-| A glance of the neutral face                       | The neutral face only blinks.                       | The reference names `glance` keyframes that it does not define.                                           | #181         |
-| Separate Telegram and Google sections              | One Connections section.                            | #166 grouped them on purpose. Each still has its own setup step page.                                     | #197         |
+| Reference                                          | Today                                               | Why                                                                                                    | Pull request |
+| -------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
+| A six-character pairing code with a dot, `K7Q·4MF` | Four characters, with no dot.                       | Eva's codes have four characters, with no 0, O, 1 or I, so the person can compare them by eye.         | #183         |
+| `+N −N` on each edit, and diffs in the chat        | Each edit is a plain step line.                     | No step carries line counts.                                                                           | #186         |
+| Messages that wait while offline, and a retry time | The text stays in the box, with a "Try now" button. | The owner chose no message queue. The page retries every 2 seconds, so a countdown would only flicker. | #190         |
+| A time on each background task                     | The state only, with one icon for every task.       | Eva keeps no time and no kind for a task.                                                              | #191         |
+| Engine and model chips in the chat details         | Plain text.                                         | The composer changes the engine before the first turn, and the model between turns (#545).             | #191         |
+| Update policy chips in the version dialog          | The policy lives in Settings only.                  | Each setting has one home.                                                                             | #206         |
+| The last use of each device                        | The date when the device was allowed.               | Eva stores only that date. A last use needs a new stored field and a write at each request.            | #205         |
+| Fonts from the internet                            | Fonts bundled with the web client.                  | The executable must work with no internet access.                                                      | #182         |
+| A glance of the neutral face                       | The neutral face only blinks.                       | The reference names `glance` keyframes that it does not define.                                        | #181         |
+| Separate Telegram and Google sections              | One Connections section.                            | #166 grouped them on purpose. Each still has its own setup step page.                                  | #197         |
 
 ## Captures
 

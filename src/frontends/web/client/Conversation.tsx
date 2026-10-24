@@ -16,6 +16,8 @@ import {
   type BranchState,
   type PathStep,
 } from "./branch-path.ts";
+import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
+import { forkedFromText, historyNotice } from "./branch-choices.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
@@ -189,6 +191,7 @@ export function Conversation({
         voiceNotes={voiceNotes}
         firstMessage={firstMessage?.sessionId === branch.id ? firstMessage.text : null}
         projectTitle={projectTitle}
+        forkedFrom={forkedFromNote(root, sessions)}
       />
     </div>
   );
@@ -206,6 +209,7 @@ function Branch({
   voiceNotes,
   firstMessage,
   projectTitle,
+  forkedFrom,
 }: {
   session: SessionRecord;
   /** The chat and its forks, the chat first. */
@@ -219,6 +223,8 @@ function Branch({
   voiceNotes: boolean;
   firstMessage: string | null;
   projectTitle: string | null;
+  /** The note of a chat that came from another clone, with the chat to link, or null. */
+  forkedFrom: { readonly text: string; readonly chatId: string | null } | null;
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
@@ -240,6 +246,11 @@ function Branch({
   const names = branchNames(tree);
   const start = branchesAtStart(session, tree);
   const closeTasks = useCallback(() => setShownTasks(null), []);
+  /** The retry or fork of a Project chat whose choices the dialog shows. */
+  const [branching, setBranching] = useState<BranchRequest | null>(null);
+  const closeBranching = useCallback(() => setBranching(null), []);
+  const finishBranch = useFinishBranch(onChanged);
+  const historyNote = historyNotice(session);
   const tasks = tasksOf(live.tasks, [session.id]);
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
@@ -287,9 +298,14 @@ function Branch({
 
   /**
    * A retry of an Assistant answer that changed files asks first whether to undo them (#525).
-   * A Project chat runs in its own clone, so its retry never asks.
+   * A retry of a Project chat asks where it runs and from which files of its clone (#523).
    */
   const retryAnswer = (owner: SessionRecord, index: number): void => {
+    const turn = owner.turns[index];
+    if (owner.mode === "project" && turn !== undefined) {
+      setBranching({ kind: "retry", sessionId: owner.id, turnIndex: index, turn });
+      return;
+    }
     runAction(async () => {
       const preview = owner.mode === "assistant" ? await api.retryUndo(owner.id, index) : null;
       const title = preview === null ? null : undoQuestion(preview);
@@ -301,7 +317,7 @@ function Branch({
   const retryAfterQuestion = async (undo: boolean): Promise<void> => {
     if (undoAsk === null) return;
     try {
-      await api.retry(undoAsk.sessionId, undoAsk.index, undo);
+      await api.retry(undoAsk.sessionId, undoAsk.index, { undo });
       setUndoAsk(null);
       await onChanged();
     } catch (caught) {
@@ -313,6 +329,21 @@ function Branch({
 
   return (
     <section className="branch" aria-label={`Branch ${session.title}`}>
+      {forkedFrom !== null && (
+        // A chat from another clone shows none of its parent's turns, so the note says where they are.
+        <p className="field-hint forked-from">
+          {forkedFrom.chatId === null ? (
+            forkedFrom.text
+          ) : (
+            <a href={`#/chat/${encodeURIComponent(forkedFrom.chatId)}`}>{forkedFrom.text}</a>
+          )}
+        </p>
+      )}
+      {historyNote !== null && (
+        <div className="callout" role="status">
+          {historyNote}
+        </div>
+      )}
       {start !== null && (
         <BranchSwitcher point={start} names={names} states={states} label="Branches from the start" onShow={onShow} />
       )}
@@ -343,6 +374,7 @@ function Branch({
                       </button>
                     )}
                     {/* A closed chat takes no new turn, so it offers no way to start one. */}
+                    {/* A Project chat asks where the branch runs and from which files (issue 523). */}
                     {!owner.closed && (
                       <button className="ghost" onClick={() => retryAnswer(owner, index)}>
                         <Icon name="restart" />
@@ -352,7 +384,16 @@ function Branch({
                     {!owner.closed && turn.lastMessageId !== null && turn.failure === null && (
                       <button
                         className="ghost"
-                        onClick={() => runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))}
+                        onClick={() =>
+                          owner.mode === "project"
+                            ? setBranching({
+                                kind: "fork",
+                                sessionId: owner.id,
+                                atMessageId: turn.lastMessageId ?? "",
+                                turn,
+                              })
+                            : runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))
+                        }
                       >
                         <Icon name="fork" />
                         Fork
@@ -413,6 +454,7 @@ function Branch({
           {counted(running, "background task")} running
         </button>
       )}
+      {branching !== null && <BranchChoiceDialog request={branching} onClose={closeBranching} onDone={finishBranch} />}
       {shownTasks === "running" && <TasksDialog tasks={tasks} empty="No task runs now." onClose={closeTasks} />}
       {shownTasks !== null && shownTasks !== "running" && (
         <TasksDialog
@@ -776,4 +818,14 @@ export function rootChats(sessions: readonly SessionRecord[]): SessionRecord[] {
     .sort((first, second) =>
       (second.lastTurnAt ?? second.createdAt).localeCompare(first.lastTurnAt ?? first.createdAt),
     );
+}
+
+/** The note of a chat that came from another clone (issue 523). A deleted parent gets no link. */
+function forkedFromNote(
+  root: SessionRecord,
+  sessions: readonly SessionRecord[],
+): { readonly text: string; readonly chatId: string | null } | null {
+  const parent = sessions.find((session) => session.id === root.forkedFrom?.sessionId);
+  const text = forkedFromText(root, parent?.title ?? null);
+  return text === null ? null : { text, chatId: parent?.id ?? null };
 }

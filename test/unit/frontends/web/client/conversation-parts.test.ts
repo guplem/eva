@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   answeredModel,
-  chipLock,
+  engineLock,
   composerPlaceholder,
   effortLabel,
   elapsedText,
@@ -13,6 +13,7 @@ import {
   missingDetail,
   stepState,
   modelLabel,
+  modelNote,
   keptPending,
   restoredText,
   runningUntil,
@@ -181,18 +182,39 @@ describe("labels", () => {
   });
 
   test("takes the model of the newest turn that names one", () => {
-    expect(answeredModel([{ model: "claude-opus-5-5" }, { model: null }])).toBe("claude-opus-5-5");
-    expect(answeredModel([{ model: "claude-opus-4-6" }, { model: "claude-opus-5-5" }])).toBe("claude-opus-5-5");
-    expect(answeredModel([])).toBeNull();
+    expect(answeredModel([{ model: "claude-opus-5-5" }, { model: null }], "default")).toBe("claude-opus-5-5");
+    expect(answeredModel([{ model: "claude-opus-4-6" }, { model: "claude-opus-5-5" }], "default")).toBe(
+      "claude-opus-5-5",
+    );
+    expect(answeredModel([], "default")).toBeNull();
+  });
+
+  test("names no answered model after a change of model, until a turn answers with the new one (#545)", () => {
+    const turns = [{ model: "claude-haiku-5-5", modelAlias: "haiku" as const }];
+    expect(answeredModel(turns, "haiku")).toBe("claude-haiku-5-5");
+    expect(answeredModel(turns, "opus")).toBeNull();
+    expect(answeredModel(turns, "default")).toBeNull();
+    // A turn from before the stored model choice ran with the only model the chat ever had.
+    expect(answeredModel([{ model: "claude-opus-5-5" }], "opus")).toBe("claude-opus-5-5");
   });
 });
 
-describe("chipLock", () => {
+describe("engineLock", () => {
   test("lets a new chat pick, and says why a fork or a started chat cannot", () => {
-    expect(chipLock({ parentId: null, turns: [] }, false)).toBeNull();
-    expect(chipLock({ parentId: null, turns: [] }, true)).toContain("first message");
-    expect(chipLock({ parentId: null, turns: [{}] }, false)).toContain("first message");
-    expect(chipLock({ parentId: "chat-1", turns: [] }, false)).toContain("fork");
+    expect(engineLock({ parentId: null, turns: [] }, false)).toBeNull();
+    expect(engineLock({ parentId: null, turns: [] }, true)).toContain("first message");
+    expect(engineLock({ parentId: null, turns: [{}] }, false)).toContain("first message");
+    expect(engineLock({ parentId: "chat-1", turns: [] }, false)).toContain("fork");
+  });
+});
+
+describe("modelNote", () => {
+  test("warns about the cost only when the chat has a history, and waits for a running turn (#545)", () => {
+    expect(modelNote({ parentId: null, turns: [] }, false)).toBeNull();
+    expect(modelNote({ parentId: null, turns: [{}] }, false)).toContain("costs more");
+    expect(modelNote({ parentId: "chat-1", turns: [] }, false)).toContain("costs more");
+    expect(modelNote({ parentId: null, turns: [{}] }, true)).toContain("answer ends");
+    expect(modelNote({ parentId: null, turns: [] }, true)).toContain("answer ends");
   });
 });
 

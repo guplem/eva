@@ -44,6 +44,8 @@ function session(id: string): SessionRecord {
     closed: false,
     continuedFrom: null,
     firstMessageDraft: null,
+    pendingRestore: null,
+    forkedFrom: null,
   };
 }
 
@@ -155,15 +157,18 @@ describe("SessionStore", () => {
       contextTokens: "many",
       contextWindow: 0,
       model: 42,
+      modelAlias: "gpt",
     };
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn] }] }));
-    expect(openStore().get("one")?.turns[0]).toMatchObject({
+    const kept = openStore().get("one")?.turns[0];
+    expect(kept).toMatchObject({
       steps: [],
       omittedSteps: 0,
       contextTokens: null,
       contextWindow: null,
       model: null,
     });
+    expect(kept?.modelAlias).toBeUndefined();
   });
 
   test("a turn from before the notes, or with bad notes, has none and keeps its session (issue 157)", () => {

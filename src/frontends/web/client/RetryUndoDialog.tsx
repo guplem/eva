@@ -4,7 +4,7 @@
  */
 import { useState, type ReactElement } from "react";
 import type { UndoPreview } from "./api.ts";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 
 const ignore = (): void => undefined;

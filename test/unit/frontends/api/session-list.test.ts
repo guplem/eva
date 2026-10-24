@@ -20,6 +20,8 @@ function turn(text: string): Turn {
     failure: null,
     lastMessageId: text,
     at: "2026-10-14T12:00:00.000Z",
+    startSnapshot: null,
+    endSnapshot: null,
   };
 }
 
@@ -48,6 +50,8 @@ function session(turns: Turn[]): SessionRecord {
     closed: false,
     continuedFrom: null,
     firstMessageDraft: null,
+    pendingRestore: null,
+    forkedFrom: null,
     turns,
   };
 }

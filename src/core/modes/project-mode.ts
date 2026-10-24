@@ -15,6 +15,8 @@ import {
   type CloneOriginStore,
   type TrustStore,
 } from "../projects/clones.ts";
+import { EvaError } from "../../shared/errors.ts";
+import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
 import type { PrepareContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
@@ -27,6 +29,10 @@ export interface ProjectPreparerOptions {
   readonly environment: Readonly<Record<string, string>>;
   /** The `origin` URL of a clone, or null when it has none. Only a folder that Eva did not clone uses it. */
   readonly readRemote: (cloneFolder: string) => Promise<string | null>;
+  /** Eva's own git for the snapshots of a clone's files (issue 523). Without it, a turn keeps none. */
+  readonly snapshots?: SnapshotRun;
+  /** True while Eva pulls or pushes a repository of the clone. A restore must not change files under it. */
+  readonly isSyncing?: (cloneFolder: string) => boolean;
 }
 
 export class ProjectPreparer implements TurnPreparer {
@@ -50,6 +56,28 @@ export class ProjectPreparer implements TurnPreparer {
 
   afterTurn(_session: SessionRecord, _outcome: TurnOutcome): Promise<string | null> {
     return Promise.resolve(null);
+  }
+
+  /** Keeps the files of every repository of the clone, so a retry or a fork can go back to them. */
+  snapshot(session: SessionRecord, id: string): Promise<boolean> {
+    const run = this.options.snapshots;
+    return run === undefined ? Promise.resolve(false) : takeSnapshot(session.startFolder, id, run);
+  }
+
+  forget(session: SessionRecord, ids: readonly string[]): void {
+    const run = this.options.snapshots;
+    // A ref left behind costs little, and a reuse of the clone deletes it.
+    if (run !== undefined) void deleteSnapshots(session.startFolder, ids, run).catch(() => undefined);
+  }
+
+  restore(session: SessionRecord, id: string): Promise<void> {
+    const run = this.options.snapshots;
+    if (run === undefined) return Promise.reject(new EvaError("snapshot_missing", "This Eva keeps no snapshots."));
+    if (this.options.isSyncing?.(session.startFolder) === true)
+      return Promise.reject(
+        new EvaError("session_busy", "Eva pulls or pushes in this clone now. Send the message again when she ends."),
+      );
+    return restoreSnapshot(session.startFolder, id, run);
   }
 
   /**

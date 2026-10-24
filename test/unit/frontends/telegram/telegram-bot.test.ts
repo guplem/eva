@@ -628,6 +628,87 @@ describe("topics", () => {
     telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
     await settle(bot, () => eva.sessions.get(session.id).modelAlias === "haiku");
     expect(telegram.callsTo("answerCallbackQuery")).toHaveLength(1);
+    // A chat with no history loses nothing, so the first choice needs no notice (#545).
+    expect(telegram.sentTexts().filter((text) => text.includes("next answer"))).toEqual([]);
+  });
+
+  test("a model button of a closed chat says why the model stays (#545)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    eva.sessions.close(session.id);
+
+    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("closed this chat")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("default");
+  });
+
+  test("a model button changes the model of a started chat, and says what the change costs (#545)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi", 500);
+    await settle(bot, () => eva.sessions.get(session.id).turns.length === 1 && !eva.sessions.isBusy(session.id));
+
+    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("whole chat again")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
+    const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("opus"));
+    expect(notice?.params["message_thread_id"]).toBe(500);
+
+    // The same model changes nothing, so a second press says so and sends no cost notice.
+    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already uses opus")));
+    expect(telegram.sentTexts().filter((text) => text.includes("whole chat again"))).toHaveLength(1);
+  });
+
+  test("a model button of an earlier chat changes nothing, so the phone never hears a wrong model (#545)", async () => {
+    const bot = createBot();
+    // With no topics, each /new sets the main chat's earlier chat aside, and its picker stays on screen.
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const earlier = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi");
+    await settle(bot, () => eva.sessions.get(earlier.id).turns.length === 1 && !eva.sessions.isBusy(earlier.id));
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 2);
+
+    telegram.pressButton(owner, `m:${earlier.id}:opus`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("earlier chat")));
+    expect(eva.sessions.get(earlier.id).modelAlias).toBe("default");
+  });
+
+  test("a model button of a deleted chat says that the chat is gone (#545)", async () => {
+    const bot = createBot();
+    telegram.pressButton(owner, "m:no-such-chat:opus", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("no longer exists")));
+    expect(telegram.sentTexts().filter((text) => text.startsWith("The message failed"))).toEqual([]);
+  });
+
+  test("a model button says why it waits while a turn runs (#545)", async () => {
+    let release = (): void => undefined;
+    createEva(async function* (request) {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi", 500);
+    await settle(bot, () => eva.sessions.isBusy(session.id) && engine.requests.length === 1);
+
+    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("default");
+    release();
+    await settle(bot, () => !eva.sessions.isBusy(session.id));
   });
 
   test("the first message renames a topic that Eva opened (lesson 125)", async () => {
@@ -1194,7 +1275,13 @@ describe("project work from a Telegram chat (#9)", () => {
     const asking = eva.sessions.list()[0]!;
 
     const work = await eva.startProjectWork({ projectId, request: "Fix the login bug.", reportToSessionId: asking.id });
-    await settle(bot, () => telegram.sentTexts().includes("Fixed it."));
+    // The start notice and the answer go out on their own, so under load the answer can come first.
+    await settle(
+      bot,
+      () =>
+        telegram.sentTexts().includes("Fixed it.") &&
+        telegram.sentTexts().some((text) => text.startsWith("Project work started")),
+    );
     expect(telegram.callsTo("createForumTopic")[0]?.params["name"]).toBe("Example app: Fix the login bug.");
     const started = telegram.sentTexts().find((text) => text.startsWith("Project work started"));
     expect(started).toBe(

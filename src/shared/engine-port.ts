@@ -77,4 +77,17 @@ export interface EnginePort {
   runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload>;
   /** What this engine may do in each kind of chat, for Settings. Without it, Settings shows no rules. */
   describePermissions?(context: PermissionContext): EnginePermissions;
+  /**
+   * Makes the history of an engine session readable from another folder, so a fork there can go on
+   * from it (issue 523). False when it could not. An engine that keeps every session in one place
+   * needs no such step.
+   */
+  carryHistory?(input: CarryHistoryInput): boolean;
+}
+
+export interface CarryHistoryInput {
+  readonly engineSessionId: string;
+  readonly toFolder: string;
+  /** The environment of the engine's turns, which names its config folder. */
+  readonly environment: Readonly<Record<string, string>>;
 }

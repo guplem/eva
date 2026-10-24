@@ -326,6 +326,8 @@ export interface EvaSetupState extends SetupState {
   readonly restartNeeded: boolean;
   /** True for a new vault with a commit and no remote: the vault step offers its push. */
   readonly vaultNeedsPush: boolean;
+  /** The engines whose program the page installed since the start. They run after a restart. */
+  readonly installedEngines: readonly EngineName[];
   /** True when a Google account is set but no chat can run uv, which starts the Google tools. */
   readonly uvMissing: boolean;
 }
@@ -1611,7 +1613,7 @@ export class Eva {
     const google = this.settings.saved().config.google.email !== null;
     return {
       ...(await this.settings.setupState()),
-      engines: [...this.options.engines.map((engine) => engine.name), ...this.newEngines()],
+      installedEngines: this.newEngines(),
       progress: this.setupProgress(),
       restartNeeded,
       vaultNeedsPush: await this.vaultSetup.needsPush(),

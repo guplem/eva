@@ -998,7 +998,7 @@ describe("program installs from the page (#242)", () => {
         else if (line.includes("astral.sh/uv/install.sh")) installed.add("uv");
         else if (command[1] === "--version") {
           const program = (command[0] ?? "").split("/").at(-1) ?? "";
-          // A fresh claude sits in its installer folder, off the PATH; uvx answers on the PATH, which holds that folder.
+          // As for a PATH without the installer folder: claude answers only by its full path. uvx answers by name.
           return answer(installed.has(program === "uvx" ? "uv" : program) && command[0] !== "claude");
         } else return base.run(command, options);
         return answer(true);
@@ -1041,7 +1041,9 @@ describe("program installs from the page (#242)", () => {
       expect(before).not.toContain("eva setup");
       expect((await instance.installTool("claude")).ok).toBe(true);
       const after = await instance.setupState();
-      expect(after.engines).toEqual(["claude-code"]);
+      // A new chat offers only the engines that run, so the new program waits for the restart.
+      expect(after.engines).toEqual([]);
+      expect(after.installedEngines).toEqual(["claude-code"]);
       // The engines start with Eva, so a chat needs a restart.
       expect(after.restartNeeded).toBe(true);
       expect(await engineStep()).toContain("Start the login");

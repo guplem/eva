@@ -59,7 +59,12 @@ function chosenMode(context: SettingsContext): { value: string; words: string } 
 }
 
 function found(context: SettingsContext, engine: EngineName): boolean {
-  return context.setup === null || context.setup.engines.some((name) => name === engine);
+  // An engine that the page installed has no chats until a restart, but its login works at once.
+  return (
+    context.setup === null ||
+    context.setup.engines.some((name) => name === engine) ||
+    context.setup.installedEngines.some((name) => name === engine)
+  );
 }
 
 function DefaultEngineCard({ context }: { readonly context: SettingsContext }): ReactElement {

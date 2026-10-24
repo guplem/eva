@@ -827,6 +827,24 @@ describe("routes", () => {
     expect(retry.status).toBe(200);
   });
 
+  test("opens a new chat from a summary of a chat, and a 404 for an unknown chat (#522)", async () => {
+    turnScript = (request) => FakeEngine.answer(request, request.mode === "model-call" ? "Goal: a trip." : "Sure.");
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "Plan a trip");
+    const response = await call(`/api/sessions/${session.id}/summary-chat`, { method: "POST", body: {} });
+    expect(response.status).toBe(201);
+    const made = await json<{ session: { continuedFrom: string; firstMessageDraft: string }; summaryFailure: null }>(
+      response,
+    );
+    expect(made.session.continuedFrom).toBe(session.id);
+    expect(made.session.firstMessageDraft).toContain("Goal: a trip.");
+    expect(made.summaryFailure).toBeNull();
+    const missing = await call("/api/sessions/missing/summary-chat", { method: "POST", body: {} });
+    expect(missing.status).toBe(404);
+  });
+
   test("gives the whole input and output of a step, null for an unknown step, and a 404 for an unknown chat", async () => {
     turnScript = (request) => [
       { kind: "tool_started", toolUseId: "t1", name: "Read", category: "tool", summary: "Read x", input: "{}" },

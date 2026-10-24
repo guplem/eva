@@ -119,6 +119,8 @@ export class AlertCenter {
   hide(key: string): boolean {
     const current = this.open.get(key);
     if (current === undefined) return false;
+    // The hub hides a relayed problem again at each sync, so an unchanged mark saves nothing.
+    if (this.hidden.get(key) === current.problem.level) return true;
     this.hidden.set(key, current.problem.level);
     this.saveHidden();
     return true;
@@ -148,13 +150,17 @@ export class AlertCenter {
     return [...this.open].map(([key, entry]) => ({ key, ...entry.problem }));
   }
 
+  isHidden(key: string): boolean {
+    return this.hidden.has(key);
+  }
+
   /** Each open problem for a front end, with its hidden mark. */
   problemDetails(): ProblemDetail[] {
     return [...this.open].map(([key, { problem }]) => ({
       key,
       level: problem.level,
       message: problem.message,
-      hidden: this.hidden.has(key),
+      hidden: this.isHidden(key),
     }));
   }
 

@@ -2139,7 +2139,9 @@ export class Eva {
     const problems = this.alerts
       .openAlerts()
       // A sync problem would travel through the sync that it breaks, so it arrives only after it clears.
-      .filter((alert) => alert.key !== "vault_sync" && !alert.key.startsWith("machine:"));
+      .filter((alert) => alert.key !== "vault_sync" && !alert.key.startsWith("machine:"))
+      // The hub sends the reminders, so it must know which notice the person hid here.
+      .map((alert) => (this.alerts.isHidden(alert.key) ? { ...alert, hidden: true as const } : alert));
     const written = writeMachineReport(vaultPath, { machine: this.machine, version: evaVersion, problems });
     if (written === "no_vault") return;
     this.noticeReportName(written === "name_taken");
@@ -2162,6 +2164,7 @@ export class Eva {
           key,
           relayedProblem(report.machine, this.machine, machineReportFile(report.machine), problem),
         );
+        if (problem.hidden === true) this.alerts.hide(key);
       }
       relayed.set(file, keys);
     }

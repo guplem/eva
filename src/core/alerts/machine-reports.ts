@@ -8,11 +8,16 @@ import { join } from "node:path";
 import { readJsonTolerant, readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { OpenAlert } from "./alert-center.ts";
 
+/** A problem in a report. "hidden" is present only when the person hid its notice on that machine. */
+export interface ReportedProblem extends OpenAlert {
+  readonly hidden?: true;
+}
+
 export interface MachineReport {
   readonly machine: string;
   /** The Eva version of the machine. */
   readonly version: string;
-  readonly problems: readonly OpenAlert[];
+  readonly problems: readonly ReportedProblem[];
 }
 
 const reportsFolder = [".eva", "machines"] as const;
@@ -94,10 +99,17 @@ function parseReport(value: unknown): MachineReport | null {
   };
 }
 
-function parseProblem(value: unknown): OpenAlert | null {
+function parseProblem(value: unknown): ReportedProblem | null {
   if (value === null || typeof value !== "object") return null;
-  const { key, level, message, resolvedMessage } = value as Partial<Record<keyof OpenAlert, unknown>>;
+  const { key, level, message, resolvedMessage, hidden } = value as Partial<Record<keyof ReportedProblem, unknown>>;
   if (typeof key !== "string" || typeof message !== "string") return null;
   if (level !== "warn" && level !== "error") return null;
-  return { key, level, message, resolvedMessage: typeof resolvedMessage === "string" ? resolvedMessage : "" };
+  return {
+    key,
+    level,
+    message,
+    resolvedMessage: typeof resolvedMessage === "string" ? resolvedMessage : "",
+    // An older Eva writes no mark: its problems are not hidden.
+    ...(hidden === true ? { hidden } : {}),
+  };
 }

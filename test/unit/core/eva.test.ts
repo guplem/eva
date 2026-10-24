@@ -2422,6 +2422,37 @@ describe("machine reports (#126)", () => {
     expect(alerts[1]?.message).toBe("On laptop: Fixed.");
   });
 
+  test("a satellite's report marks a problem that the person hid there, and only that one (#541)", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportProblem("telegram", { level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." });
+    instance.reportProblem("update", { level: "warn", message: "No update check.", resolvedMessage: "Ok." });
+    instance.hideProblem("update");
+    await instance.syncVault();
+    expect(readReport("example-pc")).toEqual({
+      machine: "example-pc",
+      version: expect.any(String) as string,
+      problems: [
+        { key: "telegram", level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." },
+        { key: "update", level: "warn", message: "No update check.", resolvedMessage: "Ok.", hidden: true },
+      ],
+    });
+  });
+
+  test("the hub hides a problem that another machine reports as hidden, so it sends no reminder", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([{ ...ahead, hidden: true }]));
+    await instance.syncVault();
+    expect(instance.status().problemDetails[0]?.hidden).toBe(true);
+    clock = new Date(clock.getTime() + 25 * 60 * 60_000);
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+  });
+
   test("a deleted report, such as from a computer that is gone, resolves its alerts", async () => {
     sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
     sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));

@@ -263,3 +263,12 @@ describe("AlertCenter saved marks after a start (#541)", () => {
     expect(run.saved).toEqual([]);
   });
 });
+
+test("hiding a hidden problem again saves nothing, as the hub does at each sync", () => {
+  const run = harness();
+  run.center.report("update", offline);
+  run.center.hide("update");
+  run.center.hide("update");
+  expect(run.saved).toHaveLength(1);
+  expect(run.center.isHidden("update")).toBe(true);
+});

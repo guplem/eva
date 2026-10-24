@@ -47,10 +47,41 @@ describe("UnsentTexts", () => {
     expect(texts.get("chat-1")).toBe("Hello");
   });
 
+  test("a newer text that the storage refused wins over the older stored text", () => {
+    const storage = memoryStorage();
+    let writes = 0;
+    const full: TextStorage = {
+      ...storage,
+      setItem: (key, value) => {
+        writes += 1;
+        if (writes > 1) throw new Error("The storage is full.");
+        storage.setItem(key, value);
+      },
+    };
+    const texts = new UnsentTexts(() => full);
+    texts.set("chat-1", "Old");
+    texts.set("chat-1", "Newer");
+    expect(texts.get("chat-1")).toBe("Newer");
+  });
+
+  test("a clear that the storage refused still clears the text on this page", () => {
+    const storage = memoryStorage();
+    const texts = new UnsentTexts(() => ({
+      ...storage,
+      removeItem: () => {
+        throw new Error("The storage is blocked.");
+      },
+    }));
+    texts.set("chat-1", "Sent already");
+    texts.set("chat-1", "");
+    expect(texts.get("chat-1")).toBe("");
+  });
+
   test("a page with no storage at all still keeps the text in memory", () => {
     const texts = new UnsentTexts(() => {
       throw new Error("Access to sessionStorage is denied.");
     });
+    expect(texts.get("chat-1")).toBe("");
     texts.set("chat-1", "Hello");
     expect(texts.get("chat-1")).toBe("Hello");
     texts.set("chat-1", "");

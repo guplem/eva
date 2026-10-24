@@ -19,21 +19,24 @@ export class UnsentTexts {
     this.memory = new Map();
   }
 
-  /** The unsent text of a chat, or "". */
+  /**
+   * The unsent text of a chat, or "". The memory answers first: a write that the storage refused
+   * would leave an older text there.
+   */
   get(draftKey: string): string {
+    const kept = this.memory.get(draftKey);
+    if (kept !== undefined) return kept;
     try {
-      const stored = this.storage().getItem(keyPrefix + draftKey);
-      if (stored !== null) return stored;
+      return this.storage().getItem(keyPrefix + draftKey) ?? "";
     } catch {
-      // The memory keeps the text of this page.
+      return "";
     }
-    return this.memory.get(draftKey) ?? "";
   }
 
   /** Keeps the text of a chat. An empty text removes it. */
   set(draftKey: string, text: string): void {
-    if (text === "") this.memory.delete(draftKey);
-    else this.memory.set(draftKey, text);
+    // An empty text stays in memory too, so a clear that the storage refused still clears.
+    this.memory.set(draftKey, text);
     try {
       if (text === "") this.storage().removeItem(keyPrefix + draftKey);
       else this.storage().setItem(keyPrefix + draftKey, text);

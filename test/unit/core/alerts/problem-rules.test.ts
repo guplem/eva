@@ -99,7 +99,7 @@ describe("engineLoginProblem", () => {
     const problem = engineLoginProblem("claude-code");
     expect(problem.level).toBe("error");
     expect(problem.message).toContain("Claude Code login expired");
-    expect(problem.message).toContain("Settings, Engines, Claude Code");
+    expect(problem.message).toContain("Settings, AI engines, Claude Code");
     expect(problem.message).not.toContain("/login");
     expect(problem.resolvedMessage).toBe("The Claude Code login works again.");
   });

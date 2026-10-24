@@ -3,6 +3,7 @@
  * happened and what the owner can do, from a phone.
  */
 import type { EngineName } from "../../shared/engine-port.ts";
+import { engineProgramNames } from "../engine-install/engine-install.ts";
 import type { EngineUpdateResult } from "../updates/engine-update.ts";
 import type { UpdateStatus } from "../updates/updater.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
@@ -73,14 +74,12 @@ export function engineUpdateProblem(result: EngineUpdateResult): AlertProblem | 
   };
 }
 
-const engineNames: Readonly<Record<EngineName, string>> = { "claude-code": "Claude Code", pi: "pi" };
-
 /** The engine refused a turn because its login no longer works. A turn that works clears it. */
 export function engineLoginProblem(engine: EngineName): AlertProblem {
-  const name = engineNames[engine];
+  const name = engineProgramNames[engine];
   return {
     level: "error",
-    message: `The ${name} login expired, so chats with ${name} fail. On Eva's web page, open Settings, Engines, ${name}, and log in again.`,
+    message: `The ${name} login expired, so chats with ${name} fail. On Eva's web page, open Settings, AI engines, ${name}, and log in again.`,
     resolvedMessage: `The ${name} login works again.`,
   };
 }

@@ -331,7 +331,7 @@ async function* mapEachTurn(
         if (loginFailed && (message.subtype !== "success" || message.is_error)) {
           yield {
             kind: "turn_failed",
-            reason: "The Claude Code login expired. Log in again in Settings, Engines, Claude Code.",
+            reason: "The Claude Code login expired. Log in again in Settings, AI engines, Claude Code.",
             loginExpired: true,
           };
           return;

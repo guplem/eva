@@ -21,6 +21,7 @@ import {
   githubSlug,
   isCleanFolder,
   listClones,
+  readGitState,
   type Clone,
   type CloneDetails,
   type CloneOriginStore,
@@ -136,6 +137,7 @@ export class ProjectWork {
         mode: "project",
         engine: input.engine ?? this.options.defaultEngine,
         model: input.model,
+        ...(input.effort === undefined ? {} : { effort: input.effort }),
         startFolder: clone.path,
         source: input.source,
         projectId: project.id,
@@ -146,6 +148,11 @@ export class ProjectWork {
       return inClone(listClones(project.path).find((candidate) => candidate.name === input.cloneName));
     // The chat exists before the next choice starts, so its creation already keeps the clone.
     return this.oneCloneChoiceAtATime(project, async () => inClone(await this.freeOrNewClone(project)));
+  }
+
+  /** The git state of a Project chat's folder, for a chat summary, or null when git fails. */
+  gitState(folder: string): Promise<string | null> {
+    return readGitState(folder, this.options.runner, this.options.gitEnvironment);
   }
 
   /**

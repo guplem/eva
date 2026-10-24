@@ -42,12 +42,17 @@ export class UnsentTexts {
    * would leave an older text there.
    */
   get(draftKey: string): string {
+    return this.find(draftKey) ?? "";
+  }
+
+  /** The unsent text of a chat, or undefined when the chat has none, not even a cleared one. */
+  find(draftKey: string): string | undefined {
     const kept = this.memory.get(draftKey);
     if (kept !== undefined) return kept;
     try {
-      return this.storage().getItem(keyPrefix + draftKey) ?? "";
+      return this.storage().getItem(keyPrefix + draftKey) ?? undefined;
     } catch {
-      return "";
+      return undefined;
     }
   }
 
@@ -61,12 +66,15 @@ export class UnsentTexts {
     return text;
   }
 
-  /** Keeps the text of a chat. An empty text removes it. */
-  set(draftKey: string, text: string): void {
+  /**
+   * Keeps the text of a chat. An empty text removes it, unless `keepEmpty` keeps the clear: a chat
+   * that starts with a summary would show the summary again.
+   */
+  set(draftKey: string, text: string, keepEmpty = false): void {
     // An empty text stays in memory too, so a clear that the storage refused still clears.
     this.memory.set(draftKey, text);
     try {
-      if (text === "") this.storage().removeItem(keyPrefix + draftKey);
+      if (text === "" && !keepEmpty) this.storage().removeItem(keyPrefix + draftKey);
       else this.storage().setItem(keyPrefix + draftKey, text);
     } catch {
       // A full or blocked storage loses the text only at a reload.

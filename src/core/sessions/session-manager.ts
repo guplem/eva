@@ -260,6 +260,8 @@ export class SessionManager {
       turns: [],
       seenTurns: 0,
       archived: false,
+      continuedFrom: null,
+      firstMessageDraft: null,
     };
     this.options.store.save(record);
     return record;
@@ -344,6 +346,26 @@ export class SessionManager {
     const updated = { ...session, archived };
     this.options.store.save(updated);
     this.emit(sessionId, { kind: "session_archived", archived });
+    return updated;
+  }
+
+  /**
+   * Makes a new, empty chat go on from an old one (issue 522). The summary becomes the draft of its
+   * first message: a model wrote it from text of other people, so the person reads it before it goes.
+   */
+  continueFrom(sessionId: string, fromSessionId: string, summary: string | null): SessionRecord {
+    const session = this.get(sessionId);
+    const from = this.get(fromSessionId);
+    if (session.turns.length > 0 || this.isActive(sessionId))
+      throw new EvaError("session_busy", "Only a new chat can continue another chat.");
+    const draft = summary === null ? null : this.options.redactor.redact(summary).trim();
+    const updated: SessionRecord = {
+      ...session,
+      continuedFrom: from.id,
+      firstMessageDraft: draft === null || draft.length === 0 ? null : draft,
+      title: cutTitle(`${from.title} (continued)`),
+    };
+    this.options.store.save(updated);
     return updated;
   }
 
@@ -488,6 +510,30 @@ export class SessionManager {
     // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
     for (const id of ids) this.emit(id, { kind: "session_deleted" });
     return ids;
+  }
+
+  /**
+   * Every turn that a branch's engine session holds, oldest first: the parent's turns up to the
+   * fork point, then the branch's own. A retry from the start keeps none of its parent's turns.
+   */
+  branchTurns(sessionId: string): SessionRecord["turns"] {
+    const chain: SessionRecord[] = [];
+    // The bound stops a loop of parents, which only a damaged file can hold.
+    for (let session: SessionRecord | undefined = this.get(sessionId); session !== undefined && chain.length < 1000;) {
+      chain.unshift(session);
+      session = session.parentId === null ? undefined : this.options.store.get(session.parentId);
+    }
+    const turns: SessionRecord["turns"][number][] = [];
+    for (const [index, session] of chain.entries()) {
+      const forkAt = chain[index + 1]?.forkAtMessageId;
+      if (forkAt === undefined) turns.push(...session.turns);
+      else if (forkAt === null) turns.length = 0;
+      else {
+        const end = session.turns.findIndex((turn) => turn.lastMessageId === forkAt);
+        turns.push(...session.turns.slice(0, end + 1));
+      }
+    }
+    return turns;
   }
 
   /** The chat that a fork branches from, through every level. A missing parent ends the walk. */

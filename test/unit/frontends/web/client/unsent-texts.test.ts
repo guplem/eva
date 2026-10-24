@@ -98,6 +98,18 @@ describe("UnsentTexts", () => {
     expect(seen).toEqual(["Hello"]);
   });
 
+  test("tells a chat with no text from a chat whose text the person cleared", () => {
+    const storage = memoryStorage();
+    const texts = new UnsentTexts(() => storage);
+    expect(texts.find("chat-1")).toBeUndefined();
+    // A chat that starts with a summary keeps its clear, so the summary does not come back.
+    texts.set("chat-1", "", true);
+    expect(new UnsentTexts(() => storage).find("chat-1")).toBe("");
+    texts.set("chat-2", "Hi");
+    texts.set("chat-2", "");
+    expect(new UnsentTexts(() => storage).find("chat-2")).toBeUndefined();
+  });
+
   test("a page with no storage at all still keeps the text in memory", () => {
     const texts = new UnsentTexts(() => {
       throw new Error("Access to sessionStorage is denied.");

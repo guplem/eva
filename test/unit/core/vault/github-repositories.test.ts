@@ -53,6 +53,8 @@ function repository(fullName: string, extra: Record<string, unknown> = {}): Reco
     clone_url: `https://github.com/${fullName}.git`,
     private: true,
     archived: false,
+    continuedFrom: null,
+    firstMessageDraft: null,
     ...extra,
   };
 }

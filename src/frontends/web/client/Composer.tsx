@@ -33,7 +33,8 @@ import { recordingTime, recordingType } from "./voice-notes.ts";
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
 /** What the composer shows of a chat. A new chat has no record until its first message. */
-type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns">;
+type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns"> &
+  Partial<Pick<SessionRecord, "firstMessageDraft">>;
 
 /** The unsent text of each chat in this tab, by its draft key. */
 const unsentTexts = new UnsentTexts(() => window.sessionStorage);
@@ -87,11 +88,16 @@ export function Composer({
   placeholder = composerPlaceholder(null),
   draftKey,
 }: ComposerProps): ReactElement {
-  const [text, setTypedText] = useState(() => (draftKey === undefined ? "" : unsentTexts.get(draftKey)));
+  // A chat that goes on from a summary starts with it, so the person reads it before it goes (issue 522).
+  const summary = session.turns.length === 0 ? (session.firstMessageDraft ?? null) : null;
+  const [text, setTypedText] = useState(
+    () => (draftKey === undefined ? undefined : unsentTexts.find(draftKey)) ?? summary ?? "",
+  );
   // A send awaits the core, so its failure reads the text typed since then here, not from its closure.
   const typed = useRef(text);
   const setText = (value: string): void => {
-    if (draftKey !== undefined) unsentTexts.set(draftKey, value);
+    // A cleared summary stays cleared: without the entry, the box would start with the summary again.
+    if (draftKey !== undefined) unsentTexts.set(draftKey, value, summary !== null);
     typed.current = value;
     setTypedText(value);
   };
@@ -105,13 +111,13 @@ export function Composer({
   useEffect(() => {
     if (draftKey === undefined) return;
     const follow = (): void => {
-      const stored = unsentTexts.get(draftKey);
+      const stored = unsentTexts.find(draftKey) ?? summary ?? "";
       typed.current = stored;
       setTypedText(stored);
     };
     follow();
     return unsentTexts.subscribe(draftKey, follow);
-  }, [draftKey]);
+  }, [draftKey, summary]);
   const [sending, setSending] = useState(false);
   const files = useAttachments();
   const picker = useRef<HTMLInputElement>(null);

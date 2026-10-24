@@ -661,6 +661,63 @@ describe("renames (issue 46)", () => {
   });
 });
 
+describe("a chat that continues another chat from a summary (#522)", () => {
+  test("it links the old chat, keeps a redacted draft, takes a title from the old chat, and survives a restart", () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-telegram-token-value");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const oldId = newAssistantSession(manager);
+    manager.rename(oldId, "Trip plans");
+    const newId = newAssistantSession(manager);
+    const linked = manager.continueFrom(newId, oldId, "Goal: book a flight. Key the-telegram-token-value");
+    expect(linked).toMatchObject({
+      continuedFrom: oldId,
+      firstMessageDraft: "Goal: book a flight. Key [redacted]",
+      title: "Trip plans (continued)",
+    });
+    expect(createManager(new FakeEngine()).get(newId)).toMatchObject({ continuedFrom: oldId });
+  });
+
+  test("an empty summary gives no draft, and a long title is cut", () => {
+    const manager = createManager(new FakeEngine());
+    const oldId = newAssistantSession(manager);
+    manager.rename(oldId, "x".repeat(60));
+    const newId = newAssistantSession(manager);
+    const linked = manager.continueFrom(newId, oldId, null);
+    expect(linked.firstMessageDraft).toBeNull();
+    expect(linked.title).toBe(`${"x".repeat(59)}…`);
+  });
+
+  test("the turns of a fork start with its parent's turns up to the fork point", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "one");
+    await manager.send(rootId, "two");
+    const fork = manager.fork(rootId, manager.get(rootId).turns[0]?.lastMessageId ?? "");
+    await manager.send(fork.id, "other two");
+    expect(manager.branchTurns(fork.id).map((turn) => turn.userText)).toEqual(["one", "other two"]);
+    expect(manager.branchTurns(rootId).map((turn) => turn.userText)).toEqual(["one", "two"]);
+    // A retry of the first turn starts with none of its parent's turns.
+    const retried = await manager.retry(rootId, 0);
+    await waitUntil(() => manager.get(retried.id).turns.length === 1 && !manager.isBusy(retried.id));
+    expect(manager.branchTurns(retried.id).map((turn) => turn.userText)).toEqual(["one"]);
+  });
+
+  test("a chat with turns cannot continue another chat", async () => {
+    const manager = createManager(new FakeEngine());
+    const oldId = newAssistantSession(manager);
+    const newId = newAssistantSession(manager);
+    await manager.send(newId, "Hello");
+    let caught: unknown;
+    try {
+      manager.continueFrom(newId, oldId, "summary");
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "session_busy")).toBe(true);
+  });
+});
+
 describe("archived chats (issue 388)", () => {
   test("an archive saves the flag, tells every front end, and survives a restart", () => {
     const manager = createManager(new FakeEngine());

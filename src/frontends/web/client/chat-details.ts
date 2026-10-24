@@ -96,6 +96,22 @@ export function branchForkPoint(
 }
 
 /**
+ * The chats around a chat and its forks (issue 522): the chat that the root continues, and each
+ * chat that continues one of the branches. Only the new chat stores the link.
+ */
+export function chatLinks<Chat extends Pick<SessionRecord, "id" | "continuedFrom">>(
+  tree: readonly Chat[],
+  sessions: readonly Chat[],
+): { from: Chat | null; next: Chat[] } {
+  const fromId = tree[0]?.continuedFrom ?? null;
+  const ids = new Set(tree.map((session) => session.id));
+  return {
+    from: sessions.find((session) => session.id === fromId) ?? null,
+    next: sessions.filter((session) => session.continuedFrom !== null && ids.has(session.continuedFrom)),
+  };
+}
+
+/**
  * The tasks of a stored answer, from its steps. Each one ended with its turn; a step keeps
  * only an error, so "ended" covers done and stopped alike.
  */

@@ -264,7 +264,9 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         url.pathname.startsWith("/api/checks/") ||
         url.pathname.startsWith("/api/vault/") ||
         url.pathname.startsWith("/api/google/") ||
-        url.pathname.startsWith("/api/github/")
+        url.pathname.startsWith("/api/github/") ||
+        // A summary waits for a model, and a Project chat may wait for a new clone.
+        url.pathname.endsWith("/summary-chat")
       )
         bunServer.timeout(request, 0);
       try {
@@ -559,6 +561,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       const { atMessageId } = forkSchema.parse(await request.json());
       return json(eva.sessions.fork(sessionId, atMessageId), 201);
     }
+    if (action === "summary-chat") return json(await eva.continueFromSummary(sessionId, "web"), 201);
     if (action === "stop") {
       eva.sessions.get(sessionId);
       return json({ stopped: eva.sessions.stop(sessionId) });

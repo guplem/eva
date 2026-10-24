@@ -2,6 +2,8 @@
  * Which state is a problem worth an alert, and the words of each alert. Each message says what
  * happened and what the owner can do, from a phone.
  */
+import type { EngineName } from "../../shared/engine-port.ts";
+import { engineInstallSteps, engineProgramNames } from "../engine-install/engine-install.ts";
 import type { EngineUpdateResult } from "../updates/engine-update.ts";
 import type { UpdateStatus } from "../updates/updater.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
@@ -75,6 +77,47 @@ export function engineUpdateProblem(result: EngineUpdateResult): AlertProblem | 
     level: "warn",
     message: `The Claude Code update failed: ${result.detail ?? "unknown reason."} Chats keep the old version; press Update next to claude in Settings, Updates, to try again.`,
     resolvedMessage: "The Claude Code update works again.",
+  };
+}
+
+/**
+ * The state of the default engine's program. "installed": Eva finds it now, but loaded no
+ * engine for it at start, so chats need a restart.
+ */
+export type EngineProgramState = "loaded" | "installed" | "missing";
+
+/** A default engine with no program: each chat fails, and the person sees no reason without this alert. */
+export function engineMissingProblem(
+  engine: EngineName,
+  state: EngineProgramState,
+  platform: NodeJS.Platform,
+): AlertProblem | null {
+  if (state !== "missing") return null;
+  const name = engineProgramNames[engine];
+  return {
+    level: "error",
+    message: [
+      `Eva finds no ${name} program, so chats fail.`,
+      `Press Install next to ${engine === "claude-code" ? "claude" : "pi"} in Settings, Updates, then Restart now.`,
+      "Or run `eva setup` again on this computer.",
+      `Or install it by hand: ${engineInstallSteps(engine, platform)}`,
+    ].join(" "),
+    resolvedMessage: `Eva finds the ${name} program again.`,
+  };
+}
+
+/**
+ * A program installed since the start. It has its own key: an open key changes its text with no
+ * new alert, so the phone would not hear that a restart now fixes the chats.
+ */
+export function engineRestartProblem(engine: EngineName, state: EngineProgramState): AlertProblem | null {
+  if (state !== "installed") return null;
+  const name = engineProgramNames[engine];
+  return {
+    level: "warn",
+    // No /restart: on a relayed alert, a Telegram command restarts the hub.
+    message: `The ${name} program is installed now, but chats use it only after a restart. Press Restart now in Settings, Updates.`,
+    resolvedMessage: `Chats use the ${name} program.`,
   };
 }
 

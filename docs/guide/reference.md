@@ -229,6 +229,18 @@ A request from Eva's own computer can come from any program there, so only the t
 
   Eva then closes the old chat. You can read it, but it takes no new message. She puts each repository on its default branch, up to date with GitHub. The installed dependencies stay. When no clone is free, she makes a new clone.
 
+- **Retry and fork:** before and after each turn of a project chat, Eva keeps a snapshot of the files of the clone. The snapshot holds every file that git does not ignore. **Retry** under an answer asks:
+  - **Undo and retry here:** the files go back to how they were before that answer. Every later answer is undone too.
+  - **Retry here:** the files stay as they are.
+  - **Retry in a new clone:** a new clone gets the files from before that answer. The old clone stays, so you can compare the two tries.
+
+  **Fork** asks:
+  - **New clone at this answer:** a new clone gets the files as they were at that answer.
+  - **New clean clone:** a clone on the default branch, up to date with GitHub.
+  - **This clone:** the fork shares the files with its chat. Their turns wait in line.
+
+  A retry or a fork in a new clone is the first chat of that clone. A note at its top names the chat and the clone that it came from. When Eva cannot take the conversation along, the new chat starts from a summary. Read the summary, then send it. Ignored files, such as installed dependencies or `.env`, stay as they are after a restore. An answer from before Eva kept snapshots offers only the choices that need none.
+
 - **Trusted repositories:** a project chat runs the hooks, settings and MCP servers of its clone only when Eva trusts every repository in it. Eva trusts the repositories of the GitHub account that she logs in with. She also trusts the owners in `trust.trustedRepositoryOwners`. She asks about any other repository once, and keeps your answer. **Settings > Trusted repositories** lists the trusted accounts and the saved answers. Add or remove one there. A change applies to the next project chat.
 - **What Eva may do:** **Settings > AI engines > What Eva may do** lists, for each engine and each kind of chat, what runs with no question, what Eva asks you first and what never runs. It also lists your own Claude Code `allow`, `ask` and `deny` rules apart, with the file that holds them: the `settings.json` in this Eva's Claude Code folder, and `.claude/settings.json` in your vault.
 

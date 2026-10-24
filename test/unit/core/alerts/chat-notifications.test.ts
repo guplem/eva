@@ -209,6 +209,15 @@ describe("an approval", () => {
       summary: "Which format?",
       questions: [question],
     });
-    expect(sent.map((notification) => notification.body)).toEqual(["Eva has a question: Which format?"]);
+    feed("web", {
+      ...approval,
+      toolName: "AskUserQuestion",
+      summary: "Which format?",
+      questions: [question, question],
+    });
+    expect(sent.map((notification) => notification.body)).toEqual([
+      "Eva has a question: Which format?",
+      "Eva has 2 questions: Which format?",
+    ]);
   });
 });

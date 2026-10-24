@@ -71,7 +71,9 @@ export class ChatNotifications {
           "approvals",
           event.questions === undefined
             ? `Eva waits for your approval: ${event.summary}`
-            : `Eva has a question: ${event.summary}`,
+            : event.questions.length === 1
+              ? `Eva has a question: ${event.summary}`
+              : `Eva has ${String(event.questions.length)} questions: ${event.summary}`,
         );
         return;
       case "turn_finished":

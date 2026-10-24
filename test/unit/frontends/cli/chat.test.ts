@@ -231,6 +231,9 @@ describe("the model's questions (#544)", () => {
     // A number out of range, or two for one choice, asks again: a typo must not become an own answer.
     expect(readQuestionAnswer(single, "3")).toEqual({ kind: "again", message: "Pick a number from 1 to 2." });
     expect(readQuestionAnswer(single, "1,2")).toEqual({ kind: "again", message: "Pick one option." });
+    for (const typo of ["1,,2", "-1", "1 2", "0,"]) {
+      expect(readQuestionAnswer(multi, typo)).toEqual({ kind: "again", message: "Pick a number from 1 to 2." });
+    }
   });
 
   test("the questions print with their numbered options", () => {
@@ -282,12 +285,106 @@ describe("the model's questions (#544)", () => {
     const written: string[] = [];
     try {
       // "9" is out of range, so the question comes again.
-      await Promise.race([chatUntilEnd(api.url, ["plan it", "9", "2", "1,2", "again", ""], written), Bun.sleep(2_000)]);
+      await chatUntilEnd(api.url, ["plan it", "9", "2", "1,2", "plan again", "", "/exit"], written);
       expect(bodies).toEqual([
         { answer: "allow", answers: [{ selected: [1] }, { selected: [0, 1] }] },
         { answer: "deny" },
       ]);
       expect(written.join("")).toContain("Pick a number from 1 to 2.");
+    } finally {
+      await api.stop();
+    }
+  });
+
+  test("an input that ends skips the questions, as it denies an approval", async () => {
+    const bodies: unknown[] = [];
+    const api = fakeLocalApi({
+      onMessage: (sockets) => {
+        for (const socket of sockets) {
+          socket.send(
+            JSON.stringify({
+              kind: "approval_needed",
+              requestId: "r1",
+              toolName: "AskUserQuestion",
+              summary: "Which format?",
+              questions: [single],
+              sessionId: "s1",
+              seq: 1,
+              at: "2026-10-20T10:00:00.000Z",
+            }),
+          );
+        }
+      },
+      onApproval: (sockets, body) => {
+        bodies.push(body);
+        for (const socket of sockets) socket.close();
+      },
+    });
+    try {
+      // The fake input ends after the message: readLine gives null, as a closed stdin does.
+      await runChat({
+        baseUrl: api.url,
+        token: "token",
+        mode: "assistant",
+        model: "default",
+        readLine: (() => {
+          const lines = ["plan it"];
+          return () => Promise.resolve(lines.shift() ?? null);
+        })(),
+        write: () => undefined,
+      }).catch(() => undefined);
+      expect(bodies).toEqual([{ answer: "deny" }]);
+    } finally {
+      await api.stop();
+    }
+  });
+
+  test("a question answered elsewhere while the terminal waits sends no answer from here", async () => {
+    const paths: string[] = [];
+    const event = (payload: Record<string, unknown>, seqNumber: number): string =>
+      JSON.stringify({ ...payload, sessionId: "s1", seq: seqNumber, at: "2026-10-20T10:00:00.000Z" });
+    const api = fakeLocalApi({
+      onMessage: (sockets) => {
+        for (const socket of sockets) {
+          socket.send(
+            event(
+              {
+                kind: "approval_needed",
+                requestId: "r1",
+                toolName: "AskUserQuestion",
+                summary: "Which format?",
+                questions: [single],
+              },
+              1,
+            ),
+          );
+          // The web app answers while the terminal waits for a line.
+          setTimeout(() => {
+            socket.send(event({ kind: "approval_resolved", requestId: "r1", answer: "allow", timedOut: false }, 2));
+            socket.send(event(finished, 3));
+          }, 30);
+        }
+      },
+      onApproval: () => paths.push("answered"),
+    });
+    const written: string[] = [];
+    try {
+      const lines = ["plan it", "2", "/exit"];
+      await runChat({
+        baseUrl: api.url,
+        token: "token",
+        mode: "assistant",
+        model: "default",
+        // Each line after the first comes late, as a person types.
+        readLine: async () => {
+          const line = lines.shift() ?? null;
+          if (line !== "plan it") await Bun.sleep(100);
+          return line;
+        },
+        write: (text) => written.push(text),
+      });
+      expect(paths).toEqual([]);
+      expect(written.join("")).toContain("(Answered elsewhere.)");
     } finally {
       await api.stop();
     }

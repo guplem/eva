@@ -75,17 +75,20 @@ export async function runChat(options: ChatOptions): Promise<void> {
   });
   // A prompt that waits for a line must not outlive the stream: a line typed then would go nowhere.
   const readLineOrClose = (): Promise<string | null> => Promise.race([options.readLine(), closed]);
-  const questions: Extract<SessionEvent, { kind: "approval_needed" }>[] = [];
+  const waiting: Extract<SessionEvent, { kind: "approval_needed" }>[] = [];
+  /** The requests that another front end answered, so the terminal stops asking about them. */
+  const resolved = new Set<string>();
   const print = createEventPrinter();
   socket.addEventListener("message", (message) => {
     const event = JSON.parse(String(message.data)) as SessionEvent;
     if (event.sessionId !== session.id) return;
     const text = print(event);
     if (text !== null) options.write(text);
-    if (event.kind === "approval_needed") questions.push(event);
+    if (event.kind === "approval_needed") waiting.push(event);
+    if (event.kind === "approval_resolved") resolved.add(event.requestId);
     const answered =
-      event.kind === "approval_resolved" ? questions.findIndex((asked) => asked.requestId === event.requestId) : -1;
-    if (answered !== -1) questions.splice(answered, 1);
+      event.kind === "approval_resolved" ? waiting.findIndex((asked) => asked.requestId === event.requestId) : -1;
+    if (answered !== -1) waiting.splice(answered, 1);
     if (event.kind === "turn_finished" || event.kind === "turn_failed") turn.over = true;
     wake?.();
   });
@@ -113,16 +116,21 @@ export async function runChat(options: ChatOptions): Promise<void> {
       }
       // Wait for the turn end; answer each approval here, with y or n, and each question of the model.
       while (!turnIsOver() && !streamIsClosed()) {
-        const asked = questions.shift();
+        const asked = waiting.shift();
         if (asked === undefined) {
           await nextChange();
           continue;
         }
+        const isOpen = (): boolean => !resolved.has(asked.requestId);
         const body =
           asked.questions === undefined
             ? await readApproval(readLineOrClose, options.write)
-            : await readQuestionAnswers(asked.questions, readLineOrClose, options.write);
-        if (body === null || streamIsClosed()) break;
+            : await readQuestionAnswers(asked.questions, readLineOrClose, options.write, isOpen);
+        if (streamIsClosed()) break;
+        if (body === null) {
+          options.write("  (Answered elsewhere.)\n");
+          continue;
+        }
         await fetch(`${options.baseUrl}/api/approvals/${encodeURIComponent(asked.requestId)}`, {
           method: "POST",
           headers,
@@ -140,30 +148,35 @@ export async function runChat(options: ChatOptions): Promise<void> {
 
 type ApprovalBody = { answer: "allow"; answers: QuestionAnswer[] } | { answer: "allow" | "deny" };
 
-/** Null when the input ended before an answer. */
+/** An input that ends denies, as no answer is coming. */
 async function readApproval(
   readLine: () => Promise<string | null>,
   write: (text: string) => void,
-): Promise<ApprovalBody | null> {
+): Promise<ApprovalBody> {
   write("  Allow it? [y/N] ");
   const line = await readLine();
-  if (line === null) return null;
-  return { answer: line.trim().toLowerCase().startsWith("y") ? "allow" : "deny" };
+  return { answer: line?.trim().toLowerCase().startsWith("y") === true ? "allow" : "deny" };
 }
 
-/** One answer for each question, or a skip of them all. Null when the input ended before the end. */
+/**
+ * One answer for each question, or a skip of them all. An input that ends skips. Null when another
+ * front end answered first: the rest of the questions would wait for nobody.
+ */
 async function readQuestionAnswers(
   questions: readonly ApprovalQuestion[],
   readLine: () => Promise<string | null>,
   write: (text: string) => void,
+  isOpen: () => boolean,
 ): Promise<ApprovalBody | null> {
   const answers: QuestionAnswer[] = [];
   for (const [index, question] of questions.entries()) {
     for (;;) {
+      if (!isOpen()) return null;
       const which = questions.length === 1 ? "" : ` ${String(index + 1)}`;
       write(`  Answer${which} (a number, or your own text; an empty line skips): `);
       const line = await readLine();
-      if (line === null) return null;
+      if (line === null) return { answer: "deny" };
+      if (!isOpen()) return null;
       const read = readQuestionAnswer(question, line);
       if (read.kind === "skip") return { answer: "deny" };
       if (read.kind === "answer") {
@@ -173,12 +186,13 @@ async function readQuestionAnswers(
       write(`  ${read.message}\n`);
     }
   }
-  return { answer: "allow", answers };
+  return isOpen() ? { answer: "allow", answers } : null;
 }
 
 /**
- * Reads one typed answer. Numbers in range pick options, with commas for several. Other text is an
- * own answer. A number out of range asks again, so a typo never becomes an own answer.
+ * Reads one typed answer. Numbers in range pick options, with commas for several. Text with a
+ * letter is an own answer. Any other line of digits, commas and signs asks again, so a typo never
+ * becomes an own answer.
  */
 export function readQuestionAnswer(
   question: ApprovalQuestion,
@@ -186,9 +200,13 @@ export function readQuestionAnswer(
 ): { kind: "answer"; answer: QuestionAnswer } | { kind: "skip" } | { kind: "again"; message: string } {
   const text = line.trim();
   if (text === "") return { kind: "skip" };
-  if (!/^\d+(\s*,\s*\d+)*$/.test(text)) return { kind: "answer", answer: { selected: [], other: text } };
-  const picked = [...new Set(text.split(",").map((part) => Number(part.trim()) - 1))].sort((a, b) => a - b);
-  if (picked.some((option) => option < 0 || option >= question.options.length)) {
+  if (!/^[\d\s,+-]+$/.test(text)) return { kind: "answer", answer: { selected: [], other: text } };
+  const parts = text.split(",").map((part) => part.trim());
+  const picked = [...new Set(parts.map((part) => Number(part) - 1))].sort((a, b) => a - b);
+  if (
+    parts.some((part) => !/^\d+$/.test(part)) ||
+    picked.some((option) => option < 0 || option >= question.options.length)
+  ) {
     return { kind: "again", message: `Pick a number from 1 to ${String(question.options.length)}.` };
   }
   if (!question.multiSelect && picked.length > 1) return { kind: "again", message: "Pick one option." };

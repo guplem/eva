@@ -279,16 +279,19 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       })(),
       refreshSessions(),
       refreshProblems(),
+      // A newer recovery read later, so an older answer could bring back an approval that ended.
       (async (): Promise<void> => {
         try {
-          setApprovals(await api.pendingApprovals());
+          const approvals = await api.pendingApprovals();
+          if (id === lastRecovery.current) setApprovals(approvals);
         } catch {
           // The next reconnect or the next visit tries again.
         }
       })(),
       (async (): Promise<void> => {
         try {
-          setDeviceRequests(await api.deviceRequests());
+          const requests = await api.deviceRequests();
+          if (id === lastRecovery.current) setDeviceRequests(requests);
         } catch {
           // The next reconnect or the next visit tries again.
         }
@@ -296,7 +299,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       (async (): Promise<void> => {
         try {
           const snapshot = await api.backgroundTasks();
-          setLive((state) => withTasks(state, snapshot));
+          if (id === lastRecovery.current) setLive((state) => withTasks(state, snapshot));
         } catch {
           // The next reconnect or the next visit tries again.
         }

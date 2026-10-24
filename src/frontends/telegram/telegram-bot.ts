@@ -646,11 +646,8 @@ export class TelegramBot {
     } catch (error) {
       // Only a 400 means "no topics" (lesson 61); a short Telegram problem must not reset the main chat.
       if (!(error instanceof TelegramError && error.code === 400)) {
-        await this.send(
-          chatId,
-          fromTopicId,
-          `Telegram did not open the topic: ${this.describeError(error)} Send /new again.`,
-        );
+        const reason = this.describeError(error).replace(/(?<![.!?])$/, ".");
+        await this.send(chatId, fromTopicId, `Telegram did not open the topic: ${reason} Send /new again.`);
         return;
       }
       await this.send(

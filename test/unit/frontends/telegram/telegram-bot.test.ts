@@ -745,7 +745,7 @@ describe("topics", () => {
     telegram.failNext("createForumTopic", 500, "Internal Server Error");
     telegram.sendText(owner, "/new");
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
-    expect(telegram.sentTexts().at(-1)).toContain("Send /new again.");
+    expect(telegram.sentTexts().at(-1)).toEndWith("(500): Internal Server Error. Send /new again.");
     expect(eva.sessions.list().map((session) => session.id)).toEqual(before);
     telegram.sendText(owner, "still the main chat");
     await settle(bot, () => telegram.sentTexts().includes("answer 2"));
@@ -769,6 +769,7 @@ describe("topics", () => {
     telegram.sendText(owner, "/new");
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
     expect(creates).toBe(1);
+    expect(telegram.sentTexts().at(-1)).toEndWith("The operation timed out. Send /new again.");
     expect(sleeps).toEqual([]);
     expect(eva.sessions.list()).toEqual([]);
   });

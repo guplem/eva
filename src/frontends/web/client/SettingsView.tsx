@@ -194,7 +194,14 @@ export function SettingsView({
 
   // The search clears when the page moves, not before: an unsaved change can keep the page.
   const navigate = (next: SettingsRoute): void => {
-    window.location.hash = settingsHash(next);
+    const hash = settingsHash(next);
+    if (window.location.hash !== hash) {
+      window.location.hash = hash;
+      return;
+    }
+    // The same address fires no hashchange. A new route object still scrolls to the card again.
+    setQuery("");
+    setRoute(parseSettingsHash(hash));
   };
 
   const context: SettingsContext = {

@@ -1913,6 +1913,11 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await results.getByRole("button", { name: /Appearance/ }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Personalize");
   await expect(page.getByLabel("Theme")).toBeVisible();
+  // A result for the page that is open fires no address change, but still closes the search.
+  await page.getByLabel("Search settings").fill("dark theme");
+  await results.getByRole("button", { name: /Appearance/ }).click();
+  await expect(results).toHaveCount(0);
+  await expect(page.getByLabel("Theme")).toBeVisible();
   await page.getByLabel("Search settings").fill("banana");
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });

@@ -998,7 +998,8 @@ describe("program installs from the page (#242)", () => {
         else if (line.includes("astral.sh/uv/install.sh")) installed.add("uv");
         else if (command[1] === "--version") {
           const program = (command[0] ?? "").split("/").at(-1) ?? "";
-          return answer(installed.has(program === "uvx" ? "uv" : program));
+          // A fresh claude sits in its installer folder, off the PATH; uvx answers on the PATH, which holds that folder.
+          return answer(installed.has(program === "uvx" ? "uv" : program) && command[0] !== "claude");
         } else return base.run(command, options);
         return answer(true);
       },
@@ -1032,6 +1033,7 @@ describe("program installs from the page (#242)", () => {
       (await instance.setupState()).progress.find((step) => step.key === "engine")?.detail ?? "";
     try {
       expect((await instance.setupState()).engines).toEqual([]);
+      expect((await instance.setupState()).restartNeeded).toBe(false);
       expect(await engineStep()).toContain("Install Claude Code");
       expect(await engineStep()).not.toContain("eva setup");
       const before = await instance.startClaudeLogin().catch((caught: unknown) => String(caught));
@@ -1044,7 +1046,7 @@ describe("program installs from the page (#242)", () => {
       expect(after.restartNeeded).toBe(true);
       expect(await engineStep()).toContain("Start the login");
       await instance.startClaudeLogin().catch(() => undefined);
-      expect(started[0]?.at(-1)).toBe("setup-token");
+      expect(started[0]).toEqual([join(home, ".local", "bin", "claude"), "setup-token"]);
       expect(instance.status().chatBlocker).toBe("engine");
       await instance.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
       expect(instance.status().chatBlocker).toBe("restart");

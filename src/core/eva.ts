@@ -361,6 +361,8 @@ const restartDelayMs = 500;
 const latestToolKeepMs = 60 * 60_000;
 /** A failure, such as GitHub's rate limit, waits too, so each page open does not use up the limit. */
 const latestToolFailureKeepMs = 10 * 60_000;
+/** How long the answer to "can a chat run uv" stays. */
+const uvAnswerKeepMs = 60_000;
 const maxLogEntries = 100;
 /** About a month of releases. A phone scrolls a longer list for nothing. */
 const changelogLength = 30;
@@ -392,6 +394,8 @@ export class Eva {
    * Eva, so a new engine program waits for a restart, but its login need not.
    */
   private readonly installedPrograms: Map<InstallableTool, string>;
+  /** The last answer to "can a chat run uv", and when Eva asked. */
+  private uvAnswer: { readonly at: number; readonly runs: Promise<boolean> } | null;
   /** The lookup of each latest tool version, and when it started. A running lookup is shared. */
   private readonly latestToolCache: Map<string, { readonly lookup: Promise<string | null>; readonly at: number }>;
   /** The changelog, kept as the latest tool versions are, so each dialog open does not use up GitHub's limit. */
@@ -535,6 +539,7 @@ export class Eva {
     this.githubCliChanges = Promise.resolve();
     this.toolInstallRuns = false;
     this.installedPrograms = new Map();
+    this.uvAnswer = null;
     this.latestToolCache = new Map();
     this.changelogCache = null;
     this.githubLogin = new GitHubBrowserLogin({
@@ -1295,6 +1300,7 @@ export class Eva {
             ? installUv(inputs)
             : installGh(inputs));
       this.installedPrograms.set(program, path);
+      if (program === "uv") this.uvAnswer = null;
       const restart = program === "claude" || program === "pi" ? " Press Restart Eva so that chats use it." : "";
       return { ok: true, message: `Installed ${program}.${restart}` };
     } catch (error) {
@@ -1610,11 +1616,19 @@ export class Eva {
       restartNeeded,
       vaultNeedsPush: await this.vaultSetup.needsPush(),
       // Only a Google account needs uv, so Eva asks for it only then.
-      uvMissing:
-        google &&
-        !this.installedPrograms.has("uv") &&
-        !(await uvRuns(this.options.runner, engineEnvironment(this.facts, this.settings.secrets))),
+      uvMissing: google && !(await this.uvRuns()),
     };
+  }
+
+  /**
+   * Whether a chat can run uv. The page reads the setup state often, so the answer stays for a
+   * minute, and an install asks again. The question needs no token.
+   */
+  private uvRuns(): Promise<boolean> {
+    const now = this.options.now().getTime();
+    if (this.uvAnswer === null || now - this.uvAnswer.at > uvAnswerKeepMs)
+      this.uvAnswer = { at: now, runs: uvRuns(this.options.runner, engineToolEnvironment(this.facts)) };
+    return this.uvAnswer.runs;
   }
 
   /** The engines whose program the page installed since the start, which no engine runs yet. */

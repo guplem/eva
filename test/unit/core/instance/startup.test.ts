@@ -14,7 +14,7 @@ import {
   type HomePaths,
 } from "../../../../src/core/settings/home.ts";
 import { vaultSettingsPath } from "../../../../src/core/settings/settings.ts";
-import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
 
 let root: string;
@@ -29,10 +29,10 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function start(): ReturnType<typeof prepareStart> {
+function start(runner: ProcessRunner = systemProcessRunner): ReturnType<typeof prepareStart> {
   return prepareStart({
     paths,
-    runner: systemProcessRunner,
+    runner,
     processEnvironment: gitEnvironment,
     hostName: "server",
     now: () => new Date("2026-10-18T10:00:00Z"),
@@ -108,6 +108,27 @@ describe("prepareStart with a vault", () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     await start();
     expect(readHubClaim(vault)?.machine).toBe("server");
+  });
+
+  test("claims no hub when git cannot say whether the vault has a remote", async () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    // The fetch and the remote list fail, as a timeout or a refused folder does.
+    const failing: ProcessRunner = {
+      run: (command, options) =>
+        command.includes("fetch") || command.includes("remote")
+          ? Promise.resolve({ exitCode: 128, stdout: "", stderr: "fatal: git failed" })
+          : systemProcessRunner.run(command, options),
+    };
+    await start(failing);
+    expect(readHubClaim(vault)).toBeNull();
+  });
+
+  test("claims the hub in a vault folder that is not a git repository", async () => {
+    const plain = join(root, "plain-vault");
+    mkdirSync(plain);
+    saveConfig(paths, { ...defaultConfig, vaultPath: plain });
+    await start();
+    expect(readHubClaim(plain)?.machine).toBe("server");
   });
 
   test("runs the migrations after the pull: the hub starts the vault's settings file (#119)", async () => {

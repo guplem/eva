@@ -3,6 +3,7 @@
  * local token. The logger does not exist yet, so the steps return what they did as notes.
  */
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { EnvironmentMap } from "../../shared/environment.ts";
 import type { LogLevel } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -18,11 +19,12 @@ import { evaVersion } from "../../shared/version.ts";
 import { runStartMigrations, type StartMigrations } from "../migrations/migrations.ts";
 import { withMachineDefaults } from "../settings/machine-defaults.ts";
 import { loadSettings } from "../settings/settings.ts";
-import { readOriginUrl } from "../projects/clones.ts";
 import { VaultSync } from "../vault/vault-sync.ts";
 import { gitEnvironmentWithToken } from "./child-environments.ts";
 import { commitIdentity } from "./commit-identity.ts";
 import { claimHubIfUnclaimed, machineRole } from "./hub.ts";
+
+const remoteListTimeoutMs = 20_000;
 
 export interface StartNote {
   readonly level: LogLevel;
@@ -89,7 +91,7 @@ async function migrateAfterPull(
     );
     const pulled = await new VaultSync({ vaultPath, runner: options.runner, environment, now: options.now }).pull();
     // A failed pull may hide a claim that another machine pushed. A vault with no remote has no such claim.
-    const canClaim = pulled.status === "ok" || (await readOriginUrl(vaultPath, options.runner, environment)) === null;
+    const canClaim = pulled.status === "ok" || (await hasNoOrigin(vaultPath, options.runner, environment));
     if (!canClaim)
       notes.push({
         level: "warn",
@@ -107,4 +109,22 @@ async function migrateAfterPull(
     version: evaVersion,
     now: options.now,
   });
+}
+
+/**
+ * True only when git says that the vault has no `origin`, or the folder is no repository. A git
+ * that fails, such as on a timeout, is no answer: a claim then could hide a pushed one.
+ */
+async function hasNoOrigin(
+  vaultPath: string,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<boolean> {
+  if (!existsSync(join(vaultPath, ".git"))) return true;
+  const remotes = await runner.run(["git", "remote"], {
+    cwd: vaultPath,
+    environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
+    timeoutMs: remoteListTimeoutMs,
+  });
+  return remotes.exitCode === 0 && !remotes.stdout.split("\n").some((line) => line.trim() === "origin");
 }

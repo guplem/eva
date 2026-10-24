@@ -73,16 +73,47 @@ describe("vaultSyncProblem", () => {
 });
 
 describe("updateProblem", () => {
-  test("no error is no problem", () => {
-    expect(updateProblem(idleUpdate)).toBeNull();
+  const now = new Date("2026-10-17T12:00:00.000Z");
+  const failing = (since: string): UpdateStatus => ({
+    ...idleUpdate,
+    lastError: "GitHub could not be reached.",
+    failedStep: "check",
+    failingSince: since,
   });
 
-  test("a failed check and a failed install each say which step failed", () => {
-    const check = updateProblem({ ...idleUpdate, lastError: "offline", failedStep: "check" });
-    const install = updateProblem({ ...idleUpdate, lastError: "bun install failed", failedStep: "install" });
-    expect(check?.message).toStartWith("The update check failed: offline.");
-    expect(install?.message).toStartWith("The update install failed: bun install failed.");
-    expect(install?.level).toBe("error");
+  test("no error is no problem", () => {
+    expect(updateProblem(idleUpdate, now)).toBeNull();
+  });
+
+  test("a check that fails for less than 2 hours keeps whatever was there (#541)", () => {
+    expect(updateProblem(failing("2026-10-17T10:00:00.001Z"), now)).toBe("keep");
+  });
+
+  test("a check that fails for 2 hours warns, with one period after the reason and no slash command", () => {
+    const problem = updateProblem(failing("2026-10-17T10:00:00.000Z"), now);
+    expect(problem).toEqual({
+      level: "warn",
+      message:
+        "Eva could not check for updates for 2 hours: GitHub could not be reached. She tries again within an hour. To try now, open Settings, Updates.",
+      resolvedMessage: "Updates work again.",
+    });
+  });
+
+  test("with the checks off, the warning does not say that Eva tries again", () => {
+    const problem = updateProblem({ ...failing("2026-10-17T09:00:00.000Z"), frequency: "off" }, now);
+    expect(problem === "keep" ? "" : problem?.message).toBe(
+      "Eva could not check for updates for 2 hours: GitHub could not be reached. To try now, open Settings, Updates.",
+    );
+  });
+
+  test("a failed install is an error at once", () => {
+    const problem = updateProblem({ ...idleUpdate, lastError: "bun install failed.", failedStep: "install" }, now);
+    expect(problem).toEqual({
+      level: "error",
+      message:
+        "Eva could not install the update: bun install failed. She still runs the old version. To try again, open Settings, Updates.",
+      resolvedMessage: "Updates work again.",
+    });
   });
 });
 

@@ -1738,7 +1738,7 @@ describe("Eva alerts", () => {
     expect(instance.status().vaultSync.lastError).not.toContain(secret);
   });
 
-  test("a failed update check and a failed install each raise an alert that names the step", async () => {
+  test("a check that fails for 2 hours and a failed install each raise an alert that names the step", async () => {
     let failCheck = true;
     const instance = start(
       new FakeEngine(),
@@ -1756,15 +1756,19 @@ describe("Eva alerts", () => {
     );
     const alerts = collectAlerts(instance);
     await instance.checkForUpdate();
-    expect(alerts.at(-1)?.message).toStartWith("The update check failed: no network.");
+    // One failed check is often a laptop that woke up with no network (#541).
+    expect(alerts).toEqual([]);
+    clock = new Date(clock.getTime() + 2 * 60 * 60_000);
+    await instance.checkForUpdate();
+    expect(alerts.at(-1)?.message).toStartWith("Eva could not check for updates for 2 hours: no network.");
     failCheck = false;
     await instance.checkForUpdate();
     expect(alerts.at(-1)?.level).toBe("resolved");
     await instance.updateNow();
-    expect(alerts.at(-1)?.message).toStartWith("The update install failed: bun install failed.");
+    expect(alerts.at(-1)?.message).toStartWith("Eva could not install the update: bun install failed.");
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.backgroundTick();
-    expect(instance.status().problems[0]).toStartWith("The update install failed");
+    expect(instance.status().problems[0]).toStartWith("Eva could not install the update");
   });
 
   test("each new held-back release reaches the phone once, even across a restart", async () => {

@@ -53,20 +53,32 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
   }
 }
 
-/** The update problem of a status: a failed check or a failed install, or null. */
-export function updateProblem(status: UpdateStatus): AlertProblem | null {
+/** A laptop that wakes up with no network fails a check or two; only a long failure needs the owner. */
+export const updateCheckAlertMs = 2 * 60 * 60_000;
+
+/**
+ * The update problem of a status: a failed install, a check that fails for 2 hours, or null.
+ * "keep" leaves the open problem as it is. The words name no slash command: on a relayed
+ * alert, a Telegram command acts on the hub.
+ */
+export function updateProblem(status: UpdateStatus, now: Date): AlertProblem | null | "keep" {
   if (status.lastError === null) return null;
+  const reason = withoutFinalPeriod(status.lastError);
+  const resolvedMessage = "Updates work again.";
   if (status.failedStep === "install") {
     return {
       level: "error",
-      message: `The update install failed: ${status.lastError}. Eva runs on the old version; send /update to try again.`,
-      resolvedMessage: "Updates work again.",
+      message: `Eva could not install the update: ${reason}. She still runs the old version. To try again, open Settings, Updates.`,
+      resolvedMessage,
     };
   }
+  const since = status.failingSince === null ? now.getTime() : Date.parse(status.failingSince);
+  if (now.getTime() - since < updateCheckAlertMs) return "keep";
+  const retry = status.frequency === "off" ? "" : " She tries again within an hour.";
   return {
     level: "warn",
-    message: `The update check failed: ${status.lastError}. Eva tries again at the next check; send /update to try now.`,
-    resolvedMessage: "Updates work again.",
+    message: `Eva could not check for updates for 2 hours: ${reason}.${retry} To try now, open Settings, Updates.`,
+    resolvedMessage,
   };
 }
 
@@ -207,4 +219,9 @@ export function relayedProblem(machine: string, reportFile: string, problem: Ope
     resolvedMessage:
       problem.resolvedMessage === "" ? `${machine} no longer reports this problem.` : named(problem.resolvedMessage),
   };
+}
+
+/** An error text ends with its own period, and a message puts its own after it. */
+function withoutFinalPeriod(text: string): string {
+  return text.replace(/\.+$/, "");
 }

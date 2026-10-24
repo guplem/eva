@@ -2182,7 +2182,8 @@ export class Eva {
   private noticeUpdateState(): void {
     const status = this.updater?.status();
     if (status === undefined) return;
-    this.alerts.report("update", updateProblem(status));
+    const problem = updateProblem(status, this.options.now());
+    if (problem !== "keep") this.alerts.report("update", problem);
     this.announceHeldBack(status);
   }
 

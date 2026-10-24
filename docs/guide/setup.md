@@ -59,6 +59,14 @@ On the page, **Settings → Setup** lists each step that is left. Each answer is
 
 To open Eva on her own computer later, run `eva open`. It opens her page in this computer's browser, already logged in. You need no code and no token.
 
+On Windows, Eva also has an icon in the system tray, the area next to the clock. Windows can hide it under the arrow there: drag it out to keep it in sight. The icon shows her face for her state: she runs, she works, she needs you, or she stopped. Point at the icon to read her state. Right-click it for the menu:
+
+- **Open Eva** opens her page in this computer's browser, already logged in. A double-click does the same.
+- **Restart Eva** stops her and starts her again.
+- **Quit Eva** stops her until you log in again.
+
+With more than one Eva on the computer, each Eva has her own icon. Her name is in its tooltip and at the top of its menu.
+
 The next sections explain each step in more detail.
 
 ## Log in to your AI
@@ -187,7 +195,7 @@ EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault
 
 **Updates.** Eva updates herself from new releases. To update her now, run `eva update`. To repair an install, run the install command again.
 
-**Service.** On Linux, setup runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that fails, it prints the command for an administrator. On Windows, Eva starts at each logon from the list of programs that Windows starts for your user. Task Manager can show it under **Startup apps** as "Console Window Host". If setup cannot start Eva, run `eva service install` to try again, or `eva` to see the error. If Eva crashes, she starts again within a minute.
+**Service.** On Linux, setup runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that fails, it prints the command for an administrator. On Windows, Eva starts at each logon from the list of programs that Windows starts for your user. Task Manager can show it under **Startup apps** as "Console Window Host". Her icon in the system tray shows that she runs. If setup cannot start Eva, run `eva service install` to try again, or `eva` to see the error. If Eva crashes, she starts again within a minute.
 
 **Tailscale without `sudo`.** On Linux, Eva installs Tailscale for your user only, with no `sudo`, when no `tailscale` program exists. It needs linger too: `eva doctor` checks it. If Tailscale already runs for the administrator, ask them to run `sudo tailscale set --operator=$USER` once, so that Eva can use it.
 
@@ -228,4 +236,4 @@ Then do these steps outside the computer:
 **By hand.** To read each step before it runs, read [uninstall.sh](../../install/uninstall.sh) or [uninstall.ps1](../../install/uninstall.ps1). Or do the main steps yourself, for each Eva:
 
 - On Linux, run `systemctl --user disable --now eva-<name>`. Then delete `~/.config/systemd/user/eva-<name>.service`, the folder `~/.config/eva-<name>` and the program `~/.local/bin/eva`.
-- On Windows, end each `eva.exe` task in Task Manager. Then run `Remove-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run Eva-<name>` in PowerShell. Delete the folders `%APPDATA%\eva-<name>` and `%LOCALAPPDATA%\Programs\Eva`, and remove the second one from your `PATH`.
+- On Windows, choose **Quit Eva** in the menu of her tray icon, or end each `eva.exe` task in Task Manager. Then run `Remove-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run Eva-<name>` in PowerShell. Delete the folders `%APPDATA%\eva-<name>` and `%LOCALAPPDATA%\Programs\Eva`, and remove the second one from your `PATH`.

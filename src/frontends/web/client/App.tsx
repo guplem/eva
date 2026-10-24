@@ -262,31 +262,42 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     lastRecovery.current += 1;
     const id = lastRecovery.current;
     setLive((state) => startRecovery({ ...forgetTaskEvents(state), notes: {} }, id));
-    try {
-      const snapshot = await api.runningTurns();
-      setLive((state) => withRunningTurns(state, id, snapshot));
-    } catch {
-      // An older Eva has no such route. The page shows the steps that come from now on.
-      setLive((state) => withRunningTurns(state, id, null));
-    }
-    await refreshSessions();
-    await refreshProblems();
-    try {
-      setApprovals(await api.pendingApprovals());
-    } catch {
-      // The next reconnect or the next visit tries again.
-    }
-    try {
-      setDeviceRequests(await api.deviceRequests());
-    } catch {
-      // The next reconnect or the next visit tries again.
-    }
-    try {
-      const snapshot = await api.backgroundTasks();
-      setLive((state) => withTasks(state, snapshot));
-    } catch {
-      // The next reconnect or the next visit tries again.
-    }
+    // The reads do not depend on each other. In parallel, one slow read does not hold the approvals.
+    await Promise.all([
+      (async (): Promise<void> => {
+        try {
+          const snapshot = await api.runningTurns();
+          setLive((state) => withRunningTurns(state, id, snapshot));
+        } catch {
+          // An older Eva has no such route. The page shows the steps that come from now on.
+          setLive((state) => withRunningTurns(state, id, null));
+        }
+      })(),
+      refreshSessions(),
+      refreshProblems(),
+      (async (): Promise<void> => {
+        try {
+          setApprovals(await api.pendingApprovals());
+        } catch {
+          // The next reconnect or the next visit tries again.
+        }
+      })(),
+      (async (): Promise<void> => {
+        try {
+          setDeviceRequests(await api.deviceRequests());
+        } catch {
+          // The next reconnect or the next visit tries again.
+        }
+      })(),
+      (async (): Promise<void> => {
+        try {
+          const snapshot = await api.backgroundTasks();
+          setLive((state) => withTasks(state, snapshot));
+        } catch {
+          // The next reconnect or the next visit tries again.
+        }
+      })(),
+    ]);
   }, [refreshSessions, refreshProblems]);
 
   const isBlocked = chatBlocker !== null;

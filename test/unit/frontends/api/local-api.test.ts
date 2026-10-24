@@ -1028,6 +1028,43 @@ describe("routes", () => {
     await turn;
     expect(await json<unknown[]>(await call("/api/approvals"))).toEqual([]);
   });
+
+  test("the answers to the model's questions reach the turn, and a bad answer is refused", async () => {
+    const outcomes: unknown[] = [];
+    turnScript = async function* (request) {
+      const question = {
+        question: "Which format?",
+        header: "Format",
+        options: [
+          { label: "Talk", description: "" },
+          { label: "Form", description: "" },
+        ],
+        multiSelect: false,
+      };
+      outcomes.push(await request.askQuestions("AskUserQuestion", [question]));
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    let listed = await json<{ requestId: string; questions?: unknown[] }[]>(await call("/api/approvals"));
+    while (listed.length === 0) {
+      await Bun.sleep(10);
+      listed = await json<{ requestId: string; questions?: unknown[] }[]>(await call("/api/approvals"));
+    }
+    expect(listed[0]?.questions).toHaveLength(1);
+    const path = `/api/approvals/${listed[0]?.requestId ?? ""}`;
+    const plain = await call(path, { method: "POST", body: { answer: "allow" } });
+    expect(plain.status).toBe(400);
+    expect(await json<{ code: string }>(plain)).toMatchObject({ code: "approval_invalid" });
+    const shapeless = await call(path, { method: "POST", body: { answer: "allow", answers: [{ selected: ["x"] }] } });
+    expect(shapeless.status).toBe(400);
+    const answered = await call(path, { method: "POST", body: { answer: "allow", answers: [{ selected: [1] }] } });
+    expect(answered.status).toBe(204);
+    await turn;
+    expect(outcomes).toEqual([[{ selected: [1] }]]);
+  });
 });
 
 describe("web routes", () => {

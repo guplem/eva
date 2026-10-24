@@ -85,6 +85,18 @@ const renameSchema = z.object({ title: z.string() });
 const seenSchema = z.object({ turnCount: z.number().int().min(0) });
 const archiveSchema = z.object({ archived: z.boolean() });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
+/** The core checks that the answers fit the questions. The bounds keep a wild request small. */
+const approvalAnswerSchema = approvalSchema.extend({
+  answers: z
+    .array(
+      z.object({
+        selected: z.array(z.number().int().min(0)).max(20),
+        other: z.string().max(10_000).optional(),
+      }),
+    )
+    .max(20)
+    .optional(),
+});
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const pushSchema = z.object({ note: z.string().max(10_000).optional() });
@@ -834,8 +846,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
-    const { answer } = approvalSchema.parse(await request.json());
-    eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer);
+    const { answer, answers } = approvalAnswerSchema.parse(await request.json());
+    eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer, answers);
     return new Response(null, { status: 204 });
   }
   return json({ error: "Not found." }, 404);
@@ -1011,7 +1023,8 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
     isEvaError(error, "config_invalid") ||
     isEvaError(error, "schedule_invalid") ||
     isEvaError(error, "project_invalid") ||
-    isEvaError(error, "title_invalid")
+    isEvaError(error, "title_invalid") ||
+    isEvaError(error, "approval_invalid")
   )
     return json(body, 400);
   if (isEvaError(error, "rate_limited")) return json(body, 429);

@@ -90,9 +90,11 @@ describe("deleteOldCloneFolders (machine)", () => {
       // A clone that the person deleted by hand earlier: its chat points nowhere.
       chat("gone", join(repos, "example-app-1")),
       chat("new", kept),
+      // A new clone that is gone may be one of the new form: only the delete above counts for it.
+      chat("new-gone", join(repos, "clone-7")),
     ]);
     expect(migrate()).toBe("done");
-    expect(sessionIds()).toEqual(["assistant", "new"]);
+    expect(sessionIds()).toEqual(["assistant", "new", "new-gone"]);
     expect(existsSync(join(paths.stepDetails, "old.json"))).toBe(false);
     expect(existsSync(join(paths.stepDetails, "old-fork-of-fork.json"))).toBe(false);
     expect(existsSync(join(paths.stepDetails, "new.json"))).toBe(true);

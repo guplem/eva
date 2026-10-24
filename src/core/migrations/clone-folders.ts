@@ -1,8 +1,8 @@
 /**
  * A clone held one repository, in `Projects/<id>/repos/<repo>-<n>/`. Now a clone is a folder with
- * every repository of the project inside it, `repos/clone-<n>/<repo>/` (#521). The owner chose to
- * delete each old clone, with no exception, and the chats that worked in it. Work that only an old
- * clone holds is lost. Clones are git-ignored, so each computer deletes its own.
+ * every repository of the project inside it: `repos/clone-<n>/<repo>/` (#521). The owner chose to
+ * delete each old clone, with no exception. The chats that worked in one go too. Work that only an
+ * old clone holds is lost. Clones are git-ignored, so each computer deletes its own.
  *
  * This migration is frozen: it works on raw JSON and on the folders as they were on 2026-10-24.
  */
@@ -74,14 +74,16 @@ function deleteOldChats(context: Parameters<Migration["run"]>[0], deleted: Reado
 }
 
 /**
- * A chat's folder is an old clone when the migration deleted it, or when it is in the old form but
- * already gone, for example deleted by hand. A `clone-<n>` folder that is still there is a new clone.
+ * A chat's folder is an old clone when the migration deleted it. It is one too when it has the old
+ * name and is already gone, for example deleted by hand. A `clone-<n>` name can be a new clone, so
+ * only the delete above counts for it.
  */
 function isOldClone(folder: string, deleted: ReadonlySet<string>): boolean {
   if (deleted.has(key(folder))) return true;
-  if (basename(dirname(folder)) !== "repos") return false;
+  const parent = basename(dirname(folder));
+  if ((process.platform === "win32" ? parent.toLowerCase() : parent) !== "repos") return false;
   const name = basename(folder);
-  return oldCloneName.test(name) && !(newCloneName.test(name) && existsSync(folder));
+  return oldCloneName.test(name) && !newCloneName.test(name) && !existsSync(folder);
 }
 
 /** One key per folder: Windows paths ignore case. */

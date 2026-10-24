@@ -780,7 +780,8 @@ describe("Eva", () => {
       const folder = join(vault, "Projects", projectId, "repos", "clone-0");
       expect(engine.requests[0]?.startFolder).toBe(folder);
       for (const repository of ["remote", "example-api"])
-        expect(readFileSync(join(folder, repository, "AGENTS.md"), "utf8")).toBe("# Vault\n");
+        // Git on Windows can turn the line ends of a clone into CRLF, so the test compares the lines only.
+        expect(readFileSync(join(folder, repository, "AGENTS.md"), "utf8").split(/\r?\n/)[0]).toBe("# Vault");
       const [clone] = await instance.clones(projectId);
       expect(clone?.repositories.map((repository) => [repository.name, repository.branch])).toEqual([
         ["example-api", "main"],

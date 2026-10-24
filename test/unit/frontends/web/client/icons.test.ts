@@ -54,6 +54,7 @@ const designIcons: readonly IconName[] = [
   "mic",
   "expand",
   "shrink",
+  "wrap",
   "panel",
   "star",
   "archive",

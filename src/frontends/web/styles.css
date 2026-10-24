@@ -142,7 +142,8 @@
   --radius-card: 22px;
   --radius-bubble: 24px;
   --radius-bubble-tail: 8px;
-  --bubble-padding: 13px 16px;
+  --bubble-padding-block: 13px;
+  --bubble-padding-inline: 16px;
   --radius-composer: 28px;
   --radius-dialog: 28px;
   --radius-sheet: 30px;
@@ -247,7 +248,8 @@ samp {
 :root[data-density="compact"] {
   font-size: 13px;
   /* The line height adds about 3 px above and below the text, so the text gets about the same space on each side. */
-  --bubble-padding: var(--space-2) var(--space-4);
+  --bubble-padding-block: var(--space-2);
+  --bubble-padding-inline: var(--space-4);
 }
 
 :root[data-density="compact"] .list-item {

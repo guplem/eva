@@ -4,7 +4,7 @@
  * scripts/capture-claude-fixtures.ts). The background-subagent capture comes from claude 2.1.302.
  */
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { McpServerStatus, Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -134,6 +134,62 @@ describe("buildQueryOptions", () => {
     expect(options.strictMcpConfig).toBe(true);
     // The clone's own settings could allow every tool and skip the approval.
     expect(options.settingSources).toEqual(["user"]);
+  });
+
+  test("Project mode on an untrusted clone still reads its instruction files, outermost first (issue #535)", () => {
+    const root = mkdtempSync(join(tmpdir(), "eva-instructions-"));
+    try {
+      const clone = join(root, "Projects", "2026-01-01-0000-example-app", "repos", "example-app-1");
+      mkdirSync(clone, { recursive: true });
+      writeFileSync(join(root, "Projects", "2026-01-01-0000-example-app", "AGENTS.md"), "Project rule.");
+      writeFileSync(join(clone, "AGENTS.md"), "Clone rule.");
+      const options = buildQueryOptions(
+        request({ mode: "project", appendSystemPrompt: null, trusted: false, startFolder: clone }),
+        "/bin/claude",
+      );
+      const systemPrompt = options.systemPrompt as { type: string; preset: string; append: string };
+      expect(systemPrompt).toMatchObject({ type: "preset", preset: "claude_code" });
+      expect(systemPrompt.append.indexOf("Project rule.")).toBeGreaterThan(-1);
+      expect(systemPrompt.append.indexOf("Clone rule.")).toBeGreaterThan(systemPrompt.append.indexOf("Project rule."));
+      expect(systemPrompt.append).toContain(join(clone, "AGENTS.md"));
+      expect(options.settingSources).toEqual(["user"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an untrusted clone's AGENTS.md is skipped when a CLAUDE.md exists, as Claude Code does", () => {
+    const root = mkdtempSync(join(tmpdir(), "eva-instructions-"));
+    try {
+      const clone = join(root, "repos", "example-app-1");
+      mkdirSync(join(clone, ".claude"), { recursive: true });
+      writeFileSync(join(root, "CLAUDE.md"), "Outer Claude rule.");
+      writeFileSync(join(clone, ".claude", "CLAUDE.md"), "Inner Claude rule.");
+      writeFileSync(join(clone, "AGENTS.md"), "Clone rule.");
+      const options = buildQueryOptions(
+        request({ mode: "project", appendSystemPrompt: null, trusted: false, startFolder: clone }),
+        "/bin/claude",
+      );
+      const { append } = options.systemPrompt as { append: string };
+      expect(append).toContain("Outer Claude rule.");
+      expect(append).toContain("Inner Claude rule.");
+      expect(append).not.toContain("Clone rule.");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an untrusted clone with no instruction file gets the plain Claude Code prompt", () => {
+    const root = mkdtempSync(join(tmpdir(), "eva-instructions-"));
+    try {
+      const options = buildQueryOptions(
+        request({ mode: "project", appendSystemPrompt: null, trusted: false, startFolder: root }),
+        "/bin/claude",
+      );
+      expect(options.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("A model call: the caller's prompt alone, with no tools, no settings and no saved session", () => {

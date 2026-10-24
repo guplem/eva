@@ -9,8 +9,8 @@ import type { TerminalProcess, TerminalProcessStarter } from "../../shared/termi
 
 export interface ClaudeLoginOptions {
   readonly start: TerminalProcessStarter;
-  /** The claude program. Null: Eva found none on this machine. */
-  readonly program: string | null;
+  /** The claude program, read at each start: the page may install it while Eva runs. Null: none yet. */
+  readonly program: () => string | null;
   readonly cwd: string;
   /** The instance's Claude folder and no old token: see `engineToolEnvironment`. */
   readonly environment: () => Record<string, string>;
@@ -64,10 +64,10 @@ export class ClaudeLogin {
   /** Starts `claude setup-token` and returns the address of Claude's login page. */
   async start(): Promise<{ url: string }> {
     this.stop();
-    const { program } = this.options;
+    const program = this.options.program();
     if (program === null)
       throw failure(
-        "Eva did not find the claude program on this machine. Run eva setup on Eva's computer to install it.",
+        "Eva did not find the claude program on this machine. Press Install Claude Code in Settings, AI engines, on Eva's page.",
       );
     let terminal: TerminalProcess;
     try {

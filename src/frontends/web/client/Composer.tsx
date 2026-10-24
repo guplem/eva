@@ -6,7 +6,7 @@
  * Without voice notes on her machine, the microphone leads to the button that installs them.
  * The clip attaches files in an Assistant chat. Each file uploads when the person picks it, so Send waits for no upload.
  */
-import { useEffect, useId, useRef, useState, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { effortLevels, type EffortLevel, type EngineName, type ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { messageWithFiles } from "./attachments.ts";
@@ -22,7 +22,7 @@ import {
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { setupBlock } from "./new-chat.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType } from "./voice-notes.ts";
@@ -286,7 +286,8 @@ function EngineChip({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const [found, setFound] = useState<readonly EngineName[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [savingCount, setSaving] = useState(0);
+  const saving = savingCount > 0;
   const root = useRef<HTMLDivElement>(null);
   const showError = useShowError();
   const lock = chipLock(session, running);
@@ -322,17 +323,52 @@ function EngineChip({
     };
   }, [open]);
 
-  const choose = async (change: () => Promise<unknown>): Promise<void> => {
-    setSaving(true);
-    try {
-      await change();
-      await onChanged();
-    } catch (caught) {
-      showError(caught);
-    } finally {
-      setSaving(false);
-    }
+  // Saves that overlap can end in any order, so each save waits for the one before it. The queue
+  // lives here, not in the menu: the menu can close and open again during a save.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const choose = (change: () => Promise<unknown>): Promise<boolean> => {
+    setSaving((count) => count + 1);
+    const saved = queue.current.then(async () => {
+      try {
+        await change();
+        await onChanged();
+        return true;
+      } catch (caught) {
+        showError(caught);
+        return false;
+      } finally {
+        setSaving((count) => count - 1);
+      }
+    });
+    queue.current = saved;
+    return saved;
   };
+
+  // The newest effort that the person picked. The slider shows it until the chat's record shows
+  // it too, so a save that ends, or a refresh that comes late, never pulls the slider back.
+  const [picked, setPicked] = useState<EffortLevel | null>(null);
+  const effortSaves = useRef(0);
+  // An effort that waits for the save before it. Keys pressed meanwhile change only this level.
+  const nextEffort = useRef<EffortLevel | null>(null);
+  const pickEffort = (effort: EffortLevel): void => {
+    setPicked(effort);
+    const queued = nextEffort.current !== null;
+    nextEffort.current = effort;
+    if (queued) return;
+    effortSaves.current += 1;
+    void choose(() => {
+      const next = nextEffort.current ?? effort;
+      nextEffort.current = null;
+      return choices.setEffort(next);
+    }).then((done) => {
+      effortSaves.current -= 1;
+      // A failed save leaves the chat's level as it was, and the slider shows it again.
+      if (!done && effortSaves.current === 0) setPicked(null);
+    });
+  };
+  useEffect(() => {
+    if (effortSaves.current === 0) setPicked(null);
+  }, [session.effort]);
 
   const engines = found.includes(session.engine) ? found : [session.engine, ...found];
   return (
@@ -386,22 +422,69 @@ function EngineChip({
               </div>
             </>
           )}
-          <div className="chip-group" role="group" aria-label="Effort">
-            <span className="chip-group-name">Effort</span>
-            {effortLevels.map((effort) => (
-              <button
-                key={effort}
-                className={`chip${effort === session.effort ? " on" : ""}`}
-                aria-pressed={effort === session.effort}
-                disabled={saving}
-                onClick={() => void choose(() => choices.setEffort(effort))}
-              >
-                {effortName(effort)}
-              </button>
-            ))}
-          </div>
+          <EffortSlider effort={picked ?? session.effort} busy={saving} onPick={pickEffort} />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The effort levels have an order, so one slider shows them. The name follows each move, but the
+ * chat takes the level only on the native `change` event: on release, or on each key press. So a
+ * drag sends one request, not one for each stop.
+ */
+function EffortSlider({
+  effort,
+  busy,
+  onPick,
+}: {
+  readonly effort: EffortLevel;
+  readonly busy: boolean;
+  readonly onPick: (effort: EffortLevel) => void;
+}): ReactElement {
+  // The level under the finger during a drag, before the chat takes it.
+  const [dragged, setDragged] = useState<EffortLevel | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const pick = useRef(onPick);
+  pick.current = onPick;
+
+  useEffect(() => {
+    const slider = input.current;
+    if (slider === null) return;
+    const onChange = (): void => {
+      const picked = effortLevels[slider.valueAsNumber];
+      setDragged(null);
+      if (picked !== undefined) pick.current(picked);
+    };
+    slider.addEventListener("change", onChange);
+    return () => slider.removeEventListener("change", onChange);
+  }, []);
+
+  const shown = dragged ?? effort;
+  const index = effortLevels.indexOf(shown);
+  return (
+    <div className="chip-group" role="group" aria-label="Effort" aria-busy={busy}>
+      <span className="chip-group-name">Effort</span>
+      {/* The slider is never disabled while it saves: a disabled slider drops the drag and the focus. */}
+      <input
+        ref={input}
+        className="effort-slider"
+        type="range"
+        min={0}
+        max={effortLevels.length - 1}
+        step={1}
+        value={index}
+        aria-label="Effort"
+        aria-valuetext={effortName(shown)}
+        style={{ "--share": index / (effortLevels.length - 1) } as CSSProperties}
+        onChange={(event) => setDragged(effortLevels[event.target.valueAsNumber] ?? null)}
+      />
+      {/* The slider already gives its name to a screen reader. */}
+      <span className="effort-name" aria-hidden="true">
+        {busy && <ButtonSpinner />}
+        {effortName(shown)}
+      </span>
     </div>
   );
 }

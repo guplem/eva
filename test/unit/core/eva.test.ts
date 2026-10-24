@@ -1533,6 +1533,18 @@ describe("Eva alerts", () => {
     expect(instance.status().problems).toEqual([]);
   });
 
+  test("a sync error that names a secret reaches the status with the secret hidden (#447)", async () => {
+    const secret = "github-token-value-for-tests";
+    const instance = start(new FakeEngine(), {}, { secrets: { githubToken: secret } });
+    // Git names the remote in its error, and a remote address can hold a token.
+    sandbox.git(vault, "remote", "set-url", "origin", join(home, secret, "missing.git"));
+    const state = await instance.syncVault();
+    expect(state.status).toBe("offline");
+    expect(state.lastError).toContain("[redacted]");
+    expect(state.lastError).not.toContain(secret);
+    expect(instance.status().vaultSync.lastError).not.toContain(secret);
+  });
+
   test("a failed update check and a failed install each raise an alert that names the step", async () => {
     let failCheck = true;
     const instance = start(
@@ -1678,6 +1690,38 @@ describe("Eva alerts", () => {
     instance.reportProblem("telegram_poll", null);
     expect(instance.status().problems).toEqual([]);
     expect(instance.status().problemDetails).toEqual([]);
+  });
+
+  test("a default engine with no program raises an alert, which asks for a restart once the program is back", async () => {
+    let piProgram: string | null = null;
+    const instance = start(
+      new FakeEngine(),
+      { engines: { ...defaultConfig.engines, default: "pi" } },
+      { locateEngine: (engine) => (engine === "pi" ? piProgram : null) },
+    );
+    const alerts = collectAlerts(instance);
+    instance.noticeDefaultEngine();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["default_engine", "error"]]);
+    expect(instance.status().problems[0]).toStartWith("Eva finds no pi program, so chats fail.");
+
+    // The install happens while Eva runs: only a restart loads the engine.
+    piProgram = "/opt/pi/bin/pi";
+    await instance.backgroundTick();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([
+      ["default_engine", "error"],
+      ["default_engine", "resolved"],
+      ["default_engine_restart", "warn"],
+    ]);
+    expect(instance.status().problems).toHaveLength(1);
+    expect(instance.status().problems[0]).toStartWith("The pi program is installed now");
+  });
+
+  test("a loaded default engine raises no alert", () => {
+    const instance = start(new FakeEngine(), {}, { locateEngine: () => null });
+    const alerts = collectAlerts(instance);
+    instance.noticeDefaultEngine();
+    expect(alerts).toEqual([]);
+    expect(instance.status().problems).toEqual([]);
   });
 
   test("a start after an unclean exit sends one alert that stays out of the problems", () => {

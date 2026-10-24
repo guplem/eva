@@ -27,6 +27,8 @@ import { ChatNotifications, type NotificationKind } from "./alerts/chat-notifica
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
+  engineMissingProblem,
+  engineRestartProblem,
   engineUpdateProblem,
   heldBackNews,
   machineAheadMessage,
@@ -40,7 +42,7 @@ import {
 import { machineReportFile, readMachineReports, writeMachineReport } from "./alerts/machine-reports.ts";
 import { runMigrations, type MigrationRun, type MigrationStore } from "./migrations/migration-runner.ts";
 import { migrations, vaultAhead, type StartMigrations } from "./migrations/migrations.ts";
-import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
+import { runCheck, uvRuns, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import { engineFolders, loadConfig, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
 import { defaultVoiceModelPath, withMachineDefaults } from "./settings/machine-defaults.ts";
@@ -206,6 +208,8 @@ export interface EvaOptions {
   readonly gatherMs?: number;
   /** The claude program, for the engine update. Null: no engine update. */
   readonly claudeExecutable?: string | null;
+  /** Finds an engine's program on the disk now, so an install after the start ends its alert. Default: none. */
+  readonly locateEngine?: (engine: EngineName) => string | null;
   /** Sends a web push. Tests pass their own; the default posts to the push service. */
   readonly pushSender?: PushSender;
   /** Where background failures and sync problems go (lessons 16, 50). */
@@ -326,6 +330,10 @@ export interface EvaSetupState extends SetupState {
   readonly restartNeeded: boolean;
   /** True for a new vault with a commit and no remote: the vault step offers its push. */
   readonly vaultNeedsPush: boolean;
+  /** The engines whose program the page installed since the start. They run after a restart. */
+  readonly installedEngines: readonly EngineName[];
+  /** True when a Google account is set but no chat can run uv, which starts the Google tools. */
+  readonly uvMissing: boolean;
 }
 
 /** Each engine's permissions, with its name. */
@@ -359,6 +367,8 @@ const restartDelayMs = 500;
 const latestToolKeepMs = 60 * 60_000;
 /** A failure, such as GitHub's rate limit, waits too, so each page open does not use up the limit. */
 const latestToolFailureKeepMs = 10 * 60_000;
+/** How long the answer to "can a chat run uv" stays. */
+const uvAnswerKeepMs = 60_000;
 const maxLogEntries = 100;
 /** About a month of releases. A phone scrolls a longer list for nothing. */
 const changelogLength = 30;
@@ -385,6 +395,13 @@ export class Eva {
   /** The gh logins and logouts, one after the other. */
   private githubCliChanges: Promise<void>;
   private toolInstallRuns: boolean;
+  /**
+   * Each program that the page installed since the start, with its path. The engines start with
+   * Eva, so a new engine program waits for a restart, but its login need not.
+   */
+  private readonly installedPrograms: Map<InstallableTool, string>;
+  /** The last answer to "can a chat run uv", and when Eva asked. */
+  private uvAnswer: { readonly at: number; readonly runs: Promise<boolean> } | null;
   /** The lookup of each latest tool version, and when it started. A running lookup is shared. */
   private readonly latestToolCache: Map<string, { readonly lookup: Promise<string | null>; readonly at: number }>;
   /** The changelog, kept as the latest tool versions are, so each dialog open does not use up GitHub's limit. */
@@ -476,6 +493,7 @@ export class Eva {
               runner: options.runner,
               environment: ownGitEnvironment,
               now: options.now,
+              redact: (text) => redactor.redact(text),
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,
@@ -521,12 +539,14 @@ export class Eva {
     });
     this.claudeLogin = new ClaudeLogin({
       start: options.startTerminal ?? systemTerminalProcessStarter,
-      program: options.claudeExecutable ?? null,
+      program: () => options.claudeExecutable ?? this.installedPrograms.get("claude") ?? null,
       cwd: options.paths.root,
       environment: () => engineToolEnvironment(this.facts),
     });
     this.githubCliChanges = Promise.resolve();
     this.toolInstallRuns = false;
+    this.installedPrograms = new Map();
+    this.uvAnswer = null;
     this.latestToolCache = new Map();
     this.changelogCache = null;
     this.githubLogin = new GitHubBrowserLogin({
@@ -772,6 +792,7 @@ export class Eva {
       await this.vault.pullIfDue({ ...this.settings.config.sync, enabled: this.options.config.sync.enabled });
       this.noticeRoleChange();
       this.cleanUpIfDue();
+      this.noticeDefaultEngine();
       // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
       // its download can take minutes, and the next ticks must still fetch the vault.
       const engineUpdater = this.engineUpdater;
@@ -1128,6 +1149,24 @@ export class Eva {
     this.alerts.report("template_alignment", this.role() === "hub" ? alignmentProblem(alignment.list()) : null);
   }
 
+  /**
+   * Raises an alert while the default engine has no program, so a failed chat has a reason on the
+   * phone. Call it after the Telegram bot starts. Chats read the engines at start, so the start value counts.
+   */
+  noticeDefaultEngine(): void {
+    const engine = this.options.config.engines.default;
+    const state = this.options.engines.some((loaded) => loaded.name === engine)
+      ? "loaded"
+      : (this.options.locateEngine?.(engine) ?? null) === null
+        ? "missing"
+        : "installed";
+    this.alerts.report(
+      "default_engine",
+      engineMissingProblem(engine, state, this.options.toolPlaces?.platform ?? process.platform),
+    );
+    this.alerts.report("default_engine_restart", engineRestartProblem(engine, state));
+  }
+
   /** The start found the marker of a run that never stopped cleanly. */
   reportUncleanExit(): void {
     this.alerts.notify("unclean_exit", "warn", uncleanExitMessage);
@@ -1279,13 +1318,15 @@ export class Eva {
     this.toolInstallRuns = true;
     try {
       const inputs = this.toolInstallInputs();
-      await (program === "claude"
+      const path = await (program === "claude"
         ? installEngine("claude-code", { ...inputs, configured: this.options.claudeExecutable ?? null })
         : program === "pi"
           ? installEngine("pi", { ...inputs, configured: this.options.config.engines.pi.executable })
           : program === "uv"
             ? installUv(inputs)
             : installGh(inputs));
+      this.installedPrograms.set(program, path);
+      if (program === "uv") this.uvAnswer = null;
       const restart = program === "claude" || program === "pi" ? " Press Restart Eva so that chats use it." : "";
       return { ok: true, message: `Installed ${program}.${restart}` };
     } catch (error) {
@@ -1588,15 +1629,44 @@ export class Eva {
     const saved = this.settings.saved().secrets;
     // The engines, git and Telegram read the tokens at start, so a token saved since then waits for a restart.
     // The vault folder too: sync, the schedules and the Assistant read it at start.
+    // An engine program that the page installed starts with the next Eva.
     const restartNeeded =
       pageSecretNames.some((name) => saved[name] !== this.options.secrets[name]) ||
-      this.savedVaultPath() !== this.options.config.vaultPath;
+      this.savedVaultPath() !== this.options.config.vaultPath ||
+      this.newEngines().length > 0;
+    const google = this.settings.saved().config.google.email !== null;
     return {
       ...(await this.settings.setupState()),
+      installedEngines: this.newEngines(),
       progress: this.setupProgress(),
       restartNeeded,
       vaultNeedsPush: await this.vaultSetup.needsPush(),
+      // Only a Google account needs uv, so Eva asks for it only then.
+      uvMissing: google && !(await this.uvRuns()),
     };
+  }
+
+  /**
+   * Whether a chat can run uv. The page reads the setup state often, so the answer stays for a
+   * minute, and an install asks again. The question needs no token.
+   */
+  private uvRuns(): Promise<boolean> {
+    const now = this.options.now().getTime();
+    if (this.uvAnswer === null || now - this.uvAnswer.at > uvAnswerKeepMs)
+      this.uvAnswer = { at: now, runs: uvRuns(this.options.runner, engineToolEnvironment(this.facts)) };
+    return this.uvAnswer.runs;
+  }
+
+  /** The engines whose program the page installed since the start, which no engine runs yet. */
+  private newEngines(): EngineName[] {
+    const started = new Set(this.options.engines.map((engine) => engine.name));
+    const installed: readonly [InstallableTool, EngineName][] = [
+      ["claude", "claude-code"],
+      ["pi", "pi"],
+    ];
+    return installed.flatMap(([program, engine]) =>
+      this.installedPrograms.has(program) && !started.has(engine) ? [engine] : [],
+    );
   }
 
   /** The person's GitHub repositories, for the vault step; see `VaultSetup`. */
@@ -1641,20 +1711,20 @@ export class Eva {
 
   /** Each setup step, from the files as they are now: `eva setup` may have saved a step meanwhile. */
   setupProgress(): ProgressStep[] {
-    return this.progressWith(this.settings.saved().secrets);
+    return this.progressWith(this.settings.saved().secrets, this.newEngines());
   }
 
   /**
    * The step that stops every chat. The engines read the Claude token at start, so the running
-   * login decides. A token that only the files hold needs a restart first.
+   * login decides. A token that only the files hold, or a new engine program, needs a restart first.
    */
   private chatBlocker(progress: readonly ProgressStep[]): ChatBlocker | null {
-    const running = chatBlocker(this.progressWith(this.options.secrets));
+    const running = chatBlocker(this.progressWith(this.options.secrets, []));
     if (running !== "engine") return running;
     return chatBlocker(progress) === "engine" ? "engine" : "restart";
   }
 
-  private progressWith(secrets: EvaSecrets): ProgressStep[] {
+  private progressWith(secrets: EvaSecrets, newEngines: readonly EngineName[]): ProgressStep[] {
     const { config } = this.settings.saved();
     const secretsSet = {
       claudeOauthToken: secrets.claudeOauthToken !== undefined,
@@ -1665,7 +1735,7 @@ export class Eva {
     // A saved but empty folder holds no vault yet, as after a failed clone: the step offers it again.
     const vaultReady = vaultPath !== null && holdsFiles(vaultPath);
     const folders = engineFolders(this.options.paths);
-    const found = new Set(this.options.engines.map((engine) => engine.name));
+    const found = new Set([...this.options.engines.map((engine) => engine.name), ...newEngines]);
     const loggedIn = {
       "claude-code": secretsSet.claudeOauthToken || claudeLoggedIn(folders.claude),
       pi: piLoginState(folders.piAgent) === "ok",

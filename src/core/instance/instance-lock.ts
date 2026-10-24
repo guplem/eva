@@ -15,7 +15,7 @@ export interface InstanceLock {
 export interface LockProbe {
   /** This boot's id, or null where the platform gives none. */
   readonly bootId: string | null;
-  /** When this boot started, in milliseconds. By default, Eva reads it from the system uptime. */
+  /** When this boot started, in milliseconds. By default, Eva reads it from the uptime on Windows only. */
   readonly bootTimeMs?: number;
   readonly isProcessAlive: (pid: number) => boolean;
 }
@@ -95,14 +95,19 @@ export function runningInstancePid(lockPath: string, probe: LockProbe): number |
 function isHolderRunning(holder: LockHolder, probe: LockProbe): boolean {
   if (holder.bootId !== null && probe.bootId !== null) {
     if (holder.bootId !== probe.bootId) return false;
-  } else if (holder.writtenAtMs < (probe.bootTimeMs ?? bootTimeMs()) - clockChangeMarginMs) {
-    return false;
+  } else {
+    const bootTime = probe.bootTimeMs ?? windowsBootTimeMs();
+    if (bootTime !== null && holder.writtenAtMs < bootTime - clockChangeMarginMs) return false;
   }
   return probe.isProcessAlive(holder.pid);
 }
 
-function bootTimeMs(): number {
-  return Date.now() - uptime() * 1000;
+/**
+ * Only the Windows uptime counts the time in sleep. On Linux the uptime leaves sleep out, so a
+ * live lock from before a suspend would look older than the boot.
+ */
+function windowsBootTimeMs(): number | null {
+  return process.platform === "win32" ? Date.now() - uptime() * 1000 : null;
 }
 
 function tryCreate(lockPath: string, owner: LockOwner): boolean {

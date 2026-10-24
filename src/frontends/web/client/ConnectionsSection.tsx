@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { api } from "./api.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { LoggedIn, reloadAfterSave, type LoginWords } from "./LoggedIn.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { cardId, parseSettingsHash } from "./settings-routes.ts";
@@ -133,6 +134,8 @@ function CommitIdentity({ context }: { readonly context: SettingsContext }): Rea
     context.saveNow({
       git: { name: name.trim() === "" ? null : name.trim(), email: email.trim() === "" ? null : email.trim() },
     });
+  // The save trims, so a space at the end is no change.
+  useLeaveGuard(name.trim() !== (git.name ?? "") || email.trim() !== (git.email ?? ""), save);
   if (!open)
     return (
       <div id={cardId(commitIdentityItem)}>

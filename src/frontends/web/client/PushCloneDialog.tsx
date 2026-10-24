@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactElement } from "react";
 import type { CloneDetails } from "./api.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { countOf } from "./project-format.ts";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 interface PushCloneDialogProps {
   readonly clone: CloneDetails;
@@ -21,13 +22,16 @@ export function PushCloneDialog({ clone, onClose, onPush }: PushCloneDialogProps
   const [error, setError] = useState<string | null>(null);
   const changes = clone.changes ?? 0;
 
+  // A save would push, so the question offers no save. While the push runs, the guard waits.
+  const askFirst = useLeaveGuard(note.trim() !== "" && !busy, null);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && !busy) onClose();
+      if (event.key === "Escape" && !busy) askFirst(onClose);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, busy]);
+  }, [onClose, busy, askFirst]);
 
   const push = async (): Promise<void> => {
     setBusy(true);
@@ -85,7 +89,7 @@ export function PushCloneDialog({ clone, onClose, onPush }: PushCloneDialogProps
               {busy ? "Pushing…" : changes > 0 ? "Commit and push" : "Push"}
             </button>
             <span className="spacer" />
-            <button type="button" onClick={onClose} disabled={busy}>
+            <button type="button" onClick={() => askFirst(onClose)} disabled={busy}>
               Cancel
             </button>
           </div>

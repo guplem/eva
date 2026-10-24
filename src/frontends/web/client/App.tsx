@@ -48,6 +48,7 @@ import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 import { TooltipLayer } from "./Tooltip.tsx";
+import { UnsavedChangesDialog } from "./UnsavedChangesDialog.tsx";
 import { AppSkeleton } from "./Loading.tsx";
 import { SpecialDayProvider } from "./FestiveDay.tsx";
 import { useLocationSharing } from "./LocationCard.tsx";
@@ -138,7 +139,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
    */
   const onLinkedChatOpened = useCallback((): void => {
     setLinkedChatId(null);
-    window.history.replaceState(null, "", addressOf(screenRef.current));
+    // The state keeps the entry's place for the unsaved changes guard.
+    window.history.replaceState(window.history.state, "", addressOf(screenRef.current));
   }, []);
 
   /** A new address adds a history entry, so the back button goes to the previous destination. */
@@ -540,6 +542,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
           </div>
         </div>
       )}
+      <UnsavedChangesDialog />
       {deviceRequest !== undefined && (
         <NewDeviceDialog
           request={deviceRequest}

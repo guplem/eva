@@ -148,6 +148,7 @@ export function FilesView(): ReactElement {
           {naming !== null ? (
             <RenameForm
               label={`New name of ${crumbs[crumbs.length - 1]?.name ?? ""}`}
+              original={crumbs[crumbs.length - 1]?.name ?? ""}
               draft={naming}
               onDraft={setNaming}
               onSave={rename}

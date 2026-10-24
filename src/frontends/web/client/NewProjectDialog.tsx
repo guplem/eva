@@ -7,6 +7,7 @@ import { api, type NewProjectResult, type ProjectDetails, type PublicSettings } 
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { stepProblems, unavailableSteps } from "./new-project-form.ts";
 import { splitWords, statusChoices, statusOf } from "./ProjectDetailsEditor.tsx";
+import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 
 interface NewProjectDialogProps {
   readonly onClose: () => void;
@@ -28,16 +29,21 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
   // A failed step leaves the project in place: the sheet says why before it opens the project.
   const [created, setCreated] = useState<NewProjectResult | null>(null);
 
+  const typed = name.trim() !== "" || description.trim() !== "" || tags.trim() !== "";
+  // Create makes a folder and can make a GitHub repository, so the question offers no save.
+  // While Create runs, the guard waits: the new project then opens with no question.
+  const askFirst = useLeaveGuard(typed && created === null && !busy, null);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== "Escape" || busy) return;
       // The project exists already, so the list must show it.
-      if (created === null) onClose();
+      if (created === null) askFirst(onClose);
       else onCreated(created.projectId);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onCreated, busy, created]);
+  }, [onClose, onCreated, busy, created, askFirst]);
 
   // Without the settings, both steps stay off, so a send never asks for a step that cannot run.
   useEffect(() => {
@@ -179,7 +185,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
                 {busy ? "Creating…" : "Create project"}
               </button>
               <span className="spacer" />
-              <button type="button" onClick={onClose} disabled={busy}>
+              <button type="button" onClick={() => askFirst(onClose)} disabled={busy}>
                 Cancel
               </button>
             </div>

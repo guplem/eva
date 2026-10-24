@@ -102,6 +102,19 @@ export function parseSettingsHash(hash: string): SettingsRoute {
   return { section: known.id, item: item === undefined || item === "" ? null : decodeURIComponent(item) };
 }
 
+/**
+ * True when a move between two addresses keeps the same Settings page open, such as a link
+ * to a card on it. Each form on the page then keeps its typed values.
+ */
+export function sameSettingsPage(from: string, to: string): boolean {
+  const first = parseSettingsHash(from);
+  const second = parseSettingsHash(to);
+  if (!isSettingsHash(from) || !isSettingsHash(to) || first.section === null) return false;
+  if (first.section !== second.section) return false;
+  // A setup step and the design reference are pages of their own, not cards.
+  return first.section === "setup" || first.section === "developer" ? first.item === second.item : true;
+}
+
 export function settingsHash(route: SettingsRoute): string {
   if (route.section === null) return prefix;
   return route.item === null

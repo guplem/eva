@@ -65,7 +65,14 @@ export class ChatNotifications {
         this.lastTexts.set(sessionId, event.text);
         return;
       case "approval_needed":
-        this.send(sessionId, "approvals", `Eva waits for your approval: ${event.summary}`);
+        // The summary of a question request is its first question.
+        this.send(
+          sessionId,
+          "approvals",
+          event.questions === undefined
+            ? `Eva waits for your approval: ${event.summary}`
+            : `Eva has a question: ${event.summary}`,
+        );
         return;
       case "turn_finished":
         this.endings.set(sessionId, this.lastTexts.get(sessionId) ?? "Eva finished.");

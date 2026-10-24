@@ -14,15 +14,9 @@ import { dirname, join, resolve } from "node:path";
 import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
 import { readTextTolerant } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
+import { answerText } from "../../shared/questions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
-import type {
-  ApprovalQuestion,
-  EngineEventPayload,
-  QuestionAnswer,
-  TaskState,
-  TurnUsage,
-  UsageWindow,
-} from "../../shared/events.ts";
+import type { ApprovalQuestion, EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
 import type { EnginePermissions, PermissionContext } from "../../shared/permissions.ts";
 import { describeClaudePermissions, type ClaudePermissionMode } from "./claude-code-permissions.ts";
 
@@ -563,7 +557,9 @@ async function answerQuestions(request: TurnRequest, input: Record<string, unkno
     return { behavior: "deny", message: askInTextMessage };
   const answers: Record<string, string> = {};
   for (const [index, question] of questions.entries()) {
-    const text = answerText(question, outcome[index]);
+    const answer = outcome[index];
+    // The core checks the answers too. The engine checks again, as a wrong label would reach the model.
+    const text = answer === undefined ? null : answerText(question, answer);
     if (text === null) return { behavior: "deny", message: askInTextMessage };
     answers[question.question] = text;
   }
@@ -598,16 +594,6 @@ function readQuestions(input: Record<string, unknown>): ApprovalQuestion[] | nul
 
 function recordOf(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-/** Claude Code's own form joins several labels with ", ". Null for an answer that does not fit the question. */
-function answerText(question: ApprovalQuestion, answer: QuestionAnswer | undefined): string | null {
-  const other = answer?.other?.trim() ?? "";
-  if (other.length > 0) return other;
-  const labels = (answer?.selected ?? []).map((index) => question.options[index]?.label);
-  if (labels.length === 0 || labels.some((label) => label === undefined)) return null;
-  if (!question.multiSelect && labels.length > 1) return null;
-  return labels.join(", ");
 }
 
 async function decidePermission(

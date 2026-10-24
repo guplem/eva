@@ -26,6 +26,7 @@ import {
   type TaskState,
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
+import { answerFits } from "../../shared/questions.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
 import { boundedDetail, maxTurnDetailLength, redactedJsonText } from "../../shared/tool-details.ts";
@@ -1255,17 +1256,13 @@ function redactedQuestions(questions: readonly ApprovalQuestion[], redactor: Red
   }));
 }
 
-/** One answer for each question: own text, or options in range, and only one for a single-choice question. */
+/** One fitting answer for each question. */
 function answersFit(questions: readonly ApprovalQuestion[], answers: QuestionAnswers): boolean {
   return (
     answers.length === questions.length &&
     answers.every((answer, index) => {
       const question = questions[index];
-      if (question === undefined) return false;
-      if ((answer.other?.trim() ?? "") !== "") return true;
-      const { selected } = answer;
-      if (selected.length === 0 || (!question.multiSelect && selected.length > 1)) return false;
-      return selected.every((option) => Number.isInteger(option) && option >= 0 && option < question.options.length);
+      return question !== undefined && answerFits(question, answer);
     })
   );
 }

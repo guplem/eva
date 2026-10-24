@@ -149,14 +149,18 @@ describe("acquireInstanceLock", () => {
     lock.release();
   });
 
-  test("the live core touches its own lock at each beat, and stops on release", async () => {
+  test("the live core touches its own lock at each beat, and learns when another core took it over", async () => {
     const lockPath = join(home, "eva.lock");
     let tick: () => void = () => undefined;
     let stopped = false;
+    let lost = 0;
     const lock = await acquireInstanceLock(
       lockPath,
       owner({
         pid: 4242,
+        onLost: () => {
+          lost += 1;
+        },
         setInterval: (beat) => {
           tick = beat;
           return {
@@ -172,16 +176,20 @@ describe("acquireInstanceLock", () => {
     tick();
     expect(statSync(lockPath).mtimeMs).not.toBe(old.getTime());
 
-    // After a takeover, the lock names another core: its file time stays as that core set it.
+    // A missing lock is no takeover: the core goes on.
+    rmSync(lockPath);
+    tick();
+    expect(lost).toBe(0);
+
+    // After a takeover, the lock names another core: its file time stays, and this core learns it lost.
     writeFileSync(lockPath, "5151\n\nheartbeat\n");
     touch(lockPath, old);
     tick();
     expect(statSync(lockPath).mtimeMs).toBe(old.getTime());
-
-    rmSync(lockPath);
-    tick();
-    lock.release();
+    expect(lost).toBe(1);
     expect(stopped).toBe(true);
+    lock.release();
+    expect(readFileSync(lockPath, "utf-8").split("\n")[0]).toBe("5151");
   });
 
   test("release leaves the lock of another core in place", async () => {

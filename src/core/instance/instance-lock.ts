@@ -27,6 +27,8 @@ export interface LockOwner extends LockProbe {
   readonly staleAfterMs?: number;
   /** The timer seam; the default is the global `setInterval`. */
   readonly setInterval?: (tick: () => void, ms: number) => { stop(): void };
+  /** Runs once when another core took this core's lock over. */
+  readonly onLost?: () => void;
 }
 
 interface LockHolder {
@@ -66,8 +68,14 @@ export async function acquireInstanceLock(lockPath: string, owner: LockOwner): P
   }
 
   const heartbeat = (owner.setInterval ?? unrefInterval)(() => {
-    // A touch on the lock of another core would make that lock look live after its core ends.
-    if (readHolder(lockPath)?.pid !== owner.pid) return;
+    const holder = readHolder(lockPath);
+    if (holder !== null && holder.pid !== owner.pid) {
+      // A core that stalled for a whole watch lost its lock. Two cores must never run on one home.
+      heartbeat.stop();
+      owner.onLost?.();
+      return;
+    }
+    if (holder === null) return;
     try {
       const now = new Date();
       utimesSync(lockPath, now, now);

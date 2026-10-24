@@ -158,12 +158,17 @@ async function serve(paths: HomePaths): Promise<number> {
     now: () => Date.now(),
     sleep: (ms) => Bun.sleep(ms),
   });
+  // Replaced by a logged stop once the logger and the stop sequence exist.
+  let lockLost = (): void => process.exit(exitCodes.crash);
   // Before the migrations, so a second start never changes the files under a running Eva.
   const lock = await acquireInstanceLock(paths.lock, {
     pid: host.pid,
     bootId: host.bootId,
     isProcessAlive,
     sleep: (ms) => Bun.sleep(ms),
+    onLost: () => {
+      lockLost();
+    },
   });
   const { config, secrets, notes, migrations } = await prepareStart({
     paths,
@@ -276,6 +281,10 @@ async function serve(paths: HomePaths): Promise<number> {
   return new Promise<number>((resolve) => {
     stop = (exitCode) => {
       void stopEva(exitCode).then(resolve);
+    };
+    lockLost = () => {
+      logger.log("error", "Another Eva took over this home folder, so this one stops.");
+      stop(exitCodes.crash);
     };
     host.onStopSignal(() => {
       stop(exitCodes.clean);

@@ -929,6 +929,10 @@ test("the effort slider saves one level at a time, and a failed save shows the c
   });
   await slider.press("ArrowRight");
   await expect(effort).toHaveAttribute("aria-busy", "true");
+  // The menu closes and opens again during the save, and still waits for it.
+  await page.keyboard.press("Escape");
+  await picker.click();
+  await expect(effort).toHaveAttribute("aria-busy", "true");
   await slider.press("ArrowRight");
   await slider.press("ArrowRight");
   await expect(name).toHaveText("High");
@@ -939,7 +943,9 @@ test("the effort slider saves one level at a time, and a failed save shows the c
 
   await page.unroute("**/effort");
   await page.route("**/effort", (route) => route.fulfill({ status: 500, body: "{}" }));
+  const failed = page.waitForResponse("**/effort");
   await slider.press("ArrowRight");
+  expect((await failed).status()).toBe(500);
   await expect(effort).toHaveAttribute("aria-busy", "false");
   await expect(name).toHaveText("High");
   await expect(slider).toHaveAttribute("aria-valuetext", "High");

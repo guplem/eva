@@ -286,7 +286,8 @@ function EngineChip({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const [found, setFound] = useState<readonly EngineName[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [savingCount, setSaving] = useState(0);
+  const saving = savingCount > 0;
   const root = useRef<HTMLDivElement>(null);
   const showError = useShowError();
   const lock = chipLock(session, running);
@@ -322,17 +323,52 @@ function EngineChip({
     };
   }, [open]);
 
-  const choose = async (change: () => Promise<unknown>): Promise<void> => {
-    setSaving(true);
-    try {
-      await change();
-      await onChanged();
-    } catch (caught) {
-      showError(caught);
-    } finally {
-      setSaving(false);
-    }
+  // Saves that overlap can end in any order, so each save waits for the one before it. The queue
+  // lives here, not in the menu: the menu can close and open again during a save.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const choose = (change: () => Promise<unknown>): Promise<boolean> => {
+    setSaving((count) => count + 1);
+    const saved = queue.current.then(async () => {
+      try {
+        await change();
+        await onChanged();
+        return true;
+      } catch (caught) {
+        showError(caught);
+        return false;
+      } finally {
+        setSaving((count) => count - 1);
+      }
+    });
+    queue.current = saved;
+    return saved;
   };
+
+  // The newest effort that the person picked. The slider shows it until the chat's record shows
+  // it too, so a save that ends, or a refresh that comes late, never pulls the slider back.
+  const [picked, setPicked] = useState<EffortLevel | null>(null);
+  const effortSaves = useRef(0);
+  // An effort that waits for the save before it. Keys pressed meanwhile change only this level.
+  const nextEffort = useRef<EffortLevel | null>(null);
+  const pickEffort = (effort: EffortLevel): void => {
+    setPicked(effort);
+    const queued = nextEffort.current !== null;
+    nextEffort.current = effort;
+    if (queued) return;
+    effortSaves.current += 1;
+    void choose(() => {
+      const next = nextEffort.current ?? effort;
+      nextEffort.current = null;
+      return choices.setEffort(next);
+    }).then((done) => {
+      effortSaves.current -= 1;
+      // A failed save leaves the chat's level as it was, and the slider shows it again.
+      if (!done && effortSaves.current === 0) setPicked(null);
+    });
+  };
+  useEffect(() => {
+    if (effortSaves.current === 0) setPicked(null);
+  }, [session.effort]);
 
   const engines = found.includes(session.engine) ? found : [session.engine, ...found];
   return (
@@ -386,7 +422,7 @@ function EngineChip({
               </div>
             </>
           )}
-          <EffortSlider effort={session.effort} onPick={(effort) => choose(() => choices.setEffort(effort))} />
+          <EffortSlider effort={picked ?? session.effort} busy={saving} onPick={pickEffort} />
         </div>
       )}
     </div>
@@ -400,50 +436,32 @@ function EngineChip({
  */
 function EffortSlider({
   effort,
+  busy,
   onPick,
 }: {
   readonly effort: EffortLevel;
-  readonly onPick: (effort: EffortLevel) => Promise<void>;
+  readonly busy: boolean;
+  readonly onPick: (effort: EffortLevel) => void;
 }): ReactElement {
-  const [shown, setShown] = useState(effort);
-  const [busy, setBusy] = useState(false);
+  // The level under the finger during a drag, before the chat takes it.
+  const [dragged, setDragged] = useState<EffortLevel | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const pick = useRef(onPick);
   pick.current = onPick;
-  // Saves that overlap can end in any order, so one save runs at a time. Keys pressed during it
-  // leave only the newest level, which the slider saves next.
-  const saving = useRef(false);
-  const waiting = useRef<EffortLevel | null>(null);
-
-  // A save that ends would pull the slider back to an older level, so the slider waits for the
-  // last one. A failed save leaves the chat's level as it was, and the slider shows it again.
-  useEffect(() => {
-    if (!busy) setShown(effort);
-  }, [effort, busy]);
 
   useEffect(() => {
     const slider = input.current;
     if (slider === null) return;
-    const save = async (): Promise<void> => {
-      saving.current = true;
-      setBusy(true);
-      for (let next = waiting.current; next !== null; next = waiting.current) {
-        waiting.current = null;
-        await pick.current(next);
-      }
-      saving.current = false;
-      setBusy(false);
-    };
     const onChange = (): void => {
       const picked = effortLevels[slider.valueAsNumber];
-      if (picked === undefined) return;
-      waiting.current = picked;
-      if (!saving.current) void save();
+      setDragged(null);
+      if (picked !== undefined) pick.current(picked);
     };
     slider.addEventListener("change", onChange);
     return () => slider.removeEventListener("change", onChange);
   }, []);
 
+  const shown = dragged ?? effort;
   const index = effortLevels.indexOf(shown);
   return (
     <div className="chip-group" role="group" aria-label="Effort" aria-busy={busy}>
@@ -460,7 +478,7 @@ function EffortSlider({
         aria-label="Effort"
         aria-valuetext={effortName(shown)}
         style={{ "--share": index / (effortLevels.length - 1) } as CSSProperties}
-        onChange={(event) => setShown(effortLevels[event.target.valueAsNumber] ?? shown)}
+        onChange={(event) => setDragged(effortLevels[event.target.valueAsNumber] ?? null)}
       />
       {/* The slider already gives its name to a screen reader. */}
       <span className="effort-name" aria-hidden="true">

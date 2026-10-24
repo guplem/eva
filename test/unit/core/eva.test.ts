@@ -2209,10 +2209,15 @@ describe("the hub claim after a later fetch (#529)", () => {
     expect(instance.role()).toBe("satellite");
   });
 
-  test("a read or a pick of a conflict never claims the hub, and Sync now with sync off neither", async () => {
-    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+  test("a read or a pick of a conflict never claims the hub", async () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc", sync: syncOn });
     await instance.vaultConflicts();
     await instance.resolveVaultConflict("note.md", "mine");
+    expect(existsSync(join(vault, ".eva", "hub.json"))).toBe(false);
+  });
+
+  test("Sync now with sync off does not claim the hub", async () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
     await instance.syncVault();
     expect(existsSync(join(vault, ".eva", "hub.json"))).toBe(false);
   });

@@ -66,6 +66,10 @@ sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");
 
 const engine = new FakeEngine(async function* (request, turnNumber) {
+  if (request.mode === "model-call" && request.prompt.startsWith("Summarize this chat.")) {
+    yield* FakeEngine.answer(request, "Goal: the demo summary.");
+    return;
+  }
   const lastLine = request.prompt.split("\n").at(-1) ?? "";
   yield {
     kind: "task_changed",

@@ -111,6 +111,7 @@ export function AssistantView({
   const chat = {
     tree,
     shownId: branch.id,
+    sessions,
     onChanged,
     tasks: tasksOf(
       live.tasks,

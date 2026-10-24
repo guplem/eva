@@ -30,7 +30,8 @@ import { recordingTime, recordingType } from "./voice-notes.ts";
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
 /** What the composer shows of a chat. A new chat has no record until its first message. */
-type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns">;
+type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns"> &
+  Partial<Pick<SessionRecord, "firstMessageDraft">>;
 
 /** The unsent text of each chat in this tab, by its draft key. */
 const unsentTexts = new Map<string, string>();
@@ -84,7 +85,12 @@ export function Composer({
   placeholder = composerPlaceholder(null),
   draftKey,
 }: ComposerProps): ReactElement {
-  const [text, setTypedText] = useState(() => (draftKey === undefined ? "" : (unsentTexts.get(draftKey) ?? "")));
+  // A chat that goes on from a summary starts with it, so the person reads it before it goes (issue 522).
+  const [text, setTypedText] = useState(
+    () =>
+      (draftKey === undefined ? undefined : unsentTexts.get(draftKey)) ??
+      (session.turns.length === 0 ? (session.firstMessageDraft ?? "") : ""),
+  );
   const setText = (value: string): void => {
     if (draftKey !== undefined) {
       if (value === "") unsentTexts.delete(draftKey);

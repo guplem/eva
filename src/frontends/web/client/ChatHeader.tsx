@@ -1,7 +1,8 @@
 /**
  * The header of an open chat: one row with the title, one subtitle, and a "More actions" menu with Rename,
- * Chat info, Archive and Delete chat. Rename and Delete chat ask in a dialog. One row leaves the chat its height. A computer also has a button that
- * hides or shows the chat details column. On a phone, a tap on the title opens the chat details.
+ * Chat info, Start a new chat from a summary, Archive and Delete chat. Rename, the summary and Delete chat
+ * ask in a dialog. One row leaves the chat its height. A computer also has a button that hides or shows
+ * the chat details column. On a phone, a tap on the title opens the chat details.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { api, type SessionRecord } from "./api.ts";
@@ -9,7 +10,7 @@ import { chatStateLabels, type ChatState } from "./chat-list.ts";
 import { ChatInfoSheet, chatPanelId, type ChatProps } from "./ChatPanel.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { MoreMenu, type MenuItem } from "./Menu.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
@@ -139,6 +140,7 @@ export function ChatHeader({
   const [renaming, setRenaming] = useState(startWith === "rename");
   const [infoOpen, setInfoOpen] = useState(false);
   const [asking, setAsking] = useState(startWith === "delete");
+  const [summarizing, setSummarizing] = useState(false);
   const moreButton = useRef<HTMLButtonElement>(null);
   // A chosen menu item leaves the page, so focus goes back to the button that opened the sheet or the question.
   const opener = useRef<HTMLElement | null>(null);
@@ -154,6 +156,8 @@ export function ChatHeader({
   const items: MenuItem[] = [{ label: "Rename", icon: "pen", onChoose: () => setRenaming(true) }];
   // A computer shows the details in the inspector column.
   if (isPhone) items.push({ label: "Chat info", icon: "chat", onChoose: () => openInfo(moreButton.current) });
+  // Every chat has it, open or closed: a long chat can also confuse the model (issue 522).
+  items.push({ label: "Start a new chat from a summary", icon: "chat", onChoose: () => setSummarizing(true) });
   if (onArchived !== undefined) items.push(archiveItem(chat));
   items.push({ label: "Delete chat", icon: "trash", danger: true, onChoose: () => setAsking(true) });
 
@@ -206,6 +210,16 @@ export function ChatHeader({
           chat={chat}
           onKeep={() => {
             setAsking(false);
+            moreButton.current?.focus();
+          }}
+          onChanged={onChanged}
+        />
+      )}
+      {summarizing && (
+        <SummaryChatQuestion
+          sessionId={details.shownId ?? chat.id}
+          onKeep={() => {
+            setSummarizing(false);
             moreButton.current?.focus();
           }}
           onChanged={onChanged}
@@ -358,6 +372,64 @@ export function DeleteQuestion({
           </button>
         </div>
         {deleting && <ProgressBar label={fork === false ? "Eva deletes the chat." : "Eva deletes the fork."} />}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Opens a new chat that goes on from a summary of this branch (issue 522), after the person says yes.
+ * The page then opens the new chat, where the person reads the summary before it goes.
+ */
+function SummaryChatQuestion({
+  sessionId,
+  onKeep,
+  onChanged,
+}: {
+  readonly sessionId: string;
+  readonly onKeep: () => void;
+  readonly onChanged: () => Promise<void>;
+}): ReactElement {
+  const [working, setWorking] = useState(false);
+  const showError = useShowError();
+  useEscape(onKeep, working);
+  const start = async (): Promise<void> => {
+    if (working) return;
+    setWorking(true);
+    try {
+      const { session, summaryFailure } = await api.summaryChat(sessionId);
+      await onChanged();
+      window.location.hash = `#/chat/${encodeURIComponent(session.id)}`;
+      if (summaryFailure !== null)
+        showError(new Error(`Eva could not write the summary: ${summaryFailure} The new chat starts empty.`));
+    } catch (caught) {
+      showError(caught);
+      setWorking(false);
+    }
+  };
+  return (
+    <div
+      className="dialog-backdrop schedule-backdrop"
+      onClick={(event) => event.target === event.currentTarget && !working && onKeep()}
+    >
+      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label="Start a new chat from a summary?">
+        <h2>Start a new chat from a summary?</h2>
+        <p>
+          Eva writes a short summary of this chat and opens a new chat with it. You can read and change the summary
+          before you send it.
+        </p>
+        <div className="schedule-sheet-actions">
+          {/* Not disabled: a disabled button drops the focus, and a failed start must leave it here. */}
+          <button className="primary" aria-disabled={working} aria-busy={working} onClick={() => void start()}>
+            {working && <ButtonSpinner />}
+            Start
+          </button>
+          <span className="spacer" />
+          <button autoFocus onClick={onKeep} disabled={working}>
+            Cancel
+          </button>
+        </div>
+        {working && <ProgressBar label="Eva writes the summary." />}
       </div>
     </div>
   );

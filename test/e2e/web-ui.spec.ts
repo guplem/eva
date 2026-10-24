@@ -567,6 +567,36 @@ async function newAnsweredChat(page: Page, text: string): Promise<string> {
   return title;
 }
 
+test("a new chat from a summary starts with the summary to edit, and each chat links to the other (#522)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const title = await newAnsweredChat(page, "A chat to summarize");
+  await waitUntilIdle(page, await chatIdNamed(page, title));
+  const question = page.getByRole("dialog", { name: "Start a new chat from a summary?" });
+  await chooseFromMore(page, "Start a new chat from a summary");
+  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(question).toHaveCount(0);
+
+  await chooseFromMore(page, "Start a new chat from a summary");
+  await question.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${title} (continued)`);
+  // The summary waits in the box: nothing runs until the person sends it.
+  const composer = page.getByLabel("Message").first();
+  await expect(composer).toHaveValue(/Goal: the demo summary\./);
+  await expect(page.locator(".message.answer")).toHaveCount(0);
+
+  const details = async (): Promise<Locator> => {
+    if (test.info().project.name === "desktop") return page.getByRole("complementary", { name: "This chat" });
+    await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+    return page.getByRole("dialog", { name: "This chat" });
+  };
+  await (await details()).getByRole("link", { name: title }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+  await (await details()).getByRole("link", { name: `${title} (continued)` }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${title} (continued)`);
+});
+
 test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram does", async ({ page }) => {
   await logIn(page);
   const first = await newAnsweredChat(page, "First linked chat");

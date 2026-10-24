@@ -33,6 +33,8 @@ import {
   requestSync,
   requestUpdate,
   heldBackLines,
+  refusalOf,
+  startHint,
   startProjectWork,
 } from "../../../../src/frontends/cli/client.ts";
 import { runDoctor, type DoctorOptions } from "../../../../src/frontends/cli/doctor.ts";
@@ -1689,7 +1691,9 @@ describe("runChat", () => {
       request: "x",
       reportToSessionId: "s1",
     }).catch((caught: unknown) => caught);
-    expect(String(failure)).toContain("404");
+    // A refusal reads as Eva's message, with its code, not as a crash with the raw JSON.
+    expect(isEvaError(failure, "project_not_found")).toBe(true);
+    expect((failure as Error).message).not.toContain("{");
     sandbox.write(
       vault,
       "Projects/2025-03-02-1015-example-app/AGENTS.md",
@@ -1743,21 +1747,32 @@ repos:
     const error: unknown = await describeStatus({ baseUrl: api.url, token: "wrong" }).catch(
       (caught: unknown) => caught,
     );
-    expect((error as Error).message).toContain("401");
+    // An answer with no code still reads as an expected failure, so the CLI prints no stack trace.
+    expect(isEvaError(error, "request_failed")).toBe(true);
+    expect((error as Error).message).toBe(`Eva answered 401: A valid token is required.\n${startHint}`);
   });
 
   test("update, sync and settings commands go through the running Eva", async () => {
     const options = { baseUrl: api.url, token: "chat-token" };
-    expect(String(await requestUpdate(options, true).catch((caught: unknown) => caught))).toContain("409");
-    expect(String(await requestUpdate(options, false, "1.0.0").catch((caught: unknown) => caught))).toContain("409");
-    expect(await requestSync(options)).toStartWith("Vault sync: ");
+    const noChannel: unknown = await requestUpdate(options, true).catch((caught: unknown) => caught);
+    expect(isEvaError(noChannel, "request_failed")).toBe(true);
+    expect((noChannel as Error).message).toBe("This Eva has no update channel.");
+    expect(
+      isEvaError(await requestUpdate(options, false, "1.0.0").catch((caught: unknown) => caught), "request_failed"),
+    ).toBe(true);
+    // This Eva's runner fakes git, so the sync names no branch and skips.
+    expect(describeSync(await requestSync(options))).toStartWith("Vault sync: skipped");
     expect(await requestHub(options)).toContain("is now the hub.");
     expect((await requestStatus(options)).localUrl).toStartWith("http://127.0.0.1:");
     expect(await requestSettingsChange(options, { updates: { frequency: "weekly" } })).toBe(false);
     expect(await requestSettingsChange(options, { timeZone: "Europe/Madrid" })).toBe(true);
-    expect(String(await requestSettingsChange(options, { port: 5 }).catch((caught: unknown) => caught))).toContain(
-      "400",
-    );
+    // The code of Eva's answer comes through, so a bad setting exits as a bad config.
+    expect(
+      isEvaError(
+        await requestSettingsChange(options, { port: 5 }).catch((caught: unknown) => caught),
+        "config_invalid",
+      ),
+    ).toBe(true);
   });
 
   test("sends each line, prints the answer, and stops at /exit", async () => {
@@ -1772,6 +1787,23 @@ repos:
       write: (text) => output.push(text),
     });
     expect(output.join("")).toContain("Hi! I am Eva.");
+    // The terminal closes the stream itself at /exit: that is no dropped connection.
+    expect(output.join("")).not.toContain("Eva closed the connection.");
+  });
+
+  test("a refused chat says why in plain words", async () => {
+    const failure: unknown = await runChat({
+      baseUrl: api.url,
+      token: "wrong",
+      mode: "assistant",
+      model: "default",
+      readLine: () => Promise.resolve(null),
+      write: () => undefined,
+    }).catch((caught: unknown) => caught);
+    expect(isEvaError(failure, "request_failed")).toBe(true);
+    expect((failure as Error).message).toBe(
+      `Eva refused the chat: Eva answered 401: A valid token is required.\n${startHint}`,
+    );
   });
 
   test("/rename renames the chat, and a bare /rename shows how to use it (issue 46)", async () => {
@@ -1806,6 +1838,32 @@ repos:
     expect(text).toContain("Eva wants to run Bash: git push");
     expect(text).toContain("The push was allowed.");
     expect(text).toContain("The push was denied.");
+  });
+});
+
+describe("refusalOf", () => {
+  test("keeps Eva's message and code, and names the status of an answer that is not hers", async () => {
+    const coded = await refusalOf(
+      Response.json({ error: "No such project.", code: "project_not_found" }, { status: 404 }),
+    );
+    expect([coded.code, coded.message]).toEqual(["project_not_found", "No such project."]);
+    const plain = await refusalOf(Response.json({ error: "This Eva has no update channel." }, { status: 409 }));
+    expect([plain.code, plain.message]).toEqual(["request_failed", "This Eva has no update channel."]);
+    const page = await refusalOf(new Response(`<html>${"x".repeat(300)}</html>`, { status: 502 }));
+    expect(page.code).toBe("request_failed");
+    expect(page.message).toStartWith("Eva answered 502: <html>");
+    expect(page.message).toEndWith(`\n${startHint}`);
+    expect(page.message.length).toBeLessThan(270);
+    const other = await refusalOf(Response.json({ message: "Bad" }, { status: 500 }));
+    expect(other.message).toBe(`Eva answered 500: {"message":"Bad"}\n${startHint}`);
+  });
+
+  test("keeps the status and the start hint for a 401 or a 404 with no code: another program may answer", async () => {
+    // Another Eva on the same port refuses this token; another program has no such path.
+    const token = await refusalOf(Response.json({ error: "A valid token is required." }, { status: 401 }));
+    expect(token.message).toBe(`Eva answered 401: A valid token is required.\n${startHint}`);
+    const path = await refusalOf(Response.json({ error: "Not found." }, { status: 404 }));
+    expect(path.message).toBe(`Eva answered 404: Not found.\n${startHint}`);
   });
 });
 

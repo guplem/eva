@@ -348,6 +348,41 @@ describe("updateExecutable", () => {
   });
 });
 
+describe("a list of releases that Eva cannot read", () => {
+  let server: Server<undefined>;
+  let reply: string;
+
+  beforeEach(() => {
+    server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(reply) });
+  });
+  afterEach(() => {
+    void server.stop(true);
+  });
+
+  async function notesError(): Promise<unknown> {
+    return publishedReleaseNotes({ apiBaseUrl: `http://127.0.0.1:${String(server.port)}` }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+  }
+
+  test("a reply that is not JSON, or not a list, is a clear update error", async () => {
+    for (const body of ["<html>not json</html>", '{"message":"rate limited"}']) {
+      reply = body;
+      const error = await notesError();
+      expect(isEvaError(error, "update_failed")).toBe(true);
+      expect(String(error)).toContain("GitHub sent a list of releases that Eva cannot read.");
+    }
+  });
+
+  test("an entry that is not a release is skipped", async () => {
+    reply = JSON.stringify([null, 42, { name: "no tag" }, { tag_name: "v0.4.0", assets: [] }]);
+    expect(await publishedReleaseNotes({ apiBaseUrl: `http://127.0.0.1:${String(server.port)}` })).toEqual([
+      { version: "0.4.0", notes: "", publishedAt: null },
+    ]);
+  });
+});
+
 function sizeOf(body: unknown): number {
   return typeof body === "string" ? new TextEncoder().encode(body).length : (body as Uint8Array).length;
 }

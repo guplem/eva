@@ -5,10 +5,9 @@
  * `<`, `>` and `&`. Telegram has no headings, lists or tables: a heading becomes a bold line,
  * a bullet a dot, and a table aligned columns in a monospace block.
  */
-import { closesFence } from "../markdown-fence.ts";
+import { closesFence, openingFencePattern } from "../markdown-fence.ts";
 import { escapeHtml, inlineHtml } from "../markdown-inline.ts";
 
-const fencePattern = /^\s*(`{3,}|~{3,})\s*([\w+#.-]*)/;
 const headingPattern = /^#{1,6}\s+(.*?)\s*#*\s*$/;
 const bulletPattern = /^(\s*)[-*+]\s+(.*)$/;
 const quotePattern = /^>\s?(.*)$/;
@@ -23,9 +22,9 @@ export function toTelegramHtml(markdown: string): string {
   let index = 0;
   while (index < lines.length) {
     const line = lines[index] ?? "";
-    const fence = fencePattern.exec(line);
+    const fence = openingFencePattern.exec(line);
     if (fence) {
-      const opening = fence[1] ?? "```";
+      const opening = fence[2] ?? "```";
       const body: string[] = [];
       index += 1;
       while (index < lines.length && !closesFence(lines[index] ?? "", opening)) {
@@ -33,7 +32,7 @@ export function toTelegramHtml(markdown: string): string {
         index += 1;
       }
       index += 1;
-      out.push(pre(body.join("\n"), fence[2] ?? ""));
+      out.push(pre(body.join("\n"), fence[3] ?? ""));
       continue;
     }
     if (tableRowPattern.test(line) && tableSeparatorPattern.test(lines[index + 1] ?? "")) {
@@ -75,8 +74,8 @@ export function keepFencesWhole(chunks: readonly string[]): string[] {
     const reopened = open;
     for (const line of original.split("\n")) {
       if (open === null) {
-        const fence = fencePattern.exec(line);
-        if (fence) open = { line: line.trim(), fence: fence[1] ?? "```" };
+        const fence = openingFencePattern.exec(line);
+        if (fence) open = { line: line.trim(), fence: fence[2] ?? "```" };
       } else if (closesFence(line, open.fence)) {
         open = null;
       }

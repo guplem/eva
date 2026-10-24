@@ -1,0 +1,161 @@
+# Eva's icon in the Windows system tray. src/frontends/cli/tray.ts runs this script and owns
+# every decision. The file in EVA_LINE_FILE holds the newest JSON view: face, tooltip, title and
+# canOpen. Each menu choice writes one output line: open, restart or quit. When the file goes
+# away, or Eva's supervisor ends, the icon goes away.
+$ErrorActionPreference = 'Stop'
+# A progress record would reach the error output, where Eva reads only real errors.
+$ProgressPreference = 'SilentlyContinue'
+# EVA_TRAY_TRACE=1 writes each step to the error output, for a test that cannot see the screen.
+function Write-Trace($text) {
+  if ($env:EVA_TRAY_TRACE -eq '1') { [Console]::Error.WriteLine("trace: $text") }
+}
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+# An error in a menu or timer handler would open a dialog that nobody sees, and the icon would hang.
+[System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::ThrowException)
+Write-Trace 'loaded'
+
+# The colours of src/frontends/web/icons/icon.svg: EVE's visor and her blue eyes, with no glow at this size.
+$visorTop = [System.Drawing.Color]::FromArgb(255, 0x1c, 0x25, 0x2d)
+$visorBottom = [System.Drawing.Color]::FromArgb(255, 0x00, 0x01, 0x02)
+$eyeColour = [System.Drawing.Color]::FromArgb(255, 0x87, 0xdd, 0xff)
+
+# One eye on a 100-unit face: an ellipse with its centre, size and tilt in degrees.
+function Draw-Eye($graphics, $brush, $x, $y, $width, $height, $angle) {
+  $state = $graphics.Save()
+  $graphics.TranslateTransform($x, $y)
+  $graphics.RotateTransform($angle)
+  $graphics.FillEllipse($brush, (-$width / 2), (-$height / 2), $width, $height)
+  $graphics.Restore($state)
+}
+
+function Draw-Cross($graphics, $pen, $x, $y) {
+  $graphics.DrawLine($pen, $x - 9, 36, $x + 9, 54)
+  $graphics.DrawLine($pen, $x + 9, 36, $x - 9, 54)
+}
+
+# The eyes of each face, as visor.css draws them, simplified for 16 to 32 pixels.
+function Draw-Eyes($graphics, $face, $brush) {
+  switch ($face) {
+    'thinking' { Draw-Eye $graphics $brush 30 45 22 14 0; Draw-Eye $graphics $brush 70 45 19 12 0 }
+    'listening' { Draw-Eye $graphics $brush 30 45 20 20 0; Draw-Eye $graphics $brush 70 45 20 20 0 }
+    'focused' { Draw-Eye $graphics $brush 30 45 29 8 6; Draw-Eye $graphics $brush 70 45 29 8 -6 }
+    'firm' { Draw-Eye $graphics $brush 30 45 26 13 20; Draw-Eye $graphics $brush 70 45 26 13 -20 }
+    'worried' { Draw-Eye $graphics $brush 30 45 26 14 -14; Draw-Eye $graphics $brush 70 45 26 14 14 }
+    'sad' { Draw-Eye $graphics $brush 30 48 26 12 -18; Draw-Eye $graphics $brush 70 48 26 12 18 }
+    'asleep' { Draw-Eye $graphics $brush 30 49 26 6 0; Draw-Eye $graphics $brush 70 49 26 6 0 }
+    'error' {
+      $pen = New-Object System.Drawing.Pen($brush.Color, 6)
+      $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+      $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+      Draw-Cross $graphics $pen 30 45
+      Draw-Cross $graphics $pen 70 45
+      $pen.Dispose()
+    }
+    default { Draw-Eye $graphics $brush 29 45 26 16 14; Draw-Eye $graphics $brush 71 45 26 16 -14 }
+  }
+}
+
+function New-FaceIcon($face) {
+  $size = 32
+  $bitmap = New-Object System.Drawing.Bitmap($size, $size)
+  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+  $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $graphics.ScaleTransform($size / 100, $size / 100)
+  $visor = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
+    [System.Drawing.Point]::new(0, 5), [System.Drawing.Point]::new(0, 95), $visorTop, $visorBottom)
+  $graphics.FillEllipse($visor, 1, 6, 98, 88)
+  $eyes = New-Object System.Drawing.SolidBrush($eyeColour)
+  Draw-Eyes $graphics $face $eyes
+  $graphics.Dispose()
+  $visor.Dispose()
+  $eyes.Dispose()
+  $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
+  $bitmap.Dispose()
+  return $icon
+}
+
+function Send-Choice($choice) {
+  [Console]::Out.WriteLine($choice)
+  [Console]::Out.Flush()
+}
+
+$notifyIcon = New-Object System.Windows.Forms.NotifyIcon
+$menu = New-Object System.Windows.Forms.ContextMenuStrip
+$titleItem = $menu.Items.Add('Eva')
+$titleItem.Enabled = $false
+[void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+$openItem = $menu.Items.Add('Open Eva')
+$openItem.Font = New-Object System.Drawing.Font($openItem.Font, [System.Drawing.FontStyle]::Bold)
+$openItem.add_Click({ Send-Choice 'open' })
+$restartItem = $menu.Items.Add('Restart Eva')
+$restartItem.add_Click({ Send-Choice 'restart' })
+$quitItem = $menu.Items.Add('Quit Eva')
+$quitItem.add_Click({ Send-Choice 'quit' })
+$notifyIcon.ContextMenuStrip = $menu
+$notifyIcon.add_MouseDoubleClick({ if ($openItem.Enabled) { Send-Choice 'open' } })
+
+$icons = @{}
+function Show-View($view) {
+  $face = [string]$view.face
+  if (-not $icons.ContainsKey($face)) { $icons[$face] = New-FaceIcon $face }
+  # Each change of a visible icon is a call to the taskbar, which can wait for seconds when the
+  # taskbar is busy. So only a real change makes one.
+  if (-not [object]::ReferenceEquals($notifyIcon.Icon, $icons[$face])) { $notifyIcon.Icon = $icons[$face] }
+  $tooltip = [string]$view.tooltip
+  if ($notifyIcon.Text -ne $tooltip) { $notifyIcon.Text = $tooltip }
+  $titleItem.Text = [string]$view.title
+  $openItem.Enabled = [bool]$view.canOpen
+  if (-not $notifyIcon.Visible) { $notifyIcon.Visible = $true }
+}
+
+# Eva writes the newest view to a file. Windows PowerShell never reads a line from the input pipe
+# that Eva gives it, so the input is not used (#457).
+$viewFile = $env:EVA_LINE_FILE
+# The tray ends with Eva's supervisor, also after a hard stop that leaves the view file behind.
+$parent = $null
+try { $parent = [System.Diagnostics.Process]::GetProcessById([int]$env:EVA_LINE_PARENT) } catch { }
+$script:lastText = ''
+$script:seenFile = $false
+$script:missingTicks = 0
+
+function Stop-Tray($reason) {
+  Write-Trace $reason
+  $timer.Stop()
+  [System.Windows.Forms.Application]::Exit()
+}
+
+# WinForms needs this thread for its message loop, so a timer reads the file between messages.
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 200
+$timer.add_Tick({
+  if ($null -eq $parent -or $parent.HasExited) { Stop-Tray 'parent ended'; return }
+  if (-not [System.IO.File]::Exists($viewFile)) {
+    # Eva removes the file to close the icon. Before her first view, there is no file yet. While
+    # Eva replaces the file, Windows can hide it for a moment, so only a second of absence counts.
+    $script:missingTicks += 1
+    if ($script:seenFile -and $script:missingTicks -ge 5) { Stop-Tray 'view file removed' }
+    return
+  }
+  $script:seenFile = $true
+  $script:missingTicks = 0
+  # A failed read, such as during Eva's write, waits for the next tick.
+  try { $text = [System.IO.File]::ReadAllText($viewFile) } catch { return }
+  if ($text -eq $script:lastText) { return }
+  $script:lastText = $text
+  try {
+    Show-View ($text | ConvertFrom-Json)
+    Write-Trace 'view shown'
+  } catch {
+    [Console]::Error.WriteLine("The tray icon could not show a view: $($_.Exception.Message)")
+  }
+})
+$timer.Start()
+Write-Trace 'ready'
+try {
+  [System.Windows.Forms.Application]::Run()
+} finally {
+  # Without this, the icon stays in the tray until the mouse passes over it.
+  $notifyIcon.Visible = $false
+  $notifyIcon.Dispose()
+}

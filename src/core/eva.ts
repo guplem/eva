@@ -133,7 +133,7 @@ import {
   type VaultConflictReport,
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
-import { VaultUpkeep } from "./vault/vault-upkeep.ts";
+import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
 import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
@@ -609,6 +609,7 @@ export class Eva {
         ...(options.logger === undefined ? {} : { logger: options.logger }),
       }),
       stepDetails: new StepDetailsStore(options.paths.stepDetails),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
@@ -722,7 +723,7 @@ export class Eva {
             now: options.now,
             chats: {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
-              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt, "schedule"),
+              send: (sessionId, prompt) => this.sessions.sendWithResult(sessionId, prompt, "schedule"),
             },
             reportFiring: (schedule, failure) => {
               this.alerts.report(
@@ -838,7 +839,7 @@ export class Eva {
   }
 
   /** "Sync now": brings the remote's changes in, then commits and pushes this machine's changes. */
-  syncVault(): Promise<VaultSyncState> {
+  syncVault(): Promise<SyncNowState> {
     return this.vault.syncNow();
   }
 

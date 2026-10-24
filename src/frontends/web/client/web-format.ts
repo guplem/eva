@@ -5,11 +5,9 @@
  * line break becomes `<br>`, chat style, so the answer keeps its lines as Telegram does.
  * All text is escaped and only these tags are added, so the HTML is safe to put in the page.
  */
-import { closesFence } from "../../markdown-fence.ts";
+import { closesFence, openingFencePattern } from "../../markdown-fence.ts";
 import { escapeHtml, inlineHtml } from "../../markdown-inline.ts";
 
-/** As in CommonMark, a backtick fence has no backtick after it, so "```npm i```" on one line is inline code. */
-const fencePattern = /^(\s*)(`{3,}(?!.*`)|~{3,})\s*([\w+#.-]*)/;
 const headingPattern = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const quotePattern = /^\s{0,3}>\s?(.*)$/;
 const rulePattern = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
@@ -58,7 +56,7 @@ function expandIndentTabs(lines: readonly string[]): string[] {
 
 /** The fence still open after `line`, or null when the line leaves no code block open. */
 function fenceAfter(line: string, openFence: string | null): string | null {
-  if (openFence === null) return fencePattern.exec(line)?.[2] ?? null;
+  if (openFence === null) return openingFencePattern.exec(line)?.[2] ?? null;
   return closesFence(line, openFence) ? null : openFence;
 }
 
@@ -72,7 +70,7 @@ function blocks(lines: readonly string[], tight: boolean): string {
       index += 1;
       continue;
     }
-    const fence = fencePattern.exec(line);
+    const fence = openingFencePattern.exec(line);
     if (fence) {
       const body: string[] = [];
       index += 1;
@@ -214,7 +212,7 @@ function itemOf(line: string): ListItem | null {
 function startsBlock(lines: readonly string[], index: number): boolean {
   const line = lines[index] ?? "";
   return (
-    fencePattern.test(line) ||
+    openingFencePattern.test(line) ||
     headingPattern.test(line) ||
     quotePattern.test(line) ||
     rulePattern.test(line) ||

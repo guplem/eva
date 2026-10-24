@@ -9,14 +9,25 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { hardExitGraceMs, shutdownDeadlineMs } from "../../core/instance/shutdown.ts";
-import { superviseEva, supervisedVariable } from "../../core/instance/supervisor.ts";
+import {
+  superviseEva,
+  supervisedVariable,
+  type Supervisor,
+  type SupervisorPhase,
+} from "../../core/instance/supervisor.ts";
 import { createHomeFolders, instanceNameOf, type HomePaths } from "../../core/settings/home.ts";
+import { baseEnvironmentAllowlist, buildChildEnvironment } from "../../shared/environment.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
+import type { LineProcessStarter } from "../../shared/line-process.ts";
 import { FileLogger } from "../../shared/logger.ts";
 import type { LongProcessStarter } from "../../shared/long-process.ts";
 import type { ProcessResult } from "../../shared/process-runner.ts";
 import { Redactor } from "../../shared/redaction.ts";
+import { requestApprovalCount, requestRestart, requestStatus } from "./client.ts";
+import { openLoggedIn } from "./devices.ts";
 import { childEnvironment, evaCommand, writeLine, type CliHost } from "./host.ts";
+import { runningClient } from "./local-commands.ts";
+import { startTray, trayCommand, type Tray, type TrayChoice, type TrayReading } from "./tray.ts";
 
 const serviceStepTimeoutMs = 30_000;
 
@@ -143,6 +154,10 @@ function windowsTaskName(name: string): string {
   return `Eva-${name.slice("eva-".length)}`;
 }
 
+function windowsSystemRoot(host: CliHost): string {
+  return host.environment["SystemRoot"] ?? host.environment["SYSTEMROOT"] ?? "C:\\Windows";
+}
+
 /** `eva service install` on Windows: the start at logon, then a start now. */
 async function installWindowsStart(
   host: CliHost,
@@ -151,7 +166,7 @@ async function installWindowsStart(
 ): Promise<number> {
   const name = serviceName(paths);
   const target = { executable: evaCommand(host), instance: instanceNameOf(paths) };
-  const systemRoot = host.environment["SystemRoot"] ?? host.environment["SYSTEMROOT"] ?? "C:\\Windows";
+  const systemRoot = windowsSystemRoot(host);
   const oldTask = windowsOldTaskCommands(name);
   const isRunning =
     runningInstancePid(paths.lock, { bootId: host.bootId, isProcessAlive: host.isProcessAlive }) !== null;
@@ -224,11 +239,81 @@ export async function installService(host: CliHost, paths: HomePaths): Promise<n
   return exitCodes.clean;
 }
 
-/** `eva supervise`: runs Eva as a child, and starts her again after a crash or an update. */
-export function supervise(host: CliHost, paths: HomePaths, start: LongProcessStarter): Promise<number> {
+/** The starters of the supervisor's children: Eva herself, and on Windows her tray icon. */
+export interface SuperviseStarters {
+  readonly startLongProcess: LongProcessStarter;
+  readonly startLineProcess: LineProcessStarter;
+}
+
+/** How long the tray icon waits for Eva's status before it reads her as not answering. */
+const trayStatusWaitMs = 4_000;
+
+/**
+ * `eva supervise`: runs Eva as a child, and starts her again after a crash or an update.
+ * On Windows, it also shows her tray icon (#457). After she stops for good, the icon stays,
+ * so the person sees that she stopped, and can start her again.
+ */
+export async function supervise(host: CliHost, paths: HomePaths, starters: SuperviseStarters): Promise<number> {
   createHomeFolders(paths);
   const logger = new FileLogger({ folder: paths.logsFolder, redactor: new Redactor(), now: () => new Date() });
-  const supervisor = superviseEva({
+  // A warning, so the restart shows in `/logs` on the phone, and a line for a person at the console.
+  const log = (message: string): void => {
+    logger.log("warn", message);
+    writeLine(host, message);
+  };
+  const state: { supervisor: Supervisor | null; quit: boolean; next: PromiseWithResolvers<"restart" | "quit"> } = {
+    supervisor: null,
+    quit: false,
+    next: Promise.withResolvers(),
+  };
+  const quit = (): void => {
+    state.quit = true;
+    state.supervisor?.stop();
+    state.next.resolve("quit");
+  };
+  const onChoice = (choice: TrayChoice): void => {
+    if (choice === "quit") quit();
+    else if (choice === "restart") {
+      if (state.supervisor === null) state.next.resolve("restart");
+      else {
+        // The old Eva can take a while to stop: meanwhile, the icon shows a start, not a hang.
+        tray?.setPhase({ kind: "starting" });
+        state.supervisor.restart();
+      }
+    } else openFromTray(host, paths, log);
+  };
+  const tray =
+    host.platform === "win32" ? startWindowsTray(host, paths, starters.startLineProcess, log, onChoice) : null;
+  host.onStopSignal(quit);
+  for (;;) {
+    state.supervisor = superviseOnce(host, paths, starters.startLongProcess, log, tray);
+    const exitCode = await state.supervisor.done;
+    state.supervisor = null;
+    // After a second instance, the other copy of this Eva runs, with her own icon. With no
+    // icon, nobody could ask for a restart, so the supervisor ends.
+    if (tray === null || !tray.alive() || state.quit || exitCode === exitCodes.secondInstance) {
+      await tray?.close();
+      return exitCode;
+    }
+    tray.setPhase({ kind: "stopped", settingsNeedYou: exitCode === exitCodes.badConfig });
+    const iconGone = tray.ended.then(() => "quit" as const);
+    if ((await Promise.race([state.next.promise, iconGone])) === "quit") {
+      await tray.close();
+      return exitCode;
+    }
+    state.next = Promise.withResolvers();
+  }
+}
+
+/** One run of the supervisor, until Eva stops for good or a stop. */
+function superviseOnce(
+  host: CliHost,
+  paths: HomePaths,
+  start: LongProcessStarter,
+  log: (message: string) => void,
+  tray: Tray | null,
+): Supervisor {
+  return superviseEva({
     command: [...evaCommand(host), "--instance", instanceNameOf(paths)],
     cwd: paths.root,
     // The child is Eva herself, not an agent, so she gets the whole environment (lesson 96 covers agents).
@@ -238,18 +323,78 @@ export function supervise(host: CliHost, paths: HomePaths, start: LongProcessSta
     start,
     now: () => Date.now(),
     sleep: host.sleep,
-    // A warning, so the restart shows in `/logs` on the phone, and a line for a person at the console.
-    log: (message) => {
-      logger.log("warn", message);
-      writeLine(host, message);
-    },
+    log,
     stopTimeoutMs: shutdownDeadlineMs + hardExitGraceMs,
     pid: host.pid,
+    ...(tray === null
+      ? {}
+      : {
+          // Windows has no gentle signal for another process, so Eva gets a restart request,
+          // and stops by herself. While the supervisor stops, it does not start her again.
+          askStop: async () => {
+            const client = runningClient(host, paths);
+            if (client !== null) await requestRestart(client);
+          },
+          // The icon shows Eva as running only after her first answer.
+          onPhase: (phase: SupervisorPhase) => {
+            tray.setPhase(
+              phase.kind === "started" ? { kind: "starting" } : { kind: "waiting", afterMs: phase.afterMs },
+            );
+          },
+        }),
   });
-  host.onStopSignal(() => {
-    supervisor.stop();
+}
+
+/** This Eva's tray icon, or null when it cannot start. */
+function startWindowsTray(
+  host: CliHost,
+  paths: HomePaths,
+  start: LineProcessStarter,
+  log: (message: string) => void,
+  onChoice: (choice: TrayChoice) => void,
+): Tray | null {
+  // A hung Eva never answers, and the wait for her ends before her request does. One request at
+  // a time keeps such requests from piling up.
+  let open: Promise<TrayReading | null> | null = null;
+  return startTray({
+    start,
+    command: trayCommand(windowsSystemRoot(host)),
+    cwd: paths.root,
+    viewFile: join(paths.stateFolder, "tray-view.json"),
+    // No PSModulePath: one from PowerShell 7 breaks the modules of Windows PowerShell, which finds its own.
+    environment: buildChildEnvironment(host.environment, baseEnvironmentAllowlist),
+    instance: instanceNameOf(paths),
+    // A broken settings file throws here. The read then counts as no answer, and the supervisor keeps running.
+    read: async () => {
+      if (open === null) {
+        const client = runningClient(host, paths);
+        if (client === null) return null;
+        const reading = Promise.all([requestStatus(client), requestApprovalCount(client)]).then(
+          ([status, approvals]) => ({ status, approvals }),
+          () => null,
+        );
+        open = reading;
+        void reading.finally(() => {
+          open = null;
+        });
+      }
+      return Promise.race([open, host.sleep(trayStatusWaitMs).then(() => null)]);
+    },
+    onChoice,
+    sleep: host.sleep,
+    log,
   });
-  return supervisor.done;
+}
+
+/** Open Eva in the tray menu: her page in this computer's browser, logged in, as `eva open` does. */
+function openFromTray(host: CliHost, paths: HomePaths, log: (message: string) => void): void {
+  // Async, so a broken settings file in runningClient becomes a log line, not a crash of the supervisor.
+  void (async () => {
+    const client = runningClient(host, paths);
+    if (client !== null) await openLoggedIn(host, client, null);
+  })().catch((error: unknown) => {
+    log(`Eva's page did not open: ${error instanceof Error ? error.message : String(error)}`);
+  });
 }
 
 /** How Eva starts again after an update. It reads the parent at the restart: the supervisor may have died. */

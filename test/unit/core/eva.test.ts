@@ -1589,6 +1589,25 @@ describe("Eva alerts", () => {
     await turn;
   });
 
+  test("a sync during an Assistant turn, or with no vault, says why it skipped, in a field a client can read", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine);
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const turn = instance.sessions.send(session.id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    const busy = await instance.syncVault();
+    expect([busy.status, busy.skipReason]).toEqual(["skipped", "assistant_busy"]);
+    release();
+    await turn;
+    expect((await instance.syncVault()).skipReason).toBeUndefined();
+    const bare = start(new FakeEngine(), { vaultPath: null });
+    expect((await bare.syncVault()).skipReason).toBe("no_vault");
+  });
+
   test("with no vault, there is no conflict to list or resolve", async () => {
     const instance = start(new FakeEngine(), { vaultPath: null });
     expect((await instance.vaultConflicts()).conflicts).toEqual([]);
@@ -1737,6 +1756,52 @@ describe("Eva alerts", () => {
     await instance.schedules?.tick();
     expect(alerts.map((alert) => alert.key)).toEqual(["schedule:lunch"]);
     expect(alerts[0]?.message).toContain("Lunch");
+  });
+
+  test("a scheduled prompt whose turn fails raises the schedule's alert", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(new FakeEngine(() => [{ kind: "turn_failed", reason: "You hit the usage limit." }]));
+    const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    await waitFor(() => alerts.some((alert) => alert.key === "schedule:lunch"));
+    expect(alerts.find((alert) => alert.key === "schedule:lunch")?.message).toContain("You hit the usage limit.");
+    expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ failed: true });
+  });
+
+  test("a scheduled turn that the person stops raises no alert, and the run counts as good", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => {
+        request.signal.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const instance = start(engine);
+    const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    await waitFor(() => engine.requests.length === 1);
+    const [session] = instance.sessions.list();
+    instance.sessions.stop(session?.id ?? "");
+    await instance.idle();
+    await Bun.sleep(0);
+    expect(alerts.filter((alert) => alert.key === "schedule:lunch")).toEqual([]);
+    expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ failed: false });
   });
 
   test("a card that no front end showed is a problem in the status until a front end shows it (lesson 66)", async () => {

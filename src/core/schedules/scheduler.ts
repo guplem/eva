@@ -56,7 +56,11 @@ type ScheduleListener = (event: ScheduleEvent) => Promise<boolean | undefined> |
 
 export interface ScheduledChatStarter {
   createChat(name: string, model: ModelAlias): string;
-  send(sessionId: string, prompt: string): Promise<void>;
+  /**
+   * Resolves when the chat is free again, to the failure reason of its last turn, or null.
+   * A failed turn is no rejection: the session manager turns it into an event.
+   */
+  send(sessionId: string, prompt: string): Promise<string | null>;
 }
 
 export interface SchedulerOptions {
@@ -355,13 +359,35 @@ export class Scheduler {
     this.options.reportFiring?.(schedule, null);
     if (sessionId !== null && schedule.prompt !== null) {
       // Nobody awaits the turn, so its failure goes to the log here (lesson 50).
-      this.options.chats.send(sessionId, schedule.prompt).catch((error: unknown) => {
-        this.options.logger?.log("error", "A scheduled prompt failed.", {
-          scheduleId: schedule.id,
-          reason: errorText(error),
+      void this.options.chats
+        .send(sessionId, schedule.prompt)
+        .catch((error: unknown) => errorText(error))
+        .then((failure) => {
+          if (failure !== null) this.promptFailed(schedule, slot, failure);
         });
-        this.recordResult(schedule.id, slot, true);
-        this.options.reportFiring?.(schedule, errorText(error));
+    }
+  }
+
+  private promptFailed(schedule: Schedule, slot: string, failure: string): void {
+    this.options.logger?.log("error", "A scheduled prompt failed.", { scheduleId: schedule.id, reason: failure });
+    // A turn can end after the next slot fired. That newer run owns the result and the alert now.
+    // Not lastFired: a new setup card moves it to a skipped slot, which is no run.
+    if (this.state.peek(schedule.id)?.lastResult?.slot !== slot) return;
+    // The alert first: a state file that cannot be written must not hide the failure from the phone.
+    try {
+      this.options.reportFiring?.(schedule, failure);
+    } catch (error) {
+      this.options.logger?.log("error", "Eva could not report the failed run.", {
+        scheduleId: schedule.id,
+        reason: errorText(error),
+      });
+    }
+    try {
+      this.recordResult(schedule.id, slot, true);
+    } catch (error) {
+      this.options.logger?.log("error", "Eva could not record the failed run.", {
+        scheduleId: schedule.id,
+        reason: errorText(error),
       });
     }
   }

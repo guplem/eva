@@ -13,6 +13,13 @@ describe("inlineHtml", () => {
       'see <code>**a**</code> and <a href="https://example.com/x_y_z">**b**</a>',
     );
   });
+
+  test("a link keeps one level of parentheses in its URL, and stops at the closing one", () => {
+    expect(inlineHtml("[Foo](https://example.com/wiki/Foo_(bar)) and (more)")).toBe(
+      '<a href="https://example.com/wiki/Foo_(bar)">Foo</a> and (more)',
+    );
+    expect(inlineHtml("(see [Foo](https://example.com/a))")).toBe('(see <a href="https://example.com/a">Foo</a>)');
+  });
 });
 
 describe("escapeHtml", () => {

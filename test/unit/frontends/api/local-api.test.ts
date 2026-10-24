@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginEvent, DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
-import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
+import { loggedPath, startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -297,6 +297,12 @@ describe("device login", () => {
     expect((await call("/api/login/device/unknown", { headers: noAccount })).status).toBe(403);
     expect((await call("/api/login/device", { method: "PUT", headers: tailnet })).status).toBe(404);
     expect(asked).toEqual([]);
+  });
+
+  test("a bad escape in the login id is the client's fault: 400, not a crash", async () => {
+    const answer = await call("/api/login/device/%E0", { headers: {} });
+    expect(answer.status).toBe(400);
+    expect(await json<unknown>(answer)).toEqual({ error: "The address is invalid." });
   });
 
   test("the page on Eva's own computer asks too, only the terminal answers, and only that browser collects the cookie", async () => {
@@ -1913,6 +1919,60 @@ describe("without a vault", () => {
       expect(await received.json()).toMatchObject({ code: "vault_not_found" });
     } finally {
       bareApi.stop();
+    }
+  });
+});
+
+describe("loggedPath", () => {
+  test("keeps the route, and leaves out the id of a device login, which lets a browser in", () => {
+    expect(loggedPath("/api/settings/setup")).toBe("/api/settings/setup");
+    expect(loggedPath("/api/login/device/secret-id")).toBe("/api/login/device/…");
+    expect(loggedPath("/api/login/device")).toBe("/api/login/device");
+    // The page answers the same pending request by its id.
+    expect(loggedPath("/api/devices/requests/secret-id")).toBe("/api/devices/requests/…");
+    expect(loggedPath("/api/devices/requests")).toBe("/api/devices/requests");
+  });
+});
+
+describe("an unexpected error", () => {
+  test("answers a plain 500, and logs the redacted message and stack for the person to read", async () => {
+    const logged: { level: string; message: string; details: Readonly<Record<string, unknown>> | undefined }[] = [];
+    const brokenVault = join(home, "broken-vault");
+    mkdirSync(brokenVault);
+    const broken = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: brokenVault, sync: { ...defaultConfig.sync, enabled: false } },
+      secrets: {},
+      engines: [engine],
+      // A runner that fails as no EvaError does, so the setup progress fails as a bug would.
+      runner: { run: () => Promise.reject(new Error("token ghp_abcdefghijklmnopqrstuvwxyz0123456789 leaked")) },
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+    });
+    const brokenApi = startLocalApi({
+      eva: broken,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+      logger: { log: (level, message, details) => logged.push({ level, message, details }) },
+    });
+    try {
+      const response = await fetch(`${brokenApi.url}/api/settings/setup`, { headers: headers() });
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "Eva failed to handle the request." });
+      expect(logged).toHaveLength(1);
+      expect(logged[0]?.level).toBe("error");
+      expect(logged[0]?.message).toBe("A request failed: GET /api/settings/setup");
+      const reason = String(logged[0]?.details?.["reason"]);
+      expect(reason).toContain("leaked");
+      // The stack, so the log shows where it failed.
+      expect(reason).toMatch(/\n\s+at /);
+      expect(reason).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+    } finally {
+      brokenApi.stop();
+      broken.stop();
     }
   });
 });

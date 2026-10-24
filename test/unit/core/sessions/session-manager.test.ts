@@ -1098,10 +1098,17 @@ describe("approvals", () => {
 
   function askingManager(
     answers: string[],
-    overrides: { approvalTimeoutMs?: number; turnTimeoutMs?: number } = {},
+    overrides: {
+      approvalTimeoutMs?: number;
+      turnTimeoutMs?: number;
+      engine?: FakeEngine;
+      /** The mode waits for it before it asks, as for a vault pull. */
+      beforeAsk?: Promise<void>;
+    } = {},
   ): SessionManager {
     const asking: TurnPreparer = {
       prepare: async (session, context) => {
+        await overrides.beforeAsk;
         answers.push(await context.ask("Trust this repository", "example"));
         return preparer.prepare(session, context);
       },
@@ -1109,7 +1116,7 @@ describe("approvals", () => {
     };
     let nextId = 0;
     const manager = new SessionManager({
-      engines: [new FakeEngine()],
+      engines: [overrides.engine ?? new FakeEngine()],
       store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
       preparers: { assistant: asking, project: asking },
       now: () => new Date("2026-10-14T12:00:00Z"),
@@ -1145,6 +1152,27 @@ describe("approvals", () => {
     await turn;
     expect(answers).toEqual(["expired"]);
     expect(events.find((event) => event.kind === "approval_resolved")).toMatchObject({ answer: "deny" });
+  });
+
+  test("a stop before the mode asks expires the question at once, and the engine never starts", async () => {
+    const answers: string[] = [];
+    let pulled = (): void => undefined;
+    const beforeAsk = new Promise<void>((resolve) => {
+      pulled = resolve;
+    });
+    const engine = new FakeEngine();
+    const manager = askingManager(answers, { engine, beforeAsk });
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => manager.isTurnRunning(sessionId));
+    expect(manager.stop(sessionId)).toBe(true);
+    pulled();
+    await turn;
+    expect(answers).toEqual(["expired"]);
+    expect(events.some((event) => event.kind === "approval_needed")).toBe(false);
+    expect(manager.pendingApprovals()).toEqual([]);
+    expect(engine.requests).toEqual([]);
+    expect(manager.get(sessionId).turns).toMatchObject([{ failure: "The turn stopped before the engine started." }]);
   });
 
   test("a mode's question that the person answers gets that answer", async () => {

@@ -722,8 +722,9 @@ export class SessionManager {
       }, this.options.turnTimeoutMs);
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);
       const prepared = await preparer.prepare(session, {
-        ask: (question, detail) => this.requestApproval(sessionId, question, detail),
+        ask: (question, detail) => this.requestApproval(sessionId, question, detail, controller.signal),
       });
+      if (controller.signal.aborted) throw new Error("The turn stopped before the engine started.");
       const history = this.historyOf(session);
       // A continue after failed turns only: the engine may never have created its session. Its
       // lost-history retry then starts one, and nothing was lost, so the person sees no notice.
@@ -747,7 +748,9 @@ ${prompt}`,
         trusted: prepared.trusted,
         environment: prepared.environment,
         requestApproval: async (request) =>
-          (await this.requestApproval(sessionId, request.toolName, request.summary)) === "allow" ? "allow" : "deny",
+          (await this.requestApproval(sessionId, request.toolName, request.summary, controller.signal)) === "allow"
+            ? "allow"
+            : "deny",
         signal: controller.signal,
       });
       for await (const raw of stream) {
@@ -992,7 +995,14 @@ ${prompt}`,
     });
   }
 
-  private requestApproval(sessionId: string, toolName: string, summary: string): Promise<PrepareAnswer> {
+  private requestApproval(
+    sessionId: string,
+    toolName: string,
+    summary: string,
+    signal: AbortSignal,
+  ): Promise<PrepareAnswer> {
+    // The stop already expired the open questions, so a later one would wait for nobody.
+    if (signal.aborted) return Promise.resolve("expired");
     const requestId = this.options.newId();
     return new Promise<PrepareAnswer>((resolve) => {
       const timer = setTimeout(() => {

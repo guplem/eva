@@ -399,6 +399,8 @@ function SummaryChatQuestion({
     try {
       const { session, summaryFailure } = await api.summaryChat(sessionId);
       await onChanged();
+      // Closed here: the page may fail to open the new chat, and the old header then stays.
+      onKeep();
       window.location.hash = `#/chat/${encodeURIComponent(session.id)}`;
       if (summaryFailure !== null)
         showError(new Error(`Eva could not write the summary: ${summaryFailure} The new chat starts empty.`));

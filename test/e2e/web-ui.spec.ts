@@ -585,6 +585,8 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   const composer = page.getByLabel("Message").first();
   await expect(composer).toHaveValue(/Goal: the demo summary\./);
   await expect(page.locator(".message.answer")).toHaveCount(0);
+  // A summary that the person clears stays cleared when the chat opens again.
+  await composer.fill("");
 
   const details = async (): Promise<Locator> => {
     if (test.info().project.name === "desktop") return page.getByRole("complementary", { name: "This chat" });
@@ -595,6 +597,7 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   await (await details()).getByRole("link", { name: `${title} (continued)` }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${title} (continued)`);
+  await expect(page.getByLabel("Message").first()).toHaveValue("");
 });
 
 test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram does", async ({ page }) => {

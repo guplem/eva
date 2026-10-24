@@ -93,7 +93,8 @@ export function Composer({
   );
   const setText = (value: string): void => {
     if (draftKey !== undefined) {
-      if (value === "") unsentTexts.delete(draftKey);
+      // A cleared summary stays cleared: without the entry, the box would start with the summary again.
+      if (value === "" && (session.firstMessageDraft ?? null) === null) unsentTexts.delete(draftKey);
       else unsentTexts.set(draftKey, value);
     }
     setTypedText(value);

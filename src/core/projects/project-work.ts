@@ -12,8 +12,10 @@ import type { Logger } from "../../shared/logger.ts";
 import { cheapestModel, type ModelCalls } from "../model-calls/model-calls.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { evaRepository } from "../../shared/version.ts";
-import type { SessionManager } from "../sessions/session-manager.ts";
+import type { ChatSummarizer } from "../sessions/chat-summary.ts";
+import type { HistoryPoint, RetryFiles, SessionManager } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
+import { copySnapshot, deleteSnapshots, restoreSnapshot } from "./clone-snapshots.ts";
 import {
   cloneRepository,
   countChanges,
@@ -78,8 +80,24 @@ export interface ProjectWorkInput {
   readonly reportToSessionId: string | null;
 }
 
+/** Where a fork of a Project chat runs, and from which files (issue 523). */
+export type ForkFiles = "snapshot-clone" | "clean-clone" | "same-clone";
+
+/** What a retry of a Project chat does with the files (issue 523). */
+export type RetryChoice = RetryFiles | "new-clone";
+
+/** A new branch of a chat, and a note for the person when it could not keep its history, or null. */
+export interface BranchResult {
+  readonly session: SessionRecord;
+  readonly notice: string | null;
+}
+
 export interface ProjectWorkOptions {
   readonly sessions: SessionManager;
+  /** The environment of the engines' turns, which names their config folders. */
+  readonly engineEnvironment?: Readonly<Record<string, string>>;
+  /** Writes a summary when a chat that moves to another clone cannot take its history along. */
+  readonly summarizer?: Pick<ChatSummarizer, "summarize">;
   /** The projects of the vault now. */
   readonly projects: () => Project[];
   readonly defaultEngine: EngineName;
@@ -198,6 +216,131 @@ export class ProjectWork {
     );
     const known = states.filter((state) => state !== null);
     return known.length === 0 ? null : known.join("\n\n");
+  }
+
+  /**
+   * A fork of a chat at one answer (issue 523). In the same clone it is a branch of the chat. In a new
+   * clone it starts with the files of that answer, or on the default branch, and goes on from the answer.
+   */
+  async fork(sessionId: string, atMessageId: string, files: ForkFiles = "same-clone"): Promise<BranchResult> {
+    const sessions = this.options.sessions;
+    const from = sessions.get(sessionId);
+    if (from.mode !== "project" || files === "same-clone")
+      return { session: sessions.fork(sessionId, atMessageId), notice: null };
+    const turns = sessions.branchTurns(sessionId);
+    const end = turns.findIndex((turn) => turn.lastMessageId === atMessageId);
+    // The fork goes on from this chat's own engine session, which holds only the messages of its branch.
+    if (end === -1 || !from.turns.some((turn) => turn.lastMessageId === atMessageId))
+      throw new EvaError("session_not_found", `Session ${sessionId} has no answer ${atMessageId}.`);
+    return this.branchInNewClone({
+      from,
+      point: { engineSessionId: from.engineSessionId, atMessageId },
+      snapshot: files === "snapshot-clone" ? sessions.endSnapshotAt(sessionId, atMessageId) : null,
+      history: turns.slice(0, end + 1),
+      retryText: null,
+    });
+  }
+
+  /**
+   * A retry of a turn (issue 523): it undoes the turn's files, keeps them, or runs in a new clone with
+   * the files from before the turn. A new clone never starts clean: the retried message needs the earlier work.
+   */
+  async retry(sessionId: string, turnIndex: number, files: RetryChoice = "keep"): Promise<BranchResult> {
+    const sessions = this.options.sessions;
+    const from = sessions.get(sessionId);
+    if (from.mode !== "project" || files !== "new-clone")
+      return {
+        session: await sessions.retry(sessionId, turnIndex, files === "new-clone" ? "keep" : files),
+        notice: null,
+      };
+    const point = sessions.retryPoint(sessionId, turnIndex);
+    const turn = from.turns[turnIndex];
+    if (turn === undefined)
+      throw new EvaError("session_not_found", `Session ${sessionId} has no turn ${String(turnIndex)}.`);
+    const turns = sessions.branchTurns(sessionId);
+    return this.branchInNewClone({
+      from,
+      point,
+      snapshot: sessions.startSnapshotOf(from, turnIndex),
+      history: turns.slice(0, turns.length - (from.turns.length - turnIndex)),
+      retryText: turn.userText,
+    });
+  }
+
+  /**
+   * Makes a chat in a new clone that goes on from a point of another chat. The clone gets the files of
+   * the snapshot, or is a free or new clone with no snapshot. When the engine cannot take the history
+   * along, the chat starts from a summary that the person reads first.
+   */
+  private async branchInNewClone(input: {
+    readonly from: SessionRecord;
+    readonly point: HistoryPoint | null;
+    readonly snapshot: string | null;
+    /** The turns up to the point, for a summary. Already redacted. */
+    readonly history: SessionRecord["turns"];
+    /** The message to send at once, for a retry, or null. */
+    readonly retryText: string | null;
+  }): Promise<BranchResult> {
+    const { from, point, snapshot } = input;
+    const sessions = this.options.sessions;
+    if (from.projectId === null) throw new EvaError("project_not_found", "This Project chat names no project.");
+    if (from.closed)
+      throw new EvaError("session_closed", "This chat is closed, because Eva reused its clone. Start a new chat.");
+    const project = this.project(from.projectId);
+    // The chat exists before the next choice starts, so its creation already keeps the clone.
+    const { session, carried } = await this.oneCloneChoiceAtATime(project, async () => {
+      const clone =
+        snapshot === null
+          ? await this.freeOrNewClone(project, from.startFolder)
+          : await this.cloneAt(project, from, snapshot);
+      const carried =
+        point === null ||
+        sessions.carryHistory(from.engine, {
+          engineSessionId: point.engineSessionId,
+          toFolder: clone.path,
+          environment: this.options.engineEnvironment ?? {},
+        });
+      const place = { startFolder: clone.path, clone: clone.name };
+      return { session: sessions.createMovedBranch(from.id, carried ? point : null, place), carried };
+    });
+    if (carried) {
+      // The send never rejects: a failure of the turn is its turn_failed event.
+      if (input.retryText !== null) void sessions.send(session.id, input.retryText);
+      return { session: sessions.get(session.id), notice: null };
+    }
+    const summary =
+      this.options.summarizer === undefined
+        ? { ok: false as const, reason: "This Eva writes no summaries." }
+        : await this.options.summarizer.summarize({
+            engine: from.engine,
+            model: from.modelAlias,
+            turns: input.history,
+            gitState: null,
+          });
+    const draft = [summary.ok ? summary.text : null, input.retryText].filter((part) => part !== null).join("\n\n");
+    const notice =
+      `Eva could not take the history of this chat to ${session.clone ?? "the new clone"}, so the new chat starts ` +
+      (summary.ok
+        ? "from a summary. Read it, then send it."
+        : `with no history. The summary failed too: ${summary.reason}`);
+    return { session: sessions.continueFrom(session.id, from.id, draft.length === 0 ? null : draft), notice };
+  }
+
+  /**
+   * A new clone with the files of a snapshot of the chat's clone. The snapshot refs are not on GitHub,
+   * so the new clone fetches them from the old clone's folder. A failure removes the new clone.
+   */
+  private async cloneAt(project: Project, from: SessionRecord, snapshot: string): Promise<Clone> {
+    const clone = await this.cloneInto(project);
+    const run = { runner: this.options.runner, environment: this.options.gitEnvironment };
+    try {
+      await copySnapshot(from.startFolder, clone.path, snapshot, run);
+      await restoreSnapshot(clone.path, snapshot, run);
+    } catch (error) {
+      rmSync(clone.path, { recursive: true, force: true, maxRetries: 5 });
+      throw error;
+    }
+    return clone;
   }
 
   /**
@@ -488,7 +631,7 @@ export class ProjectWork {
       const deletedChats: string[] = [];
       for (const chat of chats) {
         // A fork goes with its parent, so it can be gone already.
-        if (!deletedChats.includes(chat.id)) deletedChats.push(...sessions.delete(chat.id));
+        if (!deletedChats.includes(chat.id)) deletedChats.push(...sessions.delete(chat.id, { forgetSnapshots: false }));
       }
       // Retries, because a virus scanner or an indexer on Windows can hold a file for a moment.
       rmSync(clone.path, { recursive: true, force: true, maxRetries: 5 });
@@ -550,11 +693,14 @@ export class ProjectWork {
     });
   }
 
-  /** Call it only inside `oneCloneChoiceAtATime`, or two callers can get the same clone. */
-  private async freeOrNewClone(project: Project): Promise<Clone> {
+  /**
+   * Call it only inside `oneCloneChoiceAtATime`, or two callers can get the same clone. A fork names the
+   * clone of the chat it comes from: a reuse would close that chat.
+   */
+  private async freeOrNewClone(project: Project, except: string | null = null): Promise<Clone> {
     // A clone with a record of each repository goes first: one with none asks a trust question,
     // and work may run with nobody to answer it.
-    const clones = listClones(project.path);
+    const clones = listClones(project.path).filter((clone) => clone.path !== except);
     const recorded = clones.filter((clone) =>
       clone.repositories.every((repository) => {
         const kind = this.options.cloneOrigins.origin(repository.path)?.kind;
@@ -628,6 +774,8 @@ export class ProjectWork {
       const branch = branches.get(repository.path);
       if (branch !== undefined) await switchToBranch(repository, branch, runner, gitEnvironment);
     }
+    // The closed chats take no retry or fork, so their snapshots of the files serve nobody (issue 523).
+    await deleteSnapshots(current.path, "all", { runner, environment: gitEnvironment });
     return current;
   }
 

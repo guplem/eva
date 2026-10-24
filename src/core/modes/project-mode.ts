@@ -16,7 +16,7 @@ import {
   type TrustStore,
 } from "../projects/clones.ts";
 import { EvaError } from "../../shared/errors.ts";
-import { restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
+import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
 import type { PrepareContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
@@ -60,6 +60,12 @@ export class ProjectPreparer implements TurnPreparer {
   snapshot(session: SessionRecord, id: string): Promise<boolean> {
     const run = this.options.snapshots;
     return run === undefined ? Promise.resolve(false) : takeSnapshot(session.startFolder, id, run);
+  }
+
+  forget(session: SessionRecord, ids: readonly string[]): void {
+    const run = this.options.snapshots;
+    // A ref left behind costs little, and a reuse of the clone deletes it.
+    if (run !== undefined) void deleteSnapshots(session.startFolder, ids, run).catch(() => undefined);
   }
 
   restore(session: SessionRecord, id: string): Promise<void> {

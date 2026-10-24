@@ -77,6 +77,8 @@ export interface TurnPreparer {
   snapshot?(session: SessionRecord, id: string): Promise<boolean>;
   /** Brings back the files of a snapshot. Eva calls it while the turn holds the folder. */
   restore?(session: SessionRecord, id: string): Promise<void>;
+  /** Deletes the snapshots of a deleted chat. It runs in the background and never throws. */
+  forget?(session: SessionRecord, ids: readonly string[]): void;
 }
 
 /** Where a branch's history goes on from: a message of an engine session. */
@@ -510,13 +512,15 @@ export class SessionManager {
 
   /**
    * Deletes a chat and every fork of it, and returns their ids. A fork left behind would point
-   * at a parent that is gone. The engine keeps its own transcript.
+   * at a parent that is gone. The engine keeps its own transcript. The snapshots of their turns go
+   * too, unless the caller deletes the whole folder: git must not run in a folder that goes.
    */
-  delete(sessionId: string): string[] {
+  delete(sessionId: string, options: { readonly forgetSnapshots?: boolean } = {}): string[] {
     const ids = this.treeOf(sessionId);
     // A queued message would run on a deleted record, so a gathered one refuses the delete too.
     if (ids.some((id) => this.isActive(id)))
       throw new EvaError("session_busy", "Eva is still working in this chat. Try again when she finishes.");
+    for (const id of options.forgetSnapshots === false ? [] : ids) this.forgetSnapshots(this.get(id));
     for (const id of ids) {
       this.options.store.delete(id);
       this.options.stepDetails?.delete(id);
@@ -1155,6 +1159,21 @@ ${prompt}`,
       throw new Error(`Eva could not bring back the files of this answer: ${reason}`, { cause: error });
     }
     this.options.store.save({ ...this.get(session.id), pendingRestore: null });
+  }
+
+  /**
+   * Lets the mode delete the snapshots of a chat's own turns. A branch's pending restore names a turn
+   * of another chat, which may stay, so it is not among them.
+   */
+  private forgetSnapshots(session: SessionRecord): void {
+    const preparer = this.options.preparers[session.mode];
+    const ids = session.turns.flatMap((turn) => [turn.startSnapshot, turn.endSnapshot]).filter((id) => id !== null);
+    if (preparer.forget === undefined || ids.length === 0) return;
+    try {
+      preparer.forget(session, ids);
+    } catch {
+      // A snapshot left behind costs only a ref, which a reuse of the clone deletes.
+    }
   }
 
   /** A new snapshot of the chat's folder, or null when the mode keeps none or it failed. The turn goes on. */

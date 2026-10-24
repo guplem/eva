@@ -89,10 +89,13 @@ import {
 } from "./projects/clones.ts";
 import {
   ProjectWork,
+  type BranchResult,
   type CloneFetch,
+  type ForkFiles,
   type NewChatInput,
   type NewProjectChatInput,
   type ProjectWorkInput,
+  type RetryChoice,
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
 import { moveFavorites, readFavorites, setFavorite, type Favorite } from "./files/vault-favorites.ts";
@@ -643,6 +646,8 @@ export class Eva {
     });
     this.projectWork = new ProjectWork({
       sessions: this.sessions,
+      engineEnvironment: agentEnvironment,
+      summarizer: this.chatSummaries,
       projects: () => this.projects(),
       defaultEngine: options.config.engines.default,
       runner: options.runner,
@@ -1472,6 +1477,19 @@ export class Eva {
       session: this.sessions.continueFrom(created.id, old.id, summary.ok ? summary.text : null),
       summaryFailure: summary.ok ? null : summary.reason,
     };
+  }
+
+  /**
+   * A fork of a chat at one answer. A fork of a Project chat can run in a new clone, with the files of
+   * that answer or a clean clone (issue 523). The notice says why a fork lost its history, or is null.
+   */
+  forkChat(sessionId: string, atMessageId: string, files?: ForkFiles): Promise<BranchResult> {
+    return this.projectWork.fork(sessionId, atMessageId, files);
+  }
+
+  /** A retry of a turn. A retry of a Project chat can undo the turn's files, or run in a new clone (issue 523). */
+  retryChat(sessionId: string, turnIndex: number, files?: RetryChoice): Promise<BranchResult> {
+    return this.projectWork.retry(sessionId, turnIndex, files);
   }
 
   /**

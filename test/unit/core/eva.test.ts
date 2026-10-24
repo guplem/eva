@@ -910,6 +910,149 @@ describe("Eva", () => {
     });
   });
 
+  describe("forks and retries in other clones (issue 523)", () => {
+    const projectId = "2025-03-02-1015-example-app";
+    const repository = (_instance: Eva, clone: string): string =>
+      join(vault, "Projects", projectId, "repos", clone, "remote");
+    const read = (path: string): string | null => (existsSync(path) ? readFileSync(path, "utf8") : null);
+    const refs = (folder: string): string => sandbox.git(folder, "for-each-ref", "--format=%(refname)", "refs/eva/");
+
+    /** Each Project turn writes `<message>.txt` with its turn number, as an agent edits files. */
+    function writingEngine(options: { summary?: string } = {}): FakeEngine {
+      let turn = 0;
+      return new FakeEngine((request) => {
+        if (request.mode === "project") {
+          turn += 1;
+          writeFileSync(join(request.startFolder, "remote", `${request.prompt}.txt`), `turn ${String(turn)}\n`);
+        }
+        const text = request.mode === "model-call" ? (options.summary ?? "A name") : "ok";
+        return FakeEngine.answer(request, text);
+      });
+    }
+
+    beforeEach(() => {
+      sandbox.write(
+        vault,
+        `Projects/${projectId}/AGENTS.md`,
+        `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
+      );
+    });
+
+    async function chatWithTwoTurns(instance: Eva): Promise<SessionRecord> {
+      const chat = await instance.createProjectSession({ projectId, source: "web", model: "default" });
+      await instance.sessions.send(chat.id, "first");
+      await instance.sessions.send(chat.id, "second");
+      return instance.sessions.get(chat.id);
+    }
+
+    test("a fork in a new clone has the files of its answer, and goes on from it", async () => {
+      const engine = writingEngine();
+      const instance = start(engine);
+      const chat = await chatWithTwoTurns(instance);
+      const atMessageId = chat.turns[0]!.lastMessageId!;
+
+      const { session, notice } = await instance.forkChat(chat.id, atMessageId, "snapshot-clone");
+      expect(notice).toBeNull();
+      expect(session).toMatchObject({
+        clone: "clone-1",
+        parentId: null,
+        forkedFrom: { sessionId: chat.id, clone: "clone-0", engineSessionId: chat.engineSessionId, atMessageId },
+      });
+      expect(read(join(repository(instance, "clone-1"), "first.txt"))).toBe("turn 1\n");
+      expect(read(join(repository(instance, "clone-1"), "second.txt"))).toBeNull();
+      // The parent keeps its own files.
+      expect(read(join(repository(instance, "clone-0"), "second.txt"))).toBe("turn 2\n");
+
+      await instance.sessions.send(session.id, "third");
+      const request = engine.requests.findLast((candidate) => candidate.mode === "project");
+      expect(request?.startFolder).toBe(join(vault, "Projects", projectId, "repos", "clone-1"));
+      expect(request?.history).toEqual({ kind: "fork", fromEngineSessionId: chat.engineSessionId, atMessageId });
+    });
+
+    test("a fork in a clean clone starts on the default branch, and leaves the parent's clone alone", async () => {
+      const instance = start(writingEngine());
+      const chat = await chatWithTwoTurns(instance);
+      const { session } = await instance.forkChat(chat.id, chat.turns[1]!.lastMessageId!, "clean-clone");
+      expect(session.clone).toBe("clone-1");
+      expect(read(join(repository(instance, "clone-1"), "first.txt"))).toBeNull();
+      expect(instance.sessions.get(chat.id).closed).toBe(false);
+    });
+
+    test("a fork in the same clone is a branch of its chat", async () => {
+      const instance = start(writingEngine());
+      const chat = await chatWithTwoTurns(instance);
+      const { session } = await instance.forkChat(chat.id, chat.turns[0]!.lastMessageId!, "same-clone");
+      expect(session).toMatchObject({ parentId: chat.id, clone: "clone-0" });
+    });
+
+    test("a fork at an answer that the chat does not hold is refused", async () => {
+      const instance = start(writingEngine());
+      const chat = await chatWithTwoTurns(instance);
+      const error: unknown = await instance
+        .forkChat(chat.id, "elsewhere", "clean-clone")
+        .catch((caught: unknown) => caught);
+      expect(isEvaError(error, "session_not_found")).toBe(true);
+    });
+
+    test("an undo retry brings back the files from before the answer, and undoes every later answer", async () => {
+      const instance = start(writingEngine());
+      const chat = await chatWithTwoTurns(instance);
+      const { session } = await instance.retryChat(chat.id, 0, "undo");
+      await waitFor(() => !instance.sessions.isActive(session.id));
+      expect(read(join(repository(instance, "clone-0"), "second.txt"))).toBeNull();
+      expect(read(join(repository(instance, "clone-0"), "first.txt"))).toBe("turn 3\n");
+    });
+
+    test("a retry in a new clone has the files from before the answer, and sends the message again", async () => {
+      const instance = start(writingEngine());
+      const chat = await chatWithTwoTurns(instance);
+      const { session } = await instance.retryChat(chat.id, 1, "new-clone");
+      await waitFor(() => !instance.sessions.isActive(session.id));
+      expect(instance.sessions.get(session.id).turns[0]?.userText).toBe("second");
+      expect(read(join(repository(instance, "clone-1"), "first.txt"))).toBe("turn 1\n");
+      expect(read(join(repository(instance, "clone-1"), "second.txt"))).toBe("turn 3\n");
+      expect(read(join(repository(instance, "clone-0"), "second.txt"))).toBe("turn 2\n");
+    });
+
+    test("when the engine cannot take the history along, the new chat starts from a summary", async () => {
+      const engine = Object.assign(writingEngine({ summary: "Goal: the fix." }), { carryHistory: () => false });
+      const instance = start(engine);
+      const chat = await chatWithTwoTurns(instance);
+      const before = engine.requests.length;
+      const { session, notice } = await instance.retryChat(chat.id, 1, "new-clone");
+      expect(notice).toContain("starts from a summary");
+      expect(session).toMatchObject({ continuedFrom: chat.id, turns: [], forkFromEngineSessionId: null });
+      expect(session.firstMessageDraft).toContain("Goal: the fix.");
+      expect(session.firstMessageDraft).toEndWith("second");
+      // Only the summary call ran: the person reads the draft before it goes.
+      expect(engine.requests.slice(before).every((request) => request.mode === "model-call")).toBe(true);
+    });
+
+    test("a reuse of a clone deletes every snapshot in it", async () => {
+      const instance = start(finishingEngine());
+      const chat = await instance.createProjectSession({ projectId, source: "web", model: "default" });
+      await instance.sessions.send(chat.id, "done");
+      const folder = repository(instance, "clone-0");
+      expect(refs(folder)).not.toBe("");
+      const next = await instance.createProjectSession({ projectId, source: "web", model: "default" });
+      expect(next.clone).toBe("clone-0");
+      expect(refs(folder)).toBe("");
+    });
+
+    test("a deleted chat takes the snapshots of its turns along", async () => {
+      const instance = start(writingEngine());
+      const chat = await chatWithTwoTurns(instance);
+      const folder = repository(instance, "clone-0");
+      expect(refs(folder).split("\n")).toHaveLength(4);
+      const { session } = await instance.forkChat(chat.id, chat.turns[0]!.lastMessageId!, "same-clone");
+      await instance.sessions.send(session.id, "other");
+      instance.sessions.delete(session.id);
+      await waitFor(() => refs(folder).split("\n").length === 4);
+      instance.sessions.delete(chat.id);
+      await waitFor(() => refs(folder) === "");
+    });
+  });
+
   test("an Assistant chat goes on in a new Assistant chat that starts from a summary (#522)", async () => {
     const engine = new FakeEngine((request) =>
       FakeEngine.answer(request, request.mode === "model-call" ? "Goal: plan a trip." : "Rome is lovely."),

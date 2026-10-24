@@ -1676,6 +1676,35 @@ describe("Eva alerts", () => {
     expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ failed: true });
   });
 
+  test("a scheduled turn that the person stops raises no alert, and the run counts as good", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => {
+        request.signal.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const instance = start(engine);
+    const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    await waitFor(() => engine.requests.length === 1);
+    const [session] = instance.sessions.list();
+    instance.sessions.stop(session?.id ?? "");
+    await instance.idle();
+    await Bun.sleep(0);
+    expect(alerts.filter((alert) => alert.key === "schedule:lunch")).toEqual([]);
+    expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ failed: false });
+  });
+
   test("a card that no front end showed is a problem in the status until a front end shows it (lesson 66)", async () => {
     sandbox.write(
       vault,

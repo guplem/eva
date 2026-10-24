@@ -1454,6 +1454,23 @@ describe("after a turn", () => {
     expect(manager.get(sessionId).turns.map((turn) => turn.failure)).toEqual(["You hit the usage limit.", null]);
   });
 
+  test("a send with a result gives null when the person stopped its turn: a stop is no failure", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => {
+        request.signal.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const scheduled = manager.sendWithResult(sessionId, "Plan my day.", "schedule");
+    await waitUntil(() => engine.requests.length === 1);
+    manager.stop(sessionId);
+    expect(await scheduled).toBeNull();
+  });
+
   test("a send with a result gives null for a good turn, though a follow-up of the mode fails", async () => {
     followUps = ["continue the skill run", null];
     const engine = new FakeEngine((request, turnNumber) =>

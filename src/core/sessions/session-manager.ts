@@ -174,6 +174,8 @@ interface PendingBatch {
 interface TurnResult {
   /** The failure reason of the turn, or null when it finished or has not run. */
   failure: string | null;
+  /** The person stopped the turn. */
+  stopped: boolean;
 }
 
 interface SessionRuntime {
@@ -420,11 +422,12 @@ export class SessionManager {
   /**
    * Sends a message, as `send` does. It resolves to the failure reason of the turn that carried
    * the message, or null. A send never rejects, and a later turn of the chat must not count.
+   * A stop of the person is null too: the person chose it, so it is no failure.
    */
   async sendWithResult(sessionId: string, text: string, origin: MessageOrigin): Promise<string | null> {
     const batch = this.enqueue(sessionId, text, origin);
     await batch.done;
-    return batch.outcome.failure;
+    return batch.outcome.stopped ? null : batch.outcome.failure;
   }
 
   private enqueue(sessionId: string, text: string, origin: MessageOrigin): PendingBatch {
@@ -862,6 +865,8 @@ ${prompt}`,
     }
     // Before the work after the turn, which can throw. Each unfinished turn sent one turn_failed.
     result.failure = finished === null ? (this.lastFailure.get(sessionId) ?? "The turn failed.") : null;
+    // A batch with a message clears the flag at its start, so only a stop of this turn counts.
+    result.stopped = runtime.stopped;
     if (finished === null)
       this.recordFailure(
         session.id,
@@ -1082,7 +1087,7 @@ function createBatch(): PendingBatch {
   const done = new Promise<void>((settle) => {
     resolve = settle;
   });
-  return { texts: [], messages: [], outcome: { failure: null }, done, resolve };
+  return { texts: [], messages: [], outcome: { failure: null, stopped: false }, done, resolve };
 }
 
 function titleOf(prompt: string): string {

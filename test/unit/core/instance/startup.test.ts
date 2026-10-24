@@ -93,6 +93,23 @@ describe("prepareStart with a vault", () => {
     );
   });
 
+  test("claims no hub when the pull failed, so it never claims over a pushed claim", async () => {
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    const prepared = await start();
+    expect(readHubClaim(vault)).toBeNull();
+    expect(prepared.notes.find((note) => note.level === "warn")?.message).toBe(
+      "The vault pull did not work, so this machine did not claim the hub yet.",
+    );
+  });
+
+  test("claims the hub in a vault with no remote, where no other machine can push a claim", async () => {
+    sandbox.git(vault, "remote", "remove", "origin");
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    await start();
+    expect(readHubClaim(vault)?.machine).toBe("server");
+  });
+
   test("runs the migrations after the pull: the hub starts the vault's settings file (#119)", async () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
     const prepared = await start();

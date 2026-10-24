@@ -18,6 +18,7 @@ import { evaVersion } from "../../shared/version.ts";
 import { runStartMigrations, type StartMigrations } from "../migrations/migrations.ts";
 import { withMachineDefaults } from "../settings/machine-defaults.ts";
 import { loadSettings } from "../settings/settings.ts";
+import { readOriginUrl } from "../projects/clones.ts";
 import { VaultSync } from "../vault/vault-sync.ts";
 import { gitEnvironmentWithToken } from "./child-environments.ts";
 import { commitIdentity } from "./commit-identity.ts";
@@ -81,17 +82,21 @@ async function migrateAfterPull(
   const configuredVault = machineConfig.vaultPath;
   const vaultPath = configuredVault !== null && existsSync(configuredVault) ? configuredVault : null;
   if (vaultPath !== null) {
-    await new VaultSync({
-      vaultPath,
-      runner: options.runner,
-      environment: gitEnvironmentWithToken(
-        options.processEnvironment,
-        secrets,
-        commitIdentity(options.paths, machineConfig),
-      ),
-      now: options.now,
-    }).pull();
-    if (claimHubIfUnclaimed(vaultPath, machine, options.now()))
+    const environment = gitEnvironmentWithToken(
+      options.processEnvironment,
+      secrets,
+      commitIdentity(options.paths, machineConfig),
+    );
+    const pulled = await new VaultSync({ vaultPath, runner: options.runner, environment, now: options.now }).pull();
+    // A failed pull may hide a claim that another machine pushed. A vault with no remote has no such claim.
+    const canClaim = pulled.status === "ok" || (await readOriginUrl(vaultPath, options.runner, environment)) === null;
+    if (!canClaim)
+      notes.push({
+        level: "warn",
+        message: "The vault pull did not work, so this machine did not claim the hub yet.",
+        fields: { status: pulled.status, error: pulled.lastError },
+      });
+    else if (claimHubIfUnclaimed(vaultPath, machine, options.now()))
       notes.push({ level: "info", message: "No machine was the hub yet, so this machine claimed it." });
   }
   return runStartMigrations({

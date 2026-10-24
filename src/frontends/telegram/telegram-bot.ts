@@ -692,6 +692,12 @@ export class TelegramBot {
     sessionId: string,
     model: ModelAlias,
   ): Promise<void> {
+    // A /new without topics sets the main chat's earlier chat aside, but its picker stays on screen.
+    const current = this.state.topics[keyOf(chatId, topicId)];
+    if (current !== undefined && current.sessionId !== sessionId) {
+      await this.send(chatId, topicId, "This button belongs to an earlier chat, so the model stays.");
+      return;
+    }
     try {
       const session = this.options.eva.sessions.setModel(sessionId, model);
       if (session.turns.length === 0) return;

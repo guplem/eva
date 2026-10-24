@@ -645,6 +645,24 @@ describe("topics", () => {
     expect(notice?.params["message_thread_id"]).toBe(500);
   });
 
+  test("a model button of an earlier chat changes nothing, so the phone never hears a wrong model (#545)", async () => {
+    const bot = createBot();
+    // With no topics, each /new sets the main chat's earlier chat aside, and its picker stays on screen.
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const earlier = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi");
+    await settle(bot, () => eva.sessions.get(earlier.id).turns.length === 1 && !eva.sessions.isBusy(earlier.id));
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 2);
+
+    telegram.pressButton(owner, `m:${earlier.id}:opus`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("earlier chat")));
+    expect(eva.sessions.get(earlier.id).modelAlias).toBe("default");
+  });
+
   test("a model button says why it waits while a turn runs (#545)", async () => {
     let release = (): void => undefined;
     createEva(async function* (request) {

@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { locateEngineProgram, pathWithOwnGh } from "./core/engine-install/engine-install.ts";
+import { locateEngineProgram, pathWithOwnGh, pathWithUvFolder } from "./core/engine-install/engine-install.ts";
 import { locateVoiceProgram, ownVoicePrograms } from "./core/engine-install/voice-install.ts";
 import { Eva } from "./core/eva.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
@@ -40,12 +40,9 @@ import { evaVersion } from "./shared/version.ts";
 /** Within the minute that the person waits for the address; `tailscale status` is a cheap read. */
 const tailscaleReadMs = 30_000;
 
-// Before anything reads the environment: every child, the agents' too, finds the gh that Eva installs.
-process.env[process.env["PATH"] === undefined && process.env["Path"] !== undefined ? "Path" : "PATH"] = pathWithOwnGh(
-  process.env,
-  process.platform,
-  homedir(),
-);
+// Before anything reads the environment: every child, the agents' too, finds the gh and the uv that Eva installs.
+process.env[process.env["PATH"] === undefined && process.env["Path"] !== undefined ? "Path" : "PATH"] =
+  pathWithUvFolder({ PATH: pathWithOwnGh(process.env, process.platform, homedir()) }, process.platform, homedir());
 
 const host: CliHost = {
   environment: process.env,

@@ -28,8 +28,16 @@ export interface OpenAlert extends AlertProblem {
   readonly key: string;
 }
 
-/** An open problem as the status shows it: the key tells a front end which button fixes it. */
-export type ProblemDetail = Pick<OpenAlert, "key" | "level" | "message">;
+/**
+ * An open problem as the status shows it: the key tells a front end which button fixes it.
+ * A hidden problem is one that the person closed; the web page shows no notice for it.
+ */
+export interface ProblemDetail extends Pick<OpenAlert, "key" | "level" | "message"> {
+  readonly hidden: boolean;
+}
+
+/** The level of each problem that the person hid, by key. A higher level shows the problem again. */
+export type HiddenProblems = Readonly<Record<string, AlertLevel>>;
 
 type AlertListener = (alert: Alert) => Promise<void> | void;
 
@@ -37,6 +45,10 @@ export interface AlertCenterOptions {
   readonly now: () => Date;
   readonly logger?: Logger;
   readonly redactor?: Redactor;
+  /** The marks saved before a restart, so a hidden problem stays hidden. */
+  readonly hidden?: HiddenProblems;
+  /** Saves the marks; the center does no file work. */
+  readonly onHiddenChange?: (hidden: HiddenProblems) => void;
 }
 
 interface OpenProblem {
@@ -50,11 +62,13 @@ export class AlertCenter {
   private readonly options: AlertCenterOptions;
   private readonly listeners: Set<AlertListener>;
   private readonly open: Map<string, OpenProblem>;
+  private readonly hidden: Map<string, AlertLevel>;
 
   constructor(options: AlertCenterOptions) {
     this.options = options;
     this.listeners = new Set();
     this.open = new Map();
+    this.hidden = new Map(Object.entries(options.hidden ?? {}));
   }
 
   /** Returns an unsubscribe. */
@@ -69,6 +83,8 @@ export class AlertCenter {
   report(key: string, reported: AlertProblem | null): void {
     const current = this.open.get(key);
     if (reported === null) {
+      // A problem that starts again later is news, so it must show again.
+      this.forgetHidden(key);
       if (current === undefined) return;
       this.open.delete(key);
       this.emit(key, "resolved", current.problem.resolvedMessage);
@@ -80,7 +96,15 @@ export class AlertCenter {
       resolvedMessage: this.redact(reported.resolvedMessage),
     };
     const now = this.options.now().getTime();
-    if (current !== undefined && now - current.lastSentAt < repeatAfterMs) {
+    const hiddenLevel = this.hidden.get(key);
+    // A new reason alone keeps it hidden: a relayed reason changes between failures, such as a timeout and then DNS.
+    if (hiddenLevel === "error" || (hiddenLevel === "warn" && problem.level === "warn")) {
+      this.open.set(key, { problem, lastSentAt: current?.lastSentAt ?? now });
+      return;
+    }
+    // A problem that rose from warn to error is news, so it alerts at once.
+    if (hiddenLevel !== undefined) this.forgetHidden(key);
+    else if (current !== undefined && now - current.lastSentAt < repeatAfterMs) {
       this.open.set(key, { problem, lastSentAt: current.lastSentAt });
       return;
     }
@@ -89,11 +113,24 @@ export class AlertCenter {
   }
 
   /**
+   * The person closed the notice of an open problem: no reminder, and no notice on the web page,
+   * until the problem rises to an error or clears. False when no such problem is open.
+   */
+  hide(key: string): boolean {
+    const current = this.open.get(key);
+    if (current === undefined) return false;
+    this.hidden.set(key, current.problem.level);
+    this.saveHidden();
+    return true;
+  }
+
+  /**
    * Forgets one problem with no resolved alert, such as a relayed problem on a hub that moved away.
    * The new hub sends it, so a "resolved" line here would be false.
    */
   dismiss(key: string): void {
     this.open.delete(key);
+    this.forgetHidden(key);
   }
 
   /** A one-off alert, such as a start after an unclean exit, or news. It never stays open. */
@@ -109,6 +146,24 @@ export class AlertCenter {
   /** Each open problem with its key, for the report that the hub reads. */
   openAlerts(): OpenAlert[] {
     return [...this.open].map(([key, entry]) => ({ key, ...entry.problem }));
+  }
+
+  /** Each open problem for a front end, with its hidden mark. */
+  problemDetails(): ProblemDetail[] {
+    return [...this.open].map(([key, { problem }]) => ({
+      key,
+      level: problem.level,
+      message: problem.message,
+      hidden: this.hidden.has(key),
+    }));
+  }
+
+  private forgetHidden(key: string): void {
+    if (this.hidden.delete(key)) this.saveHidden();
+  }
+
+  private saveHidden(): void {
+    this.options.onHiddenChange?.(Object.fromEntries(this.hidden));
   }
 
   private emit(key: string, level: Alert["level"], message: string): void {

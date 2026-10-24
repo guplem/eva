@@ -24,6 +24,7 @@ import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
 import { ChatNotifications, type NotificationKind } from "./alerts/chat-notifications.ts";
+import { readHiddenProblems, writeHiddenProblems } from "./alerts/hidden-problems.ts";
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
@@ -473,6 +474,17 @@ export class Eva {
       now: options.now,
       redactor,
       ...(options.logger === undefined ? {} : { logger: options.logger }),
+      hidden: readHiddenProblems(options.paths.hiddenProblems),
+      onHiddenChange: (hidden) => {
+        // A report runs in sync and scheduler code, so a full disk must never reach it.
+        try {
+          writeHiddenProblems(options.paths.hiddenProblems, hidden);
+        } catch (error) {
+          options.logger?.log("warn", "Eva could not save the hidden problems.", {
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
     });
     this.redactor = redactor;
     this.locations = new LocationStore({ path: options.paths.location, now: options.now });
@@ -1085,6 +1097,14 @@ export class Eva {
   }
 
   /**
+   * The person closed the notice of an open problem. It stays in the status, and the web page
+   * shows no notice for it until it rises to an error or clears. False when no such problem is open.
+   */
+  hideProblem(key: string): boolean {
+    return this.alerts.hide(key);
+  }
+
+  /**
    * Reports the migrations that ran at start. Call it after the Telegram bot starts, so that a
    * failure reaches Telegram on the hub.
    */
@@ -1399,7 +1419,7 @@ export class Eva {
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
       problems: this.alerts.openProblems(),
-      problemDetails: this.alerts.openAlerts().map(({ key, level, message }) => ({ key, level, message })),
+      problemDetails: this.alerts.problemDetails(),
       setupMissing: missingSteps(progress),
       chatBlocker: this.chatBlocker(progress),
       voiceNotes: this.transcribe !== null,

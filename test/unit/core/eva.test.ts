@@ -1928,11 +1928,28 @@ describe("Eva alerts", () => {
     expect(instance.status().problems).toEqual(["Another program polls the bot."]);
     // The web page picks the button of a problem from its key, never from its text.
     expect(instance.status().problemDetails).toEqual([
-      { key: "telegram_poll", level: "error", message: "Another program polls the bot." },
+      { key: "telegram_poll", level: "error", message: "Another program polls the bot.", hidden: false },
     ]);
     instance.reportProblem("telegram_poll", null);
     expect(instance.status().problems).toEqual([]);
     expect(instance.status().problemDetails).toEqual([]);
+  });
+
+  test("a hidden problem stays hidden after a restart, and only an open problem can be hidden (#541)", () => {
+    const problem = { level: "warn", message: "The bot is slow.", resolvedMessage: "Telegram works again." } as const;
+    const first = start(new FakeEngine());
+    first.reportProblem("telegram_poll", problem);
+    expect(first.hideProblem("telegram_poll")).toBe(true);
+    expect(first.status().problemDetails[0]?.hidden).toBe(true);
+    expect(first.hideProblem("vault_sync")).toBe(false);
+    first.stop();
+    const second = start(new FakeEngine());
+    const alerts = collectAlerts(second);
+    second.reportProblem("telegram_poll", problem);
+    expect(alerts).toEqual([]);
+    expect(second.status().problemDetails).toEqual([
+      { key: "telegram_poll", level: "warn", message: "The bot is slow.", hidden: true },
+    ]);
   });
 
   test("an expired engine login is a problem with its own key until a turn of that engine works", async () => {
@@ -1951,6 +1968,7 @@ describe("Eva alerts", () => {
         key: "engine_login:claude-code",
         level: "error",
         message: expect.stringContaining("Claude Code login") as string,
+        hidden: false,
       },
     ]);
     await instance.sessions.send(chat.id, "hello again");

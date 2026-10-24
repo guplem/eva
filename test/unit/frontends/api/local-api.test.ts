@@ -2051,6 +2051,18 @@ describe("updates and the vault sync", () => {
     expect(await json<{ role: string }>(response)).toMatchObject({ role: "hub" });
   });
 
+  test("hides the notice of an open problem, and answers 404 for a problem that is not open (#541)", async () => {
+    eva.reportProblem("example_problem", { level: "warn", message: "Something broke.", resolvedMessage: "Fixed." });
+    const hidden = await call("/api/problems/hide", { method: "POST", body: { key: "example_problem" } });
+    expect(hidden.status).toBe(200);
+    expect(await json<{ problemDetails: unknown[] }>(hidden)).toMatchObject({
+      problemDetails: [{ key: "example_problem", hidden: true }],
+    });
+    const gone = await call("/api/problems/hide", { method: "POST", body: { key: "no_such_problem" } });
+    expect(gone.status).toBe(404);
+    expect((await call("/api/problems/hide", { method: "POST", body: {} })).status).toBe(400);
+  });
+
   test("Sync now answers with the sync state", async () => {
     const response = await call("/api/vault/sync", { method: "POST", body: {} });
     expect(response.status).toBe(200);

@@ -28,7 +28,7 @@ import {
   stopsFollowing,
   liveFace,
   runningUntil,
-  sawStepsAfterSend,
+  isWorking,
   sentTurnCount,
   turnEndNotice,
   type PendingMessage,
@@ -219,12 +219,7 @@ function Branch({
   const pending = keptPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
   const turnRuns = useTurnRuns(liveSteps !== undefined, turnCount);
-  /**
-   * True once this send's turn sent a step. Its end removes the live steps before the list
-   * brings the stored answer, so the working card must not come back in that gap.
-   */
-  const [sawLiveSteps, setSawLiveSteps] = useState(false);
-  const working = liveSteps !== undefined || (pending.length > 0 && !sawLiveSteps);
+  const working = isWorking({ live: liveSteps !== undefined, turnRuns, pending, turnCount });
   const startedAt = useStartTime(working);
 
   // Only the stored turn of a message clears it. A message sent during a turn outlives that turn.
@@ -234,9 +229,6 @@ function Branch({
       return kept.length === current.length ? current : kept;
     });
   }, [turnCount]);
-  useEffect(() => {
-    if (liveSteps !== undefined) setSawLiveSteps(true);
-  }, [liveSteps]);
   // The stored turn shows the answer, or why the turn failed, so the notice waits for it.
   const turnEnd = useTurnEndNotice(turnRuns);
   const usageLimit = live.usageLimits[session.id];
@@ -246,7 +238,6 @@ function Branch({
     if (recording !== undefined) recordings.keep(session.id, message, recording);
     const entry = { text: message, turnCount: sentTurnCount(turnCount, turnRuns) };
     setSent((current) => [...current, entry]);
-    setSawLiveSteps((saw) => sawStepsAfterSend(saw, turnRuns));
     try {
       await api.send(session.id, message);
       return true;

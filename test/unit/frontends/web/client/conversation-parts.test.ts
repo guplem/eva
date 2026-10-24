@@ -16,7 +16,7 @@ import {
   keptPending,
   restoredText,
   runningUntil,
-  sawStepsAfterSend,
+  isWorking,
   sendsOnEnter,
   sentTurnCount,
   stepIcon,
@@ -264,13 +264,28 @@ describe("turnEndNotice", () => {
   });
 });
 
-describe("sawStepsAfterSend", () => {
-  test("a send with no running turn waits for the steps of its own turn", () => {
-    expect(sawStepsAfterSend(true, false)).toBe(false);
+describe("isWorking", () => {
+  const sent = (turnCount: number): { text: string; turnCount: number } => ({ text: "Hi", turnCount });
+
+  test("a send with no running turn shows the working card at once", () => {
+    expect(isWorking({ live: false, turnRuns: false, pending: [sent(2)], turnCount: 2 })).toBe(true);
   });
 
-  test("a send during a turn keeps the mark, so the next turn does not take the running turn's clock", () => {
-    expect(sawStepsAfterSend(true, true)).toBe(true);
+  test("a running turn shows the card", () => {
+    expect(isWorking({ live: true, turnRuns: true, pending: [], turnCount: 2 })).toBe(true);
+  });
+
+  test("a queued message keeps the card off until the turn before it is stored, so its clock starts fresh", () => {
+    // The live steps of the turn before ended, and its stored turn has not come yet.
+    expect(isWorking({ live: false, turnRuns: true, pending: [sent(3)], turnCount: 2 })).toBe(false);
+  });
+
+  test("a queued message shows the card once the turn before it is stored, while Eva saves the vault", () => {
+    expect(isWorking({ live: false, turnRuns: false, pending: [sent(3)], turnCount: 3 })).toBe(true);
+  });
+
+  test("no card when nothing runs and nothing waits", () => {
+    expect(isWorking({ live: false, turnRuns: false, pending: [], turnCount: 3 })).toBe(false);
   });
 });
 

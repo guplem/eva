@@ -212,12 +212,19 @@ export function turnEndNotice(wasRunning: boolean, running: boolean, current: st
 }
 
 /**
- * Whether the view still counts the steps of a turn as seen after a send. A send with no running
- * turn shows the working card until its own turn sends a step. A send during a turn keeps the mark:
- * the running turn may send no more step, and its end would then leave the card and its clock on.
+ * True when the chat shows the working card and Stop. A sent message waits for the next turn, so it
+ * shows the card once no turn runs: at once after an idle send, and for a queued message once the
+ * turn before it is stored, while Eva still saves the vault. In the moment before that stored turn
+ * arrives the card is off, so the next turn starts its own clock.
  */
-export function sawStepsAfterSend(saw: boolean, turnRuns: boolean): boolean {
-  return turnRuns && saw;
+export function isWorking(chat: {
+  readonly live: boolean;
+  readonly turnRuns: boolean;
+  readonly pending: readonly PendingMessage[];
+  readonly turnCount: number;
+}): boolean {
+  if (chat.live) return true;
+  return !chat.turnRuns && chat.pending.some((message) => message.turnCount === chat.turnCount);
 }
 
 /**

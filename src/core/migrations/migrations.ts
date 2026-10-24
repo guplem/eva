@@ -21,6 +21,7 @@ import {
 } from "./settings-moves.ts";
 import { googleAccessPerService } from "./google-access.ts";
 import { addAboutMeHeader } from "./about-me-header.ts";
+import { deleteOldCloneFolders } from "./clone-folders.ts";
 
 /** Add each new migration here. The runner sorts them by id. */
 export const migrations: readonly Migration[] = [
@@ -31,6 +32,7 @@ export const migrations: readonly Migration[] = [
   googleAccessPerService,
   moveAssistantPersonality,
   addAboutMeHeader,
+  deleteOldCloneFolders,
 ];
 
 export interface VaultAhead {

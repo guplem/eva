@@ -1182,6 +1182,16 @@ describe("approvals", () => {
     expect(manager.get(sessionId).turns).toMatchObject([{ failure: "The turn stopped before the engine started." }]);
   });
 
+  test("a stop and then a time-out while the mode prepares says that the person stopped the turn", async () => {
+    const manager = askingManager([], { beforeAsk: Bun.sleep(60), turnTimeoutMs: 20 });
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => manager.isTurnRunning(sessionId));
+    manager.stop(sessionId);
+    await turn;
+    expect(manager.get(sessionId).turns).toMatchObject([{ failure: "The turn stopped before the engine started." }]);
+  });
+
   test("a time-out while the mode prepares says so, not that someone stopped the turn", async () => {
     const answers: string[] = [];
     const engine = new FakeEngine();

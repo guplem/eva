@@ -746,9 +746,9 @@ export class SessionManager {
         ask: (question, detail) => this.requestApproval(sessionId, question, detail, controller.signal),
       });
       if (controller.signal.aborted) {
-        // Nobody pressed Stop after a time-out, so the reason must not say so.
+        // A stop of the person wins: after a time-out alone, nobody pressed Stop, so the reason must not say so.
         throw new Error(
-          timeLimit.reached
+          timeLimit.reached && !runtime.stopped
             ? "The turn ran past its time limit before the engine started."
             : "The turn stopped before the engine started.",
         );

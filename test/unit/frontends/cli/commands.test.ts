@@ -461,6 +461,17 @@ describe("with a running Eva", () => {
     expect(await run(host, "settings", "set", "port", "7425")).toBe(exitCodes.clean);
     expect(printed(host)).toContain("Saved port on this machine. Restart Eva to use it.");
   });
+
+  test("a refusal of the running Eva prints its message, with no stack trace", async () => {
+    const failure = await run(host, "settings", "set", "port", "5").then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const described = describeFailure(failure);
+    expect(described.exitCode).toBe(exitCodes.badConfig);
+    expect(described.text).not.toContain("Eva stopped on an error");
+    expect(described.text).not.toContain("{");
+  });
 });
 
 describe("with no Eva running", () => {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   scheduleCardProblem,
   scheduleFiringProblem,
+  engineMissingProblem,
   engineUpdateProblem,
   relayedProblem,
   updateProblem,
@@ -143,5 +144,34 @@ describe("relayedProblem", () => {
       resolvedMessage: "Updates work again.",
     });
     expect(relayed.message.startsWith("On pc: The update check failed")).toBe(true);
+  });
+});
+
+describe("engineMissingProblem", () => {
+  test("a loaded engine is no problem", () => {
+    expect(engineMissingProblem("claude-code", "loaded", "linux")).toBeNull();
+  });
+
+  test("a missing program is an error that names the engine and each fix", () => {
+    const problem = engineMissingProblem("claude-code", "missing", "linux");
+    expect(problem?.level).toBe("error");
+    expect(problem?.message).toBe(
+      "Eva finds no Claude Code program, so chats fail. Press Install next to claude in Settings, Updates, then Restart now. Or run `eva setup` again on this computer. Or install it by hand: Run `curl -fsSL https://claude.ai/install.sh | bash`. See https://code.claude.com.",
+    );
+    expect(problem?.resolvedMessage).toBe("Eva finds the Claude Code program again.");
+  });
+
+  test("the steps by hand fit the system", () => {
+    expect(engineMissingProblem("pi", "missing", "win32")?.message).toContain(
+      "In PowerShell, run `irm https://pi.dev/install.ps1 | iex`.",
+    );
+  });
+
+  test("a program installed since the start asks only for a restart", () => {
+    const problem = engineMissingProblem("pi", "installed", "linux");
+    expect(problem?.level).toBe("warn");
+    expect(problem?.message).toBe(
+      "The pi program is installed now, but chats use it only after a restart. Send /restart, or press Restart now in Settings, Updates.",
+    );
   });
 });

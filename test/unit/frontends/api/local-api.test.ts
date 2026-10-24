@@ -934,7 +934,7 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
-  test("the composer's chips set the engine and model of a chat before its first message only", async () => {
+  test("the composer's chips set the engine before the first message, and the model at any time (#545)", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
     );
@@ -954,9 +954,14 @@ describe("routes", () => {
     expect(badModel.status).toBe(400);
 
     await eva.sessions.send(session.id, "one");
+    const lateEngine = await call(`/api/sessions/${session.id}/engine`, {
+      method: "POST",
+      body: { engine: "claude-code" },
+    });
+    expect(lateEngine.status).toBe(409);
     const late = await call(`/api/sessions/${session.id}/model`, { method: "POST", body: { model: "opus" } });
-    expect(late.status).toBe(409);
-    expect(eva.sessions.get(session.id).modelAlias).toBe("haiku");
+    expect(late.status).toBe(200);
+    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
 
     // The effort changes between turns too (#419).
     const effort = await call(`/api/sessions/${session.id}/effort`, { method: "POST", body: { effort: "high" } });

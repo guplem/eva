@@ -5,7 +5,8 @@
  */
 
 const codeSpanPattern = /(`+)(.+?)\1/g;
-const linkPattern = /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g;
+/** One level of parentheses may sit in the URL, as in a Wikipedia link; the first unmatched ")" ends it. */
+const linkPattern = /\[([^\]\n]+)\]\((https?:\/\/(?:[^()\s]|\([^()\s]*\))+)\)/g;
 const boldPattern = /\*\*(?=\S)(.+?)(?<=\S)\*\*/g;
 const strikePattern = /~~(?=\S)(.+?)(?<=\S)~~/g;
 const starItalicPattern = /(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])/g;

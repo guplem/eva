@@ -220,15 +220,33 @@ export interface ScrollPlace {
 }
 
 /**
- * True when the view must follow the newest message after a scroll. Any move up stops the follow,
- * so the person can read while an answer streams. Shorter content can pull the view up to the very
- * bottom, and that keeps the follow.
+ * True when the view must follow the newest message after a scroll. A move up of the person stops
+ * the follow, so they can read while an answer streams. A move up that comes with new content
+ * height is the browser's, such as at a switch of chat, so it keeps the follow. Shorter content can
+ * pull the view up to the very bottom, and that keeps the follow too.
  */
-export function followsBottom(previousTop: number, place: ScrollPlace): boolean {
+export function followsBottom(
+  following: boolean,
+  previous: { readonly top: number; readonly height: number },
+  place: ScrollPlace,
+): boolean {
   const distance = place.height - place.top - place.visible;
   if (distance <= 1) return true;
-  if (place.top < previousTop) return false;
-  return distance < stickToBottomPx;
+  if (place.top < previous.top && place.height === previous.height) return false;
+  return following || distance < stickToBottomPx;
+}
+
+/** A wheel turn or a finger drag, before the scroll that it makes. */
+export type ScrollGesture =
+  | { readonly kind: "wheel"; readonly deltaY: number }
+  | { readonly kind: "touch"; readonly fromY: number; readonly toY: number };
+
+/**
+ * True when a gesture moves the view up. A render can come between the gesture and its scroll
+ * event and snap the view down again, so the gesture itself stops the follow.
+ */
+export function stopsFollowing(gesture: ScrollGesture): boolean {
+  return gesture.kind === "wheel" ? gesture.deltaY < 0 : gesture.toY > gesture.fromY;
 }
 
 /** The parts of a key press in the message box that decide a send. */

@@ -25,6 +25,7 @@ import {
   foldSteps,
   followsBottom,
   keptPending,
+  stopsFollowing,
   liveFace,
   runningSince,
   sentTurnCount,
@@ -92,7 +93,9 @@ export function Conversation({
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
   // Each render scrolls down while the view follows, so only a move up tells that the person reads.
-  const lastTop = useRef(0);
+  const lastScroll = useRef({ top: 0, height: 0 });
+  // Where the finger was at the last touch event, to tell a drag down from a drag up.
+  const touchY = useRef<number | null>(null);
 
   // A layout effect, so it runs before the scroll to a picked turn in the same commit.
   useLayoutEffect(() => {
@@ -122,12 +125,25 @@ export function Conversation({
       ref={scroller}
       onScroll={(event) => {
         const element = event.currentTarget;
-        isAtBottom.current = followsBottom(lastTop.current, {
+        isAtBottom.current = followsBottom(isAtBottom.current, lastScroll.current, {
           top: element.scrollTop,
           height: element.scrollHeight,
           visible: element.clientHeight,
         });
-        lastTop.current = element.scrollTop;
+        lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
+      }}
+      onWheel={(event) => {
+        if (stopsFollowing({ kind: "wheel", deltaY: event.deltaY })) isAtBottom.current = false;
+      }}
+      onTouchStart={(event) => {
+        touchY.current = event.touches[0]?.clientY ?? null;
+      }}
+      onTouchMove={(event) => {
+        const toY = event.touches[0]?.clientY;
+        if (toY === undefined) return;
+        const fromY = touchY.current;
+        touchY.current = toY;
+        if (fromY !== null && stopsFollowing({ kind: "touch", fromY, toY })) isAtBottom.current = false;
       }}
     >
       {tree.length > 1 && (

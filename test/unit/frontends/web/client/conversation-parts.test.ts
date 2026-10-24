@@ -19,6 +19,7 @@ import {
   sendsOnEnter,
   sentTurnCount,
   stepIcon,
+  stopsFollowing,
   stepOrigin,
   stepParts,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
@@ -255,20 +256,41 @@ describe("followsBottom", () => {
     visible: 500,
   });
 
+  const before = (top: number, height = 2_000): { top: number; height: number } => ({ top, height });
+
   test("stops following as soon as the person scrolls up, even near the bottom", () => {
-    expect(followsBottom(1_500, place(1_490))).toBe(false);
+    expect(followsBottom(true, before(1_500), place(1_490))).toBe(false);
   });
 
   test("follows again once the person scrolls back near the bottom", () => {
-    expect(followsBottom(1_300, place(1_450))).toBe(true);
+    expect(followsBottom(false, before(1_300), place(1_450))).toBe(true);
   });
 
   test("does not follow while the person scrolls down far from the bottom", () => {
-    expect(followsBottom(500, place(800))).toBe(false);
+    expect(followsBottom(false, before(500), place(800))).toBe(false);
   });
 
   test("follows when shorter content pulls the view up to the very bottom", () => {
-    expect(followsBottom(1_800, place(1_500))).toBe(true);
+    expect(followsBottom(true, before(1_800, 2_300), place(1_500))).toBe(true);
+  });
+
+  test("keeps the follow when a change of the content, not the person, moves the view up", () => {
+    // Another chat opens, or the browser keeps a line in place while the content above it changes.
+    const changed = { top: 600, height: 3_000, visible: 500 };
+    expect(followsBottom(true, before(1_500), changed)).toBe(true);
+    expect(followsBottom(false, before(1_500), changed)).toBe(false);
+  });
+});
+
+describe("stopsFollowing", () => {
+  test("a wheel turn up stops the follow before its scroll comes", () => {
+    expect(stopsFollowing({ kind: "wheel", deltaY: -40 })).toBe(true);
+    expect(stopsFollowing({ kind: "wheel", deltaY: 40 })).toBe(false);
+  });
+
+  test("a finger that drags the content down stops the follow", () => {
+    expect(stopsFollowing({ kind: "touch", fromY: 100, toY: 140 })).toBe(true);
+    expect(stopsFollowing({ kind: "touch", fromY: 140, toY: 100 })).toBe(false);
   });
 });
 

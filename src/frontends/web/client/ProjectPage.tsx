@@ -237,8 +237,8 @@ function NewCloneCard({
     <div className="card clone-new">
       <p className="muted">
         {first
-          ? "No clones yet. A clone is a copy of the repository where you and Eva work."
-          : "A new clone is another copy of the repository, for work beside the others."}
+          ? "No clones yet. A clone is a copy of every repository of the project, where you and Eva work."
+          : "A new clone is another copy of every repository, for work beside the others."}
       </p>
       <button className="primary" onClick={onNewClone}>
         <Icon name="plus" /> New clone

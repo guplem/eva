@@ -34,7 +34,8 @@ afterEach(() => {
 const run = { runner: systemProcessRunner, environment: gitEnvironment };
 
 function read(path: string): string | null {
-  return existsSync(path) ? readFileSync(path, "utf8") : null;
+  // Git on Windows can write a restored file with CRLF line ends, so the tests compare LF text.
+  return existsSync(path) ? readFileSync(path, "utf8").replace(/\r\n/g, "\n") : null;
 }
 
 describe("takeSnapshot and restoreSnapshot", () => {

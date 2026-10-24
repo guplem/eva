@@ -914,7 +914,9 @@ describe("Eva", () => {
     const projectId = "2025-03-02-1015-example-app";
     const repository = (_instance: Eva, clone: string): string =>
       join(vault, "Projects", projectId, "repos", clone, "remote");
-    const read = (path: string): string | null => (existsSync(path) ? readFileSync(path, "utf8") : null);
+    // Git on Windows can write a restored file with CRLF line ends, so the tests compare LF text.
+    const read = (path: string): string | null =>
+      existsSync(path) ? readFileSync(path, "utf8").replace(/\r\n/g, "\n") : null;
     const refs = (folder: string): string => sandbox.git(folder, "for-each-ref", "--format=%(refname)", "refs/eva/");
 
     /** Each Project turn writes `<message>.txt` with its turn number, as an agent edits files. */

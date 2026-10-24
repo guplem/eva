@@ -4853,6 +4853,21 @@ test("Files: long lines wrap, and the More actions menu turns the wrap off and o
   await expect.poll(overflows).toBe(false);
 });
 
+test("Files: formatted Markdown has no wrap item, and its plain text has one (issue 484)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/Journal/2027-trips.md");
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Trips" })).toBeVisible();
+  const more = file.getByRole("button", { name: "More actions" });
+  const menu = page.getByRole("menu", { name: "File actions" });
+  await more.click();
+  await expect(menu.getByRole("menuitem", { name: "Show plain text" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /wrap/ })).toHaveCount(0);
+  await menu.getByRole("menuitem", { name: "Show plain text" }).click();
+  await more.click();
+  await expect(menu.getByRole("menuitem", { name: "Do not wrap long lines" })).toBeVisible();
+});
+
 test("Files: the editor has no wrap item, because a text area wraps by itself (issue 484)", async ({ page }) => {
   await logIn(page);
   await page.goto("/#/files/Notes/settings.json");

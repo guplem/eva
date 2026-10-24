@@ -1009,6 +1009,8 @@ describe("runSetup", () => {
       clone_url: cloneUrl,
       private: true,
       archived: false,
+      continuedFrom: null,
+      firstMessageDraft: null,
       ...extra,
     });
 

@@ -65,12 +65,16 @@ export async function runChat(options: ChatOptions): Promise<void> {
   // A stream that drops, such as when Eva restarts, sends no turn end: without this the loop waits for good.
   const stream = { closed: false, leaving: false };
   const streamIsClosed = (): boolean => stream.closed;
+  let markClosed: (closed: null) => void = () => undefined;
+  const closed = new Promise<null>((resolve) => (markClosed = resolve));
   socket.addEventListener("close", () => {
-    stream.closed = true;
     if (stream.leaving) return;
-    options.write("\nEva closed the connection.\n");
+    stream.closed = true;
+    markClosed(null);
     wake?.();
   });
+  // A prompt that waits for a line must not outlive the stream: a line typed then would go nowhere.
+  const readLineOrClose = (): Promise<string | null> => Promise.race([options.readLine(), closed]);
   const questions: string[] = [];
   const print = createEventPrinter();
   socket.addEventListener("message", (message) => {
@@ -89,7 +93,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
   try {
     while (!streamIsClosed()) {
       options.write("\n> ");
-      const line = await options.readLine();
+      const line = await readLineOrClose();
       if (line === null || line.trim() === "/exit" || streamIsClosed()) break;
       if (line.trim() === "") continue;
       if (/^\/rename(\s|$)/.test(line.trim())) {
@@ -114,7 +118,8 @@ export async function runChat(options: ChatOptions): Promise<void> {
           continue;
         }
         options.write("  Allow it? [y/N] ");
-        const answer = (await options.readLine())?.trim().toLowerCase().startsWith("y") === true ? "allow" : "deny";
+        const answer = (await readLineOrClose())?.trim().toLowerCase().startsWith("y") === true ? "allow" : "deny";
+        if (streamIsClosed()) break;
         await fetch(`${options.baseUrl}/api/approvals/${encodeURIComponent(requestId)}`, {
           method: "POST",
           headers,
@@ -122,6 +127,8 @@ export async function runChat(options: ChatOptions): Promise<void> {
         });
       }
     }
+    // The person did not leave, so the chat failed: `eva chat` exits 1.
+    if (streamIsClosed()) throw new EvaError("request_failed", "Eva closed the connection.");
   } finally {
     stream.leaving = true;
     socket.close();

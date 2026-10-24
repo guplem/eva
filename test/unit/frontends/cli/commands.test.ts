@@ -366,6 +366,39 @@ describe("with a running Eva", () => {
     expect(await run(chatting, "chat")).toBe(exitCodes.clean);
   });
 
+  test("chat exits 1, with one line, when Eva drops the event stream", async () => {
+    // An Eva that opens the chat, then drops the stream while the person has not typed yet.
+    const dropping = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request, bunServer) =>
+        new URL(request.url).pathname === "/api/events"
+          ? bunServer.upgrade(request)
+            ? undefined
+            : new Response(null, { status: 400 })
+          : Response.json({ id: "s1", startFolder: "vault" }, { status: 201 }),
+      websocket: {
+        open: (socket) => {
+          setTimeout(() => {
+            socket.close();
+          }, 50);
+        },
+        message: () => undefined,
+      },
+    });
+    try {
+      saveConfig(paths, { ...loadSettings(paths).config, port: dropping.port ?? 0 });
+      const waiting = fakeHost({
+        isProcessAlive: () => true,
+        withPrompt: (work) => work(() => new Promise<string>(() => undefined)),
+      });
+      expect(await run(waiting, "chat")).toBe(exitCodes.crash);
+      expect(waiting.errors.join("")).toBe("Eva closed the connection.\n");
+    } finally {
+      await dropping.stop(true);
+    }
+  });
+
   test("open opens this computer's browser with a login link that works once (#407)", async () => {
     const windows = fakeHost({ isProcessAlive: () => true, platform: "win32" });
     expect(await run(windows, "open")).toBe(exitCodes.clean);

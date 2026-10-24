@@ -579,7 +579,10 @@ function readQuestions(input: Record<string, unknown>): ApprovalQuestion[] | nul
       const fields = recordOf(option);
       return { label: fields["label"], description: fields["description"] ?? "" };
     });
-    if (read.some((option) => typeof option.label !== "string" || typeof option.description !== "string")) return null;
+    // An empty label would give a button with no text, which Telegram refuses, and an empty answer.
+    const unreadable = (option: { label: unknown; description: unknown }): boolean =>
+      typeof option.label !== "string" || option.label.trim() === "" || typeof option.description !== "string";
+    if (read.some(unreadable)) return null;
     questions.push({
       question: question["question"],
       header: typeof question["header"] === "string" ? question["header"] : "",

@@ -3,7 +3,6 @@
  * with a button for each option. A reply to the message is the person's own answer.
  */
 import type { Eva } from "../../core/eva.ts";
-import { isEvaError } from "../../shared/errors.ts";
 import type { ApprovalQuestion, QuestionAnswer, QuestionAnswers, SessionEvent } from "../../shared/events.ts";
 import { answerText, pickOption } from "../../shared/questions.ts";
 import { telegramMessageLimit, type TelegramSender } from "./telegram-sender.ts";
@@ -65,8 +64,10 @@ export class TelegramQuestions {
   async press(requestId: string, step: string | undefined, choice: string | undefined): Promise<string | null> {
     const form = this.forms.get(requestId);
     if (form === undefined) return "This question is closed.";
+    // Every question has its answer, and the close is on its way.
+    if (form.answers.length >= form.questions.length) return "This question is closed.";
     if (step === "skip") {
-      await this.answer(requestId, form, "deny");
+      this.eva.sessions.answerApproval(requestId, "deny");
       return "Skipped";
     }
     // A button of an earlier question stays on screen until the edit lands.
@@ -126,25 +127,8 @@ export class TelegramQuestions {
       await this.edit(requestId, form);
       return;
     }
-    await this.answer(requestId, form, "allow", form.answers);
-  }
-
-  /** The close comes with the approval_resolved event, which every front end gets. */
-  private async answer(
-    requestId: string,
-    form: QuestionForm,
-    answer: "allow" | "deny",
-    answers?: QuestionAnswers,
-  ): Promise<void> {
-    try {
-      this.eva.sessions.answerApproval(requestId, answer, answers);
-    } catch (error) {
-      if (!isEvaError(error, "approval_invalid")) throw error;
-      // The question is still open in the core, so the person starts again from the first question.
-      form.answers.length = 0;
-      form.picked = [];
-      await this.edit(requestId, form);
-    }
+    // The form builds only fitting answers. The close comes with the approval_resolved event.
+    this.eva.sessions.answerApproval(requestId, "allow", form.answers);
   }
 
   private async edit(requestId: string, form: QuestionForm): Promise<void> {
@@ -186,10 +170,8 @@ function keyboard(requestId: string, form: FormView): unknown {
     const mark = question.multiSelect && form.picked.includes(at) ? "✓ " : "";
     return [
       {
-        // Telegram refuses a button with no text. A cut by code point never splits an emoji.
-        text: Array.from(`${mark}${option.label || String(at + 1)}`)
-          .slice(0, buttonLabelLimit)
-          .join(""),
+        // A cut by code point never splits a surrogate pair, which Telegram would refuse.
+        text: Array.from(`${mark}${option.label}`).slice(0, buttonLabelLimit).join(""),
         callback_data: `q:${requestId}:${String(index)}:${String(at)}`,
       },
     ];

@@ -1190,6 +1190,7 @@ describe("AskUserQuestion (issue #544)", () => {
       {},
       { questions: [] },
       { questions: [{ question: "Which?", header: "H", options: "none", multiSelect: false }] },
+      { questions: [{ ...formatQuestion, options: [{ label: " ", description: "" }, ...formatQuestion.options] }] },
       // The answers go back by question text, so two equal texts would lose one answer.
       { questions: [formatQuestion, formatQuestion] },
     ];

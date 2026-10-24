@@ -335,10 +335,17 @@ describe.if(process.platform === "win32")("tray.ps1 on Windows", () => {
       environment: { ...environment, EVA_TRAY_TRACE: "1" },
       lineFile: join(folder, "tray-view.json"),
     });
+    let exitCode: number | null = null;
+    void child.exited.then((code) => {
+      exitCode = code;
+    });
     const count = (text: string): number => child.stderrTail().split(text).length - 1;
-    // Waits with a bound: the first start of PowerShell can take seconds.
+    const report = (): string => `exit code ${String(exitCode)}, error output:\n${child.stderrTail()}`;
+    // One deadline for all the waits: the first start of PowerShell can take seconds.
+    const deadline = Date.now() + 60_000;
     const waitUntil = async (done: () => boolean): Promise<void> => {
-      for (let waited = 0; waited < 30_000 && !done(); waited += 100) await Bun.sleep(100);
+      while (!done() && exitCode === null && Date.now() < deadline) await Bun.sleep(100);
+      if (!done()) throw new Error(`The tray script did not get there. ${report()}`);
     };
     for (const [index, face] of trayFaces.entries()) {
       const view = JSON.stringify({ face, tooltip: "Eva (example)\nA test…", title: "Eva (example)", canOpen: true });
@@ -350,12 +357,10 @@ describe.if(process.platform === "win32")("tray.ps1 on Windows", () => {
     child.publish("not json");
     await waitUntil(() => count("could not show a view") > 0);
     await child.close(10_000);
-    // With the error output in the text, a failure shows why.
-    const result = `${String(await child.exited)} ${child.stderrTail()}`;
-    expect(result).toStartWith("0 ");
+    await child.exited;
+    expect(report()).toStartWith("exit code 0,");
     expect(count("trace: view shown")).toBe(trayFaces.length);
-    expect(result).toContain("The tray icon could not show a view:");
-    expect(result).toContain("trace: view file removed");
-    expect(result).not.toContain("Exception calling");
+    expect(report()).toContain("trace: view file removed");
+    expect(report()).not.toContain("Exception calling");
   }, 90_000);
 });

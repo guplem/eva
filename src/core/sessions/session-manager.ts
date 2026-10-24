@@ -487,19 +487,26 @@ export class SessionManager {
     return record;
   }
 
-  /** Runs a turn again on a new branch; the old answer stays in its own branch. */
-  async retry(sessionId: string, turnIndex: number): Promise<SessionRecord> {
-    const session = this.get(sessionId);
-    const turn = session.turns[turnIndex];
-    if (turn === undefined)
-      throw new EvaError("session_not_found", `Session ${sessionId} has no turn ${String(turnIndex)}.`);
-    const previous = session.turns[turnIndex - 1];
-    const branch =
-      previous === undefined || previous.lastMessageId === null
-        ? this.retryFromStart(session)
-        : this.fork(sessionId, previous.lastMessageId);
-    await this.send(branch.id, turn.userText);
-    return this.get(branch.id);
+  /**
+   * Runs a turn again on a new branch; the old answer stays in its own branch. It returns the
+   * branch at once: a long turn must not hold the request past the idle time-out of the server.
+   */
+  retry(sessionId: string, turnIndex: number): Promise<SessionRecord> {
+    // A refusal still comes as a rejection, as the caller awaits it.
+    return Promise.resolve().then(() => {
+      const session = this.get(sessionId);
+      const turn = session.turns[turnIndex];
+      if (turn === undefined)
+        throw new EvaError("session_not_found", `Session ${sessionId} has no turn ${String(turnIndex)}.`);
+      const previous = session.turns[turnIndex - 1];
+      const branch =
+        previous === undefined || previous.lastMessageId === null
+          ? this.retryFromStart(session)
+          : this.fork(sessionId, previous.lastMessageId);
+      // The send never rejects: a failure of the turn is its turn_failed event.
+      void this.send(branch.id, turn.userText);
+      return this.get(branch.id);
+    });
   }
 
   answerApproval(requestId: string, answer: ApprovalAnswer): void {

@@ -860,6 +860,7 @@ describe("forks and retries", () => {
     const original = manager.get(sessionId);
 
     const retry = await manager.retry(sessionId, 1);
+    await waitUntil(() => !manager.isActive(retry.id));
     expect(engine.requests[2]?.prompt).toBe("two");
     expect(engine.requests[2]?.history).toEqual({
       kind: "fork",
@@ -876,9 +877,30 @@ describe("forks and retries", () => {
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "one");
     const retry = await manager.retry(sessionId, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
     expect(engine.requests[1]?.history.kind).toBe("new");
     expect(engine.requests[1]?.prompt).toBe("one");
     expect(manager.get(retry.id).parentId).toBe(sessionId);
+  });
+
+  test("a retry answers with its branch at once, before the turn ends", async () => {
+    let release = (): void => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const engine = new FakeEngine(async function* (request, turnNumber) {
+      if (turnNumber === 2) await released;
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    const retry = await manager.retry(sessionId, 0);
+    expect(manager.isActive(retry.id)).toBe(true);
+    expect(retry.turns).toEqual([]);
+    release();
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(manager.get(retry.id).turns).toHaveLength(1);
   });
 
   test("a retry of a turn that does not exist is refused", async () => {

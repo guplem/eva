@@ -1082,6 +1082,9 @@ textarea {
   display: flex;
   justify-content: flex-end;
   padding: var(--space-1) var(--space-1) 0;
+  /* A selection by hand across the block must not copy the word "Copy". */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* A ghost button fills with --chip on hover, the same colour as the box, so it takes the next step. */

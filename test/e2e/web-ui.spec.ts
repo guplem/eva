@@ -1025,6 +1025,16 @@ test("a code block of an answer gets its Copy button when the turn ends, and cop
   await copy.click();
   await expect(box.getByRole("button", { name: "Copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("echo one && echo <two>");
+  // A selection by hand across the answer takes the code, not the button's word.
+  const selected = await page
+    .locator(".message.answer .answer-body")
+    .first()
+    .evaluate((body) => {
+      getSelection()?.selectAllChildren(body);
+      return getSelection()?.toString() ?? "";
+    });
+  expect(selected).toContain("echo one");
+  expect(selected).not.toContain("Cop");
 });
 
 test("the composer's chip picks the engine before the first message, and the model between turns", async ({ page }) => {

@@ -3,6 +3,7 @@
  * emits payloads; the core stamps each one with its session, a sequence number and a
  * time, and sends it to every front end.
  */
+import type { ProjectReport } from "./project-report.ts";
 
 export interface TurnUsage {
   readonly inputTokens: number;
@@ -145,7 +146,13 @@ export type MessageOrigin = "telegram" | "api" | "schedule" | "eva";
 /** What the core itself says about a chat. No engine sends these, so they stay off the engine port. */
 export type CoreEventPayload =
   /** A message, when its turn starts, so a front end can show a message that another one sent. */
-  | { readonly kind: "message_received"; readonly text: string; readonly origin: MessageOrigin }
+  | {
+      readonly kind: "message_received";
+      readonly text: string;
+      readonly origin: MessageOrigin;
+      /** A project work result, so a front end can show a summary instead of the raw text. Already redacted. */
+      readonly projectReport?: ProjectReport;
+    }
   /** The chat is gone from the list; each front end drops its own view of it. */
   | { readonly kind: "session_deleted" }
   /** The chat gave work to a project: the Project chat that runs it. */

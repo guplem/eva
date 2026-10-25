@@ -188,6 +188,29 @@ describe("SessionStore", () => {
     expect(openStore().get("one")?.turns[0]?.steps).toEqual([...steps]);
   });
 
+  test("a bad chat id costs only that field, not the other steps of the turn", () => {
+    const steps = [
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: 7 },
+      { kind: "tool", text: "Read a.md", isError: false, id: "t1" },
+    ];
+    const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z", steps };
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn] }] }));
+    expect(
+      openStore()
+        .get("one")
+        ?.turns[0]?.steps.map((step) => [step.id, step.chatId]),
+    ).toEqual([
+      ["p1", undefined],
+      ["t1", undefined],
+    ]);
+  });
+
+  test("a turn from before the new fields reads as the person's turn, with no result", () => {
+    const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn] }] }));
+    expect(openStore().get("one")?.turns[0]).toMatchObject({ fromEva: false, projectReports: [], personText: null });
+  });
+
   test("a turn from before the notes, or with bad notes, has none and keeps its session (issue 157)", () => {
     const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
     const sessions = [

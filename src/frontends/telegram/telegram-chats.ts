@@ -12,6 +12,7 @@ import { TelegramError, type TelegramApi } from "./telegram-api.ts";
 import { keyOf, titleOf } from "./telegram-messages.ts";
 import type { TelegramSender } from "./telegram-sender.ts";
 import { isScheduleTopic, placeOf, targetOf, type BotState } from "./telegram-state.ts";
+import { personWords, reportText } from "../../shared/project-report.ts";
 
 type Turn = SessionRecord["turns"][number];
 
@@ -308,7 +309,10 @@ export class TelegramChats {
         `Earlier turns: ${String(history.turns.length)}. The web chat has all of them.`,
       );
     for (const turn of history.turns.slice(-replayedTurns)) {
-      await sender.sendPlain(chatId, topicId, `Message: ${turn.userText}`);
+      // A project work result shows as its summary, and the person's own words apart.
+      for (const report of turn.projectReports) await sender.sendPlain(chatId, topicId, reportText(report));
+      const words = personWords(turn);
+      if (words !== null) await sender.sendPlain(chatId, topicId, `Message: ${words}`);
       if (turn.answerText.length > 0)
         await sender.sendAnswer(chatId, topicId, extractFileMarkers(turn.answerText).text);
       if (turn.failure !== null) await sender.send(chatId, topicId, `The turn failed: ${turn.failure}`);

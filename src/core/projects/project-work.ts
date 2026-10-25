@@ -238,7 +238,7 @@ export class ProjectWork {
       point: { engineSessionId: from.engineSessionId, atMessageId },
       snapshot: files === "snapshot-clone" ? sessions.endSnapshotAt(sessionId, atMessageId) : null,
       history: turns.slice(0, end + 1),
-      retryText: null,
+      retryTurn: null,
     });
   }
 
@@ -264,7 +264,7 @@ export class ProjectWork {
       point,
       snapshot: sessions.startSnapshotOf(from, turnIndex),
       history: turns.slice(0, turns.length - (from.turns.length - turnIndex)),
-      retryText: turn.userText,
+      retryTurn: turn,
     });
   }
 
@@ -279,8 +279,8 @@ export class ProjectWork {
     readonly snapshot: string | null;
     /** The turns up to the point, for a summary. Already redacted. */
     readonly history: SessionRecord["turns"];
-    /** The message to send at once, for a retry, or null. */
-    readonly retryText: string | null;
+    /** The turn whose message to send again at once, for a retry, or null. */
+    readonly retryTurn: SessionRecord["turns"][number] | null;
   }): Promise<BranchResult> {
     const { from, point, snapshot } = input;
     const sessions = this.options.sessions;
@@ -306,7 +306,7 @@ export class ProjectWork {
     });
     if (carried) {
       // The send never rejects: a failure of the turn is its turn_failed event.
-      if (input.retryText !== null) void sessions.send(session.id, input.retryText);
+      if (input.retryTurn !== null) void sessions.sendAgain(session.id, input.retryTurn);
       return { session: sessions.get(session.id), notice: null };
     }
     const summary =
@@ -318,7 +318,9 @@ export class ProjectWork {
             turns: input.history,
             gitState: null,
           });
-    const draft = [summary.ok ? summary.text : null, input.retryText].filter((part) => part !== null).join("\n\n");
+    const draft = [summary.ok ? summary.text : null, input.retryTurn?.userText ?? null]
+      .filter((part) => part !== null)
+      .join("\n\n");
     const notice =
       `Eva could not take the history of this chat to ${session.clone ?? "the new clone"}, so the new chat starts ` +
       (summary.ok
@@ -383,7 +385,8 @@ export class ProjectWork {
       // The person may delete either chat while the work runs: the Project chat then keeps the result.
       const exists = (id: string): boolean => sessions.list().some((candidate) => candidate.id === id);
       const last = exists(session.id) ? sessions.get(session.id).turns.at(-1) : undefined;
-      const result = last?.failure === null ? last.answerText : `It failed: ${last?.failure ?? "no answer"}`;
+      const failed = last?.failure !== null;
+      const result = failed ? `It failed: ${last?.failure ?? "no answer"}` : last.answerText;
       const details = await Promise.all(
         listClones(project.path)
           .find((candidate) => candidate.path === clone.path)
@@ -398,9 +401,22 @@ export class ProjectWork {
         return;
       }
       const place = [`clone ${clone.name}`, ...details.map(repositoryPlace)].join("; ");
+      const report = {
+        projectId: project.id,
+        projectTitle: project.title,
+        projectSessionId: session.id,
+        request: input.request,
+        clone: clone.name,
+        repositories: details.map(({ name, branch, pullRequest }) => ({ name, branch, pullRequest })),
+        failed,
+        result: result.slice(-reportTextLimit),
+        resultCut: result.length > reportTextLimit,
+      };
       await sessions.send(
         reportTo,
         `[Project work finished: ${project.id}, ${place}, chat ${session.id}]\n\n${capReportText(result)}`,
+        "eva",
+        { projectReport: report },
       );
     });
     return session;

@@ -11,6 +11,7 @@ import {
   modelNames,
   taskStatus,
   tasksOfTurn,
+  endedProjectWork,
   titleCase,
 } from "../../../../../src/frontends/web/client/chat-details.ts";
 import type { SessionRecord } from "../../../../../src/core/sessions/session-store.ts";
@@ -20,6 +21,9 @@ type Turn = SessionRecord["turns"][number];
 function turn(at: string, contextTokens: number | null, extra: Partial<Turn> = {}): Turn {
   return {
     userText: "hi",
+    fromEva: false,
+    projectReports: [],
+    personText: null,
     answerText: "ok",
     toolCount: 0,
     commandCount: 0,
@@ -188,6 +192,21 @@ describe("tasksOfTurn", () => {
     });
     expect(taskStatus("started")).toEqual({ label: "Started", tone: "idle", icon: "chat" });
   });
+
+  test("project work whose result came back to the chat shows as done, or failed", () => {
+    const steps: Turn["steps"] = [
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" },
+      { kind: "task", text: "example-app: Fix more", isError: false, id: "p2", chatId: "p2" },
+    ];
+    const ended = new Map([
+      ["p1", false],
+      ["p2", true],
+    ]);
+    expect(tasksOfTurn(steps, "s1", ended)).toEqual({
+      p1: { description: "example-app: Fix it", state: "done", sessionId: "s1", chatId: "p1" },
+      p2: { description: "example-app: Fix more", state: "failed", sessionId: "s1", chatId: "p2" },
+    });
+  });
 });
 
 describe("chatSubtitle", () => {
@@ -219,5 +238,32 @@ describe("chatLinks (#522)", () => {
 
   test("a chat whose old chat is gone links to nothing", () => {
     expect(chatLinks([chat("next", "deleted")], [])).toEqual({ from: null, next: [] });
+  });
+});
+
+describe("endedProjectWork", () => {
+  test("maps each Project chat that sent a result to whether its work failed", () => {
+    const report: Turn["projectReports"][number] = {
+      projectId: "2025-03-02-1015-example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix the login bug.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    const turns = [
+      { projectReports: [] },
+      { projectReports: [report] },
+      { projectReports: [{ ...report, projectSessionId: "p2", failed: true }] },
+    ];
+    expect(endedProjectWork(turns)).toEqual(
+      new Map([
+        ["p1", false],
+        ["p2", true],
+      ]),
+    );
   });
 });

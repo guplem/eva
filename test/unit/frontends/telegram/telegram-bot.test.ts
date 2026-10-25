@@ -1039,6 +1039,65 @@ describe("/chats: every chat of the instance (#9)", () => {
     expect(telegram.sentTexts().slice(before)).toEqual(["answer 2", "Message: from the web", "answer 3"]);
   });
 
+  test("a project work result shows as a short summary, not as the raw message", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    const before = telegram.sentTexts().length;
+    void eva.sessions.send(sessionId, "[Project work finished: example-app]\n\nFixed it.\n\nMore.", "eva", {
+      projectReport: {
+        projectId: "2025-03-02-1015-example-app",
+        projectTitle: "Example app",
+        projectSessionId: "p1",
+        request: "Fix the login bug.",
+        clone: "clone-0",
+        repositories: [{ name: "example-app", branch: "main", pullRequest: 12 }],
+        failed: false,
+        result: "Fixed it.\n\nMore.",
+        resultCut: false,
+      },
+    });
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    expect(telegram.sentTexts().slice(before)).toEqual([
+      "Eva finished the work in Example app\nclone-0 · example-app on main, PR #12\n\nFixed it.",
+      "answer 2",
+    ]);
+  });
+
+  test("the last turns of a topic show a project work result as a summary, and the person's words apart", async () => {
+    const sessionId = await webChat("one");
+    const projectReport = {
+      projectId: "2025-03-02-1015-example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix the login bug.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    await Promise.all([
+      eva.sessions.send(sessionId, "[Project work finished: example-app]\n\nFixed it.", "eva", { projectReport }),
+      eva.sessions.send(sessionId, "and the tests?", "api"),
+    ]);
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    const inTopic = telegram
+      .callsTo("sendMessage")
+      .filter((call) => call.params["message_thread_id"] === 500)
+      .map((call) => String(call.params["text"]));
+    expect(inTopic).toEqual([
+      "Message: one",
+      "answer 1",
+      "Eva finished the work in Example app\nclone-0\n\nFixed it.",
+      "Message: and the tests?",
+      "answer 2",
+    ]);
+  });
+
   test("a press on a chat that has its topic opens no second topic", async () => {
     const sessionId = await webChat("one");
     const bot = createBot();

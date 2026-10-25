@@ -56,6 +56,7 @@ export function StepFold({
   live = false,
   summary,
   sessionId,
+  endedWork,
 }: {
   readonly steps: readonly TurnStep[];
   readonly omitted?: number;
@@ -65,6 +66,8 @@ export function StepFold({
   readonly summary?: string;
   /** The chat of a stored answer. Its steps carry no details, so the dialog fetches them. */
   readonly sessionId?: string;
+  /** Each Project chat whose result came back, and whether its work failed. */
+  readonly endedWork?: ReadonlyMap<string, boolean>;
 }): ReactElement | null {
   const [open, setOpen] = useState(live);
   const [shown, setShown] = useState<TurnStep | null>(null);
@@ -117,6 +120,7 @@ export function StepFold({
           key={`${current.id ?? ""}-${String(live)}`}
           step={current}
           live={live}
+          {...(endedWork === undefined ? {} : { endedWork })}
           {...(sessionId === undefined ? {} : { sessionId })}
           onClose={() => setShown(null)}
         />
@@ -135,11 +139,13 @@ function StepDialog({
   step,
   live,
   sessionId,
+  endedWork,
   onClose,
 }: {
   readonly step: TurnStep;
   readonly live: boolean;
   readonly sessionId?: string;
+  readonly endedWork?: ReadonlyMap<string, boolean>;
   readonly onClose: () => void;
 }): ReactElement {
   const carried = step.input !== undefined || step.output !== undefined;
@@ -162,7 +168,7 @@ function StepDialog({
   }, [fetches, sessionId, step.id]);
 
   const { action, detail } = stepParts(step);
-  const state = stepState(step, live);
+  const state = stepState(step, live, endedWork);
   const details: Details = carried ? { input: step.input, output: step.output } : fetched;
   const read = details !== "loading" && !("failed" in details) ? details : null;
   const fields = inputFields(read?.input);

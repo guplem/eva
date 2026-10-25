@@ -544,6 +544,23 @@ button.ghost .icon {
   margin-left: -12px;
 }
 
+/* A project work result: the Project side reports to the Assistant chat that gave the work. */
+.project-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.project-report-head + .field-hint,
+.message.answer .project-report-result {
+  margin: var(--space-1) 0 0;
+}
+
+.project-report-actions {
+  margin-top: var(--space-2);
+}
+
 .running-tasks {
   align-self: flex-start;
 }

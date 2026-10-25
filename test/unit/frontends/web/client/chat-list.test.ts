@@ -18,6 +18,9 @@ const now = new Date(2026, 9, 19, 18, 30);
 function turn(fields: Partial<Turn>): Turn {
   return {
     userText: "What is on today?",
+    fromEva: false,
+    projectReports: [],
+    personText: null,
     answerText: "",
     toolCount: 0,
     commandCount: 0,
@@ -75,6 +78,22 @@ describe("chatPreview", () => {
   test("shows why the turn failed, or the person's message while no answer exists", () => {
     expect(chatPreview({ turns: [turn({ failure: "The engine stopped." })] })).toBe("The engine stopped.");
     expect(chatPreview({ turns: [turn({ answerText: "  " })] })).toBe("What is on today?");
+  });
+
+  test("names a project work result with no answer by its headline, not its raw message", () => {
+    const report = {
+      projectId: "example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix it.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    const result = turn({ userText: "[Project work finished: example-app]", fromEva: true, projectReports: [report] });
+    expect(chatPreview({ turns: [result] })).toBe("Eva finished the work in Example app");
   });
 
   test("says that a new chat has no message, and cuts a long text", () => {

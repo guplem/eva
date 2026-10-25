@@ -1363,6 +1363,7 @@ describe("the vault step on the page", () => {
       const result = await instance.createVault({
         name: "Sam",
         language: "English",
+        notesLanguage: "",
         topics: [],
         repository: `https://x-access-token:${token}@127.0.0.1:1/you/vault.git`,
       });
@@ -1387,8 +1388,15 @@ describe("the vault step on the page", () => {
       mkdirSync(join(home, "notes"));
       writeFileSync(homePaths(home).config, JSON.stringify({ vaultPath: join(home, "notes") }));
       expect(await vaultStep(instance)).toBe("missing");
-      const result = await instance.createVault({ name: "Sam", language: "English", topics: [], repository: "" });
+      const result = await instance.createVault({
+        name: "Sam",
+        language: "English",
+        notesLanguage: "Spanish",
+        topics: [],
+        repository: "",
+      });
       expect(result).toMatchObject({ folder: join(home, "notes"), repository: null });
+      expect(readFileSync(join(home, "notes", "AGENTS.md"), "utf8")).toContain("**Write all notes in Spanish**");
       expect(await vaultStep(instance)).toBe("done");
       expect((await instance.setupState()).vaultNeedsPush).toBe(true);
       const bare = join(sandbox.root, "empty.git");
@@ -1494,7 +1502,13 @@ describe("the commit identity of an Eva", () => {
       await instance.saveSecret("githubToken", "a-page-token");
       mkdirSync(join(home, "notes"));
       writeFileSync(homePaths(home).config, JSON.stringify({ vaultPath: join(home, "notes") }));
-      await instance.createVault({ name: "Sam", language: "English", topics: [], repository: "" });
+      await instance.createVault({
+        name: "Sam",
+        language: "English",
+        notesLanguage: "Spanish",
+        topics: [],
+        repository: "",
+      });
       expect(sandbox.git(join(home, "notes"), "log", "-1", "--format=%an <%ae>")).toBe(`Example User <${email}>`);
     } finally {
       instance.stop();

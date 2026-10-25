@@ -30,6 +30,7 @@ import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 type ShownFile = Extract<BrowsedPath, { kind: "file" }>;
 type Answer =
@@ -772,6 +773,8 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
   };
   const view = viewOf(file.path);
 
+  // The large file fills the screen, so the Back button makes it small first.
+  useBackLayer(large, () => onLarge(false));
   useEffect(() => {
     if (!large) return;
     const onKey = (event: KeyboardEvent): void => {

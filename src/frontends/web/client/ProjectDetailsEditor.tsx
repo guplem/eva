@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, ApiError, type ProjectDetails, type ProjectFile } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
-import { BackButton } from "./ProjectPage.tsx";
+import { BackButton } from "./MainNav.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, SelectField } from "./SettingsParts.tsx";

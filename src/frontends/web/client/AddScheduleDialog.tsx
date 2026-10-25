@@ -9,6 +9,7 @@ import { emptyScheduleForm, entryOf, fieldsOf, formOf, weekDays, type Unit } fro
 import { intervalUnits } from "./schedule-words.ts";
 import { ChoiceChips } from "./SettingsParts.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 /** `now` is the instance's wall clock, so the first run that the form offers is in the instance's time zone. */
 export function AddScheduleDialog(props: {
@@ -41,6 +42,7 @@ export function AddScheduleDialog(props: {
   // A new schedule starts to run, so only an edit offers a save.
   const askFirst = useLeaveGuard(JSON.stringify(form) !== JSON.stringify(opened), original === null ? null : save);
 
+  useBackLayer(true, () => askFirst(onClose));
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") askFirst(onClose);

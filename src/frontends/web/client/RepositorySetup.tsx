@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type SetupItem, type SetupReport, type SetupSection } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
-import { BackButton } from "./ProjectPage.tsx";
+import { BackButton } from "./MainNav.tsx";
 import { Card, StatusIcon } from "./SettingsParts.tsx";
 import { lightMark, reportSummary, scoreMark } from "./setup-report.ts";
 

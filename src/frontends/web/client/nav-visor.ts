@@ -1,4 +1,5 @@
 /** The visor of the nav rail: its standard face, the words of its tooltip, and its count. */
+import type { Destination } from "./navigation.ts";
 import { stateFaces, type Face } from "./visor-faces.ts";
 
 export interface NavVisorInput {
@@ -84,6 +85,14 @@ export function visorSignal(input: VisorSignalInput): VisorSignal {
     dot: input.unreadProblems === 0 && input.news,
     alarm: input.unreadError && !input.centerOpen,
   };
+}
+
+/**
+ * The visor wears the Project eyes while Projects is open on a phone. A phone chat shows no visor
+ * beside an answer, so the tab bar is where the person sees the mode. A computer shows it beside each answer.
+ */
+export function navVisorProjectEyes(current: Destination, isPhone: boolean): boolean {
+  return isPhone && current === "projects";
 }
 
 /** The playful faces that a tap plays. Each has a motion of its own, so the tap shows. */

@@ -2792,6 +2792,17 @@ test("the nav visor names the approval that waits, and a tap opens the center wi
   await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
 });
 
+test("the nav visor wears the Project eyes in Projects on a phone only", async ({ page }) => {
+  await logIn(page);
+  const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor .mk");
+  await expect(visor).not.toHaveClass(/project-eyes/);
+  await openProjects(page);
+  if (test.info().project.name === "phone") await expect(visor).toHaveClass(/project-eyes/);
+  else await expect(visor).not.toHaveClass(/project-eyes/);
+  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await expect(visor).not.toHaveClass(/project-eyes/);
+});
+
 test("the Settings home page shows Eva's status", async ({ page }) => {
   await logIn(page);
   await openSettings(page);

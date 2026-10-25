@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  navVisorProjectEyes,
   navVisorState,
   tapFace,
   visorSignal,
@@ -104,5 +105,20 @@ describe("tapFace", () => {
   test("never repeats the face of the last tap, so each tap looks different", () => {
     const last = "happy";
     expect(tapFace(() => 0, last)).not.toBe(last);
+  });
+});
+
+describe("navVisorProjectEyes", () => {
+  test("gives the visor the Project eyes on a phone in Projects, because a phone chat shows no visor beside an answer", () => {
+    expect(navVisorProjectEyes("projects", true)).toBe(true);
+  });
+
+  test("keeps the standard eyes on a phone outside Projects", () => {
+    expect(navVisorProjectEyes("chats", true)).toBe(false);
+    expect(navVisorProjectEyes("notifications", true)).toBe(false);
+  });
+
+  test("keeps the standard eyes on a computer, which shows the visor beside each answer", () => {
+    expect(navVisorProjectEyes("projects", false)).toBe(false);
   });
 });

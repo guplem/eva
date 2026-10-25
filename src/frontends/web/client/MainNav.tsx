@@ -4,7 +4,14 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
-import { navVisorState, tapFace, tapFaceMs, visorSignal, type NavVisorInput } from "./nav-visor.ts";
+import {
+  navVisorProjectEyes,
+  navVisorState,
+  tapFace,
+  tapFaceMs,
+  visorSignal,
+  type NavVisorInput,
+} from "./nav-visor.ts";
 import { destinations, notificationCenter, type Destination } from "./navigation.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
@@ -12,6 +19,7 @@ import { stateFaces, type Face } from "./visor-faces.ts";
 
 interface MainNavProps extends NavVisorInput {
   readonly current: Destination;
+  readonly isPhone: boolean;
   readonly onOpen: (destination: Destination) => void;
   readonly setupMissing: number;
   /** An unread problem is an error, so the visor's crosses pulse. */
@@ -88,6 +96,7 @@ export function MainNav(props: MainNavProps): ReactElement {
             face={tapped?.face ?? visor.face}
             festive={tapped === null ? festive : null}
             alarm={tapped === null && alarm}
+            projectEyes={navVisorProjectEyes(current, props.isPhone)}
           />
           {signal.count > 0 && (
             <span className={`nav-badge${props.unreadError ? " bad" : ""}`} aria-hidden="true">

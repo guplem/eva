@@ -33,7 +33,7 @@ An issue states a clear goal. It also shows which parts the person decided and w
 7. **Add labels.** Add `waiting-for-human-check` when an agent wrote the issue. Add `requires-human-intervention` when only a person can do the next step. Add no other label.
 8. **Review each issue.** Do this step for every issue.
    - Read the issue again yourself, against the code and the decisions. Check each reference to another issue.
-   - Start 2 sub-agents for each issue (1 mid-tier, 1 top-tier). A top-tier sub-agent uses the most capable model of your vendor. A mid-tier sub-agent uses a mid-size model of the same vendor. Give them only the issue number and each decision, with the answers that led to it. Do not give them your reasoning: they read the issue and the code by themselves. They change nothing, and they report:
+   - Start 2 sub-agents for each issue (1 mid-tier, 1 top-tier). A top-tier sub-agent uses the strong general model of your vendor, such as Claude Opus or GPT Sol. It does not need a special top model, such as Claude Fable or GPT Astra. A mid-tier sub-agent uses a mid-size model of the same vendor. Give them only the issue number and each decision, with the answers that led to it. Do not give them your reasoning: they read the issue and the code by themselves. They change nothing, and they report:
      - a decision that is missing, wrong or contradicted;
      - an assumption that the issue shows as a decision of the person;
      - a claim about the code that is not true;

@@ -39,7 +39,7 @@ Each schedule is one object in `schedules`:
 
 - **`id`**: 1 to 32 lowercase letters, digits or dashes. It must be unique. Never change the id of an existing schedule, because Eva finds its chat by the id. Never reuse the id of a removed schedule either, because Eva can still hold that schedule's old chat under it. It can also hold that schedule's last setup card, so the next card reads as a change to the old schedule.
 - **`name`**: required. It names the schedule's topic in Telegram. Eva names the topic when she opens it. A later change to `name` does not rename the topic, so tell the person to rename it in Telegram.
-- **`at`**: `HH:MM`, 24 hours, in the person's time zone. The `[Local time: ...]` line at the start of each message names it.
+- **`at`**: `HH:MM`, 24 hours, in the time zone that the `[Local time: ...]` line at the start of each message names.
 - **`days`**: leave it out for every day. Otherwise list some of `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`.
 - **An interval instead of `at` and `days`.** To repeat every few hours, days or weeks, write `every` and `from`, and leave out `at` and `days`:
   - **`every`**: a number from 1 to 999 and a unit: `h` for hours, `d` for days, `w` for weeks. Examples: `2h`, `3d`, `1w`.
@@ -82,4 +82,4 @@ To remove one, delete its entry. The topic stays in Telegram, and the person can
 
 ## 5. Reply
 
-Say in one sentence what Eva sends, when, and in which topic. A schedule created after its time today first runs on the next matching day. Tell the person to check the setup card that Eva posts within a minute. Tell them that the schedule runs only after the card reaches them: without Telegram, the web app shows it in a dialog, and the schedule runs after they tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.
+Say in one sentence what Eva sends, when, and in which topic. A schedule created after its time today first runs on the next matching day. Tell the person to check the setup card that Eva posts within a minute. Tell them that the schedule runs only after the card reaches them. Without Telegram, the card is a dialog in the web app, and they must tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.

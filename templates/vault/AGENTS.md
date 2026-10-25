@@ -56,7 +56,7 @@ Inside each folder, group by topic. Purpose first, topic second.
 - **Write all notes in one language**, so that one search finds everything.
 - **Close a note with its source** when the person says where it came from: `> Source: *Title*, Author`, plus a link when one exists.
 - **Mark few notes as important.** When the person would want to see a note even while they ask about another topic, put `> Important: <why it matters>` under its title.
-- **Secrets** (keys, passwords): keep each secret only in the folder of its project. Never copy one into a note outside that folder. One known place for each secret makes it possible to change it later.
+- **Secrets** (keys, passwords) may live only in the folder of the project that uses them. Never copy one into a note outside that folder. One known place for each secret makes it possible to change it later.
 
 ## Grow the vault
 

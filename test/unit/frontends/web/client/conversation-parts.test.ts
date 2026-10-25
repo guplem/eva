@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   answeredModel,
   answerFiles,
+  wholeAnswerAddsText,
   engineLock,
   composerPlaceholder,
   effortLabel,
@@ -105,6 +106,14 @@ describe("stepParts", () => {
       action: "Message",
       detail: "Here it is.",
     });
+  });
+});
+
+describe("wholeAnswerAddsText", () => {
+  test("is true when an earlier message has words, and false when it holds file markers only", () => {
+    expect(wholeAnswerAddsText("Let me look.\n\nHere it is.", "Here it is.")).toBe(true);
+    expect(wholeAnswerAddsText("[[attach: Scratch/a.pdf]]\n\nHere it is.", "Here it is.")).toBe(false);
+    expect(wholeAnswerAddsText("Here it is.", "Here it is.")).toBe(false);
   });
 });
 

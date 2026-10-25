@@ -59,6 +59,14 @@ export function stepParts(step: TurnStep): { action: string; detail: string } {
 }
 
 /**
+ * True when the whole answer shows more than its last message. An earlier message of file
+ * markers only shows no words, so the toggle would change nothing.
+ */
+export function wholeAnswerAddsText(wholeAnswer: string, lastMessage: string): boolean {
+  return shownAnswerText(wholeAnswer) !== shownAnswerText(lastMessage);
+}
+
+/**
  * The files that the markers of a whole answer name, for the download buttons under it. Telegram
  * also reads every message of the turn, so a file from an earlier message is not lost.
  */

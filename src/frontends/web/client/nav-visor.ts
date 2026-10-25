@@ -85,3 +85,15 @@ export function visorSignal(input: VisorSignalInput): VisorSignal {
     alarm: input.unreadError && !input.centerOpen,
   };
 }
+
+/** The playful faces that a tap plays. Each has a motion of its own, so the tap shows. */
+export const tapFaces: readonly Face[] = ["happy", "wink", "delighted", "surprised"];
+
+/** How long a tap face shows before the standard face comes back, in milliseconds. */
+export const tapFaceMs = 1_800;
+
+/** Picks a playful face, never the last one, so each tap looks different. */
+export function tapFace(random: () => number = Math.random, last?: Face): Face {
+  const choices = tapFaces.filter((face) => face !== last);
+  return choices[Math.min(Math.floor(random() * choices.length), choices.length - 1)] ?? "happy";
+}

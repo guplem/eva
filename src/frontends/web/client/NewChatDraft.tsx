@@ -15,6 +15,12 @@ import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 /** How long the page waits to read the settings again after a failed read. */
 const settingsRetryMs = 5_000;
 
+interface ChatDefaults {
+  readonly engine: EngineName;
+  readonly model: ModelAlias;
+  readonly effort: EffortLevel;
+}
+
 interface NewChatDraftProps {
   readonly blocker: ChatBlocker | null;
   readonly voiceNotes: boolean;
@@ -32,11 +38,12 @@ export function NewChatDraft({
   onSending,
   onStarted,
 }: NewChatDraftProps): ReactElement {
-  // Null until the settings answer: the chip must not name an engine that Eva does not use.
-  const [defaultEngine, setDefaultEngine] = useState<EngineName | null>(null);
+  // Null until the settings answer: the chip must not name an engine, a model or an effort that Eva does not use.
+  const [defaults, setDefaults] = useState<ChatDefaults | null>(null);
+  // The person's own picks. Null: the one from the settings.
   const [engine, setEngine] = useState<EngineName | null>(null);
-  const [model, setModel] = useState<ModelAlias>("default");
-  const [effort, setEffort] = useState<EffortLevel>("default");
+  const [model, setModel] = useState<ModelAlias | null>(null);
+  const [effort, setEffort] = useState<EffortLevel | null>(null);
   const [sending, setSending] = useState(false);
   // A suggestion tap and the message box must not both make a chat.
   const busy = useRef(false);
@@ -53,7 +60,9 @@ export function NewChatDraft({
       api
         .settings()
         .then((settings) => {
-          if (current) setDefaultEngine(settings.config.engines.default);
+          const engines = settings.config.engines;
+          if (current)
+            setDefaults({ engine: engines.default, model: engines.defaultModel, effort: engines.defaultEffort });
         })
         .catch((caught: unknown) => {
           if (!current) return;
@@ -69,15 +78,18 @@ export function NewChatDraft({
     };
   }, [showError]);
 
-  const shownEngine = engine ?? defaultEngine;
+  const shown =
+    defaults === null
+      ? null
+      : { engine: engine ?? defaults.engine, model: model ?? defaults.model, effort: effort ?? defaults.effort };
 
   const send = async (message: string): Promise<boolean> => {
     if (busy.current) return false;
     busy.current = true;
     setSending(true);
     try {
-      // The chat runs on the engine that the chip shows, even when Eva read another default at start.
-      made.current ??= await api.newAssistantChat(model, shownEngine ?? undefined, effort);
+      // The chat runs with the choices that the chip shows, even when the settings changed since the read.
+      made.current ??= await api.newAssistantChat(shown?.model, shown?.engine, shown?.effort);
       onSending({ sessionId: made.current.id, text: message });
       await api.send(made.current.id, message);
       await onStarted(made.current);
@@ -107,7 +119,9 @@ export function NewChatDraft({
     },
   };
   const draft =
-    shownEngine === null ? null : { engine: shownEngine, modelAlias: model, effort, mode: "assistant" as const };
+    shown === null
+      ? null
+      : { engine: shown.engine, modelAlias: shown.model, effort: shown.effort, mode: "assistant" as const };
 
   return (
     <>

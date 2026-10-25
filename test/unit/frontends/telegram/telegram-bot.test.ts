@@ -622,8 +622,12 @@ describe("topics", () => {
     await settle(bot, () => telegram.callsTo("sendMessage").some((call) => call.params["reply_markup"] !== undefined));
     const picker = telegram.callsTo("sendMessage").find((call) => call.params["reply_markup"] !== undefined);
     expect(picker?.params["message_thread_id"]).toBe(500);
+    // The buttons name the tiers (#550), and the chat starts on the settings' model.
+    expect(JSON.stringify(picker?.params["reply_markup"])).toContain('"text":"Smart"');
+    expect(JSON.stringify(picker?.params["reply_markup"])).not.toContain("default");
     const session = eva.sessions.list()[0]!;
     expect(session.telegramTopicId).toBe(500);
+    expect(session.modelAlias).toBe("opus");
 
     telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
     await settle(bot, () => eva.sessions.get(session.id).modelAlias === "haiku");
@@ -639,9 +643,9 @@ describe("topics", () => {
     const session = eva.sessions.list()[0]!;
     eva.sessions.close(session.id);
 
-    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("closed this chat")));
-    expect(eva.sessions.get(session.id).modelAlias).toBe("default");
+    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
   });
 
   test("a model button changes the model of a started chat, and says what the change costs (#545)", async () => {
@@ -652,15 +656,15 @@ describe("topics", () => {
     telegram.sendText(owner, "hi", 500);
     await settle(bot, () => eva.sessions.get(session.id).turns.length === 1 && !eva.sessions.isBusy(session.id));
 
-    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("whole chat again")));
-    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
-    const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("opus"));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("haiku");
+    const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("Fast"));
     expect(notice?.params["message_thread_id"]).toBe(500);
 
     // The same model changes nothing, so a second press says so and sends no cost notice.
-    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already uses opus")));
+    telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already uses Fast")));
     expect(telegram.sentTexts().filter((text) => text.includes("whole chat again"))).toHaveLength(1);
   });
 
@@ -677,9 +681,9 @@ describe("topics", () => {
     telegram.sendText(owner, "/new");
     await settle(bot, () => eva.sessions.list().length === 2);
 
-    telegram.pressButton(owner, `m:${earlier.id}:opus`);
+    telegram.pressButton(owner, `m:${earlier.id}:haiku`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("earlier chat")));
-    expect(eva.sessions.get(earlier.id).modelAlias).toBe("default");
+    expect(eva.sessions.get(earlier.id).modelAlias).toBe("opus");
   });
 
   test("a model button of a deleted chat says that the chat is gone (#545)", async () => {
@@ -704,9 +708,9 @@ describe("topics", () => {
     telegram.sendText(owner, "hi", 500);
     await settle(bot, () => eva.sessions.isBusy(session.id) && engine.requests.length === 1);
 
-    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
-    expect(eva.sessions.get(session.id).modelAlias).toBe("default");
+    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
     release();
     await settle(bot, () => !eva.sessions.isBusy(session.id));
   });
@@ -963,7 +967,7 @@ describe("/chats: every chat of the instance (#9)", () => {
   }
 
   async function webChat(text: string): Promise<string> {
-    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    const session = eva.createAssistantSession({ source: "web" });
     await eva.sessions.send(session.id, text);
     return session.id;
   }
@@ -973,7 +977,7 @@ describe("/chats: every chat of the instance (#9)", () => {
     clock = new Date("2026-10-14T11:00:00Z");
     const newer = await webChat("Write the letter");
     eva.sessions.fork(newer, eva.sessions.get(newer).turns[0]!.lastMessageId!);
-    eva.createAssistantSession({ source: "schedule", model: "default", title: "Morning summary" });
+    eva.createAssistantSession({ source: "schedule", title: "Morning summary" });
     const bot = createBot();
     telegram.sendText(owner, "/chats");
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick a chat")));
@@ -1072,7 +1076,7 @@ describe("/chats: every chat of the instance (#9)", () => {
       await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
       yield { kind: "turn_failed", reason: "The turn was stopped." };
     });
-    const other = eva.createAssistantSession({ source: "web", model: "default" });
+    const other = eva.createAssistantSession({ source: "web" });
     const bot = createBot();
     telegram.sendText(owner, "long work");
     await settle(bot, () => engine.requests.length === 1);
@@ -1151,7 +1155,7 @@ describe("/chats: every chat of the instance (#9)", () => {
       await held;
       yield* FakeEngine.answer(request, "done at last");
     });
-    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    const session = eva.createAssistantSession({ source: "web" });
     void eva.sessions.send(session.id, "long work", "api");
     const bot = createBot();
     await settle(bot, () => engine.requests.length === 1);
@@ -1174,7 +1178,7 @@ describe("/chats while a turn runs (#9)", () => {
       await held;
       yield* FakeEngine.answer(request, "done at last");
     });
-    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    const session = eva.createAssistantSession({ source: "web" });
     void eva.sessions.send(session.id, "long work", "api");
     const bot = createBot();
     await settle(bot, () => engine.requests.length === 1);
@@ -1202,7 +1206,7 @@ describe("/chats while a turn runs (#9)", () => {
       yield { kind: "text" as const, text: "Part two.", messageId: "m2" };
       if (end !== undefined) yield end;
     });
-    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    const session = eva.createAssistantSession({ source: "web" });
     void eva.sessions.send(session.id, "long work", "api");
     const bot = createBot();
     await firstBlockSent;
@@ -1373,7 +1377,7 @@ describe("usage limits (issue #67)", () => {
   test("a warning in a chat outside Telegram leaves the warning free for the phone", async () => {
     createEva(engineWith(() => warning));
     const bot = createBot();
-    const web = eva.createAssistantSession({ source: "web", model: "default" });
+    const web = eva.createAssistantSession({ source: "web" });
     await eva.sessions.send(web.id, "from the web");
     telegram.sendText(owner, "first");
     await settle(bot, () =>
@@ -1941,7 +1945,7 @@ describe("approvals and commands", () => {
       },
     );
     const bot = createBot();
-    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    const session = eva.createAssistantSession({ source: "cli" });
     const turn = eva.sessions.send(session.id, "work");
     for (let round = 0; round < 400 && engine.requests.length === 0; round += 1) await Bun.sleep(5);
     telegram.sendText(owner, "/update");
@@ -2036,7 +2040,7 @@ describe("stop and approvals from elsewhere", () => {
       yield* FakeEngine.answer(request, answer);
     });
     const bot = createBot();
-    const webChat = eva.createAssistantSession({ source: "web", model: "default", title: "Release notes" });
+    const webChat = eva.createAssistantSession({ source: "web", title: "Release notes" });
     void eva.sessions.send(webChat.id, "push");
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("(in “Release notes”)")));
     const markup = JSON.stringify(telegram.callsTo("sendMessage").at(-1)?.params["reply_markup"]);

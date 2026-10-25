@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SequenceCounter, systemClock } from "../../../src/shared/clock.ts";
 import { buildChildEnvironment } from "../../../src/shared/environment.ts";
+import { modelAliases, modelTierName, takesEffort } from "../../../src/shared/engine-port.ts";
 import { EvaError, isEvaError } from "../../../src/shared/errors.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../../src/shared/outward-actions.ts";
 import { containsSecretPattern, Redactor } from "../../../src/shared/redaction.ts";
@@ -284,5 +285,18 @@ describe("containsSecretPattern", () => {
     const text = "github_pat_" + "c".repeat(30);
     expect(containsSecretPattern(text)).toBe(true);
     expect(containsSecretPattern(text)).toBe(true);
+  });
+});
+
+describe("model tiers (#550)", () => {
+  test("the interface names each model alias by its tier", () => {
+    expect(modelAliases.map(modelTierName)).toEqual(["Smart", "Balanced", "Fast"]);
+  });
+
+  test("Claude Code's Fast model takes no effort level; every other model does", () => {
+    expect(takesEffort("claude-code", "haiku")).toBe(false);
+    expect(takesEffort("claude-code", "opus")).toBe(true);
+    expect(takesEffort("claude-code", "sonnet")).toBe(true);
+    expect(takesEffort("pi", "haiku")).toBe(true);
   });
 });

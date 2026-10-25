@@ -34,8 +34,8 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     history: { kind: "new", engineSessionId: "session-1" },
     startFolder: "/demo-vault",
     prompt: "Hello",
-    model: "default",
-    effort: "default",
+    model: "opus",
+    effort: null,
     appendSystemPrompt: "You are Eva.",
     pluginFolders: ["/demo-vault/.eva"],
     mcpServers: {},
@@ -70,7 +70,7 @@ function engine(fake: FakePi, overrides: Partial<ConstructorParameters<typeof Pi
   return new PiEngine({
     command: ["pi"],
     workFolder: join(folder, "pi"),
-    models: { default: null, opus: null, sonnet: null, haiku: null },
+    models: { opus: null, sonnet: null, haiku: null },
     start: fake.start,
     newSessionId: () => "fork-1",
     now: () => new Date("2026-10-15T08:00:00Z"),
@@ -221,15 +221,13 @@ describe("PiEngine", () => {
     expect(pieces.map((event) => event.startsBlock)).toEqual([true, ...pieces.slice(1).map(() => undefined)]);
   });
 
-  test("the chat's model name picks the pi model, with the default entry as fallback (lesson 41)", async () => {
+  test("the chat's tier picks the pi model, and a tier with no model leaves pi's own (lesson 41, #550)", async () => {
     const fake = new FakePi([{ records: loadPiFixture("plain") }, { records: loadPiFixture("plain") }]);
-    const models = { default: "openai/gpt-5-mini", opus: "openai/gpt-5", sonnet: null, haiku: null };
+    const models = { opus: "openai/gpt-5", sonnet: null, haiku: null };
     await drain(engine(fake, { models }).runTurn(request({ model: "opus" })));
     await drain(engine(fake, { models }).runTurn(request({ model: "sonnet" })));
-    expect(fake.runs.map((run) => run.command[run.command.indexOf("--model") + 1])).toEqual([
-      "openai/gpt-5",
-      "openai/gpt-5-mini",
-    ]);
+    expect(fake.runs.map((run) => run.command.includes("--model"))).toEqual([true, false]);
+    expect(fake.runs[0]?.command[fake.runs[0].command.indexOf("--model") + 1]).toBe("openai/gpt-5");
   });
 
   test("Eva writes her extension and the turn's prompt file, and keeps them when nothing changed", async () => {
@@ -592,7 +590,7 @@ describe("PiEngine", () => {
     const missing = new PiEngine({
       command: ["pi"],
       workFolder: join(folder, "pi"),
-      models: { default: null, opus: null, sonnet: null, haiku: null },
+      models: { opus: null, sonnet: null, haiku: null },
       start: () => {
         throw new Error("pi is not installed");
       },

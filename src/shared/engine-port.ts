@@ -12,10 +12,27 @@ export type SessionMode = "assistant" | "project";
  * no settings, no context files and no saved session. It is no session mode, so no record stores it.
  */
 export type TurnMode = SessionMode | "model-call";
-export type ModelAlias = "default" | "opus" | "sonnet" | "haiku";
-/** How much the model reasons before it answers. `default` keeps the engine's own level. */
-export const effortLevels = ["default", "low", "medium", "high", "xhigh", "max"] as const;
+/**
+ * The model tiers, stored by alias (lesson 121). Claude Code runs the newest model of each family;
+ * pi runs the model that the settings name for the tier.
+ */
+export const modelAliases = ["opus", "sonnet", "haiku"] as const;
+export type ModelAlias = (typeof modelAliases)[number];
+/** How much the model reasons before it answers. */
+export const effortLevels = ["low", "medium", "high", "xhigh", "max"] as const;
 export type EffortLevel = (typeof effortLevels)[number];
+
+const tierNames: Readonly<Record<ModelAlias, string>> = { opus: "Smart", sonnet: "Balanced", haiku: "Fast" };
+
+/** The name that every front end shows for a model alias. */
+export function modelTierName(model: ModelAlias): string {
+  return tierNames[model];
+}
+
+/** Claude Code's Haiku takes no effort level, so Eva sends none and offers none. */
+export function takesEffort(engine: EngineName, model: ModelAlias): boolean {
+  return !(engine === "claude-code" && model === "haiku");
+}
 
 /** Where the turn's history comes from. */
 export type TurnHistory =
@@ -51,7 +68,8 @@ export interface TurnRequest {
   readonly startFolder: string;
   readonly prompt: string;
   readonly model: ModelAlias;
-  readonly effort: EffortLevel;
+  /** Null: the engine keeps its own level, as for a model call or a model with no effort. */
+  readonly effort: EffortLevel | null;
   /**
    * Assistant mode: Eva's prompt. Claude Code uses it in place of its own system prompt; pi appends it.
    * Byte-identical every turn (lesson 40). A model call: the caller's prompt, in place of each engine's own.

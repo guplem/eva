@@ -987,27 +987,32 @@ test("Copy copies the text of an answer", async ({ page, context }) => {
 test("the composer's chip picks the engine before the first message, and the model between turns", async ({ page }) => {
   await logIn(page);
   await newChat(page);
-  const chip = page.getByRole("button", { name: /Default model/ });
+  const chip = page.getByRole("button", { name: /Smart/ });
   await chip.click();
   const menu = page.getByRole("dialog", { name: "Engine, model and effort" });
   const picker = page.locator(".chip-picker > .chip");
   await expect(
     menu.getByRole("group", { name: "Engine" }).getByRole("button", { name: "Claude Code" }),
   ).toHaveAttribute("aria-pressed", "true");
-  await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Haiku" }).click();
-  // The effort is a slider, with the name of its level at its right.
+  const models = menu.getByRole("group", { name: "Model" });
   const effort = menu.getByRole("group", { name: "Effort" });
+  // Claude Code's Fast model takes no effort, so the chip offers none (#550).
+  await models.getByRole("button", { name: "Fast" }).click();
+  await expect(effort).toHaveCount(0);
+  await expect(picker.locator(".chip-effort")).toHaveCount(0);
+  await models.getByRole("button", { name: "Balanced" }).click();
+  // The effort is a slider, with the name of its level at its right. It starts at the settings' level.
   const slider = effort.getByRole("slider", { name: "Effort" });
-  await expect(slider).toHaveAttribute("aria-valuetext", "Default");
-  await expect(effort.locator(".effort-name")).toHaveText("Default");
-  await slider.press("ArrowRight");
+  await expect(slider).toHaveAttribute("aria-valuetext", "Medium");
+  await expect(effort.locator(".effort-name")).toHaveText("Medium");
+  await slider.press("ArrowLeft");
   await expect(slider).toHaveAttribute("aria-valuetext", "Low");
   await expect(effort.locator(".effort-name")).toHaveText("Low");
   await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   // The chip is the one place that shows the model.
-  await expect(picker).toContainText("Haiku");
+  await expect(picker).toContainText("Balanced");
   await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
 
   const composer = page.getByLabel("Message").first();
@@ -1015,7 +1020,7 @@ test("the composer's chip picks the engine before the first message, and the mod
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   // The chip names the model that answered (#419).
-  await expect(picker).toContainText("Haiku 5.5");
+  await expect(picker).toContainText("Balanced · Sonnet 5.5");
   await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
   await picker.click();
   await expect(menu).toContainText("The engine is fixed after the first message");
@@ -1024,10 +1029,10 @@ test("the composer's chip picks the engine before the first message, and the mod
   await expect(menu).toContainText("reads the whole chat again");
   // The chip starts mid-row on a phone, and its menu still fits the screen.
   await expect(menu).toBeInViewport({ ratio: 1 });
-  await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Sonnet" }).click();
-  // The old answer came from Haiku, so the chip names the new choice, not the old answer.
-  await expect(picker).toContainText("Sonnet");
-  await expect(picker).not.toContainText("Haiku");
+  await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Smart" }).click();
+  // The old answer came from Sonnet, so the chip names the new choice, not the old answer.
+  await expect(picker).toContainText("Smart");
+  await expect(picker).not.toContainText("Sonnet");
   // The effort changes no history, so it changes after the first message too.
   // A drag over every stop saves the effort once, on release.
   const saves: string[] = [];
@@ -1042,7 +1047,7 @@ test("the composer's chip picks the engine before the first message, and the mod
   await expect(effort.locator(".effort-name")).toHaveText("Max");
   expect(saves).toHaveLength(0);
   await page.mouse.up();
-  await expect(picker).toContainText("Sonnet");
+  await expect(picker).toContainText("Smart");
   await expect(picker.locator(".chip-effort")).toHaveText("· Max effort");
   expect(saves).toHaveLength(1);
 });
@@ -1062,14 +1067,20 @@ test("the effort slider saves one level at a time, and a failed save shows the c
   const slider = effort.getByRole("slider", { name: "Effort" });
   const name = effort.locator(".effort-name");
 
-  // A slow save: the keys that come during it send only the newest level, after it.
+  // A slow save: the keys that come during it send only the newest level, after it. The first save
+  // waits until the keys are pressed, so a slow machine cannot end it early.
   const sent: string[] = [];
+  let releaseSave = (): void => undefined;
+  const saveHeld = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
   await page.route("**/effort", async (route) => {
     sent.push((route.request().postDataJSON() as { effort: string }).effort);
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await saveHeld;
     await route.continue();
   });
-  await slider.press("ArrowRight");
+  // The new chat starts at Medium, so Low comes first.
+  await slider.press("ArrowLeft");
   await expect(effort).toHaveAttribute("aria-busy", "true");
   // The menu closes and opens again during the save, and still waits for it.
   await page.keyboard.press("Escape");
@@ -1078,6 +1089,7 @@ test("the effort slider saves one level at a time, and a failed save shows the c
   await slider.press("ArrowRight");
   await slider.press("ArrowRight");
   await expect(name).toHaveText("High");
+  releaseSave();
   await expect(picker.locator(".chip-effort")).toHaveText("· High effort");
   await expect(effort).toHaveAttribute("aria-busy", "false");
   await expect(name).toHaveText("High");
@@ -1093,17 +1105,19 @@ test("the effort slider saves one level at a time, and a failed save shows the c
   await expect(slider).toHaveAttribute("aria-valuetext", "High");
 });
 
-test("a chat on the default model names the model that answered (#419)", async ({ page }) => {
+test("a new chat starts with the settings' model and effort, and names the model that answered (#419, #550)", async ({
+  page,
+}) => {
   await logIn(page);
   await newChat(page);
   const picker = page.locator(".chip-picker > .chip");
-  await expect(picker).toContainText("Default model");
-  await expect(picker.locator(".chip-effort")).toHaveText("· Default effort");
+  await expect(picker).toContainText("Smart");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Medium effort");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
-  await expect(picker).toContainText("Default · Opus 5.5");
+  await expect(picker).toContainText("Smart · Opus 5.5");
 });
 
 test("a new schedule's setup card waits in a dialog, and Got it lets it run (lesson 66)", async ({ page }, info) => {
@@ -1792,17 +1806,34 @@ test("Settings: each engine has a Test that runs a tiny real prompt", async ({ p
   await expect(page.getByText("Only the Tailscale account that owns this machine.")).toBeVisible();
 });
 
-test("Settings: the default model saves at once", async ({ page }) => {
+test("Settings: the model and the effort of new chats save at once, and a new chat starts with them (#550)", async ({
+  page,
+}) => {
   await logIn(page);
   try {
     await openSettings(page, "AI engines");
-    await page.getByLabel("Claude Code model").selectOption("sonnet");
+    await page.getByLabel("Model for new chats").selectOption("sonnet");
     await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    // The status already says "Saved.", so the reload waits for the save itself.
+    const effortSaved = page.waitForResponse(
+      (response) => response.url().endsWith("/api/settings") && response.request().method() === "PUT",
+    );
+    await page.getByLabel("Effort for new chats").selectOption("high");
+    await effortSaved;
     await page.reload();
-    await expect(page.getByLabel("Claude Code model")).toHaveValue("sonnet");
+    await expect(page.getByLabel("Model for new chats")).toHaveValue("sonnet");
+    await expect(page.getByLabel("Effort for new chats")).toHaveValue("high");
+    await page
+      .getByRole("navigation", { name: "Main" })
+      .getByRole("button", { name: /^Chats/ })
+      .click();
+    await newChat(page);
+    const picker = page.locator(".chip-picker > .chip");
+    await expect(picker).toContainText("Balanced");
+    await expect(picker.locator(".chip-effort")).toHaveText("· High effort");
   } finally {
     // Later tests share the demo vault.
-    await page.request.put("/api/settings", { data: { engines: { claudeCode: { defaultModel: "default" } } } });
+    await page.request.put("/api/settings", { data: { engines: { defaultModel: "opus", defaultEffort: "medium" } } });
   }
 });
 
@@ -4354,7 +4385,7 @@ test("a page with unsaved changes asks to save or discard them before the person
 
   // Save saves first, then leaves.
   await openSettings(page, "AI engines");
-  const model = page.getByLabel(/^pi model/);
+  const model = page.getByLabel("Smart model in pi");
   await model.fill("openai/e2e-model");
   await model.blur();
   // A search hides the section but keeps its typed values.
@@ -4367,8 +4398,8 @@ test("a page with unsaved changes asks to save or discard them before the person
   await openSettings(page, "AI engines");
   await expect(model).toHaveValue("openai/e2e-model");
   await model.fill("");
-  await page.getByRole("button", { name: "Save the model" }).click();
-  await expect(page.getByRole("button", { name: "Save the model" })).toBeDisabled();
+  await page.getByRole("button", { name: "Save the models" }).click();
+  await expect(page.getByRole("button", { name: "Save the models" })).toBeDisabled();
 });
 
 test("a dialog with typed text asks before it closes, and a create offers no save", async ({ page }) => {

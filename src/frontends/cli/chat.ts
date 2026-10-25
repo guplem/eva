@@ -9,7 +9,8 @@ export interface ChatOptions {
   readonly baseUrl: string;
   readonly token: string;
   readonly mode: "assistant" | "project";
-  readonly model: ModelAlias;
+  /** Without one, the settings' model for new chats. */
+  readonly model?: ModelAlias;
   readonly engine?: EngineName;
   readonly projectId?: string;
   readonly clone?: string;
@@ -25,7 +26,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
     headers,
     body: JSON.stringify({
       mode: options.mode,
-      model: options.model,
+      ...(options.model === undefined ? {} : { model: options.model }),
       ...(options.engine === undefined ? {} : { engine: options.engine }),
       ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
       ...(options.clone === undefined ? {} : { clone: options.clone }),

@@ -1,5 +1,5 @@
 /** The rules of the conversation view that need no React: the step line, the faces and the chips. */
-import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
+import { modelTierName, type EffortLevel, type EngineName, type ModelAlias } from "../../../shared/engine-port.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { UndoPreview } from "./api.ts";
 import type { IconName } from "./icons.tsx";
@@ -120,13 +120,9 @@ export function engineLabel(engine: EngineName): string {
   return engineLabels[engine];
 }
 
-/**
- * The model chip. With the default model, the engine login picks the model, so the chip names the
- * model that answered once a turn says it.
- */
+/** The model chip. A tier runs a newer model over time, so the chip also names the one that answered. */
 export function modelLabel(model: ModelAlias, answered: string | null = null): string {
-  if (answered === null) return model === "default" ? "Default model" : capitalized(model);
-  return model === "default" ? `Default · ${modelName(answered)}` : modelName(answered);
+  return answered === null ? modelTierName(model) : `${modelTierName(model)} · ${modelName(answered)}`;
 }
 
 /** "claude-opus-5-5" reads "Opus 5.5". Another engine's id, such as a pi model, stays as it is. */
@@ -143,7 +139,6 @@ function capitalized(word: string): string {
 }
 
 const effortNames: Readonly<Record<EffortLevel, string>> = {
-  default: "Default",
   low: "Low",
   medium: "Medium",
   high: "High",

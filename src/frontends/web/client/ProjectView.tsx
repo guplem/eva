@@ -240,7 +240,7 @@ export function ProjectView({
   const startChat = async (project: Project): Promise<void> => {
     setStartingChat(true);
     try {
-      const chat = await api.newProjectChat(project.id, "default");
+      const chat = await api.newProjectChat(project.id);
       await onChanged();
       // Eva may have made a new clone, and the list counts the chats of the clones that it knows.
       setListVersion((version) => version + 1);

@@ -370,6 +370,7 @@ describe("runCheck", () => {
       environment: {},
       engines: [],
       engineEnvironment: {},
+      model: "opus",
       redact: (text) => text.replaceAll("secret-value", "[redacted]"),
       telegramToken: null,
       githubToken: null,
@@ -516,14 +517,17 @@ describe("runCheck", () => {
       folderWasEmpty = readdirSync(folder).length === 0;
       return FakeEngine.answer(request, "OK\nmore text");
     });
-    const result = await runCheck("claude-code", inputs({ engines: [engine], engineEnvironment: { HOME: "/h" } }));
+    const result = await runCheck(
+      "claude-code",
+      inputs({ engines: [engine], engineEnvironment: { HOME: "/h" }, model: "sonnet" }),
+    );
     expect(result).toEqual({ ok: true, detail: "Claude Code answered: OK" });
     const request = engine.requests[0];
     expect(request).toMatchObject({
       mode: "model-call",
       trusted: false,
       // The person's own model, so the check proves the model that chats use.
-      model: "default",
+      model: "sonnet",
       prompt: "Reply with the single word OK.",
       pluginFolders: [],
       mcpServers: {},

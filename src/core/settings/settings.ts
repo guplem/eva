@@ -18,11 +18,36 @@ export const sharedSettingKeys: readonly string[] = [
   "sync.pullIntervalMinutes",
   "updates",
   "engines.default",
-  "engines.claudeCode.defaultModel",
+  "engines.defaultModel",
+  "engines.defaultEffort",
   "engines.pi.models",
   "google.email",
   "voice.language",
 ];
+
+/**
+ * Vault keys from before a migration. Eva still reads them, so a satellite reads a vault that the hub
+ * did not migrate yet. `parseConfig` moves each one to its new key.
+ */
+const oldSharedSettingKeys: readonly string[] = ["engines.claudeCode.defaultModel"];
+
+/**
+ * The vault's settings with the old keys too. An older hub reads only those, and its next save would
+ * put its own defaults back for every machine. Remove them one release after #550.
+ */
+function withOldVaultKeys(shared: SettingsObject): SettingsObject {
+  const engines = shared["engines"];
+  if (!isObject(engines) || typeof engines["defaultModel"] !== "string") return shared;
+  const defaultModel = engines["defaultModel"];
+  const claudeCode = isObject(engines["claudeCode"]) ? engines["claudeCode"] : {};
+  const withClaude = { ...engines, claudeCode: { ...claudeCode, defaultModel } };
+  const pi = engines["pi"];
+  const models = isObject(pi) ? pi["models"] : undefined;
+  // A read fills each empty tier from the old entry, so it goes only where every tier names a model.
+  if (!isObject(pi) || !isObject(models) || Object.values(models).some((model) => model === null))
+    return { ...shared, engines: withClaude };
+  return { ...shared, engines: { ...withClaude, pi: { ...pi, models: { ...models, default: models[defaultModel] } } } };
+}
 
 type SettingsObject = Record<string, unknown>;
 
@@ -55,7 +80,8 @@ export function withVaultSettings(config: EvaConfig): LoadedSettings {
   if (!read.ok) return { config, problem: read.reason === "missing" ? null : `${file} is not valid JSON.` };
   if (!isObject(read.value)) return { config, problem: `${file} does not hold a JSON object.` };
   try {
-    return { config: parseConfig(mergeSettings(config, pickKeys(read.value, sharedSettingKeys)), file), problem: null };
+    const vaultSettings = pickKeys(read.value, [...sharedSettingKeys, ...oldSharedSettingKeys]);
+    return { config: parseConfig(mergeSettings(config, vaultSettings), file), problem: null };
   } catch (error) {
     return { config, problem: error instanceof Error ? error.message : String(error) };
   }
@@ -80,7 +106,8 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
     if (shared(after) !== shared(config)) assertVaultWritable(vaultPath);
   }
   writeFileAtomic(paths.config, toJson(machine));
-  if (!ahead) writeFileAtomic(vaultSettingsPath(vaultPath), toJson(pickKeys(config, sharedSettingKeys)));
+  if (!ahead)
+    writeFileAtomic(vaultSettingsPath(vaultPath), toJson(withOldVaultKeys(pickKeys(config, sharedSettingKeys))));
 }
 
 /** A config with a change, such as `{ updates: { frequency: "weekly" } }`, on top. Throws on a bad value. */
@@ -107,12 +134,16 @@ export function isSettingKey(key: string): boolean {
 
 /** True when the vault holds this setting, so it applies on every machine. */
 export function isSharedSettingKey(key: string): boolean {
-  return sharedSettingKeys.some((shared) => key === shared || key.startsWith(`${shared}.`));
+  return [...sharedSettingKeys, ...oldSharedSettingKeys].some(
+    (shared) => key === shared || key.startsWith(`${shared}.`),
+  );
 }
 
 /** The change for one dotted key. The value is JSON when it parses as JSON, and text otherwise. */
 export function settingChange(key: string, value: string): SettingsObject {
-  if (!isSettingKey(key)) throw new EvaError("config_invalid", `${key} is not a setting.`);
+  // An old key still works for one release: `parseConfig` moves it to its new key.
+  if (!isSettingKey(key) && !oldSharedSettingKeys.includes(key))
+    throw new EvaError("config_invalid", `${key} is not a setting.`);
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   SessionManager,
   type FirstTurn,
+  type ChatDefaults,
   type SessionManagerOptions,
   type TurnPreparer,
 } from "../../../../src/core/sessions/session-manager.ts";
@@ -49,6 +50,7 @@ function createManager(
     redactor?: Redactor;
     turnTimeoutMs?: number;
     nameChat?: SessionManagerOptions["nameChat"];
+    chatDefaults?: SessionManagerOptions["chatDefaults"];
     /** Where the ids start, so a second manager on the same store makes new ones. */
     firstId?: number;
     /** The preparer of Project chats; without one, the same as for Assistant chats. */
@@ -71,6 +73,7 @@ function createManager(
     approvalTimeoutMs: overrides.approvalTimeoutMs ?? 1_000,
     turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
     ...(overrides.nameChat === undefined ? {} : { nameChat: overrides.nameChat }),
+    ...(overrides.chatDefaults === undefined ? {} : { chatDefaults: overrides.chatDefaults }),
     logger: { log: (level, message, details) => logged.push(`${level} ${message} ${JSON.stringify(details)}`) },
   });
   manager.subscribe((event) => events.push(event));
@@ -90,7 +93,7 @@ function newAssistantSession(manager: SessionManager): string {
   return manager.createSession({
     mode: "assistant",
     engine: "claude-code",
-    model: "default",
+    model: "opus",
     startFolder: "/vault",
     source: "cli",
   }).id;
@@ -131,7 +134,7 @@ describe("a conversation", () => {
         contextTokens: 15,
         contextWindow: 200_000,
         model: "claude-opus-5-5",
-        modelAlias: "default",
+        modelAlias: "opus",
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
@@ -256,7 +259,7 @@ describe("a conversation", () => {
     const { id } = manager.createSession({
       mode: "assistant",
       engine: "claude-code",
-      model: "default",
+      model: "opus",
       startFolder: "/vault",
       source: "schedule",
       title: "Morning",
@@ -431,12 +434,40 @@ describe("models (lesson 41)", () => {
     const engine = new FakeEngine();
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
-    expect(manager.get(sessionId).effort).toBe("default");
     expect(manager.setEffort(sessionId, "low").effort).toBe("low");
     await manager.send(sessionId, "one");
     expect(manager.setEffort(sessionId, "max").effort).toBe("max");
     await manager.send(sessionId, "two");
     expect(engine.requests.map((request) => request.effort)).toEqual(["low", "max"]);
+  });
+
+  test("a new chat with no model or effort takes them from the settings, read at each new chat (#550)", () => {
+    let defaults: ChatDefaults = { model: "sonnet", effort: "high" };
+    const manager = createManager(new FakeEngine(), { chatDefaults: () => defaults });
+    const input = { mode: "assistant", engine: "claude-code", startFolder: "/vault", source: "web" } as const;
+    expect(manager.createSession(input)).toMatchObject({ modelAlias: "sonnet", effort: "high" });
+    defaults = { model: "haiku", effort: "low" };
+    expect(manager.createSession(input)).toMatchObject({ modelAlias: "haiku", effort: "low" });
+    expect(manager.createSession({ ...input, model: "opus", effort: "max" })).toMatchObject({
+      modelAlias: "opus",
+      effort: "max",
+    });
+  });
+
+  test("Claude Code's Fast model gets no effort level, and the chat keeps its choice (#550)", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = manager.createSession({
+      mode: "assistant",
+      engine: "claude-code",
+      model: "haiku",
+      effort: "high",
+      startFolder: "/vault",
+      source: "web",
+    }).id;
+    await manager.send(sessionId, "hi");
+    expect(engine.requests[0]?.effort).toBeNull();
+    expect(manager.get(sessionId).effort).toBe("high");
   });
 
   test("a chat's engine is chosen before its first message, and fixed after it", async () => {
@@ -445,7 +476,7 @@ describe("models (lesson 41)", () => {
     const sessionId = manager.createSession({
       mode: "assistant",
       engine: "pi",
-      model: "default",
+      model: "opus",
       startFolder: "/vault",
       source: "web",
     }).id;
@@ -512,7 +543,7 @@ describe("chat names from a model (issue 50)", () => {
     expect(namer.asked).toEqual([
       {
         engine: "claude-code",
-        model: "default",
+        model: "opus",
         userText: "Plan a trip to Rome\nwith the kids",
         answerText: "answer 1",
       },
@@ -554,7 +585,7 @@ describe("chat names from a model (issue 50)", () => {
     const scheduled = named.createSession({
       mode: "assistant",
       engine: "claude-code",
-      model: "default",
+      model: "opus",
       startFolder: "/vault",
       source: "schedule",
       title: "Morning",
@@ -832,11 +863,11 @@ describe("closed chats (issue 521)", () => {
     // A closed chat takes no next turn, so a new model would never answer (#545).
     expect(
       isEvaError(
-        caughtFrom(() => manager.setModel(sessionId, "opus")),
+        caughtFrom(() => manager.setModel(sessionId, "haiku")),
         "session_closed",
       ),
     ).toBe(true);
-    expect(manager.get(sessionId).modelAlias).toBe("default");
+    expect(manager.get(sessionId).modelAlias).toBe("opus");
     expect(engine.requests).toHaveLength(1);
     expect(manager.list()).toHaveLength(1);
   });
@@ -1185,7 +1216,7 @@ describe("file snapshots of Project chats (issue 523)", () => {
     return manager.createSession({
       mode: "project",
       engine: "claude-code",
-      model: "default",
+      model: "opus",
       startFolder: folder,
       source: "web",
       projectId: "p",
@@ -1313,7 +1344,7 @@ describe("chats that move to another clone (issue 523)", () => {
     return manager.createSession({
       mode: "project",
       engine: "claude-code",
-      model: "default",
+      model: "opus",
       startFolder: "/clones/clone-0",
       source: "web",
       projectId: "p",
@@ -2536,7 +2567,7 @@ describe("one turn per clone (issue 356)", () => {
     return manager.createSession({
       mode: "project",
       engine: "claude-code",
-      model: "default",
+      model: "opus",
       startFolder: folder,
       source: "cli",
       projectId: "2025-03-02-1015-example-app",

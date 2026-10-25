@@ -156,44 +156,43 @@ describe("liveFace", () => {
 });
 
 describe("labels", () => {
-  test("names the engines and models as people say them", () => {
+  test("names the engines and the model tiers as people say them (#550)", () => {
     expect(engineLabel("claude-code")).toBe("Claude Code");
     expect(engineLabel("pi")).toBe("pi");
-    expect(modelLabel("default")).toBe("Default model");
-    expect(modelLabel("sonnet")).toBe("Sonnet");
+    expect(modelLabel("opus")).toBe("Smart");
+    expect(modelLabel("sonnet")).toBe("Balanced");
+    expect(modelLabel("haiku")).toBe("Fast");
   });
 
-  test("names the model that answered, so the default model is no mystery (#419)", () => {
-    expect(modelLabel("default", "claude-opus-5-5")).toBe("Default · Opus 5.5");
-    expect(modelLabel("haiku", "claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
-    expect(modelLabel("sonnet", "claude-sonnet-4-6[1m]")).toBe("Sonnet 4.6");
+  test("names the model that answered beside its tier (#419, #550)", () => {
+    expect(modelLabel("opus", "claude-opus-5-5")).toBe("Smart · Opus 5.5");
+    expect(modelLabel("haiku", "claude-haiku-4-5-20251001")).toBe("Fast · Haiku 4.5");
+    expect(modelLabel("sonnet", "claude-sonnet-4-6[1m]")).toBe("Balanced · Sonnet 4.6");
     // A date is no minor version.
-    expect(modelLabel("default", "claude-opus-4-20250514")).toBe("Default · Opus 4");
-    expect(modelLabel("opus", "claude-opus-4-1-20250805")).toBe("Opus 4.1");
+    expect(modelLabel("opus", "claude-opus-4-20250514")).toBe("Smart · Opus 4");
+    expect(modelLabel("opus", "claude-opus-4-1-20250805")).toBe("Smart · Opus 4.1");
     // A pi model keeps its own id.
-    expect(modelLabel("default", "fake-model")).toBe("Default · fake-model");
-    expect(modelLabel("opus", null)).toBe("Opus");
+    expect(modelLabel("opus", "fake-model")).toBe("Smart · fake-model");
+    expect(modelLabel("opus", null)).toBe("Smart");
   });
 
   test("names each effort level in plain words (#419)", () => {
-    expect(effortLabel("default")).toBe("Default effort");
+    expect(effortLabel("medium")).toBe("Medium effort");
     expect(effortLabel("xhigh")).toBe("Extra high effort");
     expect(effortLabel("max")).toBe("Max effort");
   });
 
   test("takes the model of the newest turn that names one", () => {
-    expect(answeredModel([{ model: "claude-opus-5-5" }, { model: null }], "default")).toBe("claude-opus-5-5");
-    expect(answeredModel([{ model: "claude-opus-4-6" }, { model: "claude-opus-5-5" }], "default")).toBe(
-      "claude-opus-5-5",
-    );
-    expect(answeredModel([], "default")).toBeNull();
+    expect(answeredModel([{ model: "claude-opus-5-5" }, { model: null }], "opus")).toBe("claude-opus-5-5");
+    expect(answeredModel([{ model: "claude-opus-4-6" }, { model: "claude-opus-5-5" }], "opus")).toBe("claude-opus-5-5");
+    expect(answeredModel([], "opus")).toBeNull();
   });
 
   test("names no answered model after a change of model, until a turn answers with the new one (#545)", () => {
     const turns = [{ model: "claude-haiku-5-5", modelAlias: "haiku" as const }];
     expect(answeredModel(turns, "haiku")).toBe("claude-haiku-5-5");
     expect(answeredModel(turns, "opus")).toBeNull();
-    expect(answeredModel(turns, "default")).toBeNull();
+    expect(answeredModel(turns, "sonnet")).toBeNull();
     // A turn from before the stored model choice ran with the only model the chat ever had.
     expect(answeredModel([{ model: "claude-opus-5-5" }], "opus")).toBe("claude-opus-5-5");
   });

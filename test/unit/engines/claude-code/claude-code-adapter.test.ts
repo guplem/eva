@@ -22,8 +22,8 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     history: { kind: "new", engineSessionId: "session-1" },
     startFolder: "/demo-vault",
     prompt: "Hello",
-    model: "default",
-    effort: "default",
+    model: "opus",
+    effort: null,
     appendSystemPrompt: "You are Eva.",
     pluginFolders: ["/demo-vault/.eva"],
     mcpServers: {},
@@ -94,7 +94,7 @@ describe("buildQueryOptions", () => {
       plugins: [{ type: "local", path: "/demo-vault/.eva" }],
       env: { PATH: "/bin" },
     });
-    expect(options.model).toBeUndefined();
+    expect(options.model).toBe("opus");
     expect(options.resume).toBeUndefined();
   });
 
@@ -231,11 +231,11 @@ describe("buildQueryOptions", () => {
     expect(buildQueryOptions(request(), "/bin/claude")).not.toHaveProperty("mcpServers");
   });
 
-  test("a model alias other than default is passed through", () => {
+  test("each tier goes to Claude Code as its alias, so Claude Code runs the newest model of it (#550)", () => {
     expect(buildQueryOptions(request({ model: "haiku" }), "c").model).toBe("haiku");
   });
 
-  test("the chat's effort goes to Claude Code, and the default keeps Claude Code's own (#419)", () => {
+  test("the chat's effort goes to Claude Code, and no effort keeps Claude Code's own (#419, #550)", () => {
     expect(buildQueryOptions(request(), "c")).not.toHaveProperty("effort");
     expect(buildQueryOptions(request({ effort: "xhigh" }), "c").effort).toBe("xhigh");
   });

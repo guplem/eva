@@ -20,7 +20,7 @@ Run these on the computer where Eva runs. `eva status`, `eva link`, `eva open`, 
 | `eva devices allow <code>`        | Lets in the device whose page shows this code.                                                                                                                                      |
 | `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.                                                                                           |
 | `eva chat --project <id>`         | Talks to a project's coding agent. `--clone <name>` picks the copy of the code, such as `clone-0`, when it has no open chat.                                                        |
-| `eva chat --model <model>`        | Picks the model: `default`, `opus`, `sonnet` or `haiku`.                                                                                                                            |
+| `eva chat --model <model>`        | Picks the model: `smart`, `balanced` or `fast`. Without it, the model from the settings.                                                                                            |
 | `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                                                                                                            |
 | `eva projects [words]`            | Searches your projects. `status:active` and `tag:work` filter them.                                                                                                                 |
 | `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code.                                                                                                         |
@@ -45,18 +45,19 @@ Eva keeps two kinds of settings:
 
 In the notebook:
 
-| Setting                           | Default        | What it does                                                                                                        |
-| --------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `timeZone`                        | Asked at setup | The time zone of the reminders, and of the time in each message.                                                    |
-| `sync.pullIntervalMinutes`        | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each conversation turn.                  |
-| `sync.sweepSeconds`               | `60`           | Seconds between two saves of changed notes.                                                                         |
-| `updates.frequency`               | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                                                     |
-| `updates.install`                 | `minor`        | What Eva installs by herself: see [Updates](#updates).                                                              |
-| `engines.default`                 | `claude-code`  | The engine of a new conversation: `claude-code` or `pi`.                                                            |
-| `engines.claudeCode.defaultModel` | `default`      | The model of a new conversation: `default`, `opus`, `sonnet` or `haiku`.                                            |
-| `engines.pi.models.<model>`       | `null`         | The pi model for each of these 4 names, such as `openai/gpt-5`. `null`: the `default` entry, then pi's own default. |
-| `google.email`                    | `null`         | The Google account. The Google login sets it.                                                                       |
-| `voice.language`                  | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                                                |
+| Setting                     | Default        | What it does                                                                                       |
+| --------------------------- | -------------- | -------------------------------------------------------------------------------------------------- |
+| `timeZone`                  | Asked at setup | The time zone of the reminders, and of the time in each message.                                   |
+| `sync.pullIntervalMinutes`  | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each conversation turn. |
+| `sync.sweepSeconds`         | `60`           | Seconds between two saves of changed notes.                                                        |
+| `updates.frequency`         | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                                    |
+| `updates.install`           | `minor`        | What Eva installs by herself: see [Updates](#updates).                                             |
+| `engines.default`           | `claude-code`  | The engine of a new conversation: `claude-code` or `pi`.                                           |
+| `engines.defaultModel`      | `opus`         | The model of a new conversation: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).            |
+| `engines.defaultEffort`     | `medium`       | The effort of a new conversation: `low`, `medium`, `high`, `xhigh` or `max`.                       |
+| `engines.pi.models.<model>` | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default.             |
+| `google.email`              | `null`         | The Google account. The Google login sets it.                                                      |
+| `voice.language`            | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                               |
 
 On this computer:
 

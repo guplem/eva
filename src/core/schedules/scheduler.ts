@@ -5,7 +5,7 @@
  * chat named after the schedule (lesson 126).
  */
 import { join } from "node:path";
-import type { ModelAlias } from "../../shared/engine-port.ts";
+import { modelAliases, type ModelAlias } from "../../shared/engine-port.ts";
 import type { Logger } from "../../shared/logger.ts";
 import {
   announcedFields,
@@ -55,7 +55,8 @@ export type ScheduleCard = Extract<ScheduleEvent, { kind: "schedule_card" }>;
 type ScheduleListener = (event: ScheduleEvent) => Promise<boolean | undefined> | boolean | undefined;
 
 export interface ScheduledChatStarter {
-  createChat(name: string, model: ModelAlias): string;
+  /** Without a model, the settings' model for new chats. */
+  createChat(name: string, model: ModelAlias | undefined): string;
   /**
    * Resolves when the chat is free again, to the failure reason of its last turn, or null.
    * A failed turn is no rejection: the session manager turns it into an event.
@@ -95,8 +96,6 @@ export interface ScheduleList {
   /** The wall-clock time now, as a slot. */
   readonly now: string;
 }
-
-const modelAliases: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
 export class Scheduler {
   private readonly options: SchedulerOptions;
@@ -338,7 +337,7 @@ export class Scheduler {
   }
 
   private async fire(schedule: Schedule, slot: string): Promise<void> {
-    const model = modelAliases.find((alias) => alias === schedule.model) ?? "default";
+    const model = modelAliases.find((alias) => alias === schedule.model);
     // The chat comes first: when it cannot start, the slot does not count as fired, and the next check tries again.
     let sessionId: string | null;
     try {

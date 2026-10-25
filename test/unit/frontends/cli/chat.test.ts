@@ -135,7 +135,6 @@ async function chatUntilEnd(url: string, lines: string[], written: string[] = []
     baseUrl: url,
     token: "token",
     mode: "assistant",
-    model: "default",
     readLine: () => {
       const line = lines.shift();
       return line === undefined ? new Promise<string | null>(() => undefined) : Promise.resolve(line);
@@ -333,7 +332,6 @@ describe("the model's questions (#544)", () => {
         baseUrl: api.url,
         token: "token",
         mode: "assistant",
-        model: "default",
         readLine: (() => {
           const lines = ["plan it"];
           return () => Promise.resolve(lines.shift() ?? null);
@@ -380,7 +378,6 @@ describe("the model's questions (#544)", () => {
           baseUrl: api.url,
           token: "token",
           mode: "assistant",
-          model: "default",
           readLine: () => Promise.resolve(lines.shift() ?? null),
           write: (text) => {
             written.push(text);

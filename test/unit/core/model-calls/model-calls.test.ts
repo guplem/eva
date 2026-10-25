@@ -197,7 +197,7 @@ describe("a model call", () => {
       const pi = new PiEngine({
         command: ["pi"],
         workFolder,
-        models: { default: null, opus: null, sonnet: null, haiku: null },
+        models: { opus: null, sonnet: null, haiku: null },
         start: deaf.start,
         stopGraceMs: 20,
       });
@@ -216,7 +216,7 @@ describe("a model call", () => {
       const pi = new PiEngine({
         command: ["pi"],
         workFolder,
-        models: { default: null, opus: null, sonnet: null, haiku: null },
+        models: { opus: null, sonnet: null, haiku: null },
         start: slow.start,
         stopGraceMs: 20,
       });

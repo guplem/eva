@@ -24,8 +24,8 @@ function session(id: string): SessionRecord {
     engineSessionId: `engine-${id}`,
     engine: "claude-code",
     mode: "assistant",
-    modelAlias: "default",
-    effort: "default",
+    modelAlias: "opus",
+    effort: "medium",
     startFolder: "/vault",
     projectId: null,
     clone: null,
@@ -108,11 +108,18 @@ describe("SessionStore", () => {
     expect(corruptCopies()).toEqual([]);
   });
 
-  test("a session from before the effort, or with a bad one, uses the engine's default effort (#419)", () => {
+  test("a session from before the effort, or with a bad one, uses Medium (#419, #550)", () => {
     const { effort: _left, ...old } = session("one");
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), effort: "huge" }] }));
-    expect(openStore().get("one")?.effort).toBe("default");
-    expect(openStore().get("two")?.effort).toBe("default");
+    expect(openStore().get("one")?.effort).toBe("medium");
+    expect(openStore().get("two")?.effort).toBe("medium");
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a session on the old Default model or effort reads as Smart and Medium (#550)", () => {
+    const old = { ...session("one"), modelAlias: "default", effort: "default" };
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [old] }));
+    expect(openStore().get("one")).toMatchObject({ modelAlias: "opus", effort: "medium" });
     expect(corruptCopies()).toEqual([]);
   });
 

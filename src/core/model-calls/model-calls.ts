@@ -88,7 +88,7 @@ export class ModelCalls {
         startFolder: folder,
         prompt: withContext(request.prompt, request.context ?? {}),
         model: request.model,
-        effort: "default",
+        effort: null,
         appendSystemPrompt: request.systemPrompt,
         pluginFolders: [],
         mcpServers: {},

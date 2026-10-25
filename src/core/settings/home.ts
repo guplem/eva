@@ -5,6 +5,7 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
+import { effortLevels, modelAliases } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { googleAccessLevels } from "../google/google-access.ts";
@@ -216,7 +217,35 @@ export function createHomeFolders(paths: HomePaths): void {
   }
 }
 
-const modelAliasSchema = z.enum(["default", "opus", "sonnet", "haiku"]);
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Reads the engine settings from before #550: `claudeCode.defaultModel` became `defaultModel`, and its
+ * `default` reads as Smart. pi's one `default` model fills each tier that names none. A satellite
+ * reads an old vault until the hub migrates it, so the old form wins when both are there.
+ */
+function withOldEngineSettings(value: unknown): unknown {
+  if (!isJsonObject(value)) return value;
+  const engines: JsonObject = { ...value };
+  const claudeCode = engines["claudeCode"];
+  if (isJsonObject(claudeCode) && "defaultModel" in claudeCode) {
+    const { defaultModel: old, ...rest } = claudeCode;
+    engines["claudeCode"] = rest;
+    engines["defaultModel"] = old === "default" ? "opus" : old;
+  }
+  const pi = engines["pi"];
+  const models = isJsonObject(pi) ? pi["models"] : undefined;
+  if (isJsonObject(pi) && isJsonObject(models) && "default" in models) {
+    const { default: old, ...tiers } = models;
+    const filled = Object.fromEntries(modelAliases.map((alias) => [alias, tiers[alias] ?? old]));
+    engines["pi"] = { ...pi, models: filled };
+  }
+  return engines;
+}
 
 export const configSchema = z.object({
   version: z.literal(1).default(1),
@@ -242,39 +271,46 @@ export const configSchema = z.object({
     })
     .default({ frequency: "daily", install: "minor" }),
   engines: z
-    .object({
-      default: z.enum(["claude-code", "pi"]).default("claude-code"),
-      claudeCode: z
-        .object({
-          executable: z.string().min(1).nullable().default(null),
-          defaultModel: modelAliasSchema.default("default"),
-          /** How Claude Code asks before a tool runs. `bypassPermissions` also skips Eva's own approvals. */
-          permissionMode: z.enum(["auto", "bypassPermissions"]).default("auto"),
-        })
-        .default({ executable: null, defaultModel: "default", permissionMode: "auto" }),
-      pi: z
-        .object({
-          /** The program that starts pi. Null: `pi` found on PATH. */
-          executable: z.string().min(1).nullable().default(null),
-          /**
-           * The pi model for each of Eva's model names, such as `openai/gpt-5` for `opus`. A chat
-           * keeps its model name (lesson 121); null: the `default` entry, then pi's own default.
-           */
-          models: z
-            .object({
-              default: z.string().min(1).nullable().default(null),
-              opus: z.string().min(1).nullable().default(null),
-              sonnet: z.string().min(1).nullable().default(null),
-              haiku: z.string().min(1).nullable().default(null),
-            })
-            .default({ default: null, opus: null, sonnet: null, haiku: null }),
-        })
-        .default({ executable: null, models: { default: null, opus: null, sonnet: null, haiku: null } }),
-    })
+    .preprocess(
+      withOldEngineSettings,
+      z.object({
+        default: z.enum(["claude-code", "pi"]).default("claude-code"),
+        /** The model tier of a new chat. */
+        defaultModel: z.enum(modelAliases).default("opus"),
+        /** The effort of a new chat. A model with no effort level ignores it. */
+        defaultEffort: z.enum(effortLevels).default("medium"),
+        claudeCode: z
+          .object({
+            executable: z.string().min(1).nullable().default(null),
+            /** How Claude Code asks before a tool runs. `bypassPermissions` also skips Eva's own approvals. */
+            permissionMode: z.enum(["auto", "bypassPermissions"]).default("auto"),
+          })
+          .default({ executable: null, permissionMode: "auto" }),
+        pi: z
+          .object({
+            /** The program that starts pi. Null: `pi` found on PATH. */
+            executable: z.string().min(1).nullable().default(null),
+            /**
+             * The pi model of each tier, such as `openai/gpt-5` for `opus`. A chat keeps its
+             * tier (lesson 121); null: pi's own default.
+             */
+            models: z
+              .object({
+                opus: z.string().min(1).nullable().default(null),
+                sonnet: z.string().min(1).nullable().default(null),
+                haiku: z.string().min(1).nullable().default(null),
+              })
+              .default({ opus: null, sonnet: null, haiku: null }),
+          })
+          .default({ executable: null, models: { opus: null, sonnet: null, haiku: null } }),
+      }),
+    )
     .default({
       default: "claude-code",
-      claudeCode: { executable: null, defaultModel: "default", permissionMode: "auto" },
-      pi: { executable: null, models: { default: null, opus: null, sonnet: null, haiku: null } },
+      defaultModel: "opus",
+      defaultEffort: "medium",
+      claudeCode: { executable: null, permissionMode: "auto" },
+      pi: { executable: null, models: { opus: null, sonnet: null, haiku: null } },
     }),
   telegram: z
     .object({

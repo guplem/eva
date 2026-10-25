@@ -627,6 +627,10 @@ export class Eva {
     this.sessions = new SessionManager({
       ...(chatNamer === null ? {} : { nameChat: (turn: FirstTurn) => chatNamer.name(turn) }),
       engines: options.engines,
+      chatDefaults: () => ({
+        model: this.settings.config.engines.defaultModel,
+        effort: this.settings.config.engines.defaultEffort,
+      }),
       store: new SessionStore(options.paths.sessions, {
         now: options.now,
         ...(options.logger === undefined ? {} : { logger: options.logger }),
@@ -756,7 +760,12 @@ export class Eva {
             isHub: () => this.role() === "hub",
             now: options.now,
             chats: {
-              createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
+              createChat: (name, model) =>
+                this.createAssistantSession({
+                  source: "schedule",
+                  ...(model === undefined ? {} : { model }),
+                  title: name,
+                }).id,
               send: (sessionId, prompt) => this.sessions.sendWithResult(sessionId, prompt, "schedule"),
             },
             reportFiring: (schedule, failure) => {
@@ -1468,7 +1477,7 @@ export class Eva {
     return this.sessions.createSession({
       mode: "assistant",
       engine: input.engine ?? this.options.config.engines.default,
-      model: input.model,
+      ...(input.model === undefined ? {} : { model: input.model }),
       ...(input.effort === undefined ? {} : { effort: input.effort }),
       startFolder: vaultPath,
       source: input.source,
@@ -1962,6 +1971,7 @@ export class Eva {
       engines: this.options.engines,
       // A real turn needs the engine's login, as a chat has it; never the GitHub token (lesson 96).
       engineEnvironment: engineEnvironment(this.facts, secrets),
+      model: this.settings.config.engines.defaultModel,
       redact: (text) => this.redactor.redact(text),
       telegramToken: secrets.telegramBotToken ?? null,
       githubToken: secrets.githubToken ?? null,

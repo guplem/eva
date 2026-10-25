@@ -7,7 +7,14 @@
  * The clip attaches files in an Assistant chat. Each file uploads when the person picks it, so Send waits for no upload.
  */
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement } from "react";
-import { effortLevels, type EffortLevel, type EngineName, type ModelAlias } from "../../../shared/engine-port.ts";
+import {
+  effortLevels,
+  modelAliases,
+  takesEffort,
+  type EffortLevel,
+  type EngineName,
+  type ModelAlias,
+} from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { messageWithFiles } from "./attachments.ts";
 import {
@@ -30,8 +37,6 @@ import { setupBlock } from "./new-chat.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType } from "./voice-notes.ts";
-
-const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
 /** What the composer shows of a chat. A new chat has no record until its first message. */
 type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns"> &
@@ -405,6 +410,8 @@ function EngineChip({
   }, [session.effort]);
 
   const engines = found.includes(session.engine) ? found : [session.engine, ...found];
+  // A model with no effort level, such as Claude Code's Haiku, offers none (#550).
+  const effortShown = takesEffort(session.engine, session.modelAlias);
   return (
     <div className="chip-picker" ref={root}>
       <button
@@ -423,7 +430,7 @@ function EngineChip({
         <Icon name="bolt" />
         <span className="chip-engine">{engineLabel(session.engine)} · </span>
         {modelLabel(session.modelAlias, answeredModel(session.turns, session.modelAlias))}
-        <span className="chip-effort">· {effortLabel(session.effort)}</span>
+        {effortShown && <span className="chip-effort">· {effortLabel(session.effort)}</span>}
         <Icon name="down" />
       </button>
       {open && (
@@ -448,7 +455,7 @@ function EngineChip({
           )}
           <div className="chip-group" role="group" aria-label="Model">
             <span className="chip-group-name">Model</span>
-            {models.map((model) => (
+            {modelAliases.map((model) => (
               <button
                 key={model}
                 className={`chip${model === session.modelAlias ? " on" : ""}`}
@@ -461,7 +468,7 @@ function EngineChip({
             ))}
           </div>
           {note !== null && <p>{note}</p>}
-          <EffortSlider effort={picked ?? session.effort} busy={saving} onPick={pickEffort} />
+          {effortShown && <EffortSlider effort={picked ?? session.effort} busy={saving} onPick={pickEffort} />}
         </div>
       )}
     </div>

@@ -40,8 +40,8 @@ export class FakeEngine implements EnginePort {
         costUsd: null,
         contextTokens: 15,
         contextWindow: 200_000,
-        // Like Claude Code, the default model answers as a real model with its own id.
-        model: `claude-${request.model === "default" ? "opus" : request.model}-5-5`,
+        // Like Claude Code, a tier answers as a real model with its own id.
+        model: `claude-${request.model}-5-5`,
       },
     ];
   }

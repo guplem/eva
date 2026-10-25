@@ -171,6 +171,76 @@ describe("security settings stay on the machine", () => {
   });
 });
 
+describe("the model and the effort of new chats (#550)", () => {
+  test("a new instance gives new chats Smart and Medium, and the vault holds both", () => {
+    expect(defaultConfig.engines).toMatchObject({ defaultModel: "opus", defaultEffort: "medium" });
+    expect(isSharedSettingKey("engines.defaultModel")).toBe(true);
+    expect(isSharedSettingKey("engines.defaultEffort")).toBe(true);
+  });
+
+  test("an old vault's Claude Code model applies to new chats, and its Default reads as Smart", () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    mkdirSync(join(vault, ".eva"));
+    const old = (model: string): string => JSON.stringify({ engines: { claudeCode: { defaultModel: model } } });
+    writeFileSync(vaultSettingsPath(vault), old("sonnet"));
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("sonnet");
+    writeFileSync(vaultSettingsPath(vault), old("default"));
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("opus");
+  });
+
+  test("the old single pi model fills each tier that names no model, and a save writes the new form", () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    mkdirSync(join(vault, ".eva"));
+    const models = { default: "openai/gpt-5-mini", opus: "openai/gpt-5", sonnet: null };
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ engines: { pi: { models } } }));
+    const config = loadSettings(paths).config;
+    expect(config.engines.pi.models).toEqual({
+      opus: "openai/gpt-5",
+      sonnet: "openai/gpt-5-mini",
+      haiku: "openai/gpt-5-mini",
+    });
+    saveSettings(paths, config);
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({
+      engines: { defaultModel: "opus", defaultEffort: "medium", pi: { models: { haiku: "openai/gpt-5-mini" } } },
+    });
+    // Each tier names a model, so an older hub also gets its one pi model: the one of the default tier.
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({
+      engines: { pi: { models: { default: "openai/gpt-5" } } },
+    });
+    expect(loadSettings(paths).config.engines.pi.models).toEqual(config.engines.pi.models);
+  });
+
+  test("a pi tier with no model writes no old pi entry, so the tier keeps pi's own default", () => {
+    const models = { opus: "openai/gpt-5", sonnet: null, haiku: null };
+    const engines = { ...defaultConfig.engines, pi: { executable: null, models } };
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, engines });
+    expect(JSON.stringify(readJson(vaultSettingsPath(vault)))).not.toContain('"default":"openai');
+    expect(loadSettings(paths).config.engines.pi.models).toEqual(models);
+  });
+
+  test("a save also writes the old Claude Code key, so an older hub keeps the person's model", () => {
+    saveSettings(paths, {
+      ...defaultConfig,
+      vaultPath: vault,
+      engines: { ...defaultConfig.engines, defaultModel: "sonnet" },
+    });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({
+      engines: { defaultModel: "sonnet", claudeCode: { defaultModel: "sonnet" } },
+    });
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("sonnet");
+  });
+
+  test("eva settings set still takes the old Claude Code key, and its Default means Smart", () => {
+    expect(isSharedSettingKey("engines.claudeCode.defaultModel")).toBe(true);
+    expect(settingChange("engines.claudeCode.defaultModel", "haiku")).toEqual({
+      engines: { claudeCode: { defaultModel: "haiku" } },
+    });
+    changeSettings(paths, settingChange("engines.claudeCode.defaultModel", "haiku"));
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("haiku");
+    changeSettings(paths, settingChange("engines.claudeCode.defaultModel", "default"));
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("opus");
+  });
+});
 describe("settings by command", () => {
   test("a dotted key names a setting, and the vault's keys are known", () => {
     expect(isSettingKey("updates.frequency")).toBe(true);

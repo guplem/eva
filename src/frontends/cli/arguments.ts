@@ -1,5 +1,5 @@
 /** Reads the `eva` command line. */
-import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
+import { modelAliases, modelTierName, type EngineName, type ModelAlias } from "../../shared/engine-port.ts";
 
 export type CliCommand =
   | { readonly command: "run"; readonly instance: string | undefined }
@@ -58,7 +58,7 @@ Commands:
   status            Show the engines, the vault sync and the sessions
   chat              Talk to Eva in this terminal
       --project <id> [--clone <name>]   a Project chat instead of an Assistant chat
-      --model <default|opus|sonnet|haiku>
+      --model <smart|balanced|fast>     without it, the model from the settings
       --engine <claude-code|pi>
   projects [words]  Search the projects
       status:<idea|active|paused|closed|any>  only projects with this status
@@ -106,7 +106,14 @@ export const cliCommands: readonly string[] = [
   "help",
 ];
 
-const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
+/**
+ * The words that `--model` takes: each tier and its alias. The old `default` still works, and means
+ * the settings' model, so a script from before #550 keeps working.
+ */
+const modelWords: ReadonlyMap<string, ModelAlias | null> = new Map([
+  ...modelAliases.flatMap((alias) => [[alias, alias] as const, [modelTierName(alias).toLowerCase(), alias] as const]),
+  ["default", null],
+]);
 const engines: readonly EngineName[] = ["claude-code", "pi"];
 /** Options that take no value. */
 export const switches: readonly string[] = ["--non-interactive", "--check"];
@@ -167,8 +174,9 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     case "service":
       return rest[0] === "install" ? { command: "service-install", instance } : usageError("Use: eva service install");
     case "chat": {
-      const model = options.get("model");
-      if (model !== undefined && !models.includes(model as ModelAlias)) return usageError(`Unknown model ${model}.`);
+      const modelWord = options.get("model");
+      const model = modelWord === undefined ? null : modelWords.get(modelWord.toLowerCase());
+      if (model === undefined) return usageError(`Unknown model ${modelWord ?? ""}.`);
       const engine = options.get("engine");
       if (engine !== undefined && !engines.includes(engine as EngineName))
         return usageError(`Unknown engine ${engine}.`);
@@ -179,7 +187,7 @@ export function parseArguments(argv: readonly string[]): CliCommand {
         instance,
         ...(projectId === undefined ? {} : { projectId }),
         ...(clone === undefined ? {} : { clone }),
-        ...(model === undefined ? {} : { model: model as ModelAlias }),
+        ...(model === null ? {} : { model }),
         ...(engine === undefined ? {} : { engine: engine as EngineName }),
       };
     }

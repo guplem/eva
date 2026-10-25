@@ -4,6 +4,7 @@
  * inspector column. A phone shows the same content in a bottom sheet from the chat header.
  */
 import { useCallback, useState, type CSSProperties, type ReactElement } from "react";
+import { takesEffort } from "../../../shared/engine-port.ts";
 import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { api, type SessionRecord } from "./api.ts";
@@ -156,9 +157,14 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatP
             <dd>{engineLabel(root.engine)}</dd>
             <dt>Model</dt>
             <dd>{modelNames(tree)}</dd>
-            <dt>Effort</dt>
-            {/* Each branch has its own composer, so a fork can have its own effort. */}
-            <dd>{[...new Set(tree.map((session) => effortName(session.effort)))].join(", ")}</dd>
+            {/* A model with no effort level, such as Claude Code's Fast, shows none (#550). */}
+            {tree.some((session) => takesEffort(session.engine, session.modelAlias)) && (
+              <>
+                <dt>Effort</dt>
+                {/* Each branch has its own composer, so a fork can have its own effort. */}
+                <dd>{[...new Set(tree.map((session) => effortName(session.effort)))].join(", ")}</dd>
+              </>
+            )}
             <dt>Mode</dt>
             <dd>{titleCase(root.mode)}</dd>
             <dt>Answers</dt>

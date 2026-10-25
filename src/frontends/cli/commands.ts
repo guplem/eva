@@ -376,7 +376,7 @@ async function runClientCommand(
         await runChat({
           ...client,
           mode: command.projectId === undefined ? "assistant" : "project",
-          model: command.model ?? config.engines.claudeCode.defaultModel,
+          ...(command.model === undefined ? {} : { model: command.model }),
           ...(command.projectId === undefined ? {} : { projectId: command.projectId }),
           ...(command.clone === undefined ? {} : { clone: command.clone }),
           ...(command.engine === undefined ? {} : { engine: command.engine }),

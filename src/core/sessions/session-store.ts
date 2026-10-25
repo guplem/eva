@@ -5,7 +5,7 @@
  */
 import { copyFileSync } from "node:fs";
 import { z } from "zod";
-import { effortLevels } from "../../shared/engine-port.ts";
+import { effortLevels, modelAliases } from "../../shared/engine-port.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { stepKinds } from "../../shared/turn-steps.ts";
@@ -37,14 +37,17 @@ const turnSchema = z.object({
   contextTokens: z.number().int().min(0).nullable().catch(null),
   /** The size of the context window of the model that answered, or null when the engine did not say. */
   contextWindow: z.number().int().positive().nullable().catch(null),
-  /** The id of the model that answered, so a chat on the default model can name it. Null when the engine did not say. */
+  /** The id of the model that answered, so the chip names it beside the tier. Null when the engine did not say. */
   model: z.string().nullable().catch(null),
   /**
    * The model that the chat chose for the turn (issue 545). The chat can change it between turns,
    * so a front end names an answered model only for the model that the chat has now. A turn from
    * before the field has none.
    */
-  modelAlias: z.enum(["default", "opus", "sonnet", "haiku"]).optional().catch(undefined),
+  modelAlias: z
+    .preprocess((value) => (value === "default" ? "opus" : value), z.enum(modelAliases))
+    .optional()
+    .catch(undefined),
   /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),
@@ -72,9 +75,10 @@ export const sessionSchema = z
     engineSessionId: z.string(),
     engine: z.enum(["claude-code", "pi"]),
     mode: z.enum(["assistant", "project"]),
-    modelAlias: z.enum(["default", "opus", "sonnet", "haiku"]),
-    /** How much the model reasons (issue 419). An older record, or a bad value, keeps the engine's own level. */
-    effort: z.enum(effortLevels).default("default").catch("default"),
+    /** The old `default` alias let the engine login choose; it reads as Smart (#550). */
+    modelAlias: z.preprocess((value) => (value === "default" ? "opus" : value), z.enum(modelAliases)),
+    /** How much the model reasons (issue 419). An older record, the old `default`, or a bad value reads as Medium. */
+    effort: z.enum(effortLevels).default("medium").catch("medium"),
     startFolder: z.string(),
     projectId: z.string().nullable(),
     clone: z.string().nullable(),

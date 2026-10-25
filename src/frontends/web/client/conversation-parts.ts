@@ -48,7 +48,9 @@ const kindActions: Readonly<Record<TurnStep["kind"], string>> = {
  * with JSON, so it falls back to its kind.
  */
 export function stepParts(step: TurnStep): { action: string; detail: string } {
-  if (step.kind === "message") return { action: kindActions.message, detail: shownAnswerText(step.text) };
+  // A long message step is cut, and the cut can fall inside a marker.
+  if (step.kind === "message")
+    return { action: kindActions.message, detail: shownAnswerText(step.text, step.text.endsWith("…")) };
   if (step.kind !== "tool" || step.text.startsWith("{")) return { action: kindActions[step.kind], detail: step.text };
   const space = step.text.indexOf(" ");
   const name = space === -1 ? step.text : step.text.slice(0, space);
@@ -66,7 +68,7 @@ export function answerFiles(answer: string): { path: string; name: string }[] {
     path,
     name:
       path
-        .split("/")
+        .split(/[/\\]/)
         .filter((part) => part !== "")
         .at(-1) ?? path,
   }));

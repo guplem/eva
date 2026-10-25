@@ -637,7 +637,7 @@ function AnswerBody({
   const canShowWhole = lastMessage !== undefined && wholeAnswer !== lastMessage.text;
   const fullBody = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
   // Each streamed token and each clock tick render every answer, so parse only a changed text.
-  const body = useMemo(() => shownAnswerText(fullBody), [fullBody]);
+  const body = useMemo(() => shownAnswerText(fullBody, live), [fullBody, live]);
   const html = useMemo(() => toWebHtml(body), [body]);
   // A running turn can still change its files, so the buttons come with the stored turn, as in Telegram.
   const files = useMemo(() => (live ? [] : answerFiles(wholeAnswer)), [live, wholeAnswer]);

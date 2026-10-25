@@ -101,7 +101,7 @@ describe("stepParts", () => {
       action: "Message",
       detail: "Here it is.",
     });
-    expect(stepParts(step("message", "Here it is.\n[[attach: Scrat"))).toEqual({
+    expect(stepParts(step("message", "Here it is.\n[[attach: Scratch/exa…"))).toEqual({
       action: "Message",
       detail: "Here it is.",
     });
@@ -115,6 +115,12 @@ describe("answerFiles", () => {
     expect(answerFiles(answer)).toEqual([
       { path: "Scratch/example-app.zip", name: "example-app.zip" },
       { path: "Methods/Plan.md", name: "Plan.md" },
+    ]);
+  });
+
+  test("names a file of a Windows path by its last part", () => {
+    expect(answerFiles("[[attach: Scratch\\report.pdf]]")).toEqual([
+      { path: "Scratch\\report.pdf", name: "report.pdf" },
     ]);
   });
 

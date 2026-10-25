@@ -24,12 +24,18 @@ describe("shownAnswerText", () => {
   });
 
   test("drops a last line that a marker starts but that a cut or a stream left open", () => {
-    expect(shownAnswerText("Here it is.\n[[attach: Scrat")).toBe("Here it is.");
-    expect(shownAnswerText("Here it is.\n[")).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n[[attach: Scrat", true)).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n  [[OFFER: Scratch/a", true)).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n[", true)).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n[[attach: Scratch/a…", true)).toBe("Here it is.");
+  });
+
+  test("keeps the last line of a whole answer, which no stream left open", () => {
+    expect(shownAnswerText("Here it is.\n[[")).toBe("Here it is.\n[[");
   });
 
   test("keeps an open bracket that is not the start of a marker, and a marker in a code fence", () => {
-    expect(shownAnswerText("See [[Plan]] and\n[[not a marker")).toBe("See [[Plan]] and\n[[not a marker");
+    expect(shownAnswerText("See [[Plan]] and\n[[not a marker", true)).toBe("See [[Plan]] and\n[[not a marker");
     expect(shownAnswerText("```\n[[attach: a.md]]\n```")).toBe("```\n[[attach: a.md]]\n```");
   });
 });

@@ -35,18 +35,21 @@ export function extractFileMarkers(answer: string): FileMarkers {
 }
 
 /**
- * The text that a chat shows: no marker lines, and no marker that is still half written. A web
- * answer streams in pieces, and a folded step keeps only its first characters, so the last line
- * can hold the start of a marker. Telegram sends whole blocks and never needs this (lesson 124).
+ * The text that a chat shows, with no marker lines. An `open` text can end in the middle of a
+ * line: a web answer streams in pieces, and a folded step keeps only its first characters. Its
+ * last line can then hold the start of a marker, which goes too. Telegram sends whole blocks
+ * and never needs this (lesson 124).
  */
-export function shownAnswerText(answer: string): string {
+export function shownAnswerText(answer: string, open = false): string {
   const text = extractFileMarkers(answer).text;
   const lastBreak = text.lastIndexOf("\n");
-  return startsMarker(text.slice(lastBreak + 1)) ? text.slice(0, Math.max(lastBreak, 0)).trim() : text;
+  if (!open || !startsMarker(text.slice(lastBreak + 1))) return text;
+  return text.slice(0, Math.max(lastBreak, 0)).trim();
 }
 
 function startsMarker(line: string): boolean {
-  const compact = line.replace(/\s+/g, "").toLowerCase();
+  // A cut step ends with "…".
+  const compact = line.replace(/\s+/g, "").replace(/…$/, "").toLowerCase();
   if (compact === "") return false;
   return ["[[attach:", "[[offer:"].some(
     (start) => start.startsWith(compact) || (compact.startsWith(start) && !compact.includes("]]")),

@@ -55,32 +55,38 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
   return (
     <div className="main">
       <div className="notification-center">
-        <div className="center-header">
-          <div className="center-title">
-            <h1>Notifications</h1>
-            <div className="center-subtitle">What Eva needs from you, and what she did by herself.</div>
-          </div>
-          <button className="ghost" disabled={unread === 0} onClick={props.onReadAll}>
-            <Icon name="check" />
-            Mark all as read
-          </button>
-          <button className="ghost" onClick={props.onOpenSettings}>
-            <Icon name="gear" />
-            Settings
-          </button>
-        </div>
         <div className="center-column">
-          <div className="center-filters chip-group" role="group" aria-label="Filter">
-            {centerFilters.map((choice) => (
-              <button
-                key={choice.id}
-                className={`chip${choice.id === filter ? " on" : ""}`}
-                aria-pressed={choice.id === filter}
-                onClick={() => setFilter(choice.id)}
-              >
-                {choice.label}
-              </button>
-            ))}
+          <div className="center-header">
+            <div className="center-title">
+              <h1>Notifications</h1>
+              <div className="center-subtitle">What Eva needs from you, and what she did by herself.</div>
+            </div>
+            <button
+              className="icon-button center-settings"
+              aria-label="Notification settings"
+              data-tooltip="Notification settings"
+              onClick={props.onOpenSettings}
+            >
+              <Icon name="gear" />
+            </button>
+          </div>
+          <div className="center-toolbar">
+            <div className="center-filters chip-group" role="group" aria-label="Filter">
+              {centerFilters.map((choice) => (
+                <button
+                  key={choice.id}
+                  className={`chip${choice.id === filter ? " on" : ""}`}
+                  aria-pressed={choice.id === filter}
+                  onClick={() => setFilter(choice.id)}
+                >
+                  {choice.label}
+                </button>
+              ))}
+            </div>
+            <button className="ghost center-read-all" disabled={unread === 0} onClick={props.onReadAll}>
+              <Icon name="check" />
+              Mark all as read
+            </button>
           </div>
 
           {(needs.length > 0 || shownSteps.length > 0) && (

@@ -52,7 +52,7 @@ When a task needs a program that is missing, install it in the user's own folder
 - **A command-line program:** use `uv tool install <package>`, or a release download in `~/.local/bin/`.
 - **A browser for a PDF or a capture:** use a Chromium in the user's cache, such as the one that `uvx playwright install chromium` downloads.
 
-Say what you installed and where. When every way needs administrator rights, tell the person the one command to run in a terminal on this computer, and why.
+Say what you installed and where. Only when every way needs administrator rights, tell the person the one command to run in a terminal on this computer, and why.
 
 ## Problems with Eva herself
 

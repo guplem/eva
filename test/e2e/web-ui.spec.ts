@@ -1898,11 +1898,17 @@ test("Settings: a token saves write-only, shows as saved, and can be removed", a
   await expect(page.getByRole("button", { name: "Log in with GitHub" })).toHaveCount(0);
   const notice = page.getByRole("status").filter({ hasText: "Restart Eva" });
   await expect(notice).toBeVisible();
-  // The note asks for a restart, so one tap on it opens the restart question.
+  // The note asks for a restart. No chat runs, so one tap restarts Eva and asks nothing more.
+  // The browser plays the restart, so the shared test server keeps running.
+  let restarts = 0;
+  await page.route("**/api/restart", async (route) => {
+    restarts += 1;
+    await route.fulfill({ status: 202, json: { restarting: true } });
+  });
   await notice.getByRole("button", { name: "Restart Eva" }).click();
-  const question = page.getByRole("alertdialog", { name: "Restart Eva" });
-  await expect(question).toBeVisible();
-  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Eva restarted." })).toBeVisible();
+  expect(restarts).toBe(1);
+  await expect(page.getByRole("alertdialog", { name: "Restart Eva" })).toHaveCount(0);
   await page.reload();
   await expect(loggedIn).toContainText("You are logged in to GitHub.");
   expect(await page.content()).not.toContain("e2e-example-token");
@@ -2591,7 +2597,9 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   }
 });
 
-test("the nav visor names the approval that waits, and a tap opens the notification center", async ({ page }) => {
+test("the nav visor names the approval that waits, and a tap opens the center with a face that ends", async ({
+  page,
+}) => {
   // The tooltip shows on hover, which a phone does not have.
   test.skip(test.info().project.name !== "desktop", "Only a computer shows the tooltip.");
   await page.route("**/api/approvals", (route) =>
@@ -2608,6 +2616,9 @@ test("the nav visor names the approval that waits, and a tap opens the notificat
   await visorButton.click();
   await expect(page).toHaveURL(/#\/notifications$/);
   await expect(visorButton).toHaveAttribute("aria-current", "page");
+  // The tap also plays a playful face for a moment, then the face of the main state comes back.
+  await expect(visor).not.toHaveClass(/e-firm/);
+  await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
 });
 
 test("the Settings home page shows Eva's status", async ({ page }) => {

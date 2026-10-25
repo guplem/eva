@@ -68,8 +68,11 @@ describe("the setup ring", () => {
 });
 
 describe("the restart question", () => {
+  test("asks nothing when no chat runs, so one tap restarts Eva", () => {
+    expect(restartQuestion([])).toBeNull();
+  });
+
   test("names each running chat", () => {
-    expect(restartQuestion([])).toBe("Restart Eva now?");
     expect(restartQuestion(["Plan the trip"])).toBe('"Plan the trip" is running. A restart stops it. Restart Eva now?');
     expect(restartQuestion(["One", "Two"])).toBe(
       '2 chats are running: "One", "Two". A restart stops them. Restart Eva now?',

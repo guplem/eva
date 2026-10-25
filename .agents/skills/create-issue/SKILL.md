@@ -15,7 +15,7 @@ An issue states a clear goal. It also shows which parts the person decided and w
    - **Settled by the code, the docs or the project goals with high confidence:** decide it yourself. Do not spend the person's time on it. Write it as an assumption, and name its source, such as a rule in `AGENTS.md` or a pattern in the code.
    - **A conflict with the code that would break the goal,** such as a rule that the change breaks: write it in the issue, so the implementer does not miss it.
    - **A choice that changes what the person gets:** interview the person when they are there. See [Interview the person](#interview-the-person). When nobody is there, choose the most likely meaning, and write it as an assumption.
-   - **A choice where the goal is reached either way:** do not ask, and do not write it. The implementer decides it in the plan of `implement-issue`.
+   - **A choice where the goal is reached either way:** do not ask, and do not write it. The implementer decides it in the plan of `make-change`.
 4. **Split the work.** Make one issue for each result that a person can check alone. When an issue must wait for another one, write "Blocked by #N" near its top, and set a GitHub "blocked by" link.
 5. **Write the title.** Start it with the type, then say the result in plain words:
    - `Bug:` something does not work as it should.

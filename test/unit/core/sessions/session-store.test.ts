@@ -178,6 +178,16 @@ describe("SessionStore", () => {
     expect(kept?.modelAlias).toBeUndefined();
   });
 
+  test("a task step keeps the chat that it runs in, and a step without one stays as it was", () => {
+    const steps = [
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" },
+      { kind: "task", text: "look", isError: false, id: "k1" },
+    ] as const;
+    const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z", steps };
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn] }] }));
+    expect(openStore().get("one")?.turns[0]?.steps).toEqual([...steps]);
+  });
+
   test("a turn from before the notes, or with bad notes, has none and keeps its session (issue 157)", () => {
     const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
     const sessions = [

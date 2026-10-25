@@ -96,8 +96,10 @@ export function hasToolDetails(step: TurnStep): boolean {
 }
 
 /** The state word of the step dialog. A word, so a failed step shows by more than colour. */
-export function stepState(step: TurnStep, live: boolean): "Running" | "Done" | "Failed" {
+export function stepState(step: TurnStep, live: boolean): "Running" | "Done" | "Failed" | "Started" {
   if (step.isError) return "Failed";
+  // The Project chat of project work goes on after the answer, so the answer cannot know its end.
+  if (step.chatId !== undefined) return "Started";
   return live && hasToolDetails(step) && step.output === undefined ? "Running" : "Done";
 }
 

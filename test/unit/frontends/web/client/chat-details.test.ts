@@ -115,15 +115,20 @@ describe("engineLabel and titleCase", () => {
 });
 
 describe("taskStatus", () => {
-  test("each state has one word and one tone", () => {
-    expect(taskStatus("running")).toEqual({ label: "Running", tone: "live" });
-    expect(taskStatus("done")).toEqual({ label: "OK", tone: "ok" });
-    expect(taskStatus("failed")).toEqual({ label: "Failed", tone: "bad" });
-    expect(taskStatus("ended")).toEqual({ label: "Ended", tone: "idle" });
+  test("each state has one word, one tone and one icon", () => {
+    expect(taskStatus("running")).toEqual({ label: "Running", tone: "live", icon: "sync" });
+    expect(taskStatus("done")).toEqual({ label: "OK", tone: "ok", icon: "check" });
+    expect(taskStatus("failed")).toEqual({ label: "Failed", tone: "bad", icon: "alert" });
+    expect(taskStatus("ended")).toEqual({ label: "Ended", tone: "idle", icon: "check" });
+  });
+
+  test("only a running task shows the sync icon, so a task that ended does not look busy", () => {
+    const busy = ["running", "done", "failed", "ended", "paused"].filter((state) => taskStatus(state).icon === "sync");
+    expect(busy).toEqual(["running"]);
   });
 
   test("a state that this page does not know shows as it is", () => {
-    expect(taskStatus("paused")).toEqual({ label: "paused", tone: "idle" });
+    expect(taskStatus("paused")).toEqual({ label: "paused", tone: "idle", icon: "info" });
   });
 });
 
@@ -172,6 +177,16 @@ describe("tasksOfTurn", () => {
       k1: { description: "look around", state: "ended", sessionId: "s1" },
       k2: { description: "npm test", state: "failed", sessionId: "s1" },
     });
+  });
+
+  test("project work lists its Project chat: it started, and it may still run in that chat", () => {
+    const steps: Turn["steps"] = [
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" },
+    ];
+    expect(tasksOfTurn(steps, "s1")).toEqual({
+      p1: { description: "example-app: Fix it", state: "started", sessionId: "s1", chatId: "p1" },
+    });
+    expect(taskStatus("started")).toEqual({ label: "Started", tone: "idle", icon: "chat" });
   });
 });
 

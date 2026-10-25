@@ -155,19 +155,19 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 
 ## New facts learned during the Eva design
 
-107. `[keep]` **Codex loads `AGENTS.md` only from the nearest git root down to the start folder.** A session started in a nested clone does not see the parent folders. `project_root_markers` changes the root, but only from user config or `-c`.
-108. `[keep]` **pi and OpenCode walk up through parent folders.** Claude Code walks up to the filesystem root and ignores git boundaries.
-109. `[keep]` **Agent hooks run only from the start folder. Git hooks run in whatever repository receives the commit.** Project sessions start in the clone, so the project's own agent hooks run.
-110. `[keep]` **The `claude` program adds its own identity line before a custom system prompt,** and a billing line before that. The SDK docs say it sends only what you provide. Source: spike S5 (#56) logged a real request.
-111. `[keep]` **Each Eva instance gives its engines their own config folders** (`CLAUDE_CONFIG_DIR`, pi's agent folder, `GH_CONFIG_DIR`). Two instances on one OS user otherwise share one login, and a person would use another person's subscription.
-112. `[keep]` **A `CLAUDE.md` in the start folder or any folder above it stops Claude Code from reading `AGENTS.md`.** The SDK setting `claude-md-and-agents-md` loads both. Source: https://code.claude.com/docs/en/memory
-113. `[keep]` **The Agent SDK without `systemPrompt` uses a minimal prompt,** not the Claude Code prompt that `claude -p` uses. Pass the `claude_code` preset. Source: https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts
-114. `[keep]` **A message sent while a turn runs must wait, and join the next prompt.** Two turns on one session id split the conversation. Source (v1): `705d2de`, `ARCHITECTURE.md` section 3, step 5.
-115. `[keep]` **Claude Code records the system prompt on the first request of a session** and reuses it until compaction. An edit to the assistant rules reaches a running session only after its next compaction. Source: https://code.claude.com/docs/en/cli-reference
-116. `[keep]` **Deny rules are weak protection.** A `Read` deny does not stop `Bash(cat ...)` under `bypassPermissions`. The vault's `.claude/settings.json` never reaches a session started in a clone (lesson 3). The real protection is the env allowlist, redaction, and secrets kept outside the agent's reach. Source (v1): `4ef7d76`, `server/adr/0005`.
-117. `[keep]` **An MCP server started through `uvx` or `npx` fetches its newest version at each start,** and runs with the person's tokens. Pin exact versions.
-118. `[keep]` **Only one instance fires the schedules.** Every machine runs an instance, so every machine would otherwise fire every schedule. Source (v1): lessons 56 and 64.
-119. `[keep]` **Least privilege for GitHub.** v1 gave the vault's contents only to a deploy key, and gave the agent a fine-grained token with no `Contents` permission. Source (v1): `server/adr/0012`.
+107. **Codex loads `AGENTS.md` only from the nearest git root down to the start folder.** A session started in a nested clone does not see the parent folders. `project_root_markers` changes the root, but only from user config or `-c`.
+108. **pi and OpenCode walk up through parent folders.** Claude Code walks up to the filesystem root and ignores git boundaries.
+109. **Agent hooks run only from the start folder. Git hooks run in whatever repository receives the commit.** Project sessions start in the clone, so the project's own agent hooks run.
+110. **The `claude` program adds its own identity line before a custom system prompt,** and a billing line before that. The SDK docs say it sends only what you provide. Source: spike S5 (#56) logged a real request.
+111. **Each Eva instance gives its engines their own config folders** (`CLAUDE_CONFIG_DIR`, pi's agent folder, `GH_CONFIG_DIR`). Two instances on one OS user otherwise share one login, and a person would use another person's subscription.
+112. **A `CLAUDE.md` in the start folder or any folder above it stops Claude Code from reading `AGENTS.md`.** The SDK setting `claude-md-and-agents-md` loads both. Source: https://code.claude.com/docs/en/memory
+113. **The Agent SDK without `systemPrompt` uses a minimal prompt,** not the Claude Code prompt that `claude -p` uses. Pass the `claude_code` preset. Source: https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts
+114. **A message sent while a turn runs must wait, and join the next prompt.** Two turns on one session id split the conversation. Source (v1): `705d2de`, `ARCHITECTURE.md` section 3, step 5.
+115. **Claude Code records the system prompt on the first request of a session** and reuses it until compaction. An edit to the assistant rules reaches a running session only after its next compaction. Source: https://code.claude.com/docs/en/cli-reference
+116. **Deny rules are weak protection.** A `Read` deny does not stop `Bash(cat ...)` under `bypassPermissions`. The vault's `.claude/settings.json` never reaches a session started in a clone (lesson 3). The real protection is the env allowlist, redaction, and secrets kept outside the agent's reach. Source (v1): `4ef7d76`, `server/adr/0005`.
+117. **An MCP server started through `uvx` or `npx` fetches its newest version at each start,** and runs with the person's tokens. Pin exact versions.
+118. **Only one instance fires the schedules.** Every machine runs an instance, so every machine would otherwise fire every schedule. Source (v1): lessons 56 and 64.
+119. **Least privilege for GitHub.** v1 gave the vault's contents only to a deploy key, and gave the agent a fine-grained token with no `Contents` permission. Source (v1): `server/adr/0012`.
 
 ## Lessons added by the review
 

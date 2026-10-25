@@ -13,9 +13,10 @@ Each row with an update has its own button. With several updates, the person tap
 1. **Which updates count?** Each row whose button is primary: a missing tool, a tool that is too old, a tool with a newer version, and missing voice notes. A tool whose newest version is unknown stays out. Source: `toolAction` and the primary class in `UpdatesSection.tsx`.
 2. **In which order?** Tool installs, voice notes, `claude update`, then Eva. The page holds the installs while `claude update` runs. The server makes Eva's restart wait for a running `claude update` (`isIdle` in `src/core/eva.ts`).
 3. **How does Eva update?** Update all opens the version dialog, as the Eva row does. The person confirms the restart, and a major update shows its warning.
-4. **When does the button show?** Only with two or more updates. One update has its own button.
-5. **How do the results show?** One note joins the results of all steps. It is a warning when one step failed.
-6. **Where does the logic live?** A pure `updateAllSteps` in a new `client/version-words.ts`, with the row helpers, so unit tests reach it, as `update-words.ts` does.
+4. **When does the button show?** Only with two or more updates, Eva included. One update has its own button. The button stays hidden until the latest versions and the claude status answer.
+5. **How do the results show?** One note joins the results of the installs. It is a warning when one install failed. A failed step does not stop the later ones.
+6. **Does Update all wait for `claude update`?** No. `claude update` waits for running chats with no limit. Update all starts it and goes on. The server makes Eva's update wait for it, and its result keeps its own callout. Found by the issue review.
+7. **Where does the logic live?** A pure `updateAllSteps` in a new `client/version-words.ts`, with the row helpers, so unit tests reach it, as `update-words.ts` does.
 
 ## Steps
 

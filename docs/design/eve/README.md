@@ -9,7 +9,7 @@ This folder is the reference for the redesign. The redesign of #161 implemented 
 
 The reference is a mock-up. It uses example data, and its labels are English. It was made before a full review of Eva's features, so some parts differ from the code, on purpose or for now. The section [Differences](#differences-between-the-reference-and-the-code) lists them.
 
-The rest of this guide describes the web page as the code builds it. Where this guide and the reference differ, follow this guide. Where the code and the reference differ, the section Differences says why.
+The rest of this guide describes the web page as the code builds it. Where this guide and the reference differ, follow this guide. Where the code and the reference differ, [Differences](#differences-between-the-reference-and-the-code) says why.
 
 ## How to use this reference
 

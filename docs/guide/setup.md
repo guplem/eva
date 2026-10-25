@@ -47,7 +47,7 @@ In the terminal, a line that starts with `>` is a question: type the answer, or 
 1. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), uv (for the Google tools), and gh (for your agents' pushes and pull requests). It also replaces a gh older than 2.40.
 2. **Phone access.** Press Enter to install Tailscale, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page.
 3. **Start Eva.** Press Enter. Eva starts now, and again each time you log in. On Windows, this needs no administrator, and no window stays open.
-4. **Your devices.** Press Enter to open Eva in this computer's browser, already logged in. Then open Eva's address on your phone and your other computers. Each page shows a short code: type it in the terminal. Press Enter when you allowed every device. Then setup asks where to continue:
+4. **Your devices.** Press Enter to open Eva in this computer's browser, already logged in. Then open Eva's address on your phone and your other computers. Each page shows a short code: type it in the terminal. Press Enter after you allow every device. Then setup asks where to continue:
    - Type `1`, or press Enter, to answer steps 5 to 8 in the terminal.
    - Type `2` to finish on Eva's web page. Setup opens the Setup page in this computer's browser, and shows the steps to follow there. Then you can close the terminal.
 5. **Vault and GitHub.** Your time zone, the GitHub login, your vault, and other GitHub accounts that you trust, such as an organization. Eva trusts the account of her GitHub login already.
@@ -125,7 +125,7 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 1. In Telegram, open a chat with **@BotFather** (the official bot that makes bots), and send `/newbot`.
 2. Give it a name, such as `My Eva`, and a user name that ends in `bot`, such as `my_eva_123_bot`.
 3. BotFather answers with a **token**: a long code such as `123456789:AAH...`. Paste it into setup, or into **Connect Telegram** in Settings. Never share it: whoever has it controls the bot.
-4. Pair your chat, so that Eva answers only you. The Telegram card in **Settings > Connections** shows a pairing code, such as `EVA-1A2B3C4D`. On Eva's computer, `eva status` shows it too. Send that code to your bot.
+4. Pair your Telegram chat, so that Eva answers only you. The Telegram card in **Settings > Connections** shows a pairing code, such as `EVA-1A2B3C4D`. On Eva's computer, `eva status` shows it too. Send that code to your bot.
 5. Optional: give your bot Eva's face. Save [this picture](../../src/frontends/web/icons/icon-512.png), send `/setuserpic` to BotFather, pick your bot and send the picture.
 
 ## Open Eva on your phone
@@ -211,7 +211,7 @@ EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault
 
 **Service.** On Linux, setup runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that fails, it prints the command for an administrator.
 
-On Windows, `eva service install` adds `Eva-<name>` to the programs that Windows starts when you log in (the `Run` list of your user). It needs no administrator, and shows no window. It also removes an `Eva-<name>` task in Task Scheduler, from an older Eva. Task Manager can show the start under **Startup apps** as "Console Window Host". To stop the start at logon, turn it off there. Her icon in the system tray shows that she runs.
+On Windows, `eva service install` adds `Eva-<name>` to the programs that Windows starts when you log in (the `Run` list of your user). It needs no administrator, and shows no window. It also removes an `Eva-<name>` task in Task Scheduler, from an older Eva, when Windows allows it. Task Manager can show the start under **Startup apps** as "Console Window Host". To stop the start at logon, turn it off there. Her icon in the system tray shows that she runs.
 
 If setup cannot start Eva, run `eva service install` to try again, or `eva` to see the error. If Eva crashes, she starts again within a minute.
 

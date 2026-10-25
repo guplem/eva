@@ -81,7 +81,7 @@ A commit that changes `src/` with no test change says why in its message.
 - Branch with `git checkout -b <branch> origin/main && git push -u origin <branch>`.
 - Merge with `gh pr merge --auto --merge`. The ruleset waits for every check. Run `gh pr update-branch` once, before you turn on auto-merge. Do not update the branch again when other PRs merge.
 - Never push to a person's vault.
-- Let only one agent or person work on a branch at a time. Agent worktrees live in `.claude/worktrees/`.
+- Let one agent or person own each branch. Nobody else pushes to it. Agent worktrees live in `.claude/worktrees/`.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.
 - Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To create an issue, follow `.agents/skills/create-issue/SKILL.md`. To implement an issue or make any change, follow `.agents/skills/implement-issue/SKILL.md`. Skip `implement-issue` only very rarely: its review can find the same problem in more places.
 

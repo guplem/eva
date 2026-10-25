@@ -207,14 +207,14 @@ A request from Eva's own computer can come from any program there, so only the t
 - **On the computer itself,** run `eva open`. It opens the page in that computer's browser, already logged in, with no code. Its login link works once, for 2 minutes, and only on that computer. The page listens at `http://127.0.0.1:7420` (or that Eva's port).
 - **The last way in,** when nothing else works: the token `localApiToken` from `secrets.json` in Eva's home folder. On the page, press "Log in with the token instead", and paste it. Never share it.
 - **Devices** in Settings lists each allowed device. Tap **Remove** to log out one, such as a lost phone, or **Log out every device**. A lost phone that is still logged in can allow new devices, so remove it at once.
-- **Do not publish Eva on Tailscale:** run `eva settings set remoteAccess.tailscaleServe false`.
+- **Keep Eva off Tailscale:** to turn off her Tailscale address, run `eva settings set remoteAccess.tailscaleServe false`.
 
 ## Chats
 
 - **One list.** Telegram, the web page and `eva chat` share the same chats. Telegram shows a chat from the web page or the terminal after `/chats`. The topic of that chat (a thread inside your bot's Telegram chat) then also shows the messages that the web page and the terminal send.
 - **Continue a chat in Telegram:** send `/chats` and tap the chat. It opens in a topic of its own, with its last 3 turns. Without topics, the main Telegram chat continues it.
 - **Project work:** when Eva gives work to a project from Telegram, its chat opens in a topic. In a group, Eva sends the link to that topic. When Tailscale gives Eva an address, she also sends the link to the chat on the web page.
-- **Delete a chat:** send `/delete` in its topic, or pick **Delete chat** in the "More actions" menu (•••) of the chat on the web page. Eva deletes it from Telegram, the web page and the terminal, with its forks. A fork is a copy of a chat from one message, that goes another way. The engine keeps its own transcript.
+- **Delete a chat:** send `/delete` in its topic, or pick **Delete chat** in the "More actions" menu (•••) of the chat on the web page. Eva deletes it from Telegram, the web page and the terminal, with its forks. A fork is a new chat that copies an earlier chat up to one message, then goes its own way. The engine keeps its own transcript.
 - **Open one chat on the web page:** add `#/chat/<id>` to the address. Telegram sends such links.
 - **Retry an answer:** press **Retry** under it on the web page. The new answer goes in a new branch, and the old answer stays. When the answer, or a later one, changed vault files, Eva asks first:
   - **Undo and retry** puts those files back as they were before the answer, and saves that as a new commit.

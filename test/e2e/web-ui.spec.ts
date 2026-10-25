@@ -200,7 +200,8 @@ test("Assistant mode: the task dialog of an answer opens the Project chat of its
   await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   const work = dialog.getByRole("listitem").filter({ hasText: "Fix the login bug." });
-  await expect(work).toContainText("Started");
+  // The work can end before the dialog opens: its task then says OK, since the result came back.
+  await expect(work).toContainText(/Started|OK/);
   await work.getByRole("link", { name: "Open chat" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator(".main-header .sub")).toContainText("Example app › clone-");

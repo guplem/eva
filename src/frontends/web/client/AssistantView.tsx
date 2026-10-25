@@ -19,10 +19,13 @@ import {
   useChatActionRequest,
   type ChatAction,
 } from "./ChatHeader.tsx";
-import { BackButton } from "./ProjectPage.tsx";
+import { BackButton } from "./MainNav.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
+import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf } from "./navigation.ts";
+import { goTo, replaceAddress } from "./back-layers.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 interface AssistantViewProps {
   readonly sessions: readonly ListedSession[];
@@ -35,7 +38,8 @@ interface AssistantViewProps {
   readonly newChatRequest: number;
   /** The chat that the address names; it opens once it is in the list. */
   readonly linkedChat: SessionRecord | null;
-  readonly onLinkedChatOpened: () => void;
+  /** `address` names the page of the opened chat, so the used link leaves the history. */
+  readonly onLinkedChatOpened: (address?: string) => void;
   /** Offline and the open problems, shown at the top of the main area. */
   readonly notices: ReactNode;
   readonly approvals: ChatApprovals;
@@ -66,13 +70,26 @@ export function AssistantView({
   const archivedCount = roots.length - active.length;
   const [showArchived, setShowArchived] = useState(false);
   const chats = showArchived ? roots.filter((chat) => chat.archived) : active;
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The address names the open chat, so Back goes to the chat or the list before.
+  const [selectedId, setSelectedId] = useState(() => assistantChatIdOf(window.location.hash));
+  useEffect(() => {
+    // A Telegram link names no chat of Chats: the link effect opens its chat, with no flash of another.
+    const onHashChange = (): void => {
+      if (linkedChatIdOf(window.location.hash) === null) setSelectedId(assistantChatIdOf(window.location.hash));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   // True while the page shows a new chat before its first message. The chat exists only once it is sent.
   const [drafting, setDrafting] = useState(false);
   const [query, setQuery] = useState("");
   /** An archived chat leaves the page, so the list opens another one. */
   const afterArchive = async (chat: SessionRecord): Promise<void> => {
-    if (chat.archived) setSelectedId((current) => (current === chat.id ? null : current));
+    // The address, not this render: the person may have opened another chat while the request ran.
+    if (chat.archived && assistantChatIdOf(window.location.hash) === chat.id) {
+      setSelectedId(null);
+      replaceAddress(assistantChatAddressOf(null));
+    }
     await onChanged();
   };
   const archiveItem = useArchiveItem(afterArchive);
@@ -81,6 +98,13 @@ export function AssistantView({
     setShowArchived(archived);
     setQuery("");
   };
+  // Back from the archived chats shows the chats again, and Back from an archived chat shows the archived chats.
+  useBackLayer(
+    showArchived,
+    () => showList(false),
+    "archived",
+    () => setShowArchived(true),
+  );
   // The turn start lists the new chat, and the chat then opens before its turn is stored.
   const [firstMessage, setFirstMessage] = useState<SentMessage | null>(null);
   const shown = chats.filter((chat) => matchesSearch(chat.title, query));
@@ -137,7 +161,7 @@ export function AssistantView({
 
   /** Opens a chat, and starts a header action when the chat's context menu asks for one. */
   const select = (chatId: string, action?: ChatAction): void => {
-    setSelectedId(chatId);
+    goTo(assistantChatAddressOf(chatId), () => setSelectedId(chatId));
     setDrafting(false);
     if (action === undefined) clearAction();
     else actionRequest.ask(chatId, action);
@@ -159,7 +183,7 @@ export function AssistantView({
     setShowArchived(linkedArchived);
     setQuery("");
     clearAction();
-    onLinkedChatOpened();
+    onLinkedChatOpened(assistantChatAddressOf(linkedId));
   }, [linkedId, linkedArchived, onLinkedChatOpened, clearAction]);
 
   // The view mounts again at each screen change, so only a request made while it shows opens a new chat.
@@ -173,7 +197,7 @@ export function AssistantView({
 
   const openNewChat = async (chat: SessionRecord): Promise<void> => {
     await onChanged();
-    setSelectedId(chat.id);
+    goTo(assistantChatAddressOf(chat.id), () => setSelectedId(chat.id));
     setDrafting(false);
     clearAction();
     // A new chat goes first in the list. Show it, because the list can be scrolled down.

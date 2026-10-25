@@ -18,6 +18,7 @@ import {
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "./icons.tsx";
 import { placeMenu, type MenuPlace, type Point } from "./menu-place.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 export interface MenuItem {
   readonly label: string;
@@ -48,6 +49,8 @@ interface MenuListProps {
 export function MenuList({ items, label, className, style, listRef, onClose }: MenuListProps): ReactElement {
   const own = useRef<HTMLDivElement>(null);
   const menu = listRef ?? own;
+  // A long press opens a menu on a phone, so the Back button closes it, as in the phone's own apps.
+  useBackLayer(true, () => onClose(false));
 
   useEffect(() => {
     // No scroll: a fixed menu takes the focus before it is at its place.

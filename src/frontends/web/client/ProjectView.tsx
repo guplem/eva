@@ -33,18 +33,19 @@ import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 import { countOf, projectSummary, shownTags, statusPill, tagsByUse } from "./project-format.ts";
 import { ListSkeleton } from "./Loading.tsx";
-import { askToLeave } from "./leave-guard.ts";
+import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
+import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
 
 interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
   readonly live: LiveState;
   readonly sidebarOpen: boolean;
-  readonly onShowList: () => void;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
   /** The chat that the address names; its project and clone open with it. */
   readonly linkedChat: SessionRecord | null;
-  readonly onLinkedChatOpened: () => void;
+  /** `address` names the page of the opened chat, so the used link leaves the history. */
+  readonly onLinkedChatOpened: (address?: string) => void;
   /** Offline and the open problems, shown at the top of the main area. */
   readonly notices: ReactNode;
   readonly approvals: ChatApprovals;
@@ -76,11 +77,16 @@ type Page =
   | { readonly kind: "project" | "details" | "setup"; readonly project: Project }
   | { readonly kind: "chat"; readonly project: Project; readonly clone: CloneDetails; readonly chatId: string };
 
+function routeOfPage(page: Page | null): ProjectRoute {
+  if (page === null) return { kind: "list" };
+  if (page.kind === "chat") return { kind: "chat", projectId: page.project.id, chatId: page.chatId };
+  return { kind: page.kind, projectId: page.project.id };
+}
+
 export function ProjectView({
   sessions,
   live,
   sidebarOpen,
-  onShowList,
   onChanged,
   onNavigate,
   linkedChat,
@@ -102,6 +108,18 @@ export function ProjectView({
    */
   const [projects, setProjects] = useState<Project[] | "failed" | null>(null);
   const [page, setPage] = useState<Page | null>(null);
+  // The address names the page, so Back goes from a chat to its project, and from there to the list.
+  const [route, setRoute] = useState<ProjectRoute>(() => projectRouteOf(window.location.hash));
+  useEffect(() => {
+    // A Telegram link names no page of Projects: the link effect opens its chat, with no flash of the list.
+    const onHashChange = (): void => {
+      if (linkedChatIdOf(window.location.hash) === null) setRoute(projectRouteOf(window.location.hash));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+  /** The page that a tap asked for. It shows at once when its address arrives, with no read. */
+  const opening = useRef<Page | null>(null);
   /** `failed` when the read failed: the project may have clones that the page cannot show. */
   const [loaded, setLoaded] = useState<{
     readonly projectId: string;
@@ -191,24 +209,13 @@ export function ProjectView({
     if (linkedProjectId === null || linkedClone === null) {
       showError(new Error("The linked chat has no project or clone."));
       onLinkedChatOpened();
+      setRoute({ kind: "list" });
       return;
     }
-    void (async (): Promise<void> => {
-      try {
-        const project = (await api.projects("", "")).find((candidate) => candidate.id === linkedProjectId);
-        const details = project === undefined ? [] : await api.clones(project.id);
-        const clone = details.find((candidate) => candidate.name === linkedClone);
-        if (project === undefined || clone === undefined) {
-          showError(new Error("The linked chat's project or clone is not on this computer any more."));
-        } else {
-          clearAction();
-          setPage({ kind: "chat", project, clone, chatId: linkedId });
-        }
-      } catch (caught) {
-        showError(caught);
-      }
-      onLinkedChatOpened();
-    })();
+    clearAction();
+    const next: ProjectRoute = { kind: "chat", projectId: linkedProjectId, chatId: linkedId };
+    onLinkedChatOpened(projectAddressOf(next));
+    setRoute(next);
   }, [linkedId, linkedProjectId, linkedClone, showError, onLinkedChatOpened, clearAction]);
 
   const roots = useMemo(() => rootChats(sessions), [sessions]);
@@ -226,15 +233,107 @@ export function ProjectView({
         project.clones.includes(session.clone),
     ).length;
 
-  // The details page can hold unsaved changes, so each move away from it asks first.
-  const open = (next: Page | null): void =>
-    askToLeave(() => {
-      setError(null);
-      setPage(next);
-      // A chat may have changed files or the branch, so the clone cards ask git again.
-      if (next?.kind === "project") setCloneVersion((version) => version + 1);
-      onNavigate();
-    });
+  /** The project whose page must make a new clone once it shows. Stay on unsaved changes makes none. */
+  const cloneOnOpen = useRef<Project | null>(null);
+  const newCloneRef = useRef<(project: Project) => Promise<void>>(() => Promise.resolve());
+  const show = useCallback((next: Page | null): void => {
+    setError(null);
+    setPage(next);
+    // A chat may have changed files or the branch, so the clone cards ask git again.
+    if (next?.kind === "project") setCloneVersion((version) => version + 1);
+    const cloneFor = cloneOnOpen.current;
+    cloneOnOpen.current = null;
+    if (next?.kind === "project" && cloneFor?.id === next.project.id) void newCloneRef.current(cloneFor);
+  }, []);
+  const showNow = (next: Page | null): void => {
+    opening.current = null;
+    show(next);
+  };
+
+  // The details page can hold unsaved changes: the unsaved changes guard asks before the address changes.
+  const open = (next: Page | null): void => {
+    opening.current = next;
+    goTo(projectAddressOf(routeOfPage(next)), () => showNow(next));
+    onNavigate();
+  };
+
+  /** Opens the page above, such as the project of a chat. It steps back when the person came from there. */
+  const openUp = (next: Page | null): void => {
+    opening.current = next;
+    goUp(projectAddressOf(routeOfPage(next)), () => showNow(next));
+    onNavigate();
+  };
+
+  // The reads below see the newest page and clones, with no new run at each change.
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+
+  // Each new address shows its page. A tap gave the page already. Back, a reload or a link reads it.
+  const routeAddress = projectAddressOf(route);
+  useEffect(() => {
+    const wanted = projectRouteOf(routeAddress);
+    const tapped = opening.current;
+    opening.current = null;
+    if (wanted.kind === "list") {
+      show(null);
+      return undefined;
+    }
+    if (tapped !== null && projectAddressOf(routeOfPage(tapped)) === routeAddress) {
+      // A tap can wait behind an unsaved changes question, and a save meanwhile can change the project.
+      const fresh = pageRef.current?.project;
+      show(fresh?.id === tapped.project.id ? { ...tapped, project: fresh } : tapped);
+      return undefined;
+    }
+    let current = true;
+    // A function, not the variable: after an await, the checker still reads the variable as true.
+    const isCurrent = (): boolean => current;
+    /** The page is gone, such as a deleted chat: the page above shows in its place. */
+    const replace = (above: ProjectRoute): void => {
+      replaceAddress(projectAddressOf(above));
+      setRoute(above);
+    };
+    void (async (): Promise<void> => {
+      try {
+        const known = pageRef.current?.project;
+        const project =
+          known?.id === wanted.projectId
+            ? known
+            : (await api.projects("", "")).find((candidate) => candidate.id === wanted.projectId);
+        if (!isCurrent()) return;
+        if (project === undefined) {
+          showError(new Error("This project is not on this computer any more."));
+          replace({ kind: "list" });
+          return;
+        }
+        if (wanted.kind !== "chat") {
+          show({ kind: wanted.kind, project });
+          return;
+        }
+        const cloneName = sessionsRef.current.find((session) => session.id === wanted.chatId)?.clone ?? null;
+        // The cards of the open project know the clone, unless it is new, such as the clone of a fork.
+        const shown = loadedRef.current;
+        const clone =
+          (shown?.projectId === project.id ? shown.clones : []).find((candidate) => candidate.name === cloneName) ??
+          (await api.clones(project.id)).find((candidate) => candidate.name === cloneName);
+        if (!isCurrent()) return;
+        if (clone === undefined) {
+          showError(new Error("This chat or its clone is not on this computer any more."));
+          replace({ kind: "project", projectId: project.id });
+          return;
+        }
+        show({ kind: "chat", project, clone, chatId: wanted.chatId });
+      } catch (caught) {
+        if (isCurrent()) showError(caught);
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [routeAddress, show, showError]);
 
   // Eva picks the clone, so the cards load again to find it.
   const startChat = async (project: Project): Promise<void> => {
@@ -316,6 +415,7 @@ export function ProjectView({
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
+  newCloneRef.current = newClone;
 
   /** Rethrows, so the question stays open after a refusal. */
   const deleteClone = async (project: Project, clone: CloneDetails): Promise<void> => {
@@ -364,9 +464,13 @@ export function ProjectView({
     if (shownId !== null) setShownChatId(shownId);
   }, [shownId]);
   const chatIsGone = page?.kind === "chat" && chat === undefined && shownChatId === page.chatId;
+  const goneProject = chatIsGone ? page.project : null;
   useEffect(() => {
-    if (chatIsGone) setPage((current) => (current === null ? null : { kind: "project", project: current.project }));
-  }, [chatIsGone]);
+    if (goneProject === null) return;
+    const above: Page = { kind: "project", project: goneProject };
+    opening.current = above;
+    leaveFor(projectAddressOf(routeOfPage(above)), () => setRoute(routeOfPage(above)));
+  }, [goneProject]);
 
   const tree = chat === undefined ? [] : chatTree(chat, sessions);
   const branch = useShownBranch(tree, linkedChat?.id ?? null);
@@ -463,12 +567,10 @@ export function ProjectView({
               chatCount={chatCount(project)}
               isOpen={page?.project.id === project.id}
               onOpen={(kind) => open({ kind, project })}
-              onNewClone={() =>
-                askToLeave(() => {
-                  open({ kind: "project", project });
-                  void newClone(project);
-                })
-              }
+              onNewClone={() => {
+                cloneOnOpen.current = project;
+                open({ kind: "project", project });
+              }}
             />
           ))}
       </nav>
@@ -487,14 +589,14 @@ export function ProjectView({
             key={page.project.id}
             projectId={page.project.id}
             onSaved={() => void reloadProject(page.project.id)}
-            onBack={() => open({ kind: "project", project: page.project })}
+            onBack={() => openUp({ kind: "project", project: page.project })}
           />
         ) : page.kind === "setup" ? (
           <RepositorySetup
             key={page.project.id}
             projectId={page.project.id}
             title={page.project.title}
-            onBack={() => open({ kind: "project", project: page.project })}
+            onBack={() => openUp({ kind: "project", project: page.project })}
           />
         ) : page.kind === "chat" && chat !== undefined ? (
           <>
@@ -505,7 +607,7 @@ export function ProjectView({
               details={chatDetails}
               subtitle={
                 <span className="crumbs">
-                  <button className="crumb" onClick={() => open({ kind: "project", project: page.project })}>
+                  <button className="crumb" onClick={() => openUp({ kind: "project", project: page.project })}>
                     {page.project.title}
                   </button>
                   {" › "}
@@ -537,7 +639,10 @@ export function ProjectView({
                   <BranchesButton tree={tree} shown={branch} states={branchStates} />
                 </>
               }
-              onShowList={onShowList}
+              back={{
+                label: "Back to the project",
+                onClick: () => openUp({ kind: "project", project: page.project }),
+              }}
               panelShown={panelShown}
               onTogglePanel={togglePanel}
               onChanged={onChanged}
@@ -563,7 +668,7 @@ export function ProjectView({
             isWorking={isWorking}
             error={error}
             clonesFailed={clonesFailed}
-            onBackToList={() => open(null)}
+            onBackToList={() => openUp(null)}
             onDetails={() => open({ kind: "details", project: page.project })}
             onSetup={() => open({ kind: "setup", project: page.project })}
             onNewClone={() => void newClone(page.project)}

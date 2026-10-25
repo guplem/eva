@@ -5,7 +5,7 @@ The EVE style is the target design for Eva's web page. It takes its look from EV
 This folder is the reference for the redesign. The redesign of #161 implemented it. Issues with the `UI` label continue it.
 
 - [`reference.html`](reference.html) is the interactive reference. Open it in a browser. It shows every page on a computer (left) and on a phone (right), a colour picker, a light and dark switch, and all of EVE's expressions.
-- [`screenshots/`](screenshots/) holds a capture of each page, in light and dark.
+- [`screenshots/`](screenshots/) holds a capture of each page of the real web page, on a computer and on a phone, in light and dark. `scripts/capture-design.ts` takes them from the demo server, with example data. The section [Update the captures](#update-the-captures) gives the steps.
 
 The reference is a mock-up. It uses example data, and its labels are English. It was made before a full review of Eva's features, so some parts differ from the code, on purpose or for now. The section [Differences](#differences-between-the-reference-and-the-code) lists them.
 
@@ -241,7 +241,7 @@ A festive visor has the class `festive`, a motion class `f-*`, and its own hue. 
 
 ## Pages
 
-Each page has a computer and a phone capture, in light and dark. The light captures are below.
+Each page has a computer and a phone capture, in light and dark. The light captures are below. They show the code, not the reference.
 
 ### Log in: confirm this device
 
@@ -344,6 +344,20 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 - The inspector on a computer, and a bottom sheet on a phone, show the same content.
 - Background tasks show their state with one word and one colour.
+
+## Update the captures
+
+Update the captures in the pull request that changes how a page looks, so the guide never falls behind the code.
+
+- Update them when a page of this guide gets a new part, a new layout or a new style.
+- Do not update them for a change of a few words, a fix that no capture shows, or a page that this guide does not show.
+- When you add a page to this guide, add its scene to `scripts/capture-design.ts`.
+
+To update the captures:
+
+1. Start a new demo server: `bun run test/e2e/serve-demo.ts`. The script adds chats to the demo, so use a new demo for each run.
+2. Run `bun run scripts/capture-design.ts`. To capture some pages only, give their names, such as `bun run scripts/capture-design.ts docs/design/eve/screenshots chat settings`.
+3. Look at each new capture before you commit it.
 
 ## Differences between the reference and the code
 

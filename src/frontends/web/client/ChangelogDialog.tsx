@@ -10,6 +10,7 @@ import { releaseDay } from "./update-words.ts";
 import { VersionRowText } from "./UpdateVersionDialog.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 export function ChangelogDialog({ onClose }: { readonly onClose: () => void }): ReactElement {
   const [entries, setEntries] = useState<readonly ChangelogEntry[] | "loading" | { failed: string }>("loading");
@@ -30,6 +31,7 @@ export function ChangelogDialog({ onClose }: { readonly onClose: () => void }): 
     };
   }, []);
 
+  useBackLayer(true, onClose);
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") onClose();

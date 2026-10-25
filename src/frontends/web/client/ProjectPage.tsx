@@ -23,6 +23,7 @@ import { Dialog } from "./Dialog.tsx";
 import { ChatStatePill, chatListItems, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
 import { fileAddressOf } from "./file-paths.ts";
+import { BackButton } from "./MainNav.tsx";
 
 interface ProjectPageProps {
   readonly project: Project;
@@ -502,20 +503,4 @@ function Warnings({ project }: { readonly project: Project }): ReactElement | nu
 export function StatusPill({ pill }: { readonly pill: Pill | null }): ReactElement | null {
   if (pill === null) return null;
   return <span className={`pill dot ${pill.tone}`}>{pill.text}</span>;
-}
-
-export function BackButton({
-  label,
-  onClick,
-  className = "",
-}: {
-  readonly label: string;
-  readonly onClick: () => void;
-  readonly className?: string;
-}): ReactElement {
-  return (
-    <button className={`icon-button ${className}`} aria-label={label} onClick={onClick}>
-      <Icon name="back" />
-    </button>
-  );
 }

@@ -38,6 +38,7 @@ import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
 import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
 import { noteActionLabels, noteParts, restartNote, type Note } from "./notes.ts";
+import { goTo, goUp } from "./back-layers.ts";
 
 const statusPollMs = 3_000;
 const restartPollLimit = 60;
@@ -198,15 +199,18 @@ export function SettingsView({
   };
 
   // The search clears when the page moves, not before: an unsaved change can keep the page.
-  const navigate = (next: SettingsRoute): void => {
-    const hash = settingsHash(next);
-    if (window.location.hash !== hash) {
-      window.location.hash = hash;
-      return;
-    }
-    // The same address fires no hashchange. A new route object still scrolls to the card again.
+  // The same address fires no hashchange. A new route object still scrolls to the card again.
+  const showAgain = (hash: string): void => {
     setQuery("");
     setRoute(parseSettingsHash(hash));
+  };
+  const navigate = (next: SettingsRoute): void => {
+    const hash = settingsHash(next);
+    goTo(hash, () => showAgain(hash));
+  };
+  const navigateUp = (): void => {
+    const hash = settingsHash(parentRoute(route));
+    goUp(hash, () => showAgain(hash));
   };
 
   const context: SettingsContext = {
@@ -264,7 +268,7 @@ export function SettingsView({
         <div className="settings-content">
           <header className="settings-header">
             {!atHome && (
-              <button className="ghost back-button" aria-label="Back" onClick={() => navigate(parentRoute(route))}>
+              <button className="ghost back-button" aria-label="Back" onClick={navigateUp}>
                 <Icon name="back" />
               </button>
             )}

@@ -1020,6 +1020,7 @@ export class SessionManager {
       // lost-history retry then starts one, and nothing was lost, so the person sees no notice.
       const isContinueAfterFailure =
         history.kind === "continue" && !session.turns.some((past) => past.failure === null);
+      const previousModel = session.turns.at(-1)?.modelAlias;
       const stream = engine.runTurn({
         mode: session.mode,
         history,
@@ -1031,6 +1032,7 @@ export class SessionManager {
 
 ${prompt}`,
         model: session.modelAlias,
+        ...(previousModel === undefined ? {} : { previousModel }),
         effort: takesEffort(session.engine, session.modelAlias) ? session.effort : null,
         appendSystemPrompt: prepared.appendSystemPrompt,
         pluginFolders: prepared.pluginFolders,

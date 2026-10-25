@@ -2,8 +2,9 @@
  * The vault step on the page, as in `eva setup`: pick the vault from the GitHub repositories, type
  * its address, or start a new vault in a new private repository. Eva clones it into her home folder.
  */
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
+import { vaultFolders, vaultFoldersHint } from "../../../core/vault/vault-folders.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { ChoiceChips, errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
@@ -231,6 +232,16 @@ function NewVault({
         <input placeholder="work, family, music" value={topics} onChange={(event) => setTopics(event.target.value)} />
         <span className="field-hint">Separate them with commas. You can leave this empty.</span>
       </label>
+      <p className="field-hint">The new vault gets these folders:</p>
+      <dl className="facts" aria-label="The folders of the new vault">
+        {vaultFolders.map(({ path, purpose }) => (
+          <Fragment key={path}>
+            <dt>{path}/</dt>
+            <dd>{purpose}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      <p className="field-hint">{vaultFoldersHint}</p>
       {hasToken && (
         <label className="field">
           <span className="field-label">Name of the new private repository</span>

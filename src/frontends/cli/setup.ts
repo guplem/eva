@@ -59,6 +59,7 @@ import {
 } from "../../core/vault/github-repositories.ts";
 import { logInGitHubCli } from "../../core/vault/github-cli-login.ts";
 import { githubLoginAccess } from "../../core/vault/github-login.ts";
+import { vaultFolders, vaultFoldersHint } from "../../core/vault/vault-folders.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import type { EngineName } from "../../shared/engine-port.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
@@ -739,6 +740,9 @@ async function offerNewVault(
     const create = await ask("createVault", `${folder} holds no vault. Create a new vault there? [y/N]: `);
     if (!/^y(es)?$/i.test(create)) return;
   }
+  options.write("The new vault gets these folders:");
+  for (const { path, purpose } of vaultFolders) options.write(noteLine(`  ${path}/: ${purpose}`));
+  options.write(vaultFoldersHint);
   const name = (await ask("name", "What should Eva call you? ")) || "the owner";
   const language = (await ask("language", "The language for Eva's answers [English]: ")) || "English";
   const topics = splitList(

@@ -7,6 +7,7 @@ import {
   defaultAssistantRules,
   vaultTemplateFiles,
 } from "../../../../src/core/vault/vault-template.ts";
+import { vaultFolders } from "../../../../src/core/vault/vault-folders.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 
@@ -92,6 +93,16 @@ describe("the vault template", () => {
       expect(map).toContain(`\`${folder}`);
     }
     expect(map).toContain("## Grow the vault");
+  });
+
+  test("each folder that setup describes is in the agent map and in the new vault", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    for (const { path, purpose } of vaultFolders) {
+      expect(map).toContain(`\`${path}/`);
+      expect(purpose).not.toBe("");
+      expect(Object.keys(files).some((file) => file.startsWith(`${path}/`))).toBe(true);
+    }
   });
 
   test("a new vault is a git repository with one commit, even with no git identity", async () => {

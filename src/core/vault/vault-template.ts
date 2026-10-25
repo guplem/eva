@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
+import { vaultFolders } from "./vault-folders.ts";
 import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" };
 import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
 import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "text" };
@@ -60,7 +61,7 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
       .replaceAll("{{language}}", answers.language)
       .replaceAll("{{timeZone}}", answers.timeZone)
       .replaceAll("{{topics}}", topicList);
-  return {
+  const files: Record<string, string> = {
     "AGENTS.md": agentsFile,
     "README.md": readmeFile,
     ".gitignore": gitignoreFile,
@@ -78,11 +79,12 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
         2,
       ) + "\n",
     ...templateParts,
-    // The empty top-level folders that AGENTS.md describes, so a new vault shows its shape.
-    ...Object.fromEntries(
-      ["Principles", "Methods", "Toolbox", "Library", "Projects"].map((folder) => [`${folder}/.gitkeep`, ""]),
-    ),
   };
+  // Git keeps no empty folder, so each folder with no file yet gets a `.gitkeep`, and a new vault shows its shape.
+  for (const { path } of vaultFolders) {
+    if (!Object.keys(files).some((file) => file.startsWith(`${path}/`))) files[`${path}/.gitkeep`] = "";
+  }
+  return files;
 }
 
 /** Writes the template into an empty or missing folder and makes its first commit. */

@@ -158,6 +158,13 @@ export function Composer({
   const showStop = running && (isEmpty || blocker !== null);
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
+  const box = useRef<HTMLTextAreaElement>(null);
+  const locked = block !== null;
+  // On a computer the person types into a chat at once. On a touch screen the focus would raise the keyboard over the chat.
+  useEffect(() => {
+    if (locked || isTouchScreen() || isTextField(document.activeElement)) return;
+    box.current?.focus({ preventScroll: true });
+  }, [draftKey, locked]);
   const canRecord = block === null && voice.isSupported;
   const showMic = canRecord && isEmpty;
   // A received file lands in the vault. A Project chat's agent works in its clone and does not reach it.
@@ -196,6 +203,7 @@ export function Composer({
     <div className="composer">
       <div className="composer-box">
         <textarea
+          ref={box}
           aria-label="Message"
           aria-describedby={block === null ? undefined : lineId}
           placeholder={block === null ? placeholder : "Eva cannot answer yet"}
@@ -666,4 +674,14 @@ function useVoiceNote(deliver: (heard: string, recording: string) => Promise<voi
 
 function isTouchScreen(): boolean {
   return window.matchMedia("(pointer: coarse)").matches;
+}
+
+/** True for a field that takes text. The box never takes the focus from one, such as a title being renamed. */
+function isTextField(element: Element | null): boolean {
+  return (
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement ||
+    (element instanceof HTMLElement && element.isContentEditable) ||
+    (element instanceof HTMLInputElement && !["button", "checkbox", "radio", "submit", "range"].includes(element.type))
+  );
 }

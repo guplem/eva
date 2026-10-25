@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   answeredModel,
+  answerFiles,
   engineLock,
   composerPlaceholder,
   effortLabel,
@@ -93,6 +94,32 @@ describe("stepParts", () => {
     expect(stepParts(step("command", "git status"))).toEqual({ action: "Command", detail: "git status" });
     expect(stepParts(step("message", "Let me look."))).toEqual({ action: "Message", detail: "Let me look." });
     expect(stepParts(step("task", "Search the notes"))).toEqual({ action: "Task", detail: "Search the notes" });
+  });
+
+  test("hides the file markers of a message, also one that the 200-character cut left open", () => {
+    expect(stepParts(step("message", "Here it is.\n[[attach: Scratch/example-app.zip]]"))).toEqual({
+      action: "Message",
+      detail: "Here it is.",
+    });
+    expect(stepParts(step("message", "Here it is.\n[[attach: Scrat"))).toEqual({
+      action: "Message",
+      detail: "Here it is.",
+    });
+  });
+});
+
+describe("answerFiles", () => {
+  test("lists each file of the whole answer once, with its name, attach first", () => {
+    const answer =
+      "First.\n[[offer: Methods/Plan.md]]\n\nThen.\n[[attach: Scratch/example-app.zip]]\n[[attach: Methods/Plan.md]]";
+    expect(answerFiles(answer)).toEqual([
+      { path: "Scratch/example-app.zip", name: "example-app.zip" },
+      { path: "Methods/Plan.md", name: "Plan.md" },
+    ]);
+  });
+
+  test("gives no file for a marker in a code fence", () => {
+    expect(answerFiles("```\n[[attach: a.md]]\n```")).toEqual([]);
   });
 });
 

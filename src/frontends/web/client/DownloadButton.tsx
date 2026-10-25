@@ -44,7 +44,13 @@ export function useDownload(path: string): Download {
   return { start, busy, share, problem };
 }
 
-export function DownloadWait({ download, folder }: { readonly download: Download; readonly folder: boolean }): ReactElement {
+export function DownloadWait({
+  download,
+  folder,
+}: {
+  readonly download: Download;
+  readonly folder: boolean;
+}): ReactElement {
   return (
     <>
       {download.busy && <ProgressBar label={folder ? "Packing the folder…" : "Downloading…"} share={download.share} />}
@@ -57,18 +63,32 @@ export function DownloadWait({ download, folder }: { readonly download: Download
   );
 }
 
-export function DownloadButton({ path, folder }: { readonly path: string; readonly folder: boolean }): ReactElement {
+/** With a `label`, the button shows a file name, as in the chat, and keeps it on a phone. */
+export function DownloadButton({
+  path,
+  folder,
+  label,
+}: {
+  readonly path: string;
+  readonly folder: boolean;
+  readonly label?: string;
+}): ReactElement {
   const download = useDownload(path);
+  const named = label !== undefined;
   return (
-    <div className="files-download">
+    <div className={named ? "files-download named-download" : "files-download"}>
       <button
         className="ghost"
         onClick={() => void download.start()}
         disabled={download.busy}
-        aria-label={folder ? "Download this folder as a zip file" : "Download this file"}
+        aria-label={named ? `Download ${label}` : folder ? "Download this folder as a zip file" : "Download this file"}
       >
         <Icon name="download" />
-        <span className="files-download-label">{folder ? "Download as zip" : "Download"}</span>
+        {named ? (
+          <span className="download-name">{label}</span>
+        ) : (
+          <span className="files-download-label">{folder ? "Download as zip" : "Download"}</span>
+        )}
       </button>
       <DownloadWait download={download} folder={folder} />
     </div>

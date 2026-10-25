@@ -1181,3 +1181,28 @@ button.ghost .icon {
   padding-inline-start: var(--space-4);
   overflow-wrap: anywhere;
 }
+
+/* The files that an answer sends. Each button names its file, also on a phone. */
+.answer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.answer-files .files-download {
+  align-items: flex-start;
+  max-width: 100%;
+}
+
+.named-download button.ghost {
+  max-width: 100%;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.download-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

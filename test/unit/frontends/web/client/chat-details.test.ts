@@ -178,6 +178,16 @@ describe("tasksOfTurn", () => {
       k2: { description: "npm test", state: "failed", sessionId: "s1" },
     });
   });
+
+  test("project work lists its Project chat: it started, and it may still run in that chat", () => {
+    const steps: Turn["steps"] = [
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" },
+    ];
+    expect(tasksOfTurn(steps, "s1")).toEqual({
+      p1: { description: "example-app: Fix it", state: "started", sessionId: "s1", chatId: "p1" },
+    });
+    expect(taskStatus("started")).toEqual({ label: "Started", tone: "idle", icon: "chat" });
+  });
 });
 
 describe("chatSubtitle", () => {

@@ -187,6 +187,30 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveText("This token is not valid.");
 });
 
+test("Assistant mode: the task dialog of an answer opens the Project chat of its project work (#571)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Please give work to the example app");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText("Started the work.");
+  await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  const work = dialog.getByRole("listitem").filter({ hasText: "Fix the login bug." });
+  await expect(work).toContainText("Started");
+  await work.getByRole("link", { name: "Open chat" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".main-header .sub")).toContainText("Example app › clone-");
+  // The first chat in a new clone can ask to trust the repository. A question that waits would stay for later tests.
+  const answer = page.locator(".message.answer").first();
+  const deny = page.getByRole("button", { name: "Deny" });
+  await expect(answer.or(deny).first()).toBeVisible();
+  if (await deny.isVisible()) await deny.click();
+  await expect(answer).toContainText("Fix the login bug.");
+});
+
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);

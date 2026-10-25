@@ -178,6 +178,16 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
     return;
   }
+  // Like `eva work` in the shell of the turn: the Project chat becomes a task of this answer (#571).
+  if (request.mode === "assistant" && lastLine.includes("give work")) {
+    await eva.startProjectWork({
+      projectId: "2025-03-02-1015-example-app",
+      request: "Fix the login bug.",
+      reportToSessionId: request.environment["EVA_SESSION_ID"] ?? null,
+    });
+    yield* FakeEngine.answer(request, "Started the work.");
+    return;
+  }
   // Long enough for the person to open another chat before the answer comes.
   if (lastLine.includes("slow")) await Bun.sleep(2_000);
   yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`);

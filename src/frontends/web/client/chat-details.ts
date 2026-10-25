@@ -98,6 +98,7 @@ const statuses: Readonly<Record<string, TaskStatus>> = {
   done: { label: "OK", tone: "ok", icon: "check" },
   failed: { label: "Failed", tone: "bad", icon: "alert" },
   ended: { label: "Ended", tone: "idle", icon: "check" },
+  started: { label: "Started", tone: "idle", icon: "chat" },
 };
 
 /** One word, one tone and one icon for the state of a task, as the task cards show it. */
@@ -144,6 +145,11 @@ export function tasksOfTurn(steps: readonly TurnStep[], sessionId: string): Live
   const tasks: Record<string, LiveState["tasks"][string]> = {};
   for (const step of steps) {
     if (step.kind !== "task" || step.id === null) continue;
+    // The Project chat of project work goes on after the answer, so its task only started.
+    if (step.chatId !== undefined) {
+      tasks[step.id] = { description: step.text, state: "started", sessionId, chatId: step.chatId };
+      continue;
+    }
     tasks[step.id] = { description: step.text, state: step.isError ? "failed" : "ended", sessionId };
   }
   return tasks;

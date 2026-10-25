@@ -49,6 +49,7 @@ function TaskList({ tasks, empty }: { readonly tasks: Tasks; readonly empty: str
             <Icon name={status.icon} />
             <span className="task-description">{task.description}</span>
             <span className={`status-pill ${status.tone}`}>{status.label}</span>
+            {task.chatId !== undefined && <a href={`#/chat/${encodeURIComponent(task.chatId)}`}>Open chat</a>}
           </li>
         );
       })}

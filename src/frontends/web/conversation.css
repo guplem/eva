@@ -435,6 +435,11 @@
   white-space: nowrap;
 }
 
+/* A message is the agent's prose, not a target such as a file, so it takes the interface font. */
+.step-message {
+  font-family: var(--font);
+}
+
 .step-list li.failed,
 .step-list li.failed .icon {
   color: var(--bad);

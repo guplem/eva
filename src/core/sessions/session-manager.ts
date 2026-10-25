@@ -41,7 +41,7 @@ import {
   type StepDetail,
   type TurnStep,
 } from "../../shared/turn-steps.ts";
-import type { SessionRecord, SessionStore } from "./session-store.ts";
+import type { ProjectReport, SessionRecord, SessionStore } from "./session-store.ts";
 import type { StepDetailsStore } from "./step-details-store.ts";
 
 export interface PreparedTurn {
@@ -205,10 +205,18 @@ interface PendingBatch {
   readonly texts: string[];
   /** The messages that people and Eva sent, for the front ends. A follow-up of the mode is no message. */
   readonly messages: { readonly text: string; readonly origin: MessageOrigin }[];
+  /** The project work results among the messages, already redacted. */
+  readonly reports: ProjectReport[];
   /** The result of this batch's own turn, kept in memory: the record can fail to save. */
   readonly outcome: TurnResult;
   readonly done: Promise<void>;
   readonly resolve: () => void;
+}
+
+/** Who sent the messages of a turn, for the record. */
+interface TurnSender {
+  readonly fromEva: boolean;
+  readonly projectReports: ProjectReport[];
 }
 
 interface TurnResult {
@@ -496,8 +504,8 @@ export class SessionManager {
   }
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
-  send(sessionId: string, text: string, origin: MessageOrigin = "eva"): Promise<void> {
-    return this.enqueue(sessionId, text, origin).done;
+  send(sessionId: string, text: string, origin: MessageOrigin = "eva", report?: ProjectReport): Promise<void> {
+    return this.enqueue(sessionId, text, origin, report).done;
   }
 
   /**
@@ -511,7 +519,7 @@ export class SessionManager {
     return batch.outcome.stopped ? null : batch.outcome.failure;
   }
 
-  private enqueue(sessionId: string, text: string, origin: MessageOrigin): PendingBatch {
+  private enqueue(sessionId: string, text: string, origin: MessageOrigin, report?: ProjectReport): PendingBatch {
     this.assertOpen(this.get(sessionId));
     // A new answer must not hide in the archive.
     this.setArchived(this.rootOf(this.get(sessionId)).id, false);
@@ -520,6 +528,7 @@ export class SessionManager {
     runtime.pending = batch;
     batch.texts.push(text);
     batch.messages.push({ text, origin });
+    if (report !== undefined) batch.reports.push(redactReport(report, this.options.redactor));
     this.lastActivity.set(sessionId, this.options.now().getTime());
     if (!runtime.busy) this.startGathering(sessionId, runtime);
     return batch;
@@ -911,9 +920,12 @@ export class SessionManager {
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
         let followUp: string | null = null;
         try {
-          // A follow-up of the mode has no message, so Eva sent all of it.
-          const fromEva = batch.messages.every((message) => message.origin === "eva");
-          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), fromEva, batch.outcome);
+          const sender = {
+            // A follow-up of the mode has no message, so Eva sent all of it.
+            fromEva: batch.messages.every((message) => message.origin === "eva"),
+            projectReports: [...batch.reports],
+          };
+          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), sender, batch.outcome);
           // Telegram showed the answer where the person asked, so the web app must not show it as unread.
           // A follow-up of the mode has no message, so its answer stays unread.
           const fromTelegram =
@@ -958,7 +970,7 @@ export class SessionManager {
   private async runTurn(
     sessionId: string,
     prompt: string,
-    fromEva: boolean,
+    sender: TurnSender,
     result: TurnResult,
   ): Promise<string | null> {
     // The record is read once at the start, so a change made during the turn cannot move it (lesson 48).
@@ -1135,7 +1147,7 @@ ${prompt}`,
             session,
             {
               ...recorded,
-              fromEva,
+              ...sender,
               ...activity,
               ...this.keptSteps(sessionId, steps),
               notes: [...notes],
@@ -1182,7 +1194,7 @@ ${prompt}`,
       this.recordFailure(
         session.id,
         prompt,
-        fromEva,
+        sender,
         answerParts,
         { ...activity, ...this.keptSteps(sessionId, steps), notes: [...notes] },
         historyLost,
@@ -1312,6 +1324,7 @@ ${prompt}`,
     turn: {
       userText: string;
       fromEva: boolean;
+      projectReports: ProjectReport[];
       answerText: string;
       contextTokens: number | null;
       contextWindow: number | null;
@@ -1362,7 +1375,7 @@ ${prompt}`,
   private recordFailure(
     sessionId: string,
     prompt: string,
-    fromEva: boolean,
+    sender: TurnSender,
     answerParts: readonly string[],
     activity: TurnActivity,
     historyLost: boolean,
@@ -1382,7 +1395,7 @@ ${prompt}`,
         ...current.turns,
         {
           userText: this.options.redactor.redact(prompt),
-          fromEva,
+          ...sender,
           answerText: answerParts.join("\n\n"),
           ...activity,
           contextTokens: null,
@@ -1486,7 +1499,16 @@ function createBatch(): PendingBatch {
   const done = new Promise<void>((settle) => {
     resolve = settle;
   });
-  return { texts: [], messages: [], outcome: { failure: null, stopped: false }, done, resolve };
+  return { texts: [], messages: [], reports: [], outcome: { failure: null, stopped: false }, done, resolve };
+}
+
+function redactReport(report: ProjectReport, redactor: Redactor): ProjectReport {
+  return {
+    ...report,
+    projectTitle: redactor.redact(report.projectTitle),
+    request: redactor.redact(report.request),
+    result: redactor.redact(report.result),
+  };
 }
 
 function titleOf(prompt: string): string {

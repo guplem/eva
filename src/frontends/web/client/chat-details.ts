@@ -139,15 +139,22 @@ export function chatLinks<Chat extends Pick<SessionRecord, "id" | "continuedFrom
 
 /**
  * The tasks of a stored answer, from its steps. Each one ended with its turn; a step keeps
- * only an error, so "ended" covers done and stopped alike.
+ * only an error, so "ended" covers done and stopped alike. `endedWork` maps each Project chat
+ * whose result came back to whether its work failed.
  */
-export function tasksOfTurn(steps: readonly TurnStep[], sessionId: string): LiveState["tasks"] {
+export function tasksOfTurn(
+  steps: readonly TurnStep[],
+  sessionId: string,
+  endedWork: ReadonlyMap<string, boolean> = new Map(),
+): LiveState["tasks"] {
   const tasks: Record<string, LiveState["tasks"][string]> = {};
   for (const step of steps) {
     if (step.kind !== "task" || step.id === null) continue;
-    // The Project chat of project work goes on after the answer, so its task only started.
+    // The Project chat of project work goes on after the answer, so its task only started until its result comes back.
     if (step.chatId !== undefined) {
-      tasks[step.id] = { description: step.text, state: "started", sessionId, chatId: step.chatId };
+      const failed = endedWork.get(step.chatId);
+      const state = failed === undefined ? "started" : failed ? "failed" : "done";
+      tasks[step.id] = { description: step.text, state, sessionId, chatId: step.chatId };
       continue;
     }
     tasks[step.id] = { description: step.text, state: step.isError ? "failed" : "ended", sessionId };

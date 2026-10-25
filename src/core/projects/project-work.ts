@@ -383,7 +383,8 @@ export class ProjectWork {
       // The person may delete either chat while the work runs: the Project chat then keeps the result.
       const exists = (id: string): boolean => sessions.list().some((candidate) => candidate.id === id);
       const last = exists(session.id) ? sessions.get(session.id).turns.at(-1) : undefined;
-      const result = last?.failure === null ? last.answerText : `It failed: ${last?.failure ?? "no answer"}`;
+      const failed = last?.failure !== null;
+      const result = failed ? `It failed: ${last?.failure ?? "no answer"}` : last.answerText;
       const details = await Promise.all(
         listClones(project.path)
           .find((candidate) => candidate.path === clone.path)
@@ -398,9 +399,22 @@ export class ProjectWork {
         return;
       }
       const place = [`clone ${clone.name}`, ...details.map(repositoryPlace)].join("; ");
+      const report = {
+        projectId: project.id,
+        projectTitle: project.title,
+        projectSessionId: session.id,
+        request: input.request,
+        clone: clone.name,
+        repositories: details.map(({ name, branch, pullRequest }) => ({ name, branch, pullRequest })),
+        failed,
+        result: result.slice(-reportTextLimit),
+        resultCut: result.length > reportTextLimit,
+      };
       await sessions.send(
         reportTo,
         `[Project work finished: ${project.id}, ${place}, chat ${session.id}]\n\n${capReportText(result)}`,
+        "eva",
+        report,
       );
     });
     return session;

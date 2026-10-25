@@ -8,6 +8,7 @@ function turn(text: string): Turn {
   return {
     userText: "ask",
     fromEva: false,
+    projectReports: [],
     answerText: text,
     toolCount: 0,
     commandCount: 0,

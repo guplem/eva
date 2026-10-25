@@ -379,6 +379,19 @@ describe("Eva", () => {
     expect(engine.requests[1]?.prompt).toContain("Fixed the login bug.");
     // Eva sent the result, so the web app does not show it as the person's message.
     expect(instance.sessions.get(assistantChat.id).turns[0]?.fromEva).toBe(true);
+    // The facts of the work, so the web app shows a card instead of the raw message.
+    expect(instance.sessions.get(assistantChat.id).turns[0]?.projectReports).toMatchObject([
+      {
+        projectId: "2025-03-02-1015-example-app",
+        projectTitle: "Example app",
+        projectSessionId: work.id,
+        request: "Fix the login bug.",
+        clone: "clone-0",
+        failed: false,
+        result: "Fixed the login bug.",
+        resultCut: false,
+      },
+    ]);
     const missing = await instance
       .startProjectWork({ projectId: "missing", request: "x", reportToSessionId: null })
       .then(

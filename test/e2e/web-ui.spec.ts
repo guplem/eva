@@ -211,6 +211,46 @@ test("Assistant mode: the task dialog of an answer opens the Project chat of its
   await expect(answer).toContainText("Fix the login bug.");
 });
 
+test("Assistant mode: the result of project work comes back as a card of the Project side", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Please give work to the example app, and report back");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText("Started the work.");
+  const assistantChat = page.url();
+  // The Project chat runs the work. Its first chat in a new clone can ask to trust the repository.
+  await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
+  await page
+    .getByRole("dialog", { name: "Background tasks" })
+    .getByRole("listitem")
+    .filter({ hasText: "Fix the login bug." })
+    .getByRole("link", { name: "Open chat" })
+    .click();
+  await answerInNewClone(page, "Fix the login bug.");
+
+  await page.goto(assistantChat);
+  const card = page.locator(".msg", { hasText: "Eva finished the work in Example app" });
+  await expect(card).toBeVisible();
+  // Eva sent it, so no "You" bubble holds the raw result.
+  await expect(page.locator(".message.user", { hasText: "[Project work finished" })).toHaveCount(0);
+  await expect(card).toContainText("Project mode");
+  await expect(card).toContainText("clone-");
+  if (test.info().project.name === "desktop") await expect(card.locator(".mk")).toHaveClass(/project-eyes/);
+  await card.getByRole("button", { name: "Show the whole result" }).click();
+  await expect(card).toContainText("Request: Fix the login bug.");
+  await expect(card.getByRole("button", { name: "Show the summary only" })).toBeVisible();
+
+  // The answer that gave the work shows the work as done now.
+  await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  await expect(dialog.getByRole("listitem").filter({ hasText: "Fix the login bug." })).toContainText("OK");
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  await card.getByRole("link", { name: "Open the Project chat" }).click();
+  await expect(page.locator(".main-header .sub")).toContainText("Example app › clone-");
+});
+
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);

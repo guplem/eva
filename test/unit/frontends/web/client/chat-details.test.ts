@@ -21,6 +21,7 @@ function turn(at: string, contextTokens: number | null, extra: Partial<Turn> = {
   return {
     userText: "hi",
     fromEva: false,
+    projectReports: [],
     answerText: "ok",
     toolCount: 0,
     commandCount: 0,
@@ -188,6 +189,21 @@ describe("tasksOfTurn", () => {
       p1: { description: "example-app: Fix it", state: "started", sessionId: "s1", chatId: "p1" },
     });
     expect(taskStatus("started")).toEqual({ label: "Started", tone: "idle", icon: "chat" });
+  });
+
+  test("project work whose result came back to the chat shows as done, or failed", () => {
+    const steps: Turn["steps"] = [
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" },
+      { kind: "task", text: "example-app: Fix more", isError: false, id: "p2", chatId: "p2" },
+    ];
+    const ended = new Map([
+      ["p1", false],
+      ["p2", true],
+    ]);
+    expect(tasksOfTurn(steps, "s1", ended)).toEqual({
+      p1: { description: "example-app: Fix it", state: "done", sessionId: "s1", chatId: "p1" },
+      p2: { description: "example-app: Fix more", state: "failed", sessionId: "s1", chatId: "p2" },
+    });
   });
 });
 

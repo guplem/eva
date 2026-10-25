@@ -125,6 +125,7 @@ describe("a conversation", () => {
       {
         userText: "Hello there, Eva",
         fromEva: false,
+        projectReports: [],
         answerText: "answer 1",
         toolCount: 0,
         commandCount: 0,
@@ -994,6 +995,29 @@ describe("seen turns (issue 381)", () => {
     // A person's message in the same turn makes the turn the person's.
     await Promise.all([manager.send(sessionId, "a result"), manager.send(sessionId, "and a question", "telegram")]);
     expect(manager.get(sessionId).turns.map((turn) => turn.fromEva)).toEqual([false, true, false]);
+  });
+
+  test("a project work result keeps its facts in the turn, redacted, so a front end shows a card for it", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const sessionId = newAssistantSession(manager);
+    const report = {
+      projectId: "2025-03-02-1015-example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix the login bug.",
+      clone: "clone-0",
+      repositories: [{ name: "example-app", branch: "main", pullRequest: 12 }],
+      failed: false,
+      result: "Fixed it. The key is the-secret-value-123.",
+      resultCut: false,
+    };
+    await manager.send(sessionId, "[Project work finished: example-app]", "eva", report);
+    await manager.send(sessionId, "Thanks", "api");
+    const turns = manager.get(sessionId).turns;
+    expect(turns[0]?.projectReports).toEqual([{ ...report, result: "Fixed it. The key is [redacted]." }]);
+    expect(turns[1]?.projectReports).toEqual([]);
   });
 
   test("a failed turn and a follow-up of the mode record who sent the message too", async () => {

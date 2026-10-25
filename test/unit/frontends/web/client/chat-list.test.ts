@@ -19,6 +19,7 @@ function turn(fields: Partial<Turn>): Turn {
   return {
     userText: "What is on today?",
     fromEva: false,
+    projectReports: [],
     answerText: "",
     toolCount: 0,
     commandCount: 0,

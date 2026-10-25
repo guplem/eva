@@ -3,7 +3,16 @@
  * then its own, with a switcher at each answer that has a fork and a map of the tree beside them. Eva's answers are cards with her visor beside them, with the steps folded
  * into one line, and Retry, Fork and Copy under each answer.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { api, type ChatBlocker, type SessionRecord, type UndoPreview } from "./api.ts";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
@@ -42,6 +51,7 @@ import { Icon } from "./icons.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
+import { endedProjectWork, reportHeadline, reportPlace, reportPreview } from "./project-report.ts";
 import { RetryUndoDialog } from "./RetryUndoDialog.tsx";
 import { StepFold } from "./TurnSteps.tsx";
 import { Visor } from "./Visor.tsx";
@@ -229,6 +239,8 @@ function Branch({
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
+  // A task of project work ends when its result comes back to this chat or a fork of it.
+  const endedWork = useMemo(() => endedProjectWork(tree.flatMap((chat) => chat.turns)), [tree]);
   // The New chat page sent this message before the chat opened here, so the chat starts with it.
   const [sent, setSent] = useState<readonly PendingMessage[]>(
     firstMessage === null ? [] : [{ text: firstMessage, turnCount: 0 }],
@@ -354,12 +366,22 @@ function Branch({
         const point = branchesAfter(path, position, session, tree);
         return (
           <div key={stepKey(owner.id, index)} style={{ display: "contents" }}>
-            <UserMessage
-              text={turn.userText}
-              fromEva={turn.fromEva}
-              recording={recordings.find(owner.id, turn.userText)}
-              turnKey={stepKey(owner.id, index)}
-            />
+            {/* A project work result shows as a card of the Project side, not as a message of the person. */}
+            {turn.projectReports.map((report) => (
+              <ProjectReportCard
+                key={report.projectSessionId}
+                report={report}
+                turnKey={turn.fromEva ? stepKey(owner.id, index) : undefined}
+              />
+            ))}
+            {!(turn.fromEva && turn.projectReports.length > 0) && (
+              <UserMessage
+                text={turn.userText}
+                fromEva={turn.fromEva}
+                recording={recordings.find(owner.id, turn.userText)}
+                turnKey={stepKey(owner.id, index)}
+              />
+            )}
             <EvaMessage face={stateFaces.idle} mode={owner.mode}>
               <AnswerBody
                 steps={turn.steps}
@@ -460,7 +482,7 @@ function Branch({
       {shownTasks === "running" && <TasksDialog tasks={tasks} empty="No task runs now." onClose={closeTasks} />}
       {shownTasks !== null && shownTasks !== "running" && (
         <TasksDialog
-          tasks={tasksOfTurn(shownTasks.turn.steps, shownTasks.session.id)}
+          tasks={tasksOfTurn(shownTasks.turn.steps, shownTasks.session.id, endedWork)}
           total={shownTasks.turn.taskCount}
           // The chat details show only the tasks that run now, so this list says why its tasks ended.
           note="This answer started these tasks, such as a subagent, a long command or a Project chat. Only a Project chat keeps running after the answer."
@@ -569,6 +591,47 @@ function UserMessage({
  * The notes of a turn, such as an MCP server that did not start, apart from its answer (issue 157).
  * Only a running turn's notes are a live region, so a reload does not read out every old note.
  */
+/**
+ * The result of project work, sent back to the Assistant chat that gave the work. It speaks for the
+ * Project side, so its visor has the Project eyes. A phone hides the visor, so the chip shows the mode too.
+ */
+function ProjectReportCard({
+  report,
+  turnKey,
+}: {
+  readonly report: SessionRecord["turns"][number]["projectReports"][number];
+  readonly turnKey: string | undefined;
+}): ReactElement {
+  const [showWhole, setShowWhole] = useState(false);
+  const html = useMemo(() => toWebHtml(showWhole ? report.result : reportPreview(report)), [showWhole, report]);
+  return (
+    <EvaMessage face={report.failed ? stateFaces.failed : stateFaces.greeting} mode="project" turnKey={turnKey}>
+      <div className="project-report-head">
+        <span className="mode-chip soft">
+          <Icon name="briefcase" /> <span className="mode-chip-label">Project mode</span>
+        </span>
+        <strong>{reportHeadline(report)}</strong>
+      </div>
+      <p className="field-hint">{reportPlace(report)}</p>
+      {showWhole && <p className="field-hint">Request: {report.request}</p>}
+      {showWhole && report.resultCut && (
+        <p className="field-hint">This is the end of a longer answer. The Project chat has all of it.</p>
+      )}
+      {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
+      <div className="answer-body project-report-result" dangerouslySetInnerHTML={{ __html: html }} />
+      <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
+        {showWhole ? "Show the summary only" : "Show the whole result"}
+      </button>
+      <div className="project-report-actions">
+        <a className="button-link plain" href={`#/chat/${encodeURIComponent(report.projectSessionId)}`}>
+          <Icon name="briefcase" />
+          Open the Project chat
+        </a>
+      </div>
+    </EvaMessage>
+  );
+}
+
 function TurnNotes({
   notes,
   live = false,
@@ -594,14 +657,17 @@ function TurnNotes({
 function EvaMessage({
   face,
   mode,
+  turnKey,
   children,
 }: {
   readonly face: Face;
   readonly mode: SessionRecord["mode"];
-  readonly children: ReactElement[] | ReactElement;
+  /** The key of its turn, so a pick in the branch map can scroll to it. */
+  readonly turnKey?: string | undefined;
+  readonly children: ReactNode;
 }): ReactElement {
   return (
-    <div className="msg">
+    <div className="msg" data-turn={turnKey}>
       <Visor size={28} face={face} projectEyes={mode === "project"} />
       <div className="message answer">{children}</div>
     </div>

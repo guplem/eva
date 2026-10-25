@@ -19,6 +19,26 @@ const stepSchema = z.object({
   chatId: z.string().optional(),
 });
 
+/** The facts of a project work result, so a front end shows a card instead of the raw message. */
+const projectReportSchema = z.object({
+  projectId: z.string(),
+  projectTitle: z.string(),
+  /** The Project chat that did the work. */
+  projectSessionId: z.string(),
+  request: z.string(),
+  clone: z.string(),
+  repositories: z.array(
+    z.object({ name: z.string(), branch: z.string().nullable(), pullRequest: z.number().int().nullable() }),
+  ),
+  failed: z.boolean(),
+  /** The end of the last answer of the Project chat, or the failure reason. */
+  result: z.string(),
+  /** The answer was longer, so `result` holds only its end. */
+  resultCut: z.boolean(),
+});
+
+export type ProjectReport = z.infer<typeof projectReportSchema>;
+
 const turnSchema = z.object({
   userText: z.string(),
   /**
@@ -26,6 +46,8 @@ const turnSchema = z.object({
    * so a front end does not show it as the person's. A turn from before the field has none.
    */
   fromEva: z.boolean().default(false).catch(false),
+  /** The project work results that Eva sent in this turn. A turn from before the field has none. */
+  projectReports: z.array(projectReportSchema).catch([]),
   /** The answer's text, for the history views of the front ends. */
   answerText: z.string().default(""),
   /** How many tools the turn used, commands included, for the activity chips. */

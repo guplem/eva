@@ -1399,6 +1399,7 @@ describe("runSetup", () => {
         githubToken: "a-pasted-token",
         vaultRepository: "0",
         name: "Alex",
+        notesLanguage: "Catalan",
         topics: "Work, music",
         githubRepository: "my-vault",
       },
@@ -1408,6 +1409,7 @@ describe("runSetup", () => {
     const about = readFileSync(join(newVault, "Life", "About me.md"), "utf8");
     expect(about).toContain("- **Name:** Alex");
     expect(about).toContain("- Work\n- music\n");
+    expect(readFileSync(join(newVault, "AGENTS.md"), "utf8")).toContain("**Write all notes in Catalan**");
     // Before the questions, the person sees each folder of the new vault, and how to change them.
     const said = lines.join("\n");
     expect(said).toContain("Principles/");

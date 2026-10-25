@@ -1,7 +1,7 @@
 /**
  * A new vault from Eva's template: the files in `templates/vault/`, which
  * Bun embeds at build time, so the single executable carries them. The template holds nothing
- * personal; `eva setup` fills in the person's name, language, time zone and topics.
+ * personal; `eva setup` fills in the person's name, both languages, time zone and topics.
  */
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -34,7 +34,10 @@ export const templateParts: Readonly<Record<string, string>> = {
 
 export interface VaultTemplateAnswers {
   readonly name: string;
+  /** The language of Eva's answers. */
   readonly language: string;
+  /** The language of every note in the vault. */
+  readonly notesLanguage: string;
   readonly timeZone: string;
   /** The main topics of the person's life and work, in their own words. */
   readonly topics: readonly string[];
@@ -59,10 +62,11 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
       .replaceAll("{{nameInQuotes}}", JSON.stringify(answers.name).slice(1, -1))
       .replaceAll("{{name}}", answers.name)
       .replaceAll("{{language}}", answers.language)
+      .replaceAll("{{notesLanguage}}", answers.notesLanguage)
       .replaceAll("{{timeZone}}", answers.timeZone)
       .replaceAll("{{topics}}", topicList);
   const files: Record<string, string> = {
-    "AGENTS.md": agentsFile,
+    "AGENTS.md": fill(agentsFile),
     "README.md": readmeFile,
     ".gitignore": gitignoreFile,
     ".eva/assistant.md": defaultAssistantRules,

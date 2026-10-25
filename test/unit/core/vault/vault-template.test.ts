@@ -33,7 +33,13 @@ afterEach(() => {
   rmSync(folder, { recursive: true, force: true });
 });
 
-const answers = { name: "Alex", language: "English", timeZone: "Europe/Madrid", topics: ["Work", "Music"] };
+const answers = {
+  name: "Alex",
+  language: "English",
+  notesLanguage: "Spanish",
+  timeZone: "Europe/Madrid",
+  topics: ["Work", "Music"],
+};
 
 function git(cwd: string, ...args: string[]): string {
   return Bun.spawnSync(["git", ...args], { cwd, env: environment })
@@ -93,6 +99,12 @@ describe("the vault template", () => {
       expect(map).toContain(`\`${folder}`);
     }
     expect(map).toContain("## Grow the vault");
+  });
+
+  test("the agent map names the language that the person chose for notes", () => {
+    const map = vaultTemplateFiles(answers)["AGENTS.md"] ?? "";
+    expect(map).toContain("**Write all notes in Spanish**");
+    expect(map).not.toContain("{{");
   });
 
   test("each folder that setup describes is in the agent map and in the new vault", () => {

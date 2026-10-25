@@ -81,6 +81,7 @@ export type SetupQuestion =
   | "createVault"
   | "name"
   | "language"
+  | "notesLanguage"
   | "topics"
   | "githubRepository"
   | "engine"
@@ -106,6 +107,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   createVault: "EVA_CREATE_VAULT",
   name: "EVA_PERSON_NAME",
   language: "EVA_LANGUAGE",
+  notesLanguage: "EVA_NOTES_LANGUAGE",
   topics: "EVA_TOPICS",
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
@@ -745,12 +747,14 @@ async function offerNewVault(
   options.write(vaultFoldersHint);
   const name = (await ask("name", "What should Eva call you? ")) || "the owner";
   const language = (await ask("language", "The language for Eva's answers [English]: ")) || "English";
+  const notesLanguage =
+    (await ask("notesLanguage", "The language for the notes in your vault [English, recommended]: ")) || "English";
   const topics = splitList(
     await ask("topics", "Your main topics, comma-separated, such as work, family, music (Enter to skip): "),
   );
   await createVaultFromTemplate({
     folder,
-    answers: { name, language, timeZone, topics },
+    answers: { name, language, notesLanguage, timeZone, topics },
     runner: options.runner,
     // The first commit carries this Eva's commit identity, as each later one does.
     environment: {

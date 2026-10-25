@@ -4,6 +4,7 @@
  */
 import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
+import type { NewVaultAnswers } from "../../../core/vault/vault-setup.ts";
 import { vaultFolders, vaultFoldersHint } from "../../../core/vault/vault-folders.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { ChoiceChips, errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
@@ -190,19 +191,22 @@ function NewVault({
 }: {
   readonly busy: "clone" | "create" | null;
   readonly hasToken: boolean;
-  readonly onCreate: (answers: { name: string; language: string; topics: string[]; repository: string }) => void;
+  readonly onCreate: (answers: NewVaultAnswers) => void;
 }): ReactElement {
   const [name, setName] = useState("");
   const [language, setLanguage] = useState("English");
+  const [notesLanguage, setNotesLanguage] = useState("English");
   const [topics, setTopics] = useState("");
   const [repository, setRepository] = useState("vault");
   // A save would create the vault and its repository, so the question offers no save.
-  const changed = name !== "" || language !== "English" || topics !== "" || repository !== "vault";
+  const changed =
+    name !== "" || language !== "English" || notesLanguage !== "English" || topics !== "" || repository !== "vault";
   useLeaveGuard(changed && busy === null, null);
   const create = (): void => {
     onCreate({
       name,
       language,
+      notesLanguage,
       topics: topics
         .split(",")
         .map((topic) => topic.trim())
@@ -226,6 +230,13 @@ function NewVault({
       <label className="field">
         <span className="field-label">The language of Eva&apos;s answers</span>
         <input value={language} onChange={(event) => setLanguage(event.target.value)} />
+      </label>
+      <label className="field">
+        <span className="field-label">The language of the notes in your vault</span>
+        <input value={notesLanguage} onChange={(event) => setNotesLanguage(event.target.value)} />
+        <span className="field-hint">
+          Eva writes every note in this language, so one search finds everything. English is recommended.
+        </span>
       </label>
       <label className="field">
         <span className="field-label">Your main topics</span>

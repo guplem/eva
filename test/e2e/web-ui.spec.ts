@@ -215,6 +215,7 @@ test("Assistant mode: the task dialog of an answer opens the Project chat of its
   // The result comes back as a card, then the asking chat answers it.
   await expect(page.locator(".msg", { hasText: "Eva finished the work in Example app" })).toBeVisible();
   await expect(page.locator(".message.answer").nth(2)).toContainText("The tests pass.");
+  await waitUntilNoChatWorks(page);
 });
 
 test("Assistant mode: the result of project work comes back as a card of the Project side", async ({ page }) => {
@@ -257,6 +258,7 @@ test("Assistant mode: the result of project work comes back as a card of the Pro
 
   await card.getByRole("link", { name: "Open the Project chat" }).click();
   await expect(page.locator(".main-header .sub")).toContainText("Example app › clone-");
+  await waitUntilNoChatWorks(page);
 });
 
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
@@ -636,6 +638,16 @@ async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
         ((await (await page.request.get("/api/status")).json()) as { busySessionIds: string[] }).busySessionIds,
     )
     .not.toContain(chatId);
+}
+
+/** Waits until no chat runs a turn or a vault sync, so the work of a test does not run on into the next one. */
+async function waitUntilNoChatWorks(page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        ((await (await page.request.get("/api/status")).json()) as { busySessionIds: string[] }).busySessionIds,
+    )
+    .toEqual([]);
 }
 
 /**
@@ -1090,7 +1102,7 @@ test("Copy copies the text of an answer", async ({ page, context }) => {
 
 test("the composer's chip picks the engine before the first message, and the model between turns", async ({ page }) => {
   await logIn(page);
-  await newChat(page);
+  const chatId = await newChat(page);
   const chip = page.getByRole("button", { name: /Smart/ });
   await chip.click();
   const menu = page.getByRole("dialog", { name: "Engine, model and effort" });
@@ -1126,6 +1138,8 @@ test("the composer's chip picks the engine before the first message, and the mod
   // The chip names the model that answered (#419).
   await expect(picker).toContainText("Balanced · Sonnet 5.5");
   await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
+  // A chat refuses a new model while it is busy, and the vault sync after its turn keeps it busy.
+  await waitUntilIdle(page, chatId);
   await picker.click();
   await expect(menu).toContainText("The engine is fixed after the first message");
   await expect(menu.getByRole("group", { name: "Engine" })).toHaveCount(0);

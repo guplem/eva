@@ -53,7 +53,7 @@ Inside each folder, group by topic. Purpose first, topic second.
 - **One fact lives in one file.** Other files link to it, never copy it. Two copies become different over time, and then neither can be trusted.
 - **Name a file after the moment when the person would open it**, not after where its content came from. Write `Mental Strength Checklist`, not `13 Things Mentally Strong People Don't Do`. The test: standing in that situation, could the person guess the file name?
 - **Write notes impersonally**, as statements about the world. Write "The mind believes what it hears by default", not "My mind believes what it hears". A diary is the exception: it is the person's own voice.
-- **Write all notes in one language**, so that one search finds everything.
+- **Write all notes in {{notesLanguage}}**, even when the person talks in another language, so that one search finds everything. Keep quotes and names in their own language.
 - **Close a note with its source** when the person says where it came from: `> Source: *Title*, Author`, plus a link when one exists.
 - **Mark few notes as important.** When the person would want to see a note even while they ask about another topic, put `> Important: <why it matters>` under its title.
 - **Secrets** (keys, passwords) may live only in the folder of the project that uses them. Never copy one into a note outside that folder. One known place for each secret makes it possible to change it later.

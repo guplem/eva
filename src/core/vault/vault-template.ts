@@ -1,13 +1,14 @@
 /**
  * A new vault from Eva's template: the files in `templates/vault/`, which
  * Bun embeds at build time, so the single executable carries them. The template holds nothing
- * personal; `eva setup` fills in the person's name, language, time zone and topics.
+ * personal; `eva setup` fills in the person's name, both languages, time zone and topics.
  */
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
+import { vaultFolders } from "./vault-folders.ts";
 import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" };
 import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
 import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "text" };
@@ -33,7 +34,10 @@ export const templateParts: Readonly<Record<string, string>> = {
 
 export interface VaultTemplateAnswers {
   readonly name: string;
+  /** The language of Eva's answers. */
   readonly language: string;
+  /** The language of every note in the vault. */
+  readonly notesLanguage: string;
   readonly timeZone: string;
   /** The main topics of the person's life and work, in their own words. */
   readonly topics: readonly string[];
@@ -58,10 +62,11 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
       .replaceAll("{{nameInQuotes}}", JSON.stringify(answers.name).slice(1, -1))
       .replaceAll("{{name}}", answers.name)
       .replaceAll("{{language}}", answers.language)
+      .replaceAll("{{notesLanguage}}", answers.notesLanguage)
       .replaceAll("{{timeZone}}", answers.timeZone)
       .replaceAll("{{topics}}", topicList);
-  return {
-    "AGENTS.md": agentsFile,
+  const files: Record<string, string> = {
+    "AGENTS.md": fill(agentsFile),
     "README.md": readmeFile,
     ".gitignore": gitignoreFile,
     ".eva/assistant.md": defaultAssistantRules,
@@ -78,11 +83,12 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
         2,
       ) + "\n",
     ...templateParts,
-    // The empty top-level folders that AGENTS.md describes, so a new vault shows its shape.
-    ...Object.fromEntries(
-      ["Principles", "Methods", "Toolbox", "Library", "Projects"].map((folder) => [`${folder}/.gitkeep`, ""]),
-    ),
   };
+  // Git keeps no empty folder, so each folder with no file yet gets a `.gitkeep`, and a new vault shows its shape.
+  for (const { path } of vaultFolders) {
+    if (!Object.keys(files).some((file) => file.startsWith(`${path}/`))) files[`${path}/.gitkeep`] = "";
+  }
+  return files;
 }
 
 /** Writes the template into an empty or missing folder and makes its first commit. */

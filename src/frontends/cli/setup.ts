@@ -59,6 +59,7 @@ import {
 } from "../../core/vault/github-repositories.ts";
 import { logInGitHubCli } from "../../core/vault/github-cli-login.ts";
 import { githubLoginAccess } from "../../core/vault/github-login.ts";
+import { vaultFolders, vaultFoldersHint } from "../../core/vault/vault-folders.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import type { EngineName } from "../../shared/engine-port.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
@@ -80,6 +81,7 @@ export type SetupQuestion =
   | "createVault"
   | "name"
   | "language"
+  | "notesLanguage"
   | "topics"
   | "githubRepository"
   | "engine"
@@ -105,6 +107,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   createVault: "EVA_CREATE_VAULT",
   name: "EVA_PERSON_NAME",
   language: "EVA_LANGUAGE",
+  notesLanguage: "EVA_NOTES_LANGUAGE",
   topics: "EVA_TOPICS",
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
@@ -739,14 +742,19 @@ async function offerNewVault(
     const create = await ask("createVault", `${folder} holds no vault. Create a new vault there? [y/N]: `);
     if (!/^y(es)?$/i.test(create)) return;
   }
+  options.write("The new vault gets these folders:");
+  for (const { path, purpose } of vaultFolders) options.write(noteLine(`  ${path}/: ${purpose}`));
+  options.write(vaultFoldersHint);
   const name = (await ask("name", "What should Eva call you? ")) || "the owner";
   const language = (await ask("language", "The language for Eva's answers [English]: ")) || "English";
+  const notesLanguage =
+    (await ask("notesLanguage", "The language for the notes in your vault [English, recommended]: ")) || "English";
   const topics = splitList(
     await ask("topics", "Your main topics, comma-separated, such as work, family, music (Enter to skip): "),
   );
   await createVaultFromTemplate({
     folder,
-    answers: { name, language, timeZone, topics },
+    answers: { name, language, notesLanguage, timeZone, topics },
     runner: options.runner,
     // The first commit carries this Eva's commit identity, as each later one does.
     environment: {

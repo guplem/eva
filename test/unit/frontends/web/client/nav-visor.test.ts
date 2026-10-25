@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { navVisorState, visorSignal, type NavVisorInput } from "../../../../../src/frontends/web/client/nav-visor.ts";
+import {
+  navVisorState,
+  tapFace,
+  visorSignal,
+  type NavVisorInput,
+} from "../../../../../src/frontends/web/client/nav-visor.ts";
 import { stateFaces } from "../../../../../src/frontends/web/client/visor-faces.ts";
 
 const calm: NavVisorInput = {
@@ -87,5 +92,17 @@ describe("visorSignal (#566)", () => {
     expect(visorSignal({ ...quiet, news: true })).toEqual({ count: 0, dot: true, alarm: false });
     expect(visorSignal({ ...quiet, news: true, unreadProblems: 1 }).dot).toBe(false);
     expect(visorSignal(quiet)).toEqual({ count: 0, dot: false, alarm: false });
+  });
+});
+
+describe("tapFace", () => {
+  test("picks each playful face from the random number", () => {
+    expect(tapFace(() => 0)).toBe("happy");
+    expect(tapFace(() => 0.999)).toBe("surprised");
+  });
+
+  test("never repeats the face of the last tap, so each tap looks different", () => {
+    const last = "happy";
+    expect(tapFace(() => 0, last)).not.toBe(last);
   });
 });

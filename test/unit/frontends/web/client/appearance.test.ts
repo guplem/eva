@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   applyAppearance,
+  defaultProjectEyes,
   defaultSeed,
   hexToOklch,
   oklchToHex,
@@ -131,6 +132,7 @@ describe("stored appearance", () => {
       fileNameCut: "middle",
       filesView: "columns",
       fileNames: "smart",
+      projectEyes: defaultProjectEyes,
     });
   });
 
@@ -143,6 +145,7 @@ describe("stored appearance", () => {
       fileNameCut: "middle",
       filesView: "columns",
       fileNames: "smart",
+      projectEyes: defaultProjectEyes,
     });
     useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ seed: "red" }) }));
     expect(readAppearance().seed).toBe(defaultSeed);
@@ -169,6 +172,15 @@ describe("stored appearance", () => {
     expect(readAppearance().fileNames).toBe("smart");
   });
 
+  test("gives Project chats violet eyes, reads a stored colour, and drops a value that is not a colour", () => {
+    expect(defaultProjectEyes).toBe("#8b5cf6");
+    expect(seedName(defaultProjectEyes)).toBe("Violet");
+    useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ projectEyes: "#14B8A6" }) }));
+    expect(readAppearance().projectEyes).toBe("#14b8a6");
+    useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ projectEyes: "violet" }) }));
+    expect(readAppearance().projectEyes).toBe(defaultProjectEyes);
+  });
+
   test("uses the defaults when the storage throws", () => {
     useStorage({
       getItem: () => {
@@ -189,6 +201,7 @@ describe("stored appearance", () => {
       filesView: "single",
       fileNameCut: "end",
       fileNames: "real",
+      projectEyes: "#14b8a6",
     });
     expect(page.attributes.get("data-theme")).toBe("dark");
     expect(page.attributes.get("data-density")).toBe("compact");
@@ -196,6 +209,9 @@ describe("stored appearance", () => {
     expect(page.attributes.get("data-file-name-cut")).toBe("end");
     expect(page.properties.get("--h")).toBe("29.2");
     expect(page.properties.get("--c")).toBe("0.200");
+    const teal = seedVariables("#14b8a6");
+    expect(page.properties.get("--project-eye-h")).toBe(teal["--h"]);
+    expect(page.properties.get("--project-eye-c")).toBe(teal["--c"]);
     expect(page.metas.map((meta) => meta.media)).toEqual(["not all", "all"]);
     const { light, dark } = themeColours("#ff0000");
     expect(page.metas.map((meta) => meta.content)).toEqual([light, dark]);
@@ -206,6 +222,7 @@ describe("stored appearance", () => {
       fileNameCut: "end",
       filesView: "single",
       fileNames: "real",
+      projectEyes: "#14b8a6",
     });
   });
 
@@ -223,6 +240,7 @@ describe("stored appearance", () => {
       seed: defaultSeed,
       filesView: "columns",
       fileNames: "smart",
+      projectEyes: defaultProjectEyes,
       fileNameCut: "middle",
     });
     expect(page.attributes.has("data-theme")).toBe(false);
@@ -240,6 +258,7 @@ describe("stored appearance", () => {
       seed: defaultSeed,
       filesView: "columns",
       fileNames: "smart",
+      projectEyes: defaultProjectEyes,
       fileNameCut: "middle",
     });
     expect(page.metas.map((meta) => meta.media)).toEqual(["all", "not all"]);

@@ -358,7 +358,7 @@ function Branch({
               recording={recordings.find(owner.id, turn.userText)}
               turnKey={stepKey(owner.id, index)}
             />
-            <EvaMessage face={stateFaces.idle}>
+            <EvaMessage face={stateFaces.idle} mode={owner.mode}>
               <AnswerBody
                 steps={turn.steps}
                 sessionId={owner.id}
@@ -582,17 +582,22 @@ function TurnNotes({
   );
 }
 
-/** Eva's card, with her visor at its side. A phone hides the visor to keep the width. */
+/**
+ * Eva's card, with her visor at its side. A phone hides the visor to keep the width.
+ * In a Project chat, the eyes take the Project colour, so the mode shows at a glance.
+ */
 function EvaMessage({
   face,
+  mode,
   children,
 }: {
   readonly face: Face;
+  readonly mode: SessionRecord["mode"];
   readonly children: ReactElement[] | ReactElement;
 }): ReactElement {
   return (
     <div className="msg">
-      <Visor size={28} face={face} />
+      <Visor size={28} face={face} projectEyes={mode === "project"} />
       <div className="message answer">{children}</div>
     </div>
   );
@@ -682,7 +687,7 @@ function LiveAnswer({
   );
   const hasText = steps.some((step) => step.kind === "message");
   return (
-    <EvaMessage face={liveFace(hasText, mode)}>
+    <EvaMessage face={liveFace(hasText, mode)} mode={mode}>
       <AnswerBody steps={shown.steps} omitted={shown.omittedSteps} wholeAnswer={wholeAnswer} live />
       <div className="working">
         <span className="dots" aria-hidden="true">

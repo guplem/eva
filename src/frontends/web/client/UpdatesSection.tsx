@@ -484,7 +484,13 @@ function EvaUpdatesCard({
       description="Eva installs an update only when no chat is running, then restarts."
       aside={<Visor face={updatesFace(update, restarted)} />}
     >
-      {callout !== null && <div className="callout">{callout}</div>}
+      {/* The changelog only reads: it sits with the status, away from the buttons that install. */}
+      <div className="callout update-status">
+        {callout !== null && <span>{callout}</span>}
+        <button className="link-button" onClick={() => setShowingChangelog(true)}>
+          Changelog
+        </button>
+      </div>
       <ChoiceChips
         label="Install updates automatically"
         value={config.updates.frequency}
@@ -502,26 +508,27 @@ function EvaUpdatesCard({
           A major update can break things that work today. With this choice, Eva installs it by herself.
         </div>
       )}
-      <div className="button-row">
-        <button
-          className="primary"
-          disabled={update === null || installs}
-          aria-busy={installs}
-          onClick={() => void updateNow()}
-        >
-          {installs && <ButtonSpinner share={wait?.share ?? null} />}
-          Check and install
-        </button>
-        <button disabled={update === null || update.kind === "source"} onClick={() => void pickVersion()}>
-          Update to a version…
-        </button>
-        <button onClick={() => setShowingChangelog(true)}>Changelog</button>
+      <div className="card-actions">
+        <div className="button-row">
+          <button
+            className="primary"
+            disabled={update === null || installs}
+            aria-busy={installs}
+            onClick={() => void updateNow()}
+          >
+            {installs && <ButtonSpinner share={wait?.share ?? null} />}
+            Check and install
+          </button>
+          <button disabled={update === null || update.kind === "source"} onClick={() => void pickVersion()}>
+            Update to a version…
+          </button>
+        </div>
+        {update?.kind === "source" && (
+          <div className="field-hint">This Eva runs from a git checkout, so she follows the main branch.</div>
+        )}
+        {wait !== null && <ProgressBar label={wait.label} share={wait.share} />}
+        {note !== null && <div role="status">{note}</div>}
       </div>
-      {update?.kind === "source" && (
-        <div className="field-hint">This Eva runs from a git checkout, so she follows the main branch.</div>
-      )}
-      {wait !== null && <ProgressBar label={wait.label} share={wait.share} />}
-      {note !== null && <div role="status">{note}</div>}
       {pickingVersion && update !== null && (
         <UpdateVersionDialog
           update={update}

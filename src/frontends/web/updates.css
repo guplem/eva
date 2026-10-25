@@ -225,3 +225,17 @@ label.version-row {
     justify-content: center;
   }
 }
+
+/* The update status, with the changelog link at its end. */
+.callout.update-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.update-status button.link-button {
+  align-self: center;
+  padding: 0;
+}

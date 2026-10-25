@@ -627,6 +627,12 @@ button.ghost .icon {
   gap: 10px;
 }
 
+/* A file dragged over the box drops into it. */
+.composer-box.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
 .composer-box textarea {
   border: 0;
   background: transparent;

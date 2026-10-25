@@ -24,26 +24,17 @@ export function isOtherMachineProblem(key: string): boolean {
   return key.startsWith("machine:");
 }
 
-/** A page that holds the fix of some problems, so a button to it is useless while it is open. */
-export type FixPage = "settings" | "schedules";
-
 /** Null: no button can fix it from here. Settings also holds the conflict list. */
-export function problemAction(
-  key: string,
-  syncStatus: VaultSyncState["status"],
-  openPage: FixPage | null = null,
-): ProblemAction | null {
-  if (key.startsWith("schedule:") || key.startsWith("schedule_card:")) {
-    return openPage === "schedules" ? null : "open_schedules";
-  }
-  if (isOtherMachineProblem(key) || openPage === "settings") return null;
+export function problemAction(key: string, syncStatus: VaultSyncState["status"]): ProblemAction | null {
+  if (key.startsWith("schedule:") || key.startsWith("schedule_card:")) return "open_schedules";
+  if (isOtherMachineProblem(key)) return null;
   if (key === "vault_sync" && syncStatus === "conflict") return "pick_version";
   if (key === "template_alignment") return "choose_template_version";
   if (key === claudeLoginKey) return "open_claude_login";
   return "open_settings";
 }
 
-/** The problems that get a notice: not one that the person hid. An older Eva sends no mark. */
+/** The problems that the person did not read: not one that the person hid. An older Eva sends no mark. */
 export function shownProblems<Problem extends { readonly hidden?: boolean }>(problems: readonly Problem[]): Problem[] {
   return problems.filter((problem) => problem.hidden !== true);
 }

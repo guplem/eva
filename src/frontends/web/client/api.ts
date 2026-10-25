@@ -9,6 +9,7 @@ import type {
   InstallableTool,
   CurrentPlace,
   LatestToolVersion,
+  NotificationsView,
   PersonalFactsView,
   PermissionsOverview,
   ToolInstallResult,
@@ -369,6 +370,12 @@ export const api = {
   /** Hides the notice of an open problem, and answers with the new status. */
   hideProblem: (key: string): Promise<EvaStatus> =>
     request("POST", "/api/problems/hide", { key }, { limit: quickRead }),
+  /** The notification history, oldest first. An older Eva answers 404. */
+  notifications: (): Promise<NotificationsView> =>
+    request("GET", "/api/notifications", undefined, { limit: quickRead }),
+  /** "all" also hides every open problem. */
+  markNotificationsRead: (choice: { seqs: readonly number[] } | { all: true }): Promise<NotificationsView> =>
+    request("POST", "/api/notifications/read", choice, { limit: quickRead }),
   startClaudeLogin: (): Promise<{ url: string }> => request("POST", "/api/engines/claude-code/login", {}),
   /** Takes the code that Claude's page shows after the login. */
   finishClaudeLogin: (code: string): Promise<{ restartNeeded: boolean }> =>

@@ -18,6 +18,11 @@ describe("destinationOf", () => {
     expect(destinationOf("#/nothing-here")).toBe("chats");
   });
 
+  test("the visor's notification center has its own address (#566)", () => {
+    expect(destinationOf(addressOf("notifications"))).toBe("notifications");
+    expect(addressOf("notifications")).toBe("#/notifications");
+  });
+
   test("a Settings section address opens Settings", () => {
     expect(destinationOf("#/settings/remote-access")).toBe("settings");
   });

@@ -18,7 +18,9 @@ import {
   type SessionEvent,
   type VaultSyncState,
   type ListedSession,
+  type ProgressStep,
 } from "./api.ts";
+import type { HistoryEntry } from "../../../core/alerts/notification-history.ts";
 import { ApprovalNotice } from "./ApprovalCard.tsx";
 import { cueOfEvent, playCue } from "./cues.ts";
 import { approvalNoticeWords, approvalPlace, approvalsOutside, pendingOf } from "./approvals.ts";
@@ -37,13 +39,21 @@ import {
 } from "./live-state.ts";
 import { AccountRefusedView, LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
-import { addressOf, chatsTapAgain, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
+import {
+  addressOf,
+  chatsTapAgain,
+  destinationOf,
+  linkedChatIdOf,
+  notificationCenter,
+  type Destination,
+} from "./navigation.ts";
+import { NotificationCenter } from "./NotificationCenter.tsx";
 import { useIsPhone } from "./ChatHeader.tsx";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
 import { isLongHide } from "./event-stream.ts";
-import { withPendingHides, type ProblemAction } from "./problem-actions.ts";
+import { shownProblems, withPendingHides, type ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -113,6 +123,9 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [conflictsOpen, setConflictsOpen] = useState(false);
   const events = useRef<EventSubscription | null>(null);
   const [setupMissing, setSetupMissing] = useState(0);
+  // The notification center (#566): the history, and the setup steps that are left.
+  const [notifications, setNotifications] = useState<readonly HistoryEntry[]>([]);
+  const [steps, setSteps] = useState<readonly ProgressStep[]>([]);
   const [chatBlocker, setChatBlocker] = useState<ChatBlocker | null>(null);
   const [voiceNotes, setVoiceNotes] = useState(false);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
@@ -191,6 +204,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       setCards(await api.scheduleCards());
     } catch {
       // The next poll or the next reconnect tries again.
+    }
+    try {
+      setNotifications((await api.notifications()).entries);
+    } catch (caught) {
+      // An older Eva has no history: the center shows only the open problems.
+      if (caught instanceof ApiError && caught.status === 404) setNotifications([]);
     }
   }, [showProblems]);
 
@@ -332,6 +351,15 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     const timer = setInterval(() => void refreshProblems(), isBlocked ? blockedPollMs : problemPollMs);
     return () => clearInterval(timer);
   }, [authenticated, refreshProblems, isBlocked]);
+
+  // The setup steps are a slow read, so only the center reads them, each time it opens.
+  useEffect(() => {
+    if (authenticated !== true || screen !== notificationCenter) return;
+    api.setupState().then(
+      (state) => setSteps(state.progress.filter((step) => step.state === "missing")),
+      () => undefined,
+    );
+  }, [authenticated, screen, setupMissing]);
 
   // A step done in Settings unlocks the chats as soon as the person goes back to them.
   useEffect(() => {
@@ -527,6 +555,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       pendingHides.current = new Set([...pendingHides.current].filter((pending) => pending !== key));
       hideAnswers.current += 1;
     };
+    // Eva marks the problem's history entries as read too.
+    setNotifications((current) => current.map((entry) => (entry.key === key ? { ...entry, read: true } : entry)));
     api.hideProblem(key).then(
       (status) => {
         settle();
@@ -540,17 +570,30 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       },
     );
   };
-  const notices = (
-    <ProblemNotices
-      isConnected={isConnected}
-      problems={problems}
-      syncStatus={syncState?.status ?? "ok"}
-      openPage={screen === "settings" || screen === "schedules" ? screen : null}
-      onRetryNow={() => events.current?.retryNow()}
-      onAction={runProblemAction}
-      onHide={hideProblem}
-    />
-  );
+  const readEntries = (seqs: readonly number[]): void => {
+    const chosen = new Set(seqs);
+    setNotifications((current) => current.map((entry) => (chosen.has(entry.seq) ? { ...entry, read: true } : entry)));
+    api.markNotificationsRead({ seqs }).then(
+      (view) => setNotifications(view.entries),
+      (caught: unknown) => showError(caught),
+    );
+  };
+  const readAll = (): void => {
+    setNotifications((current) => current.map((entry) => ({ ...entry, read: true })));
+    setProblems((current) => current.map((problem) => ({ ...problem, hidden: true })));
+    api.markNotificationsRead({ all: true }).then(
+      (view) => {
+        setNotifications(view.entries);
+        void refreshProblems();
+      },
+      (caught: unknown) => {
+        showError(caught);
+        void refreshProblems();
+      },
+    );
+  };
+  const notices = <ProblemNotices isConnected={isConnected} onRetryNow={() => events.current?.retryNow()} />;
+  const unreadProblems = shownProblems(problems);
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
   const onConflictState = (state: VaultSyncState): void => {
     setSyncState(state);
@@ -567,13 +610,17 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         setupMissing={setupMissing}
         isConnected={isConnected}
         problems={problems.length}
+        unreadProblems={unreadProblems.length}
+        unreadError={unreadProblems.some((problem) => problem.level === "error")}
+        news={setupMissing > 0 || notifications.some((entry) => !entry.read)}
         chatBlocked={chatBlocker !== null}
         assistantTurns={runningTurns.assistant}
         projectTurns={runningTurns.project}
       />
       <div className="app-body">
         {/* The chat views put the notices in their main area, beside the list. */}
-        {(screen === "settings" || screen === "schedules" || screen === "files") && notices}
+        {(screen === "settings" || screen === "schedules" || screen === "files" || screen === notificationCenter) &&
+          notices}
         <ApprovalNotice entries={elsewhere} />
         {screen === "chats" && (
           <AssistantView
@@ -610,6 +657,20 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         )}
         {screen === "settings" && (
           <SettingsView onLoggedOut={() => setAuthenticated(false)} onSetupChanged={() => void refreshProblems()} />
+        )}
+        {screen === notificationCenter && (
+          <NotificationCenter
+            problems={problems}
+            entries={notifications}
+            steps={steps}
+            syncStatus={syncState?.status ?? "ok"}
+            onAction={runProblemAction}
+            onReadProblem={hideProblem}
+            onReadEntries={readEntries}
+            onReadAll={readAll}
+            onOpenStep={(step) => (window.location.hash = settingsHash({ section: "setup", item: step.key }))}
+            onOpenSettings={() => openDestination("settings")}
+          />
         )}
         {screen === "schedules" && <SchedulesView />}
         {screen === "files" && <FilesView />}

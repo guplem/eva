@@ -13,6 +13,8 @@ interface VisorProps {
   readonly festive?: SpecialDayId | null;
   /** After a short wait, the eyes follow the mouse. Only on a device with a mouse, and with motion on. */
   readonly followPointer?: boolean;
+  /** An unread error: the crosses glow red and pulse (#566). */
+  readonly alarm?: boolean;
 }
 
 /**
@@ -25,6 +27,7 @@ export function Visor({
   rotate = false,
   festive = null,
   followPointer = false,
+  alarm = false,
 }: VisorProps): ReactElement {
   const [rotatingFace, setRotatingFace] = useState<Face>("searching");
   const visor = useRef<HTMLSpanElement>(null);
@@ -42,7 +45,11 @@ export function Visor({
   if (festive !== null) return <FestiveVisor ref={visor} id={festive} size={size} />;
 
   return (
-    <span ref={visor} className={visorClassName(rotate ? rotatingFace : face, size)} aria-hidden="true">
+    <span
+      ref={visor}
+      className={`${visorClassName(rotate ? rotatingFace : face, size)}${alarm ? " alarm" : ""}`}
+      aria-hidden="true"
+    >
       <span className="eyes">
         <i />
         <i />

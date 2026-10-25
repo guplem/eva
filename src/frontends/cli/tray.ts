@@ -19,7 +19,9 @@ export type TrayPhase =
 
 /** What a running Eva answers: her status, and how many approvals wait. */
 export interface TrayReading {
-  readonly status: Pick<EvaStatus, "problems" | "busySessionIds" | "chatBlocker">;
+  /** An older Eva sends no `problemDetails`: then every problem counts as unread. */
+  readonly status: Pick<EvaStatus, "problems" | "busySessionIds" | "chatBlocker"> &
+    Partial<Pick<EvaStatus, "problemDetails">>;
   readonly approvals: number;
 }
 
@@ -87,6 +89,7 @@ export function trayView(input: TrayInput): TrayView {
     isConnected: true,
     approvals,
     problems: status.problems.length,
+    unreadProblems: status.problemDetails?.filter((problem) => !problem.hidden).length ?? status.problems.length,
     assistantTurns: status.busySessionIds.length,
     // The status does not split the turns by mode, so every turn shows as thinking.
     projectTurns: 0,

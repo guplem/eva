@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { navVisorState, tapFace, type NavVisorInput } from "../../../../../src/frontends/web/client/nav-visor.ts";
+import { navVisorState, visorSignal, type NavVisorInput } from "../../../../../src/frontends/web/client/nav-visor.ts";
 import { stateFaces } from "../../../../../src/frontends/web/client/visor-faces.ts";
 
 const calm: NavVisorInput = {
   isConnected: true,
   approvals: 0,
   problems: 0,
+  unreadProblems: 0,
   assistantTurns: 0,
   projectTurns: 0,
   chatBlocked: false,
@@ -30,11 +31,16 @@ describe("navVisorState", () => {
   });
 
   test("an open problem comes before a running turn", () => {
-    expect(navVisorState({ ...calm, problems: 1, projectTurns: 1 })).toEqual({
+    expect(navVisorState({ ...calm, problems: 1, unreadProblems: 1, projectTurns: 1 })).toEqual({
       face: stateFaces.broken,
       words: "1 problem needs you",
     });
-    expect(navVisorState({ ...calm, problems: 2 }).words).toBe("2 problems need you");
+    expect(navVisorState({ ...calm, problems: 2, unreadProblems: 2 }).words).toBe("2 problems need you");
+  });
+
+  test("a problem that the person read keeps the face, and the words say it is open (#566)", () => {
+    expect(navVisorState({ ...calm, problems: 1 })).toEqual({ face: stateFaces.broken, words: "1 open problem" });
+    expect(navVisorState({ ...calm, problems: 3, unreadProblems: 1 }).words).toBe("1 problem needs you");
   });
 
   test("a project turn looks focused, and an assistant turn thinks", () => {
@@ -61,14 +67,25 @@ describe("navVisorState", () => {
   });
 });
 
-describe("tapFace", () => {
-  test("picks each playful face from the random number", () => {
-    expect(tapFace(() => 0)).toBe("happy");
-    expect(tapFace(() => 0.999)).toBe("surprised");
+describe("visorSignal (#566)", () => {
+  const quiet = { unreadProblems: 0, unreadError: false, news: false, centerOpen: false };
+
+  test("counts the unread problems, and an unread error pulses", () => {
+    expect(visorSignal({ ...quiet, unreadProblems: 2 })).toEqual({ count: 2, dot: false, alarm: false });
+    expect(visorSignal({ ...quiet, unreadProblems: 1, unreadError: true })).toEqual({
+      count: 1,
+      dot: false,
+      alarm: true,
+    });
   });
 
-  test("never repeats the face of the last tap", () => {
-    const last = "happy";
-    expect(tapFace(() => 0, last)).not.toBe(last);
+  test("the error stays still while the center is open", () => {
+    expect(visorSignal({ ...quiet, unreadProblems: 1, unreadError: true, centerOpen: true }).alarm).toBe(false);
+  });
+
+  test("news or a setup step shows a dot only when no problem is counted", () => {
+    expect(visorSignal({ ...quiet, news: true })).toEqual({ count: 0, dot: true, alarm: false });
+    expect(visorSignal({ ...quiet, news: true, unreadProblems: 1 }).dot).toBe(false);
+    expect(visorSignal(quiet)).toEqual({ count: 0, dot: false, alarm: false });
   });
 });

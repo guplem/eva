@@ -18,7 +18,6 @@ describe("problemAction", () => {
 
   test("a template part that differs opens its card", () => {
     expect(problemAction("template_alignment", "ok")).toBe("choose_template_version");
-    expect(problemAction("template_alignment", "ok", "settings")).toBeNull();
   });
 
   test("a schedule problem opens the schedules", () => {
@@ -32,17 +31,8 @@ describe("problemAction", () => {
     expect(isOtherMachineProblem("update")).toBe(false);
   });
 
-  test("no button leads to the page that is open: the fix is already there", () => {
-    expect(problemAction("update", "ok", "settings")).toBeNull();
-    expect(problemAction("vault_sync", "conflict", "settings")).toBeNull();
-    expect(problemAction("schedule:lunch", "ok", "settings")).toBe("open_schedules");
-    expect(problemAction("schedule:lunch", "ok", "schedules")).toBeNull();
-    expect(problemAction("update", "ok", "schedules")).toBe("open_settings");
-  });
-
   test("an expired Claude Code login opens its card, where the person logs in again", () => {
     expect(problemAction("engine_login:claude-code", "ok")).toBe("open_claude_login");
-    expect(problemAction("engine_login:claude-code", "ok", "settings")).toBeNull();
   });
 
   test("every other problem opens Settings", () => {

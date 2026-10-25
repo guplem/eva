@@ -190,6 +190,7 @@ machine state/sessions.json sessions[].turns[].notes
 machine state/sessions.json sessions[].turns[].omittedSteps
 machine state/sessions.json sessions[].turns[].startSnapshot
 machine state/sessions.json sessions[].turns[].steps
+machine state/sessions.json sessions[].turns[].steps[].chatId
 machine state/sessions.json sessions[].turns[].steps[].id
 machine state/sessions.json sessions[].turns[].steps[].isError
 machine state/sessions.json sessions[].turns[].steps[].kind

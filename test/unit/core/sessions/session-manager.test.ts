@@ -255,6 +255,45 @@ describe("a conversation", () => {
     expect(manager.get(sessionId).turns[0]).toMatchObject({ toolCount: 2, commandCount: 1, taskCount: 2 });
   });
 
+  test("project work that a turn starts is a task of that turn, with its Project chat, so the answer can open it", async () => {
+    let manager: SessionManager | null = null;
+    let sessionId = "";
+    manager = createManager(
+      new FakeEngine(async function* (request) {
+        await Promise.resolve();
+        // `eva work` runs in the turn's shell and reaches the core while the turn runs.
+        manager?.announceProjectWork(sessionId, {
+          projectId: "example-app",
+          projectSessionId: "p1",
+          request: "Fix it",
+        });
+        yield* FakeEngine.answer(request, "Started.");
+      }),
+    );
+    sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Fix example-app.");
+    const turn = manager.get(sessionId).turns[0];
+    expect(turn?.taskCount).toBe(1);
+    expect(turn?.steps).toContainEqual({
+      kind: "task",
+      text: "example-app: Fix it",
+      isError: false,
+      id: "p1",
+      chatId: "p1",
+    });
+  });
+
+  test("project work outside a turn, such as from the terminal, adds no task to a later turn", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    manager.announceProjectWork(sessionId, { projectId: "example-app", projectSessionId: "p1", request: "Fix it" });
+    await manager.send(sessionId, "Hi.");
+    expect(manager.get(sessionId).turns[0]).toMatchObject({
+      taskCount: 0,
+      steps: [expect.objectContaining({ kind: "message" })],
+    });
+  });
+
   test("a fixed title, such as a schedule's name, stays after the first turn", async () => {
     const manager = createManager(new FakeEngine());
     const { id } = manager.createSession({

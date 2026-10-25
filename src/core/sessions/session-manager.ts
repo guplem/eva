@@ -228,7 +228,11 @@ interface SessionRuntime {
   pending: PendingBatch | null;
   /** True after a stop, until the session is free again. */
   stopped: boolean;
+  /** Adds project work to the running turn as one of its tasks; null when no turn runs. */
+  addProjectWork: ((work: ProjectWorkStarted) => void) | null;
 }
+
+type ProjectWorkStarted = Extract<CoreEventPayload, { kind: "project_work_started" }>;
 
 const titleLength = 60;
 /** What a turn did, for the activity chips and the step badges under its answer. */
@@ -628,7 +632,15 @@ export class SessionManager {
 
   /** Tells the front ends that a chat gave work to a project, and which Project chat runs it. */
   announceProjectWork(sessionId: string, work: { projectId: string; projectSessionId: string; request: string }): void {
-    this.emit(sessionId, { kind: "project_work_started", ...work });
+    // The turn keeps the request, so it gets the redaction that `emit` gives the event.
+    const payload: ProjectWorkStarted = {
+      kind: "project_work_started",
+      ...work,
+      request: this.options.redactor.redact(work.request),
+    };
+    // `eva work` runs in the shell of a turn, so the work is a task of the answer that started it.
+    this.runtimes.get(sessionId)?.addProjectWork?.(payload);
+    this.emit(sessionId, payload);
   }
 
   /** A new branch of a conversation, up to and including one message. Its first message starts it. */
@@ -983,6 +995,13 @@ export class SessionManager {
     runtime.controller = controller;
     runtime.turnRunning = true;
     this.turnSteps.set(sessionId, steps);
+    runtime.addProjectWork = (work) => {
+      if (turn.ended) return;
+      taskIds.add(work.projectSessionId);
+      activity.taskCount = taskIds.size;
+      steps = addStep(steps, work);
+      this.turnSteps.set(sessionId, steps);
+    };
     // A stopped turn waits for no answer any more, so its open questions end now.
     controller.signal.addEventListener("abort", () => {
       this.expireApprovals(sessionId);
@@ -1152,6 +1171,7 @@ ${prompt}`,
       releaseFolder();
       runtime.controller = null;
       runtime.turnRunning = false;
+      runtime.addProjectWork = null;
       this.forgetRunningTurn(sessionId);
     }
     // Before the work after the turn, which can throw. Each unfinished turn sent one turn_failed.
@@ -1446,7 +1466,15 @@ ${prompt}`,
   private runtimeOf(sessionId: string): SessionRuntime {
     let runtime = this.runtimes.get(sessionId);
     if (runtime === undefined) {
-      runtime = { busy: false, turnRunning: false, controller: null, timer: null, pending: null, stopped: false };
+      runtime = {
+        busy: false,
+        turnRunning: false,
+        controller: null,
+        timer: null,
+        pending: null,
+        stopped: false,
+        addProjectWork: null,
+      };
       this.runtimes.set(sessionId, runtime);
     }
     return runtime;

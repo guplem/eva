@@ -8,7 +8,9 @@ export interface LiveState {
   /** The steps of each running turn so far, by session id. A key means that a turn runs. */
   readonly steps: Readonly<Record<string, readonly TurnStep[]>>;
   /** The background tasks of the running turns, by task id. A task ends with its turn. */
-  readonly tasks: Readonly<Record<string, { description: string; state: string; sessionId: string }>>;
+  readonly tasks: Readonly<
+    Record<string, { description: string; state: string; sessionId: string; chatId?: string | undefined }>
+  >;
   /** The `seq` of the last task event or turn end of each chat, by session id, from the current connection. */
   readonly taskSeqs: Readonly<Record<string, number>>;
   /**
@@ -153,7 +155,12 @@ function draftsAfter(drafts: LiveState["drafts"], event: SessionEvent): LiveStat
 /** The steps of the running turns after one event. A key means that a turn runs. */
 function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["steps"] {
   // The core's own events are no step of a turn: the list shows their effect after a reload.
-  if (event.kind === "session_deleted" || event.kind === "project_work_started") return steps;
+  if (event.kind === "session_deleted") return steps;
+  // Project work is a task of the turn whose shell started it. Without a running turn, no turn starts here.
+  if (event.kind === "project_work_started") {
+    const running = steps[event.sessionId];
+    return running === undefined ? steps : { ...steps, [event.sessionId]: addStep(running, event) };
+  }
   // The core sends the message when the turn starts. The engine can then think for seconds with no
   // step, and a message sent in that time must join the next turn, so the turn runs from here.
   // A turn whose first event is a piece or a note runs too, such as a turn that waits for another chat in its clone.

@@ -57,6 +57,18 @@ describe("addStep", () => {
     expect(steps[0]?.text).toBe('mcp__demo__list {"limit":5}');
   });
 
+  test("project work adds one task step that names its Project chat, so the answer can open that chat", () => {
+    const work = {
+      kind: "project_work_started",
+      projectId: "example-app",
+      projectSessionId: "p1",
+      request: "Fix it",
+    } as const;
+    expect(addStep([], work)).toEqual([
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" },
+    ]);
+  });
+
   test("other events add no step", () => {
     const steps = stepsOf([
       { kind: "notice", text: "hi" },

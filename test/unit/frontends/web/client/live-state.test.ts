@@ -43,6 +43,22 @@ describe("applyEvent", () => {
     expect(core.reduce(applyEvent, emptyLiveState)).toBe(emptyLiveState);
   });
 
+  test("project work of a running turn shows as a task step of that turn", () => {
+    const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
+    const running = applyEvent(emptyLiveState, { ...stamp, kind: "message_received", text: "Hi", origin: "api" });
+    const state = applyEvent(running, {
+      ...stamp,
+      seq: 2,
+      kind: "project_work_started",
+      projectId: "example-app",
+      projectSessionId: "p1",
+      request: "Fix it",
+    });
+    expect(state.steps["s1"]).toEqual([
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" },
+    ]);
+  });
+
   test("a turn runs from the message that starts it, before the engine sends its first step", () => {
     const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
     const state = applyEvent(emptyLiveState, { ...stamp, kind: "message_received", text: "Hi", origin: "api" });

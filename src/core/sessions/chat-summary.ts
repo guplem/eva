@@ -14,6 +14,7 @@ const summaryTimeoutMs = 180_000;
 
 const systemPrompt = [
   "You summarize a chat between a person and an AI agent. A new chat starts with your summary, so the agent can go on without the old chat.",
+  "Lines from Eva are messages that Eva sent herself, such as the result of work that a project did. The person did not write them.",
   "Write it to the agent of the new chat. Use these four parts, each with a short heading:",
   "Goal: what the person wants.",
   "Done: what the chat did, with its results.",

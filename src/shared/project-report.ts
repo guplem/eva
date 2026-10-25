@@ -42,10 +42,18 @@ export function reportPlace(report: ProjectReport): string {
 
 /** The paragraphs of the result, without the ones that are only a heading, such as "## Summary". */
 function paragraphsOf(result: string): string[] {
-  return result
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
-    .filter((paragraph) => paragraph !== "" && !/^#{1,6} /.test(paragraph));
+  return (
+    result
+      .split(/\n\s*\n/)
+      // A heading line goes before the lines join, so the text under a heading stays.
+      .map((paragraph) =>
+        paragraph
+          .replace(/^\s*#{1,6} .*$/gm, "")
+          .replace(/\s+/g, " ")
+          .trim(),
+      )
+      .filter((paragraph) => paragraph !== "")
+  );
 }
 
 /** The first paragraph of the result, short enough for a card. The person can open the whole result. */

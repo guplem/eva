@@ -56,6 +56,7 @@ describe("the chat summarizer (#522)", () => {
     });
     expect(engine.requests[0]?.prompt).toContain("Eva: [Project work finished: example-app]\n\nAgent: It is done.");
     expect(engine.requests[0]?.prompt).not.toContain("Person: [Project work finished");
+    expect(engine.requests[0]?.appendSystemPrompt).toContain("Lines from Eva");
   });
 
   test("an Assistant chat sends no git state", async () => {

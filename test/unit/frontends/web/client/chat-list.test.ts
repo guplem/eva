@@ -75,6 +75,22 @@ describe("chatPreview", () => {
     expect(chatPreview({ turns: [turn({ answerText: "  " })] })).toBe("What is on today?");
   });
 
+  test("names a project work result with no answer by its headline, not its raw message", () => {
+    const report = {
+      projectId: "example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix it.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    const result = turn({ userText: "[Project work finished: example-app]", fromEva: true, projectReports: [report] });
+    expect(chatPreview({ turns: [result] })).toBe("Eva finished the work in Example app");
+  });
+
   test("says that a new chat has no message, and cuts a long text", () => {
     expect(chatPreview({ turns: [] })).toBe("No messages yet");
     const preview = chatPreview({ turns: [turn({ answerText: "word ".repeat(100) })] });

@@ -218,10 +218,12 @@ export interface MessageOptions {
   readonly projectReport?: ProjectReport;
   /** Eva sends the person's own words again, as a retry does, so the message stays the person's. */
   readonly fromPerson?: boolean;
+  /** The stored sender of a turn that a retry sends again. A message alone in its turn keeps it. */
+  readonly sender?: TurnSender;
 }
 
 /** Who sent the messages of a turn, for the record. */
-interface TurnSender {
+export interface TurnSender {
   readonly fromEva: boolean;
   readonly projectReports: ProjectReport[];
   /** Already redacted. */
@@ -519,10 +521,14 @@ export class SessionManager {
 
   /** Sends the message of a stored turn again, as a retry does, with the sender that the turn had. */
   sendAgain(sessionId: string, turn: SessionRecord["turns"][number]): Promise<void> {
-    // The rare turn that gathered several results comes back with the first one only.
-    const report = turn.projectReports[0];
-    const options = turn.fromEva ? (report === undefined ? {} : { projectReport: report }) : { fromPerson: true };
-    return this.send(sessionId, turn.userText, "eva", options);
+    const { fromEva, projectReports, personText } = turn;
+    // The live event names one result, so a front end shows its summary instead of the raw text.
+    const report = fromEva ? projectReports[0] : undefined;
+    return this.send(sessionId, turn.userText, "eva", {
+      sender: { fromEva, projectReports, personText },
+      ...(report === undefined ? {} : { projectReport: report }),
+      ...(fromEva ? {} : { fromPerson: true }),
+    });
   }
 
   /**
@@ -549,6 +555,7 @@ export class SessionManager {
       text,
       origin,
       ...(options.fromPerson === true ? { fromPerson: true } : {}),
+      ...(options.sender === undefined ? {} : { sender: options.sender }),
       ...(projectReport === undefined ? {} : { projectReport: redactReport(projectReport, this.options.redactor) }),
     });
     this.lastActivity.set(sessionId, this.options.now().getTime());
@@ -558,13 +565,16 @@ export class SessionManager {
 
   /** Who sent the messages of a batch. A follow-up of the mode has no message, so Eva sent all of it. */
   private senderOf(batch: PendingBatch): TurnSender {
+    const [only] = batch.messages;
+    if (only?.sender !== undefined && batch.messages.length === 1 && batch.texts.length === 1) return only.sender;
     const fromEva = (message: PendingBatch["messages"][number]): boolean =>
       message.origin === "eva" && message.fromPerson !== true;
-    const evaCount = batch.messages.filter(fromEva).length;
-    const mixed = evaCount > 0 && evaCount < batch.messages.length;
     const personTexts = batch.messages.filter((message) => !fromEva(message)).map((message) => message.text);
+    // A follow-up of the mode is a text with no message, and Eva wrote it.
+    const evaParts = batch.texts.length - personTexts.length;
+    const mixed = evaParts > 0 && personTexts.length > 0;
     return {
-      fromEva: evaCount === batch.messages.length,
+      fromEva: personTexts.length === 0,
       projectReports: batch.messages.flatMap((message) => message.projectReport ?? []),
       personText: mixed ? this.options.redactor.redact(personTexts.join("\n\n")) : null,
     };

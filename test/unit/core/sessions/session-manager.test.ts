@@ -1234,6 +1234,35 @@ describe("forks and retries", () => {
     expect(manager.get(evaRetry.id).turns.at(-1)).toMatchObject({ fromEva: true, projectReports: [report] });
   });
 
+  test("a retry of a turn that gathered two results and the person's words keeps all of them apart", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const report = {
+      projectId: "example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix it.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    const second = { ...report, projectSessionId: "p2" };
+    await Promise.all([
+      manager.send(sessionId, "[Project work finished: one]", "eva", { projectReport: report }),
+      manager.send(sessionId, "[Project work finished: two]", "eva", { projectReport: second }),
+      manager.send(sessionId, "and the tests?", "api"),
+    ]);
+    const retry = await manager.retry(sessionId, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(manager.get(retry.id).turns[0]).toMatchObject({
+      fromEva: false,
+      projectReports: [report, second],
+      personText: "and the tests?",
+    });
+  });
+
   test("a retry answers with its branch at once, before the turn ends", async () => {
     let release = (): void => undefined;
     const released = new Promise<void>((resolve) => {
@@ -2196,6 +2225,29 @@ describe("running turns", () => {
 });
 
 describe("after a turn", () => {
+  test("a follow-up of the mode that joins the person's message keeps the person's words apart", async () => {
+    followUps = ["continue the skill run", null];
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const manager = createManager(
+      new FakeEngine(async function* (request, turnNumber) {
+        if (turnNumber === 1) await held;
+        yield* FakeEngine.answer(request, "done");
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const first = manager.send(sessionId, "start the skill", "api");
+    await waitUntil(() => manager.isBusy(sessionId));
+    const second = manager.send(sessionId, "and the tests?", "api");
+    release();
+    await Promise.all([first, second]);
+    expect(manager.get(sessionId).turns[1]).toMatchObject({
+      userText: "continue the skill run\n\nand the tests?",
+      fromEva: false,
+      personText: "and the tests?",
+    });
+  });
+
   test("a follow-up message from the mode goes to the same session as the next turn", async () => {
     followUps = ["continue the skill run", null];
     const engine = new FakeEngine();

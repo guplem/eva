@@ -91,3 +91,11 @@ describe("personWords and turnLine", () => {
     expect(personWords({ ...plain, fromEva: true })).toBe("hi");
   });
 });
+
+describe("reportPreview with a heading", () => {
+  test("keeps the text under a heading in the same paragraph", () => {
+    expect(reportPreview({ ...report, result: "## Summary\nThe login works now.\n\nDetails here." })).toBe(
+      "The login works now.",
+    );
+  });
+});

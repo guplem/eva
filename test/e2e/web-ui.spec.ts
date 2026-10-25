@@ -212,7 +212,9 @@ test("Assistant mode: the task dialog of an answer opens the Project chat of its
   await expect(answer).toContainText("Fix the login bug.");
   // The report of the work starts a turn in the asking chat. A later test must not share the vault sync with it.
   await page.goto(askingChat);
-  await expect(page.locator(".message.answer").nth(1)).toContainText("Fix the login bug.");
+  // The result comes back as a card, then the asking chat answers it.
+  await expect(page.locator(".msg", { hasText: "Eva finished the work in Example app" })).toBeVisible();
+  await expect(page.locator(".message.answer").nth(2)).toContainText("The tests pass.");
 });
 
 test("Assistant mode: the result of project work comes back as a card of the Project side", async ({ page }) => {

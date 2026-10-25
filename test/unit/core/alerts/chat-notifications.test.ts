@@ -77,6 +77,13 @@ describe("a chat that is free again", () => {
     expect(sent.map((notification) => notification.body)).toEqual(["All done."]);
   });
 
+  test("leaves out the file markers, and keeps the text before a block of markers only (#581)", () => {
+    const { sent, feed, idle } = notifications();
+    feed("web", received("api"), text("Here it is.\n[[attach: Scratch/a.zip]]"), text("[[offer: b.md]]"), finished);
+    idle("web");
+    expect(sent.map((notification) => notification.body)).toEqual(["Here it is."]);
+  });
+
   test("cuts a long text", () => {
     const { sent, feed, idle } = notifications();
     feed("web", received("api"), text("word ".repeat(100)), finished);

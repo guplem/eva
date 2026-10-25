@@ -35,7 +35,7 @@ Eva follows it and is the reference repository. Eva's repository setup report ch
 
 ## Skills
 
-- A skill is a workflow for a task that repeats: write a commit, rename a symbol, create an issue, implement an issue.
+- A skill is a workflow for a task that repeats: write a commit, rename a symbol, create an issue, make a change.
 - A skill is not a template and not a code of behavior. Behavior rules go in `AGENTS.md`.
 - A skill states the goal and the steps that an agent can get wrong. It does not list commands that an agent already knows.
 - Skills live in `.agents/skills/`. The dependency install and the git hooks copy them to the git-ignored `.claude/skills/`, because Claude Code finds skills only there.

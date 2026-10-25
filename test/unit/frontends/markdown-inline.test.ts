@@ -39,7 +39,7 @@ describe("inlineHtml", () => {
     );
   });
 
-  test("a bare URL keeps its underscores, stars and query, and emphasis around it still works", () => {
+  test("a bare URL keeps its underscores and query, and emphasis around it still works", () => {
     expect(inlineHtml("**https://example.com/a_b_c?x=1&y=2** and _https://example.com/d_e_")).toBe(
       '<b><a href="https://example.com/a_b_c?x=1&amp;y=2">https://example.com/a_b_c?x=1&amp;y=2</a></b> and <i><a href="https://example.com/d_e">https://example.com/d_e</a></i>',
     );

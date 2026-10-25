@@ -205,6 +205,28 @@ describe("the model and the effort of new chats (#550)", () => {
     });
     expect(JSON.stringify(readJson(vaultSettingsPath(vault)))).not.toContain('"default":"openai');
   });
+
+  test("a save also writes the old Claude Code key, so an older hub keeps the person's model", () => {
+    saveSettings(paths, {
+      ...defaultConfig,
+      vaultPath: vault,
+      engines: { ...defaultConfig.engines, defaultModel: "sonnet" },
+    });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({
+      engines: { defaultModel: "sonnet", claudeCode: { defaultModel: "sonnet" } },
+    });
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("sonnet");
+  });
+
+  test("eva settings set still takes the old Claude Code key, and its Default means Smart", () => {
+    expect(settingChange("engines.claudeCode.defaultModel", "haiku")).toEqual({
+      engines: { claudeCode: { defaultModel: "haiku" } },
+    });
+    changeSettings(paths, settingChange("engines.claudeCode.defaultModel", "haiku"));
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("haiku");
+    changeSettings(paths, settingChange("engines.claudeCode.defaultModel", "default"));
+    expect(loadSettings(paths).config.engines.defaultModel).toBe("opus");
+  });
 });
 describe("settings by command", () => {
   test("a dotted key names a setting, and the vault's keys are known", () => {

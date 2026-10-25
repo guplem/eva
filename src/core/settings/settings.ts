@@ -31,6 +31,17 @@ export const sharedSettingKeys: readonly string[] = [
  */
 const oldSharedSettingKeys: readonly string[] = ["engines.claudeCode.defaultModel"];
 
+/**
+ * The vault's settings with the old Claude Code key too. An older hub reads only that key, and its
+ * next save would put its own default back for every machine. Remove it one release after #550.
+ */
+function withOldVaultKeys(shared: SettingsObject): SettingsObject {
+  const engines = shared["engines"];
+  if (!isObject(engines) || engines["defaultModel"] === undefined) return shared;
+  const claudeCode = isObject(engines["claudeCode"]) ? engines["claudeCode"] : {};
+  return { ...shared, engines: { ...engines, claudeCode: { ...claudeCode, defaultModel: engines["defaultModel"] } } };
+}
+
 type SettingsObject = Record<string, unknown>;
 
 export interface LoadedSettings {
@@ -88,7 +99,8 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
     if (shared(after) !== shared(config)) assertVaultWritable(vaultPath);
   }
   writeFileAtomic(paths.config, toJson(machine));
-  if (!ahead) writeFileAtomic(vaultSettingsPath(vaultPath), toJson(pickKeys(config, sharedSettingKeys)));
+  if (!ahead)
+    writeFileAtomic(vaultSettingsPath(vaultPath), toJson(withOldVaultKeys(pickKeys(config, sharedSettingKeys))));
 }
 
 /** A config with a change, such as `{ updates: { frequency: "weekly" } }`, on top. Throws on a bad value. */
@@ -120,7 +132,9 @@ export function isSharedSettingKey(key: string): boolean {
 
 /** The change for one dotted key. The value is JSON when it parses as JSON, and text otherwise. */
 export function settingChange(key: string, value: string): SettingsObject {
-  if (!isSettingKey(key)) throw new EvaError("config_invalid", `${key} is not a setting.`);
+  // An old key still works for one release: `parseConfig` moves it to its new key.
+  if (!isSettingKey(key) && !oldSharedSettingKeys.includes(key))
+    throw new EvaError("config_invalid", `${key} is not a setting.`);
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);

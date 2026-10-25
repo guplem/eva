@@ -12,6 +12,7 @@ import {
   type PublicSettings,
   type VaultSyncState,
 } from "./api.ts";
+import { CopyButton } from "./CopyButton.tsx";
 import { Icon, type IconName } from "./icons.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
@@ -142,27 +143,10 @@ export function RichText({ text }: { readonly text: string }): ReactElement {
 
 /** A command to type on a computer, with a Copy button, so a person never retypes it. */
 export function CommandLine({ command }: { readonly command: string }): ReactElement {
-  const [copied, setCopied] = useState(false);
-  // The clipboard exists only on a secure page; a page through a plain http host name has none.
-  const canCopy = typeof navigator.clipboard !== "undefined";
   return (
     <div className="command-line">
       <code>{command}</code>
-      {canCopy && (
-        <button
-          className="ghost"
-          aria-label={`Copy ${command}`}
-          onClick={() => {
-            navigator.clipboard
-              .writeText(command)
-              .then(() => setCopied(true))
-              .catch(() => undefined);
-          }}
-        >
-          <Icon name="copy" />
-          {copied ? "Copied" : "Copy"}
-        </button>
-      )}
+      <CopyButton text={command} name={`Copy ${command}`} />
     </div>
   );
 }

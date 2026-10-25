@@ -83,7 +83,7 @@ A commit that changes `src/` with no test change says why in its message.
 - Never push to a person's vault.
 - Let one agent or person own each branch. Nobody else pushes to it. Agent worktrees live in `.claude/worktrees/`.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.
-- Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To create an issue, follow `.agents/skills/create-issue/SKILL.md`. To make any change, follow `.agents/skills/make-change/SKILL.md`. Its small-change path keeps a one-line fix fast, so never skip it.
+- Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To create an issue, follow `.agents/skills/create-issue/SKILL.md`. To make any change, follow `.agents/skills/make-change/SKILL.md`. Its small-change path keeps a one-line fix fast. Skip it only when the person tells you to.
 
 ## Shell commands
 

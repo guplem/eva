@@ -1883,11 +1883,17 @@ test("Settings: a token saves write-only, shows as saved, and can be removed", a
   await expect(page.getByRole("button", { name: "Log in with GitHub" })).toHaveCount(0);
   const notice = page.getByRole("status").filter({ hasText: "Restart Eva" });
   await expect(notice).toBeVisible();
-  // The note asks for a restart, so one tap on it opens the restart question.
+  // The note asks for a restart. No chat runs, so one tap restarts Eva and asks nothing more.
+  // The browser plays the restart, so the shared test server keeps running.
+  let restarts = 0;
+  await page.route("**/api/restart", async (route) => {
+    restarts += 1;
+    await route.fulfill({ status: 202, json: { restarting: true } });
+  });
   await notice.getByRole("button", { name: "Restart Eva" }).click();
-  const question = page.getByRole("alertdialog", { name: "Restart Eva" });
-  await expect(question).toBeVisible();
-  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Eva restarted." })).toBeVisible();
+  expect(restarts).toBe(1);
+  await expect(page.getByRole("alertdialog", { name: "Restart Eva" })).toHaveCount(0);
   await page.reload();
   await expect(loggedIn).toContainText("You are logged in to GitHub.");
   expect(await page.content()).not.toContain("e2e-example-token");

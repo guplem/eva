@@ -50,10 +50,13 @@ export function setupSummary(steps: readonly ProgressStep[]): SetupSummary {
   };
 }
 
-/** The question before a restart. It names the running chats, because a restart stops them. */
-export function restartQuestion(runningChats: readonly string[]): string {
+/**
+ * The question before a restart. It names the running chats, because a restart stops them.
+ * With no running chat, a restart loses nothing, so the tap on Restart Eva is the answer: null.
+ */
+export function restartQuestion(runningChats: readonly string[]): string | null {
   const count = runningChats.length;
-  if (count === 0) return "Restart Eva now?";
+  if (count === 0) return null;
   const names = runningChats.map((name) => `"${name}"`).join(", ");
   const running = count === 1 ? `${names} is running` : `${String(count)} chats are running: ${names}`;
   return `${running}. A restart stops ${count === 1 ? "it" : "them"}. Restart Eva now?`;

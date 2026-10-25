@@ -3408,6 +3408,26 @@ test("the visor counts the open problems, and its center lists each with the but
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("the center keeps its settings gear beside the title, and 'Mark all as read' beside the filters", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openCenter(page);
+  const title = await page.getByRole("heading", { name: "Notifications", level: 1 }).boundingBox();
+  const gear = page.locator(".notification-center").getByRole("button", { name: "Settings", exact: true });
+  const gearBox = await gear.boundingBox();
+  // The gear shares the row of the title, at its right, on a computer and on a phone.
+  expect(gearBox!.y).toBeLessThan(title!.y + title!.height);
+  expect(gearBox!.x).toBeGreaterThan(title!.x + title!.width);
+  const all = await page.getByRole("button", { name: "All", exact: true }).boundingBox();
+  const readAll = await page.getByRole("button", { name: "Mark all as read" }).boundingBox();
+  expect(Math.abs(readAll!.y + readAll!.height / 2 - (all!.y + all!.height / 2))).toBeLessThan(4);
+  // The header lines up with the column of the content.
+  expect(Math.abs(title!.x - all!.x)).toBeLessThan(2);
+  await gear.click();
+  await expect(page).toHaveURL(/#\/settings/);
+});
+
 test("the person marks a problem as read: it stays listed, and the visor stops counting it (#541, #566)", async ({
   page,
 }) => {

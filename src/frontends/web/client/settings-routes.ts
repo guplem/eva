@@ -222,7 +222,7 @@ export const searchEntries: readonly SearchEntry[] = [
     section: "personalize",
     title: "Appearance",
     words:
-      "theme dark light density compact colour color seed files view columns folder finder explorer long file names cut ellipsis truncate smart real project title date",
+      "theme dark light density compact colour color seed project eyes mode violet files view columns folder finder explorer long file names cut ellipsis truncate smart real project title date",
   },
   {
     item: "assistant-rules",

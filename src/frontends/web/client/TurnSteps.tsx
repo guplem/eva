@@ -1,6 +1,7 @@
 /**
  * The steps of an answer, folded into one line: the count, the last step and an arrow. A tap
- * opens the list, one line for each message, command, tool and task: a pill says what the step
+ * opens the list, one line for each message, command, tool and task. A message shows its text
+ * beside the face of Eva. For every other step, a pill says what the step
  * did, and plain text says what it did it to, such as the file that it read. A tap on a step
  * opens a dialog with all of it: where the tool comes from, its description, and its whole input
  * and output, each in a fold.
@@ -13,6 +14,7 @@ import {
   hasToolDetails,
   inputFields,
   missingDetail,
+  stepHasPill,
   stepIcon,
   stepOrigin,
   stepParts,
@@ -29,6 +31,14 @@ function counted(count: number, noun: string): string {
 /** The pill and the text of one step. The pill is a word, so a failed step shows by more than colour. */
 function StepParts({ step }: { readonly step: TurnStep }): ReactElement {
   const { action, detail } = stepParts(step);
+  if (!stepHasPill(step)) {
+    return (
+      <span className="step-text step-message">
+        <span className="visually-hidden">{action}: </span>
+        {detail}
+      </span>
+    );
+  }
   return (
     <>
       <span className={`pill step-pill${step.isError ? " failed" : ""}`}>

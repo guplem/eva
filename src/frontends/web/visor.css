@@ -332,6 +332,13 @@
   rotate: -45deg;
 }
 
+/* Not in the reference: the eyes beside Eva's answers in a Project chat take their own colour,
+   so the person sees the mode at a glance. Settings > Personalize > Appearance picks it. */
+.mk.project-eyes {
+  --eye: oklch(0.87 min(var(--project-eye-c), 0.13) var(--project-eye-h));
+  --glow: oklch(0.74 var(--project-eye-c) var(--project-eye-h));
+}
+
 /* Not in the reference: an unread error (#566). The crosses fill with red and their glow pulses,
    then cool back to the eye colour. Only an error moves, so it stands out from a warning. */
 .mk.alarm .eyes {

@@ -19,7 +19,7 @@ export function foldSteps(steps: readonly TurnStep[]): {
 }
 
 const kindIcons: Readonly<Record<TurnStep["kind"], IconName>> = {
-  message: "chat",
+  message: "eve",
   command: "term",
   tool: "bolt",
   task: "sync",
@@ -27,6 +27,11 @@ const kindIcons: Readonly<Record<TurnStep["kind"], IconName>> = {
 
 export function stepIcon(step: TurnStep): IconName {
   return step.isError ? "x" : kindIcons[step.kind];
+}
+
+/** A message in the step list is the agent's own words, so it shows without a pill, beside the face of Eva. */
+export function stepHasPill(step: TurnStep): boolean {
+  return step.kind !== "message";
 }
 
 const kindActions: Readonly<Record<TurnStep["kind"], string>> = {

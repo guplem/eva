@@ -435,6 +435,11 @@
   white-space: nowrap;
 }
 
+/* A message is the agent's prose, not a target such as a file, so it takes the interface font. */
+.step-message {
+  font-family: var(--font);
+}
+
 .step-list li.failed,
 .step-list li.failed .icon {
   color: var(--bad);
@@ -625,6 +630,12 @@ button.ghost .icon {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* A file dragged over the box drops into it. */
+.composer-box.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 
 .composer-box textarea {

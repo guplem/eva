@@ -11,8 +11,10 @@ const linkPattern = /\[([^\]\n]+)\]\((https?:\/\/(?:[^()\s]|\([^()\s]*\))+)\)/g;
 const autolinkPattern = /<(https?:\/\/[^\s<>\uE000]+)>/g;
 /** A bare URL runs to white space; `bareUrlEnd` then gives back the punctuation of the sentence. */
 const bareUrlPattern = /(?<![A-Za-z\d])https?:\/\/[^\s<>"`\uE000]+/g;
-/** Characters that end a sentence or close emphasis around a URL, as GitHub reads them. */
-const trailingPunctuation = ".,:;!?'\"*_~";
+/** Characters that end a sentence, a quote or emphasis around a URL. Agents also answer in other scripts. */
+const trailingPunctuation = ".,:;!?'\"*_~…»›”’。、，！？：；）】」』";
+/** A closing bracket stays in the URL only when it closes an opening one there, as in a Wikipedia link. */
+const bracketPairs: Readonly<Record<string, string>> = { ")": "(", "]": "[" };
 const boldPattern = /\*\*(?=\S)(.+?)(?<=\S)\*\*/g;
 const strikePattern = /~~(?=\S)(.+?)(?<=\S)~~/g;
 const starItalicPattern = /(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])/g;
@@ -49,15 +51,21 @@ function link(url: string, label: string): string {
   return `<a href="${escapeAttribute(url)}">${escapeHtml(label)}</a>`;
 }
 
-/** The length of the URL without its trailing punctuation; a ")" stays only when it closes a "(" in the URL. */
+/**
+ * The length of the URL without its trailing punctuation. It counts each bracket once and updates
+ * the counts as it trims, so a long tail of punctuation costs linear time.
+ */
 function bareUrlEnd(url: string): number {
+  const counts = new Map<string, number>();
+  for (const character of url) counts.set(character, (counts.get(character) ?? 0) + 1);
   let end = url.length;
   for (;;) {
     const last = url.charAt(end - 1);
-    const kept = url.slice(0, end);
-    if (trailingPunctuation.includes(last)) end -= 1;
-    else if (last === ")" && kept.split(")").length > kept.split("(").length) end -= 1;
-    else return end;
+    const opening = bracketPairs[last];
+    const unmatched = opening !== undefined && (counts.get(last) ?? 0) > (counts.get(opening) ?? 0);
+    if (!trailingPunctuation.includes(last) && !unmatched) return end;
+    counts.set(last, (counts.get(last) ?? 0) - 1);
+    end -= 1;
   }
 }
 

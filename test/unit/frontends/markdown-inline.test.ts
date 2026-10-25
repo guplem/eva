@@ -57,6 +57,25 @@ describe("inlineHtml", () => {
     );
   });
 
+  test("a bare URL leaves a closing bracket and non-ASCII punctuation outside the link", () => {
+    expect(inlineHtml("[https://example.com/a] and «https://example.com/b»…")).toBe(
+      '[<a href="https://example.com/a">https://example.com/a</a>] and «<a href="https://example.com/b">https://example.com/b</a>»…',
+    );
+    expect(inlineHtml("（https://example.com/a）。")).toBe(
+      '（<a href="https://example.com/a">https://example.com/a</a>）。',
+    );
+    expect(inlineHtml("https://example.com/a[1]")).toBe(
+      '<a href="https://example.com/a[1]">https://example.com/a[1]</a>',
+    );
+  });
+
+  test("a bare URL with a long tail of punctuation does not stall the page", () => {
+    const tail = ".)".repeat(30_000);
+    expect(inlineHtml(`https://example.com/a${tail}`)).toBe(
+      `<a href="https://example.com/a">https://example.com/a</a>${tail}`,
+    );
+  });
+
   test("a bare URL needs the http or https scheme and a host", () => {
     expect(inlineHtml("javascript:alert(1), https:// alone, https://. and xhttps://example.com")).toBe(
       "javascript:alert(1), https:// alone, https://. and xhttps://example.com",

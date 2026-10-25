@@ -48,6 +48,7 @@ import {
   type Destination,
 } from "./navigation.ts";
 import { NotificationCenter } from "./NotificationCenter.tsx";
+import { withPendingReads } from "./notification-center.ts";
 import { useIsPhone } from "./ChatHeader.tsx";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
@@ -116,6 +117,9 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const pendingHides = useRef<ReadonlySet<string>>(new Set());
   /** The count of hides that Eva answered: a status read that started before an answer is older than it. */
   const hideAnswers = useRef(0);
+  /** The history reads that this page sent and Eva has not answered yet. */
+  const pendingReads = useRef<ReadonlySet<number>>(new Set());
+  const pendingAll = useRef(false);
   const showProblems = useCallback((list: EvaStatus["problemDetails"]): void => {
     setProblems(withPendingHides(list, pendingHides.current));
   }, []);
@@ -125,6 +129,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [setupMissing, setSetupMissing] = useState(0);
   // The notification center (#566): the history, and the setup steps that are left.
   const [notifications, setNotifications] = useState<readonly HistoryEntry[]>([]);
+  // The page keeps each read that Eva has not answered, so an older poll answer does not undo it.
+  const showEntries = useCallback((entries: readonly HistoryEntry[]): void => {
+    setNotifications(
+      withPendingReads(entries, { seqs: pendingReads.current, keys: pendingHides.current, all: pendingAll.current }),
+    );
+  }, []);
   const [steps, setSteps] = useState<readonly ProgressStep[]>([]);
   const [chatBlocker, setChatBlocker] = useState<ChatBlocker | null>(null);
   const [voiceNotes, setVoiceNotes] = useState(false);
@@ -206,12 +216,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       // The next poll or the next reconnect tries again.
     }
     try {
-      setNotifications((await api.notifications()).entries);
+      showEntries((await api.notifications()).entries);
     } catch (caught) {
       // An older Eva has no history: the center shows only the open problems.
       if (caught instanceof ApiError && caught.status === 404) setNotifications([]);
     }
-  }, [showProblems]);
+  }, [showProblems, showEntries]);
 
   // Reads overlap: one starts at a turn start and one at its end. Only the newest read may set the list,
   // or an older answer brings back a running state that already ended.
@@ -556,7 +566,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       hideAnswers.current += 1;
     };
     // Eva marks the problem's history entries as read too.
-    setNotifications((current) => current.map((entry) => (entry.key === key ? { ...entry, read: true } : entry)));
+    showEntries(notifications);
     api.hideProblem(key).then(
       (status) => {
         settle();
@@ -571,22 +581,43 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     );
   };
   const readEntries = (seqs: readonly number[]): void => {
-    const chosen = new Set(seqs);
-    setNotifications((current) => current.map((entry) => (chosen.has(entry.seq) ? { ...entry, read: true } : entry)));
+    pendingReads.current = new Set([...pendingReads.current, ...seqs]);
+    showEntries(notifications);
+    const settle = (): void => {
+      pendingReads.current = new Set([...pendingReads.current].filter((seq) => !seqs.includes(seq)));
+    };
     api.markNotificationsRead({ seqs }).then(
-      (view) => setNotifications(view.entries),
-      (caught: unknown) => showError(caught),
+      (view) => {
+        settle();
+        showEntries(view.entries);
+      },
+      (caught: unknown) => {
+        settle();
+        showError(caught);
+        void refreshProblems();
+      },
     );
   };
   const readAll = (): void => {
-    setNotifications((current) => current.map((entry) => ({ ...entry, read: true })));
-    setProblems((current) => current.map((problem) => ({ ...problem, hidden: true })));
+    // "All" hides each open problem too, so the hides wait as one hide does.
+    const keys = problems.map((problem) => problem.key);
+    pendingAll.current = true;
+    pendingHides.current = new Set([...pendingHides.current, ...keys]);
+    setProblems((current) => withPendingHides(current, pendingHides.current));
+    showEntries(notifications);
+    const settle = (): void => {
+      pendingAll.current = false;
+      pendingHides.current = new Set([...pendingHides.current].filter((key) => !keys.includes(key)));
+      hideAnswers.current += 1;
+    };
     api.markNotificationsRead({ all: true }).then(
       (view) => {
-        setNotifications(view.entries);
+        settle();
+        showEntries(view.entries);
         void refreshProblems();
       },
       (caught: unknown) => {
+        settle();
         showError(caught);
         void refreshProblems();
       },

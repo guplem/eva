@@ -318,6 +318,15 @@ button[aria-busy="true"]:disabled {
     display: none;
   }
 
+  /* The tab bar shows the visor in place of Settings (#566). */
+  .main-nav .skeleton-visor.large {
+    display: block;
+  }
+
+  .main-nav .skeleton-nav-button.nav-settings {
+    display: none;
+  }
+
   /* The project list is the page on a phone, with one card per project. */
   .layout.list-home .list-skeleton .skeleton-shapes {
     gap: var(--space-2);

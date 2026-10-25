@@ -5,6 +5,7 @@ import {
   historyGroups,
   shownNeeds,
   timeLabel,
+  withPendingReads,
 } from "../../../../../src/frontends/web/client/notification-center.ts";
 
 // Local times, so the test passes in any time zone.
@@ -61,5 +62,15 @@ describe("shownNeeds", () => {
     expect(shownNeeds(problems, "unread").map((problem) => problem.key)).toEqual(["b"]);
     expect(shownNeeds(problems, "all")).toHaveLength(2);
     expect(shownNeeds(problems, "problems")).toHaveLength(2);
+  });
+});
+
+describe("withPendingReads", () => {
+  test("keeps the reads that Eva has not answered yet, so a poll does not undo them", () => {
+    const entries = [entry(1, "news", 25), entry(2, "warn", 25), entry(3, "news", 25)];
+    const kept = withPendingReads(entries, { seqs: new Set([1]), keys: new Set(["k2"]), all: false });
+    expect(kept.map((kept) => kept.read)).toEqual([true, true, false]);
+    expect(withPendingReads(entries, { seqs: new Set(), keys: new Set(), all: true }).every((e) => e.read)).toBe(true);
+    expect(withPendingReads(entries, { seqs: new Set(), keys: new Set(), all: false })).toEqual(entries);
   });
 });

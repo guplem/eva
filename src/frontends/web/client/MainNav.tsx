@@ -24,6 +24,11 @@ export function MainNav(props: MainNavProps): ReactElement {
   const { current, onOpen, approvals, setupMissing } = props;
   const visor = navVisorState(props);
   const signal = visorSignal({ ...props, centerOpen: current === notificationCenter });
+  // Only the crossed face pulses: an approval or an offline face would only borrow the red.
+  const alarm = signal.alarm && visor.face === stateFaces.broken;
+  // The visible label "Eva" starts the name, so a voice command that says it finds the button.
+  // The count is in the words. The dot, which has no words, adds its own.
+  const name = `Eva: ${visor.words}${signal.dot ? ". Something new waits" : ""}`;
   // At rest, on a special day, the visor wears that day's eyes. Any state that informs comes first.
   const day = useSpecialDay();
   const festive = visor.face === stateFaces.idle && !signal.dot ? (day?.id ?? null) : null;
@@ -61,18 +66,24 @@ export function MainNav(props: MainNavProps): ReactElement {
     <nav className="main-nav" aria-label="Main">
       <button
         className="main-nav-visor"
-        aria-label={visor.words}
+        aria-label={name}
         aria-current={current === notificationCenter ? "page" : undefined}
         data-tooltip={visor.words}
         data-tooltip-side="right"
         onClick={() => onOpen(notificationCenter)}
       >
         <span className="nav-icon">
-          <Visor size={36} face={visor.face} festive={festive} alarm={signal.alarm} />
-          {signal.count > 0 && <span className={`nav-badge${props.unreadError ? " bad" : ""}`}>{signal.count}</span>}
-          {signal.dot && <span className="nav-dot" />}
+          <Visor size={36} face={visor.face} festive={festive} alarm={alarm} />
+          {signal.count > 0 && (
+            <span className={`nav-badge${props.unreadError ? " bad" : ""}`} aria-hidden="true">
+              {signal.count}
+            </span>
+          )}
+          {signal.dot && <span className="nav-dot" aria-hidden="true" />}
         </span>
-        <span className="nav-label">Eva</span>
+        <span className="nav-label" aria-hidden="true">
+          Eva
+        </span>
       </button>
       {destinations.filter((destination) => destination.id !== "settings").map(button)}
       <span className="nav-spacer" />

@@ -84,10 +84,11 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
                 // An older Eva sends no start time.
                 const since = (problem as Partial<typeof problem>).since;
                 return (
-                  <div key={problem.key} className={`notice ${problem.level === "error" ? "bad" : ""}`}>
+                  <div key={problem.key} className={`notice ${problem.level === "error" ? "bad" : "warn"}`}>
                     <Icon name="alert" />
                     <span className="notice-text">
-                      {!read && <span className="unread-mark" aria-label="Unread" />}
+                      {!read && <UnreadMark />}
+                      <span className="visually-hidden">{problem.level === "error" ? "Error: " : "Warning: "}</span>
                       {problem.message}
                       {since !== undefined && <span className="center-time"> · since {timeLabel(since, now)}</span>}
                     </span>
@@ -142,7 +143,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
                           </span>
                           <span className="center-row-text">{entry.message}</span>
                           <span className="center-time">{timeLabel(entry.at, now)}</span>
-                          {!entry.read && <span className="unread-mark" aria-label="Unread" />}
+                          {!entry.read && <UnreadMark />}
                         </button>
                       );
                     })}
@@ -164,5 +165,14 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
         </div>
       </div>
     </div>
+  );
+}
+
+/** A dot for an unread entry. The words are for a screen reader, which cannot see the dot. */
+function UnreadMark(): ReactElement {
+  return (
+    <span className="unread-mark">
+      <span className="visually-hidden">Unread. </span>
+    </span>
   );
 }

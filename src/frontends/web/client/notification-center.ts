@@ -65,3 +65,19 @@ export function shownNeeds<Problem extends { readonly hidden?: boolean }>(
 ): Problem[] {
   return filter === "unread" ? problems.filter((problem) => problem.hidden !== true) : [...problems];
 }
+
+/** The reads that the page sent and Eva has not answered yet. A hidden problem's key reads its entries. */
+export interface PendingReads {
+  readonly seqs: ReadonlySet<number>;
+  readonly keys: ReadonlySet<string>;
+  readonly all: boolean;
+}
+
+/** Marks each entry that a pending read covers, so an older answer does not bring its dot back. */
+export function withPendingReads(entries: readonly HistoryEntry[], pending: PendingReads): HistoryEntry[] {
+  return entries.map((entry) =>
+    !entry.read && (pending.all || pending.seqs.has(entry.seq) || pending.keys.has(entry.key))
+      ? { ...entry, read: true }
+      : entry,
+  );
+}

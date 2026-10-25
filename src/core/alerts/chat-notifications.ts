@@ -4,6 +4,7 @@
  * needs them.
  */
 import type { MessageOrigin, SessionEvent } from "../../shared/events.ts";
+import { extractFileMarkers } from "../../shared/file-markers.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
 /** What a device can get. Each device picks its own kinds. `alerts` are Eva's problem alerts. */
@@ -61,9 +62,12 @@ export class ChatNotifications {
         // Eva's own message, such as a project chat's report or a retry, carries on the run of the last person.
         if (event.origin !== "eva" || !this.origins.has(sessionId)) this.origins.set(sessionId, event.origin);
         return;
-      case "text":
-        this.lastTexts.set(sessionId, event.text);
+      case "text": {
+        // A block of file markers only adds no words, so the text before it stays the body.
+        const shown = extractFileMarkers(event.text).text;
+        if (shown !== "") this.lastTexts.set(sessionId, shown);
         return;
+      }
       case "approval_needed":
         // The summary of a question request is its first question.
         this.send(

@@ -174,6 +174,12 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     writtenNotes.add(note);
     writeFileSync(join(vault, "Notes", `${note}.md`), "Written by an answer.\n");
   }
+  // The chat takes these words as its title, and a title shows as a button in the list. So they
+  // hold no word of a button that another test looks for, such as "Send".
+  if (lastLine.includes("hand me the parcel")) {
+    yield* FakeEngine.answer(request, "Here are the trips.\n[[attach: Journal/2027-trips.md]]");
+    return;
+  }
   if (lastLine.includes("list")) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
     return;

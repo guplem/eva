@@ -2,6 +2,7 @@
  * The result of project work. Eva sends the result of a Project chat back to the Assistant chat
  * that gave the work. Each front end shows it as the Project side's own message, with these words.
  */
+import { shownAnswerText } from "./file-markers.ts";
 
 /** The facts of one result. The session store keeps them, so their names are a schema. */
 export interface ProjectReport {
@@ -56,9 +57,14 @@ function paragraphsOf(result: string): string[] {
   );
 }
 
+/** The result as a chat shows it, with no file marker lines. */
+export function reportResultText(report: ProjectReport): string {
+  return shownAnswerText(report.result);
+}
+
 /** The first paragraph of the result, short enough for a card. The person can open the whole result. */
 export function reportPreview(report: ProjectReport): string {
-  const line = paragraphsOf(report.result)[0] ?? "";
+  const line = paragraphsOf(reportResultText(report))[0] ?? "";
   const cut = line.length > previewLength ? `${line.slice(0, previewLength).trimEnd()}…` : line;
   // A cut result keeps only its end, so its first paragraph starts in the middle of the answer.
   return report.resultCut ? `…${cut}` : cut;
@@ -66,7 +72,7 @@ export function reportPreview(report: ProjectReport): string {
 
 /** The whole result holds more than its preview, so a card offers to show it. */
 export function reportHasMore(report: ProjectReport): boolean {
-  return report.resultCut || reportPreview(report) !== report.result.trim();
+  return report.resultCut || reportPreview(report) !== reportResultText(report);
 }
 
 /** The parts of a turn that say who wrote its message. */

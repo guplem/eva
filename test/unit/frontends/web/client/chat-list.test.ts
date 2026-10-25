@@ -70,6 +70,11 @@ describe("chatPreview", () => {
     expect(chatPreview(chat)).toBe("Plan Four things this week");
   });
 
+  test("leaves out the file markers of the answer (#581)", () => {
+    const chat = { turns: [turn({ answerText: "Here it is.\n[[attach: Scratch/example-app.zip]]" })] };
+    expect(chatPreview(chat)).toBe("Here it is.");
+  });
+
   test("shows why the turn failed, or the person's message while no answer exists", () => {
     expect(chatPreview({ turns: [turn({ failure: "The engine stopped." })] })).toBe("The engine stopped.");
     expect(chatPreview({ turns: [turn({ answerText: "  " })] })).toBe("What is on today?");

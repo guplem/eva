@@ -5,6 +5,7 @@ import {
   reportHeadline,
   reportPlace,
   reportPreview,
+  reportResultText,
   turnLine,
   type ProjectReport,
 } from "../../../src/shared/project-report.ts";
@@ -97,5 +98,14 @@ describe("reportPreview with a heading", () => {
     expect(reportPreview({ ...report, result: "## Summary\nThe login works now.\n\nDetails here." })).toBe(
       "The login works now.",
     );
+  });
+});
+
+describe("reportResultText", () => {
+  test("drops the file marker lines of the Project chat's answer, as the chat does", () => {
+    const withMarker = { ...report, result: "Fixed it.\n[[attach: Notes/plan.md]]" };
+    expect(reportResultText(withMarker)).toBe("Fixed it.");
+    expect(reportPreview(withMarker)).toBe("Fixed it.");
+    expect(reportHasMore(withMarker)).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 /** The parts of the chat list that need no page: groups, times, previews, states and the search. */
+import { shownAnswerText } from "../../../shared/file-markers.ts";
 import type { SessionRecord } from "./api.ts";
 import { branchNames, type BranchSession } from "./branch-path.ts";
 import { turnLine } from "../../../shared/project-report.ts";
@@ -52,7 +53,7 @@ export function chatPreview(chat: Pick<SessionRecord, "turns">, state: ChatState
   if (state === "needs-you") return "Eva waits for your answer";
   const last = chat.turns.at(-1);
   if (last === undefined) return state === "working" ? "Eva is working on it" : "No messages yet";
-  const line = oneLine(last.failure ?? "") || oneLine(last.answerText) || oneLine(turnLine(last));
+  const line = oneLine(last.failure ?? "") || oneLine(shownAnswerText(last.answerText)) || oneLine(turnLine(last));
   if (line === "") return "No messages yet";
   // By code point, so the cut never splits an emoji.
   const characters = Array.from(line);

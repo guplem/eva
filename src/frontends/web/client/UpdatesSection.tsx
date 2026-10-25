@@ -1,6 +1,5 @@
 /** The updates page: the versions of Eva and her tools with their updates, Eva's update policy, and a restart. */
 import { Fragment, useEffect, useState, type ReactElement } from "react";
-import { isNewerVersion } from "../../../core/updates/version-order.ts";
 import { describeEngineUpdate } from "../../cli/client.ts";
 import {
   ApiError,
@@ -16,6 +15,7 @@ import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsPa
 import { ButtonSpinner, FactsSkeleton, ProgressBar } from "./Loading.tsx";
 import { evaNewest, restartWait, updateCallout, updatesFace, updateWait } from "./update-words.ts";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
+import { freshness, toolAction, versionText, voiceNotesText } from "./version-words.ts";
 import { Visor } from "./Visor.tsx";
 
 type Updates = PublicSettings["config"]["updates"];
@@ -293,38 +293,6 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
       )}
     </Card>
   );
-}
-
-/** Whether voice notes run, and what they still need. */
-function voiceNotesText(state: EvaVersions["voiceNotes"]): string {
-  if (state.missing.length > 0) return `Off, needs ${state.missing.join(", ")}`;
-  return state.on ? "On" : "Installed, restart Eva to turn them on";
-}
-
-/**
- * Whether an installed tool is older than the newest version. A tool that prints no version
- * number, or a newest version that Eva could not read, gives "unknown".
- */
-function freshness(tool: EvaVersions["tools"][number], newest: string | undefined): "old" | "latest" | "unknown" {
-  if (tool.version === null || newest === undefined || !/\d/.test(tool.version)) return "unknown";
-  return isNewerVersion(newest, tool.version) ? "old" : "latest";
-}
-
-/** The version, and the newest one when it is newer. */
-function versionText(tool: EvaVersions["tools"][number], newest: string | undefined): string {
-  if (tool.version === null) return "Not installed";
-  if (tool.tooOld) return `${tool.version}, too old`;
-  return freshness(tool, newest) === "old" ? `${tool.version} (${newest ?? ""} available)` : tool.version;
-}
-
-/**
- * "Install" for a missing tool, "Update" for an old one, or null for no button. Without the
- * newest version, Eva cannot tell whether the tool is old, so it keeps its Update button.
- */
-function toolAction(tool: EvaVersions["tools"][number], newest: string | undefined): "Install" | "Update" | null {
-  if (!tool.installable) return null;
-  if (tool.version === null) return "Install";
-  return !tool.tooOld && freshness(tool, newest) === "latest" ? null : "Update";
 }
 
 function EvaUpdatesCard({

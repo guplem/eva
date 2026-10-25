@@ -159,7 +159,7 @@ export const searchEntries: readonly SearchEntry[] = [
     words: "permissions advanced allow ask deny block rules approval auto bypass safety",
   },
   { item: "claude-code", section: "engines", title: "Claude Code", words: "token login setup-token" },
-  { item: "pi", section: "engines", title: "pi", words: "model openai gpt provider login" },
+  { item: "pi", section: "engines", title: "pi", words: "model smart balanced fast tier openai gpt provider login" },
   { item: "vault-folder", section: "vault", title: "Vault folder and repository", words: "notes remote git test" },
   { item: "vault-sync", section: "vault", title: "Vault sync", words: "fetch pull push conflict interval save" },
   { item: "project-folders", section: "vault", title: "Project folders", words: "roots projects extra" },

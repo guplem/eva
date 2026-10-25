@@ -28,6 +28,7 @@ describe("shownAnswerText", () => {
     expect(shownAnswerText("Here it is.\n  [[OFFER: Scratch/a", true)).toBe("Here it is.");
     expect(shownAnswerText("Here it is.\n[", true)).toBe("Here it is.");
     expect(shownAnswerText("Here it is.\n[[attach: Scratch/a…", true)).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n[[attach: a.md]]…", true)).toBe("Here it is.");
   });
 
   test("gives no text for an open text that only starts a marker", () => {

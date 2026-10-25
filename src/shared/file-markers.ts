@@ -51,7 +51,6 @@ function startsMarker(line: string): boolean {
   // A cut step ends with "…".
   const compact = line.replace(/\s+/g, "").replace(/…$/, "").toLowerCase();
   if (compact === "") return false;
-  return ["[[attach:", "[[offer:"].some(
-    (start) => start.startsWith(compact) || (compact.startsWith(start) && !compact.includes("]]")),
-  );
+  // A cut can also fall just after a whole marker, so its line then ends with "]]…".
+  return ["[[attach:", "[[offer:"].some((start) => start.startsWith(compact) || compact.startsWith(start));
 }

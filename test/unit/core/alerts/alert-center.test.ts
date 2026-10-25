@@ -5,6 +5,7 @@ import {
   type AlertProblem,
   type HiddenProblems,
 } from "../../../../src/core/alerts/alert-center.ts";
+import type { NotificationHistory } from "../../../../src/core/alerts/notification-history.ts";
 import type { LogLevel } from "../../../../src/shared/logger.ts";
 import { Redactor } from "../../../../src/shared/redaction.ts";
 
@@ -182,7 +183,7 @@ describe("AlertCenter hidden problems (#541)", () => {
     expect(run.center.hide("update")).toBe(true);
     expect(run.center.openProblems()).toEqual([offline.message]);
     expect(run.center.problemDetails()).toEqual([
-      { key: "update", level: "warn", message: offline.message, hidden: true },
+      { key: "update", level: "warn", message: offline.message, hidden: true, since: "2026-10-17T10:00:00.000Z" },
     ]);
     expect(run.saved).toEqual([{ update: "warn" }]);
   });
@@ -275,4 +276,113 @@ test("hiding a hidden problem again saves nothing, as the hub does at each sync"
   run.center.hide("update");
   expect(run.saved).toHaveLength(1);
   expect(run.center.isHidden("update")).toBe(true);
+});
+
+describe("AlertCenter history (#566)", () => {
+  interface HistoryRun {
+    readonly center: AlertCenter;
+    readonly written: NotificationHistory[];
+    advanceHours(hours: number): void;
+  }
+
+  function historyRun(history?: NotificationHistory, hidden?: HiddenProblems): HistoryRun {
+    let now = new Date("2026-10-17T10:00:00Z");
+    const written: NotificationHistory[] = [];
+    const center = new AlertCenter({
+      now: () => now,
+      ...(history === undefined ? {} : { history }),
+      ...(hidden === undefined ? {} : { hidden }),
+      onHistoryChange: (changed) => written.push(changed),
+    });
+    return {
+      center,
+      written,
+      advanceHours: (hours) => {
+        now = new Date(now.getTime() + hours * hourMs);
+      },
+    };
+  }
+
+  const levels = (center: AlertCenter): string[] =>
+    center.historyEntries().map((entry) => `${entry.key}:${entry.level}`);
+
+  test("records a start, a rise, a resolved problem and news, but not a reminder", () => {
+    const run = historyRun();
+    run.center.report("vault_sync", offline);
+    run.advanceHours(25);
+    run.center.report("vault_sync", offline);
+    run.advanceHours(25);
+    run.center.report("vault_sync", { ...offline, level: "error" });
+    run.center.report("vault_sync", null);
+    run.center.notify("update_held_back", "news", "Eva 4.0.0 waits for you.");
+    expect(levels(run.center)).toEqual([
+      "vault_sync:warn",
+      "vault_sync:error",
+      "vault_sync:resolved",
+      "update_held_back:news",
+    ]);
+    expect(run.written.at(-1)?.entries).toHaveLength(4);
+    expect(run.center.historyEntries().map((entry) => entry.seq)).toEqual([1, 2, 3, 4]);
+  });
+
+  test("records the redacted text only", () => {
+    const redactor = new Redactor();
+    redactor.addSecret("secret-value-for-tests");
+    const center = new AlertCenter({ now: () => new Date("2026-10-17T10:00:00Z"), redactor });
+    center.notify("x", "news", "The token secret-value-for-tests expired.");
+    expect(center.historyEntries()[0]?.message).toBe("The token [redacted] expired.");
+  });
+
+  test("an open problem keeps the time it started, across reports and a restart", () => {
+    const run = historyRun();
+    run.center.report("update", offline);
+    run.advanceHours(30);
+    run.center.report("update", offline);
+    expect(run.center.problemDetails()[0]?.since).toBe("2026-10-17T10:00:00.000Z");
+
+    const restarted = historyRun(run.written.at(-1));
+    restarted.advanceHours(50);
+    restarted.center.report("update", offline);
+    expect(restarted.center.problemDetails()[0]?.since).toBe("2026-10-17T10:00:00.000Z");
+    expect(levels(restarted.center)).toEqual(["update:warn"]);
+  });
+
+  test("a hidden problem after a restart takes its start from the history, and records nothing", () => {
+    const first = historyRun();
+    first.center.report("update", offline);
+    const restarted = historyRun(first.written.at(-1), { update: "warn" });
+    restarted.advanceHours(5);
+    restarted.center.report("update", offline);
+    expect(restarted.center.problemDetails()[0]?.since).toBe("2026-10-17T10:00:00.000Z");
+    expect(restarted.center.historyEntries()).toHaveLength(1);
+  });
+
+  test("hiding a problem also marks its entries as read", () => {
+    const run = historyRun();
+    run.center.report("update", offline);
+    run.center.notify("news", "news", "Eva updated.");
+    run.center.hide("update");
+    expect(run.center.historyEntries().map((entry) => entry.read)).toEqual([true, false]);
+  });
+
+  test("marks chosen entries as read, and saves nothing when nothing changes", () => {
+    const run = historyRun();
+    run.center.notify("a", "news", "A.");
+    run.center.notify("b", "news", "B.");
+    const writes = run.written.length;
+    run.center.markRead([1]);
+    run.center.markRead([1, 99]);
+    expect(run.center.historyEntries().map((entry) => entry.read)).toEqual([true, false]);
+    expect(run.written).toHaveLength(writes + 1);
+  });
+
+  test("marks every entry as read and hides every open problem", () => {
+    const run = historyRun();
+    run.center.report("update", offline);
+    run.center.report("vault_sync", { ...offline, level: "error" });
+    run.center.notify("news", "news", "Eva updated.");
+    run.center.markAllRead();
+    expect(run.center.historyEntries().every((entry) => entry.read)).toBe(true);
+    expect(run.center.problemDetails().every((problem) => problem.hidden)).toBe(true);
+  });
 });

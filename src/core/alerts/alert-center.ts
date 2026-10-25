@@ -5,6 +5,14 @@
  */
 import type { Logger } from "../../shared/logger.ts";
 import type { Redactor } from "../../shared/redaction.ts";
+import {
+  addHistoryEntry,
+  emptyHistory,
+  markHistoryRead,
+  openSince,
+  type HistoryEntry,
+  type NotificationHistory,
+} from "./notification-history.ts";
 
 export type AlertLevel = "warn" | "error";
 
@@ -34,6 +42,8 @@ export interface OpenAlert extends AlertProblem {
  */
 export interface ProblemDetail extends Pick<OpenAlert, "key" | "level" | "message"> {
   readonly hidden: boolean;
+  /** When the problem started, kept across a restart through the history. */
+  readonly since: string;
 }
 
 /** The level of each problem that the person hid, by key. A higher level shows the problem again. */
@@ -49,11 +59,16 @@ export interface AlertCenterOptions {
   readonly hidden?: HiddenProblems;
   /** Saves the marks; the center does no file work. */
   readonly onHiddenChange?: (hidden: HiddenProblems) => void;
+  /** The history saved before a restart. */
+  readonly history?: NotificationHistory;
+  /** Saves the history, as `onHiddenChange` saves the marks. */
+  readonly onHistoryChange?: (history: NotificationHistory) => void;
 }
 
 interface OpenProblem {
   readonly problem: AlertProblem;
   readonly lastSentAt: number;
+  readonly since: string;
 }
 
 const repeatAfterMs = 24 * 60 * 60_000;
@@ -63,12 +78,14 @@ export class AlertCenter {
   private readonly listeners: Set<AlertListener>;
   private readonly open: Map<string, OpenProblem>;
   private readonly hidden: Map<string, AlertLevel>;
+  private history: NotificationHistory;
 
   constructor(options: AlertCenterOptions) {
     this.options = options;
     this.listeners = new Set();
     this.open = new Map();
     this.hidden = new Map(Object.entries(options.hidden ?? {}));
+    this.history = options.history ?? emptyHistory;
   }
 
   /** Returns an unsubscribe. */
@@ -95,20 +112,23 @@ export class AlertCenter {
       message: this.redact(reported.message),
       resolvedMessage: this.redact(reported.resolvedMessage),
     };
-    const now = this.options.now().getTime();
+    const date = this.options.now();
+    const now = date.getTime();
+    // After a restart, the history still knows when the problem started.
+    const since = current?.since ?? openSince(this.history, key) ?? date.toISOString();
     const hiddenLevel = this.hidden.get(key);
     // A new reason alone keeps it hidden: a relayed reason changes between failures, such as a timeout and then DNS.
     if (hiddenLevel === "error" || (hiddenLevel === "warn" && problem.level === "warn")) {
-      this.open.set(key, { problem, lastSentAt: current?.lastSentAt ?? now });
+      this.open.set(key, { problem, lastSentAt: current?.lastSentAt ?? now, since });
       return;
     }
     // A problem that rose from warn to error is news, so it alerts at once.
     if (hiddenLevel !== undefined) this.forgetHidden(key);
     else if (current !== undefined && now - current.lastSentAt < repeatAfterMs) {
-      this.open.set(key, { problem, lastSentAt: current.lastSentAt });
+      this.open.set(key, { problem, lastSentAt: current.lastSentAt, since });
       return;
     }
-    this.open.set(key, { problem, lastSentAt: now });
+    this.open.set(key, { problem, lastSentAt: now, since });
     this.emit(key, problem.level, problem.message);
   }
 
@@ -120,7 +140,26 @@ export class AlertCenter {
     const current = this.open.get(key);
     if (current === undefined) return false;
     this.markHidden(key, current.problem.level);
+    // Hidden is what the center calls read, so the problem's entries are read too.
+    this.changeHistory(markHistoryRead(this.history, (entry) => entry.key === key));
     return true;
+  }
+
+  /** The history, oldest first. */
+  historyEntries(): readonly HistoryEntry[] {
+    return this.history.entries;
+  }
+
+  /** Marks the entries with these numbers as read. An unknown number is skipped. */
+  markRead(seqs: readonly number[]): void {
+    const chosen = new Set(seqs);
+    this.changeHistory(markHistoryRead(this.history, (entry) => chosen.has(entry.seq)));
+  }
+
+  /** Marks every entry as read, and hides every open problem. */
+  markAllRead(): void {
+    for (const [key, { problem }] of this.open) this.markHidden(key, problem.level);
+    this.changeHistory(markHistoryRead(this.history, () => true));
   }
 
   /**
@@ -164,11 +203,12 @@ export class AlertCenter {
 
   /** Each open problem for a front end, with its hidden mark. */
   problemDetails(): ProblemDetail[] {
-    return [...this.open].map(([key, { problem }]) => ({
+    return [...this.open].map(([key, { problem, since }]) => ({
       key,
       level: problem.level,
       message: problem.message,
       hidden: this.isHidden(key),
+      since,
     }));
   }
 
@@ -187,13 +227,24 @@ export class AlertCenter {
     if (this.hidden.delete(key)) this.saveHidden();
   }
 
+  private changeHistory(history: NotificationHistory): void {
+    if (history === this.history) return;
+    this.history = history;
+    this.options.onHistoryChange?.(history);
+  }
+
   private saveHidden(): void {
     this.options.onHiddenChange?.(Object.fromEntries(this.hidden));
   }
 
   private emit(key: string, level: Alert["level"], message: string): void {
-    const alert: Alert = { key, level, message: this.redact(message), at: this.options.now().toISOString() };
+    const now = this.options.now();
+    const alert: Alert = { key, level, message: this.redact(message), at: now.toISOString() };
     this.options.logger?.log(level === "resolved" || level === "news" ? "info" : level, alert.message, { alert: key });
+    // A reminder, or a report after a restart, repeats the last entry of its key, so it adds none.
+    const last = this.history.entries.findLast((entry) => entry.key === key);
+    if (level === "resolved" || level === "news" || last?.level !== level)
+      this.changeHistory(addHistoryEntry(this.history, alert, now));
     // A listener runs in sync and scheduler code, so its failure must never reach the caller.
     for (const listener of this.listeners) {
       try {

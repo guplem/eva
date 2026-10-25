@@ -25,6 +25,7 @@ import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
 import { ChatNotifications, type NotificationKind } from "./alerts/chat-notifications.ts";
 import { readHiddenProblems, writeHiddenProblems } from "./alerts/hidden-problems.ts";
+import { readNotificationHistory, writeNotificationHistory, type HistoryEntry } from "./alerts/notification-history.ts";
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
@@ -301,6 +302,11 @@ export interface LastTurnStatus extends TurnUsage {
   readonly costUsd: number | null;
 }
 
+/** The notification center reads the history through this. */
+export interface NotificationsView {
+  readonly entries: readonly HistoryEntry[];
+}
+
 export interface EvaStatus {
   readonly version: string;
   readonly vaultPath: string | null;
@@ -488,6 +494,16 @@ export class Eva {
           writeHiddenProblems(options.paths.hiddenProblems, hidden);
         } catch (error) {
           options.logger?.log("warn", "Eva could not save the hidden problems.", {
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
+      history: readNotificationHistory(options.paths.notificationHistory),
+      onHistoryChange: (history) => {
+        try {
+          writeNotificationHistory(options.paths.notificationHistory, history);
+        } catch (error) {
+          options.logger?.log("warn", "Eva could not save the notification history.", {
             reason: error instanceof Error ? error.message : String(error),
           });
         }
@@ -1130,6 +1146,18 @@ export class Eva {
    */
   hideProblem(key: string): boolean {
     return this.alerts.hide(key);
+  }
+
+  /** The notification history, oldest first. */
+  notifications(): NotificationsView {
+    return { entries: this.alerts.historyEntries() };
+  }
+
+  /** "all" also hides every open problem: the center calls a hidden problem read. */
+  markNotificationsRead(choice: { readonly seqs: readonly number[] } | { readonly all: true }): NotificationsView {
+    if ("all" in choice) this.alerts.markAllRead();
+    else this.alerts.markRead(choice.seqs);
+    return this.notifications();
   }
 
   /**

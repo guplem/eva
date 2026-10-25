@@ -43,7 +43,7 @@ import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
 import { isLongHide } from "./event-stream.ts";
-import { withPendingHides, type ProblemAction } from "./problem-actions.ts";
+import { shownProblems, withPendingHides, type ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -566,7 +566,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         approvals={approvals.length}
         setupMissing={setupMissing}
         isConnected={isConnected}
-        problems={problems.length}
+        // A hidden problem has no notice, so the visor must not send the person to look for one.
+        problems={shownProblems(problems).length}
         chatBlocked={chatBlocker !== null}
         assistantTurns={runningTurns.assistant}
         projectTurns={runningTurns.project}

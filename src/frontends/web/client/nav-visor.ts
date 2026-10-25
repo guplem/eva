@@ -5,7 +5,7 @@ export interface NavVisorInput {
   readonly isConnected: boolean;
   /** The approvals that wait, of any chat. */
   readonly approvals: number;
-  /** The open problems of the status. */
+  /** The open problems that have a notice: a problem that the person hid does not count. */
   readonly problems: number;
   /** The running turns of Assistant mode chats. */
   readonly assistantTurns: number;

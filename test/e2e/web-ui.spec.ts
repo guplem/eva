@@ -1731,7 +1731,12 @@ test("Settings: the model and the effort of new chats save at once, and a new ch
     await openSettings(page, "AI engines");
     await page.getByLabel("Model for new chats").selectOption("sonnet");
     await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    // The status already says "Saved.", so the reload waits for the save itself.
+    const effortSaved = page.waitForResponse(
+      (response) => response.url().endsWith("/api/settings") && response.request().method() === "PUT",
+    );
     await page.getByLabel("Effort for new chats").selectOption("high");
+    await effortSaved;
     await page.reload();
     await expect(page.getByLabel("Model for new chats")).toHaveValue("sonnet");
     await expect(page.getByLabel("Effort for new chats")).toHaveValue("high");

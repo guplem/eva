@@ -1,6 +1,7 @@
 /** The git sandbox copies one prepared template per test, so each test must still get its own repositories. */
 import { afterEach, describe, expect, test } from "bun:test";
-import { createGitSandbox, type GitSandbox, gitHookTimeoutMs } from "../support/git-sandbox.ts";
+import { tmpdir } from "node:os";
+import { createGitSandbox, type GitSandbox, gitHookTimeoutMs, runGit } from "../support/git-sandbox.ts";
 
 const made: GitSandbox[] = [];
 
@@ -44,4 +45,12 @@ describe("git sandbox", () => {
     },
     gitHookTimeoutMs,
   );
+});
+
+describe("runGit", () => {
+  test("stops a git command that hangs, so a stuck git cannot hold the test worker", () => {
+    // A blocking spawn stops the event loop: no Bun timeout can end it, only the spawn's own.
+    // The shell that the alias starts may outlive git, so the sleep is short.
+    expect(() => runGit(tmpdir(), ["-c", "alias.hang=!sleep 5", "hang"], 500)).toThrow("timed out");
+  });
 });

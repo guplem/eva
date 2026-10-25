@@ -22,3 +22,9 @@ Three sub-agents answered each gap. All three gave the same answers.
 - **The live answer.** Show no buttons while the turn runs: the file can still change, and Telegram also waits for the turn end. Hide complete markers and a half-written last line. The buttons come with the stored turn, with Copy and Retry.
 - **The checks.** Use `GET /api/files/download` as it is. Telegram's stricter rules exist because a sent file goes to Telegram's servers (lesson 72). The web button sends the file to the person's own device, and the explorer already downloads the same files. A folder gives a zip.
 - **The prompt.** Say that Telegram and the web app read the markers, and that the web app shows a download button for both.
+
+## Rejected review findings
+
+- **A Project chat reads markers against the vault, not the clone.** Telegram already reads markers in every mode, so the web does the same. A project harness gets no Eva prompt, so it seldom writes a marker. A change for both front ends is a separate issue.
+- **A code fence left open in one message hides a marker in the next.** The buttons read the whole answer, because stored steps keep only 200 characters. An open fence across messages is rare.
+- **A folder marker shows "Downloading…" instead of "Packing the folder…".** The chat cannot know that a path is a folder before the download. The zip still arrives.

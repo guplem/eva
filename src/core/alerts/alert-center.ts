@@ -79,6 +79,8 @@ export class AlertCenter {
   private readonly open: Map<string, OpenProblem>;
   private readonly hidden: Map<string, AlertLevel>;
   private history: NotificationHistory;
+  /** The keys that `dismiss` closed with no resolved entry. */
+  private readonly dismissed: Set<string>;
 
   constructor(options: AlertCenterOptions) {
     this.options = options;
@@ -86,6 +88,7 @@ export class AlertCenter {
     this.open = new Map();
     this.hidden = new Map(Object.entries(options.hidden ?? {}));
     this.history = options.history ?? emptyHistory;
+    this.dismissed = new Set();
   }
 
   /** Returns an unsubscribe. */
@@ -105,6 +108,7 @@ export class AlertCenter {
       if (current === undefined) return;
       this.open.delete(key);
       this.emit(key, "resolved", current.problem.resolvedMessage);
+      this.record(key, "resolved", current.problem.resolvedMessage);
       return;
     }
     const problem = {
@@ -114,8 +118,9 @@ export class AlertCenter {
     };
     const date = this.options.now();
     const now = date.getTime();
-    // After a restart, the history still knows when the problem started.
-    const since = current?.since ?? openSince(this.history, key) ?? date.toISOString();
+    // After a restart, the history still knows when the problem started. A dismissed problem starts anew.
+    const fresh = this.dismissed.delete(key);
+    const since = current?.since ?? (fresh ? null : openSince(this.history, key)) ?? date.toISOString();
     const hiddenLevel = this.hidden.get(key);
     // A new reason alone keeps it hidden: a relayed reason changes between failures, such as a timeout and then DNS.
     if (hiddenLevel === "error" || (hiddenLevel === "warn" && problem.level === "warn")) {
@@ -126,15 +131,26 @@ export class AlertCenter {
     if (hiddenLevel !== undefined) this.forgetHidden(key);
     else if (current !== undefined && now - current.lastSentAt < repeatAfterMs) {
       this.open.set(key, { problem, lastSentAt: current.lastSentAt, since });
+      this.recordStart(key, problem, fresh);
       return;
     }
     this.open.set(key, { problem, lastSentAt: now, since });
     this.emit(key, problem.level, problem.message);
+    this.recordStart(key, problem, fresh);
   }
 
   /**
-   * The person hid the notice of an open problem: no reminder, and no notice on the web page,
-   * until the problem rises to an error or clears. False when no such problem is open.
+   * A start or a rise adds an entry. A reminder, or a report after a restart, repeats the last
+   * entry of its key, so it adds none.
+   */
+  private recordStart(key: string, problem: AlertProblem, fresh: boolean): void {
+    const last = this.history.entries.findLast((entry) => entry.key === key);
+    if (fresh || last?.level !== problem.level) this.record(key, problem.level, problem.message);
+  }
+
+  /**
+   * The person marked an open problem as read: no reminder, and no count on the visor, until the
+   * problem rises to an error or clears. False when no such problem is open.
    */
   hide(key: string): boolean {
     const current = this.open.get(key);
@@ -178,13 +194,15 @@ export class AlertCenter {
    * The new hub sends it, so a "resolved" line here would be false.
    */
   dismiss(key: string): void {
-    this.open.delete(key);
+    // It leaves no resolved entry, so a later report of the key is a new start.
+    if (this.open.delete(key)) this.dismissed.add(key);
     this.forgetHidden(key);
   }
 
   /** A one-off alert, such as a start after an unclean exit, or news. It never stays open. */
   notify(key: string, level: AlertLevel | "news", message: string): void {
     this.emit(key, level, message);
+    this.record(key, level, message);
   }
 
   /** The message of each open problem, for the status. */
@@ -227,6 +245,13 @@ export class AlertCenter {
     if (this.hidden.delete(key)) this.saveHidden();
   }
 
+  private record(key: string, level: Alert["level"], message: string): void {
+    const now = this.options.now();
+    this.changeHistory(
+      addHistoryEntry(this.history, { key, level, message: this.redact(message), at: now.toISOString() }, now),
+    );
+  }
+
   private changeHistory(history: NotificationHistory): void {
     if (history === this.history) return;
     this.history = history;
@@ -238,13 +263,8 @@ export class AlertCenter {
   }
 
   private emit(key: string, level: Alert["level"], message: string): void {
-    const now = this.options.now();
-    const alert: Alert = { key, level, message: this.redact(message), at: now.toISOString() };
+    const alert: Alert = { key, level, message: this.redact(message), at: this.options.now().toISOString() };
     this.options.logger?.log(level === "resolved" || level === "news" ? "info" : level, alert.message, { alert: key });
-    // A reminder, or a report after a restart, repeats the last entry of its key, so it adds none.
-    const last = this.history.entries.findLast((entry) => entry.key === key);
-    if (level === "resolved" || level === "news" || last?.level !== level)
-      this.changeHistory(addHistoryEntry(this.history, alert, now));
     // A listener runs in sync and scheduler code, so its failure must never reach the caller.
     for (const listener of this.listeners) {
       try {

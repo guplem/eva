@@ -386,3 +386,58 @@ describe("AlertCenter history (#566)", () => {
     expect(run.center.problemDetails().every((problem) => problem.hidden)).toBe(true);
   });
 });
+
+describe("AlertCenter history edge cases (#566)", () => {
+  function run(): { center: AlertCenter; alerts: Alert[]; advanceHours: (hours: number) => void } {
+    let now = new Date("2026-10-17T10:00:00Z");
+    const alerts: Alert[] = [];
+    const center = new AlertCenter({ now: () => now });
+    center.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    return {
+      center,
+      alerts,
+      advanceHours: (hours) => {
+        now = new Date(now.getTime() + hours * hourMs);
+      },
+    };
+  }
+  const levels = (center: AlertCenter): string[] =>
+    center.historyEntries().map((entry) => `${entry.key}:${entry.level}`);
+
+  test("a one-off alert is recorded each time, even with the same key and level", () => {
+    const { center } = run();
+    center.notify("unclean_exit", "warn", "Eva stopped without a clean exit.");
+    center.notify("unclean_exit", "warn", "Eva stopped without a clean exit.");
+    expect(levels(center)).toEqual(["unclean_exit:warn", "unclean_exit:warn"]);
+  });
+
+  test("a rise within 24 hours is recorded, though it sends no alert", () => {
+    const { center, alerts } = run();
+    center.report("update", offline);
+    center.report("update", { ...offline, level: "error" });
+    expect(alerts).toHaveLength(1);
+    expect(levels(center)).toEqual(["update:warn", "update:error"]);
+  });
+
+  test("a problem that ends and starts again is a new entry, with a new start time", () => {
+    const { center, advanceHours } = run();
+    center.report("update", offline);
+    center.report("update", null);
+    advanceHours(5);
+    center.report("update", offline);
+    expect(levels(center)).toEqual(["update:warn", "update:resolved", "update:warn"]);
+    expect(center.problemDetails()[0]?.since).toBe("2026-10-17T15:00:00.000Z");
+  });
+
+  test("a dismissed problem that starts again is a new entry, with a new start time", () => {
+    const { center, advanceHours } = run();
+    center.report("machine:laptop:update", offline);
+    center.dismiss("machine:laptop:update");
+    advanceHours(5);
+    center.report("machine:laptop:update", offline);
+    expect(levels(center)).toEqual(["machine:laptop:update:warn", "machine:laptop:update:warn"]);
+    expect(center.problemDetails()[0]?.since).toBe("2026-10-17T15:00:00.000Z");
+  });
+});

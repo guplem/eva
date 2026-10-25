@@ -1141,8 +1141,8 @@ export class Eva {
   }
 
   /**
-   * The person hid the notice of an open problem. It stays in the status, and the web page
-   * shows no notice for it until it rises to an error or clears. False when no such problem is open.
+   * The person marked an open problem as read. It stays listed, but the visor stops counting it,
+   * until it rises to an error or clears. False when no such problem is open.
    */
   hideProblem(key: string): boolean {
     return this.alerts.hide(key);

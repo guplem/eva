@@ -4,7 +4,8 @@
  * Eva queues a message sent during a turn, so typed text brings Send back.
  * The microphone records a voice note. Eva turns it into text on her machine and sends the text.
  * Without voice notes on her machine, the microphone leads to the button that installs them.
- * The clip attaches files in an Assistant chat. Each file uploads when the person picks it, so Send waits for no upload.
+ * The clip attaches files in an Assistant chat. A pasted or dropped file attaches the same way.
+ * Each file uploads when the person picks it, so Send waits for no upload.
  */
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import {
@@ -16,7 +17,7 @@ import {
   type ModelAlias,
 } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
-import { messageWithFiles } from "./attachments.ts";
+import { messageWithFiles, pastedFiles } from "./attachments.ts";
 import {
   answeredModel,
   engineLock,
@@ -127,6 +128,7 @@ export function Composer({
     return unsentTexts.subscribe(draftKey, follow);
   }, [draftKey, summary]);
   const [sending, setSending] = useState(false);
+  const [dropping, setDropping] = useState(false);
   const files = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
   const voice = useVoiceNote(async (heard, recording) => {
@@ -158,10 +160,19 @@ export function Composer({
   const showStop = running && (isEmpty || blocker !== null);
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
+  const box = useRef<HTMLTextAreaElement>(null);
+  const locked = block !== null;
+  // On a computer the person types into a chat at once. On a touch screen the focus would raise the keyboard over the chat.
+  useEffect(() => {
+    if (locked || isTouchScreen() || isTextField(document.activeElement)) return;
+    box.current?.focus({ preventScroll: true });
+  }, [draftKey, locked]);
   const canRecord = block === null && voice.isSupported;
   const showMic = canRecord && isEmpty;
   // A received file lands in the vault. A Project chat's agent works in its clone and does not reach it.
   const canAttach = session.mode !== "project";
+  // A file picked during a send that fails would be lost when the box gets its files back.
+  const takesFiles = canAttach && block === null && !sending;
   if (voice.state.phase !== "idle") {
     return (
       <div className="composer">
@@ -194,8 +205,28 @@ export function Composer({
   }
   return (
     <div className="composer">
-      <div className="composer-box">
+      <div
+        className={dropping ? "composer-box dropping" : "composer-box"}
+        onDragOver={(event) => {
+          if (!takesFiles || !event.dataTransfer.types.includes("Files")) return;
+          // Without this, the browser opens the dropped file in place of Eva.
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setDropping(true);
+        }}
+        onDragLeave={(event) => {
+          // A move onto a child of the box also leaves the box itself.
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
+        }}
+        onDrop={(event) => {
+          setDropping(false);
+          if (!takesFiles || event.dataTransfer.files.length === 0) return;
+          event.preventDefault();
+          files.add([...event.dataTransfer.files]);
+        }}
+      >
         <textarea
+          ref={box}
           aria-label="Message"
           aria-describedby={block === null ? undefined : lineId}
           placeholder={block === null ? placeholder : "Eva cannot answer yet"}
@@ -203,6 +234,12 @@ export function Composer({
           disabled={block !== null}
           value={text}
           onChange={(event) => setText(event.target.value)}
+          onPaste={(event) => {
+            const pasted = pastedFiles(event.clipboardData);
+            if (!takesFiles || pasted.length === 0) return;
+            event.preventDefault();
+            files.add(pasted);
+          }}
           onKeyDown={(event) => {
             const press = {
               key: event.key,
@@ -253,8 +290,7 @@ export function Composer({
               className="icon-button"
               aria-label="Attach a file"
               data-tooltip="Attach a file"
-              // A file picked during a send that fails would be lost when the box gets its files back.
-              disabled={block !== null || sending}
+              disabled={!takesFiles}
               onClick={() => picker.current?.click()}
             >
               <Icon name="clip" />
@@ -666,4 +702,14 @@ function useVoiceNote(deliver: (heard: string, recording: string) => Promise<voi
 
 function isTouchScreen(): boolean {
   return window.matchMedia("(pointer: coarse)").matches;
+}
+
+/** True for a field that takes text. The box never takes the focus from one, such as a title being renamed. */
+function isTextField(element: Element | null): boolean {
+  return (
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement ||
+    (element instanceof HTMLElement && element.isContentEditable) ||
+    (element instanceof HTMLInputElement && !["button", "checkbox", "radio", "submit", "range"].includes(element.type))
+  );
 }

@@ -1,5 +1,5 @@
 /**
- * Each browser keeps its own theme, density, seed colour, files view, file names and cut of long file names in
+ * Each browser keeps its own theme, density, seed colour, Project eyes, files view, file names and cut of long file names in
  * `localStorage`. A phone and a desktop need different density, so the vault keeps none of them.
  */
 export type Theme = "system" | "light" | "dark";
@@ -19,6 +19,8 @@ export interface Appearance {
   readonly fileNameCut: FileNameCut;
   readonly filesView: FilesView;
   readonly fileNames: FileNames;
+  /** The eyes of Eva's visor beside her answers in a Project chat, as `#rrggbb`. A second colour shows the mode at a glance. */
+  readonly projectEyes: string;
 }
 
 export interface Oklch {
@@ -29,6 +31,8 @@ export interface Oklch {
 
 /** EVE blue. */
 export const defaultSeed = "#2aa8ff";
+/** Violet: far from EVE blue, so a Project chat does not look like an Assistant chat. */
+export const defaultProjectEyes = "#8b5cf6";
 
 /** The seeds of the design guide, in the order of its palette picker. */
 export const seedColours: readonly { readonly name: string; readonly hex: string }[] = [
@@ -57,21 +61,26 @@ const defaultAppearance: Appearance = {
   fileNameCut: "middle",
   filesView: "columns",
   fileNames: "smart",
+  projectEyes: defaultProjectEyes,
 };
+
+function storedColour(value: unknown, fallback: string): string {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : fallback;
+}
 
 /** A private window or blocked storage throws or holds nothing: the page then uses the defaults. */
 export function readAppearance(): Appearance {
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as Partial<Record<string, unknown>>;
-    const seed = stored["seed"];
     const cut = stored["fileNameCut"];
     return {
       theme: stored["theme"] === "light" || stored["theme"] === "dark" ? stored["theme"] : defaultAppearance.theme,
       density: stored["density"] === "compact" ? "compact" : defaultAppearance.density,
-      seed: typeof seed === "string" && /^#[0-9a-f]{6}$/i.test(seed) ? seed.toLowerCase() : defaultAppearance.seed,
+      seed: storedColour(stored["seed"], defaultAppearance.seed),
       fileNameCut: cut === "start" || cut === "end" ? cut : defaultAppearance.fileNameCut,
       filesView: stored["filesView"] === "single" ? "single" : defaultAppearance.filesView,
       fileNames: stored["fileNames"] === "real" ? "real" : defaultAppearance.fileNames,
+      projectEyes: storedColour(stored["projectEyes"], defaultAppearance.projectEyes),
     };
   } catch {
     return defaultAppearance;
@@ -96,6 +105,10 @@ export function applyAppearance(appearance: Appearance): void {
   root.setAttribute("data-file-name-cut", appearance.fileNameCut);
   root.setAttribute("data-files-view", appearance.filesView);
   for (const [name, value] of Object.entries(seedVariables(appearance.seed))) root.style.setProperty(name, value);
+  // The eyes take only the hue and the chroma: `.mk.project-eyes` in visor.css sets their lightness, as for the seed.
+  const projectEyes = seedVariables(appearance.projectEyes);
+  root.style.setProperty("--project-eye-h", projectEyes["--h"]);
+  root.style.setProperty("--project-eye-c", projectEyes["--c"]);
   // The phone's browser bar takes its colour from these tags, so they follow the theme and the seed too.
   const colours = themeColours(appearance.seed);
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {

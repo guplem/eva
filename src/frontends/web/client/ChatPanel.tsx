@@ -46,9 +46,14 @@ function TaskList({ tasks, empty }: { readonly tasks: Tasks; readonly empty: str
         const status = taskStatus(task.state);
         return (
           <li key={taskId} className="task-card">
-            <Icon name="sync" />
+            <Icon name={status.icon} />
             <span className="task-description">{task.description}</span>
             <span className={`status-pill ${status.tone}`}>{status.label}</span>
+            {task.chatId !== undefined && (
+              <a className="task-chat-link" href={`#/chat/${encodeURIComponent(task.chatId)}`}>
+                Open chat
+              </a>
+            )}
           </li>
         );
       })}
@@ -196,7 +201,8 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatP
       <h3>Background tasks</h3>
       <TaskList
         tasks={tasks}
-        empty={root?.engine === "pi" ? "pi does not report background tasks." : "Nothing runs in the background."}
+        // The panel shows only the tasks that run now. An answer's own tasks show under the answer.
+        empty={root?.engine === "pi" ? "pi does not report background tasks." : "No background task runs now."}
       />
       <ForkButton tree={tree} onChanged={onChanged} shownId={shownId} />
     </>
@@ -280,10 +286,13 @@ export function TasksDialog({
   tasks,
   empty,
   total,
+  note,
   onClose,
 }: {
   readonly tasks: Tasks;
   readonly empty: string;
+  /** What the list shows, such as the tasks of one answer. */
+  readonly note?: string;
   /** How many tasks the answer had. A long turn keeps only its last 100 steps, so some can be missing. */
   readonly total?: number;
   readonly onClose: () => void;
@@ -293,6 +302,7 @@ export function TasksDialog({
   return (
     <Dialog label="Background tasks" onClose={onClose}>
       <strong>Background tasks</strong>
+      {note !== undefined && <p className="task-note">{note}</p>}
       <TaskList tasks={tasks} empty={empty} />
       {shown > 0 && missing > 0 && (
         <span className="chip">

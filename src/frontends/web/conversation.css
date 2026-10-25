@@ -432,6 +432,11 @@
   white-space: nowrap;
 }
 
+/* A message is the agent's prose, not a target such as a file, so it takes the interface font. */
+.step-message {
+  font-family: var(--font);
+}
+
 .step-list li.failed,
 .step-list li.failed .icon {
   color: var(--bad);
@@ -622,6 +627,12 @@ button.ghost .icon {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* A file dragged over the box drops into it. */
+.composer-box.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 
 .composer-box textarea {
@@ -1166,4 +1177,39 @@ button.ghost .icon {
   margin-block: var(--space-1) var(--space-3);
   padding-inline-start: var(--space-4);
   overflow-wrap: anywhere;
+}
+
+/* The files that an answer sends. Each button names its file, also on a phone. */
+.answer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.answer-files .files-download {
+  min-width: 0;
+  align-items: flex-start;
+  max-width: 100%;
+}
+
+.named-download button.ghost {
+  max-width: 100%;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+/* A thumb needs a target of --touch-target. */
+@media (pointer: coarse) {
+  .named-download button.ghost {
+    min-height: var(--touch-target);
+  }
+}
+
+/* A long name ends with an ellipsis, so the page never scrolls sideways. */
+.download-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

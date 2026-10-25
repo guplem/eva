@@ -13,7 +13,8 @@ import {
   describeToolVersions,
   describeUpdate,
 } from "../cli/client.ts";
-import { extractFileMarkers, receivedFileNote, saveReceivedFile } from "../../core/files/vault-files.ts";
+import { receivedFileNote, saveReceivedFile } from "../../core/files/vault-files.ts";
+import { extractFileMarkers } from "../../shared/file-markers.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 

@@ -1,5 +1,6 @@
 /** The rules of the conversation view that need no React: the step line, the faces and the chips. */
 import { modelTierName, type EffortLevel, type EngineName, type ModelAlias } from "../../../shared/engine-port.ts";
+import { extractFileMarkers, shownAnswerText } from "../../../shared/file-markers.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { UndoPreview } from "./api.ts";
 import type { IconName } from "./icons.tsx";
@@ -19,7 +20,7 @@ export function foldSteps(steps: readonly TurnStep[]): {
 }
 
 const kindIcons: Readonly<Record<TurnStep["kind"], IconName>> = {
-  message: "chat",
+  message: "eve",
   command: "term",
   tool: "bolt",
   task: "sync",
@@ -27,6 +28,11 @@ const kindIcons: Readonly<Record<TurnStep["kind"], IconName>> = {
 
 export function stepIcon(step: TurnStep): IconName {
   return step.isError ? "x" : kindIcons[step.kind];
+}
+
+/** A message in the step list is the agent's own words, so it shows without a pill, beside the face of Eva. */
+export function stepHasPill(step: TurnStep): boolean {
+  return step.kind !== "message";
 }
 
 const kindActions: Readonly<Record<TurnStep["kind"], string>> = {
@@ -42,11 +48,38 @@ const kindActions: Readonly<Record<TurnStep["kind"], string>> = {
  * with JSON, so it falls back to its kind.
  */
 export function stepParts(step: TurnStep): { action: string; detail: string } {
+  // A long message step is cut, and the cut can fall inside a marker.
+  if (step.kind === "message")
+    return { action: kindActions.message, detail: shownAnswerText(step.text, step.text.endsWith("…")) };
   if (step.kind !== "tool" || step.text.startsWith("{")) return { action: kindActions[step.kind], detail: step.text };
   const space = step.text.indexOf(" ");
   const name = space === -1 ? step.text : step.text.slice(0, space);
   const detail = space === -1 ? "" : step.text.slice(space + 1);
   return { action: name.split("__").at(-1) ?? name, detail };
+}
+
+/**
+ * True when the whole answer shows more than its last message. An earlier message of file
+ * markers only shows no words, so the toggle would change nothing.
+ */
+export function wholeAnswerAddsText(wholeAnswer: string, lastMessage: string): boolean {
+  return shownAnswerText(wholeAnswer) !== shownAnswerText(lastMessage);
+}
+
+/**
+ * The files that the markers of a whole answer name, for the download buttons under it. Telegram
+ * also reads every message of the turn, so a file from an earlier message is not lost.
+ */
+export function answerFiles(answer: string): { path: string; name: string }[] {
+  const { attach, offer } = extractFileMarkers(answer);
+  return [...attach, ...offer].map((path) => ({
+    path,
+    name:
+      path
+        .split(/[/\\]/)
+        .filter((part) => part !== "")
+        .at(-1) ?? path,
+  }));
 }
 
 /**
@@ -91,8 +124,10 @@ export function hasToolDetails(step: TurnStep): boolean {
 }
 
 /** The state word of the step dialog. A word, so a failed step shows by more than colour. */
-export function stepState(step: TurnStep, live: boolean): "Running" | "Done" | "Failed" {
+export function stepState(step: TurnStep, live: boolean): "Running" | "Done" | "Failed" | "Started" {
   if (step.isError) return "Failed";
+  // The Project chat of project work goes on after the answer, so the answer cannot know its end.
+  if (step.chatId !== undefined) return "Started";
   return live && hasToolDetails(step) && step.output === undefined ? "Running" : "Done";
 }
 

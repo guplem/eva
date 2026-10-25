@@ -15,6 +15,8 @@ const stepSchema = z.object({
   text: z.string(),
   isError: z.boolean(),
   id: z.string().nullable(),
+  /** The chat that a task runs in. A step from before this field has none. */
+  chatId: z.string().optional(),
 });
 
 const turnSchema = z.object({

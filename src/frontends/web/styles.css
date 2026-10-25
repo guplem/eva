@@ -79,6 +79,9 @@
   --c: 0.164;
   --l: 0.707;
   --on-l: 1;
+  /* The hue and chroma of the eyes in a Project chat: violet until the script runs. */
+  --project-eye-h: 292.7;
+  --project-eye-c: 0.2;
 
   --bg: oklch(0.972 0.008 var(--h));
   --bg2: oklch(0.925 0.018 var(--h));

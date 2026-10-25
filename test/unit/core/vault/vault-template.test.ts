@@ -7,6 +7,7 @@ import {
   defaultAssistantRules,
   vaultTemplateFiles,
 } from "../../../../src/core/vault/vault-template.ts";
+import { vaultFolders } from "../../../../src/core/vault/vault-folders.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 
@@ -32,7 +33,13 @@ afterEach(() => {
   rmSync(folder, { recursive: true, force: true });
 });
 
-const answers = { name: "Alex", language: "English", timeZone: "Europe/Madrid", topics: ["Work", "Music"] };
+const answers = {
+  name: "Alex",
+  language: "English",
+  notesLanguage: "Spanish",
+  timeZone: "Europe/Madrid",
+  topics: ["Work", "Music"],
+};
 
 function git(cwd: string, ...args: string[]): string {
   return Bun.spawnSync(["git", ...args], { cwd, env: environment })
@@ -92,6 +99,22 @@ describe("the vault template", () => {
       expect(map).toContain(`\`${folder}`);
     }
     expect(map).toContain("## Grow the vault");
+  });
+
+  test("the agent map names the language that the person chose for notes", () => {
+    const map = vaultTemplateFiles(answers)["AGENTS.md"] ?? "";
+    expect(map).toContain("**Write all notes in Spanish**");
+    expect(map).not.toContain("{{");
+  });
+
+  test("each folder that setup describes is in the agent map and in the new vault", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    for (const { path, purpose } of vaultFolders) {
+      expect(map).toContain(`\`${path}/`);
+      expect(purpose).not.toBe("");
+      expect(Object.keys(files).some((file) => file.startsWith(`${path}/`))).toBe(true);
+    }
   });
 
   test("a new vault is a git repository with one commit, even with no git identity", async () => {

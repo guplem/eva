@@ -3,6 +3,7 @@ import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { SessionRecord } from "./api.ts";
 import { pathOf, type BranchSession } from "./branch-path.ts";
 import { answeredModel, modelLabel } from "./conversation-parts.ts";
+import type { IconName } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
 
 /** How full the context is, and the size of the window when the engine said it. */
@@ -85,16 +86,24 @@ export function chatSubtitle(chat: Pick<SessionRecord, "engine" | "mode">, runni
 
 export type StatusTone = "live" | "ok" | "bad" | "idle";
 
-const statuses: Readonly<Record<string, { label: string; tone: StatusTone }>> = {
-  running: { label: "Running", tone: "live" },
-  done: { label: "OK", tone: "ok" },
-  failed: { label: "Failed", tone: "bad" },
-  ended: { label: "Ended", tone: "idle" },
+export interface TaskStatus {
+  readonly label: string;
+  readonly tone: StatusTone;
+  /** Only a running task shows the sync arrows, so a task that ended does not look busy. */
+  readonly icon: IconName;
+}
+
+const statuses: Readonly<Record<string, TaskStatus>> = {
+  running: { label: "Running", tone: "live", icon: "sync" },
+  done: { label: "OK", tone: "ok", icon: "check" },
+  failed: { label: "Failed", tone: "bad", icon: "alert" },
+  ended: { label: "Ended", tone: "idle", icon: "check" },
+  started: { label: "Started", tone: "idle", icon: "chat" },
 };
 
-/** One word and one tone for the state of a task, as the status pills show it. */
-export function taskStatus(state: string): { label: string; tone: StatusTone } {
-  return statuses[state] ?? { label: state, tone: "idle" };
+/** One word, one tone and one icon for the state of a task, as the task cards show it. */
+export function taskStatus(state: string): TaskStatus {
+  return statuses[state] ?? { label: state, tone: "idle", icon: "info" };
 }
 
 /** Where "Fork this chat" forks a branch: the newest answer on its path, which can be a shared one. */
@@ -136,6 +145,11 @@ export function tasksOfTurn(steps: readonly TurnStep[], sessionId: string): Live
   const tasks: Record<string, LiveState["tasks"][string]> = {};
   for (const step of steps) {
     if (step.kind !== "task" || step.id === null) continue;
+    // The Project chat of project work goes on after the answer, so its task only started.
+    if (step.chatId !== undefined) {
+      tasks[step.id] = { description: step.text, state: "started", sessionId, chatId: step.chatId };
+      continue;
+    }
     tasks[step.id] = { description: step.text, state: step.isError ? "failed" : "ended", sessionId };
   }
   return tasks;

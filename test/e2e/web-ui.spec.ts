@@ -156,12 +156,11 @@ async function style(
 /** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
-      "Nothing runs in the background.",
-    );
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("No background task runs now.");
   }
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  await expect(dialog).toContainText("This answer started these tasks");
   await expect(dialog).toContainText("Search the notes");
   await expect(dialog).toContainText("Ended");
   await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
@@ -186,6 +185,34 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await page.getByLabel(/Token/).fill("wrong");
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByRole("alert")).toHaveText("This token is not valid.");
+});
+
+test("Assistant mode: the task dialog of an answer opens the Project chat of its project work (#571)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Please give work to the example app");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText("Started the work.");
+  const askingChat = page.url();
+  await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  const work = dialog.getByRole("listitem").filter({ hasText: "Fix the login bug." });
+  await expect(work).toContainText("Started");
+  await work.getByRole("link", { name: "Open chat" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".main-header .sub")).toContainText("Example app › clone-");
+  // The first chat in a new clone can ask to trust the repository. A question that waits would stay for later tests.
+  const answer = page.locator(".message.answer").first();
+  const deny = page.getByRole("button", { name: "Deny" });
+  await expect(answer.or(deny).first()).toBeVisible();
+  if (await deny.isVisible()) await deny.click();
+  await expect(answer).toContainText("Fix the login bug.");
+  // The report of the work starts a turn in the asking chat. A later test must not share the vault sync with it.
+  await page.goto(askingChat);
+  await expect(page.locator(".message.answer").nth(1)).toContainText("Fix the login bug.");
 });
 
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
@@ -687,6 +714,21 @@ test("a link opened before the login opens its chat after the login", async ({ p
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(linked);
 });
 
+test("on a computer, a chat that opens gives the focus to its message box, so the person types at once", async ({
+  page,
+}) => {
+  await logIn(page);
+  const first = await newAnsweredChat(page, "First focused chat");
+  await newAnsweredChat(page, "Second focused chat");
+  await openList(page);
+  await page.locator(".sidebar .list-item", { hasText: first }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(first);
+  await expect(page.getByLabel("Message").first()).toBeFocused();
+
+  await clickNewChat(page);
+  await expect(page.getByLabel("Message").first()).toBeFocused();
+});
+
 test("a link to a deleted chat says so", async ({ page }) => {
   await logIn(page);
   const title = await newAnsweredChat(page, "A chat that goes");
@@ -808,6 +850,21 @@ test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) =
   const answer = page.locator(".message.answer").first();
   await expect(answer.locator("li")).toHaveText(["first", "second"]);
   await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
+});
+
+test("a file that an answer sends shows as a download button, not as a marker (#581)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("hand me the parcel");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.locator(".answer-body")).toHaveText("Here are the trips.");
+  const button = answer.getByRole("button", { name: "Download 2027-trips.md" });
+  await expect(button).toBeVisible();
+  const download = page.waitForEvent("download");
+  await button.click();
+  expect((await download).suggestedFilename()).toBe("2027-trips.md");
 });
 
 test("a usage warning shows under the chat after its answer (issue #67)", async ({ page }) => {
@@ -1223,9 +1280,7 @@ test("Project mode: search, a new clone with each repository and its branch, and
   await page.getByRole("button", { name: "Example app", exact: true }).click();
   await newProjectChat(page);
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
-      "Nothing runs in the background.",
-    );
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("No background task runs now.");
   }
 });
 
@@ -2132,6 +2187,43 @@ test("Settings: a seed colour changes the whole palette and stays in this browse
   await expect(page.getByLabel("Any colour")).toHaveValue("#123abc");
 });
 
+test("Settings: the eyes beside a Project chat's answers take their own colour", async ({ page }) => {
+  test.skip(test.info().project.name === "phone", "A phone hides the visor beside each answer.");
+  const besideAnswer = (text: string): Locator =>
+    page.locator(".msg", { has: page.locator(".message.answer", { hasText: text }) }).locator(".mk");
+  const assistantTitle = `Assistant eyes (${test.info().project.name})`;
+  const projectTitle = `Project eyes (${test.info().project.name})`;
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(assistantTitle);
+  await composer.press("Enter");
+  await expect(besideAnswer(assistantTitle)).toBeVisible();
+  await expect(besideAnswer(assistantTitle)).not.toHaveClass(/project-eyes/);
+
+  await openSettings(page, "Personalize");
+  const eyes = page.getByRole("group", { name: "Project eyes" });
+  await expect(eyes.getByRole("button", { name: "Violet" })).toHaveAttribute("aria-pressed", "true");
+  await eyes.getByRole("button", { name: "Teal" }).click();
+  await expect(eyes.getByRole("button", { name: "Teal" })).toHaveAttribute("aria-pressed", "true");
+  // The seed stays EVE blue: only the eyes of a Project chat change.
+  const seeds = page.getByRole("group", { name: "Colour" });
+  await expect(seeds.getByRole("button", { name: "EVE blue" })).toHaveAttribute("aria-pressed", "true");
+
+  await openExampleApp(page);
+  await newProjectChat(page);
+  await composer.fill(projectTitle);
+  await composer.press("Enter");
+  await answerInNewClone(page, projectTitle);
+  const visor = besideAnswer(projectTitle);
+  await expect(visor).toHaveClass(/project-eyes/);
+  const eye = await visor.evaluate((element) => getComputedStyle(element).getPropertyValue("--eye"));
+  const hue = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--project-eye-h").trim(),
+  );
+  expect(eye).toContain(hue);
+});
+
 test("the page brings its own fonts, so it needs no other server", async ({ page, baseURL }) => {
   await page.route("**/*", (route) =>
     route
@@ -2982,7 +3074,10 @@ test("a new message of a running turn replaces the shown one, and the older one 
   sockets.at(-1)?.send(textEvent(sessionId, "second thought"));
   await expect(body).toHaveText("second thought");
   // A running turn shows its steps open.
-  await expect(page.getByRole("list", { name: "Steps" }).getByRole("listitem")).toHaveText([/Message\s+first thought/]);
+  const steps = page.getByRole("list", { name: "Steps" }).getByRole("listitem");
+  // A message has no pill, but a screen reader still hears what it is.
+  await expect(steps).toHaveText(["Message: first thought"]);
+  await expect(steps.locator(".pill")).toHaveCount(0);
   // A step keeps a short text, so the whole answer is one tap away.
   await page.getByRole("button", { name: "Show the whole answer" }).click();
   await expect(body).toContainText("first thought");
@@ -3104,6 +3199,32 @@ test("an attached file reaches the agent as its vault path, and a removed one do
   await expect(message).not.toContainText("extra");
   await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
   await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
+});
+
+test("a pasted image and a dropped file attach like a picked file", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.evaluate((textarea) => {
+    const clipboard = new DataTransfer();
+    clipboard.items.add(new File([new Uint8Array([137, 80, 78, 71])], "image.png", { type: "image/png" }));
+    textarea.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
+  });
+  const dropped = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["notes"], "notes.txt", { type: "text/plain" }));
+    return transfer;
+  });
+  await page.locator(".composer-box").dispatchEvent("dragover", { dataTransfer: dropped });
+  await page.locator(".composer-box").dispatchEvent("drop", { dataTransfer: dropped });
+  const attached = page.getByRole("list", { name: "Attached files" });
+  await expect(attached.getByRole("listitem")).toHaveCount(2);
+  await expect(attached).toContainText("image.png");
+  await expect(attached).toContainText("notes.txt");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const message = page.locator(".message.user").last();
+  await expect(message).toContainText(/saved as Scratch\/received\/image-[0-9a-f]{12}\.png/);
+  await expect(message).toContainText(/saved as Scratch\/received\/notes-[0-9a-f]{12}\.txt/);
 });
 
 test("a refused file leaves the box and says why (issue 409)", async ({ page }) => {
@@ -4554,6 +4675,13 @@ test.describe("on a touch screen", () => {
     await expect(page.locator(".message.user")).toHaveCount(0);
     await page.getByRole("button", { name: "Send" }).first().click();
     await expect(page.locator(".message.answer").first()).toContainText("second line");
+  });
+
+  test("a chat that opens leaves the message box without the focus, so the keyboard stays down", async ({ page }) => {
+    await logIn(page);
+    await newChat(page);
+    await expect(page.getByLabel("Message").first()).toBeEnabled();
+    await expect(page.getByLabel("Message").first()).not.toBeFocused();
   });
 
   test("the tab bar hides while the keyboard is up, and comes back after", async ({ page }) => {

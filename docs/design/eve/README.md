@@ -146,14 +146,14 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
 
 A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) and inspector (300 px). A page without a list or an inspector drops that column.
 
-- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor plays a short playful face.
+- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the notification center. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error, and then the crosses glow red and pulse. A small accent dot shows unread news or a setup step that is left.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column of at most 760 px, and the composer.
 - **Inspector:** the details of the selected item, such as the chat details.
 
 ### Phone
 
-From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with Chats, Projects, Files, Schedules and Settings. List pages use a large 30 px title.
+From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with Chats, Projects, Files, Schedules and Eva. The Eva tab is the nav visor, with the label "Eva". It opens the notification center, which has a button to Settings. List pages use a large 30 px title.
 
 Dialogs become bottom sheets on a phone. Their buttons stack at full width.
 
@@ -224,7 +224,7 @@ Only the eyes change. The visor stays round and still. Most faces blink. Happy, 
 | `e-error`    | Error     | Two crosses                                           | None                                                              | Something broke and needs the person.                        |
 | `e-sleep`    | Asleep    | Thin lines and a floating "z"                         | The lines breathe                                                 | The hub rests, nothing is scheduled. A chat waits for setup. |
 
-`stateFaces` in `client/visor-faces.ts` maps each state to its face, as the "Use" column says. Pages pick a state face there. Only the playful faces, such as a tap on the nav visor and the festive eyes, name a face by hand. Some uses have no page yet, such as the wink for a saved note and the sad face for a failed schedule.
+`stateFaces` in `client/visor-faces.ts` maps each state to its face, as the "Use" column says. Pages pick a state face there. Only the playful faces, such as the festive eyes, name a face by hand. Some uses have no page yet, such as the wink for a saved note and the sad face for a failed schedule.
 
 The login page rotates faces while it waits: searching (5 s), thinking (3 s), happy, wink, surprised, listening and delighted.
 
@@ -370,6 +370,8 @@ The pull requests of #161 chose these differences, each for the reason below. Do
 | Fonts from the internet                            | Fonts bundled with the web client.                  | The executable must work with no internet access.                                                      | #182         |
 | A glance of the neutral face                       | The neutral face only blinks.                       | The reference names `glance` keyframes that it does not define.                                        | #181         |
 | Separate Telegram and Google sections              | One Connections section.                            | #166 grouped them on purpose. Each still has its own setup step page.                                  | #197         |
+| Settings in the phone tab bar                      | The visor, with the label "Eva", in its place.      | The visor opens the notification center, which links to Settings. The tab bar keeps five entries.      | #567         |
+| Problem notices at the top of each page            | The notification center behind the visor.           | The owner found the notices too large. The visor counts the problems, and the center lists them.       | #567         |
 
 ## Captures
 

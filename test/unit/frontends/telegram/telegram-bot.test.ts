@@ -632,6 +632,87 @@ describe("topics", () => {
     telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
     await settle(bot, () => eva.sessions.get(session.id).modelAlias === "haiku");
     expect(telegram.callsTo("answerCallbackQuery")).toHaveLength(1);
+    // A chat with no history loses nothing, so the first choice needs no notice (#545).
+    expect(telegram.sentTexts().filter((text) => text.includes("next answer"))).toEqual([]);
+  });
+
+  test("a model button of a closed chat says why the model stays (#545)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    eva.sessions.close(session.id);
+
+    telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("closed this chat")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
+  });
+
+  test("a model button changes the model of a started chat, and says what the change costs (#545)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi", 500);
+    await settle(bot, () => eva.sessions.get(session.id).turns.length === 1 && !eva.sessions.isBusy(session.id));
+
+    telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("whole chat again")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("haiku");
+    const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("Fast"));
+    expect(notice?.params["message_thread_id"]).toBe(500);
+
+    // The same model changes nothing, so a second press says so and sends no cost notice.
+    telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already uses Fast")));
+    expect(telegram.sentTexts().filter((text) => text.includes("whole chat again"))).toHaveLength(1);
+  });
+
+  test("a model button of an earlier chat changes nothing, so the phone never hears a wrong model (#545)", async () => {
+    const bot = createBot();
+    // With no topics, each /new sets the main chat's earlier chat aside, and its picker stays on screen.
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const earlier = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi");
+    await settle(bot, () => eva.sessions.get(earlier.id).turns.length === 1 && !eva.sessions.isBusy(earlier.id));
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 2);
+
+    telegram.pressButton(owner, `m:${earlier.id}:haiku`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("earlier chat")));
+    expect(eva.sessions.get(earlier.id).modelAlias).toBe("opus");
+  });
+
+  test("a model button of a deleted chat says that the chat is gone (#545)", async () => {
+    const bot = createBot();
+    telegram.pressButton(owner, "m:no-such-chat:opus", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("no longer exists")));
+    expect(telegram.sentTexts().filter((text) => text.startsWith("The message failed"))).toEqual([]);
+  });
+
+  test("a model button says why it waits while a turn runs (#545)", async () => {
+    let release = (): void => undefined;
+    createEva(async function* (request) {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    telegram.sendText(owner, "hi", 500);
+    await settle(bot, () => eva.sessions.isBusy(session.id) && engine.requests.length === 1);
+
+    telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
+    release();
+    await settle(bot, () => !eva.sessions.isBusy(session.id));
   });
 
   test("the first message renames a topic that Eva opened (lesson 125)", async () => {
@@ -1198,7 +1279,13 @@ describe("project work from a Telegram chat (#9)", () => {
     const asking = eva.sessions.list()[0]!;
 
     const work = await eva.startProjectWork({ projectId, request: "Fix the login bug.", reportToSessionId: asking.id });
-    await settle(bot, () => telegram.sentTexts().includes("Fixed it."));
+    // The start notice and the answer go out on their own, so under load the answer can come first.
+    await settle(
+      bot,
+      () =>
+        telegram.sentTexts().includes("Fixed it.") &&
+        telegram.sentTexts().some((text) => text.startsWith("Project work started")),
+    );
     expect(telegram.callsTo("createForumTopic")[0]?.params["name"]).toBe("Example app: Fix the login bug.");
     const started = telegram.sentTexts().find((text) => text.startsWith("Project work started"));
     expect(started).toBe(
@@ -1336,6 +1423,149 @@ describe("usage limits (issue #67)", () => {
     expect(texts.indexOf("You reached your 5-hour usage limit. It resets at 12:00.")).toBeLessThan(
       texts.findIndex((text) => text.startsWith("The turn failed")),
     );
+  });
+});
+
+describe("the model's questions (#544)", () => {
+  const questions = [
+    {
+      question: "Which format?",
+      header: "Format",
+      options: [
+        { label: "Talk", description: "A one-to-one talk." },
+        { label: "Form", description: "A form with scores." },
+      ],
+      multiSelect: false,
+    },
+    {
+      question: "Which notes?",
+      header: "Notes",
+      options: [
+        { label: "Journal", description: "" },
+        { label: "Ideas", description: "" },
+      ],
+      multiSelect: true,
+    },
+  ];
+
+  /** A turn that asks the questions and answers with what it got. */
+  function askingEva(outcomes: unknown[]): void {
+    createEva(async function* (request) {
+      outcomes.push(await request.askQuestions("AskUserQuestion", questions));
+      yield* FakeEngine.answer(request, "ok");
+    });
+  }
+
+  function questionMessage(): { messageId: number; requestId: string; text: string; buttons: string } {
+    const call = telegram
+      .callsTo("sendMessage")
+      .find((sent) => JSON.stringify(sent.params["reply_markup"] ?? "").includes('"q:'));
+    const buttons = JSON.stringify(call?.params["reply_markup"] ?? "");
+    return {
+      messageId: (call?.result as { message_id: number } | undefined)?.message_id ?? -1,
+      requestId: /"q:([^:"]+):/.exec(buttons)?.[1] ?? "",
+      text: typeof call?.params["text"] === "string" ? call.params["text"] : "",
+      buttons,
+    };
+  }
+
+  const lastEdit = (): Record<string, unknown> | undefined => telegram.callsTo("editMessageText").at(-1)?.params;
+  const editText = (): string => {
+    const text = lastEdit()?.["text"];
+    return typeof text === "string" ? text : "";
+  };
+
+  test("each question shows with one button per option, and the picks reach the turn", async () => {
+    const outcomes: unknown[] = [];
+    askingEva(outcomes);
+    const bot = createBot();
+    telegram.sendText(owner, "plan the review");
+    await settle(bot, () => questionMessage().requestId !== "");
+    const shown = questionMessage();
+    expect(shown.text).toContain("Question 1 of 2");
+    expect(shown.text).toContain("Which format?");
+    expect(shown.text).toContain("Form: A form with scores.");
+    expect(shown.buttons).toContain(`"q:${shown.requestId}:0:1"`);
+    expect(shown.buttons).toContain(`"q:${shown.requestId}:skip"`);
+
+    // A single choice answers its question at once, and the message shows the next one.
+    telegram.pressButton(owner, `q:${shown.requestId}:0:1`);
+    await settle(bot, () => editText().includes("Question 2 of 2"));
+    // A stale button of the first question answers nothing, and says so.
+    telegram.pressButton(owner, `q:${shown.requestId}:0:0`);
+    await settle(bot, () =>
+      telegram.callsTo("answerCallbackQuery").some((call) => call.params["text"] === "This question has moved on."),
+    );
+    // A multiple choice toggles, then Done answers.
+    telegram.pressButton(owner, `q:${shown.requestId}:1:1`);
+    await settle(bot, () => JSON.stringify(lastEdit()?.["reply_markup"] ?? "").includes("✓ Ideas"));
+    telegram.pressButton(owner, `q:${shown.requestId}:1:done`);
+    await settle(bot, () => outcomes.length === 1);
+    expect(outcomes).toEqual([[{ selected: [1] }, { selected: [1] }]]);
+    // The message keeps the answers, and loses its buttons.
+    await settle(bot, () => editText().includes("Answered"));
+    expect(editText()).toContain("Which format?\n  Form");
+    expect(editText()).toContain("Which notes?\n  Ideas");
+    expect(lastEdit()?.["reply_markup"]).toBeUndefined();
+  });
+
+  test("Done with no pick asks for one, and Skip declines", async () => {
+    const outcomes: unknown[] = [];
+    askingEva(outcomes);
+    const bot = createBot();
+    telegram.sendText(owner, "plan the review");
+    await settle(bot, () => questionMessage().requestId !== "");
+    const { requestId } = questionMessage();
+    telegram.pressButton(owner, `q:${requestId}:0:0`);
+    await settle(bot, () => editText().includes("Question 2 of 2"));
+    telegram.pressButton(owner, `q:${requestId}:1:done`);
+    await settle(bot, () =>
+      telegram.callsTo("answerCallbackQuery").some((call) => call.params["text"] === "Pick at least one option."),
+    );
+    telegram.pressButton(owner, `q:${requestId}:skip`);
+    await settle(bot, () => outcomes.length === 1);
+    expect(outcomes).toEqual(["declined"]);
+    await settle(bot, () => editText().endsWith("Skipped"));
+  });
+
+  test("a reply to the question message is an own answer", async () => {
+    const outcomes: unknown[] = [];
+    askingEva(outcomes);
+    const bot = createBot();
+    telegram.sendText(owner, "plan the review");
+    await settle(bot, () => questionMessage().requestId !== "");
+    const { messageId } = questionMessage();
+    const replyTo = { message_id: messageId, chat: { id: owner, type: "private" } };
+    telegram.sendMessageWith(owner, { text: "A short call", reply_to_message: replyTo });
+    await settle(bot, () => editText().includes("Question 2 of 2"));
+    telegram.sendMessageWith(owner, { text: "Both", reply_to_message: replyTo });
+    await settle(bot, () => outcomes.length === 1);
+    expect(outcomes).toEqual([
+      [
+        { selected: [], other: "A short call" },
+        { selected: [], other: "Both" },
+      ],
+    ]);
+    // The replies answered the form: neither became a message of the chat.
+    expect(engine.requests).toHaveLength(1);
+  });
+
+  test("an answer from another front end closes the form with the answers", async () => {
+    const outcomes: unknown[] = [];
+    askingEva(outcomes);
+    const bot = createBot();
+    telegram.sendText(owner, "plan the review");
+    await settle(bot, () => questionMessage().requestId !== "");
+    const { requestId } = questionMessage();
+    eva.sessions.answerApproval(requestId, "allow", [{ selected: [0] }, { selected: [0, 1] }]);
+    await settle(bot, () => editText().includes("Answered"));
+    expect(editText()).toContain("Which notes?\n  Journal, Ideas");
+    // The form is gone: a late press answers nothing and says so.
+    telegram.pressButton(owner, `q:${requestId}:0:1`);
+    await settle(bot, () =>
+      telegram.callsTo("answerCallbackQuery").some((call) => call.params["text"] === "This question is closed."),
+    );
+    expect(outcomes).toEqual([[{ selected: [0] }, { selected: [0, 1] }]]);
   });
 });
 

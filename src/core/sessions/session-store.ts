@@ -37,12 +37,36 @@ const turnSchema = z.object({
   contextTokens: z.number().int().min(0).nullable().catch(null),
   /** The size of the context window of the model that answered, or null when the engine did not say. */
   contextWindow: z.number().int().positive().nullable().catch(null),
-  /** The id of the model that answered, so a chat on the default model can name it. Null when the engine did not say. */
+  /** The id of the model that answered, so the chip names it beside the tier. Null when the engine did not say. */
   model: z.string().nullable().catch(null),
+  /**
+   * The model that the chat chose for the turn (issue 545). The chat can change it between turns,
+   * so a front end names an answered model only for the model that the chat has now. A turn from
+   * before the field has none.
+   */
+  modelAlias: z
+    .preprocess((value) => (value === "default" ? "opus" : value), z.enum(modelAliases))
+    .optional()
+    .catch(undefined),
   /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),
   at: z.string(),
+  /**
+   * The snapshot of the clone's files before and after the turn (issue 523), or null. A retry undoes
+   * the turn with the first, and a fork at its answer starts from the second. An older turn has none.
+   */
+  startSnapshot: z.string().nullable().default(null).catch(null),
+  endSnapshot: z.string().nullable().default(null).catch(null),
+});
+
+/** The chat that a chat in another clone branched from (issue 523), with the point of its history. */
+const forkedFromSchema = z.object({
+  sessionId: z.string(),
+  clone: z.string().nullable(),
+  /** The engine session and the message that the history goes on from, or null to start with none. */
+  engineSessionId: z.string().nullable(),
+  atMessageId: z.string().nullable(),
 });
 
 export const sessionSchema = z
@@ -86,6 +110,13 @@ export const sessionSchema = z
     continuedFrom: z.string().nullable().default(null).catch(null),
     /** The summary that the person reads and can change before the first turn, or null. */
     firstMessageDraft: z.string().nullable().default(null).catch(null),
+    /**
+     * A snapshot of the clone's files that the next turn brings back before it starts (issue 523), or
+     * null. An undo retry sets it, so the restore runs while the turn holds the clone.
+     */
+    pendingRestore: z.string().nullable().default(null).catch(null),
+    /** The chat in another clone that this chat branched from (issue 523), or null. It is not its parent. */
+    forkedFrom: forkedFromSchema.nullable().default(null).catch(null),
   })
   .transform((session) => ({ ...session, seenTurns: session.seenTurns ?? session.turns.length }));
 

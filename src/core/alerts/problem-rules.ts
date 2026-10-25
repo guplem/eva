@@ -47,26 +47,39 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
     case "error":
       return {
         level: "error",
-        message: `The vault sync failed: ${state.lastError ?? "unknown reason"}. Send /sync to try again, or /logs to see more.`,
+        message: `The vault sync failed: ${withoutFinalPeriod(state.lastError ?? "unknown reason")}. Send /sync to try again, or /logs to see more.`,
         resolvedMessage,
       };
   }
 }
 
-/** The update problem of a status: a failed check or a failed install, or null. */
-export function updateProblem(status: UpdateStatus): AlertProblem | null {
+/** A laptop that wakes up with no network fails a check or two; only a long failure needs the owner. */
+export const updateCheckAlertMs = 2 * 60 * 60_000;
+
+/**
+ * The update problem of a status: a failed install, checks that fail for 2 hours, or null.
+ * "keep" leaves the open problem as it is. The time runs from check to check, never from the
+ * clock: with the checks off, one failed check must not turn into an alert later. The words
+ * name no slash command: on a relayed alert, a Telegram command acts on the hub.
+ */
+export function updateProblem(status: UpdateStatus): AlertProblem | null | "keep" {
   if (status.lastError === null) return null;
+  const reason = withoutFinalPeriod(status.lastError);
+  const resolvedMessage = "Updates work again.";
   if (status.failedStep === "install") {
     return {
       level: "error",
-      message: `The update install failed: ${status.lastError}. Eva runs on the old version; send /update to try again.`,
-      resolvedMessage: "Updates work again.",
+      message: `Eva could not install the update: ${reason}. She still runs the old version. To try again, open Settings, Updates.`,
+      resolvedMessage,
     };
   }
+  if (status.failingSince === null || status.lastCheckAt === null) return "keep";
+  if (Date.parse(status.lastCheckAt) - Date.parse(status.failingSince) < updateCheckAlertMs) return "keep";
+  const retry = status.frequency === "off" ? "" : " She tries again within an hour.";
   return {
     level: "warn",
-    message: `The update check failed: ${status.lastError}. Eva tries again at the next check; send /update to try now.`,
-    resolvedMessage: "Updates work again.",
+    message: `Eva could not check for updates for 2 hours or more. The last error: ${reason}.${retry} To try now, open Settings, Updates.`,
+    resolvedMessage,
   };
 }
 
@@ -134,7 +147,7 @@ export function engineRestartProblem(engine: EngineName, state: EngineProgramSta
 export function scheduleFiringProblem(name: string, reason: string): AlertProblem {
   return {
     level: "error",
-    message: `The schedule ${name} failed to fire: ${reason}. Check .eva/schedules.json, or send /logs to see more.`,
+    message: `The schedule ${name} failed to fire: ${withoutFinalPeriod(reason)}. Check .eva/schedules.json, or send /logs to see more.`,
     resolvedMessage: `The schedule ${name} fires again.`,
   };
 }
@@ -192,19 +205,24 @@ export function heldBackNews(status: UpdateStatus): string | null {
 
 /**
  * A problem that another machine reports through the vault, for the hub to send. A Telegram command
- * acts on the hub, so the alert points to the web page of the machine with the problem.
+ * acts on the hub, so the alert says to fix it on the machine with the problem.
  */
-export function relayedProblem(machine: string, reportFile: string, problem: OpenAlert): AlertProblem {
+export function relayedProblem(machine: string, hub: string, reportFile: string, problem: OpenAlert): AlertProblem {
   // A message such as vault_ahead starts with the machine name already.
   const named = (line: string): string => (line.startsWith(`${machine} `) ? line : `On ${machine}: ${line}`);
   return {
     level: problem.level,
     message: [
       named(problem.message),
-      `A Telegram command acts on the hub, so open Eva's web page on ${machine}.`,
+      `Fix it in Eva on ${machine}, not on ${hub}.`,
       `If ${machine} no longer runs Eva, ask the Assistant to delete ${reportFile}.`,
     ].join(" "),
     resolvedMessage:
       problem.resolvedMessage === "" ? `${machine} no longer reports this problem.` : named(problem.resolvedMessage),
   };
+}
+
+/** An error text ends with its own period, and a message puts its own after it. */
+function withoutFinalPeriod(text: string): string {
+  return text.replace(/\.+$/, "");
 }

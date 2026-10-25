@@ -32,6 +32,7 @@ const idleUpdate: UpdateStatus = {
   lastCheckAt: "2026-10-17T10:00:00.000Z",
   lastError: null,
   failedStep: null,
+  failingSince: null,
   download: null,
 };
 
@@ -50,6 +51,8 @@ describe("vaultSyncProblem", () => {
     const problem = vaultSyncProblem(syncState("error", "git commit failed: disk full"), 0);
     expect(problem).toMatchObject({ level: "error" });
     expect(problem === "keep" ? "" : (problem?.message ?? "")).toContain("disk full");
+    const ended = vaultSyncProblem(syncState("error", "git push failed."), 0);
+    expect(ended === "keep" ? "" : ended?.message).toStartWith("The vault sync failed: git push failed. Send");
   });
 
   test("offline is a problem only after 30 minutes", () => {
@@ -72,16 +75,50 @@ describe("vaultSyncProblem", () => {
 });
 
 describe("updateProblem", () => {
+  /** A check that fails since `since`, and failed again at `last`. */
+  const failing = (since: string, last = "2026-10-17T12:00:00.000Z"): UpdateStatus => ({
+    ...idleUpdate,
+    lastError: "GitHub could not be reached.",
+    failedStep: "check",
+    failingSince: since,
+    lastCheckAt: last,
+  });
+
   test("no error is no problem", () => {
     expect(updateProblem(idleUpdate)).toBeNull();
   });
 
-  test("a failed check and a failed install each say which step failed", () => {
-    const check = updateProblem({ ...idleUpdate, lastError: "offline", failedStep: "check" });
-    const install = updateProblem({ ...idleUpdate, lastError: "bun install failed", failedStep: "install" });
-    expect(check?.message).toStartWith("The update check failed: offline.");
-    expect(install?.message).toStartWith("The update install failed: bun install failed.");
-    expect(install?.level).toBe("error");
+  test("checks that fail for less than 2 hours keep whatever was there (#541)", () => {
+    expect(updateProblem(failing("2026-10-17T10:00:00.001Z"))).toBe("keep");
+  });
+
+  test("one failed check stays quiet however long ago it was: no check since then failed", () => {
+    expect(updateProblem(failing("2026-10-17T12:00:00.000Z"))).toBe("keep");
+  });
+
+  test("checks that fail for 2 hours warn, with one period after the reason and no slash command", () => {
+    expect(updateProblem(failing("2026-10-17T10:00:00.000Z"))).toEqual({
+      level: "warn",
+      message:
+        "Eva could not check for updates for 2 hours or more. The last error: GitHub could not be reached. She tries again within an hour. To try now, open Settings, Updates.",
+      resolvedMessage: "Updates work again.",
+    });
+  });
+
+  test("with the checks off, the warning does not say that Eva tries again", () => {
+    const problem = updateProblem({ ...failing("2026-10-17T09:00:00.000Z"), frequency: "off" });
+    expect(problem === "keep" ? "" : problem?.message).toBe(
+      "Eva could not check for updates for 2 hours or more. The last error: GitHub could not be reached. To try now, open Settings, Updates.",
+    );
+  });
+
+  test("a failed install is an error at once", () => {
+    expect(updateProblem({ ...idleUpdate, lastError: "bun install failed.", failedStep: "install" })).toEqual({
+      level: "error",
+      message:
+        "Eva could not install the update: bun install failed. She still runs the old version. To try again, open Settings, Updates.",
+      resolvedMessage: "Updates work again.",
+    });
   });
 });
 
@@ -91,6 +128,12 @@ describe("scheduleFiringProblem", () => {
     expect(problem.message).toContain("Lunch");
     expect(problem.message).toContain("no engine");
     expect(problem.resolvedMessage).toContain("Lunch");
+  });
+
+  test("a reason that ends with a period gets no second one", () => {
+    expect(scheduleFiringProblem("Lunch", "No engine.").message).toStartWith(
+      "The schedule Lunch failed to fire: No engine. Check",
+    );
   });
 });
 
@@ -132,8 +175,8 @@ describe("engineUpdateProblem", () => {
 describe("relayedProblem", () => {
   const file = ".eva/machines/laptop.json";
 
-  test("names the machine once, points to its web page, and names the file to delete", () => {
-    const relayed = relayedProblem("laptop", file, {
+  test("names the machine once, says where to fix it, and names the file to delete", () => {
+    const relayed = relayedProblem("laptop", "desktop", file, {
       key: "update",
       level: "error",
       message: "The update install failed.",
@@ -141,13 +184,13 @@ describe("relayedProblem", () => {
     });
     expect(relayed.level).toBe("error");
     expect(relayed.message).toBe(
-      "On laptop: The update install failed. A Telegram command acts on the hub, so open Eva's web page on laptop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
+      "On laptop: The update install failed. Fix it in Eva on laptop, not on desktop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
     );
     expect(relayed.resolvedMessage).toBe("On laptop: Updates work again.");
   });
 
   test("adds no prefix to a message that names the machine already", () => {
-    const relayed = relayedProblem("laptop", file, {
+    const relayed = relayedProblem("laptop", "desktop", file, {
       key: "vault_ahead",
       level: "warn",
       message: "laptop runs Eva 1.0.0.",
@@ -158,13 +201,13 @@ describe("relayedProblem", () => {
   });
 
   test("a short name inside a word is no name: the prefix stays", () => {
-    const relayed = relayedProblem("pc", ".eva/machines/pc.json", {
+    const relayed = relayedProblem("pc", "desktop", ".eva/machines/pc.json", {
       key: "update",
       level: "warn",
-      message: "The update check failed: no specification.",
+      message: "Eva could not check for updates: no specification.",
       resolvedMessage: "Updates work again.",
     });
-    expect(relayed.message.startsWith("On pc: The update check failed")).toBe(true);
+    expect(relayed.message.startsWith("On pc: Eva could not check")).toBe(true);
   });
 });
 
@@ -200,4 +243,19 @@ describe("engineRestartProblem", () => {
       "The pi program is installed now, but chats use it only after a restart. Press Restart now in Settings, Updates.",
     );
   });
+});
+
+test("the relayed update check warning reads as one clear notice (#541)", () => {
+  const status: UpdateStatus = {
+    ...idleUpdate,
+    lastError: "GitHub could not be reached.",
+    failedStep: "check",
+    failingSince: "2026-10-17T10:00:00.000Z",
+    lastCheckAt: "2026-10-17T12:00:00.000Z",
+  };
+  const problem = updateProblem(status);
+  if (problem === null || problem === "keep") throw new Error("A warning was expected.");
+  expect(relayedProblem("laptop", "desktop", ".eva/machines/laptop.json", { key: "update", ...problem }).message).toBe(
+    "On laptop: Eva could not check for updates for 2 hours or more. The last error: GitHub could not be reached. She tries again within an hour. To try now, open Settings, Updates. Fix it in Eva on laptop, not on desktop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
+  );
 });

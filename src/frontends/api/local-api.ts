@@ -85,12 +85,34 @@ const messageSchema = z.object({ text: z.string().min(1) });
 const maxVoiceNoteBytes = 25 * 1024 * 1024;
 /** Above the 20 MB that Telegram lets Eva download, so the web chat takes at least what Telegram takes. */
 const maxReceivedFileBytes = 25 * 1024 * 1024;
-const forkSchema = z.object({ atMessageId: z.string().min(1) });
-const retrySchema = z.object({ turnIndex: z.number().int().min(0), undo: z.boolean().default(false) });
+/** Without `files`, a fork stays in the clone of its chat and a retry keeps the files, as before issue 523. */
+const forkSchema = z.object({
+  atMessageId: z.string().min(1),
+  files: z.enum(["snapshot-clone", "clean-clone", "same-clone"]).optional(),
+});
+/** `undo` restores the vault files of an Assistant chat (#525). `files` chooses the clone files of a Project chat (#523). */
+const retrySchema = z.object({
+  turnIndex: z.number().int().min(0),
+  undo: z.boolean().default(false),
+  files: z.enum(["undo", "keep", "new-clone"]).optional(),
+});
 const renameSchema = z.object({ title: z.string() });
 const seenSchema = z.object({ turnCount: z.number().int().min(0) });
 const archiveSchema = z.object({ archived: z.boolean() });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
+/** The core checks that the answers fit the questions. The bounds keep a wild request small. */
+const approvalAnswerSchema = approvalSchema.extend({
+  answers: z
+    .array(
+      z.object({
+        selected: z.array(z.number().int().min(0)).max(20),
+        other: z.string().max(10_000).optional(),
+      }),
+    )
+    .max(20)
+    .optional(),
+});
+const problemKeySchema = z.object({ key: z.string().min(1) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const pushSchema = z.object({ note: z.string().max(10_000).optional() });
@@ -271,7 +293,9 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         url.pathname.startsWith("/api/google/") ||
         url.pathname.startsWith("/api/github/") ||
         // A summary waits for a model, and a Project chat may wait for a new clone.
-        url.pathname.endsWith("/summary-chat")
+        url.pathname.endsWith("/summary-chat") ||
+        // A fork or a retry of a Project chat may wait for a new clone and a summary (issue 523).
+        (url.pathname.startsWith("/api/sessions/") && /\/(fork|retry)$/.test(url.pathname))
       )
         bunServer.timeout(request, 0);
       try {
@@ -575,8 +599,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       return json({ accepted: true }, 202);
     }
     if (action === "fork") {
-      const { atMessageId } = forkSchema.parse(await request.json());
-      return json(eva.sessions.fork(sessionId, atMessageId), 201);
+      const { atMessageId, files } = forkSchema.parse(await request.json());
+      return json(await eva.forkChat(sessionId, atMessageId, files), 201);
     }
     if (action === "summary-chat") return json(await eva.continueFromSummary(sessionId, "web"), 201);
     if (action === "stop") {
@@ -584,8 +608,12 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       return json({ stopped: eva.sessions.stop(sessionId) });
     }
     if (action === "retry") {
-      const { turnIndex, undo } = retrySchema.parse(await request.json());
-      return json(await eva.retryTurn(sessionId, turnIndex, undo));
+      const { turnIndex, undo, files } = retrySchema.parse(await request.json());
+      return json(
+        files === undefined
+          ? { session: await eva.retryTurn(sessionId, turnIndex, undo), notice: null }
+          : await eva.retryChat(sessionId, turnIndex, files),
+      );
     }
     if (action === "rename") {
       const { title } = renameSchema.parse(await request.json());
@@ -751,6 +779,12 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       return json({ error: "No device waits with this code. Check it, or ask again on the page." }, 404);
     return json({ label });
   }
+  if (method === "POST" && url.pathname === "/api/problems/hide") {
+    // The problem can clear between the page's poll and the tap.
+    if (!eva.hideProblem(problemKeySchema.parse(await request.json()).key))
+      return json({ error: "This problem is not open anymore." }, 404);
+    return json(eva.status());
+  }
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
   if (method === "GET" && url.pathname === "/api/vault/repositories") return json(await eva.vaultRepositories());
   if (method === "POST" && url.pathname === "/api/vault/clone")
@@ -841,8 +875,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
-    const { answer } = approvalSchema.parse(await request.json());
-    eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer);
+    const { answer, answers } = approvalAnswerSchema.parse(await request.json());
+    // zod gives an absent text as undefined, and the core type has no undefined value.
+    const fitted = answers?.map(({ selected, other }) => (other === undefined ? { selected } : { selected, other }));
+    eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer, fitted);
     return new Response(null, { status: 204 });
   }
   return json({ error: "Not found." }, 404);
@@ -1018,7 +1054,8 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
     isEvaError(error, "config_invalid") ||
     isEvaError(error, "schedule_invalid") ||
     isEvaError(error, "project_invalid") ||
-    isEvaError(error, "title_invalid")
+    isEvaError(error, "title_invalid") ||
+    isEvaError(error, "approval_invalid")
   )
     return json(body, 400);
   if (isEvaError(error, "rate_limited")) return json(body, 429);

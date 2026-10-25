@@ -38,6 +38,8 @@ export interface TelegramMessage {
   };
   readonly message_thread_id?: number;
   readonly is_topic_message?: boolean;
+  /** The message that this one replies to, such as a question of the model. */
+  readonly reply_to_message?: { readonly message_id: number };
 }
 
 export interface TelegramUpdate {

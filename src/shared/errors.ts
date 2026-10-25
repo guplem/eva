@@ -12,6 +12,8 @@ export type EvaErrorCode =
   | "session_not_found"
   /** The chat is closed: Eva reused its clone, so it takes no message. */
   | "session_closed"
+  /** Eva has no snapshot of the files that a fork or a retry asked for. */
+  | "snapshot_missing"
   | "schedule_invalid"
   | "update_failed"
   | "device_login_unavailable"
@@ -34,6 +36,8 @@ export type EvaErrorCode =
   | "file_changed"
   | "file_not_writable"
   | "file_not_downloadable"
+  /** An answer to an approval that does not fit it, such as no answers to the model's questions. */
+  | "approval_invalid"
   /** A person stopped a question with Ctrl+C, or its input ended. */
   | "prompt_stopped"
   /** The running Eva refused a request of the CLI, and her answer named no code. */

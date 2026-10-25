@@ -564,11 +564,23 @@ async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
     .not.toContain(chatId);
 }
 
+/**
+ * The id of the chat with this title. The page shows an answer as it streams, and a chat takes its
+ * title only when Eva records the turn, which a Project turn's snapshot delays (issue 523). So it waits.
+ */
 async function chatIdNamed(page: Page, title: string): Promise<string> {
-  const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
-  const found = sessions.find((session) => session.title === title);
-  if (found === undefined) throw new Error(`no chat named ${title}`);
-  return found.id;
+  let id: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
+        id = sessions.find((session) => session.title === title)?.id;
+        return id;
+      },
+      { message: `no chat named ${title}` },
+    )
+    .toBeDefined();
+  return id ?? "";
 }
 
 /** A new Assistant chat with one answer. Each screen size names its own chats, on the shared demo server. */
@@ -891,6 +903,38 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
   await expect(page.getByRole("button", { name: "Set up voice notes" })).toBeVisible();
 });
 
+test("the model's questions show as a form in the chat, and Send answers gives the picks to the turn (#544)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("please ask me");
+  await composer.press("Enter");
+  const card = page.getByRole("region", { name: "Eva asks you a question" });
+  await expect(card.getByRole("heading")).toHaveText("Eva has 2 questions");
+  await expect(card).toContainText("Which format should the review take?");
+  await expect(card).toContainText("A template with criteria and a score.");
+  const send = card.getByRole("button", { name: "Send answers" });
+  // Send waits for an answer to each question.
+  await expect(send).toBeDisabled();
+  await card.getByRole("radio", { name: /A form with scores/ }).check();
+  await expect(send).toBeDisabled();
+  await card.getByRole("checkbox", { name: "Journal" }).check();
+  await card.getByRole("checkbox", { name: "Ideas" }).check();
+  await expect(send).toBeEnabled();
+  // Own text takes the place of the choice, so the screen never shows two answers.
+  const own = card.getByRole("textbox").first();
+  await own.fill("A short call");
+  await expect(card.getByRole("radio", { name: /A form with scores/ })).not.toBeChecked();
+  // Enter in an own-answer field sends the answers.
+  await own.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(
+    'The person answered: [{"selected":[],"other":"A short call"},{"selected":[0,1]}]',
+  );
+  await expect(card).toHaveCount(0);
+});
+
 test("a request of another chat gets a notice that opens it, and an answer from elsewhere closes the card", async ({
   page,
 }) => {
@@ -940,7 +984,7 @@ test("Copy copies the text of an answer", async ({ page, context }) => {
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(title);
 });
 
-test("the composer's chip picks the model before the first message, and is fixed after it", async ({ page }) => {
+test("the composer's chip picks the engine before the first message, and the model between turns", async ({ page }) => {
   await logIn(page);
   await newChat(page);
   const chip = page.getByRole("button", { name: /Smart/ });
@@ -979,10 +1023,16 @@ test("the composer's chip picks the model before the first message, and is fixed
   await expect(picker).toContainText("Balanced · Sonnet 5.5");
   await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
   await picker.click();
-  await expect(menu).toContainText("fixed after the first message");
+  await expect(menu).toContainText("The engine is fixed after the first message");
+  await expect(menu.getByRole("group", { name: "Engine" })).toHaveCount(0);
+  // A new model loses the cache, so the menu says what the change costs (lesson 41, #545).
+  await expect(menu).toContainText("reads the whole chat again");
   // The chip starts mid-row on a phone, and its menu still fits the screen.
   await expect(menu).toBeInViewport({ ratio: 1 });
-  await expect(menu.getByRole("group", { name: "Model" })).toHaveCount(0);
+  await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Smart" }).click();
+  // The old answer came from Sonnet, so the chip names the new choice, not the old answer.
+  await expect(picker).toContainText("Smart");
+  await expect(picker).not.toContainText("Sonnet");
   // The effort changes no history, so it changes after the first message too.
   // A drag over every stop saves the effort once, on release.
   const saves: string[] = [];
@@ -997,7 +1047,7 @@ test("the composer's chip picks the model before the first message, and is fixed
   await expect(effort.locator(".effort-name")).toHaveText("Max");
   expect(saves).toHaveLength(0);
   await page.mouse.up();
-  await expect(picker).toContainText("Balanced · Sonnet 5.5");
+  await expect(picker).toContainText("Smart");
   await expect(picker.locator(".chip-effort")).toHaveText("· Max effort");
   expect(saves).toHaveLength(1);
 });
@@ -1381,6 +1431,12 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
   await page.getByRole("button", { name: "Retry" }).first().click();
+  // A Project chat asks where the retry runs and from which files (issue 523).
+  const choices = page.getByRole("dialog", { name: "Retry this answer" });
+  await expect(choices.getByRole("button", { name: /^Undo and retry here/ })).toBeVisible();
+  await expect(choices.getByRole("button", { name: /^Retry in a new clone/ })).toBeVisible();
+  await choices.getByRole("button", { name: /^Retry here/ }).click();
+  await expect(choices).toHaveCount(0);
   await expect(page.getByRole("group", { name: "Branches from the start" })).toContainText("Fork 1");
   let forkId: string | undefined;
   await expect
@@ -1395,6 +1451,27 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   await page.goto(`/#/chat/${forkId ?? ""}`);
   await expect(page.getByText("Project mode")).toBeVisible();
   await expect(page.locator(".message.user").first()).toContainText(title);
+});
+
+test("a fork of a project chat in a new clone opens there, and names the chat it came from", async ({ page }) => {
+  // Not "new clone": other tests find the New clone button by that name.
+  const title = `Fork with the files at an answer (${test.info().project.name})`;
+  await logIn(page);
+  await openExampleApp(page);
+  await newProjectChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(title);
+  await composer.press("Enter");
+  await answerInNewClone(page, title);
+  const chatId = await chatIdNamed(page, title);
+  await waitUntilIdle(page, chatId);
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  const choices = page.getByRole("dialog", { name: "Fork at this answer" });
+  await expect(choices.getByRole("button", { name: /^This clone/ })).toBeVisible();
+  await choices.getByRole("button", { name: /^New clone at this answer/ }).click();
+  // The fork is the first chat of its clone, so the page opens it.
+  await expect(page.locator(".forked-from")).toContainText(`Forked from ${title} in clone-`);
+  await expect(page.locator(".message.user")).toHaveCount(0);
 });
 
 test("the address of a fork opens that fork, even when another branch is newer", async ({ page }) => {
@@ -2957,6 +3034,48 @@ test("open problems show in a banner at the top, each with the button that fixes
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("the person hides a notice, and the problems that are hidden get none (#541)", async ({ page }) => {
+  let hidden = false;
+  const problems = (): { key: string; level: "warn" | "error"; message: string; hidden: boolean }[] => [
+    { key: "update", level: "warn", message: "Eva could not check for updates for 2 hours.", hidden },
+    { key: "schedule:lunch", level: "warn", message: "The schedule Lunch failed.", hidden: true },
+  ];
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, problemDetails: problems() } });
+  });
+  await page.route("**/api/problems/hide", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ key: "update" });
+    hidden = true;
+    const response = await route.fetch({ url: route.request().url().replace("/api/problems/hide", "/api/status") });
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ json: { ...status, problemDetails: problems() } });
+  });
+  await logIn(page);
+  const banner = page.getByRole("region", { name: "Problems" });
+  await expect(banner).toContainText("Eva could not check for updates");
+  await expect(banner).not.toContainText("The schedule Lunch failed.");
+  await banner.getByRole("button", { name: "Hide this notice" }).click();
+  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("a hide that fails brings the notice back and says why", async ({ page }) => {
+  await routeProblems(page, [{ key: "update", level: "warn", message: "Eva could not check for updates." }]);
+  await page.route("**/api/problems/hide", (route) =>
+    route.fulfill({ status: 500, json: { error: "Eva could not save the hidden problems." } }),
+  );
+  await logIn(page);
+  const banner = page.getByRole("region", { name: "Problems" });
+  await banner.getByRole("button", { name: "Hide this notice" }).click();
+  await expect(page.getByRole("alert")).toContainText("Eva could not save the hidden problems.");
+  await expect(page.getByRole("region", { name: "Problems" })).toContainText("Eva could not check for updates.");
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("a note conflict opens from its banner, and the last pick closes it", async ({ page }) => {
   await routeProblems(page, [{ key: "vault_sync", level: "error", message: "Notes/plan.md has a conflict." }], {
     status: "conflict",
@@ -3388,6 +3507,7 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   const installs: unknown[] = [];
   await page.route("**/api/update/check", async (route) => {
@@ -3474,6 +3594,7 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   await page.route("**/api/update/check", async (route) => {
     await route.fulfill({ json: status });
@@ -3511,6 +3632,7 @@ test("Settings: the Versions card looks for a newer Eva when it opens, as for ea
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   const checked = {
     ...unchecked,
@@ -3615,6 +3737,7 @@ test("Settings: Check and install waits until the new Eva answers, not the old o
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   let restarting = false;
   let readsWhileRestarting = 0;
@@ -3655,6 +3778,7 @@ test("Settings: an install shows a bar that fills with the download", async ({ p
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
     download: null,
   };
   let installing = false;
@@ -3705,6 +3829,7 @@ test("Settings: an install goes on when a proxy drops the request", async ({ pag
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
     download: null,
   };
   let reads = 0;
@@ -3757,6 +3882,7 @@ test("Settings: an error of Eva herself during an install shows its reason", asy
         lastCheckAt: null,
         lastError: null,
         failedStep: null,
+        failingSince: null,
         download: null,
       },
     });

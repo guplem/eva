@@ -53,13 +53,15 @@ function createManager(
     chatDefaults?: SessionManagerOptions["chatDefaults"];
     /** Where the ids start, so a second manager on the same store makes new ones. */
     firstId?: number;
+    /** The preparer of Project chats; without one, the same as for Assistant chats. */
+    projectPreparer?: TurnPreparer;
   } = {},
 ): SessionManager {
   let nextId = overrides.firstId ?? 0;
   const manager = new SessionManager({
     engines: [engine],
     store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
-    preparers: { assistant: preparer, project: preparer },
+    preparers: { assistant: preparer, project: overrides.projectPreparer ?? preparer },
     stepDetails: new StepDetailsStore(join(folder, "step-details")),
     now: () => new Date("2026-10-14T12:00:00Z"),
     newId: () => {
@@ -132,9 +134,12 @@ describe("a conversation", () => {
         contextTokens: 15,
         contextWindow: 200_000,
         model: "claude-opus-5-5",
+        modelAlias: "opus",
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
+        startSnapshot: null,
+        endSnapshot: null,
       },
     ]);
   });
@@ -410,14 +415,19 @@ describe("a conversation", () => {
 });
 
 describe("models (lesson 41)", () => {
-  test("a chat's model is chosen before its first message, and fixed after it", async () => {
+  test("a chat's model goes to each turn, and changes between turns (#545)", async () => {
     const engine = new FakeEngine();
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
     expect(manager.setModel(sessionId, "haiku").modelAlias).toBe("haiku");
-    await manager.send(sessionId, "hi");
-    expect(engine.requests[0]?.model).toBe("haiku");
-    expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+    await manager.send(sessionId, "one");
+    expect(manager.setModel(sessionId, "opus").modelAlias).toBe("opus");
+    await manager.send(sessionId, "two");
+    expect(engine.requests.map((request) => request.model)).toEqual(["haiku", "opus"]);
+    // Each turn keeps the model it ran with, so a front end never names the old model as the new one.
+    expect(manager.get(sessionId).turns.map((turn) => turn.modelAlias)).toEqual(["haiku", "opus"]);
+    // The second turn continues the same engine session: only the model changed.
+    expect(engine.requests[1]?.history.kind).not.toBe("new");
   });
 
   test("a chat's effort goes to each turn, and changes between turns (#419)", async () => {
@@ -829,7 +839,7 @@ describe("closed chats (issue 521)", () => {
     expect(createManager(new FakeEngine()).get(fork.id).closed).toBe(true);
   });
 
-  test("a closed chat keeps its history, and refuses a message, a fork and a retry", async () => {
+  test("a closed chat keeps its history, and refuses a message, a fork, a retry and a model", async () => {
     const engine = new FakeEngine();
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
@@ -850,6 +860,14 @@ describe("closed chats (issue 521)", () => {
       ),
     ).toBe(true);
     expect(isEvaError(await manager.retry(sessionId, 0).catch((error: unknown) => error), "session_closed")).toBe(true);
+    // A closed chat takes no next turn, so a new model would never answer (#545).
+    expect(
+      isEvaError(
+        caughtFrom(() => manager.setModel(sessionId, "haiku")),
+        "session_closed",
+      ),
+    ).toBe(true);
+    expect(manager.get(sessionId).modelAlias).toBe("opus");
     expect(engine.requests).toHaveLength(1);
     expect(manager.list()).toHaveLength(1);
   });
@@ -1175,6 +1193,296 @@ describe("forks and retries", () => {
   });
 });
 
+describe("file snapshots of Project chats (issue 523)", () => {
+  /** A Project preparer that records each snapshot, restore and engine start in one list. */
+  function snapshotPreparer(
+    log: string[],
+    options: { failSnapshots?: boolean; failRestore?: boolean } = {},
+  ): TurnPreparer {
+    return {
+      ...preparer,
+      snapshot: (_session, id) => {
+        log.push(`snapshot ${id}`);
+        return options.failSnapshots === true ? Promise.reject(new Error("git broke")) : Promise.resolve(true);
+      },
+      restore: (_session, id) => {
+        log.push(`restore ${id}`);
+        return options.failRestore === true ? Promise.reject(new Error("git broke")) : Promise.resolve();
+      },
+    };
+  }
+
+  function newProjectSession(manager: SessionManager, folder = "/vault/Projects/p/repos/clone-0"): string {
+    return manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: folder,
+      source: "web",
+      projectId: "p",
+      clone: "clone-0",
+    }).id;
+  }
+
+  function loggingEngine(log: string[]): FakeEngine {
+    return new FakeEngine((request, turnNumber) => {
+      log.push("engine");
+      return FakeEngine.answer(request, `answer ${String(turnNumber)}`);
+    });
+  }
+
+  test("a Project turn keeps a snapshot before and after the engine runs", async () => {
+    const log: string[] = [];
+    const manager = createManager(loggingEngine(log), { projectPreparer: snapshotPreparer(log) });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    const [start, end] = log.filter((line) => line.startsWith("snapshot")).map((line) => line.split(" ")[1]);
+    expect(log).toEqual([`snapshot ${start ?? ""}`, "engine", `snapshot ${end ?? ""}`]);
+    expect(manager.get(sessionId).turns[0]).toMatchObject({ startSnapshot: start, endSnapshot: end });
+  });
+
+  test("a failed turn keeps its snapshots too, so a retry can undo it", async () => {
+    const log: string[] = [];
+    const engine = new FakeEngine(() => [{ kind: "turn_failed", reason: "boom" }]);
+    const manager = createManager(engine, { projectPreparer: snapshotPreparer(log) });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    const turn = manager.get(sessionId).turns[0];
+    expect(turn?.failure).toBe("boom");
+    expect(turn?.startSnapshot).not.toBeNull();
+    expect(turn?.endSnapshot).not.toBeNull();
+  });
+
+  test("a failed snapshot leaves the turn without one, and the turn goes on", async () => {
+    const log: string[] = [];
+    const manager = createManager(loggingEngine(log), {
+      projectPreparer: snapshotPreparer(log, { failSnapshots: true }),
+    });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    expect(manager.get(sessionId).turns[0]).toMatchObject({ failure: null, startSnapshot: null, endSnapshot: null });
+    expect(logged.some((line) => line.includes("could not keep a snapshot"))).toBe(true);
+  });
+
+  test("an Assistant turn keeps no snapshot", async () => {
+    const manager = createManager(new FakeEngine(), { projectPreparer: snapshotPreparer([]) });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    expect(manager.get(sessionId).turns[0]).toMatchObject({ startSnapshot: null, endSnapshot: null });
+  });
+
+  test("an undo retry brings back the files of the turn before its engine runs", async () => {
+    const log: string[] = [];
+    const manager = createManager(loggingEngine(log), { projectPreparer: snapshotPreparer(log) });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    await manager.send(sessionId, "two");
+    const before = manager.get(sessionId).turns[1]!.startSnapshot!;
+    log.length = 0;
+
+    const retry = await manager.retry(sessionId, 1, "undo");
+    expect(retry.pendingRestore).toBe(before);
+    await waitUntil(() => !manager.isActive(retry.id));
+
+    // First a snapshot of the files as they are, so a change by hand after the last turn stays.
+    expect(log[0]?.startsWith("snapshot ")).toBe(true);
+    expect(log[1]).toBe(`restore ${before}`);
+    expect(log[2]?.startsWith("snapshot ")).toBe(true);
+    expect(log[3]).toBe("engine");
+    expect(manager.get(retry.id).pendingRestore).toBeNull();
+    expect(manager.get(retry.id).turns[0]?.userText).toBe("two");
+  });
+
+  test("a retry that keeps the files brings nothing back", async () => {
+    const log: string[] = [];
+    const manager = createManager(loggingEngine(log), { projectPreparer: snapshotPreparer(log) });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    const retry = await manager.retry(sessionId, 0, "keep");
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(log.some((line) => line.startsWith("restore"))).toBe(false);
+  });
+
+  test("an undo retry of a turn with no snapshot is refused, and makes no branch", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    const error: unknown = await manager.retry(sessionId, 0, "undo").catch((caught: unknown) => caught);
+    expect(isEvaError(error, "snapshot_missing")).toBe(true);
+    expect(manager.list()).toHaveLength(1);
+  });
+
+  test("a failed restore fails the turn and keeps the request for the next message", async () => {
+    const log: string[] = [];
+    const manager = createManager(loggingEngine(log), {
+      projectPreparer: snapshotPreparer(log, { failRestore: true }),
+    });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    log.length = 0;
+    const retry = await manager.retry(sessionId, 0, "undo");
+    await waitUntil(() => !manager.isActive(retry.id));
+    const record = manager.get(retry.id);
+    expect(record.turns[0]?.failure).toContain("could not bring back the files");
+    expect(record.pendingRestore).not.toBeNull();
+    expect(log).not.toContain("engine");
+  });
+
+  test("endSnapshotAt gives the snapshot after an answer, and refuses an answer with none", async () => {
+    const log: string[] = [];
+    const manager = createManager(new FakeEngine(), { projectPreparer: snapshotPreparer(log) });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    const turn = manager.get(sessionId).turns[0]!;
+    expect(manager.endSnapshotAt(sessionId, turn.lastMessageId!)).toBe(turn.endSnapshot!);
+    expect(() => manager.endSnapshotAt(sessionId, "no-such-message")).toThrow("no snapshot");
+  });
+});
+
+describe("chats that move to another clone (issue 523)", () => {
+  function newProjectSession(manager: SessionManager): string {
+    return manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/clones/clone-0",
+      source: "web",
+      projectId: "p",
+      clone: "clone-0",
+    }).id;
+  }
+
+  test("a moved branch is the root of its clone, names its parent, and goes on from the point", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const parentId = newProjectSession(manager);
+    await manager.send(parentId, "one");
+    const parent = manager.get(parentId);
+    const point = { engineSessionId: parent.engineSessionId, atMessageId: parent.turns[0]!.lastMessageId! };
+
+    const moved = manager.createMovedBranch(parentId, point, { startFolder: "/clones/clone-1", clone: "clone-1" });
+    expect(moved).toMatchObject({
+      parentId: null,
+      forkAtMessageId: null,
+      startFolder: "/clones/clone-1",
+      clone: "clone-1",
+      projectId: "p",
+      title: parent.title,
+      forkedFrom: { sessionId: parentId, clone: "clone-0", ...point },
+    });
+    // Its first turn goes on from the parent's engine session, so it keeps the engine.
+    expect(() => manager.setEngine(moved.id, "claude-code")).toThrow("keeps the engine");
+    await manager.send(moved.id, "another way");
+    expect(engine.requests[1]?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: point.engineSessionId,
+      atMessageId: point.atMessageId,
+    });
+    expect(engine.requests[1]?.startFolder).toBe("/clones/clone-1");
+
+    // The parent's delete leaves it.
+    expect(manager.delete(parentId)).toEqual([parentId]);
+    expect(manager.get(moved.id).turns).toHaveLength(1);
+  });
+
+  test("a moved branch with no point starts a new history", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const parentId = newProjectSession(manager);
+    const moved = manager.createMovedBranch(parentId, null, { startFolder: "/clones/clone-1", clone: "clone-1" });
+    // With no history to go on from, it may still choose its engine.
+    expect(manager.setEngine(moved.id, "claude-code").forkedFrom?.sessionId).toBe(parentId);
+    await manager.send(moved.id, "first");
+    expect(engine.requests[0]?.history.kind).toBe("new");
+  });
+
+  test("an undo stops when Eva cannot keep the files as they are first", async () => {
+    const log: string[] = [];
+    let snapshots = 0;
+    const projectPreparer: TurnPreparer = {
+      ...preparer,
+      snapshot: () => {
+        snapshots += 1;
+        return Promise.resolve(snapshots <= 2);
+      },
+      restore: (_session, id) => {
+        log.push(`restore ${id}`);
+        return Promise.resolve();
+      },
+    };
+    const manager = createManager(new FakeEngine(), { projectPreparer });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    const retry = await manager.retry(sessionId, 0, "undo");
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(manager.get(retry.id).turns[0]?.failure).toContain("did not undo");
+    expect(log).toEqual([]);
+  });
+
+  test("a retry of a moved chat's first turn goes on from the same point", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const parentId = newProjectSession(manager);
+    await manager.send(parentId, "one");
+    const parent = manager.get(parentId);
+    const point = { engineSessionId: parent.engineSessionId, atMessageId: parent.turns[0]!.lastMessageId! };
+    const moved = manager.createMovedBranch(parentId, point, { startFolder: "/clones/clone-1", clone: "clone-1" });
+    await manager.send(moved.id, "another way");
+
+    expect(manager.retryPoint(moved.id, 0)).toEqual(point);
+    const retry = await manager.retry(moved.id, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(manager.get(retry.id)).toMatchObject({
+      parentId: moved.id,
+      forkAtMessageId: null,
+      startFolder: "/clones/clone-1",
+    });
+    expect(engine.requests[2]?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: point.engineSessionId,
+      atMessageId: point.atMessageId,
+    });
+  });
+
+  test("retryPoint gives the answer before the turn, the fork point, or null", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newProjectSession(manager);
+    await manager.send(rootId, "one");
+    await manager.send(rootId, "two");
+    const root = manager.get(rootId);
+    expect(manager.retryPoint(rootId, 0)).toBeNull();
+    expect(manager.retryPoint(rootId, 1)).toEqual({
+      engineSessionId: root.engineSessionId,
+      atMessageId: root.turns[0]!.lastMessageId!,
+    });
+    const fork = manager.fork(rootId, root.turns[0]!.lastMessageId!);
+    await manager.send(fork.id, "three");
+    expect(manager.retryPoint(fork.id, 0)).toEqual({
+      engineSessionId: root.engineSessionId,
+      atMessageId: root.turns[0]!.lastMessageId!,
+    });
+  });
+
+  test("carryHistory asks the engine, and an engine without the step needs none", () => {
+    const plain = createManager(new FakeEngine());
+    const input = { engineSessionId: "e1", toFolder: "/clones/clone-1", environment: {} };
+    expect(plain.carryHistory("claude-code", input)).toBe(true);
+    expect(plain.carryHistory("pi", input)).toBe(false);
+
+    const answers = [false];
+    const carrying = Object.assign(new FakeEngine(), {
+      carryHistory: () => {
+        const answer = answers.shift();
+        if (answer === undefined) throw new Error("disk full");
+        return answer;
+      },
+    });
+    const manager = createManager(carrying, { firstId: 100 });
+    expect(manager.carryHistory("claude-code", input)).toBe(false);
+    expect(manager.carryHistory("claude-code", input)).toBe(false);
+  });
+});
+
 describe("delete", () => {
   test("a delete removes the chat and its forks, and tells the front ends of each one", async () => {
     const manager = createManager(new FakeEngine());
@@ -1405,6 +1713,120 @@ describe("approvals", () => {
     manager.answerApproval(pending?.requestId ?? "", "allow");
     await turn;
     expect(manager.pendingApprovals()).toEqual([]);
+  });
+});
+
+describe("questions of the model", () => {
+  const question = {
+    question: "Which format the-secret-value-123?",
+    header: "Format",
+    options: [
+      { label: "Talk", description: "One to one." },
+      { label: "Form the-secret-value-123", description: "With scores." },
+    ],
+    multiSelect: false,
+  };
+
+  function questionManager(outcomes: unknown[], overrides: { approvalTimeoutMs?: number } = {}): SessionManager {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const engine = new FakeEngine(async function* (request) {
+      outcomes.push(await request.askQuestions("AskUserQuestion", [question]));
+      yield* FakeEngine.answer(request, "done");
+    });
+    return createManager(engine, { redactor, ...overrides });
+  }
+
+  test("the questions reach every front end redacted, and the answers reach the engine", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes);
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => manager.pendingApprovals().length === 1);
+    const redactedQuestion = {
+      question: "Which format [redacted]?",
+      header: "Format",
+      options: [
+        { label: "Talk", description: "One to one." },
+        { label: "Form [redacted]", description: "With scores." },
+      ],
+      multiSelect: false,
+    };
+    const [pending] = manager.pendingApprovals();
+    expect(pending).toEqual({
+      requestId: expect.any(String) as string,
+      sessionId,
+      toolName: "AskUserQuestion",
+      summary: "Which format [redacted]?",
+      questions: [redactedQuestion],
+    });
+    expect(events.find((event) => event.kind === "approval_needed")).toMatchObject({
+      summary: "Which format [redacted]?",
+      questions: [redactedQuestion],
+    });
+    manager.answerApproval(pending?.requestId ?? "", "allow", [{ selected: [1], other: "my the-secret-value-123" }]);
+    await turn;
+    // The engine gets the person's own text; the front ends get it redacted.
+    expect(outcomes).toEqual([[{ selected: [1], other: "my the-secret-value-123" }]]);
+    expect(events.filter((event) => event.kind === "approval_resolved")).toMatchObject([
+      { answer: "allow", timedOut: false, answers: [{ selected: [1], other: "my [redacted]" }] },
+    ]);
+  });
+
+  test("a skip declines, and a question that nobody answers expires", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes);
+    manager.subscribe((event) => {
+      if (event.kind === "approval_needed") manager.answerApproval(event.requestId, "deny");
+    });
+    await manager.send(newAssistantSession(manager), "go");
+    const late: unknown[] = [];
+    const lateManager = questionManager(late, { approvalTimeoutMs: 20 });
+    await lateManager.send(newAssistantSession(lateManager), "go");
+    expect([...outcomes, ...late]).toEqual(["declined", "expired"]);
+  });
+
+  test("an answer that does not fit the questions is refused, and the question stays open", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes);
+    const turn = manager.send(newAssistantSession(manager), "go");
+    await waitUntil(() => manager.pendingApprovals().length === 1);
+    const requestId = manager.pendingApprovals()[0]?.requestId ?? "";
+    const wrong = [
+      undefined,
+      [],
+      [{ selected: [0] }, { selected: [1] }],
+      [{ selected: [2] }],
+      [{ selected: [0, 1] }],
+      [{ selected: [] }],
+      [{ selected: [], other: "  " }],
+    ];
+    for (const answers of wrong) {
+      // A plain allow is how an old page answers: it must not bring back the empty answer of issue #544.
+      expect(() => manager.answerApproval(requestId, "allow", answers)).toThrow(
+        expect.objectContaining({ code: "approval_invalid" }) as unknown,
+      );
+    }
+    expect(manager.pendingApprovals()).toHaveLength(1);
+    manager.answerApproval(requestId, "allow", [{ selected: [0] }]);
+    await turn;
+    expect(outcomes).toEqual([[{ selected: [0] }]]);
+  });
+
+  test("answers for a plain approval are refused", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await request.requestApproval({ requestId: "x", toolName: "Bash", summary: "git push" });
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const turn = manager.send(newAssistantSession(manager), "go");
+    await waitUntil(() => manager.pendingApprovals().length === 1);
+    const requestId = manager.pendingApprovals()[0]?.requestId ?? "";
+    expect(() => manager.answerApproval(requestId, "allow", [{ selected: [0] }])).toThrow(
+      expect.objectContaining({ code: "approval_invalid" }) as unknown,
+    );
+    manager.answerApproval(requestId, "allow");
+    await turn;
   });
 });
 
@@ -2004,7 +2426,7 @@ describe("stops, failures and lost histories (security and lesson review)", () =
     expect(manager.get(sessionId).historyLost).toBe(false);
   });
 
-  test("the model cannot change while the first turn runs (lesson 41)", async () => {
+  test("the model cannot change while a turn runs, so the turn keeps its model (#545)", async () => {
     let release = (): void => undefined;
     const engine = new FakeEngine(async function* (request) {
       await new Promise<void>((resolve) => {
@@ -2016,7 +2438,7 @@ describe("stops, failures and lost histories (security and lesson review)", () =
     const sessionId = newAssistantSession(manager);
     const turn = manager.send(sessionId, "hi");
     for (let attempt = 0; attempt < 200 && engine.requests.length === 0; attempt += 1) await Bun.sleep(5);
-    expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+    expect(() => manager.setModel(sessionId, "opus")).toThrow("while a turn runs");
     release();
     await turn;
   });

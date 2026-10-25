@@ -6,9 +6,9 @@ import type { ReactElement } from "react";
 import type { EvaStatus } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import {
-  isOtherMachineProblem,
   problemAction,
   problemActionLabels,
+  shownProblems,
   type FixPage,
   type ProblemAction,
 } from "./problem-actions.ts";
@@ -23,6 +23,8 @@ interface ProblemNoticesProps {
   readonly openPage: FixPage | null;
   readonly onRetryNow: () => void;
   readonly onAction: (action: ProblemAction) => void;
+  /** Hides the notice until its problem rises to an error or clears. */
+  readonly onHide: (key: string) => void;
 }
 
 export function ProblemNotices({
@@ -32,8 +34,10 @@ export function ProblemNotices({
   openPage,
   onRetryNow,
   onAction,
+  onHide,
 }: ProblemNoticesProps): ReactElement | null {
-  if (isConnected && problems.length === 0) return null;
+  const shown = shownProblems(problems);
+  if (isConnected && shown.length === 0) return null;
   return (
     <div className="notices">
       {!isConnected && (
@@ -60,18 +64,23 @@ export function ProblemNotices({
           </div>
         </>
       )}
-      {problems.length > 0 && (
+      {shown.length > 0 && (
         <section className="problem-list" aria-label="Problems">
-          {problems.map((problem) => {
+          {shown.map((problem) => {
             const action = problemAction(problem.key, syncStatus, openPage);
             return (
               <div key={problem.key} className={`notice ${problem.level === "error" ? "bad" : "warn"}`}>
                 <Icon name="alert" />
-                <span className="notice-text">
-                  {problem.message}
-                  {isOtherMachineProblem(problem.key) && " Open Eva on that machine to fix it."}
-                </span>
+                <span className="notice-text">{problem.message}</span>
                 {action !== null && <button onClick={() => onAction(action)}>{problemActionLabels[action]}</button>}
+                <button
+                  className="icon-button"
+                  aria-label="Hide this notice"
+                  data-tooltip="Hide until it gets worse or ends"
+                  onClick={() => onHide(problem.key)}
+                >
+                  <Icon name="x" />
+                </button>
               </div>
             );
           })}

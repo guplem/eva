@@ -49,6 +49,7 @@ async function turn(prompt: string, history: TurnHistory): Promise<EngineEventPa
     trusted: true,
     environment,
     requestApproval: () => Promise.resolve("deny"),
+    askQuestions: () => Promise.resolve("declined"),
     signal: AbortSignal.timeout(180_000),
   };
   const events: EngineEventPayload[] = [];

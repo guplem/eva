@@ -90,7 +90,7 @@ function DefaultEngineCard({ context }: { readonly context: SettingsContext }): 
         label="Model for new chats"
         value={config.engines.defaultModel}
         choices={modelChoices}
-        hint="Each chat can still pick another model before its first message."
+        hint="Each chat can still pick another model in its chip."
         onChange={(value) => void context.saveNow({ engines: { defaultModel: value } })}
       />
       <SelectField

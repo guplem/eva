@@ -42,6 +42,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     trusted: true,
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
+    askQuestions: () => Promise.resolve("declined"),
     signal: new AbortController().signal,
     ...overrides,
   };

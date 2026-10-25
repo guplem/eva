@@ -19,12 +19,13 @@ import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { messageWithFiles } from "./attachments.ts";
 import {
   answeredModel,
-  chipLock,
+  engineLock,
   composerPlaceholder,
   effortLabel,
   effortName,
   engineLabel,
   modelLabel,
+  modelNote,
   restoredText,
   sendsOnEnter,
 } from "./conversation-parts.ts";
@@ -44,7 +45,7 @@ type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mo
 /** The unsent text of each chat in this tab, by its draft key. */
 const unsentTexts = new UnsentTexts(() => window.sessionStorage);
 
-/** How the chip changes the engine and the model of a chat that has no turn yet, and the effort of any chat. */
+/** How the chip changes the engine of a chat that has no turn yet, and the model and effort of any chat. */
 export interface ChatChoices {
   readonly setEngine: (engine: EngineName) => Promise<unknown>;
   readonly setModel: (model: ModelAlias) => Promise<unknown>;
@@ -306,9 +307,9 @@ export function Composer({
 }
 
 /**
- * The engine, model and effort of the chat. A chat with no turn picks the engine and model here.
- * Afterwards the menu says why they are fixed: a phone has no hover, so a tooltip alone would not
- * reach it. The effort changes no history, so the menu offers it at any time.
+ * The engine, model and effort of the chat. A chat with no turn picks the engine here. Afterwards
+ * the menu says why it is fixed: a phone has no hover, so a tooltip alone would not reach it. The
+ * model changes between turns, with a note on the cost. The effort changes at any time.
  */
 function EngineChip({
   session,
@@ -327,7 +328,8 @@ function EngineChip({
   const saving = savingCount > 0;
   const root = useRef<HTMLDivElement>(null);
   const showError = useShowError();
-  const lock = chipLock(session, running);
+  const lock = engineLock(session, running);
+  const note = modelNote(session, running);
 
   useEffect(() => {
     if (!open || lock !== null) return;
@@ -416,12 +418,18 @@ function EngineChip({
         className="chip"
         aria-haspopup="dialog"
         aria-expanded={open}
-        data-tooltip={lock === null ? "Pick the engine, the model and the effort" : "Pick the effort"}
+        data-tooltip={
+          lock === null
+            ? "Pick the engine, the model and the effort"
+            : running
+              ? "Pick the effort"
+              : "Pick the model and the effort"
+        }
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
         <Icon name="bolt" />
         <span className="chip-engine">{engineLabel(session.engine)} · </span>
-        {modelLabel(session.modelAlias, answeredModel(session.turns))}
+        {modelLabel(session.modelAlias, answeredModel(session.turns, session.modelAlias))}
         {effortShown && <span className="chip-effort">· {effortLabel(session.effort)}</span>}
         <Icon name="down" />
       </button>
@@ -430,37 +438,36 @@ function EngineChip({
           {lock !== null ? (
             <p>{lock}</p>
           ) : (
-            <>
-              <div className="chip-group" role="group" aria-label="Engine">
-                <span className="chip-group-name">Engine</span>
-                {engines.map((engine) => (
-                  <button
-                    key={engine}
-                    className={`chip${engine === session.engine ? " on" : ""}`}
-                    aria-pressed={engine === session.engine}
-                    disabled={saving}
-                    onClick={() => void choose(() => choices.setEngine(engine))}
-                  >
-                    {engineLabel(engine)}
-                  </button>
-                ))}
-              </div>
-              <div className="chip-group" role="group" aria-label="Model">
-                <span className="chip-group-name">Model</span>
-                {modelAliases.map((model) => (
-                  <button
-                    key={model}
-                    className={`chip${model === session.modelAlias ? " on" : ""}`}
-                    aria-pressed={model === session.modelAlias}
-                    disabled={saving}
-                    onClick={() => void choose(() => choices.setModel(model))}
-                  >
-                    {modelLabel(model)}
-                  </button>
-                ))}
-              </div>
-            </>
+            <div className="chip-group" role="group" aria-label="Engine">
+              <span className="chip-group-name">Engine</span>
+              {engines.map((engine) => (
+                <button
+                  key={engine}
+                  className={`chip${engine === session.engine ? " on" : ""}`}
+                  aria-pressed={engine === session.engine}
+                  disabled={saving}
+                  onClick={() => void choose(() => choices.setEngine(engine))}
+                >
+                  {engineLabel(engine)}
+                </button>
+              ))}
+            </div>
           )}
+          <div className="chip-group" role="group" aria-label="Model">
+            <span className="chip-group-name">Model</span>
+            {modelAliases.map((model) => (
+              <button
+                key={model}
+                className={`chip${model === session.modelAlias ? " on" : ""}`}
+                aria-pressed={model === session.modelAlias}
+                disabled={saving || running}
+                onClick={() => void choose(() => choices.setModel(model))}
+              >
+                {modelLabel(model)}
+              </button>
+            ))}
+          </div>
+          {note !== null && <p>{note}</p>}
           {effortShown && <EffortSlider effort={picked ?? session.effort} busy={saving} onPick={pickEffort} />}
         </div>
       )}

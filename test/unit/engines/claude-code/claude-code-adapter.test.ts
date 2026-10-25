@@ -13,7 +13,7 @@ import {
   ClaudeCodeEngine,
   mapSdkMessages,
 } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
-import type { ApprovalAnswer, TurnRequest } from "../../../../src/shared/engine-port.ts";
+import type { ApprovalAnswer, QuestionsOutcome, TurnRequest } from "../../../../src/shared/engine-port.ts";
 import { isTurnEnd, type EngineEventPayload } from "../../../../src/shared/events.ts";
 
 function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
@@ -30,6 +30,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     trusted: true,
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
+    askQuestions: () => Promise.resolve<QuestionsOutcome>("declined"),
     signal: new AbortController().signal,
     ...overrides,
   };
@@ -853,6 +854,17 @@ describe("the start of Eva's MCP servers", () => {
 });
 
 describe("ClaudeCodeEngine", () => {
+  test("carries a chat to another folder through its config folder (issue 523)", () => {
+    const config = mkdtempSync(join(tmpdir(), "eva-claude-carry-"));
+    try {
+      const engine = new ClaudeCodeEngine({ executable: "/bin/claude" });
+      const input = { engineSessionId: "abc", toFolder: "/clones/clone-1", environment: { CLAUDE_CONFIG_DIR: config } };
+      expect(engine.carryHistory(input)).toBe(false);
+    } finally {
+      rmSync(config, { recursive: true, force: true });
+    }
+  });
+
   test("runs the query with the built options and maps its messages", async () => {
     const seen: unknown[] = [];
     const engine = new ClaudeCodeEngine({
@@ -1060,7 +1072,164 @@ describe("ClaudeCodeEngine", () => {
   });
 });
 
-type CanUseTool = (name: string, input: Record<string, unknown>) => Promise<{ behavior: string }>;
+type CanUseTool = (
+  name: string,
+  input: Record<string, unknown>,
+) => Promise<{ behavior: string } & Record<string, unknown>>;
+
+describe("AskUserQuestion (issue #544)", () => {
+  const formatQuestion = {
+    question: "Which format?",
+    header: "Format",
+    options: [
+      { label: "Talk", description: "A one-to-one talk." },
+      { label: "Form", description: "A form with scores.", preview: "Score: 1-5" },
+    ],
+    multiSelect: false,
+  };
+  const toolsQuestion = {
+    question: "Which tools?",
+    header: "Tools",
+    options: [
+      { label: "git", description: "" },
+      { label: "uv", description: "" },
+    ],
+    multiSelect: true,
+  };
+
+  /** The engine's canUseTool for one turn, and the questions that reached the person. */
+  async function gate(
+    outcome: QuestionsOutcome,
+    overrides: Partial<TurnRequest> = {},
+  ): Promise<{ canUseTool: CanUseTool; asked: unknown[]; approvals: string[] }> {
+    let canUseTool: CanUseTool | undefined;
+    const asked: unknown[] = [];
+    const approvals: string[] = [];
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: ({ options }) => {
+        canUseTool = (options as unknown as { canUseTool: CanUseTool }).canUseTool;
+        return (async function* () {
+          await Promise.resolve();
+          yield resultOf("resumed-turn");
+        })();
+      },
+    });
+    const turnRequest = request({
+      requestApproval: (approval) => {
+        approvals.push(approval.toolName);
+        return Promise.resolve("allow");
+      },
+      askQuestions: (toolName, questions) => {
+        asked.push({ toolName, questions });
+        return Promise.resolve(outcome);
+      },
+      ...overrides,
+    });
+    await drain(engine.runTurn(turnRequest));
+    if (canUseTool === undefined) throw new Error("The engine never ran the query.");
+    return { canUseTool, asked, approvals };
+  }
+
+  test("the questions reach the person, and the answers reach the model by question text", async () => {
+    for (const mode of ["assistant", "project"] as const) {
+      const { canUseTool, asked, approvals } = await gate([{ selected: [1] }, { selected: [0, 1] }], { mode });
+      const input = { questions: [formatQuestion, toolsQuestion] };
+      expect(await canUseTool("AskUserQuestion", input)).toEqual({
+        behavior: "allow",
+        updatedInput: { ...input, answers: { "Which format?": "Form", "Which tools?": "git, uv" } },
+      });
+      // The preview is optional, and Eva shows only the label and the description.
+      expect(asked).toEqual([
+        {
+          toolName: "AskUserQuestion",
+          questions: [
+            {
+              question: "Which format?",
+              header: "Format",
+              options: [
+                { label: "Talk", description: "A one-to-one talk." },
+                { label: "Form", description: "A form with scores." },
+              ],
+              multiSelect: false,
+            },
+            {
+              question: "Which tools?",
+              header: "Tools",
+              options: [
+                { label: "git", description: "" },
+                { label: "uv", description: "" },
+              ],
+              multiSelect: true,
+            },
+          ],
+        },
+      ]);
+      // An allow with no answers would tell the model that the person did not answer.
+      expect(approvals).toEqual([]);
+    }
+  });
+
+  test("the person's own text wins over the selected options", async () => {
+    const { canUseTool } = await gate([{ selected: [0], other: "A short call" }]);
+    const input = { questions: [formatQuestion] };
+    expect(await canUseTool("AskUserQuestion", input)).toEqual({
+      behavior: "allow",
+      updatedInput: { ...input, answers: { "Which format?": "A short call" } },
+    });
+  });
+
+  test("a skip tells the model that the person chose not to answer", async () => {
+    const { canUseTool } = await gate("declined");
+    expect(await canUseTool("AskUserQuestion", { questions: [formatQuestion] })).toEqual({
+      behavior: "deny",
+      message: "The person chose not to answer these questions.",
+    });
+  });
+
+  test("a question that nobody answers in time makes the model ask in its reply", async () => {
+    const { canUseTool } = await gate("expired");
+    expect(await canUseTool("AskUserQuestion", { questions: [formatQuestion] })).toMatchObject({
+      behavior: "deny",
+      message: expect.stringContaining("plain text") as unknown,
+    });
+  });
+
+  test("an input that Eva cannot read makes the model ask in its reply, with no form", async () => {
+    const { canUseTool, asked } = await gate([{ selected: [0] }]);
+    const unreadable = [
+      {},
+      { questions: [] },
+      { questions: [{ question: "Which?", header: "H", options: "none", multiSelect: false }] },
+      { questions: [{ ...formatQuestion, options: [{ label: " ", description: "" }, ...formatQuestion.options] }] },
+      // The answers go back by question text, so two equal texts would lose one answer.
+      { questions: [formatQuestion, formatQuestion] },
+    ];
+    for (const input of unreadable) {
+      expect(await canUseTool("AskUserQuestion", input)).toMatchObject({
+        behavior: "deny",
+        message: expect.stringContaining("plain text") as unknown,
+      });
+    }
+    expect(asked).toEqual([]);
+  });
+
+  test("answers that do not fit the questions make the model ask in its reply", async () => {
+    for (const answers of [[{ selected: [0] }, { selected: [1] }], [{ selected: [5] }], [{ selected: [] }]]) {
+      const { canUseTool } = await gate(answers);
+      expect(await canUseTool("AskUserQuestion", { questions: [formatQuestion] })).toMatchObject({
+        behavior: "deny",
+        message: expect.stringContaining("plain text") as unknown,
+      });
+    }
+  });
+
+  test("a model call denies the questions, as it denies every tool", async () => {
+    const { canUseTool, asked } = await gate([{ selected: [0] }], { mode: "model-call" });
+    expect(await canUseTool("AskUserQuestion", { questions: [formatQuestion] })).toMatchObject({ behavior: "deny" });
+    expect(asked).toEqual([]);
+  });
+});
 
 describe("the approval gate for Google writes", () => {
   async function decisions(inputs: Record<string, unknown>[]): Promise<string[]> {

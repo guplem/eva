@@ -3,8 +3,10 @@
  * such as subagents and background commands, and a way to fork it. A computer shows them in the
  * inspector column. A phone shows the same content in a bottom sheet from the chat header.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { useCallback, useState, type CSSProperties, type ReactElement } from "react";
 import { takesEffort } from "../../../shared/engine-port.ts";
+import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { api, type SessionRecord } from "./api.ts";
 import {
   contextFigure,
@@ -13,10 +15,11 @@ import {
   branchForkPoint,
   chatLinks,
   latestContext,
+  modelNames,
   taskStatus,
   titleCase,
 } from "./chat-details.ts";
-import { answeredModel, effortName, modelLabel } from "./conversation-parts.ts";
+import { effortName } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
@@ -102,9 +105,19 @@ function ForkButton({
 }: Pick<ChatProps, "tree" | "onChanged" | "shownId">): ReactElement | null {
   const showError = useShowError();
   const [forking, setForking] = useState(false);
+  /** The fork of a Project chat whose choices the dialog shows (issue 523). */
+  const [choosing, setChoosing] = useState<BranchRequest | null>(null);
+  const closeChoices = useCallback(() => setChoosing(null), []);
+  const finishBranch = useFinishBranch(onChanged);
   const point = branchForkPoint(tree, shownId);
   if (point === null) return null;
+  const owner = tree.find((session) => session.id === point.sessionId);
+  const turn = owner?.turns.find((candidate) => candidate.lastMessageId === point.messageId);
   const fork = async (): Promise<void> => {
+    if (owner?.mode === "project" && turn !== undefined) {
+      setChoosing({ kind: "fork", sessionId: point.sessionId, atMessageId: point.messageId, turn });
+      return;
+    }
     setForking(true);
     try {
       await api.fork(point.sessionId, point.messageId);
@@ -116,9 +129,12 @@ function ForkButton({
     }
   };
   return (
-    <button className="fork-chat" disabled={forking} onClick={() => void fork()}>
-      <Icon name="fork" /> Fork this chat
-    </button>
+    <>
+      <button className="fork-chat" disabled={forking} onClick={() => void fork()}>
+        <Icon name="fork" /> Fork this chat
+      </button>
+      {choosing !== null && <BranchChoiceDialog request={choosing} onClose={closeChoices} onDone={finishBranch} />}
+    </>
   );
 }
 
@@ -136,12 +152,13 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatP
         <>
           <ContextUse tree={tree} />
           <dl className="chat-facts">
-            {/* An open chat keeps its engine and its model (lesson 41), so they are text, not chips. */}
+            {/* The composer's chip changes the model, so these are text, not chips. An open chat keeps its engine. */}
             <dt>Engine</dt>
             <dd>{engineLabel(root.engine)}</dd>
             <dt>Model</dt>
-            <dd>{modelLabel(root.modelAlias, answeredModel(root.turns))}</dd>
-            {takesEffort(root.engine, root.modelAlias) && (
+            <dd>{modelNames(tree)}</dd>
+            {/* A model with no effort level, such as Claude Code's Fast, shows none (#550). */}
+            {tree.some((session) => takesEffort(session.engine, session.modelAlias)) && (
               <>
                 <dt>Effort</dt>
                 {/* Each branch has its own composer, so a fork can have its own effort. */}
@@ -283,56 +300,5 @@ export function TasksDialog({
         </span>
       )}
     </Dialog>
-  );
-}
-
-export function Dialog({
-  label,
-  onClose,
-  sheet = false,
-  closeLabel = "Close",
-  children,
-}: {
-  readonly label: string;
-  readonly onClose: () => void;
-  /** Such as "Cancel", when the dialog asks the person to confirm something. */
-  readonly closeLabel?: string;
-  /** A bottom sheet, which slides up from the bottom of a phone screen. */
-  readonly sheet?: boolean;
-  readonly children: ReactNode;
-}): ReactElement {
-  const close = useRef<HTMLButtonElement>(null);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    close.current?.focus();
-    // An Escape that opened this dialog, such as in a rename field, must not close it at once.
-    const openedAt = performance.now();
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape" || event.timeStamp < openedAt) return;
-      // One Escape closes only the top dialog, such as the unsaved changes question over a form.
-      const dialogs = document.querySelectorAll('[role="dialog"]');
-      if (dialogs[dialogs.length - 1] !== box.current) return;
-      // The sheets listen on the window, after the document: they must not close too.
-      event.stopPropagation();
-      onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div
-      className={sheet ? "dialog-backdrop sheet-backdrop" : "dialog-backdrop"}
-      // A tap on the scrim closes the sheet; a tap inside it does not.
-      onClick={sheet ? (event) => event.target === event.currentTarget && onClose() : undefined}
-    >
-      <div ref={box} className={sheet ? "dialog sheet" : "dialog"} role="dialog" aria-modal="true" aria-label={label}>
-        {children}
-        <div className="message-actions">
-          <button ref={close} onClick={onClose}>
-            {closeLabel}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

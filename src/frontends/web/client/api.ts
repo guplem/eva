@@ -30,7 +30,7 @@ import type { Clone, CloneDetails, RepositoryDetails } from "../../../core/proje
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
-import type { CloneFetch } from "../../../core/projects/project-work.ts";
+import type { BranchResult, CloneFetch, ForkFiles, RetryChoice } from "../../../core/projects/project-work.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
@@ -52,7 +52,7 @@ import type {
 } from "../../../core/vault/vault-sync.ts";
 import type { UndoPreview } from "../../../core/vault/vault-snapshots.ts";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
-import type { SessionEvent } from "../../../shared/events.ts";
+import type { QuestionAnswers, SessionEvent } from "../../../shared/events.ts";
 import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
 import { failureOf, quickRead, quickSend, request } from "./request.ts";
 
@@ -68,6 +68,7 @@ export type { PersonalFactsView };
 export type CurrentPlaceView = CurrentPlace;
 
 export type {
+  QuestionAnswers,
   UndoPreview,
   BrowsedPath,
   ChatBlocker,
@@ -76,6 +77,9 @@ export type {
   CloneDetails,
   RepositoryDetails,
   CloneFetch,
+  BranchResult,
+  ForkFiles,
+  RetryChoice,
   ConflictChoice,
   ConflictResolution,
   DeviceLoginEvent,
@@ -179,9 +183,10 @@ export const api = {
   /** Eva picks the clone: a free one, or a new one (issue 521). */
   newProjectChat: (projectId: string): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "project", projectId }),
-  /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */
+  /** Only a chat with no turn takes a new engine. A fork keeps its chat's engine. */
   setEngine: (sessionId: string, engine: EngineName): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),
+  /** A chat takes a new model between turns. The next turn reads the whole chat again (lesson 41). */
   setModel: (sessionId: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
   /** The effort changes no history, so a chat takes a new one at any time. The next turn uses it. */
@@ -194,16 +199,24 @@ export const api = {
     request("POST", `/api/files/received?name=${encodeURIComponent(file.name)}`, file),
   send: (sessionId: string, text: string): Promise<void> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }, { limit: quickSend }),
-  fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>
-    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork`, { atMessageId }),
+  /** A fork of a Project chat can run in a new clone (issue 523). The notice says why it lost its history. */
+  fork: (sessionId: string, atMessageId: string, files?: ForkFiles): Promise<BranchResult> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork`, { atMessageId, files }),
   /** A new chat that goes on from a summary of this chat. A failed summary gives no draft and its reason. */
   summaryChat: (sessionId: string): Promise<{ session: SessionRecord; summaryFailure: string | null }> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/summary-chat`, {}),
   stop: (sessionId: string): Promise<{ stopped: boolean }> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/stop`, {}),
-  /** With `undo`, Eva first restores the files that the answers from this turn on changed (#525). */
-  retry: (sessionId: string, turnIndex: number, undo = false): Promise<SessionRecord> =>
-    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex, undo }),
+  /**
+   * With `undo`, Eva first restores the vault files that the answers from this turn on changed (#525).
+   * With `files`, a Project chat chooses its clone and its files (#523).
+   */
+  retry: (
+    sessionId: string,
+    turnIndex: number,
+    choice: { readonly undo?: boolean; readonly files?: RetryChoice } = {},
+  ): Promise<BranchResult> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex, ...choice }),
   /** What the undo before a retry of this turn would do now. */
   retryUndo: (sessionId: string, turnIndex: number): Promise<UndoPreview> =>
     request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/retry-undo?turnIndex=${String(turnIndex)}`),
@@ -218,8 +231,12 @@ export const api = {
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals", undefined, { limit: quickRead }),
   backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks", undefined, { limit: quickRead }),
   runningTurns: (): Promise<TurnSnapshot> => request("GET", "/api/turns", undefined, { limit: quickRead }),
-  answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
-    request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
+  answerApproval: (requestId: string, answer: "allow" | "deny", answers?: QuestionAnswers): Promise<void> =>
+    request(
+      "POST",
+      `/api/approvals/${encodeURIComponent(requestId)}`,
+      answers === undefined ? { answer } : { answer, answers },
+    ),
   projects: (text: string, status: string, tag = ""): Promise<Project[]> => {
     const query = new URLSearchParams();
     if (text.trim() !== "") query.set("text", text.trim());
@@ -349,6 +366,9 @@ export const api = {
   resolveVaultConflict: (path: string, choice: ConflictChoice): Promise<ConflictResolution> =>
     request("POST", "/api/vault/conflicts", { path, choice }),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
+  /** Hides the notice of an open problem, and answers with the new status. */
+  hideProblem: (key: string): Promise<EvaStatus> =>
+    request("POST", "/api/problems/hide", { key }, { limit: quickRead }),
   startClaudeLogin: (): Promise<{ url: string }> => request("POST", "/api/engines/claude-code/login", {}),
   /** Takes the code that Claude's page shows after the login. */
   finishClaudeLogin: (code: string): Promise<{ restartNeeded: boolean }> =>

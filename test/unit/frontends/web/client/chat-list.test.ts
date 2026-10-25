@@ -31,6 +31,8 @@ function turn(fields: Partial<Turn>): Turn {
     failure: null,
     lastMessageId: null,
     at: now.toISOString(),
+    startSnapshot: null,
+    endSnapshot: null,
     ...fields,
   };
 }
@@ -124,7 +126,7 @@ describe("groupChats", () => {
 
 describe("chatPreview with a state", () => {
   test("a waiting approval says so, because the last answer is out of date", () => {
-    expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "needs-you")).toBe("Eva needs your permission");
+    expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "needs-you")).toBe("Eva waits for your answer");
   });
 
   test("a first turn that runs says that Eva works, not that the chat is empty", () => {

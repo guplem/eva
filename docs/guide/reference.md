@@ -156,17 +156,19 @@ This needs git 2.38 or newer on the computer with the conflict. With an older gi
 
 Eva sends each alert to your Telegram chat when the problem starts, again once a day while it lasts, and once more when it ends. The open problems also show at the top of the web page, because Telegram itself can be the problem.
 
-| Alert                                   | When                                                                                  |
-| --------------------------------------- | ------------------------------------------------------------------------------------- |
-| The notebook sync stopped on a conflict | Two computers changed the same note: see [Notebook conflicts](#notebook-conflicts).   |
-| The notebook sync failed                | A git step failed, for example a full disk or a refused push.                         |
-| The notebook cannot reach GitHub        | The notebook was offline for more than 30 minutes.                                    |
-| The update check or install failed      | The alert names the step. A failed install keeps the old version.                     |
-| The Claude Code update failed           | The alert names the reason. Chats keep the old version of Claude Code.                |
-| A reminder failed to run                | The alert names the reminder.                                                         |
-| A reminder waits for its card           | No card reached you, so it does not run: see [Optional features](#optional-features). |
-| Eva started after an unclean exit       | A crash or a power cut stopped her. Send `/logs`.                                     |
-| Eva cannot read Telegram                | Another program uses the bot, or Telegram failed for over 15 minutes.                 |
+Press the x on a notice to hide it. It stays hidden on every device that opens this Eva, until the problem becomes an error or ends. Eva sends no daily reminder for it, also when you hide it on another computer. `/status` still counts it.
+
+| Alert                                   | When                                                                                                 |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| The notebook sync stopped on a conflict | Two computers changed the same note: see [Notebook conflicts](#notebook-conflicts).                  |
+| The notebook sync failed                | A git step failed, for example a full disk or a refused push.                                        |
+| The notebook cannot reach GitHub        | The notebook was offline for more than 30 minutes.                                                   |
+| The update check or install failed      | The checks failed for 2 hours or more, or an install failed. A failed install keeps the old version. |
+| The Claude Code update failed           | The alert names the reason. Chats keep the old version of Claude Code.                               |
+| A reminder failed to run                | The alert names the reminder.                                                                        |
+| A reminder waits for its card           | No card reached you, so it does not run: see [Optional features](#optional-features).                |
+| Eva started after an unclean exit       | A crash or a power cut stopped her. Send `/logs`.                                                    |
+| Eva cannot read Telegram                | Another program uses the bot, or Telegram failed for over 15 minutes.                                |
 
 ## Notifications on a device
 
@@ -230,6 +232,18 @@ A request from Eva's own computer can come from any program there, so only the t
   - A small model says that its chat has finished.
 
   Eva then closes the old chat. You can read it, but it takes no new message. She puts each repository on its default branch, up to date with GitHub. The installed dependencies stay. When no clone is free, she makes a new clone.
+
+- **Retry and fork:** before and after each turn of a project chat, Eva keeps a snapshot of the files of the clone. The snapshot holds every file that git does not ignore. **Retry** under an answer asks:
+  - **Undo and retry here:** the files go back to how they were before that answer. Every later answer is undone too.
+  - **Retry here:** the files stay as they are.
+  - **Retry in a new clone:** a new clone gets the files from before that answer. The old clone stays, so you can compare the two tries.
+
+  **Fork** asks:
+  - **New clone at this answer:** a new clone gets the files as they were at that answer.
+  - **New clean clone:** a clone on the default branch, up to date with GitHub.
+  - **This clone:** the fork shares the files with its chat. Their turns wait in line.
+
+  A retry or a fork in a new clone is the first chat of that clone. A note at its top names the chat and the clone that it came from. When Eva cannot take the conversation along, the new chat starts from a summary. Read the summary, then send it. Ignored files, such as installed dependencies or `.env`, stay as they are after a restore. An undo keeps the files as they were just before it in one more snapshot. A commit that is already on GitHub stays there, so a later pull can bring it back. An answer from before Eva kept snapshots offers only the choices that need none.
 
 - **Trusted repositories:** a project chat runs the hooks, settings and MCP servers of its clone only when Eva trusts every repository in it. Eva trusts the repositories of the GitHub account that she logs in with. She also trusts the owners in `trust.trustedRepositoryOwners`. She asks about any other repository once, and keeps your answer. **Settings > Trusted repositories** lists the trusted accounts and the saved answers. Add or remove one there. A change applies to the next project chat.
 - **What Eva may do:** **Settings > AI engines > What Eva may do** lists, for each engine and each kind of chat, what runs with no question, what Eva asks you first and what never runs. It also lists your own Claude Code `allow`, `ask` and `deny` rules apart, with the file that holds them: the `settings.json` in this Eva's Claude Code folder, and `.claude/settings.json` in your vault.

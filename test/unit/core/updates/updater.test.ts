@@ -88,6 +88,7 @@ describe("Updater", () => {
       lastCheckAt: null,
       lastError: null,
       failedStep: null,
+      failingSince: null,
       download: null,
     });
   });
@@ -109,6 +110,52 @@ describe("Updater", () => {
     expect(await run.updater.check()).toMatchObject({ lastError: "offline", failedStep: "check" });
     run.setFound({ current: "aaa1111", latest: "aaa1111", available: false, releases: null });
     expect(await run.updater.check()).toMatchObject({ lastError: null, failedStep: null });
+  });
+
+  test("a failing check keeps the time of its first failure, and a good check clears it", async () => {
+    const run = harness();
+    run.setFound(new Error("offline"));
+    expect((await run.updater.check()).failingSince).toBe("2026-10-17T10:00:00.000Z");
+    run.advanceHours(1);
+    expect((await run.updater.check()).failingSince).toBe("2026-10-17T10:00:00.000Z");
+    run.setFound({ current: "aaa1111", latest: "aaa1111", available: false, releases: null });
+    expect((await run.updater.check()).failingSince).toBeNull();
+  });
+
+  test("a failed check long after the last one starts a new failure, so two short losses are not one long one", async () => {
+    const run = harness();
+    run.setFound(new Error("offline"));
+    await run.updater.check();
+    run.advanceHours(24);
+    expect((await run.updater.check()).failingSince).toBe("2026-10-18T10:00:00.000Z");
+  });
+
+  test("a failed install keeps the frequency of the checks", async () => {
+    const run = harness();
+    run.setApplyError(new Error("bun install failed"));
+    await run.updater.tick();
+    run.advanceHours(1);
+    await run.updater.tick();
+    expect(run.calls).toEqual(["check", "apply"]);
+  });
+
+  test("after a failed check, the tick checks again in one hour, whatever the frequency", async () => {
+    const run = harness();
+    run.setFrequency("weekly");
+    run.setFound(new Error("offline"));
+    await run.updater.tick();
+    run.advanceHours(0.5);
+    await run.updater.tick();
+    expect(run.calls).toEqual(["check"]);
+    run.advanceHours(0.5);
+    await run.updater.tick();
+    expect(run.calls).toEqual(["check", "check"]);
+    run.setFound({ current: "aaa1111", latest: "aaa1111", available: false, releases: null });
+    run.advanceHours(1);
+    await run.updater.tick();
+    run.advanceHours(1);
+    await run.updater.tick();
+    expect(run.calls).toEqual(["check", "check", "check"]);
   });
 
   test("update now installs and restarts when no chat runs", async () => {

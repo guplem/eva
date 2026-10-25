@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import type { AssistantRulesView } from "../../../core/modes/assistant-rules.ts";
 import { api, ApiError } from "./api.ts";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { DiffLines } from "./DiffLines.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { diffLines, type DiffRow } from "./line-diff.ts";

@@ -825,12 +825,13 @@ describe("routes", () => {
     );
     await eva.sessions.send(session.id, "one");
     const atMessageId = eva.sessions.get(session.id).turns[0]?.lastMessageId;
-    const fork = await json<{ parentId: string }>(
+    const fork = await json<{ session: { parentId: string }; notice: string | null }>(
       await call(`/api/sessions/${session.id}/fork`, { method: "POST", body: { atMessageId } }),
     );
-    expect(fork.parentId).toBe(session.id);
+    expect(fork).toMatchObject({ session: { parentId: session.id }, notice: null });
     const retry = await call(`/api/sessions/${session.id}/retry`, { method: "POST", body: { turnIndex: 0 } });
     expect(retry.status).toBe(200);
+    expect(await json<{ notice: null }>(retry)).toMatchObject({ notice: null });
     const preview = await call(`/api/sessions/${session.id}/retry-undo?turnIndex=0`);
     expect(await json(preview)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
     const undone = await call(`/api/sessions/${session.id}/retry`, {
@@ -840,6 +841,22 @@ describe("routes", () => {
     expect(undone.status).toBe(200);
     expect((await call(`/api/sessions/${session.id}/retry-undo?turnIndex=x`)).status).toBe(400);
     expect((await call(`/api/sessions/${session.id}/retry-undo`)).status).toBe(400);
+  });
+
+  test("a fork or a retry refuses a choice of files that it does not know", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const fork = await call(`/api/sessions/${session.id}/fork`, {
+      method: "POST",
+      body: { atMessageId: "m1", files: "somewhere" },
+    });
+    expect(fork.status).toBe(400);
+    const retry = await call(`/api/sessions/${session.id}/retry`, {
+      method: "POST",
+      body: { turnIndex: 0, files: "somewhere" },
+    });
+    expect(retry.status).toBe(400);
   });
 
   test("opens a new chat from a summary of a chat, and a 404 for an unknown chat (#522)", async () => {
@@ -934,7 +951,7 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
-  test("the composer's chips set the engine and model of a chat before its first message only", async () => {
+  test("the composer's chips set the engine before the first message, and the model at any time (#545)", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
     );
@@ -954,9 +971,14 @@ describe("routes", () => {
     expect(badModel.status).toBe(400);
 
     await eva.sessions.send(session.id, "one");
+    const lateEngine = await call(`/api/sessions/${session.id}/engine`, {
+      method: "POST",
+      body: { engine: "claude-code" },
+    });
+    expect(lateEngine.status).toBe(409);
     const late = await call(`/api/sessions/${session.id}/model`, { method: "POST", body: { model: "opus" } });
-    expect(late.status).toBe(409);
-    expect(eva.sessions.get(session.id).modelAlias).toBe("haiku");
+    expect(late.status).toBe(200);
+    expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
 
     // The effort changes between turns too (#419).
     const effort = await call(`/api/sessions/${session.id}/effort`, { method: "POST", body: { effort: "high" } });
@@ -1044,6 +1066,43 @@ describe("routes", () => {
     eva.sessions.answerApproval(listed[0]?.requestId ?? "", "deny");
     await turn;
     expect(await json<unknown[]>(await call("/api/approvals"))).toEqual([]);
+  });
+
+  test("the answers to the model's questions reach the turn, and a bad answer is refused", async () => {
+    const outcomes: unknown[] = [];
+    turnScript = async function* (request) {
+      const question = {
+        question: "Which format?",
+        header: "Format",
+        options: [
+          { label: "Talk", description: "" },
+          { label: "Form", description: "" },
+        ],
+        multiSelect: false,
+      };
+      outcomes.push(await request.askQuestions("AskUserQuestion", [question]));
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    let listed = await json<{ requestId: string; questions?: unknown[] }[]>(await call("/api/approvals"));
+    while (listed.length === 0) {
+      await Bun.sleep(10);
+      listed = await json<{ requestId: string; questions?: unknown[] }[]>(await call("/api/approvals"));
+    }
+    expect(listed[0]?.questions).toHaveLength(1);
+    const path = `/api/approvals/${listed[0]?.requestId ?? ""}`;
+    const plain = await call(path, { method: "POST", body: { answer: "allow" } });
+    expect(plain.status).toBe(400);
+    expect(await json<{ code: string }>(plain)).toMatchObject({ code: "approval_invalid" });
+    const shapeless = await call(path, { method: "POST", body: { answer: "allow", answers: [{ selected: ["x"] }] } });
+    expect(shapeless.status).toBe(400);
+    const answered = await call(path, { method: "POST", body: { answer: "allow", answers: [{ selected: [1] }] } });
+    expect(answered.status).toBe(204);
+    await turn;
+    expect(outcomes).toEqual([[{ selected: [1] }]]);
   });
 });
 
@@ -2075,6 +2134,18 @@ describe("updates and the vault sync", () => {
   test("Make this machine the hub answers with the new status", async () => {
     const response = await call("/api/hub", { method: "POST", body: {} });
     expect(await json<{ role: string }>(response)).toMatchObject({ role: "hub" });
+  });
+
+  test("hides the notice of an open problem, and answers 404 for a problem that is not open (#541)", async () => {
+    eva.reportProblem("example_problem", { level: "warn", message: "Something broke.", resolvedMessage: "Fixed." });
+    const hidden = await call("/api/problems/hide", { method: "POST", body: { key: "example_problem" } });
+    expect(hidden.status).toBe(200);
+    expect(await json<{ problemDetails: unknown[] }>(hidden)).toMatchObject({
+      problemDetails: [{ key: "example_problem", hidden: true }],
+    });
+    const gone = await call("/api/problems/hide", { method: "POST", body: { key: "no_such_problem" } });
+    expect(gone.status).toBe(404);
+    expect((await call("/api/problems/hide", { method: "POST", body: {} })).status).toBe(400);
   });
 
   test("Sync now answers with the sync state", async () => {

@@ -3,7 +3,7 @@
  * decides when it opens. `useLeaveGuard` lets a form hold a guard.
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
-import { Dialog } from "./ChatPanel.tsx";
+import { Dialog } from "./Dialog.tsx";
 import {
   answerLeave,
   holdLeave,

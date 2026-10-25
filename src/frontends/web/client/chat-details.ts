@@ -2,6 +2,7 @@
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { SessionRecord } from "./api.ts";
 import { pathOf, type BranchSession } from "./branch-path.ts";
+import { answeredModel, modelLabel } from "./conversation-parts.ts";
 import type { LiveState } from "./live-state.ts";
 
 /** How full the context is, and the size of the window when the engine said it. */
@@ -34,6 +35,22 @@ export function latestContext(sessions: readonly Pick<SessionRecord, "turns">[])
   );
   if (newest === undefined || newest.contextTokens === null) return null;
   return { tokens: newest.contextTokens, window: newest.contextWindow };
+}
+
+/**
+ * The models of the chat and its forks, each once. Each branch can change its model (#545). A
+ * branch with no answer on its model yet takes the answered name of another branch on that model.
+ */
+export function modelNames(sessions: readonly Pick<SessionRecord, "modelAlias" | "turns">[]): string {
+  const aliases = [...new Set(sessions.map((session) => session.modelAlias))];
+  return aliases
+    .map((alias) => {
+      const answers = sessions
+        .filter((session) => session.modelAlias === alias)
+        .map((session) => answeredModel(session.turns, alias));
+      return modelLabel(alias, answers.find((answer) => answer !== null) ?? null);
+    })
+    .join(", ");
 }
 
 /** The whole percent of the window in use, or null when the window is not known: Eva guesses no limit. */

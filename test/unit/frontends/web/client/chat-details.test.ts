@@ -8,6 +8,7 @@ import {
   chatLinks,
   formatTokenCount,
   latestContext,
+  modelNames,
   taskStatus,
   tasksOfTurn,
   titleCase,
@@ -32,6 +33,8 @@ function turn(at: string, contextTokens: number | null, extra: Partial<Turn> = {
     failure: null,
     lastMessageId: null,
     at,
+    startSnapshot: null,
+    endSnapshot: null,
     ...extra,
   };
 }
@@ -65,6 +68,18 @@ describe("latestContext", () => {
 
   test("a chat with no answer gives null", () => {
     expect(latestContext([session([])])).toBeNull();
+  });
+});
+
+describe("modelNames (#545)", () => {
+  test("names each model of the chat and its forks once, with the model that answered it", () => {
+    const answered = turn("2026-10-18T10:00:00.000Z", null, { model: "claude-opus-5-5", modelAlias: "opus" });
+    const root = { modelAlias: "opus" as const, turns: [answered] };
+    // A fork with no answer yet runs on the same model, so it adds no second name.
+    const fork = { modelAlias: "opus" as const, turns: [] };
+    const switched = { modelAlias: "haiku" as const, turns: [answered] };
+    expect(modelNames([root, fork])).toBe("Smart · Opus 5.5");
+    expect(modelNames([root, switched])).toBe("Smart · Opus 5.5, Fast");
   });
 });
 

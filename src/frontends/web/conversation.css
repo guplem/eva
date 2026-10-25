@@ -1191,6 +1191,7 @@ button.ghost .icon {
 }
 
 .answer-files .files-download {
+  min-width: 0;
   align-items: flex-start;
   max-width: 100%;
 }
@@ -1201,7 +1202,16 @@ button.ghost .icon {
   color: var(--ink);
 }
 
+/* A thumb needs a target of --touch-target. */
+@media (pointer: coarse) {
+  .named-download button.ghost {
+    min-height: var(--touch-target);
+  }
+}
+
+/* A long name ends with an ellipsis, so the page never scrolls sideways. */
 .download-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

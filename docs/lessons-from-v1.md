@@ -60,7 +60,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 ## 4. Prompt cache and cost
 
 38. `[keep]` **A cached follow-up costs about 1/20 of a first turn.** Anything that changes the prompt prefix costs money. Source: `server/adr/0006`.
-39. `[adapt]` **Pass `--exclude-dynamic-system-prompt-sections` to Claude Code**, or `git status` in the prompt breaks the cache after every autosave. Source: `server/adr/0006`. → Eva does not set the Agent SDK option `excludeDynamicSections: true`. The SDK option `snapshot` is on by default. With it, Claude Code records the system prompt on the first request and sends the same record on each resumed turn. So a new `git status` does not change the prompt. `excludeDynamicSections` serves a cache that many users share, and an instance has one person. Project mode is a transparent wrapper, and a manual `claude` session does not set the option. Where an account does not have `snapshot` yet, a manual session loses the same cache (issue #140).
+39. `[adapt]` **Pass `--exclude-dynamic-system-prompt-sections` to Claude Code**, or `git status` in the prompt breaks the cache after every autosave. Source: `server/adr/0006`. → Eva does not set the Agent SDK option `excludeDynamicSections: true`. The SDK option `snapshot` is on by default. With it, Claude Code records the system prompt on the first request and sends the same record on each resumed turn. So a new `git status` does not change the prompt. `excludeDynamicSections` serves a cache that many people share. An instance has one person. Project mode is a transparent wrapper. A manual `claude` session does not set the option, so Eva does not set it either. On an account that does not have `snapshot` yet, a manual session loses the same cache (issue #140).
 40. `[keep]` **The system prompt must be byte-identical across turns.** The local time goes in the user message. Source: `d991e63`.
 41. `[keep]` **A model belongs to a conversation.** A switch throws the cache away, so the UI warns, and the model choice comes first in a new chat. Source: `server/adr/0006`.
 42. `[keep]` **A schedule with a prompt pays a full uncached turn every time.** Fixed content uses a `text` or `file` step. Source: `server/adr/0013`.
@@ -83,7 +83,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 
 ## 6. Telegram
 
-56. `[keep]` **Only one poller for each bot token.** Count 409 errors, and do not let a success reset the count. Two servers flapped for ever. Source: `de9ab58`. → Eva counts the 409 errors of the last 2 minutes. At 3, she logs an error and pauses only the bot for 10 minutes; the core runs on, because the owner may reach Eva only through Telegram.
+56. `[adapt]` **Only one poller for each bot token.** Count 409 errors, and do not let a success reset the count. Two servers took the bot from each other again and again, with no end. Source: `de9ab58`. → Eva counts the 409 errors of the last 2 minutes. At 3, she logs an error and pauses only the bot for 10 minutes; the core runs on, because the owner may reach Eva only through Telegram.
 57. `[keep]` **Confirm the update offset before any deliberate exit.** Retry 3 times, or the whole batch replays. Source: `b8b686a`.
 58. `[keep]` **Format answers as Telegram HTML, never MarkdownV2.** Split at 4000 characters before the conversion, and fall back to plain text. Source: `server/adr/0002`, PR #58.
 59. `[keep]` **Service messages stay plain text.** Commit subjects and paths are not Markdown. Source: `server/AGENTS.md`.
@@ -121,7 +121,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 82. `[keep]` **Windows blocks reads of a locked byte range.** Keep a pid outside the lock file. Source: `5740aae`.
 83. `[keep]` **`time.time()` resolution on Windows is about 16 ms.** Never order events by a timestamp alone. Source: `server/adr/0007`.
 84. `[keep]` **Use `C:\Windows\System32\OpenSSH\ssh.exe` with `BatchMode` from Windows.** Git Bash's ssh could not reach the server. Source: `server/AGENTS.md`.
-85. `[keep]` **systemd user service:** enable linger, set `XDG_RUNTIME_DIR` and an explicit `PATH`, and map exit codes to restart rules. Source: `server/adr/0008`, `install-service.sh`.
+85. `[keep]` **systemd user service:** enable linger (`loginctl enable-linger`, so the service runs when the person is not logged in), set `XDG_RUNTIME_DIR` and an explicit `PATH`, and map exit codes to restart rules. Source: `server/adr/0008`, `install-service.sh`.
 86. `[keep]` **Wi-fi power saving stalled GitHub for up to 45 seconds on the server laptop.** Prefer a cable, or turn power saving off. Source: the server machine guide in `server/machines/`, `50cf793`.
 87. `[keep]` **Setup scripts:** wait for the apt lock, pass tokens through the environment and never through argv, validate each input, and write a file only when the value changed. Source: `207d286`.
 88. `[keep]` **A launcher waits for Enter after an error only when stdin is a terminal.** Source: `5f8ff74`.
@@ -155,19 +155,19 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 
 ## New facts learned during the Eva design
 
-107. **Codex loads `AGENTS.md` only from the nearest git root down to the start folder.** A session started in a nested clone does not see the parent folders. `project_root_markers` changes the root, but only from user config or `-c`.
-108. **pi and OpenCode walk up through parent folders.** Claude Code walks up to the filesystem root and ignores git boundaries.
-109. **Agent hooks run only from the start folder. Git hooks run in whatever repository receives the commit.** Project sessions start in the clone, so the project's own agent hooks run.
-110. **The `claude` program adds its own identity line before a custom system prompt,** and a billing line before that. The SDK docs say it sends only what you provide. Source: spike S5 (#56) logged a real request.
-111. **Each Eva instance gives its engines their own config folders** (`CLAUDE_CONFIG_DIR`, pi's agent folder, `GH_CONFIG_DIR`). Two instances on one OS user otherwise share one login, and a person would use another person's subscription.
-112. **A `CLAUDE.md` in the start folder or any folder above it stops Claude Code from reading `AGENTS.md`.** The SDK setting `claude-md-and-agents-md` loads both. Source: https://code.claude.com/docs/en/memory
-113. **The Agent SDK without `systemPrompt` uses a minimal prompt,** not the Claude Code prompt that `claude -p` uses. Pass the `claude_code` preset. Source: https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts
-114. **A message sent while a turn runs must wait, and join the next prompt.** Two turns on one session id split the conversation. Source (v1): `705d2de`, `ARCHITECTURE.md` section 3, step 5.
-115. **Claude Code records the system prompt on the first request of a session** and reuses it until compaction. An edit to the assistant rules reaches a running session only after its next compaction. Source: https://code.claude.com/docs/en/cli-reference
-116. **Deny rules are weak protection.** A `Read` deny does not stop `Bash(cat ...)` under `bypassPermissions`. The vault's `.claude/settings.json` never reaches a session started in a clone (lesson 3). The real protection is the env allowlist, redaction, and secrets kept outside the agent's reach. Source (v1): `4ef7d76`, `server/adr/0005`.
-117. **An MCP server started through `uvx` or `npx` fetches its newest version at each start,** and runs with the person's tokens. Pin exact versions.
-118. **Only one instance fires the schedules.** Every machine runs an instance, so every machine would otherwise fire every schedule. Source (v1): lessons 56 and 64.
-119. **Least privilege for GitHub.** v1 gave the vault's contents only to a deploy key, and gave the agent a fine-grained token with no `Contents` permission. Source (v1): `server/adr/0012`.
+107. `[keep]` **Codex loads `AGENTS.md` only from the nearest git root down to the start folder.** A session started in a nested clone does not see the parent folders. `project_root_markers` changes the root, but only from user config or `-c`.
+108. `[keep]` **pi and OpenCode walk up through parent folders.** Claude Code walks up to the filesystem root and ignores git boundaries.
+109. `[keep]` **Agent hooks run only from the start folder. Git hooks run in whatever repository receives the commit.** Project sessions start in the clone, so the project's own agent hooks run.
+110. `[keep]` **The `claude` program adds its own identity line before a custom system prompt,** and a billing line before that. The SDK docs say it sends only what you provide. Source: spike S5 (#56) logged a real request.
+111. `[keep]` **Each Eva instance gives its engines their own config folders** (`CLAUDE_CONFIG_DIR`, pi's agent folder, `GH_CONFIG_DIR`). Two instances on one OS user otherwise share one login, and a person would use another person's subscription.
+112. `[keep]` **A `CLAUDE.md` in the start folder or any folder above it stops Claude Code from reading `AGENTS.md`.** The SDK setting `claude-md-and-agents-md` loads both. Source: https://code.claude.com/docs/en/memory
+113. `[keep]` **The Agent SDK without `systemPrompt` uses a minimal prompt,** not the Claude Code prompt that `claude -p` uses. Pass the `claude_code` preset. Source: https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts
+114. `[keep]` **A message sent while a turn runs must wait, and join the next prompt.** Two turns on one session id split the conversation. Source (v1): `705d2de`, `ARCHITECTURE.md` section 3, step 5.
+115. `[keep]` **Claude Code records the system prompt on the first request of a session** and reuses it until compaction. An edit to the assistant rules reaches a running session only after its next compaction. Source: https://code.claude.com/docs/en/cli-reference
+116. `[keep]` **Deny rules are weak protection.** A `Read` deny does not stop `Bash(cat ...)` under `bypassPermissions`. The vault's `.claude/settings.json` never reaches a session started in a clone (lesson 3). The real protection is the env allowlist, redaction, and secrets kept outside the agent's reach. Source (v1): `4ef7d76`, `server/adr/0005`.
+117. `[keep]` **An MCP server started through `uvx` or `npx` fetches its newest version at each start,** and runs with the person's tokens. Pin exact versions.
+118. `[keep]` **Only one instance fires the schedules.** Every machine runs an instance, so every machine would otherwise fire every schedule. Source (v1): lessons 56 and 64.
+119. `[keep]` **Least privilege for GitHub.** v1 gave the vault's contents only to a deploy key, and gave the agent a fine-grained token with no `Contents` permission. Source (v1): `server/adr/0012`.
 
 ## Lessons added by the review
 

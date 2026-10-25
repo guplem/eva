@@ -27,7 +27,10 @@ interface ListItem {
 }
 
 export function toWebHtml(markdown: string): string {
-  return blocks(expandIndentTabs(markdown.replaceAll("\r\n", "\n").split("\n")), false);
+  const html = blocks(expandIndentTabs(markdown.replaceAll("\r\n", "\n").split("\n")), false);
+  // A link opens in a new tab, so the chat stays open. Telegram takes only href, so the shared
+  // inlineHtml leaves these out. Every "<a " in the output is a link tag, as all text is escaped.
+  return html.replaceAll("<a href=", '<a target="_blank" rel="noreferrer" href=');
 }
 
 /**

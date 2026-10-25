@@ -96,9 +96,16 @@ describe("toWebHtml", () => {
     expect(toWebHtml("above\n\n---\nbelow\n* * *")).toBe("<p>above</p><hr><p>below</p><hr>");
   });
 
-  test("a link keeps only http and https", () => {
+  test("a link keeps only http and https, and opens in a new tab so the chat stays open", () => {
     expect(toWebHtml("[docs](https://example.com) [x](javascript:alert)")).toBe(
-      '<p><a href="https://example.com">docs</a> [x](javascript:alert)</p>',
+      '<p><a target="_blank" rel="noreferrer" href="https://example.com">docs</a> [x](javascript:alert)</p>',
+    );
+  });
+
+  test("a bare URL in a list item or a table cell is a link too", () => {
+    expect(toWebHtml("- https://example.com/a\n\n| Site |\n| --- |\n| https://example.com/b |")).toBe(
+      '<ul><li><a target="_blank" rel="noreferrer" href="https://example.com/a">https://example.com/a</a></li></ul>' +
+        '<table><thead><tr><th>Site</th></tr></thead><tbody><tr><td><a target="_blank" rel="noreferrer" href="https://example.com/b">https://example.com/b</a></td></tr></tbody></table>',
     );
   });
 

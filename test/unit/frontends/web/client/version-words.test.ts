@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { EvaVersions } from "../../../../../src/frontends/web/client/api.ts";
-import { updateAllSteps } from "../../../../../src/frontends/web/client/version-words.ts";
+import { updateAllSteps, versionText, voiceNotesText } from "../../../../../src/frontends/web/client/version-words.ts";
 
 type Tool = EvaVersions["tools"][number];
 
@@ -53,6 +53,29 @@ describe("updateAllSteps", () => {
     expect(steps).toEqual([]);
   });
 
+  test("installs a missing claude with the tools, as claude update needs a claude", () => {
+    const steps = updateAllSteps({
+      versions: versions([tool("claude", null), tool("pi", "1.3.0")]),
+      latest: new Map([["pi", "1.4.0"]]),
+      claudeUpdatesItself: true,
+      newestEva: null,
+    });
+    expect(steps).toEqual([
+      { kind: "install", program: "claude" },
+      { kind: "install", program: "pi" },
+    ]);
+  });
+
+  test("updates a too old claude with claude update, also with no newest version", () => {
+    const steps = updateAllSteps({
+      versions: versions([tool("claude", "1.0.0", { tooOld: true })]),
+      latest: new Map(),
+      claudeUpdatesItself: true,
+      newestEva: null,
+    });
+    expect(steps).toEqual([{ kind: "claude update" }]);
+  });
+
   test("installs claude through its installer when Eva found no claude to update", () => {
     const steps = updateAllSteps({
       versions: versions([tool("claude", "2.1.0")]),
@@ -61,5 +84,24 @@ describe("updateAllSteps", () => {
       newestEva: null,
     });
     expect(steps).toEqual([{ kind: "install", program: "claude" }]);
+  });
+});
+
+describe("versionText", () => {
+  test("names a missing tool, a too old one, and a newer version", () => {
+    expect(versionText(tool("uv", null), "0.9.0")).toBe("Not installed");
+    expect(versionText(tool("gh", "2.4.0", { tooOld: true }), "2.62.0")).toBe("2.4.0, too old");
+    expect(versionText(tool("pi", "1.3.0"), "1.4.0")).toBe("1.3.0 (1.4.0 available)");
+    expect(versionText(tool("pi", "1.4.0"), "1.4.0")).toBe("1.4.0");
+    // A tool that prints no version number cannot be compared.
+    expect(versionText(tool("gh", "installed"), "2.62.0")).toBe("installed");
+  });
+});
+
+describe("voiceNotesText", () => {
+  test("names the missing parts, or says whether voice notes run", () => {
+    expect(voiceNotesText({ missing: ["ffmpeg"], on: false })).toBe("Off, needs ffmpeg");
+    expect(voiceNotesText({ missing: [], on: true })).toBe("On");
+    expect(voiceNotesText({ missing: [], on: false })).toBe("Installed, restart Eva to turn them on");
   });
 });

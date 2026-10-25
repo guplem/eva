@@ -13,7 +13,7 @@ An issue states a clear goal. It also shows which parts the person decided and w
 2. **Look for a duplicate.** Search open and closed issues by meaning, not only by the exact words. Prefer to reopen or comment on a matching issue.
 3. **Find the gaps, then sort them.** List every open choice, missing fact and point that does not fit the code or the rules. Then sort each one:
    - **Settled by the code, the docs or the project goals with high confidence:** decide it yourself. Do not spend the person's time on it. Write it as an assumption, and name its source, such as a rule in `AGENTS.md` or a pattern in the code.
-   - **A conflict with the code that would break the goal,** such as a rule that the change breaks: write it in the issue, so the implementer does not miss it.
+   - **A rule or code behavior that the change would break:** write it in the issue, so the implementer does not miss it.
    - **A choice that changes what the person gets:** interview the person when they are there. See [Interview the person](#interview-the-person). When nobody is there, choose the most likely meaning, and write it as an assumption.
    - **A choice where the goal is reached either way:** do not ask, and do not write it. The implementer decides it in the plan of `implement-issue`.
 4. **Split the work.** Make one issue for each result that a person can check alone. When an issue must wait for another one, write "Blocked by #N" near its top, and set a GitHub "blocked by" link.
@@ -23,22 +23,22 @@ An issue states a clear goal. It also shows which parts the person decided and w
    - `Improvement:` a better version of something that exists.
    - `Task:` other work, such as a refactor, a chore or a setup step.
 6. **Write the body.** Leave out a section that has nothing in it.
-   - Start with one line that sums up the issue.
+   - Start with one line that summarizes the issue.
    - **Context:** what happens now, why it matters, and the related files and issues. Check in the code each file, function and behavior that you name. For a bug, give the steps to reproduce it. Write a suspected cause as a guess, never as a fact.
    - **What the person decided:** only what the person said or confirmed, in their meaning.
    - **Assumptions, written by an agent. Check them:** each choice that you made or inferred. Include each proposal that the person did not reject but did not choose.
    - **Proposed solution:** only when the person proposed one.
-   - **Notes for the implementer:** each conflict with the code that would break the goal.
+   - **Notes for the implementer:** each rule or code behavior that the change would break.
    - **Done when:** behavior that a person can see, not implementation steps. Cover the goal, each decision, and each assumption that changes what the person gets. Name a front end only when it has the feature.
 7. **Add labels.** Add `waiting-for-human-check` when an agent wrote the issue. Add `requires-human-intervention` when only a person can do the next step. Add no other label.
 8. **Review each issue.** Do this step for every issue.
    - Read the issue again yourself, against the code and the decisions. Check each reference to another issue.
-   - Start 2 sub-agents for each issue (1 mid-tier, 1 top-tier). Give them only the issue number and each decision, with the answers that led to it. Do not give them your reasoning: they read the issue and the code by themselves. They change nothing, and they report:
+   - Start 2 sub-agents for each issue (1 mid-tier, 1 top-tier). A top-tier sub-agent uses the most capable model of your vendor. A mid-tier sub-agent uses a mid-size model of the same vendor. Give them only the issue number and each decision, with the answers that led to it. Do not give them your reasoning: they read the issue and the code by themselves. They change nothing, and they report:
      - a decision that is missing, wrong or contradicted;
      - an assumption that the issue shows as a decision of the person;
      - a claim about the code that is not true;
      - a gap that leaves the goal or a decision unclear;
-     - a conflict with the code that would break the goal and that the issue does not name;
+     - a rule or code behavior that the change would break and that the issue does not name;
      - a "Done when" item that is missing or that a person cannot see.
 
      They do not ask to settle a choice where the goal is reached either way.

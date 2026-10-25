@@ -121,7 +121,8 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
   }
   if (lastLine.includes("code block")) {
     // The approval holds the turn, so the test sees the live block before the stored one.
-    const answer = "Run this:\n\n```sh\necho one && echo <two>\n```\n";
+    // The redactor holds back the tail of a draft, as long as the longest secret: more words push the block out.
+    const answer = `Run this:\n\n\`\`\`sh\necho one && echo <two>\n\`\`\`\n\n${"Then read what it prints. ".repeat(8)}`;
     yield { kind: "text_delta", text: answer };
     await request.requestApproval({ requestId: "", toolName: "Bash", summary: "echo code" });
     yield* FakeEngine.answer(request, answer);

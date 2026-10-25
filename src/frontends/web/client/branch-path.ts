@@ -3,6 +3,7 @@
  * with its parents, then its own. At each answer that has a fork, the person picks the branch that
  * continues after it. The branch map draws the whole tree as a small graph, one lane per branch.
  */
+import { turnLine, type TurnWords } from "../../../shared/project-report.ts";
 
 /** The parts of a session that the paths need. */
 export interface BranchSession {
@@ -10,7 +11,7 @@ export interface BranchSession {
   readonly parentId: string | null;
   /** The answer that the fork continues. Null for a chat, and for a fork that starts from the beginning. */
   readonly forkAtMessageId: string | null;
-  readonly turns: readonly { readonly userText: string; readonly lastMessageId: string | null }[];
+  readonly turns: readonly (TurnWords & { readonly lastMessageId: string | null })[];
   readonly createdAt: string;
   readonly lastTurnAt: string | null;
 }
@@ -175,7 +176,7 @@ export function branchMap(tree: readonly BranchSession[], shownId: string): Bran
         ? [{ index: null, text: "No message yet", label: `${name} · no answer yet` }]
         : session.turns.map((turn, index) => ({
             index,
-            text: turn.userText,
+            text: turnLine(turn),
             label: `${name} · answer ${String(before + index + 1)}`,
           }));
     return rows.map((row) => ({

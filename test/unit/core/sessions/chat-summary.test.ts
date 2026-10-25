@@ -46,6 +46,19 @@ describe("the chat summarizer (#522)", () => {
     expect(request?.prompt).toContain("<git-state>\n## fix-login...origin/fix-login\nM src/login.ts\n</git-state>");
   });
 
+  test("a message that Eva sent, such as a project work result, is not labelled the person's", async () => {
+    const { summarizer: chat, engine } = summarizer((request) => FakeEngine.answer(request, "Goal: ship it."));
+    await chat.summarize({
+      ...input,
+      turns: [
+        { userText: "[Project work finished: example-app]", answerText: "It is done.", failure: null, fromEva: true },
+      ],
+    });
+    expect(engine.requests[0]?.prompt).toContain("Eva: [Project work finished: example-app]\n\nAgent: It is done.");
+    expect(engine.requests[0]?.prompt).not.toContain("Person: [Project work finished");
+    expect(engine.requests[0]?.appendSystemPrompt).toContain("Lines from Eva");
+  });
+
   test("an Assistant chat sends no git state", async () => {
     const { summarizer: chat, engine } = summarizer((request) => FakeEngine.answer(request, "Goal: plan a trip."));
     await chat.summarize({ ...input, gitState: null });

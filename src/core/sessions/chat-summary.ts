@@ -14,6 +14,7 @@ const summaryTimeoutMs = 180_000;
 
 const systemPrompt = [
   "You summarize a chat between a person and an AI agent. A new chat starts with your summary, so the agent can go on without the old chat.",
+  "Lines from Eva are messages that Eva sent herself, such as the result of work that a project did. The person did not write them.",
   "Write it to the agent of the new chat. Use these four parts, each with a short heading:",
   "Goal: what the person wants.",
   "Done: what the chat did, with its results.",
@@ -30,7 +31,9 @@ export interface ChatSummaryInput {
   readonly engine: SessionRecord["engine"];
   readonly model: SessionRecord["modelAlias"];
   /** The turns of the branch, oldest first. Already redacted. */
-  readonly turns: readonly Pick<SessionRecord["turns"][number], "userText" | "answerText" | "failure">[];
+  readonly turns: readonly (Pick<SessionRecord["turns"][number], "userText" | "answerText" | "failure"> & {
+    readonly fromEva?: boolean;
+  })[];
   /** The git state of a Project chat's clone, or null. */
   readonly gitState: string | null;
 }
@@ -79,7 +82,8 @@ function transcript(turns: ChatSummaryInput["turns"]): string {
     const turn = turns[index];
     if (turn === undefined) continue;
     const answer = turn.failure === null ? cut(turn.answerText) : `The turn failed: ${cut(turn.failure)}`;
-    const part = `Person: ${cut(turn.userText)}\n\nAgent: ${answer}`;
+    // Eva sends some messages herself, such as a project work result. The person did not write them.
+    const part = `${turn.fromEva === true ? "Eva" : "Person"}: ${cut(turn.userText)}\n\nAgent: ${answer}`;
     // The newest turn always goes, even when it is long: it holds the open work.
     if (parts.length > 0 && length + part.length > historyLength) {
       parts.push(`(${String(index + 1)} older turns are left out.)`);

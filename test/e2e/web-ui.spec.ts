@@ -829,7 +829,7 @@ test("a file that an answer sends shows as a download button, not as a marker (#
   await logIn(page);
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
-  await composer.fill("send the file");
+  await composer.fill("hand me the parcel");
   await composer.press("Enter");
   const answer = page.locator(".message.answer").first();
   await expect(answer.locator(".answer-body")).toHaveText("Here are the trips.");

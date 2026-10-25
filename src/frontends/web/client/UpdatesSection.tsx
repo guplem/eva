@@ -15,10 +15,23 @@ import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsPa
 import { ButtonSpinner, FactsSkeleton, ProgressBar } from "./Loading.tsx";
 import { evaNewest, restartWait, updateCallout, updatesFace, updateWait } from "./update-words.ts";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
-import { freshness, toolAction, versionText, voiceNotesText } from "./version-words.ts";
+import {
+  needsAction,
+  toolAction,
+  updateAllSteps,
+  versionText,
+  voiceNotesText,
+  type UpdateAllStep,
+} from "./version-words.ts";
 import { Visor } from "./Visor.tsx";
 
 type Updates = PublicSettings["config"]["updates"];
+
+/** The result of an install, for the callout below the versions. */
+interface Note {
+  readonly ok: boolean;
+  readonly text: string;
+}
 
 const updateChoices: readonly { value: Updates["frequency"]; label: string }[] = [
   { value: "off", label: "Never" },
@@ -81,7 +94,8 @@ export function UpdatesSection({ context }: { readonly context: SettingsContext 
  * installs herself gets a button, so a missing or old tool needs no terminal. claude updates with
  * its own `claude update`, which waits until no chat runs a turn. Voice notes get one row and one
  * button for all their parts, as the person wants the feature, not each program. A newer Eva
- * opens the version dialog, so a major update shows its warning first.
+ * opens the version dialog, so a major update shows its warning first. With two or more clear
+ * updates, Update all runs them one after the other.
  */
 function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
   const [versions, setVersions] = useState<EvaVersions | "loading" | "failed">("loading");
@@ -91,7 +105,7 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
   const [latestRead, setLatestRead] = useState(false);
   /** The tool that this page installs now. */
   const [installing, setInstalling] = useState<InstallableTool | "voice notes" | null>(null);
-  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [note, setNote] = useState<Note | null>(null);
   /** Null when no claude program was found when Eva started. */
   const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null | "loading">("loading");
   /** True while the request that starts `claude update` runs, so a second tap sends nothing. */
@@ -104,6 +118,8 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
   /** The download of a new Eva, also one that she started by herself, turns the spinner of her row. */
   const evaWait = updateWait(eva.update, null);
   const evaWorking = openingVersions || eva.posting || evaWait !== null;
+  /** True while Update all runs its steps, so no other button starts an install between two steps. */
+  const [updatingAll, setUpdatingAll] = useState(false);
 
   const readVersions = (): void => {
     api.versions().then(setVersions, () => {
@@ -156,30 +172,74 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
     };
   }, [engineUpdate, engineReadFailures]);
 
-  const install = async (program: InstallableTool | "voice notes"): Promise<void> => {
-    setNote(null);
+  /** Installs one tool and gives its result. It never throws. */
+  const runInstall = async (program: InstallableTool | "voice notes"): Promise<Note> => {
     setInstalling(program);
     try {
       const result = await (program === "voice notes" ? api.installVoiceNotes() : api.installTool(program));
-      setNote({ ok: result.ok, text: result.message });
+      return { ok: result.ok, text: result.message };
     } catch (error) {
-      setNote({ ok: false, text: errorText(error) });
+      return { ok: false, text: errorText(error) };
     } finally {
       setInstalling(null);
       readVersions();
     }
   };
 
-  /** Starts `claude update`; the effect above asks for its status until it ends. */
-  const updateEngine = async (): Promise<void> => {
+  const install = async (program: InstallableTool | "voice notes"): Promise<void> => {
     setNote(null);
+    setNote(await runInstall(program));
+  };
+
+  /** Starts `claude update`, and gives a note only when the start fails. The effect above asks for its status until it ends. */
+  const startEngineUpdate = async (): Promise<Note | null> => {
     setEngineStarting(true);
     try {
       setEngineUpdate(await api.updateEngine());
+      return null;
     } catch (error) {
-      setNote({ ok: false, text: errorText(error) });
+      return { ok: false, text: errorText(error) };
     } finally {
       setEngineStarting(false);
+    }
+  };
+
+  const updateEngine = async (): Promise<void> => {
+    setNote(null);
+    setNote(await startEngineUpdate());
+  };
+
+  /**
+   * Runs each step of Update all, one after the other. The results join in one note, so the
+   * last install does not hide a failed one.
+   */
+  const updateAll = async (steps: readonly UpdateAllStep[]): Promise<void> => {
+    setNote(null);
+    setUpdatingAll(true);
+    const notes: Note[] = [];
+    try {
+      for (const step of steps) {
+        if (step.kind === "install") notes.push(await runInstall(step.program));
+        else if (step.kind === "voice notes") notes.push(await runInstall("voice notes"));
+        else if (step.kind === "claude update") {
+          const failed = await startEngineUpdate();
+          if (failed !== null) notes.push(failed);
+        } else {
+          setOpeningVersions(true);
+          try {
+            await eva.openVersions();
+          } catch (error) {
+            notes.push({ ok: false, text: errorText(error) });
+          } finally {
+            setOpeningVersions(false);
+          }
+        }
+      }
+    } finally {
+      setUpdatingAll(false);
+      setNote(
+        notes.length === 0 ? null : { ok: notes.every((one) => one.ok), text: notes.map((one) => one.text).join(" ") },
+      );
     }
   };
 
@@ -198,6 +258,13 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
 
   /** claude goes through `claude update` once Eva has found it; a missing claude goes through its installer. */
   const usesEngineUpdate = (program: string): boolean => program === "claude" && engineUpdate !== null;
+  /** Only one install runs at a time. */
+  const holdsInstalls = installing !== null || engineRuns || engineStarting || updatingAll;
+  // Before the latest versions answer, Eva cannot tell which tools are old.
+  const allSteps =
+    typeof versions === "string" || !latestRead || engineUpdate === "loading"
+      ? []
+      : updateAllSteps({ versions, latest, claudeUpdatesItself: engineUpdate !== null, newestEva });
 
   return (
     <Card item="versions" title="Versions" description="The version of Eva and of each tool that she uses.">
@@ -217,7 +284,7 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
             {newestEva !== null && (
               <button
                 className="primary small"
-                disabled={eva.posting || eva.update?.phase !== "idle"}
+                disabled={updatingAll || eva.posting || eva.update?.phase !== "idle"}
                 aria-busy={evaWorking}
                 onClick={() => void openVersions()}
               >
@@ -239,12 +306,8 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
                   {versionText(tool, newest)}
                   {action !== null && (
                     <button
-                      className={
-                        action === "Install" || tool.tooOld || freshness(tool, newest) === "old"
-                          ? "primary small"
-                          : "ghost small"
-                      }
-                      disabled={installing !== null || engineRuns || engineStarting || waitsForLatest}
+                      className={needsAction(tool, newest) ? "primary small" : "ghost small"}
+                      disabled={holdsInstalls || waitsForLatest}
                       aria-busy={working}
                       onClick={() => void (viaEngine ? updateEngine() : install(tool.program as InstallableTool))}
                     >
@@ -263,7 +326,7 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
             {versions.voiceNotes.missing.length > 0 && (
               <button
                 className="primary small"
-                disabled={installing !== null || engineRuns || engineStarting}
+                disabled={holdsInstalls}
                 aria-busy={installing === "voice notes"}
                 onClick={() => void install("voice notes")}
               >
@@ -273,6 +336,21 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
             )}
           </dd>
         </dl>
+      )}
+      {/* One update has its own button in its row, so Update all shows only for two or more. */}
+      {(allSteps.length > 1 || updatingAll) && (
+        <div className="button-row">
+          <button
+            className="primary"
+            disabled={holdsInstalls || eva.posting || (eva.update !== null && eva.update.phase !== "idle")}
+            aria-busy={updatingAll}
+            onClick={() => void updateAll(allSteps)}
+          >
+            {/* Each install says nothing until it ends, so the share is unknown. */}
+            {updatingAll && <ButtonSpinner />}
+            {updatingAll ? "Updating all…" : "Update all"}
+          </button>
+        </div>
       )}
       {openingVersions && <ProgressBar label="Looking for the versions…" />}
       {/* An install says nothing until it ends, so its share is unknown. */}

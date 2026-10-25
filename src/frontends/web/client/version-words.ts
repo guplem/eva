@@ -1,6 +1,6 @@
 /** The words and the buttons of the Versions card, apart from the component so that unit tests reach them. */
 import { isNewerVersion } from "../../../core/updates/version-order.ts";
-import type { EvaVersions } from "./api.ts";
+import type { EvaVersions, InstallableTool } from "./api.ts";
 
 type Tool = EvaVersions["tools"][number];
 
@@ -34,4 +34,47 @@ export function toolAction(tool: Tool, newest: string | undefined): "Install" | 
   if (!tool.installable) return null;
   if (tool.version === null) return "Install";
   return !tool.tooOld && freshness(tool, newest) === "latest" ? null : "Update";
+}
+
+/** True when the tool's button is a clear call to act, so the button is primary. */
+export function needsAction(tool: Tool, newest: string | undefined): boolean {
+  if (toolAction(tool, newest) === null) return false;
+  return tool.version === null || tool.tooOld || freshness(tool, newest) === "old";
+}
+
+/** One step of Update all. */
+export type UpdateAllStep =
+  | { readonly kind: "install"; readonly program: InstallableTool }
+  | { readonly kind: "voice notes" }
+  | { readonly kind: "claude update" }
+  | { readonly kind: "eva" };
+
+/**
+ * The steps of Update all: each primary button of the card, in an order that never overlaps two
+ * installs. The page holds the installs while `claude update` runs, so claude comes after them.
+ * A tool whose newest version is unknown has no clear update, so it stays out. Eva comes last, as
+ * her update restarts her and opens the version dialog, so a major update shows its warning.
+ */
+export function updateAllSteps(input: {
+  readonly versions: EvaVersions;
+  readonly latest: ReadonlyMap<string, string>;
+  /** True when Eva found a claude program, which then updates with `claude update`. */
+  readonly claudeUpdatesItself: boolean;
+  readonly newestEva: string | null;
+}): UpdateAllStep[] {
+  const steps: UpdateAllStep[] = [];
+  let claudeUpdate = false;
+  for (const tool of input.versions.tools) {
+    const newest = input.latest.get(tool.program);
+    if (!needsAction(tool, newest)) continue;
+    if (tool.program === "claude" && input.claudeUpdatesItself && toolAction(tool, newest) === "Update") {
+      claudeUpdate = true;
+      continue;
+    }
+    steps.push({ kind: "install", program: tool.program as InstallableTool });
+  }
+  if (input.versions.voiceNotes.missing.length > 0) steps.push({ kind: "voice notes" });
+  if (claudeUpdate) steps.push({ kind: "claude update" });
+  if (input.newestEva !== null) steps.push({ kind: "eva" });
+  return steps;
 }

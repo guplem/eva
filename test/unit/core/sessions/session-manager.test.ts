@@ -126,6 +126,7 @@ describe("a conversation", () => {
         userText: "Hello there, Eva",
         fromEva: false,
         projectReports: [],
+        personText: null,
         answerText: "answer 1",
         toolCount: 0,
         commandCount: 0,
@@ -1008,16 +1009,51 @@ describe("seen turns (issue 381)", () => {
       projectSessionId: "p1",
       request: "Fix the login bug.",
       clone: "clone-0",
-      repositories: [{ name: "example-app", branch: "main", pullRequest: 12 }],
+      repositories: [{ name: "example-app", branch: "fix-the-secret-value-123", pullRequest: 12 }],
       failed: false,
       result: "Fixed it. The key is the-secret-value-123.",
       resultCut: false,
     };
-    await manager.send(sessionId, "[Project work finished: example-app]", "eva", report);
+    await manager.send(sessionId, "[Project work finished: example-app]", "eva", { projectReport: report });
     await manager.send(sessionId, "Thanks", "api");
     const turns = manager.get(sessionId).turns;
-    expect(turns[0]?.projectReports).toEqual([{ ...report, result: "Fixed it. The key is [redacted]." }]);
+    expect(turns[0]?.projectReports).toEqual([
+      {
+        ...report,
+        repositories: [{ name: "example-app", branch: "fix-[redacted]", pullRequest: 12 }],
+        result: "Fixed it. The key is [redacted].",
+      },
+    ]);
     expect(turns[1]?.projectReports).toEqual([]);
+  });
+
+  test("a turn with a result and a person's message keeps the person's words apart, so the result shows once", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const report = {
+      projectId: "example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix it.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    await Promise.all([
+      manager.send(sessionId, "[Project work finished: example-app]", "eva", { projectReport: report }),
+      manager.send(sessionId, "and a question", "telegram"),
+    ]);
+    expect(manager.get(sessionId).turns[0]).toMatchObject({
+      userText: "[Project work finished: example-app]\n\nand a question",
+      fromEva: false,
+      personText: "and a question",
+      projectReports: [report],
+    });
+    // A turn that only the person sent needs no second copy of the text.
+    await manager.send(sessionId, "thanks", "api");
+    expect(manager.get(sessionId).turns[1]?.personText).toBeNull();
   });
 
   test("a failed turn and a follow-up of the mode record who sent the message too", async () => {
@@ -1171,6 +1207,31 @@ describe("forks and retries", () => {
     expect(engine.requests[1]?.history.kind).toBe("new");
     expect(engine.requests[1]?.prompt).toBe("one");
     expect(manager.get(retry.id).parentId).toBe(sessionId);
+  });
+
+  test("a retry keeps who sent the message: the person's stays theirs, and Eva's result keeps its card", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "fix the tests", "api");
+    const personRetry = await manager.retry(sessionId, 0);
+    await waitUntil(() => !manager.isActive(personRetry.id));
+    expect(manager.get(personRetry.id).turns[0]).toMatchObject({ userText: "fix the tests", fromEva: false });
+
+    const report = {
+      projectId: "example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix it.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    await manager.send(sessionId, "[Project work finished: example-app]", "eva", { projectReport: report });
+    const evaRetry = await manager.retry(sessionId, 1);
+    await waitUntil(() => !manager.isActive(evaRetry.id));
+    expect(manager.get(evaRetry.id).turns.at(-1)).toMatchObject({ fromEva: true, projectReports: [report] });
   });
 
   test("a retry answers with its branch at once, before the turn ends", async () => {

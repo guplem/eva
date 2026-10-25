@@ -188,6 +188,11 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, "Started the work.");
     return;
   }
+  // The work of "give work" answers in two paragraphs, so its result card has more to show than its summary.
+  if (request.mode === "project" && lastLine === "Fix the login bug.") {
+    yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}\n\nThe tests pass.`);
+    return;
+  }
   // Long enough for the person to open another chat before the answer comes.
   if (lastLine.includes("slow")) await Bun.sleep(2_000);
   yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`);

@@ -436,6 +436,13 @@ describe("step dialog", () => {
     expect(stepState(work, true)).toBe("Started");
   });
 
+  test("project work whose result came back says Done or Failed in its step dialog too", () => {
+    const work: TurnStep = { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" };
+    expect(stepState(work, false, new Map([["p1", false]]))).toBe("Done");
+    expect(stepState(work, false, new Map([["p1", true]]))).toBe("Failed");
+    expect(stepState(work, false, new Map([["p2", true]]))).toBe("Started");
+  });
+
   test("a missing part says why it is missing", () => {
     expect(missingDetail("output", true)).toBe("The tool still runs.");
     expect(missingDetail("output", false)).toBe("Eva kept no output for this step.");

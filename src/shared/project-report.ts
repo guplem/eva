@@ -40,11 +40,51 @@ export function reportPlace(report: ProjectReport): string {
   return [report.clone, ...repositories].join(" · ");
 }
 
+/** The paragraphs of the result, without the ones that are only a heading, such as "## Summary". */
+function paragraphsOf(result: string): string[] {
+  return result
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter((paragraph) => paragraph !== "" && !/^#{1,6} /.test(paragraph));
+}
+
 /** The first paragraph of the result, short enough for a card. The person can open the whole result. */
 export function reportPreview(report: ProjectReport): string {
-  const first = report.result.split(/\n\s*\n/).find((paragraph) => paragraph.trim() !== "") ?? "";
-  const line = first.replace(/\s+/g, " ").trim();
+  const line = paragraphsOf(report.result)[0] ?? "";
   const cut = line.length > previewLength ? `${line.slice(0, previewLength).trimEnd()}…` : line;
   // A cut result keeps only its end, so its first paragraph starts in the middle of the answer.
   return report.resultCut ? `…${cut}` : cut;
+}
+
+/** The whole result holds more than its preview, so a card offers to show it. */
+export function reportHasMore(report: ProjectReport): boolean {
+  return report.resultCut || reportPreview(report) !== report.result.trim();
+}
+
+/** The parts of a turn that say who wrote its message. */
+export interface TurnWords {
+  readonly userText: string;
+  readonly fromEva?: boolean;
+  readonly projectReports?: readonly ProjectReport[];
+  readonly personText?: string | null;
+}
+
+/**
+ * The person's own words in a turn, or null when Eva sent a result alone: its summary then stands
+ * for the whole message. A turn that gathered a result and a message of the person keeps their words apart.
+ */
+export function personWords(turn: TurnWords): string | null {
+  if (turn.fromEva === true && (turn.projectReports?.length ?? 0) > 0) return null;
+  return turn.personText ?? turn.userText;
+}
+
+/** One line for a turn in a list, such as the branch map. */
+export function turnLine(turn: TurnWords): string {
+  const report = turn.projectReports?.[0];
+  return personWords(turn) ?? (report === undefined ? turn.userText : reportHeadline(report));
+}
+
+/** The summary of a result in plain text, as Telegram shows it. */
+export function reportText(report: ProjectReport): string {
+  return `${reportHeadline(report)}\n${reportPlace(report)}\n\n${reportPreview(report)}`;
 }

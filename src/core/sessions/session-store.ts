@@ -17,7 +17,7 @@ const stepSchema = z.object({
   isError: z.boolean(),
   id: z.string().nullable(),
   /** The chat that a task runs in. A step from before this field has none. */
-  chatId: z.string().optional(),
+  chatId: z.string().optional().catch(undefined),
 });
 
 /** The facts of a project work result, so a front end shows a card instead of the raw message. */
@@ -47,6 +47,11 @@ const turnSchema = z.object({
   fromEva: z.boolean().default(false).catch(false),
   /** The project work results that Eva sent in this turn. A turn from before the field has none. */
   projectReports: z.array(projectReportSchema).catch([]),
+  /**
+   * The person's own words when a turn gathered them with a message from Eva, or null. The front ends
+   * show them apart from the result, so the result does not show twice.
+   */
+  personText: z.string().nullable().default(null).catch(null),
   /** The answer's text, for the history views of the front ends. */
   answerText: z.string().default(""),
   /** How many tools the turn used, commands included, for the activity chips. */

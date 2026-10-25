@@ -9,6 +9,7 @@ function turn(text: string): Turn {
     userText: "ask",
     fromEva: false,
     projectReports: [],
+    personText: null,
     answerText: text,
     toolCount: 0,
     commandCount: 0,

@@ -30,7 +30,9 @@ export interface ChatSummaryInput {
   readonly engine: SessionRecord["engine"];
   readonly model: SessionRecord["modelAlias"];
   /** The turns of the branch, oldest first. Already redacted. */
-  readonly turns: readonly Pick<SessionRecord["turns"][number], "userText" | "answerText" | "failure">[];
+  readonly turns: readonly (Pick<SessionRecord["turns"][number], "userText" | "answerText" | "failure"> & {
+    readonly fromEva?: boolean;
+  })[];
   /** The git state of a Project chat's clone, or null. */
   readonly gitState: string | null;
 }
@@ -79,7 +81,8 @@ function transcript(turns: ChatSummaryInput["turns"]): string {
     const turn = turns[index];
     if (turn === undefined) continue;
     const answer = turn.failure === null ? cut(turn.answerText) : `The turn failed: ${cut(turn.failure)}`;
-    const part = `Person: ${cut(turn.userText)}\n\nAgent: ${answer}`;
+    // Eva sends some messages herself, such as a project work result. The person did not write them.
+    const part = `${turn.fromEva === true ? "Eva" : "Person"}: ${cut(turn.userText)}\n\nAgent: ${answer}`;
     // The newest turn always goes, even when it is long: it holds the open work.
     if (parts.length > 0 && length + part.length > historyLength) {
       parts.push(`(${String(index + 1)} older turns are left out.)`);

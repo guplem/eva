@@ -188,6 +188,7 @@ machine state/sessions.json sessions[].turns[].modelAlias=opus
 machine state/sessions.json sessions[].turns[].modelAlias=sonnet
 machine state/sessions.json sessions[].turns[].notes
 machine state/sessions.json sessions[].turns[].omittedSteps
+machine state/sessions.json sessions[].turns[].personText
 machine state/sessions.json sessions[].turns[].projectReports
 machine state/sessions.json sessions[].turns[].projectReports[].clone
 machine state/sessions.json sessions[].turns[].projectReports[].failed

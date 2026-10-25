@@ -1002,8 +1002,8 @@ describe("Eva", () => {
 
     async function chatWithTwoTurns(instance: Eva): Promise<SessionRecord> {
       const chat = await instance.createProjectSession({ projectId, source: "web" });
-      await instance.sessions.send(chat.id, "first");
-      await instance.sessions.send(chat.id, "second");
+      await instance.sessions.send(chat.id, "first", "api");
+      await instance.sessions.send(chat.id, "second", "api");
       return instance.sessions.get(chat.id);
     }
 
@@ -1070,7 +1070,8 @@ describe("Eva", () => {
       const chat = await chatWithTwoTurns(instance);
       const { session } = await instance.retryChat(chat.id, 1, "new-clone");
       await waitFor(() => !instance.sessions.isActive(session.id));
-      expect(instance.sessions.get(session.id).turns[0]?.userText).toBe("second");
+      // The person wrote the message, so the retry keeps it theirs.
+      expect(instance.sessions.get(session.id).turns[0]).toMatchObject({ userText: "second", fromEva: false });
       expect(read(join(repository(instance, "clone-1"), "first.txt"))).toBe("turn 1\n");
       expect(read(join(repository(instance, "clone-1"), "second.txt"))).toBe("turn 3\n");
       expect(read(join(repository(instance, "clone-0"), "second.txt"))).toBe("turn 2\n");
@@ -1121,7 +1122,7 @@ describe("Eva", () => {
     );
     const instance = start(engine);
     const old = instance.createAssistantSession({ source: "web", model: "opus", effort: "high" });
-    await instance.sessions.send(old.id, "Plan a trip to Rome");
+    await instance.sessions.send(old.id, "Plan a trip to Rome", "api");
     const { session, summaryFailure } = await instance.continueFromSummary(old.id, "web");
     expect(summaryFailure).toBeNull();
     expect(session).toMatchObject({

@@ -241,8 +241,10 @@ test("Assistant mode: the result of project work comes back as a card of the Pro
   await expect(card).toContainText("Project mode");
   await expect(card).toContainText("clone-");
   if (test.info().project.name === "desktop") await expect(card.locator(".mk")).toHaveClass(/project-eyes/);
+  await expect(card).not.toContainText("The tests pass.");
   await card.getByRole("button", { name: "Show the whole result" }).click();
   await expect(card).toContainText("Request: Fix the login bug.");
+  await expect(card).toContainText("The tests pass.");
   await expect(card.getByRole("button", { name: "Show the summary only" })).toBeVisible();
 
   // The answer that gave the work shows the work as done now.

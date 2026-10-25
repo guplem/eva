@@ -137,6 +137,26 @@ describe("firstShownBranch", () => {
 });
 
 describe("branchMap", () => {
+  test("a row of a project work result names the result, not its raw message", () => {
+    const report = {
+      projectId: "example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix it.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    const result = { ...turn("[Project work finished: example-app]", "m9"), fromEva: true, projectReports: [report] };
+    const chat = session("chat", [turn("one", "m1"), result]);
+    expect(branchMap([chat], "chat").rows.map((row) => row.text)).toEqual([
+      "one",
+      "Eva finished the work in Example app",
+    ]);
+  });
+
   test("one row for each turn, the lanes in tree order, and the shown path in the accent", () => {
     const map = branchMap(tree, "fork1");
     expect(map.lanes).toBe(3);

@@ -205,22 +205,27 @@ type IdleListener = (sessionId: string, state: { readonly stopped: boolean }) =>
 interface PendingBatch {
   readonly texts: string[];
   /** The messages that people and Eva sent, for the front ends. A follow-up of the mode is no message. */
-  /** A project work result keeps its facts, already redacted. */
-  readonly messages: {
-    readonly text: string;
-    readonly origin: MessageOrigin;
-    readonly projectReport?: ProjectReport;
-  }[];
+  readonly messages: ({ readonly text: string; readonly origin: MessageOrigin } & MessageOptions)[];
   /** The result of this batch's own turn, kept in memory: the record can fail to save. */
   readonly outcome: TurnResult;
   readonly done: Promise<void>;
   readonly resolve: () => void;
 }
 
+/** What a message carries besides its text. */
+export interface MessageOptions {
+  /** The facts of a project work result. The batch keeps them redacted. */
+  readonly projectReport?: ProjectReport;
+  /** Eva sends the person's own words again, as a retry does, so the message stays the person's. */
+  readonly fromPerson?: boolean;
+}
+
 /** Who sent the messages of a turn, for the record. */
 interface TurnSender {
   readonly fromEva: boolean;
   readonly projectReports: ProjectReport[];
+  /** Already redacted. */
+  readonly personText: string | null;
 }
 
 interface TurnResult {
@@ -508,8 +513,16 @@ export class SessionManager {
   }
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
-  send(sessionId: string, text: string, origin: MessageOrigin = "eva", report?: ProjectReport): Promise<void> {
-    return this.enqueue(sessionId, text, origin, report).done;
+  send(sessionId: string, text: string, origin: MessageOrigin = "eva", options: MessageOptions = {}): Promise<void> {
+    return this.enqueue(sessionId, text, origin, options).done;
+  }
+
+  /** Sends the message of a stored turn again, as a retry does, with the sender that the turn had. */
+  sendAgain(sessionId: string, turn: SessionRecord["turns"][number]): Promise<void> {
+    // The rare turn that gathered several results comes back with the first one only.
+    const report = turn.projectReports[0];
+    const options = turn.fromEva ? (report === undefined ? {} : { projectReport: report }) : { fromPerson: true };
+    return this.send(sessionId, turn.userText, "eva", options);
   }
 
   /**
@@ -523,7 +536,7 @@ export class SessionManager {
     return batch.outcome.stopped ? null : batch.outcome.failure;
   }
 
-  private enqueue(sessionId: string, text: string, origin: MessageOrigin, report?: ProjectReport): PendingBatch {
+  private enqueue(sessionId: string, text: string, origin: MessageOrigin, options: MessageOptions = {}): PendingBatch {
     this.assertOpen(this.get(sessionId));
     // A new answer must not hide in the archive.
     this.setArchived(this.rootOf(this.get(sessionId)).id, false);
@@ -531,14 +544,30 @@ export class SessionManager {
     const batch = runtime.pending ?? createBatch();
     runtime.pending = batch;
     batch.texts.push(text);
+    const { projectReport } = options;
     batch.messages.push({
       text,
       origin,
-      ...(report === undefined ? {} : { projectReport: redactReport(report, this.options.redactor) }),
+      ...(options.fromPerson === true ? { fromPerson: true } : {}),
+      ...(projectReport === undefined ? {} : { projectReport: redactReport(projectReport, this.options.redactor) }),
     });
     this.lastActivity.set(sessionId, this.options.now().getTime());
     if (!runtime.busy) this.startGathering(sessionId, runtime);
     return batch;
+  }
+
+  /** Who sent the messages of a batch. A follow-up of the mode has no message, so Eva sent all of it. */
+  private senderOf(batch: PendingBatch): TurnSender {
+    const fromEva = (message: PendingBatch["messages"][number]): boolean =>
+      message.origin === "eva" && message.fromPerson !== true;
+    const evaCount = batch.messages.filter(fromEva).length;
+    const mixed = evaCount > 0 && evaCount < batch.messages.length;
+    const personTexts = batch.messages.filter((message) => !fromEva(message)).map((message) => message.text);
+    return {
+      fromEva: evaCount === batch.messages.length,
+      projectReports: batch.messages.flatMap((message) => message.projectReport ?? []),
+      personText: mixed ? this.options.redactor.redact(personTexts.join("\n\n")) : null,
+    };
   }
 
   /** Waits a moment for more messages, then runs the turn (lesson 51). */
@@ -699,7 +728,7 @@ export class SessionManager {
       const branch = restore === null ? created : { ...created, pendingRestore: restore };
       if (branch !== created) this.options.store.save(branch);
       // The send never rejects: a failure of the turn is its turn_failed event.
-      void this.send(branch.id, turn.userText);
+      void this.sendAgain(branch.id, turn);
       return this.get(branch.id);
     });
   }
@@ -924,14 +953,16 @@ export class SessionManager {
         if (batch.messages.length > 0) runtime.stopped = false;
         // When the turn starts, not at the send: a message sent during a turn joins the next one
         // (lesson 114), so a front end shows each message just before its own answer.
-        for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
+        for (const { text, origin, projectReport } of batch.messages)
+          this.emit(sessionId, {
+            kind: "message_received",
+            text,
+            origin,
+            ...(projectReport === undefined ? {} : { projectReport }),
+          });
         let followUp: string | null = null;
         try {
-          const sender = {
-            // A follow-up of the mode has no message, so Eva sent all of it.
-            fromEva: batch.messages.every((message) => message.origin === "eva"),
-            projectReports: batch.messages.flatMap((message) => message.projectReport ?? []),
-          };
+          const sender = this.senderOf(batch);
           followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), sender, batch.outcome);
           // Telegram showed the answer where the person asked, so the web app must not show it as unread.
           // A follow-up of the mode has no message, so its answer stays unread.
@@ -1332,6 +1363,7 @@ ${prompt}`,
       userText: string;
       fromEva: boolean;
       projectReports: ProjectReport[];
+      personText: string | null;
       answerText: string;
       contextTokens: number | null;
       contextWindow: number | null;
@@ -1509,12 +1541,21 @@ function createBatch(): PendingBatch {
   return { texts: [], messages: [], outcome: { failure: null, stopped: false }, done, resolve };
 }
 
+/** Every text of a result, as the same values are redacted in the message text. */
 function redactReport(report: ProjectReport, redactor: Redactor): ProjectReport {
+  const redact = (text: string): string => redactor.redact(text);
   return {
     ...report,
-    projectTitle: redactor.redact(report.projectTitle),
-    request: redactor.redact(report.request),
-    result: redactor.redact(report.result),
+    projectId: redact(report.projectId),
+    projectTitle: redact(report.projectTitle),
+    request: redact(report.request),
+    clone: redact(report.clone),
+    repositories: report.repositories.map((repository) => ({
+      ...repository,
+      name: redact(repository.name),
+      branch: repository.branch === null ? null : redact(repository.branch),
+    })),
+    result: redact(report.result),
   };
 }
 

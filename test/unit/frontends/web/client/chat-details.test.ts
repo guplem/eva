@@ -23,6 +23,7 @@ function turn(at: string, contextTokens: number | null, extra: Partial<Turn> = {
     userText: "hi",
     fromEva: false,
     projectReports: [],
+    personText: null,
     answerText: "ok",
     toolCount: 0,
     commandCount: 0,

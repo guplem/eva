@@ -57,7 +57,14 @@ import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 import { RecordingShelf } from "./voice-notes.ts";
 import { toWebHtml } from "./web-format.ts";
-import { reportHeadline, reportPlace, reportPreview, type ProjectReport } from "../../../shared/project-report.ts";
+import {
+  personWords,
+  reportHasMore,
+  reportHeadline,
+  reportPlace,
+  reportPreview,
+  type ProjectReport,
+} from "../../../shared/project-report.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 
@@ -364,6 +371,7 @@ function Branch({
         const { turn, index } = step;
         const owner = step.session;
         const point = branchesAfter(path, position, session, tree);
+        const words = personWords(turn);
         return (
           <div key={stepKey(owner.id, index)} style={{ display: "contents" }}>
             {/* A project work result shows as a card of the Project side, not as a message of the person. */}
@@ -371,14 +379,14 @@ function Branch({
               <ProjectReportCard
                 key={report.projectSessionId}
                 report={report}
-                turnKey={turn.fromEva ? stepKey(owner.id, index) : undefined}
+                turnKey={words === null ? stepKey(owner.id, index) : undefined}
               />
             ))}
-            {!(turn.fromEva && turn.projectReports.length > 0) && (
+            {words !== null && (
               <UserMessage
-                text={turn.userText}
+                text={words}
                 fromEva={turn.fromEva}
-                recording={recordings.find(owner.id, turn.userText)}
+                recording={recordings.find(owner.id, words)}
                 turnKey={stepKey(owner.id, index)}
               />
             )}
@@ -389,6 +397,7 @@ function Branch({
                 omitted={turn.omittedSteps}
                 wholeAnswer={turn.answerText}
                 summary={activityOf(turn)}
+                endedWork={endedWork}
                 actions={(shown) => (
                   <div className="answer-actions">
                     {turn.taskCount > 0 && (
@@ -588,10 +597,6 @@ function UserMessage({
 }
 
 /**
- * The notes of a turn, such as an MCP server that did not start, apart from its answer (issue 157).
- * Only a running turn's notes are a live region, so a reload does not read out every old note.
- */
-/**
  * The result of project work, sent back to the Assistant chat that gave the work. It speaks for the
  * Project side, so its visor has the Project eyes. A phone hides the visor, so the chip shows the mode too.
  */
@@ -619,9 +624,11 @@ function ProjectReportCard({
       )}
       {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
       <div className="answer-body project-report-result" dangerouslySetInnerHTML={{ __html: html }} />
-      <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
-        {showWhole ? "Show the summary only" : "Show the whole result"}
-      </button>
+      {reportHasMore(report) && (
+        <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
+          {showWhole ? "Show the summary only" : "Show the whole result"}
+        </button>
+      )}
       <div className="project-report-actions">
         <a className="button-link plain" href={`#/chat/${encodeURIComponent(report.projectSessionId)}`}>
           <Icon name="briefcase" />
@@ -632,6 +639,10 @@ function ProjectReportCard({
   );
 }
 
+/**
+ * The notes of a turn, such as an MCP server that did not start, apart from its answer (issue 157).
+ * Only a running turn's notes are a live region, so a reload does not read out every old note.
+ */
 function TurnNotes({
   notes,
   live = false,
@@ -688,6 +699,7 @@ function AnswerBody({
   live = false,
   actions,
   failure = null,
+  endedWork,
 }: {
   readonly steps: readonly TurnStep[];
   readonly omitted: number;
@@ -701,6 +713,8 @@ function AnswerBody({
   readonly actions?: (shownText: string) => ReactElement;
   /** Why the turn failed, or null. */
   readonly failure?: string | null;
+  /** Each Project chat whose result came back, and whether its work failed, for the step dialog. */
+  readonly endedWork?: ReadonlyMap<string, boolean>;
 }): ReactElement {
   const [showWhole, setShowWhole] = useState(false);
   const { listed, lastMessage } = foldSteps(steps);
@@ -716,6 +730,7 @@ function AnswerBody({
         live={live}
         {...(summary === undefined ? {} : { summary })}
         {...(sessionId === undefined ? {} : { sessionId })}
+        {...(endedWork === undefined ? {} : { endedWork })}
       />
       {body !== "" && (
         // toWebHtml escapes all text and adds only its own tags, so the HTML is safe.

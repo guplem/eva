@@ -280,7 +280,8 @@ function cellsOf(row: string): string[] {
   return cells;
 }
 
+/** The empty bar gets the block's Copy button from `MarkdownBody`; the bar stays still when the code scrolls. */
 function code(text: string, language: string): string {
   const languageClass = language.length > 0 ? ` class="language-${escapeHtml(language)}"` : "";
-  return `<pre><code${languageClass}>${escapeHtml(text)}</code></pre>`;
+  return `<div class="code-box"><div class="code-box-bar"></div><pre><code${languageClass}>${escapeHtml(text)}</code></pre></div>`;
 }

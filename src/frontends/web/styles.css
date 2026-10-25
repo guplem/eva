@@ -1065,7 +1065,30 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-/* The answer's Markdown, as block HTML: compact spacing that fits a chat bubble on a phone. */
+/* The answer's Markdown, as block HTML: compact spacing that fits a chat bubble on a phone. The
+   code box comes first, so the first-child and last-child rules below win over its margin. */
+.answer-body .code-box {
+  margin: 0 0 10px;
+  background: var(--chip);
+  border-radius: var(--radius-input);
+}
+
+.answer-body li > .code-box {
+  margin: 4px 0;
+}
+
+/* The bar holds the Copy button above the code, so the button never covers a line. */
+.answer-body .code-box-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-1) var(--space-1) 0;
+}
+
+/* A live answer has no Copy button yet. */
+.answer-body .code-box-bar:empty {
+  display: none;
+}
+
 .answer-body > :first-child {
   margin-top: 0;
 }
@@ -1074,7 +1097,7 @@ textarea {
   margin-bottom: 0;
 }
 
-.answer-body :is(p, ul, ol, pre, blockquote, table) {
+.answer-body :is(p, ul, ol, blockquote, table) {
   margin: 0 0 10px;
 }
 
@@ -1100,15 +1123,14 @@ textarea {
 }
 
 /* A paragraph in a loose item keeps its full margin, so a blank line between items still shows. */
-.answer-body li > :is(ul, ol, pre) {
+.answer-body li > :is(ul, ol) {
   margin: 4px 0;
 }
 
 .answer-body pre {
+  margin: 0;
   overflow-x: auto;
-  background: var(--chip);
   padding: 8px;
-  border-radius: var(--radius-input);
 }
 
 .answer-body code {

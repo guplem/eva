@@ -26,6 +26,7 @@ import { fileBadgeOf, nameEnds } from "./file-kinds.ts";
 import { Icon } from "./icons.tsx";
 import { ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { MoreMenu, type MenuItem } from "./Menu.tsx";
+import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
@@ -926,10 +927,9 @@ function FileText({
     return (
       <>
         {frontMatter !== null && <pre className={`${textClass} files-front-matter`}>{frontMatter}</pre>}
-        {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
-        <div
+        <MarkdownBody
+          html={toWebHtml(body)}
           className={wrap ? "answer-body files-markdown wrap" : "answer-body files-markdown"}
-          dangerouslySetInnerHTML={{ __html: toWebHtml(body) }}
         />
       </>
     );

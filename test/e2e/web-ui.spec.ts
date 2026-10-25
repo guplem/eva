@@ -1002,6 +1002,31 @@ test("Copy copies the text of an answer", async ({ page, context }) => {
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(title);
 });
 
+test("a code block of an answer gets its Copy button when the turn ends, and copies the exact code (#587)", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("a code block");
+  await composer.press("Enter");
+  // A live answer changes with each token, so its block has no button yet.
+  const live = page.locator(".msg:has(.working)");
+  await expect(live.locator(".code-box pre")).toContainText("echo one");
+  await expect(live.getByRole("button", { name: "Copy the code" })).toHaveCount(0);
+  await page
+    .getByRole("region", { name: "Eva asks for permission" })
+    .getByRole("button", { name: "Allow once" })
+    .click();
+  const box = page.locator(".message.answer .code-box").first();
+  const copy = box.getByRole("button", { name: "Copy the code" });
+  await copy.click();
+  await expect(box.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("echo one && echo <two>");
+});
+
 test("the composer's chip picks the engine before the first message, and the model between turns", async ({ page }) => {
   await logIn(page);
   await newChat(page);
@@ -5664,6 +5689,34 @@ test("Files: a code block in a formatted note wraps too (issue 484)", async ({ p
   expect(await overflows()).toBe(false);
   await chooseFileAction(page, "Do not wrap long lines");
   await expect.poll(overflows).toBe(true);
+});
+
+test("Files: the Copy button of a code block sits above the code and stays when the code scrolls (#587)", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const line = "echo word ".repeat(80).trim();
+  const text = `# Setup\n\n\`\`\`sh\n${line}\n\`\`\`\n`;
+  await page.route("**/api/files?path=Notes%2Fsetup.md", (route) =>
+    route.fulfill({
+      json: { kind: "file", path: "Notes/setup.md", size: text.length, text, version: "v1", editable: true },
+    }),
+  );
+  await logIn(page);
+  await page.goto("/#/files/Notes/setup.md");
+  const file = page.getByRole("region", { name: "File text" });
+  await chooseFileAction(page, "Do not wrap long lines");
+  const block = file.locator(".files-markdown pre");
+  const copy = file.getByRole("button", { name: "Copy the code" });
+  await block.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
+  const button = await copy.boundingBox();
+  const code = await block.boundingBox();
+  // The button is above the code, so it covers no line, and the scroll does not move it away.
+  expect(button !== null && code !== null && button.y + button.height <= code.y).toBe(true);
+  await expect(copy).toBeInViewport();
+  await copy.click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(line);
 });
 
 test("Files: the editor has no wrap item, because a text area wraps by itself (issue 484)", async ({ page }) => {

@@ -39,6 +39,7 @@ import {
 import { CopyButton } from "./CopyButton.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
+import { MarkdownBody } from "./MarkdownBody.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
@@ -643,10 +644,7 @@ function AnswerBody({
         {...(summary === undefined ? {} : { summary })}
         {...(sessionId === undefined ? {} : { sessionId })}
       />
-      {body !== "" && (
-        // toWebHtml escapes all text and adds only its own tags, so the HTML is safe.
-        <div className="answer-body" dangerouslySetInnerHTML={{ __html: html }} />
-      )}
+      {body !== "" && <MarkdownBody html={html} className="answer-body" copy={!live} />}
       {canShowWhole && (
         <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
           {showWhole ? "Show the last message only" : "Show the whole answer"}

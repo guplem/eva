@@ -119,6 +119,14 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, `${words}More words to end it.`);
     return;
   }
+  if (lastLine.includes("code block")) {
+    // The approval holds the turn, so the test sees the live block before the stored one.
+    const answer = "Run this:\n\n```sh\necho one && echo <two>\n```\n";
+    yield { kind: "text_delta", text: answer };
+    await request.requestApproval({ requestId: "", toolName: "Bash", summary: "echo code" });
+    yield* FakeEngine.answer(request, answer);
+    return;
+  }
   if (lastLine.includes("approve")) {
     const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "gh issue create" });
     yield* FakeEngine.answer(request, `The person answered: ${answer}`);

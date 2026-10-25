@@ -115,7 +115,7 @@ describe("a conversation", () => {
     const engine = new FakeEngine();
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
-    await manager.send(sessionId, "Hello there, Eva");
+    await manager.send(sessionId, "Hello there, Eva", "api");
 
     const record = manager.get(sessionId);
     expect(engine.requests[0]?.history).toEqual({ kind: "new", engineSessionId: record.engineSessionId });
@@ -124,6 +124,7 @@ describe("a conversation", () => {
     expect(record.turns).toEqual([
       {
         userText: "Hello there, Eva",
+        fromEva: false,
         answerText: "answer 1",
         toolCount: 0,
         commandCount: 0,
@@ -652,7 +653,7 @@ describe("renames (issue 46)", () => {
     const manager = createManager(new FakeEngine());
     const sessionId = newAssistantSession(manager);
     manager.rename(sessionId, "Trip plans");
-    await manager.send(sessionId, "Hello there, Eva");
+    await manager.send(sessionId, "Hello there, Eva", "api");
     expect(manager.get(sessionId).title).toBe("Trip plans");
   });
 
@@ -905,7 +906,7 @@ describe("seen turns (issue 381)", () => {
     const manager = createManager(new FakeEngine());
     const sessionId = newAssistantSession(manager);
     expect(manager.get(sessionId).seenTurns).toBe(0);
-    await manager.send(sessionId, "Hello there, Eva");
+    await manager.send(sessionId, "Hello there, Eva", "api");
     expect(manager.get(sessionId)).toMatchObject({ seenTurns: 0, turns: [{}] });
     expect(manager.markSeen(sessionId, 1).seenTurns).toBe(1);
     expect(events.filter((event) => event.kind === "session_seen")).toMatchObject([
@@ -944,6 +945,31 @@ describe("seen turns (issue 381)", () => {
     expect(manager.get(sessionId).seenTurns).toBe(1);
     await manager.send(sessionId, "from the web app", "api");
     expect(manager.get(sessionId).seenTurns).toBe(1);
+  });
+
+  test("a turn records whether Eva sent its message, so a front end does not show it as the person's", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "from the web app", "api");
+    await manager.send(sessionId, "[Project work finished: example-app]");
+    // A person's message in the same turn makes the turn the person's.
+    await Promise.all([manager.send(sessionId, "a result"), manager.send(sessionId, "and a question", "telegram")]);
+    expect(manager.get(sessionId).turns.map((turn) => turn.fromEva)).toEqual([false, true, false]);
+  });
+
+  test("a failed turn and a follow-up of the mode record who sent the message too", async () => {
+    followUps = ["continue the skill run", null];
+    const manager = createManager(
+      new FakeEngine((request, turnNumber) =>
+        turnNumber === 1 ? FakeEngine.answer(request, "ok") : [{ kind: "turn_failed", reason: "boom" }],
+      ),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "start the skill", "api");
+    expect(manager.get(sessionId).turns).toMatchObject([
+      { fromEva: false, failure: null },
+      { fromEva: true, failure: "boom" },
+    ]);
   });
 
   test("a missing chat is refused", () => {

@@ -377,6 +377,8 @@ describe("Eva", () => {
     expect(engine.requests.map((request) => request.mode)).toEqual(["project", "assistant"]);
     expect(engine.requests[1]?.prompt).toContain(`[Project work finished: 2025-03-02-1015-example-app, clone clone-0`);
     expect(engine.requests[1]?.prompt).toContain("Fixed the login bug.");
+    // Eva sent the result, so the web app does not show it as the person's message.
+    expect(instance.sessions.get(assistantChat.id).turns[0]?.fromEva).toBe(true);
     const missing = await instance
       .startProjectWork({ projectId: "missing", request: "x", reportToSessionId: null })
       .then(

@@ -179,6 +179,7 @@ machine state/sessions.json sessions[].turns[].contextTokens
 machine state/sessions.json sessions[].turns[].contextWindow
 machine state/sessions.json sessions[].turns[].endSnapshot
 machine state/sessions.json sessions[].turns[].failure
+machine state/sessions.json sessions[].turns[].fromEva
 machine state/sessions.json sessions[].turns[].lastMessageId
 machine state/sessions.json sessions[].turns[].model
 machine state/sessions.json sessions[].turns[].modelAlias

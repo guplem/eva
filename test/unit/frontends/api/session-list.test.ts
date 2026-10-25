@@ -7,6 +7,7 @@ type Turn = SessionRecord["turns"][number];
 function turn(text: string): Turn {
   return {
     userText: "ask",
+    fromEva: false,
     answerText: text,
     toolCount: 0,
     commandCount: 0,

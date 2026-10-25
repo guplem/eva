@@ -19,6 +19,11 @@ const stepSchema = z.object({
 
 const turnSchema = z.object({
   userText: z.string(),
+  /**
+   * Eva sent every message of the turn, such as a project work result or a follow-up of the mode,
+   * so a front end does not show it as the person's. A turn from before the field has none.
+   */
+  fromEva: z.boolean().default(false).catch(false),
   /** The answer's text, for the history views of the front ends. */
   answerText: z.string().default(""),
   /** How many tools the turn used, commands included, for the activity chips. */

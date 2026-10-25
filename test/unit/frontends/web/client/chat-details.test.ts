@@ -20,6 +20,7 @@ type Turn = SessionRecord["turns"][number];
 function turn(at: string, contextTokens: number | null, extra: Partial<Turn> = {}): Turn {
   return {
     userText: "hi",
+    fromEva: false,
     answerText: "ok",
     toolCount: 0,
     commandCount: 0,

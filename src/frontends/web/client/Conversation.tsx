@@ -31,6 +31,7 @@ import {
   liveFace,
   runningUntil,
   isWorking,
+  senderName,
   sentTurnCount,
   turnEndNotice,
   undoQuestion,
@@ -355,6 +356,7 @@ function Branch({
           <div key={stepKey(owner.id, index)} style={{ display: "contents" }}>
             <UserMessage
               text={turn.userText}
+              fromEva={turn.fromEva}
               recording={recordings.find(owner.id, turn.userText)}
               turnKey={stepKey(owner.id, index)}
             />
@@ -520,10 +522,13 @@ function Branch({
  */
 function UserMessage({
   text,
+  fromEva = false,
   recording,
   turnKey,
 }: {
   readonly text: string;
+  /** Eva sent it, such as a project work result. */
+  readonly fromEva?: boolean;
   readonly recording: string | null;
   /** The key of its turn, so a pick in the branch map can scroll to it. */
   readonly turnKey?: string;
@@ -532,7 +537,7 @@ function UserMessage({
   return (
     <div className="msg me" data-turn={turnKey}>
       <div className="message user">
-        <div className="who">You</div>
+        <div className="who">{senderName(fromEva)}</div>
         {recording !== null && showRecording ? <audio className="voice-note" controls src={recording} /> : text}
         {recording !== null && (
           <div className="voice-switch" role="group" aria-label="Voice note">

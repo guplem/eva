@@ -329,3 +329,8 @@ export function undoQuestion(preview: UndoPreview): string | null {
     ? "Undo the changes of this answer and the later ones?"
     : "Undo the changes of this answer?";
 }
+
+/** Who sent the message of a turn. Eva sends a project work result to the chat that asked for it. */
+export function senderName(fromEva: boolean): string {
+  return fromEva ? "Sent by Eva" : "You";
+}

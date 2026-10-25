@@ -899,7 +899,9 @@ export class SessionManager {
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
         let followUp: string | null = null;
         try {
-          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), batch.outcome);
+          // A follow-up of the mode has no message, so Eva sent all of it.
+          const fromEva = batch.messages.every((message) => message.origin === "eva");
+          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), fromEva, batch.outcome);
           // Telegram showed the answer where the person asked, so the web app must not show it as unread.
           // A follow-up of the mode has no message, so its answer stays unread.
           const fromTelegram =
@@ -941,7 +943,12 @@ export class SessionManager {
   }
 
   /** Runs one turn, writes its failure into `result`, and returns the follow-up message of the mode, if any. */
-  private async runTurn(sessionId: string, prompt: string, result: TurnResult): Promise<string | null> {
+  private async runTurn(
+    sessionId: string,
+    prompt: string,
+    fromEva: boolean,
+    result: TurnResult,
+  ): Promise<string | null> {
     // The record is read once at the start, so a change made during the turn cannot move it (lesson 48).
     const session = this.get(sessionId);
     const engine = this.options.engines.find((candidate) => candidate.name === session.engine);
@@ -1109,6 +1116,7 @@ ${prompt}`,
             session,
             {
               ...recorded,
+              fromEva,
               ...activity,
               ...this.keptSteps(sessionId, steps),
               notes: [...notes],
@@ -1154,6 +1162,7 @@ ${prompt}`,
       this.recordFailure(
         session.id,
         prompt,
+        fromEva,
         answerParts,
         { ...activity, ...this.keptSteps(sessionId, steps), notes: [...notes] },
         historyLost,
@@ -1282,6 +1291,7 @@ ${prompt}`,
     session: SessionRecord,
     turn: {
       userText: string;
+      fromEva: boolean;
       answerText: string;
       contextTokens: number | null;
       contextWindow: number | null;
@@ -1332,6 +1342,7 @@ ${prompt}`,
   private recordFailure(
     sessionId: string,
     prompt: string,
+    fromEva: boolean,
     answerParts: readonly string[],
     activity: TurnActivity,
     historyLost: boolean,
@@ -1351,6 +1362,7 @@ ${prompt}`,
         ...current.turns,
         {
           userText: this.options.redactor.redact(prompt),
+          fromEva,
           answerText: answerParts.join("\n\n"),
           ...activity,
           contextTokens: null,

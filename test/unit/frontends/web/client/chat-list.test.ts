@@ -18,6 +18,7 @@ const now = new Date(2026, 9, 19, 18, 30);
 function turn(fields: Partial<Turn>): Turn {
   return {
     userText: "What is on today?",
+    fromEva: false,
     answerText: "",
     toolCount: 0,
     commandCount: 0,

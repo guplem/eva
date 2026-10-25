@@ -26,6 +26,7 @@ import {
   stepOrigin,
   stepParts,
   turnEndNotice,
+  senderName,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
 
@@ -436,5 +437,12 @@ describe("undoQuestion", () => {
     expect(undoQuestion({ ...none, restore: ["Plan.md"], answers: 3 })).toBe(
       "Undo the changes of this answer and the later ones?",
     );
+  });
+});
+
+describe("senderName", () => {
+  test("names Eva on a message that she sent, such as a project work result", () => {
+    expect(senderName(true)).toBe("Sent by Eva");
+    expect(senderName(false)).toBe("You");
   });
 });

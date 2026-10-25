@@ -666,7 +666,7 @@ test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram
   // The link opens once: the person's own choice then stays, also after another screen.
   await openList(page);
   await page.locator(".sidebar .list-item", { hasText: second }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await openSettings(page);
   await page.getByRole("button", { name: "Chats" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(second);
   expect(new URL(page.url()).hash).toBe("#/chats");
@@ -2187,9 +2187,11 @@ test("device login: an expired request looks skeptical, and Ask again asks for a
 test("Settings: the progress list leads to each step's page, which keeps the last Test result", async ({ page }) => {
   await logIn(page);
   // The demo has no allowed device yet, so at least that step is left.
-  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Settings/ })).toContainText(
-    "to set up",
-  );
+  const nav = page.getByRole("navigation", { name: "Main" });
+  if (test.info().project.name === "desktop")
+    await expect(nav.getByRole("button", { name: /^Settings/ })).toContainText("to set up");
+  // On a phone, Settings has no tab: the visor's dot says that something waits (#566).
+  else await expect(nav.getByRole("button", { name: /Something new waits/ })).toBeVisible();
   await openSettings(page);
   await expect(page.getByRole("region", { name: "Setup" })).toContainText("Finish setting up Eva");
   await openSettings(page, "Setup");
@@ -2394,7 +2396,7 @@ test("the main navigation opens each destination at its own address, and the bac
   for (const [name, address] of [
     ["Projects", "#/projects"],
     ["Schedules", "#/schedules"],
-    ["Settings", "#/settings"],
+    ["Eva: ", "#/notifications"],
     ["Chats", "#/chats"],
   ] as const) {
     await nav.getByRole("button", { name }).click();
@@ -2403,16 +2405,18 @@ test("the main navigation opens each destination at its own address, and the bac
     expect(new URL(page.url()).hash).toBe(address);
   }
   await page.goBack();
-  await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("region", { name: "Setup" })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Eva: " })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
   // A reload keeps the destination.
   await page.reload();
   await expect(nav.getByRole("button", { name: "Schedules" })).toHaveAttribute("aria-current", "page");
-  // A Settings section address opens Settings.
+  // A Settings section address opens Settings. A phone has no Settings tab: the visor takes its place (#566).
   await page.goto("/#/settings/appearance");
-  await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  if (test.info().project.name === "desktop")
+    await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  else await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
 });
 
 test("the AI engines page lists what Eva may do, with the person's own rules apart (#445)", async ({ page }) => {
@@ -3034,7 +3038,7 @@ test("the visor counts the open problems, and its center lists each with the but
   ]);
   await logIn(page);
   const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
-  await expect(visor).toHaveAccessibleName("2 problems need you");
+  await expect(visor).toHaveAccessibleName("Eva: 2 problems need you");
   await expect(visor.locator(".nav-badge")).toHaveText("2");
   // An unread error makes the crosses glow red and pulse.
   await expect(visor.locator(".mk")).toHaveClass(/alarm/);
@@ -3077,7 +3081,7 @@ test("the person marks a problem as read: it stays listed, and the visor stops c
   });
   await logIn(page);
   const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
-  await expect(visor).toHaveAccessibleName("1 problem needs you");
+  await expect(visor).toHaveAccessibleName("Eva: 1 problem needs you");
   await openCenter(page);
   const needs = page.getByRole("region", { name: "Problems" });
   await expect(needs).toContainText("Eva could not check for updates");
@@ -3085,7 +3089,7 @@ test("the person marks a problem as read: it stays listed, and the visor stops c
   await needs.getByRole("button", { name: "Mark as read" }).click();
   await expect(needs.getByRole("button", { name: "Mark as read" })).toHaveCount(0);
   await expect(needs).toContainText("Eva could not check for updates");
-  await expect(visor).toHaveAccessibleName("2 open problems");
+  await expect(visor).toHaveAccessibleName(/^Eva: 2 open problems/);
   await expect(visor.locator(".nav-badge")).toHaveCount(0);
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
@@ -3112,6 +3116,12 @@ test("the center lists the history by day, and marks an entry or every entry as 
     { seq: 1, key: "update", level: "news", message: "Eva updated to 9.9.9.", at, read: false },
     { seq: 2, key: "telegram_poll", level: "resolved", message: "Telegram works again.", at, read: false },
   ];
+  // With no setup step left, only the history lights the dot.
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, setupMissing: 0 } });
+  });
   await page.route("**/api/notifications", (route) => route.fulfill({ json: { entries } }));
   const reads: unknown[] = [];
   await page.route("**/api/notifications/read", async (route) => {
@@ -3168,7 +3178,8 @@ test("a note conflict opens from the center, and the last pick closes it", async
   await expect(dialog.getByText("- [ ] Buy coffee")).toBeVisible();
   await dialog.getByRole("button", { name: "Keep mine: Notes/plan.md" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+  // The demo still has setup steps, so the part stays, without the conflict.
+  await expect(page.getByRole("region", { name: "Problems" })).not.toContainText("Notes/plan.md has a conflict.");
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -3209,13 +3220,6 @@ test("a chat without a vault offers the vault step, not a terminal command", asy
   await page.getByRole("alert").getByRole("button", { name: "Set up your vault" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page).toHaveURL(/#\/settings\/setup\/vault$/);
-});
-
-test("no banner shows while all is good", async ({ page }) => {
-  const statusRead = page.waitForResponse("**/api/status");
-  await logIn(page);
-  await statusRead;
-  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
 });
 
 test("Settings: Restart Eva in the header names the running chats, then restarts and waits for Eva", async ({

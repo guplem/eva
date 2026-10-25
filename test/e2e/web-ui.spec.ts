@@ -2982,7 +2982,10 @@ test("a new message of a running turn replaces the shown one, and the older one 
   sockets.at(-1)?.send(textEvent(sessionId, "second thought"));
   await expect(body).toHaveText("second thought");
   // A running turn shows its steps open.
-  await expect(page.getByRole("list", { name: "Steps" }).getByRole("listitem")).toHaveText([/Message\s+first thought/]);
+  const steps = page.getByRole("list", { name: "Steps" }).getByRole("listitem");
+  // A message has no pill, but a screen reader still hears what it is.
+  await expect(steps).toHaveText(["Message: first thought"]);
+  await expect(steps.locator(".pill")).toHaveCount(0);
   // A step keeps a short text, so the whole answer is one tap away.
   await page.getByRole("button", { name: "Show the whole answer" }).click();
   await expect(body).toContainText("first thought");

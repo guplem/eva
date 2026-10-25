@@ -22,6 +22,7 @@ import {
   sentTurnCount,
   undoQuestion,
   stepIcon,
+  stepHasPill,
   snapsToBottom,
   stepOrigin,
   stepParts,
@@ -50,11 +51,20 @@ describe("foldSteps", () => {
 
 describe("stepIcon", () => {
   test("gives each kind its own icon, and a failed step the cross", () => {
-    expect(stepIcon(step("message", "a"))).toBe("chat");
+    expect(stepIcon(step("message", "a"))).toBe("eve");
     expect(stepIcon(step("command", "ls"))).toBe("term");
     expect(stepIcon(step("tool", "Read"))).toBe("bolt");
     expect(stepIcon(step("task", "Search"))).toBe("sync");
     expect(stepIcon(step("command", "ls", true))).toBe("x");
+  });
+});
+
+describe("stepHasPill", () => {
+  test("gives a pill to each step but a message, whose text reads as the agent's own words", () => {
+    expect(stepHasPill(step("message", "Let me look."))).toBe(false);
+    expect(stepHasPill(step("command", "ls"))).toBe(true);
+    expect(stepHasPill(step("tool", "Read a.md"))).toBe(true);
+    expect(stepHasPill(step("task", "Search"))).toBe(true);
   });
 });
 

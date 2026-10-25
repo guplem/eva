@@ -5709,8 +5709,11 @@ test("Files: the Copy button of a code block sits above the code and stays when 
   await chooseFileAction(page, "Do not wrap long lines");
   const block = file.locator(".files-markdown pre");
   const copy = file.getByRole("button", { name: "Copy the code" });
+  const before = await copy.boundingBox();
   await block.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
+  expect(await block.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   const button = await copy.boundingBox();
+  expect(button?.x).toBe(before?.x);
   const code = await block.boundingBox();
   // The button is above the code, so it covers no line, and the scroll does not move it away.
   expect(button !== null && code !== null && button.y + button.height <= code.y).toBe(true);

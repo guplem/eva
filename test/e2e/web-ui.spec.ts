@@ -825,6 +825,21 @@ test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) =
   await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
 });
 
+test("a file that an answer sends shows as a download button, not as a marker (#581)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("send the file");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.locator(".answer-body")).toHaveText("Here are the trips.");
+  const button = answer.getByRole("button", { name: "Download 2027-trips.md" });
+  await expect(button).toBeVisible();
+  const download = page.waitForEvent("download");
+  await button.click();
+  expect((await download).suggestedFilename()).toBe("2027-trips.md");
+});
+
 test("a usage warning shows under the chat after its answer (issue #67)", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);

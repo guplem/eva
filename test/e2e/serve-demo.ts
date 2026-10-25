@@ -174,6 +174,10 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     writtenNotes.add(note);
     writeFileSync(join(vault, "Notes", `${note}.md`), "Written by an answer.\n");
   }
+  if (lastLine.includes("send the file")) {
+    yield* FakeEngine.answer(request, "Here are the trips.\n[[attach: Journal/2027-trips.md]]");
+    return;
+  }
   if (lastLine.includes("list")) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
     return;

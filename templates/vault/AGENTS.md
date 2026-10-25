@@ -76,7 +76,7 @@ Prefer fewer, larger notes. Every extra file makes the important ones harder to 
 
 **This file is the map of the vault. Keep it true.** When you create, rename or remove a folder at the vault root, change the _What is where_ table in the same turn. A folder that the map does not show gets lost.
 
-**Fix this file yourself when it is simply wrong,** such as a path that moved. **Propose a change and wait when you only prefer it different,** such as a new rule or a new structure. Rules record the person's decisions.
+**Fix this file yourself when it is simply wrong,** such as a path that moved. **Propose a change and wait when you only prefer it different,** such as a new rule or a new structure. Rules and structure record the person's decisions.
 
 ## Projects
 

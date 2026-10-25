@@ -32,7 +32,7 @@ Each schedule is one object in `schedules`:
   "days": ["mon", "tue", "wed", "thu", "fri"],
   "text": "Drink water. Check the calendar.",
   "file": "Toolbox/morning-checklist.md",
-  "prompt": "Summarise my calendar for today.",
+  "prompt": "Summarize my calendar for today.",
   "model": "haiku"
 }
 ```
@@ -82,4 +82,4 @@ To remove one, delete its entry. The topic stays in Telegram, and the person can
 
 ## 5. Reply
 
-Say in one sentence what Eva sends, when, and in which topic. A schedule created after its time today first runs on the next matching day. Tell the person to check the setup card that Eva posts within a minute. Tell them that the schedule runs only after they see that card. If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.
+Say in one sentence what Eva sends, when, and in which topic. A schedule created after its time today first runs on the next matching day. Tell the person to check the setup card that Eva posts within a minute. Tell them that the schedule runs only after the card reaches them: without Telegram, the web app shows it in a dialog, and the schedule runs after they tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.

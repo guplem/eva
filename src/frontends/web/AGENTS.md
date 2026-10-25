@@ -22,4 +22,5 @@
 ## Captures
 
 - To capture the web page, start `bun run test/e2e/serve-demo.ts`. Then run `scripts/capture-ui.ts`: its header gives the arguments.
+- When a change alters how a page of the EVE guide looks, update its captures in the same PR. `docs/design/eve/README.md` says when and how.
 - In Git Bash, set `MSYS_NO_PATHCONV=1` for the capture command. Otherwise Git Bash turns `#/files` into a Windows path, and the captures show the wrong page.

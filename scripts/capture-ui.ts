@@ -10,12 +10,7 @@
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "@playwright/test";
-import { e2ePorts } from "../test/e2e/e2e-ports.ts";
-
-// test/e2e/serve-demo.ts serves the demo vault on this port, with this token.
-const demoUrl = `http://127.0.0.1:${String(e2ePorts().demo)}/`;
-const demoToken = "e2e-demo-token";
+import { launchBrowser, logIn } from "./demo-browser.ts";
 
 // A tall window shows a whole page: each page scrolls inside its own panel, so a full-page shot would cut it.
 const views = [
@@ -37,16 +32,11 @@ function fileName(address: string): string {
   return address.replace(/^#\/?/, "").replace(/[^a-z0-9]+/gi, "-") || "home";
 }
 
-const executablePath = process.env["EVA_CAPTURE_CHROMIUM"];
-const browser = await chromium.launch(executablePath === undefined ? {} : { executablePath });
+const browser = await launchBrowser();
 try {
   for (const view of views) {
     const page = await browser.newPage({ viewport: view.viewport, colorScheme: view.colorScheme });
-    await page.goto(demoUrl);
-    await page.getByLabel(/Token/).fill(demoToken);
-    await page.getByRole("button", { name: "Log in" }).click();
-    // The login page goes away when the login works.
-    await page.getByLabel(/Token/).waitFor({ state: "detached" });
+    await logIn(page);
     for (const address of addresses) {
       await page.evaluate((hash) => {
         window.location.hash = hash;

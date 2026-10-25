@@ -29,7 +29,8 @@ export function MarkdownBody({
   useLayoutEffect(() => {
     const root = body.current;
     if (root === null || !copy) {
-      setBars([]);
+      // A live answer comes here on each token: keep the same empty list, so React renders no more.
+      setBars((old) => (old.length === 0 ? old : []));
       return;
     }
     const found = [...root.querySelectorAll<HTMLElement>(".code-box-bar")];

@@ -1084,6 +1084,11 @@ textarea {
   padding: var(--space-1) var(--space-1) 0;
 }
 
+/* A ghost button fills with --chip on hover, the same colour as the box, so it takes the next step. */
+.answer-body .code-box-bar button.ghost:hover {
+  background: var(--line);
+}
+
 /* A live answer has no Copy button yet. */
 .answer-body .code-box-bar:empty {
   display: none;

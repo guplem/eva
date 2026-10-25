@@ -115,7 +115,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
   /** The hides that this page sent and Eva has not answered yet. */
   const pendingHides = useRef<ReadonlySet<string>>(new Set());
-  /** The count of hides that Eva answered: a status read that started before an answer is older than it. */
+  /** The count of hides and reads that Eva answered: a read that started before an answer is older than it. */
   const hideAnswers = useRef(0);
   /** The history reads that this page sent and Eva has not answered yet. */
   const pendingReads = useRef<ReadonlySet<number>>(new Set());
@@ -216,7 +216,10 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       // The next poll or the next reconnect tries again.
     }
     try {
-      showEntries((await api.notifications()).entries);
+      const answersAtStart = hideAnswers.current;
+      const view = await api.notifications();
+      // A read that Eva answered meanwhile is newer than this answer.
+      if (hideAnswers.current === answersAtStart) showEntries(view.entries);
     } catch (caught) {
       // An older Eva has no history: the center shows only the open problems.
       if (caught instanceof ApiError && caught.status === 404) setNotifications([]);
@@ -585,6 +588,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     showEntries(notifications);
     const settle = (): void => {
       pendingReads.current = new Set([...pendingReads.current].filter((seq) => !seqs.includes(seq)));
+      hideAnswers.current += 1;
     };
     api.markNotificationsRead({ seqs }).then(
       (view) => {

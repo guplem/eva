@@ -2416,7 +2416,7 @@ test("the main navigation opens each destination at its own address, and the bac
   await page.goto("/#/settings/appearance");
   if (test.info().project.name === "desktop")
     await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
-  else await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
+  else await expect(nav.getByRole("button", { name: /^Settings/ })).toHaveCount(0);
 });
 
 test("the AI engines page lists what Eva may do, with the person's own rules apart (#445)", async ({ page }) => {

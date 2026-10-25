@@ -34,6 +34,14 @@ const levelIcons: Record<HistoryEntry["level"], IconName> = {
   news: "info",
 };
 
+/** The icon shows the level, so a screen reader needs the words. */
+const levelWords: Record<HistoryEntry["level"], string> = {
+  error: "Error: ",
+  warn: "Warning: ",
+  resolved: "Solved: ",
+  news: "News: ",
+};
+
 export function NotificationCenter(props: NotificationCenterProps): ReactElement {
   const { problems, entries, steps, syncStatus, onAction } = props;
   const [filter, setFilter] = useState<CenterFilter>("all");
@@ -141,7 +149,10 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
                           <span className="center-row-icon">
                             <Icon name={levelIcons[entry.level]} />
                           </span>
-                          <span className="center-row-text">{entry.message}</span>
+                          <span className="center-row-text">
+                            <span className="visually-hidden">{levelWords[entry.level]}</span>
+                            {entry.message}
+                          </span>
                           <span className="center-time">{timeLabel(entry.at, now)}</span>
                           {!entry.read && <UnreadMark />}
                         </button>

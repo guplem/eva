@@ -258,8 +258,11 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
 
   /** claude goes through `claude update` once Eva has found it; a missing claude goes through its installer. */
   const usesEngineUpdate = (program: string): boolean => program === "claude" && engineUpdate !== null;
-  /** Only one install runs at a time. */
-  const holdsInstalls = installing !== null || engineRuns || engineStarting || updatingAll;
+  /**
+   * Only one install runs at a time. A check for Eva also holds them: the version dialog that
+   * follows can restart her, and her restart does not wait for a tool install.
+   */
+  const holdsInstalls = installing !== null || engineRuns || engineStarting || updatingAll || openingVersions;
   // Before the latest versions answer, Eva cannot tell which tools are old.
   const allSteps =
     typeof versions === "string" || !latestRead || engineUpdate === "loading"

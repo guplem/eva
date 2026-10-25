@@ -4085,7 +4085,7 @@ test("Settings: Update all installs each clear update in turn, then opens the Ev
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
   await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeChecked();
   expect(posts).toEqual(["pi", "uv", "voice notes"]);
-  // A failed install stays in the note, after the later ones.
+  // The note joins every result, so the failed install stays in it.
   await expect(card.getByRole("status").filter({ hasText: "uv failed." })).toContainText("Installed voice notes.");
   await expect(card.getByRole("status").filter({ hasText: "uv failed." })).toHaveClass(/warning/);
 });

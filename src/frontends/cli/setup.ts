@@ -235,7 +235,7 @@ export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart
   }
   progress.started = true;
 
-  for (const line of stepLines("Notebook and GitHub")) options.write(line);
+  for (const line of stepLines("Vault and GitHub")) options.write(line);
   const detectedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const timeZone = done(config().timeZone !== null)
     ? ""
@@ -248,7 +248,7 @@ export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart
   };
   // Only a person: a script answers every question again on each run.
   const vaultWasReady = done(vaultReady());
-  if (vaultWasReady) options.write(doneLine(`Notebook: ${config().vaultPath ?? ""}`));
+  if (vaultWasReady) options.write(doneLine(`Vault: ${config().vaultPath ?? ""}`));
   if (!vaultWasReady) await askVault(options, ask, saveVaultPath, saveSecret, recordAccount);
   else if (!done(secrets().githubToken !== undefined)) {
     // Private projects need the token too, so a ready vault still gets the question.

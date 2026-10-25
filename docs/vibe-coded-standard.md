@@ -7,20 +7,20 @@ Eva follows it and is the reference repository. Eva's repository setup report ch
 
 - **Any coding tool works.** A required file or check never depends on one harness (Claude Code, Codex, Cursor, pi). A harness-specific file is an optional extra.
 - **Short and clear documentation.** A person new to the project, or an agent, understands each file on the first read.
-- **GitHub enforces the guards.** It blocks a merge that fails a check, limits the rights of the CI token, and scans for secrets. No agent can skip them.
+- **GitHub enforces the guards.** It blocks a merge that fails a check, limits the rights of the token that the automatic checks (CI, continuous integration) use, and scans for secrets. No agent can skip them.
 - **Agents work alone.** A person acts only where a label asks for it.
 
 ## Structure
 
-| Path                             | Content                                                                       |
-| -------------------------------- | ----------------------------------------------------------------------------- |
-| `AGENTS.md`                      | The map for agents: goals that must not change, rules, architecture, traps.   |
-| `<module>/AGENTS.md`             | The context of one module, when the module has its own rules.                 |
-| `README.md`                      | For people: what the project is, how to install and run it.                   |
-| `.agents/skills/<name>/SKILL.md` | The workflows. See [Skills](#skills).                                         |
-| `SECURITY.md`                    | How to report a vulnerability in private.                                     |
-| `lefthook.yml`                   | The git hooks.                                                                |
-| `.github/workflows/`             | The CI (continuous integration) checks that GitHub runs on each pull request. |
+| Path                             | Content                                                                     |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| `AGENTS.md`                      | The map for agents: goals that must not change, rules, architecture, traps. |
+| `<module>/AGENTS.md`             | The context of one module, when the module has its own rules.               |
+| `README.md`                      | For people: what the project is, how to install and run it.                 |
+| `.agents/skills/<name>/SKILL.md` | The workflows. See [Skills](#skills).                                       |
+| `SECURITY.md`                    | How to report a vulnerability in private.                                   |
+| `lefthook.yml`                   | The git hooks.                                                              |
+| `.github/workflows/`             | The CI checks on each pull request.                                         |
 
 - **No `CLAUDE.md` anywhere.** A `CLAUDE.md` in a folder or a parent folder stops Claude Code from reading `AGENTS.md`. A pre-commit hook and a CI test refuse a `CLAUDE.md`.
 - **Organize the code by modules.** A module holds one concern. An architecture check enforces the allowed imports between modules.

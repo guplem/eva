@@ -6,7 +6,7 @@
 
 **Eva is a "super harness".** A harness is a program that runs an AI agent, such as Claude Code or pi. Eva does not think by herself: she runs these harnesses for you, and organizes their work. You can change the harness, and keep the same chats, notes and projects.
 
-## How Eva works, in one picture
+## How Eva works
 
 Think of Eva as a helper who lives in one computer at your home:
 
@@ -57,9 +57,9 @@ You can also send voice notes, photos and files.
 
 ### On the web page
 
-Eva's web page shows your chats, your projects, your reminders and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`: send `/link` in Telegram to get it. See [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone).
+Eva's web page shows your chats, your projects, your files, your schedules (reminders) and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`: send `/link` in Telegram to get it. See [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone).
 
-On Eva's own computer, run `eva open`, or use her icon next to the clock on Windows: see [Open Eva on her own computer](docs/guide/setup.md#open-eva-on-her-own-computer).
+On Eva's own computer, run `eva open` to open her page. On Windows, her icon next to the clock opens it too: see [Open Eva on her own computer](docs/guide/setup.md#open-eva-on-her-own-computer).
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
 
@@ -70,7 +70,7 @@ A device without Tailscale cannot open Eva. That is on purpose: Eva can act on y
 | Word          | Meaning                                                                                                                                      |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Vault**     | Your private folder of notes, which Eva reads and writes, saved on GitHub.                                                                   |
-| **Hub**       | The computer that runs your Telegram bot and your reminders. Only one computer is the hub.                                                   |
+| **Hub**       | The computer that runs your Telegram bot and your schedules. Only one computer is the hub.                                                   |
 | **Satellite** | Any other computer with Eva and the same vault. It keeps the vault up to date, but stays quiet in Telegram.                                  |
 | **Token**     | A long secret code that works like a password for one service. Never share it. Eva keeps each token on her own computer, never in the vault. |
 | **Tailscale** | A free app that links your own devices privately, so your phone can open Eva's page from anywhere.                                           |
@@ -79,7 +79,7 @@ A device without Tailscale cannot open Eva. That is on purpose: Eva can act on y
 
 ## Problems and answers
 
-**Eva tells you when something goes wrong.** She sends a message to your Telegram chat when a problem starts, once a day while it lasts, and once more when it ends. The web page shows the open problems at the top, with an x to hide one, and `/status` starts with "All good" or the number of problems. Send `/logs` to see the details.
+**Eva tells you when something goes wrong.** She sends a message to your Telegram chat when a problem starts, once a day while it lasts, and once more when it ends. The web page shows the open problems at the top. Tap the x to hide one. `/status` starts with "All good" or the number of problems. Send `/logs` to see the details.
 
 **Eva does not answer in Telegram.**
 Open the web page and look at Settings, or run `eva status` on Eva's computer. Check that the computer is on and connected. If you run Eva on two computers, check which one is the hub.

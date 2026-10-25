@@ -13,7 +13,7 @@ The rest of this guide describes the web page as the code builds it. Where this 
 
 ## How to use this reference
 
-- Copy the reference as closely as possible. To close an open gap, change the code to match the reference, not the reference to match the code. Keep each difference on purpose while its reason holds.
+- Copy the reference as closely as possible. To close an open gap, change the code to match the reference, not the reference to match the code. Keep each difference in "Differences on purpose" while its reason holds.
 - When the reference shows a feature that Eva does not have, build it if it is small and clearly useful. Otherwise, adapt the design to what exists, and write down the gap in the issue.
 - When Eva has a feature that the reference does not show, design it with the same parts: the same tokens, components and expressions.
 - Keep the existing rules of the web client: `role` and `aria-label` names that the end-to-end tests use, 44 px touch targets on a phone (36 px in the compact density), and the theme and density settings.

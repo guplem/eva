@@ -131,7 +131,7 @@ Eva saves the vault to GitHub by herself. [Settings](#settings) gives the defaul
 
 - She gets other computers' notes before each chat turn, and at the interval in `sync.pullIntervalMinutes`.
 - She saves and pushes after each turn, and at the interval in `sync.sweepSeconds` when something changed.
-- **Sync now:** the **Sync now** button in Settings, `/sync` in Telegram, or `eva sync`.
+- **Sync now:** the **Sync now** button in **Settings > Vault and sync**, `/sync` in Telegram, or `eva sync`.
 - **Files that Eva does not save:** a file that looks like a secret (outside `Projects/`), and any file over 50 MB, because GitHub refuses files over 100 MB. `eva status` and the Settings page name them.
 
 ### Vault conflicts
@@ -140,7 +140,7 @@ A conflict happens when two computers change the same lines of a note before the
 
 To fix it from your phone:
 
-1. Send `/conflicts` in Telegram, or open **Settings** on the web page of the computer with the conflict.
+1. Send `/conflicts` in Telegram, or open **Settings > Vault and sync** on the web page of the computer with the conflict.
 2. For each note, tap one button:
    - **Keep mine:** keep this computer's version.
    - **Keep theirs:** keep the version that the other computer pushed.
@@ -211,10 +211,10 @@ A request from Eva's own computer can come from any program there, so only the t
 
 ## Chats
 
-- **One list.** Telegram, the web page and `eva chat` share the same chats. Telegram shows a chat from the web page or the terminal after `/chats`. The topic of that chat (a thread inside your bot's Telegram chat) then also shows the messages that the web page and the terminal send.
-- **Continue a chat in Telegram:** send `/chats` and tap the chat. It opens in a topic of its own, with its last 3 turns. Without topics, the main Telegram chat continues it.
+- **One list.** Telegram, the web page and `eva chat` share the same chats.
+- **Continue a chat in Telegram:** send `/chats` and tap the chat. It opens in a topic of its own (a thread inside your bot's Telegram chat), with its last 3 turns. The topic then also shows the messages from the web page and the terminal. Without topics, the main Telegram chat continues it.
 - **Project work:** when Eva gives work to a project from Telegram, its chat opens in a topic. In a group, Eva sends the link to that topic. When Tailscale gives Eva an address, she also sends the link to the chat on the web page.
-- **Delete a chat:** send `/delete` in its topic, or pick **Delete chat** in the "More actions" menu (•••) of the chat on the web page. Eva deletes it from Telegram, the web page and the terminal, with its forks. A fork is a new chat that copies an earlier chat up to one message, then goes its own way. The engine keeps its own transcript.
+- **Delete a chat:** send `/delete` in its topic, or pick **Delete chat** in the "More actions" menu (•••) of the chat on the web page. Eva deletes it from Telegram, the web page and the terminal, with its forks. A fork is a new chat that copies an earlier chat up to one message, then continues on its own. The engine keeps its own transcript.
 - **Open one chat on the web page:** add `#/chat/<id>` to the address. Telegram sends such links.
 - **Retry an answer:** press **Retry** under it on the web page. The new answer goes in a new branch, and the old answer stays. When the answer, or a later one, changed vault files, Eva asks first:
   - **Undo and retry** puts those files back as they were before the answer, and saves that as a new commit.

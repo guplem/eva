@@ -1,6 +1,6 @@
 # Install Eva, step by step
 
-This guide installs Eva on the computer that stays on. It takes about 30 minutes. You type a few commands in a terminal: on Windows, open **PowerShell** from the Start menu; on Linux, open **Terminal**, or connect over SSH (a secure terminal connection from another computer).
+This guide installs Eva on the computer that stays on. It takes about 30 minutes. You type a few commands in a terminal. On Windows, open **PowerShell** from the Start menu. On Linux, open **Terminal**, or connect over SSH (a secure terminal connection from another computer).
 
 When a step says "run", type the command and press Enter.
 
@@ -47,7 +47,7 @@ In the terminal, a line that starts with `>` is a question: type the answer, or 
 1. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), uv (for the Google tools), and gh (for your agents' pushes and pull requests). It also replaces a gh older than 2.40.
 2. **Phone access.** Press Enter to install Tailscale, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page.
 3. **Start Eva.** Press Enter. Eva starts now, and again each time you log in. On Windows, this needs no administrator, and no window stays open.
-4. **Your devices.** Press Enter to open Eva in this computer's browser, already logged in. Then open Eva's address on your phone and your other computers. Each page shows a short code: type it in the terminal. Press Enter after you allow every device. Then setup asks where to continue:
+4. **Your devices.** Press Enter to open Eva in this computer's browser, already logged in. Then open Eva's address on your phone and your other computers. Each device needs the Tailscale app, signed in with your Tailscale account (see [Open Eva on your phone](#open-eva-on-your-phone)). Each page shows a short code: type it in the terminal. Press Enter after you allow every device. Then setup asks where to continue:
    - Type `1`, or press Enter, to answer steps 5 to 8 in the terminal.
    - Type `2` to finish on Eva's web page. Setup opens the Setup page in this computer's browser, and shows the steps to follow there. Then you can close the terminal.
 5. **Vault and GitHub.** Your time zone, the GitHub login, your vault, and other GitHub accounts that you trust, such as an organization. Eva trusts the account of her GitHub login already.
@@ -55,7 +55,7 @@ In the terminal, a line that starts with `>` is a question: type the answer, or 
 7. **Telegram** (optional). Your bot.
 8. **Google and voice notes** (optional).
 
-On the page, **Settings > Setup** lists each step that is left. Each answer is saved at once, in both places. You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
+On the page, **Settings > Setup** lists each step that is left. Setup saves each answer at once, so the terminal and the page both see it. You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
 
 ### Open Eva on her own computer
 
@@ -70,8 +70,6 @@ On Windows, a few seconds after you log in, Eva also has an icon in the system t
 If Eva stops by herself, for example because of a bad setting, the icon stays with a sleeping or crossed-out face. Fix the setting, then choose **Restart Eva**.
 
 With more than one Eva on the computer, each Eva has her own icon. Her name is in its tooltip and at the top of its menu.
-
-The next sections explain each setup step in more detail.
 
 ## Log in to your AI
 
@@ -132,7 +130,7 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 
 Each device needs the Tailscale app, signed in with the same account as Eva's computer. Then:
 
-1. Open Eva's address. Send `/link` to your bot, or look in **Use Eva from any device** in Settings, if you forget it.
+1. Open Eva's address. To find it, send `/link` to your bot, or open **Settings > Access > Use Eva from any device**.
 2. The first time, the page shows a short code. Allow the device, for example with `eva devices allow <code>` on Eva's computer, or with **Allow** in Telegram. [Logging in to the web page](reference.md#logging-in-to-the-web-page) lists every way.
 3. On a phone, choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 

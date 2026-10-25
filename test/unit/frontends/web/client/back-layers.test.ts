@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   goTo,
   goUp,
+  leaveFor,
   openLayer,
   replaceAddress,
   restoreLayer,
@@ -26,6 +27,8 @@ interface FakeBrowser extends LayerWindow {
   arrive(): void;
   /** The person presses Back. */
   back(): void;
+  /** The person presses Forward. */
+  forward(): void;
 }
 
 function fakeBrowser(): FakeBrowser {
@@ -94,6 +97,10 @@ function fakeBrowser(): FakeBrowser {
     },
     back: (): void => {
       index -= 1;
+      firePopState();
+    },
+    forward: (): void => {
+      index += 1;
       firePopState();
     },
   };
@@ -204,6 +211,56 @@ describe("restoreLayer", () => {
     stop();
   });
 
+  test("two layers open again in the order of their entry, whatever order the page opens them in", () => {
+    const closed: string[] = [];
+    const stops = [restoreLayer("list", () => undefined), restoreLayer("archived", () => undefined)];
+    openLayer("list", () => undefined);
+    openLayer("archived", () => undefined);
+    goTo("#/chats/b");
+    browser.back();
+    // A child opens before its parent.
+    openLayer("archived", () => closed.push("archived"));
+    openLayer("list", () => closed.push("list"));
+    expect(browser.entries).toHaveLength(4);
+    browser.back();
+    expect(closed).toEqual(["archived"]);
+    browser.back();
+    expect(closed).toEqual(["archived", "list"]);
+    for (const stop of stops) stop();
+  });
+
+  test("a layer that is not restored adds its own entry, even with the same key as a closed one", () => {
+    openLayer("layer", () => undefined);
+    goTo("#/chats/b");
+    browser.back();
+    browser.arrive();
+    openLayer("layer", () => undefined);
+    expect(browser.index).toBe(1);
+    expect(browser.entries).toHaveLength(2);
+  });
+
+  test("Forward over the entry of a closed dialog skips it forward", () => {
+    openLayer("dialog", () => undefined);
+    goTo("#/chats/b");
+    browser.back();
+    browser.arrive();
+    browser.forward();
+    expect(browser.steps).toEqual([1]);
+    browser.arrive();
+    expect(browser.current.hash).toBe("#/chats/b");
+  });
+
+  test("with an unsaved change, Back to the chat list does not open it", () => {
+    let restored = 0;
+    const stop = restoreLayer("list", () => (restored += 1));
+    openLayer("list", () => undefined);
+    goTo("#/chats/b");
+    holds.push(holdLeave(null));
+    browser.back();
+    expect(restored).toBe(0);
+    stop();
+  });
+
   test("Back to the entry of a closed dialog skips it", () => {
     openLayer("dialog", () => undefined);
     goTo("#/chats/b");
@@ -268,9 +325,27 @@ describe("goTo and goUp", () => {
     expect(browser.current.hash).toBe("#/chats");
   });
 
+  test("leaveFor steps back to the page above when the person came from there", () => {
+    goTo("#/projects/p");
+    goTo("#/projects/p/chat/c");
+    let replaced = 0;
+    leaveFor("#/projects/p", () => (replaced += 1));
+    expect(browser.steps).toEqual([-1]);
+    expect(replaced).toBe(0);
+  });
+
+  test("leaveFor gives this entry the address above otherwise, so Back never returns to the page that is gone", () => {
+    goTo("#/projects/p/chat/c");
+    let replaced = 0;
+    leaveFor("#/projects/p", () => (replaced += 1));
+    expect(browser.entries.map((entry) => entry.hash)).toEqual(["#/chats", "#/projects/p"]);
+    expect(replaced).toBe(1);
+  });
+
   test("replaceAddress changes the address of this entry and keeps its state", () => {
     replaceAddress("#/chats/a");
-    expect(browser.entries).toEqual([{ hash: "#/chats/a", state: { evaPlace: 0 } }]);
+    expect(browser.entries).toHaveLength(1);
+    expect(browser.current).toMatchObject({ hash: "#/chats/a", state: { evaPlace: 0 } });
   });
 });
 
@@ -278,6 +353,6 @@ describe("watchLayers", () => {
   test("a reload drops the layers of the entry, because no layer is open after it", () => {
     browser.entries[0] = { hash: "#/chats", state: { evaPlace: 0, evaLayers: ["dialog"] } };
     watchLayers(browser);
-    expect(browser.current.state).toEqual({ evaPlace: 0, evaLayers: [] });
+    expect(browser.current.state).toMatchObject({ evaPlace: 0, evaLayers: [] });
   });
 });

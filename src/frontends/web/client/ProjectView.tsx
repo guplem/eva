@@ -33,8 +33,8 @@ import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 import { countOf, projectSummary, shownTags, statusPill, tagsByUse } from "./project-format.ts";
 import { ListSkeleton } from "./Loading.tsx";
-import { goTo, goUp, replaceAddress } from "./back-layers.ts";
-import { projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
+import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
+import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
 
 interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
@@ -111,7 +111,10 @@ export function ProjectView({
   // The address names the page, so Back goes from a chat to its project, and from there to the list.
   const [route, setRoute] = useState<ProjectRoute>(() => projectRouteOf(window.location.hash));
   useEffect(() => {
-    const onHashChange = (): void => setRoute(projectRouteOf(window.location.hash));
+    // A Telegram link names no page of Projects: the link effect opens its chat, with no flash of the list.
+    const onHashChange = (): void => {
+      if (linkedChatIdOf(window.location.hash) === null) setRoute(projectRouteOf(window.location.hash));
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -230,24 +233,34 @@ export function ProjectView({
         project.clones.includes(session.clone),
     ).length;
 
+  /** The project whose page must make a new clone once it shows. Stay on unsaved changes makes none. */
+  const cloneOnOpen = useRef<Project | null>(null);
+  const newCloneRef = useRef<(project: Project) => Promise<void>>(() => Promise.resolve());
   const show = useCallback((next: Page | null): void => {
     setError(null);
     setPage(next);
     // A chat may have changed files or the branch, so the clone cards ask git again.
     if (next?.kind === "project") setCloneVersion((version) => version + 1);
+    const cloneFor = cloneOnOpen.current;
+    cloneOnOpen.current = null;
+    if (next?.kind === "project" && cloneFor?.id === next.project.id) void newCloneRef.current(cloneFor);
   }, []);
+  const showNow = (next: Page | null): void => {
+    opening.current = null;
+    show(next);
+  };
 
   // The details page can hold unsaved changes: the unsaved changes guard asks before the address changes.
   const open = (next: Page | null): void => {
     opening.current = next;
-    goTo(projectAddressOf(routeOfPage(next)), () => show(next));
+    goTo(projectAddressOf(routeOfPage(next)), () => showNow(next));
     onNavigate();
   };
 
   /** Opens the page above, such as the project of a chat. It steps back when the person came from there. */
   const openUp = (next: Page | null): void => {
     opening.current = next;
-    goUp(projectAddressOf(routeOfPage(next)), () => show(next));
+    goUp(projectAddressOf(routeOfPage(next)), () => showNow(next));
     onNavigate();
   };
 
@@ -270,7 +283,9 @@ export function ProjectView({
       return undefined;
     }
     if (tapped !== null && projectAddressOf(routeOfPage(tapped)) === routeAddress) {
-      show(tapped);
+      // A tap can wait behind an unsaved changes question, and a save meanwhile can change the project.
+      const fresh = pageRef.current?.project;
+      show(fresh?.id === tapped.project.id ? { ...tapped, project: fresh } : tapped);
       return undefined;
     }
     let current = true;
@@ -400,6 +415,7 @@ export function ProjectView({
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
+  newCloneRef.current = newClone;
 
   /** Rethrows, so the question stays open after a refusal. */
   const deleteClone = async (project: Project, clone: CloneDetails): Promise<void> => {
@@ -449,11 +465,11 @@ export function ProjectView({
   }, [shownId]);
   const chatIsGone = page?.kind === "chat" && chat === undefined && shownChatId === page.chatId;
   const goneProject = chatIsGone ? page.project : null;
-  // Only a newly gone chat moves the page, so the effect reads the newest `openUp` through a ref.
-  const openUpRef = useRef(openUp);
-  openUpRef.current = openUp;
   useEffect(() => {
-    if (goneProject !== null) openUpRef.current({ kind: "project", project: goneProject });
+    if (goneProject === null) return;
+    const above: Page = { kind: "project", project: goneProject };
+    opening.current = above;
+    leaveFor(projectAddressOf(routeOfPage(above)), () => setRoute(routeOfPage(above)));
   }, [goneProject]);
 
   const tree = chat === undefined ? [] : chatTree(chat, sessions);
@@ -552,8 +568,8 @@ export function ProjectView({
               isOpen={page?.project.id === project.id}
               onOpen={(kind) => open({ kind, project })}
               onNewClone={() => {
+                cloneOnOpen.current = project;
                 open({ kind: "project", project });
-                void newClone(project);
               }}
             />
           ))}

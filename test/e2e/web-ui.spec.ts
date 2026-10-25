@@ -1693,7 +1693,7 @@ test("Back closes a menu or a dialog first, and the page stays", async ({ page }
 
   // A dialog that closes with its own button leaves no entry, so one Back leaves the chat.
   await chooseFromMore(page, "Delete chat");
-  await question.getByRole("button", { name: "Cancel" }).click();
+  await question.getByRole("button", { name: "Keep" }).click();
   await expect(question).toHaveCount(0);
   await page.goBack();
   await expect(page).not.toHaveURL(address);
@@ -4277,13 +4277,12 @@ test.describe("on a phone", () => {
     await tabs.getByRole("button", { name: "Projects", exact: true }).click();
     // With no project open, the project list is the page.
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
-    // With a chat open, the list stays one tap away in its drawer.
+    // A chat of a clone has an arrow to its project, and the project page has one to the list.
     await openExampleApp(page);
     await newProjectChat(page);
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
-    const menu = page.getByRole("button", { name: "Show the list" });
-    await expect(menu).toBeVisible();
-    await menu.click();
+    await page.getByRole("button", { name: "Back to the project" }).click();
+    await page.getByRole("button", { name: "Back to the list" }).click();
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
   });
 
@@ -4470,6 +4469,8 @@ test("a page with unsaved changes asks to save or discard them before the person
   await openExampleApp(page);
   await page.getByRole("button", { name: "Details", exact: true }).click();
   const title = page.getByLabel("Title");
+  const details = /#\/projects\/2025-03-02-1015-example-app\/details$/;
+  await expect(page).toHaveURL(details);
   await title.fill(`Unsaved ${run}`);
   await title.blur();
 
@@ -4484,7 +4485,7 @@ test("a page with unsaved changes asks to save or discard them before the person
   await title.focus();
   await page.goBack();
   await expect(dialog).toBeVisible();
-  await expect(page).toHaveURL(/#\/projects$/);
+  await expect(page).toHaveURL(details);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(title).toHaveValue(`Unsaved ${run}`);
@@ -4495,12 +4496,12 @@ test("a page with unsaved changes asks to save or discard them before the person
   await mainNav.getByRole("button", { name: /^Files/ }).click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Stay" }).click();
-  await expect(page).toHaveURL(/#\/projects$/);
+  await expect(page).toHaveURL(details);
   // So Back asks again, and Discard goes to the page before, with no save.
   await page.goBack();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Discard and leave" }).click();
-  await expect(page).not.toHaveURL(/#\/projects$/);
+  await expect(page).not.toHaveURL(details);
   await openExampleApp(page);
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByLabel("Title")).toHaveValue("Example app");
@@ -4540,9 +4541,13 @@ test("a dialog with typed text asks before it closes, and a create offers no sav
   await question.getByRole("button", { name: "Stay" }).click();
   await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
 
-  // The back button under the dialog asks about leaving the page.
+  // The back button closes the dialog first, so it asks about the dialog. Stay keeps it for the next Back.
   await page.goBack();
-  await expect(question.getByRole("button", { name: "Discard and leave" })).toBeVisible();
+  await expect(question.getByRole("button", { name: "Discard and close" })).toBeVisible();
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
+  await page.goBack();
+  await expect(question.getByRole("button", { name: "Discard and close" })).toBeVisible();
   await question.getByRole("button", { name: "Stay" }).click();
   await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
 

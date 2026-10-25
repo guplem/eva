@@ -23,9 +23,9 @@ import { BackButton } from "./MainNav.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
-import { assistantChatAddressOf, assistantChatIdOf } from "./navigation.ts";
+import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf } from "./navigation.ts";
 import { goTo, replaceAddress } from "./back-layers.ts";
-import { useBackLayer, useRestoreLayer } from "./back-layer-hook.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 interface AssistantViewProps {
   readonly sessions: readonly ListedSession[];
@@ -73,7 +73,10 @@ export function AssistantView({
   // The address names the open chat, so Back goes to the chat or the list before.
   const [selectedId, setSelectedId] = useState(() => assistantChatIdOf(window.location.hash));
   useEffect(() => {
-    const onHashChange = (): void => setSelectedId(assistantChatIdOf(window.location.hash));
+    // A Telegram link names no chat of Chats: the link effect opens its chat, with no flash of another.
+    const onHashChange = (): void => {
+      if (linkedChatIdOf(window.location.hash) === null) setSelectedId(assistantChatIdOf(window.location.hash));
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -82,7 +85,8 @@ export function AssistantView({
   const [query, setQuery] = useState("");
   /** An archived chat leaves the page, so the list opens another one. */
   const afterArchive = async (chat: SessionRecord): Promise<void> => {
-    if (chat.archived && chat.id === selectedId) {
+    // The address, not this render: the person may have opened another chat while the request ran.
+    if (chat.archived && assistantChatIdOf(window.location.hash) === chat.id) {
       setSelectedId(null);
       replaceAddress(assistantChatAddressOf(null));
     }
@@ -95,8 +99,12 @@ export function AssistantView({
     setQuery("");
   };
   // Back from the archived chats shows the chats again, and Back from an archived chat shows the archived chats.
-  useBackLayer(showArchived, () => showList(false), "archived");
-  useRestoreLayer("archived", () => setShowArchived(true));
+  useBackLayer(
+    showArchived,
+    () => showList(false),
+    "archived",
+    () => setShowArchived(true),
+  );
   // The turn start lists the new chat, and the chat then opens before its turn is stored.
   const [firstMessage, setFirstMessage] = useState<SentMessage | null>(null);
   const shown = chats.filter((chat) => matchesSearch(chat.title, query));

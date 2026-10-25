@@ -56,7 +56,7 @@ import { AppSkeleton } from "./Loading.tsx";
 import { SpecialDayProvider } from "./FestiveDay.tsx";
 import { useLocationSharing } from "./LocationCard.tsx";
 import { goTo, layersOfEntry, replaceAddress } from "./back-layers.ts";
-import { useBackLayer, useRestoreLayer } from "./back-layer-hook.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { startPushPresence } from "./push-presence.ts";
 import { browserPresencePage } from "./PushCard.tsx";
@@ -164,8 +164,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   // On a phone the list covers the page, so Back closes it first. Back from a chat that the list
   // opened shows the list again.
-  useBackLayer(sidebarOpen && isPhone, () => setSidebarOpen(false), "list");
-  useRestoreLayer("list", isPhone ? () => setSidebarOpen(true) : null);
+  useBackLayer(
+    sidebarOpen && isPhone,
+    () => setSidebarOpen(false),
+    "list",
+    isPhone ? () => setSidebarOpen(true) : undefined,
+  );
   useBackLayer(conflictsOpen, () => setConflictsOpen(false));
 
   /** A tap in the main navigation. A tap on Chats while Chats is open gives the person a next step. */

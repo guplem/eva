@@ -9,3 +9,4 @@
 - Turn the vault sync off in a test that runs Assistant turns but does not check the sync: each turn runs git, which is slow on Windows.
 - Coverage is per file (90% lines, 80% functions). Set class fields in the constructor, not in field initializers. When no test runs a call to `AbortSignal.timeout`, the coverage of its whole file can drop to 0%. Add a base-URL seam, as `src/core/checks.ts` does, so a test runs the call against a fake server.
 - To run `bun run test:e2e` in two checkouts at once, set `EVA_E2E_PORT=auto` and `EVA_E2E_GALLERY_PORT=auto` in each.
+- The e2e tests share one demo server, and each chat title shows as a button in the list. `getByRole` matches part of a name, with any case. So a message such as "send the file" makes a later `{ name: "Send" }` find two buttons. Give a new demo message words that no button name holds.

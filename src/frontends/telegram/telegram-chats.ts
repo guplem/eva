@@ -4,7 +4,7 @@
  * Telegram from any front end.
  */
 import type { Eva } from "../../core/eva.ts";
-import { extractFileMarkers } from "../../core/files/vault-files.ts";
+import { extractFileMarkers } from "../../shared/file-markers.ts";
 import type { SessionRecord } from "../../core/sessions/session-store.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import type { SessionEvent } from "../../shared/events.ts";

@@ -156,12 +156,11 @@ async function style(
 /** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
-      "Nothing runs in the background.",
-    );
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("No background task runs now.");
   }
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  await expect(dialog).toContainText("This answer started these tasks");
   await expect(dialog).toContainText("Search the notes");
   await expect(dialog).toContainText("Ended");
   await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
@@ -186,6 +185,34 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await page.getByLabel(/Token/).fill("wrong");
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByRole("alert")).toHaveText("This token is not valid.");
+});
+
+test("Assistant mode: the task dialog of an answer opens the Project chat of its project work (#571)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Please give work to the example app");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText("Started the work.");
+  const askingChat = page.url();
+  await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  const work = dialog.getByRole("listitem").filter({ hasText: "Fix the login bug." });
+  await expect(work).toContainText("Started");
+  await work.getByRole("link", { name: "Open chat" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".main-header .sub")).toContainText("Example app › clone-");
+  // The first chat in a new clone can ask to trust the repository. A question that waits would stay for later tests.
+  const answer = page.locator(".message.answer").first();
+  const deny = page.getByRole("button", { name: "Deny" });
+  await expect(answer.or(deny).first()).toBeVisible();
+  if (await deny.isVisible()) await deny.click();
+  await expect(answer).toContainText("Fix the login bug.");
+  // The report of the work starts a turn in the asking chat. A later test must not share the vault sync with it.
+  await page.goto(askingChat);
+  await expect(page.locator(".message.answer").nth(1)).toContainText("Fix the login bug.");
 });
 
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
@@ -825,6 +852,21 @@ test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) =
   await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
 });
 
+test("a file that an answer sends shows as a download button, not as a marker (#581)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("hand me the parcel");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.locator(".answer-body")).toHaveText("Here are the trips.");
+  const button = answer.getByRole("button", { name: "Download 2027-trips.md" });
+  await expect(button).toBeVisible();
+  const download = page.waitForEvent("download");
+  await button.click();
+  expect((await download).suggestedFilename()).toBe("2027-trips.md");
+});
+
 test("a usage warning shows under the chat after its answer (issue #67)", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);
@@ -1273,9 +1315,7 @@ test("Project mode: search, a new clone with each repository and its branch, and
   await page.getByRole("button", { name: "Example app", exact: true }).click();
   await newProjectChat(page);
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
-      "Nothing runs in the background.",
-    );
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("No background task runs now.");
   }
 });
 

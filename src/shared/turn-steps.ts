@@ -3,7 +3,7 @@
  * session manager stores them and the web app builds them live, both with this one reducer,
  * so a running answer and a stored answer show the same badges.
  */
-import type { EngineEventPayload } from "./events.ts";
+import type { CoreEventPayload, EngineEventPayload } from "./events.ts";
 
 /** Stored names: renaming a kind needs a tolerant read of the old one. The session store reads this list. */
 export const stepKinds = ["message", "command", "tool", "task"] as const;
@@ -19,7 +19,11 @@ export interface TurnStep {
   readonly input?: string;
   /** The whole output of a tool, for the step dialog. */
   readonly output?: string;
+  /** The chat that a task runs in, such as the Project chat of project work, so the answer can open it. */
+  readonly chatId?: string | undefined;
 }
+
+type ProjectWorkStarted = Extract<CoreEventPayload, { kind: "project_work_started" }>;
 
 /** The input and output of a step. */
 export interface StepDetail {
@@ -40,8 +44,16 @@ const maxStoredSteps = 100;
  * input and output stay whole, because the core already bounds them. Call it with redacted
  * payloads only: a cut before the redaction could split a secret that the redactor then misses (lesson 95).
  */
-export function addStep(steps: readonly TurnStep[], payload: EngineEventPayload): readonly TurnStep[] {
+export function addStep(
+  steps: readonly TurnStep[],
+  payload: EngineEventPayload | ProjectWorkStarted,
+): readonly TurnStep[] {
   switch (payload.kind) {
+    case "project_work_started": {
+      const chatId = payload.projectSessionId;
+      const text = shortened(`${payload.projectId}: ${payload.request}`);
+      return [...steps, { kind: "task", text, isError: false, id: chatId, chatId }];
+    }
     case "text":
       return [...steps, { kind: "message", text: payload.text, isError: false, id: payload.messageId }];
     case "tool_started": {

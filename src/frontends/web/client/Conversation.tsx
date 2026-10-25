@@ -22,6 +22,8 @@ import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBr
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
 import {
+  answerFiles,
+  wholeAnswerAddsText,
   composerPlaceholder,
   elapsedText,
   foldSteps,
@@ -37,6 +39,7 @@ import {
   type PendingMessage,
 } from "./conversation-parts.ts";
 import { CopyButton } from "./CopyButton.tsx";
+import { DownloadButton } from "./DownloadButton.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
@@ -49,6 +52,7 @@ import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 import { RecordingShelf } from "./voice-notes.ts";
 import { toWebHtml } from "./web-format.ts";
+import { shownAnswerText } from "../../../shared/file-markers.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 
@@ -460,6 +464,8 @@ function Branch({
         <TasksDialog
           tasks={tasksOfTurn(shownTasks.turn.steps, shownTasks.session.id)}
           total={shownTasks.turn.taskCount}
+          // The chat details show only the tasks that run now, so this list says why its tasks ended.
+          note="This answer started these tasks, such as a subagent, a long command or a Project chat. Only a Project chat keeps running after the answer."
           // An older answer comes with no steps, to keep the session list small.
           empty="Eva no longer keeps the details of these tasks."
           onClose={closeTasks}
@@ -631,10 +637,13 @@ function AnswerBody({
 }): ReactElement {
   const [showWhole, setShowWhole] = useState(false);
   const { listed, lastMessage } = foldSteps(steps);
-  const canShowWhole = lastMessage !== undefined && wholeAnswer !== lastMessage.text;
-  const body = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  const canShowWhole = lastMessage !== undefined && wholeAnswerAddsText(wholeAnswer, lastMessage.text);
+  const fullBody = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
   // Each streamed token and each clock tick render every answer, so parse only a changed text.
+  const body = useMemo(() => shownAnswerText(fullBody, live), [fullBody, live]);
   const html = useMemo(() => toWebHtml(body), [body]);
+  // A running turn can still change its files, so the buttons come with the stored turn, as in Telegram.
+  const files = useMemo(() => (live ? [] : answerFiles(wholeAnswer)), [live, wholeAnswer]);
   return (
     <>
       <StepFold
@@ -645,6 +654,13 @@ function AnswerBody({
         {...(sessionId === undefined ? {} : { sessionId })}
       />
       {body !== "" && <MarkdownBody html={html} className="answer-body" copy={!live} />}
+      {files.length > 0 && (
+        <div className="answer-files">
+          {files.map((file) => (
+            <DownloadButton key={file.path} path={file.path} folder={false} label={file.name} />
+          ))}
+        </div>
+      )}
       {canShowWhole && (
         <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
           {showWhole ? "Show the last message only" : "Show the whole answer"}

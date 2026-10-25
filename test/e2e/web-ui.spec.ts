@@ -4143,6 +4143,127 @@ test("Settings: the Versions card shows Update only for a tool with a newer vers
   await expect(page.getByRole("region", { name: "Claude Code update" })).toHaveCount(0);
 });
 
+test("Settings: Update all installs each clear update in turn, then opens the Eva version dialog", async ({ page }) => {
+  const status = {
+    kind: "executable",
+    frequency: "daily",
+    install: "minor",
+    phase: "idle",
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    heldBack: null,
+    releases: [
+      { version: "0.3.0", notes: "", level: "minor", summary: "", headline: "Voice notes.", publishedAt: null },
+    ],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+    failingSince: null,
+  };
+  await page.route("**/api/update/check", async (route) => {
+    await route.fulfill({ json: status });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: status });
+  });
+  const posts: unknown[] = [];
+  await page.route("**/api/versions/latest", async (route) => {
+    await route.fulfill({ json: [{ program: "pi", latest: "1.4.0" }] });
+  });
+  await page.route("**/api/versions", async (route) => {
+    const tool = (program: string, version: string, tooOld = false): object => ({
+      program,
+      feature: "a test",
+      version,
+      installable: true,
+      tooOld,
+    });
+    await route.fulfill({
+      json: {
+        eva: "0.2.0",
+        // Eva cannot tell whether gh is old, so Update all leaves it.
+        tools: [tool("pi", "1.3.0"), tool("uv", "0.1.0", true), tool("gh", "2.62.0")],
+        voiceNotes: { missing: ["ffmpeg"], on: false },
+      },
+    });
+  });
+  await page.route("**/api/tools/install", async (route) => {
+    const body = route.request().postDataJSON() as { program: string };
+    posts.push(body.program);
+    await route.fulfill({
+      json: body.program === "uv" ? { ok: false, message: "uv failed." } : { ok: true, message: "Updated pi." },
+    });
+  });
+  await page.route("**/api/voice-notes/install", async (route) => {
+    posts.push("voice notes");
+    await route.fulfill({ json: { ok: true, message: "Installed voice notes." } });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await card.getByRole("button", { name: "Update all" }).click();
+  const dialog = page.getByRole("dialog", { name: "Update to a version" });
+  await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeChecked();
+  expect(posts).toEqual(["pi", "uv", "voice notes"]);
+  // The note joins every result, so the failed install stays in it.
+  await expect(card.getByRole("status").filter({ hasText: "uv failed." })).toContainText("Installed voice notes.");
+  await expect(card.getByRole("status").filter({ hasText: "uv failed." })).toHaveClass(/warning/);
+});
+
+test("Settings: Update all opens no version dialog when Eva started her own update meanwhile", async ({ page }) => {
+  const idle = {
+    kind: "executable",
+    frequency: "hourly",
+    install: "minor",
+    phase: "idle",
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    heldBack: null,
+    releases: [
+      { version: "0.3.0", notes: "", level: "minor", summary: "", headline: "Voice notes.", publishedAt: null },
+    ],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+    failingSince: null,
+  };
+  // The automatic update starts while the tools install.
+  let installed = false;
+  const status = (): object => (installed ? { ...idle, phase: "updating" } : idle);
+  await page.route("**/api/update/check", async (route) => {
+    await route.fulfill({ json: status() });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: status() });
+  });
+  await page.route("**/api/versions/latest", async (route) => {
+    await route.fulfill({ json: [{ program: "pi", latest: "1.4.0" }] });
+  });
+  await page.route("**/api/versions", async (route) => {
+    await route.fulfill({
+      json: {
+        eva: "0.2.0",
+        tools: [{ program: "pi", feature: "a test", version: "1.3.0", installable: true, tooOld: false }],
+        voiceNotes: { missing: [], on: true },
+      },
+    });
+  });
+  await page.route("**/api/tools/install", async (route) => {
+    installed = true;
+    await route.fulfill({ json: { ok: true, message: "Updated pi." } });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await card.getByRole("button", { name: "Update all" }).click();
+  await expect(card.getByRole("status").filter({ hasText: "Updated pi." })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Update to a version" })).toHaveCount(0);
+});
+
 test("Settings: the claude Update button runs claude update and shows its result", async ({ page }) => {
   const posts: string[] = [];
   let finished = false;

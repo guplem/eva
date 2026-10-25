@@ -15,6 +15,8 @@ interface VisorProps {
   readonly followPointer?: boolean;
   /** An unread error: the crosses glow red and pulse (#566). */
   readonly alarm?: boolean;
+  /** The eyes take the Project colour of Settings > Appearance, as beside an answer in a Project chat. */
+  readonly projectEyes?: boolean;
 }
 
 /**
@@ -28,6 +30,7 @@ export function Visor({
   festive = null,
   followPointer = false,
   alarm = false,
+  projectEyes = false,
 }: VisorProps): ReactElement {
   const [rotatingFace, setRotatingFace] = useState<Face>("searching");
   const visor = useRef<HTMLSpanElement>(null);
@@ -47,7 +50,7 @@ export function Visor({
   return (
     <span
       ref={visor}
-      className={`${visorClassName(rotate ? rotatingFace : face, size)}${alarm ? " alarm" : ""}`}
+      className={`${visorClassName(rotate ? rotatingFace : face, size)}${alarm ? " alarm" : ""}${projectEyes ? " project-eyes" : ""}`}
       aria-hidden="true"
     >
       <span className="eyes">

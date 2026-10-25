@@ -61,13 +61,10 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
               <h1>Notifications</h1>
               <div className="center-subtitle">What Eva needs from you, and what she did by herself.</div>
             </div>
-            <button
-              className="icon-button center-settings"
-              aria-label="Notification settings"
-              data-tooltip="Notification settings"
-              onClick={props.onOpenSettings}
-            >
+            {/* A phone has no Settings tab, so this button is its one way to Settings: keep the word (#566). */}
+            <button className="ghost center-settings" onClick={props.onOpenSettings}>
               <Icon name="gear" />
+              Settings
             </button>
           </div>
           <div className="center-toolbar">

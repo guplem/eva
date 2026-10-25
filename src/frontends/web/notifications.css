@@ -19,7 +19,7 @@
 }
 
 .center-settings {
-  color: var(--muted);
+  flex: none;
 }
 
 /* "Mark all as read" sits at the right of the filters, and goes under them when the row is full. */

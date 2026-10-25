@@ -248,18 +248,15 @@
 }
 
 /* Bubbles */
+/* The visor sits at the bottom, next to the bubble's tail, as a speaker sits below a comic bubble. */
 .msg {
   display: flex;
   gap: 12px;
-  align-items: flex-start;
+  align-items: flex-end;
 }
 
 .msg.me {
   justify-content: flex-end;
-}
-
-.msg > .mk {
-  margin-top: 2px;
 }
 
 .message {

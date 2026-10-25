@@ -122,10 +122,13 @@ async function rightClickInView(locator: Locator): Promise<void> {
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
 async function openSettings(page: Page, section?: string): Promise<void> {
   // Only the main navigation: a chat or a project in the list may also have "Settings" in its name.
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("button", { name: /^Settings/ })
-    .click();
+  const nav = page.getByRole("navigation", { name: "Main" });
+  if (test.info().project.name === "desktop") await nav.getByRole("button", { name: /^Settings/ }).click();
+  else {
+    // On a phone, the visor takes the place of Settings, and its notification center links to Settings (#566).
+    await nav.locator(".main-nav-visor").click();
+    await page.locator(".notification-center").getByRole("button", { name: "Settings", exact: true }).click();
+  }
   if (section === "Setup") await page.getByRole("button", { name: "See every step" }).click();
   else if (section !== undefined) await page.locator(".section-card", { hasText: section }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(section ?? "Settings");
@@ -663,7 +666,7 @@ test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram
   // The link opens once: the person's own choice then stays, also after another screen.
   await openList(page);
   await page.locator(".sidebar .list-item", { hasText: second }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await openSettings(page);
   await page.getByRole("button", { name: "Chats" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(second);
   expect(new URL(page.url()).hash).toBe("#/chats");
@@ -1726,7 +1729,8 @@ test("Settings: the back arrow returns to the page before, so Back then leaves S
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
   await page.goBack();
-  expect(page.url()).toBe(before);
+  // On a phone, Settings opens from the notification center, so Back returns there (#566).
+  expect(page.url()).toBe(test.info().project.name === "desktop" ? before : `${before}#/notifications`);
 });
 
 test("on a short phone, a long project list scrolls, and no card cuts its text", async ({ page }) => {
@@ -2306,9 +2310,11 @@ test("device login: an expired request looks skeptical, and Ask again asks for a
 test("Settings: the progress list leads to each step's page, which keeps the last Test result", async ({ page }) => {
   await logIn(page);
   // The demo has no allowed device yet, so at least that step is left.
-  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Settings/ })).toContainText(
-    "to set up",
-  );
+  const nav = page.getByRole("navigation", { name: "Main" });
+  if (test.info().project.name === "desktop")
+    await expect(nav.getByRole("button", { name: /^Settings/ })).toContainText("to set up");
+  // On a phone, Settings has no tab: the visor's dot says that something waits (#566).
+  else await expect(nav.getByRole("button", { name: /Something new waits/ })).toBeVisible();
   await openSettings(page);
   await expect(page.getByRole("region", { name: "Setup" })).toContainText("Finish setting up Eva");
   await openSettings(page, "Setup");
@@ -2513,7 +2519,7 @@ test("the main navigation opens each destination at its own address, and the bac
   for (const [name, address] of [
     ["Projects", "#/projects"],
     ["Schedules", "#/schedules"],
-    ["Settings", "#/settings"],
+    ["Eva: ", "#/notifications"],
     ["Chats", "#/chats"],
   ] as const) {
     await nav.getByRole("button", { name }).click();
@@ -2522,16 +2528,18 @@ test("the main navigation opens each destination at its own address, and the bac
     expect(new URL(page.url()).hash).toBe(address);
   }
   await page.goBack();
-  await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("region", { name: "Setup" })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Eva: " })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
   // A reload keeps the destination.
   await page.reload();
   await expect(nav.getByRole("button", { name: "Schedules" })).toHaveAttribute("aria-current", "page");
-  // A Settings section address opens Settings.
+  // A Settings section address opens Settings. A phone has no Settings tab: the visor takes its place (#566).
   await page.goto("/#/settings/appearance");
-  await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  if (test.info().project.name === "desktop")
+    await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  else await expect(nav.getByRole("button", { name: /^Settings/ })).toHaveCount(0);
 });
 
 test("the AI engines page lists what Eva may do, with the person's own rules apart (#445)", async ({ page }) => {
@@ -2555,9 +2563,9 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   await logIn(page);
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.getByRole("button", { name: "Chats" })).toContainText("1 approval waits");
-  // Settings stays the last destination, so the phone tab bar keeps its order.
-  await expect(nav.getByRole("button").last()).toHaveAccessibleName(/^Settings/);
   if (test.info().project.name === "desktop") {
+    // Settings stays the last destination of the rail. A phone shows the visor in its place (#566).
+    await expect(nav.getByRole("button").last()).toHaveAccessibleName(/^Settings/);
     const rail = await nav.boundingBox();
     const settings = await nav.getByRole("button", { name: /^Settings/ }).boundingBox();
     const schedules = await nav.getByRole("button", { name: "Schedules" }).boundingBox();
@@ -2568,9 +2576,9 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   }
 });
 
-test("the nav visor names the approval that waits, and a tap plays a face that ends", async ({ page }) => {
-  // A phone hides the visor: its bottom bar has no room for it.
-  test.skip(test.info().project.name !== "desktop", "Only a computer shows the nav visor.");
+test("the nav visor names the approval that waits, and a tap opens the notification center", async ({ page }) => {
+  // The tooltip shows on hover, which a phone does not have.
+  test.skip(test.info().project.name !== "desktop", "Only a computer shows the tooltip.");
   await page.route("**/api/approvals", (route) =>
     route.fulfill({ json: [{ requestId: "r1", sessionId: "s1", toolName: "Bash", summary: "ls" }] }),
   );
@@ -2583,8 +2591,8 @@ test("the nav visor names the approval that waits, and a tap plays a face that e
   await visorButton.hover();
   await expect(page.getByRole("tooltip")).toHaveText("1 approval waits for you");
   await visorButton.click();
-  await expect(visor).not.toHaveClass(/e-firm/);
-  await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
+  await expect(page).toHaveURL(/#\/notifications$/);
+  await expect(visorButton).toHaveAttribute("aria-current", "page");
 });
 
 test("the Settings home page shows Eva's status", async ({ page }) => {
@@ -3138,25 +3146,45 @@ async function routeProblems(
   });
 }
 
-test("open problems show in a banner at the top, each with the button that fixes it", async ({ page }) => {
+/** Opens the notification center behind the visor (#566). */
+async function openCenter(page: Page): Promise<void> {
+  await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Notifications");
+}
+
+test("the visor counts the open problems, and its center lists each with the button that fixes it", async ({
+  page,
+}) => {
   await routeProblems(page, [
     { key: "update", level: "error", message: "The update install failed." },
     { key: "schedule:lunch", level: "warn", message: "The schedule Lunch failed." },
   ]);
   await logIn(page);
-  const banner = page.getByRole("region", { name: "Problems" });
-  await expect(banner).toContainText("The update install failed.");
-  await banner.getByRole("button", { name: "Open schedules" }).click();
+  const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
+  await expect(visor).toHaveAccessibleName("Eva: 2 problems need you");
+  await expect(visor.locator(".nav-badge")).toHaveText("2");
+  // An unread error makes the crosses glow red and pulse.
+  await expect(visor.locator(".mk")).toHaveClass(/alarm/);
+  // No page shows the problems as a banner anymore.
+  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+  await openCenter(page);
+  await expect(visor).toHaveAttribute("aria-current", "page");
+  // The person already looks, so the error stays still.
+  await expect(visor.locator(".mk")).not.toHaveClass(/alarm/);
+  const needs = page.getByRole("region", { name: "Problems" });
+  await expect(needs).toContainText("The update install failed.");
+  await needs.getByRole("button", { name: "Open schedules" }).click();
   await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible();
+  await openCenter(page);
   await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Open Settings" }).click();
-  await expect(
-    page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Settings/ }),
-  ).toHaveAttribute("aria-current", "page");
+  await expect(page).toHaveURL(/#\/settings$/);
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("the person hides a notice, and the problems that are hidden get none (#541)", async ({ page }) => {
+test("the person marks a problem as read: it stays listed, and the visor stops counting it (#541, #566)", async ({
+  page,
+}) => {
   let hidden = false;
   const problems = (): { key: string; level: "warn" | "error"; message: string; hidden: boolean }[] => [
     { key: "update", level: "warn", message: "Eva could not check for updates for 2 hours.", hidden },
@@ -3175,30 +3203,76 @@ test("the person hides a notice, and the problems that are hidden get none (#541
     await route.fulfill({ json: { ...status, problemDetails: problems() } });
   });
   await logIn(page);
-  const banner = page.getByRole("region", { name: "Problems" });
-  await expect(banner).toContainText("Eva could not check for updates");
-  await expect(banner).not.toContainText("The schedule Lunch failed.");
-  await banner.getByRole("button", { name: "Hide this notice" }).click();
-  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+  const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
+  await expect(visor).toHaveAccessibleName("Eva: 1 problem needs you");
+  await openCenter(page);
+  const needs = page.getByRole("region", { name: "Problems" });
+  await expect(needs).toContainText("Eva could not check for updates");
+  await expect(needs).toContainText("The schedule Lunch failed.");
+  await needs.getByRole("button", { name: "Mark as read" }).click();
+  await expect(needs.getByRole("button", { name: "Mark as read" })).toHaveCount(0);
+  await expect(needs).toContainText("Eva could not check for updates");
+  await expect(visor).toHaveAccessibleName(/^Eva: 2 open problems/);
+  await expect(visor.locator(".nav-badge")).toHaveCount(0);
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("a hide that fails brings the notice back and says why", async ({ page }) => {
+test("a mark as read that fails brings the problem back as unread and says why", async ({ page }) => {
   await routeProblems(page, [{ key: "update", level: "warn", message: "Eva could not check for updates." }]);
   await page.route("**/api/problems/hide", (route) =>
     route.fulfill({ status: 500, json: { error: "Eva could not save the hidden problems." } }),
   );
   await logIn(page);
-  const banner = page.getByRole("region", { name: "Problems" });
-  await banner.getByRole("button", { name: "Hide this notice" }).click();
+  await openCenter(page);
+  const needs = page.getByRole("region", { name: "Problems" });
+  await needs.getByRole("button", { name: "Mark as read" }).click();
   await expect(page.getByRole("alert")).toContainText("Eva could not save the hidden problems.");
-  await expect(page.getByRole("region", { name: "Problems" })).toContainText("Eva could not check for updates.");
+  await expect(needs.getByRole("button", { name: "Mark as read" })).toBeVisible();
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("a note conflict opens from its banner, and the last pick closes it", async ({ page }) => {
+test("the center lists the history by day, and marks an entry or every entry as read (#566)", async ({ page }) => {
+  const at = new Date().toISOString();
+  let entries = [
+    { seq: 1, key: "update", level: "news", message: "Eva updated to 9.9.9.", at, read: false },
+    { seq: 2, key: "telegram_poll", level: "resolved", message: "Telegram works again.", at, read: false },
+  ];
+  // With no setup step left, only the history lights the dot.
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, setupMissing: 0 } });
+  });
+  await page.route("**/api/notifications", (route) => route.fulfill({ json: { entries } }));
+  const reads: unknown[] = [];
+  await page.route("**/api/notifications/read", async (route) => {
+    const body = route.request().postDataJSON() as { seqs?: number[]; all?: true };
+    reads.push(body);
+    entries = entries.map((entry) =>
+      body.all === true || body.seqs?.includes(entry.seq) ? { ...entry, read: true } : entry,
+    );
+    await route.fulfill({ json: { entries } });
+  });
+  await logIn(page);
+  const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
+  await expect(visor.locator(".nav-dot")).toBeVisible();
+  await openCenter(page);
+  const earlier = page.getByRole("region", { name: "Earlier" });
+  await expect(earlier).toContainText("Today");
+  await expect(earlier.getByRole("button").first()).toContainText("Telegram works again.");
+  await earlier.getByRole("button", { name: /Eva updated to 9\.9\.9/ }).click();
+  await expect(earlier.getByRole("button", { name: /Eva updated/ }).locator(".unread-mark")).toHaveCount(0);
+  await page.getByRole("button", { name: "Mark all as read" }).click();
+  await expect(earlier.locator(".unread-mark")).toHaveCount(0);
+  await expect(visor.locator(".nav-dot")).toHaveCount(0);
+  expect(reads).toEqual([{ seqs: [1] }, { all: true }]);
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("a note conflict opens from the center, and the last pick closes it", async ({ page }) => {
   await routeProblems(page, [{ key: "vault_sync", level: "error", message: "Notes/plan.md has a conflict." }], {
     status: "conflict",
   });
@@ -3217,6 +3291,7 @@ test("a note conflict opens from its banner, and the last pick closes it", async
     });
   });
   await logIn(page);
+  await openCenter(page);
   await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Pick a version" }).click();
   const dialog = page.getByRole("dialog", { name: "Note conflicts" });
   await expect(dialog).toContainText("Eva kept both. Pick the one to keep.");
@@ -3226,7 +3301,8 @@ test("a note conflict opens from its banner, and the last pick closes it", async
   await expect(dialog.getByText("- [ ] Buy coffee")).toBeVisible();
   await dialog.getByRole("button", { name: "Keep mine: Notes/plan.md" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+  // The demo still has setup steps, so the part stays, without the conflict.
+  await expect(page.getByRole("region", { name: "Problems" })).not.toContainText("Notes/plan.md has a conflict.");
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -3246,9 +3322,7 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("The engine claude-code is not available.");
   await page.getByRole("alert").getByRole("button", { name: "Open Settings" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(
-    page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Settings/ }),
-  ).toHaveAttribute("aria-current", "page");
+  await expect(page).toHaveURL(/#\/settings$/);
 });
 
 test("a chat without a vault offers the vault step, not a terminal command", async ({ page }) => {
@@ -3269,13 +3343,6 @@ test("a chat without a vault offers the vault step, not a terminal command", asy
   await page.getByRole("alert").getByRole("button", { name: "Set up your vault" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page).toHaveURL(/#\/settings\/setup\/vault$/);
-});
-
-test("no banner shows while all is good", async ({ page }) => {
-  const statusRead = page.waitForResponse("**/api/status");
-  await logIn(page);
-  await statusRead;
-  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
 });
 
 test("Settings: Restart Eva in the header names the running chats, then restarts and waits for Eva", async ({
@@ -4392,7 +4459,14 @@ test.describe("on a phone", () => {
     const box = await tabs.boundingBox();
     expect((box?.y ?? 0) + (box?.height ?? 0)).toBe(page.viewportSize()?.height);
     await expect(tabs.getByText("Schedules", { exact: true })).toBeVisible();
-    await tabs.getByRole("button", { name: "Settings" }).click();
+    // The visor takes the place of Settings, the last tab, with the label "Eva" (#566).
+    await expect(tabs.getByRole("button", { name: /^Settings/ })).toHaveCount(0);
+    const visor = tabs.locator(".main-nav-visor");
+    await expect(visor).toContainText("Eva");
+    const visorBox = await visor.boundingBox();
+    const schedulesBox = await tabs.getByRole("button", { name: "Schedules" }).boundingBox();
+    expect(visorBox?.x ?? 0).toBeGreaterThan(schedulesBox?.x ?? Infinity);
+    await openSettings(page);
     await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
     await expect(page.getByRole("region", { name: "Setup" })).toBeVisible();
     await tabs.getByRole("button", { name: "Projects", exact: true }).click();

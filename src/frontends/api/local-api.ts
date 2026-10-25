@@ -113,6 +113,10 @@ const approvalAnswerSchema = approvalSchema.extend({
     .optional(),
 });
 const problemKeySchema = z.object({ key: z.string().min(1) });
+const notificationsReadSchema = z.union([
+  z.object({ seqs: z.array(z.number().int()).max(1000) }),
+  z.object({ all: z.literal(true) }),
+]);
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const pushSchema = z.object({ note: z.string().max(10_000).optional() });
@@ -785,6 +789,9 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       return json({ error: "This problem is not open anymore." }, 404);
     return json(eva.status());
   }
+  if (method === "GET" && url.pathname === "/api/notifications") return json(eva.notifications());
+  if (method === "POST" && url.pathname === "/api/notifications/read")
+    return json(eva.markNotificationsRead(notificationsReadSchema.parse(await request.json())));
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
   if (method === "GET" && url.pathname === "/api/vault/repositories") return json(await eva.vaultRepositories());
   if (method === "POST" && url.pathname === "/api/vault/clone")

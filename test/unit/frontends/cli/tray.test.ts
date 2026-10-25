@@ -50,6 +50,27 @@ describe("trayView", () => {
     expect(blocked.tooltip).toContain("A setup step stops the chats");
   });
 
+  test("a problem that the person read keeps the face but needs nothing new (#566)", () => {
+    const problem = { key: "update", level: "warn", message: "x", since: "2026-10-17T10:00:00.000Z" } as const;
+    const read = view(
+      { kind: "running" },
+      reading({
+        problems: ["x", "y"],
+        problemDetails: [
+          { ...problem, hidden: true },
+          { ...problem, key: "b", hidden: false },
+        ],
+      }),
+    );
+    expect(read.face).toBe("error");
+    expect(read.tooltip).toContain("1 problem needs you");
+    const allRead = view(
+      { kind: "running" },
+      reading({ problems: ["x"], problemDetails: [{ ...problem, hidden: true }] }),
+    );
+    expect(allRead.tooltip).toContain("1 open problem");
+  });
+
   test("a start, a lost answer, a wait after a crash and a stop each have their own face, and no Open", () => {
     const states = [
       view({ kind: "starting" }),

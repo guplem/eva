@@ -695,7 +695,8 @@ button.ghost .icon {
 }
 
 .composer .chip,
-.chip-menu .chip {
+.chip-menu .chip,
+.center-filters .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -720,7 +721,8 @@ button.ghost .icon {
   color: var(--soft-ink);
 }
 
-.chip-menu .chip.on {
+.chip-menu .chip.on,
+.center-filters .chip.on {
   background: var(--accent);
   color: var(--on-accent);
 }

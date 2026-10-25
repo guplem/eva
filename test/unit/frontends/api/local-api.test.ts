@@ -2148,6 +2148,24 @@ describe("updates and the vault sync", () => {
     expect((await call("/api/problems/hide", { method: "POST", body: {} })).status).toBe(400);
   });
 
+  test("lists the notification history, and marks entries as read (#566)", async () => {
+    eva.reportProblem("example_problem", { level: "warn", message: "Something broke.", resolvedMessage: "Fixed." });
+    const listed = await json<{ entries: { seq: number; key: string; read: boolean }[] }>(
+      await call("/api/notifications"),
+    );
+    const entry = listed.entries.find((candidate) => candidate.key === "example_problem");
+    expect(entry?.read).toBe(false);
+    const read = await json<{ entries: { seq: number; read: boolean }[] }>(
+      await call("/api/notifications/read", { method: "POST", body: { seqs: [entry?.seq] } }),
+    );
+    expect(read.entries.find((candidate) => candidate.seq === entry?.seq)?.read).toBe(true);
+    const all = await json<{ entries: { read: boolean }[] }>(
+      await call("/api/notifications/read", { method: "POST", body: { all: true } }),
+    );
+    expect(all.entries.every((candidate) => candidate.read)).toBe(true);
+    expect((await call("/api/notifications/read", { method: "POST", body: {} })).status).toBe(400);
+  });
+
   test("Sync now answers with the sync state", async () => {
     const response = await call("/api/vault/sync", { method: "POST", body: {} });
     expect(response.status).toBe(200);

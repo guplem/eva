@@ -97,6 +97,8 @@ export interface HomePaths {
   readonly telegramState: string;
   /** The problems whose notice the person closed, with their level. */
   readonly hiddenProblems: string;
+  /** What Eva told the person in the last 30 days, for the notification center. */
+  readonly notificationHistory: string;
   /** The newest held-back release that Eva already announced. */
   readonly updatesState: string;
   /** The code that pairs the first Telegram chat; present only while no chat is paired. */
@@ -130,6 +132,7 @@ export function homePaths(root: string): HomePaths {
     schedulesState: join(stateFolder, "schedules-state.json"),
     telegramState: join(stateFolder, "telegram.json"),
     hiddenProblems: join(stateFolder, "hidden-problems.json"),
+    notificationHistory: join(stateFolder, "notification-history.json"),
     updatesState: join(stateFolder, "updates.json"),
     telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),

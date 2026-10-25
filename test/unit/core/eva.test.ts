@@ -2119,7 +2119,13 @@ describe("Eva alerts", () => {
     expect(instance.status().problems).toEqual(["Another program polls the bot."]);
     // The web page picks the button of a problem from its key, never from its text.
     expect(instance.status().problemDetails).toEqual([
-      { key: "telegram_poll", level: "error", message: "Another program polls the bot.", hidden: false },
+      {
+        key: "telegram_poll",
+        level: "error",
+        message: "Another program polls the bot.",
+        hidden: false,
+        since: expect.any(String) as string,
+      },
     ]);
     instance.reportProblem("telegram_poll", null);
     expect(instance.status().problems).toEqual([]);
@@ -2139,8 +2145,42 @@ describe("Eva alerts", () => {
     second.reportProblem("telegram_poll", problem);
     expect(alerts).toEqual([]);
     expect(second.status().problemDetails).toEqual([
-      { key: "telegram_poll", level: "warn", message: "The bot is slow.", hidden: true },
+      {
+        key: "telegram_poll",
+        level: "warn",
+        message: "The bot is slow.",
+        hidden: true,
+        since: expect.any(String) as string,
+      },
     ]);
+  });
+
+  test("the notification history survives a restart, and the person marks entries as read (#566)", () => {
+    const problem = { level: "warn", message: "The bot is slow.", resolvedMessage: "Telegram works again." } as const;
+    const first = start(new FakeEngine());
+    first.reportProblem("telegram_poll", problem);
+    first.reportProblem("telegram_poll", null);
+    expect(first.status().problemDetails).toEqual([]);
+    first.reportProblem("vault_sync", problem);
+    const startedAt = first.status().problemDetails[0]?.since;
+    first.stop();
+    const second = start(new FakeEngine());
+    second.reportProblem("vault_sync", problem);
+    expect(second.status().problemDetails[0]?.since).toBe(startedAt);
+    const entries = second.notifications().entries;
+    expect(entries.map((entry) => `${entry.key}:${entry.level}`)).toEqual([
+      "telegram_poll:warn",
+      "telegram_poll:resolved",
+      "vault_sync:warn",
+    ]);
+    expect(second.markNotificationsRead({ seqs: [entries[0]?.seq ?? 0] }).entries.map((entry) => entry.read)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    const all = second.markNotificationsRead({ all: true });
+    expect(all.entries.every((entry) => entry.read)).toBe(true);
+    expect(second.status().problemDetails[0]?.hidden).toBe(true);
   });
 
   test("an expired engine login is a problem with its own key until a turn of that engine works", async () => {
@@ -2160,6 +2200,7 @@ describe("Eva alerts", () => {
         level: "error",
         message: expect.stringContaining("Claude Code login") as string,
         hidden: false,
+        since: expect.any(String) as string,
       },
     ]);
     await instance.sessions.send(chat.id, "hello again");

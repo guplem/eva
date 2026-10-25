@@ -12,7 +12,10 @@ export const destinations = [
   { id: "settings", label: "Settings", icon: "gear" },
 ] as const satisfies readonly { id: string; label: string; icon: IconName }[];
 
-export type Destination = (typeof destinations)[number]["id"];
+/** The visor opens the notification center, so it has an address but no button of its own (#566). */
+export const notificationCenter = "notifications";
+
+export type Destination = (typeof destinations)[number]["id"] | typeof notificationCenter;
 
 export function addressOf(destination: Destination): string {
   return `#/${destination}`;
@@ -31,6 +34,7 @@ export function linkedChatIdOf(hash: string): string | null {
 export function destinationOf(hash: string): Destination | null {
   if (linkedChatIdOf(hash) !== null) return null;
   const name = /^#\/([^/]+)(\/|$)/.exec(hash)?.[1];
+  if (name === notificationCenter) return notificationCenter;
   return destinations.find((destination) => destination.id === name)?.id ?? "chats";
 }
 

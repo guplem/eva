@@ -527,6 +527,37 @@ textarea {
   border-radius: 50%;
 }
 
+/* The count and the dot sit on the visor, as the badges sit on the other buttons (#566). */
+.main-nav-visor .nav-icon {
+  display: grid;
+  position: relative;
+}
+
+.main-nav-visor[aria-current="page"] .mk {
+  box-shadow: 0 0 0 3px var(--soft);
+}
+
+.main-nav-visor .nav-badge {
+  top: -4px;
+  right: -8px;
+}
+
+.nav-badge.bad {
+  background: var(--bad);
+  color: var(--bad-bg);
+}
+
+.nav-dot {
+  position: absolute;
+  top: -1px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--side);
+}
+
 .nav-button {
   flex: none;
   width: 50px;
@@ -1566,10 +1597,42 @@ textarea {
     }
   }
 
-  /* The visor stays on the rail. On a phone, the "Reconnecting…" banner says when Eva is offline. */
-  .main-nav-visor,
-  .nav-spacer {
+  /* The visor takes the place of Settings at the end of the tab bar. The notification center links to Settings.
+     The selector outweighs `.nav-button[aria-current]` below, which would show Settings again. */
+  .nav-spacer,
+  .main-nav .nav-button.nav-settings {
     display: none;
+  }
+
+  .main-nav-visor {
+    order: 1;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .main-nav-visor[aria-current="page"] {
+    color: var(--accent-ink);
+  }
+
+  .main-nav-visor .mk {
+    font-size: 28px;
+  }
+
+  .main-nav-visor[aria-current="page"] .nav-icon {
+    background: var(--soft);
+  }
+
+  .main-nav-visor .nav-badge,
+  .main-nav-visor .nav-dot {
+    top: -2px;
+    left: 56%;
+    right: auto;
   }
 
   .nav-button,

@@ -155,9 +155,9 @@ This needs git 2.38 or newer on the computer with the conflict. With an older gi
 
 ## Problems and alerts
 
-Eva sends each alert to your Telegram chat when the problem starts, again once a day while it lasts, and once more when it ends. The open problems also show at the top of the web page, because Telegram itself can be the problem.
+Eva sends each alert to your Telegram chat when the problem starts, again once a day while it lasts, and once more when it ends. The open problems also show on the web page, because Telegram itself can be the problem. Tap Eva's face in the menu to open the notification center. It lists each open problem with the button that fixes it, and what Eva told you in the last 30 days.
 
-Press the x on a notice to hide it. It stays hidden on every device that opens this Eva, until the problem becomes an error or ends. Eva sends no daily reminder for it, also when you hide it on another computer. `/status` still counts it.
+Press **Mark as read** on a problem to quiet it. It stays in the list, but Eva's face stops counting it, on every device that opens this Eva, until the problem becomes an error or ends. Eva sends no daily reminder for it, also when you mark it as read on another computer. `/status` still counts it.
 
 From a phone: `/status` shows the problems and the version of Eva and each tool, `/logs [n]` shows the last `n` warnings and errors (20 by default), and `/restart` restarts Eva after you confirm. The Settings page has a **Restart Eva** button too. Its **Updates** section shows the version of Eva and each tool.
 

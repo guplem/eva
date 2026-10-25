@@ -201,7 +201,7 @@ export function AppSkeleton({ page }: { readonly page: "chat" | "list" | "files"
           <span className="skeleton-visor large" />
         </span>
         {destinations.map((destination) => (
-          <span key={destination.id} className="skeleton-nav-button" />
+          <span key={destination.id} className={`skeleton-nav-button nav-${destination.id}`} />
         ))}
       </div>
       <div className="app-body">

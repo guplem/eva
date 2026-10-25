@@ -18,7 +18,9 @@ import {
   type SessionEvent,
   type VaultSyncState,
   type ListedSession,
+  type ProgressStep,
 } from "./api.ts";
+import type { HistoryEntry } from "../../../core/alerts/notification-history.ts";
 import { ApprovalNotice } from "./ApprovalCard.tsx";
 import { cueOfEvent, playCue } from "./cues.ts";
 import { approvalNoticeWords, approvalPlace, approvalsOutside, pendingOf } from "./approvals.ts";
@@ -37,13 +39,22 @@ import {
 } from "./live-state.ts";
 import { AccountRefusedView, LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
-import { addressOf, chatsTapAgain, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
+import {
+  addressOf,
+  chatsTapAgain,
+  destinationOf,
+  linkedChatIdOf,
+  notificationCenter,
+  type Destination,
+} from "./navigation.ts";
+import { NotificationCenter } from "./NotificationCenter.tsx";
+import { withPendingReads } from "./notification-center.ts";
 import { useIsPhone } from "./ChatHeader.tsx";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
 import { isLongHide } from "./event-stream.ts";
-import { withPendingHides, type ProblemAction } from "./problem-actions.ts";
+import { shownProblems, withPendingHides, type ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -106,8 +117,11 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
   /** The hides that this page sent and Eva has not answered yet. */
   const pendingHides = useRef<ReadonlySet<string>>(new Set());
-  /** The count of hides that Eva answered: a status read that started before an answer is older than it. */
+  /** The count of hides and reads that Eva answered: a read that started before an answer is older than it. */
   const hideAnswers = useRef(0);
+  /** The history reads that this page sent and Eva has not answered yet. */
+  const pendingReads = useRef<ReadonlySet<number>>(new Set());
+  const pendingAll = useRef(false);
   const showProblems = useCallback((list: EvaStatus["problemDetails"]): void => {
     setProblems(withPendingHides(list, pendingHides.current));
   }, []);
@@ -115,6 +129,21 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [conflictsOpen, setConflictsOpen] = useState(false);
   const events = useRef<EventSubscription | null>(null);
   const [setupMissing, setSetupMissing] = useState(0);
+  // The notification center (#566): the history, and the setup steps that are left.
+  const [notifications, setNotifications] = useState<readonly HistoryEntry[]>([]);
+  // The page keeps each read that Eva has not answered, so an older poll answer does not undo it.
+  const showEntries = useCallback((entries: readonly HistoryEntry[]): void => {
+    setNotifications(
+      withPendingReads(entries, { seqs: pendingReads.current, keys: pendingHides.current, all: pendingAll.current }),
+    );
+  }, []);
+  /** Applies the reads that wait to the newest list, not to the one of the last render. */
+  const showPendingReads = (): void => {
+    setNotifications((current) =>
+      withPendingReads(current, { seqs: pendingReads.current, keys: pendingHides.current, all: pendingAll.current }),
+    );
+  };
+  const [steps, setSteps] = useState<readonly ProgressStep[]>([]);
   const [chatBlocker, setChatBlocker] = useState<ChatBlocker | null>(null);
   const [voiceNotes, setVoiceNotes] = useState(false);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
@@ -204,7 +233,16 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     } catch {
       // The next poll or the next reconnect tries again.
     }
-  }, [showProblems]);
+    try {
+      const answersAtStart = hideAnswers.current;
+      const view = await api.notifications();
+      // A read that Eva answered meanwhile is newer than this answer.
+      if (hideAnswers.current === answersAtStart) showEntries(view.entries);
+    } catch (caught) {
+      // An older Eva has no history: the center shows only the open problems.
+      if (caught instanceof ApiError && caught.status === 404) setNotifications([]);
+    }
+  }, [showProblems, showEntries]);
 
   // Reads overlap: one starts at a turn start and one at its end. Only the newest read may set the list,
   // or an older answer brings back a running state that already ended.
@@ -344,6 +382,15 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     const timer = setInterval(() => void refreshProblems(), isBlocked ? blockedPollMs : problemPollMs);
     return () => clearInterval(timer);
   }, [authenticated, refreshProblems, isBlocked]);
+
+  // The setup steps are a slow read, so only the center reads them, each time it opens.
+  useEffect(() => {
+    if (authenticated !== true || screen !== notificationCenter) return;
+    api.setupState().then(
+      (state) => setSteps(state.progress.filter((step) => step.state === "missing")),
+      () => undefined,
+    );
+  }, [authenticated, screen, setupMissing]);
 
   // A step done in Settings unlocks the chats as soon as the person goes back to them.
   useEffect(() => {
@@ -537,6 +584,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       pendingHides.current = new Set([...pendingHides.current].filter((pending) => pending !== key));
       hideAnswers.current += 1;
     };
+    // Eva marks the problem's history entries as read too.
+    showPendingReads();
     api.hideProblem(key).then(
       (status) => {
         settle();
@@ -550,17 +599,52 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       },
     );
   };
-  const notices = (
-    <ProblemNotices
-      isConnected={isConnected}
-      problems={problems}
-      syncStatus={syncState?.status ?? "ok"}
-      openPage={screen === "settings" || screen === "schedules" ? screen : null}
-      onRetryNow={() => events.current?.retryNow()}
-      onAction={runProblemAction}
-      onHide={hideProblem}
-    />
-  );
+  const readEntries = (seqs: readonly number[]): void => {
+    pendingReads.current = new Set([...pendingReads.current, ...seqs]);
+    showPendingReads();
+    const settle = (): void => {
+      pendingReads.current = new Set([...pendingReads.current].filter((seq) => !seqs.includes(seq)));
+      hideAnswers.current += 1;
+    };
+    api.markNotificationsRead({ seqs }).then(
+      (view) => {
+        settle();
+        showEntries(view.entries);
+      },
+      (caught: unknown) => {
+        settle();
+        showError(caught);
+        void refreshProblems();
+      },
+    );
+  };
+  const readAll = (): void => {
+    // "All" hides each open problem too, so the hides wait as one hide does.
+    const keys = problems.map((problem) => problem.key);
+    pendingAll.current = true;
+    pendingHides.current = new Set([...pendingHides.current, ...keys]);
+    setProblems((current) => withPendingHides(current, pendingHides.current));
+    showPendingReads();
+    const settle = (): void => {
+      pendingAll.current = false;
+      pendingHides.current = new Set([...pendingHides.current].filter((key) => !keys.includes(key)));
+      hideAnswers.current += 1;
+    };
+    api.markNotificationsRead({ all: true }).then(
+      (view) => {
+        settle();
+        showEntries(view.entries);
+        void refreshProblems();
+      },
+      (caught: unknown) => {
+        settle();
+        showError(caught);
+        void refreshProblems();
+      },
+    );
+  };
+  const notices = <ProblemNotices isConnected={isConnected} onRetryNow={() => events.current?.retryNow()} />;
+  const unreadProblems = shownProblems(problems);
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
   const onConflictState = (state: VaultSyncState): void => {
     setSyncState(state);
@@ -577,13 +661,17 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         setupMissing={setupMissing}
         isConnected={isConnected}
         problems={problems.length}
+        unreadProblems={unreadProblems.length}
+        unreadError={unreadProblems.some((problem) => problem.level === "error")}
+        news={setupMissing > 0 || notifications.some((entry) => !entry.read)}
         chatBlocked={chatBlocker !== null}
         assistantTurns={runningTurns.assistant}
         projectTurns={runningTurns.project}
       />
       <div className="app-body">
         {/* The chat views put the notices in their main area, beside the list. */}
-        {(screen === "settings" || screen === "schedules" || screen === "files") && notices}
+        {(screen === "settings" || screen === "schedules" || screen === "files" || screen === notificationCenter) &&
+          notices}
         <ApprovalNotice entries={elsewhere} />
         {screen === "chats" && (
           <AssistantView
@@ -619,6 +707,20 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         )}
         {screen === "settings" && (
           <SettingsView onLoggedOut={() => setAuthenticated(false)} onSetupChanged={() => void refreshProblems()} />
+        )}
+        {screen === notificationCenter && (
+          <NotificationCenter
+            problems={problems}
+            entries={notifications}
+            steps={steps}
+            syncStatus={syncState?.status ?? "ok"}
+            onAction={runProblemAction}
+            onReadProblem={hideProblem}
+            onReadEntries={readEntries}
+            onReadAll={readAll}
+            onOpenStep={(step) => (window.location.hash = settingsHash({ section: "setup", item: step.key }))}
+            onOpenSettings={() => openDestination("settings")}
+          />
         )}
         {screen === "schedules" && <SchedulesView />}
         {screen === "files" && <FilesView />}

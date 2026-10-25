@@ -332,6 +332,37 @@
   rotate: -45deg;
 }
 
+/* Not in the reference: an unread error (#566). The crosses fill with red and their glow pulses,
+   then cool back to the eye colour. Only an error moves, so it stands out from a warning. */
+.mk.alarm .eyes {
+  animation: alarm-glow 2s ease-in-out infinite;
+}
+
+.mk.alarm i::before,
+.mk.alarm i::after {
+  animation: alarm-cross 2s ease-in-out infinite;
+}
+
+@keyframes alarm-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow));
+  }
+  50% {
+    filter: drop-shadow(0 0 0.06em var(--bad)) drop-shadow(0 0 0.22em var(--bad));
+  }
+}
+
+@keyframes alarm-cross {
+  0%,
+  100% {
+    background: var(--eye);
+  }
+  50% {
+    background: var(--bad);
+  }
+}
+
 @keyframes blink {
   0%,
   94%,
@@ -492,8 +523,16 @@
 @media (prefers-reduced-motion: reduce) {
   .mk i,
   .mk .eyes,
-  .mk::after {
+  .mk::after,
+  .mk.alarm i::before,
+  .mk.alarm i::after {
     animation: none !important;
+  }
+
+  /* With no motion, the crosses stay red, so the error still shows. */
+  .mk.alarm i::before,
+  .mk.alarm i::after {
+    background: var(--bad);
   }
 }
 

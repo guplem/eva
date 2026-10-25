@@ -1017,11 +1017,16 @@ test("the effort slider saves one level at a time, and a failed save shows the c
   const slider = effort.getByRole("slider", { name: "Effort" });
   const name = effort.locator(".effort-name");
 
-  // A slow save: the keys that come during it send only the newest level, after it.
+  // A slow save: the keys that come during it send only the newest level, after it. The first save
+  // waits until the keys are pressed, so a slow machine cannot end it early.
   const sent: string[] = [];
+  let releaseSave = (): void => undefined;
+  const saveHeld = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
   await page.route("**/effort", async (route) => {
     sent.push((route.request().postDataJSON() as { effort: string }).effort);
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await saveHeld;
     await route.continue();
   });
   // The new chat starts at Medium, so Low comes first.
@@ -1034,6 +1039,7 @@ test("the effort slider saves one level at a time, and a failed save shows the c
   await slider.press("ArrowRight");
   await slider.press("ArrowRight");
   await expect(name).toHaveText("High");
+  releaseSave();
   await expect(picker.locator(".chip-effort")).toHaveText("· High effort");
   await expect(effort).toHaveAttribute("aria-busy", "false");
   await expect(name).toHaveText("High");

@@ -1,13 +1,25 @@
 ---
-name: implement-issue
-description: Implement a GitHub issue from plan to merged PR, with sub-agents to fill gaps and review the work. Use when asked to implement an issue, given an issue number or description, or with no input to pick the oldest open issue.
+name: make-change
+description: Make any change to this repository, from a chat request or a GitHub issue: issue, branch, red-green TDD, sub-agent review and a merged PR, sized to the change. Use for every request to add, fix, change or remove code, docs or config, however small. With no input, pick the oldest open issue. Not for questions.
 ---
 
-# Implement an issue
+# Make a change
+
+## Scope
+
+Follow this skill for every change to this repository: code, tests, docs or config. This includes a request in the chat and a change of one word. Only the person can tell you to skip it.
+
+## Size the work
+
+- **A small change** touches one module and has no open decision, such as a text fix or a small bug. Skip steps 2 to 4: write no plan and fill no gaps. In step 6, start 1 review sub-agent. Skip step 7.
+- **Any other change** follows every step.
+
+Every change, small or not, gets an issue, its own branch, a failing test first when code changes, a commit, a PR and auto-merge.
 
 ## Pick the issue
 
 - **An issue number or link:** implement that issue. If the link points to another repository, work in that repository.
+- **A request in the chat:** that request is the task. Find or create its issue with the `create-issue` skill, then continue.
 - **An issue description:** find the open issue that matches it. If none exists, create one with the `create-issue` skill.
 - **No input:** take the oldest open issue that has none of the labels `waiting-for-human-check`, `auto-developing` and `requires-human-intervention`.
 
@@ -20,10 +32,10 @@ Add the `auto-developing` label to the issue, and assign yourself. Do the same f
 2. **Write a plan** in `docs/plans/<name>.md`. List each gap: a missing fact or an open decision. Push the plan as the first commit of a draft PR.
 3. **Fill the gaps.** For each gap, start 3 sub-agents: 2 mid-tier and 1 top-tier. A top-tier sub-agent uses a strong general model of your own vendor, such as Claude Opus or GPT Sol, not a special top model such as Claude Fable or GPT Astra. A mid-tier sub-agent uses a mid-size model of that vendor. Each looks for an obvious answer: a rule in `AGENTS.md`, a pattern in the code, a past decision, or a similar solved case. Write the decisions in the plan.
 4. **Stop and ask the person** when a gap that matters has no clear answer. Write the answer in the plan.
-5. **Implement the plan** with red-green TDD. Make one commit for each feature or module. Follow the `write-commit` skill.
-6. **Review the work.** Start 5 sub-agents (3 mid-tier, 2 top-tier). Each looks for real errors, or for a clear mismatch with the plan, the architecture or the project rules. Fix each finding that is valid.
+5. **Implement the plan,** or the issue when you wrote no plan, with red-green TDD. Make one commit for each feature or module. Follow the `write-commit` skill.
+6. **Review the work.** Start 5 sub-agents (3 mid-tier, 2 top-tier). Each looks for real errors, or for a clear mismatch with the plan or the issue, the architecture or the project rules. Fix each finding that is valid.
 7. **Review again.** Start 3 new sub-agents (2 mid-tier, 1 top-tier). Give them the findings that you rejected, with your reasons. They raise a rejected finding again only with new evidence. They also look for new problems. Fix each finding that is valid.
-8. **Prepare the PR.** Delete the plan file: the branch history keeps it. Write what changed, why, and the effects, with links to the related issues. Mark the PR as ready for review.
+8. **Prepare the PR.** Delete the plan file, if you wrote one: the branch history keeps it. Write what changed, why, and the effects, with links to the related issues. Mark the PR as ready for review. When you wrote no plan, no draft PR exists yet: open the PR now.
 9. **Show the change to the user interface.** Do this step when a capture of a screen on `origin/main` and a capture on the PR branch would look different: the PR adds or removes a screen, or changes its layout, its style or its parts. Skip it when no screen looks different, such as a change to logic, tests or docs. Skip it also for a change of a few words. The section [Before and after captures](#before-and-after-captures) gives the steps. When a changed screen is a page of the EVE design guide, also update its captures in the PR: `docs/design/eve/README.md` says when and how.
 10. **Turn on auto-merge.** Update a branch that is behind `main` once, so the checks run on the newest code. Then turn on auto-merge. Do not update the branch again when other PRs merge. Never bypass the merge ruleset, for example with an admin merge.
 11. **Watch the PR until it merges or closes, or only the approval of a person is missing.** Do not end your work while the PR is open and has a problem that you can fix. Wait for the checks to finish, for example with `gh pr checks <number> --watch`. Then look at the whole PR:

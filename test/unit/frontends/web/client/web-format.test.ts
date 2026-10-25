@@ -62,17 +62,19 @@ describe("toWebHtml", () => {
 
   test("a code block keeps its lines, escaped, with no Markdown inside", () => {
     expect(toWebHtml("before\n```ts\nconst a = 1 < 2;\n\n**x**\n```\nafter")).toBe(
-      '<p>before</p><pre><code class="language-ts">const a = 1 &lt; 2;\n\n**x**</code></pre><p>after</p>',
+      '<p>before</p><div class="code-box"><div class="code-box-bar"></div><pre><code class="language-ts">const a = 1 &lt; 2;\n\n**x**</code></pre></div><p>after</p>',
     );
   });
 
   test("a code block that is still streaming runs to the end", () => {
-    expect(toWebHtml("```\nline")).toBe("<pre><code>line</code></pre>");
+    expect(toWebHtml("```\nline")).toBe(
+      '<div class="code-box"><div class="code-box-bar"></div><pre><code>line</code></pre></div>',
+    );
   });
 
   test("a code block inside a list item stays in the item", () => {
     expect(toWebHtml("- run:\n  ```\n  bun test\n  ```\n- done")).toBe(
-      "<ul><li>run:<pre><code>bun test</code></pre></li><li>done</li></ul>",
+      '<ul><li>run:<div class="code-box"><div class="code-box-bar"></div><pre><code>bun test</code></pre></div></li><li>done</li></ul>',
     );
   });
 
@@ -109,9 +111,11 @@ describe("toWebHtml", () => {
 
   test("a longer fence holds a shorter one, and only a bare fence closes it", () => {
     expect(toWebHtml("````md\n```js\nx\n```\n````\nafter")).toBe(
-      '<pre><code class="language-md">```js\nx\n```</code></pre><p>after</p>',
+      '<div class="code-box"><div class="code-box-bar"></div><pre><code class="language-md">```js\nx\n```</code></pre></div><p>after</p>',
     );
-    expect(toWebHtml("```\n```js\n```")).toBe("<pre><code>```js</code></pre>");
+    expect(toWebHtml("```\n```js\n```")).toBe(
+      '<div class="code-box"><div class="code-box-bar"></div><pre><code>```js</code></pre></div>',
+    );
   });
 
   test("only a list that starts at 1 breaks a paragraph, so a number in the text stays text", () => {
@@ -131,13 +135,13 @@ describe("toWebHtml", () => {
       "<ul><li>a<ul><li><p>b</p></li><li><p>c</p></li></ul></li><li>d</li></ul>",
     );
     expect(toWebHtml("- run:\n  ```\n  a\n\n  b\n  ```\n- next")).toBe(
-      "<ul><li>run:<pre><code>a\n\nb</code></pre></li><li>next</li></ul>",
+      '<ul><li>run:<div class="code-box"><div class="code-box-bar"></div><pre><code>a\n\nb</code></pre></div></li><li>next</li></ul>',
     );
   });
 
   test("a tab in a code block stays a tab, and a tab indent still nests a list", () => {
     expect(toWebHtml("```make\nall:\n\tbun test\n```")).toBe(
-      '<pre><code class="language-make">all:\n\tbun test</code></pre>',
+      '<div class="code-box"><div class="code-box-bar"></div><pre><code class="language-make">all:\n\tbun test</code></pre></div>',
     );
     expect(toWebHtml("- a\n\t- b")).toBe("<ul><li>a<ul><li>b</li></ul></li></ul>");
   });
@@ -154,7 +158,7 @@ describe("toWebHtml", () => {
 
   test("a fence that opens on a list item keeps the tabs in its code", () => {
     expect(toWebHtml("- ```make\n  all:\n  \tbun test\n  ```")).toBe(
-      '<ul><li><pre><code class="language-make">all:\n\tbun test</code></pre></li></ul>',
+      '<ul><li><div class="code-box"><div class="code-box-bar"></div><pre><code class="language-make">all:\n\tbun test</code></pre></div></li></ul>',
     );
   });
 });

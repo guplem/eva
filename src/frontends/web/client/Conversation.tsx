@@ -460,6 +460,8 @@ function Branch({
         <TasksDialog
           tasks={tasksOfTurn(shownTasks.turn.steps, shownTasks.session.id)}
           total={shownTasks.turn.taskCount}
+          // The chat details show only the tasks that run now, so this list says why its tasks ended.
+          note="This answer started these tasks, such as a subagent or a long command. Each one ended with the answer."
           // An older answer comes with no steps, to keep the session list small.
           empty="Eva no longer keeps the details of these tasks."
           onClose={closeTasks}

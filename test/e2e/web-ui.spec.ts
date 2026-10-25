@@ -156,12 +156,11 @@ async function style(
 /** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
-      "Nothing runs in the background.",
-    );
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("No background task runs now.");
   }
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  await expect(dialog).toContainText("This answer started these tasks");
   await expect(dialog).toContainText("Search the notes");
   await expect(dialog).toContainText("Ended");
   await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
@@ -1223,9 +1222,7 @@ test("Project mode: search, a new clone with each repository and its branch, and
   await page.getByRole("button", { name: "Example app", exact: true }).click();
   await newProjectChat(page);
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
-      "Nothing runs in the background.",
-    );
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("No background task runs now.");
   }
 });
 

@@ -181,6 +181,7 @@
   overflow-wrap: anywhere;
 }
 
+.task-note,
 .task-empty {
   margin: 0;
   font-size: 13px;

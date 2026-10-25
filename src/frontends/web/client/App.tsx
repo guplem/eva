@@ -135,6 +135,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       withPendingReads(entries, { seqs: pendingReads.current, keys: pendingHides.current, all: pendingAll.current }),
     );
   }, []);
+  /** Applies the reads that wait to the newest list, not to the one of the last render. */
+  const showPendingReads = (): void => {
+    setNotifications((current) =>
+      withPendingReads(current, { seqs: pendingReads.current, keys: pendingHides.current, all: pendingAll.current }),
+    );
+  };
   const [steps, setSteps] = useState<readonly ProgressStep[]>([]);
   const [chatBlocker, setChatBlocker] = useState<ChatBlocker | null>(null);
   const [voiceNotes, setVoiceNotes] = useState(false);
@@ -569,7 +575,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       hideAnswers.current += 1;
     };
     // Eva marks the problem's history entries as read too.
-    showEntries(notifications);
+    showPendingReads();
     api.hideProblem(key).then(
       (status) => {
         settle();
@@ -585,7 +591,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   };
   const readEntries = (seqs: readonly number[]): void => {
     pendingReads.current = new Set([...pendingReads.current, ...seqs]);
-    showEntries(notifications);
+    showPendingReads();
     const settle = (): void => {
       pendingReads.current = new Set([...pendingReads.current].filter((seq) => !seqs.includes(seq)));
       hideAnswers.current += 1;
@@ -608,7 +614,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     pendingAll.current = true;
     pendingHides.current = new Set([...pendingHides.current, ...keys]);
     setProblems((current) => withPendingHides(current, pendingHides.current));
-    showEntries(notifications);
+    showPendingReads();
     const settle = (): void => {
       pendingAll.current = false;
       pendingHides.current = new Set([...pendingHides.current].filter((key) => !keys.includes(key)));

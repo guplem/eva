@@ -421,6 +421,14 @@ describe("AlertCenter history edge cases (#566)", () => {
     expect(levels(center)).toEqual(["update:warn", "update:error"]);
   });
 
+  test("a drop from error to warn adds no entry: only a start or a rise does", () => {
+    const { center } = run();
+    center.report("vault_sync", { ...offline, level: "error" });
+    center.report("vault_sync", offline);
+    center.report("vault_sync", { ...offline, level: "error" });
+    expect(levels(center)).toEqual(["vault_sync:error"]);
+  });
+
   test("a problem that ends and starts again is a new entry, with a new start time", () => {
     const { center, advanceHours } = run();
     center.report("update", offline);

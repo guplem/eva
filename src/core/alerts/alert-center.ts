@@ -145,7 +145,10 @@ export class AlertCenter {
    */
   private recordStart(key: string, problem: AlertProblem, fresh: boolean): void {
     const last = this.history.entries.findLast((entry) => entry.key === key);
-    if (fresh || last?.level !== problem.level) this.record(key, problem.level, problem.message);
+    const open = last?.level === "warn" || last?.level === "error";
+    const rise = last?.level === "warn" && problem.level === "error";
+    // A drop from error to warn is no news: a flaky network would fill the history with flips.
+    if (fresh || !open || rise) this.record(key, problem.level, problem.message);
   }
 
   /**

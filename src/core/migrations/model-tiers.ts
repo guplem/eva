@@ -6,6 +6,7 @@
  *
  * These migrations are frozen: they hold their own tier list and work on raw JSON.
  */
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonTolerant } from "../../shared/files.ts";
 import { parseConfig } from "../settings/home.ts";
@@ -28,7 +29,22 @@ export const modelTiersInVault: Migration = {
 export const modelTiersInConfig: Migration = {
   id: "2026-10-24-model-tiers-in-config",
   store: "machine",
-  run: (context) => migrateFile(context, context.paths.config),
+  run: (context) => {
+    // The hub starts a new vault file from config.json with the frozen 2026-10-18 key list, which has
+    // only the old key. So config.json keeps it until that file exists.
+    const vaultPath = context.vaultPath;
+    if (vaultPath !== null && !existsSync(join(vaultPath, ".eva", "settings.json"))) {
+      const read = readJsonTolerant(context.paths.config);
+      if (
+        read.ok &&
+        isObject(read.value) &&
+        isObject(read.value["engines"]) &&
+        withTiers(read.value["engines"]) !== read.value["engines"]
+      )
+        return "later";
+    }
+    return migrateFile(context, context.paths.config);
+  },
 };
 
 function migrateFile(context: MigrationContext, path: string): "done" | "later" {

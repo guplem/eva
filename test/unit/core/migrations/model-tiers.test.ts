@@ -71,6 +71,10 @@ describe("model tiers (#550)", () => {
   test("a chosen model stays, and config.json changes the same way", () => {
     const engines = { ...oldEngines, claudeCode: { ...oldEngines.claudeCode, defaultModel: "haiku" } };
     writeFileSync(paths.config, JSON.stringify({ port: 4000, engines }));
+    // Until the hub starts the vault's file, the old key must stay for its frozen copy.
+    expect(migrate(modelTiersInConfig)).toBe("later");
+    expect(read(paths.config)).toEqual({ port: 4000, engines });
+    writeFileSync(vaultFile, "{}");
     expect(migrate(modelTiersInConfig)).toBe("done");
     expect(read(paths.config)).toEqual({ port: 4000, engines: { ...newEngines, defaultModel: "haiku" } });
     expect(parseConfig(read(paths.config), "config.json").engines.defaultModel).toBe("haiku");

@@ -485,8 +485,8 @@ function EvaUpdatesCard({
       aside={<Visor face={updatesFace(update, restarted)} />}
     >
       {/* The changelog only reads: it sits with the status, away from the buttons that install. */}
-      <div className="callout update-status">
-        {callout !== null && <span>{callout}</span>}
+      <div className="update-status">
+        {callout !== null && <div className="callout">{callout}</div>}
         <button className="link-button" onClick={() => setShowingChangelog(true)}>
           Changelog
         </button>

@@ -60,7 +60,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 ## 4. Prompt cache and cost
 
 38. `[keep]` **A cached follow-up costs about 1/20 of a first turn.** Anything that changes the prompt prefix costs money. Source: `server/adr/0006`.
-39. `[adapt]` **Pass `--exclude-dynamic-system-prompt-sections` to Claude Code**, or `git status` in the prompt breaks the cache after every autosave. Source: `server/adr/0006`. → Eva does not set the Agent SDK option `excludeDynamicSections: true`. The SDK option `snapshot` is on by default. With it, Claude Code records the system prompt on the first request and sends the same record on each resumed turn. So a new `git status` does not change the prompt. `excludeDynamicSections` serves a cache that many users share, and an instance has one person. Project mode is a transparent wrapper, and a manual `claude` session does not set the option. Where an account does not have `snapshot` yet, a manual session loses the same cache (issue #140).
+39. `[adapt]` **Pass `--exclude-dynamic-system-prompt-sections` to Claude Code**, or `git status` in the prompt breaks the cache after every autosave. Source: `server/adr/0006`. → Eva does not set the Agent SDK option `excludeDynamicSections: true`. The SDK option `snapshot` is on by default. With it, Claude Code records the system prompt on the first request and sends the same record on each resumed turn. So a new `git status` does not change the prompt. `excludeDynamicSections` serves a cache that many people share. An instance has one person. Project mode is a transparent wrapper. A manual `claude` session does not set the option, so Eva does not set it either. On an account that does not have `snapshot` yet, a manual session loses the same cache (issue #140).
 40. `[keep]` **The system prompt must be byte-identical across turns.** The local time goes in the user message. Source: `d991e63`.
 41. `[keep]` **A model belongs to a conversation.** A switch throws the cache away, so the UI warns, and the model choice comes first in a new chat. Source: `server/adr/0006`.
 42. `[keep]` **A schedule with a prompt pays a full uncached turn every time.** Fixed content uses a `text` or `file` step. Source: `server/adr/0013`.
@@ -83,7 +83,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 
 ## 6. Telegram
 
-56. `[keep]` **Only one poller for each bot token.** Count 409 errors, and do not let a success reset the count. Two servers flapped for ever. Source: `de9ab58`. → Eva counts the 409 errors of the last 2 minutes. At 3, she logs an error and pauses only the bot for 10 minutes; the core runs on, because the owner may reach Eva only through Telegram.
+56. `[adapt]` **Only one poller for each bot token.** Count 409 errors, and do not let a success reset the count. Two servers took the bot from each other again and again, with no end. Source: `de9ab58`. → Eva counts the 409 errors of the last 2 minutes. At 3, she logs an error and pauses only the bot for 10 minutes; the core runs on, because the owner may reach Eva only through Telegram.
 57. `[keep]` **Confirm the update offset before any deliberate exit.** Retry 3 times, or the whole batch replays. Source: `b8b686a`.
 58. `[keep]` **Format answers as Telegram HTML, never MarkdownV2.** Split at 4000 characters before the conversion, and fall back to plain text. Source: `server/adr/0002`, PR #58.
 59. `[keep]` **Service messages stay plain text.** Commit subjects and paths are not Markdown. Source: `server/AGENTS.md`.
@@ -121,7 +121,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 82. `[keep]` **Windows blocks reads of a locked byte range.** Keep a pid outside the lock file. Source: `5740aae`.
 83. `[keep]` **`time.time()` resolution on Windows is about 16 ms.** Never order events by a timestamp alone. Source: `server/adr/0007`.
 84. `[keep]` **Use `C:\Windows\System32\OpenSSH\ssh.exe` with `BatchMode` from Windows.** Git Bash's ssh could not reach the server. Source: `server/AGENTS.md`.
-85. `[keep]` **systemd user service:** enable linger, set `XDG_RUNTIME_DIR` and an explicit `PATH`, and map exit codes to restart rules. Source: `server/adr/0008`, `install-service.sh`.
+85. `[keep]` **systemd user service:** enable linger (`loginctl enable-linger`, so the service runs when the person is not logged in), set `XDG_RUNTIME_DIR` and an explicit `PATH`, and map exit codes to restart rules. Source: `server/adr/0008`, `install-service.sh`.
 86. `[keep]` **Wi-fi power saving stalled GitHub for up to 45 seconds on the server laptop.** Prefer a cable, or turn power saving off. Source: the server machine guide in `server/machines/`, `50cf793`.
 87. `[keep]` **Setup scripts:** wait for the apt lock, pass tokens through the environment and never through argv, validate each input, and write a file only when the value changed. Source: `207d286`.
 88. `[keep]` **A launcher waits for Enter after an error only when stdin is a terminal.** Source: `5f8ff74`.

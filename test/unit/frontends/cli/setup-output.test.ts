@@ -15,6 +15,11 @@ describe("the look of eva setup", () => {
     expect(setupSteps).toHaveLength(9);
   });
 
+  test("names the vault as the web app does, never a notebook (#555)", () => {
+    expect(stepLines("Vault and GitHub")).toEqual(["", "Step 6 of 9: Vault and GitHub"]);
+    expect(setupSteps.join(" ")).not.toMatch(/notebook/i);
+  });
+
   test("marks what is done, what waits for the person, and each question", () => {
     expect(doneLine("Eva runs.")).toBe("  [ok] Eva runs.");
     const turn = yourTurnLines("open the link, and sign in.");

@@ -11,7 +11,7 @@ export const setupSteps = [
   "Phone access",
   "Start Eva",
   "Your devices",
-  "Notebook and GitHub",
+  "Vault and GitHub",
   "AI login",
   "Telegram",
   "Google and voice notes",

@@ -9,11 +9,11 @@ This folder is the reference for the redesign. The redesign of #161 implemented 
 
 The reference is a mock-up. It uses example data, and its labels are English. It was made before a full review of Eva's features, so some parts differ from the code, on purpose or for now. The section [Differences](#differences-between-the-reference-and-the-code) lists them.
 
-The rest of this guide describes the web page as the code builds it. Where the code and the reference differ, the guide follows the code.
+The rest of this guide describes the web page as the code builds it. Where this guide and the reference differ, follow this guide. Where the code and the reference differ, [Differences](#differences-between-the-reference-and-the-code) says why.
 
 ## How to use this reference
 
-- Copy the reference as closely as possible. Change the code to match the design, not the design to match the code.
+- Copy the reference as closely as possible. To close an open gap, change the code to match the reference, not the reference to match the code. Keep each difference in "Differences on purpose" while its reason holds.
 - When the reference shows a feature that Eva does not have, build it if it is small and clearly useful. Otherwise, adapt the design to what exists, and write down the gap in the issue.
 - When Eva has a feature that the reference does not show, design it with the same parts: the same tokens, components and expressions.
 - Keep the existing rules of the web client: `role` and `aria-label` names that the end-to-end tests use, 44 px touch targets on a phone (36 px in the compact density), and the theme and density settings.
@@ -135,7 +135,10 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
 - **Card shadow (dark):** a 1 px ring in `--line`, plus `0 12px 30px oklch(0 0 0 / 0.4)`. Dark surfaces need the ring, because a shadow does not show on a dark ground.
 - **Main area background:** `radial-gradient(ellipse 90% 70% at 50% 0%, var(--bg), var(--bg2) 120%)`. The top is light, and the bottom is a little darker and more tinted.
 - **Main button:** `--accent` fill. Some main buttons also glow, with `0 6px 18px -6px var(--glow)` (`--button-glow`). They are on the login page, the new-device notice, the Schedules page and its sheet, and the update dialog.
-- **Send button:** a small visor, 40 px (the touch target on a phone: 44 px, or 36 px in the compact density). It uses the visor gradient, a 2 px `--shell` ring and `0 0 18px -2px var(--glow)`. The arrow is in `--eye` and glows as the eyes do. When the box is empty, the button is a flat `--chip` disc with a `--muted` arrow. When the browser can record and the box is empty, a microphone button takes its place. If voice notes are not set up, it opens their setup. While a turn runs and the box is empty, the button becomes a Stop button in `--ink`, at the same place.
+- **Send button:** a small visor, 40 px (the touch target on a phone: 44 px, or 36 px in the compact density). It uses the visor gradient, a 2 px `--shell` ring and `0 0 18px -2px var(--glow)`. The arrow is in `--eye` and glows as the eyes do. The button changes with the state:
+  - When the box is empty, the button is a flat `--chip` disc with a `--muted` arrow.
+  - When the browser can record and the box is empty, a microphone button takes its place. If voice notes are not set up, it opens their setup.
+  - While a turn runs and the box is empty, the button becomes a Stop button in `--ink`, at the same place.
 - **Visor:** `radial-gradient(ellipse at 50% 22%, var(--visor), var(--visor2) 72%)`.
 - **Eyes:** `filter: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow))` on the wrapper of the two eyes, so that every eye shape glows the same way.
 - **Scrim behind a dialog:** `oklch(0.25 0.03 h / 0.32)`. Dark: `oklch(0.05 0.01 h / 0.55)`. The chat details sheet and the new-device, schedule and update dialogs add a 3 px backdrop blur.
@@ -168,8 +171,8 @@ All of them are in `reference.html`. The class names there are short; pick clear
 | Chip              | `.chip`                                              | For filters, engine and model pickers. `.on` is selected.                                                                                                                                                                                                                                        |
 | Status pill       | `.st.ok`, `.warn`, `.bad`, `.idle`, `.live`          | A dot and a word. `.live` has a glowing dot.                                                                                                                                                                                                                                                     |
 | Card              | `.card`                                              | `--panel` fill and the card shadow.                                                                                                                                                                                                                                                              |
-| Chat list item    | `.ci`                                                | Title, last line of the chat, time, and a status pill: "Needs you", "Working" or "Unread". An unread chat shows its last line in `--ink`. On a phone, a dot on the list button tells of an unread chat.                                                                                          |
-| Message bubbles   | `.msg`, `.bub`                                       | Eva's bubble is a card with the visor at its side. The user's bubble is `--soft`.                                                                                                                                                                                                                |
+| Chat list item    | `.ci`                                                | Title, last line of the chat, time, and a status pill: "Needs you", "Working" or "Unread". An unread chat shows its last line in `--ink`. On a phone, a dot on the list button shows an unread chat.                                                                                             |
+| Message bubbles   | `.msg`, `.bub`                                       | Eva's bubble is a card with the visor at its side. The person's bubble is `--soft`.                                                                                                                                                                                                              |
 | Folded steps      | `.steps`                                             | One line: an icon, the step count, the last step, and an arrow that opens the list. The time shows only in the working indicator.                                                                                                                                                                |
 | Step list         | `.stl`                                               | One line per step: an icon, an action pill and the detail. A step opens a dialog with its input and output.                                                                                                                                                                                      |
 | Working indicator | `.working`, `.dots`                                  | Three glowing dots and the time.                                                                                                                                                                                                                                                                 |
@@ -189,7 +192,7 @@ All of them are in `reference.html`. The class names there are short; pick clear
 
 Icons are simple line icons on a 24 px grid, 1.8 px stroke, round caps (`client/icons.tsx`). Eva draws her own icons: they come from no icon library. The design reference page of the web app (Settings, Development) shows each icon with its use. Give each icon one meaning on every page.
 
-The visor has four sizes. A large visor stands alone on a page, so a white shell ring lifts it off the background. A small visor sits next to text, so it has no ring.
+The visor has four sizes. A large visor stands alone on a page, so a white shell ring separates it from the background. A small visor sits next to text, so it has no ring.
 
 | Size   | Class  | Shell ring | Use                                 |
 | ------ | ------ | ---------- | ----------------------------------- |
@@ -206,23 +209,23 @@ Only the eyes change. The visor stays round and still. Most faces blink. Happy, 
 
 ![All expressions](screenshots/expressions-light.webp)
 
-| Class        | Name      | Eyes                                                  | Motion                                                            | Use                                                          |
-| ------------ | --------- | ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
-| (none)       | Neutral   | Ovals, tilted 14°                                     | Blink every 7 s                                                   | At rest. The icon and each answer.                           |
-| `e-joy`      | Happy     | Filled crescents (an oval with the lower part masked) | Small bounce                                                      | A new chat, a greeting, a finished task, a complete setup.   |
-| `e-wink`     | Wink      | Two ovals                                             | One eye closes every 2.6 s and holds; the other squeezes a little | Done and saved.                                              |
-| `e-love`     | Delighted | Hearts                                                | Heartbeat                                                         | Thanks, a device allowed.                                    |
-| `e-surprise` | Surprised | Large circles                                         | A pop every 3 s                                                   | A new version, a new message.                                |
-| `e-think`    | Thinking  | Small, looking up                                     | Drift between the upper corners                                   | The engine thinks, with no text yet.                         |
-| `e-scan`     | Searching | Ovals                                                 | Look left, right, up and down, with pauses                        | Pairing a device, a search in the vault.                     |
-| `e-listen`   | Listening | Circles                                               | Grow and shrink                                                   | Waiting for a message or an answer.                          |
-| `e-focus`    | Focused   | Thin lines                                            | None                                                              | Project mode, tests.                                         |
-| `e-firm`     | Firm      | Flat top, tilted inward                               | None                                                              | Asks permission for something important.                     |
-| `e-skeptic`  | Skeptical | One line, one raised oval                             | None                                                              | A note conflict, an unconfirmed schedule.                    |
-| `e-worry`    | Worried   | Inner ends raised                                     | Small tremble                                                     | No connection to the hub.                                    |
-| `e-sad`      | Sad       | Flat top, outer ends down                             | None                                                              | A schedule failed, a denied permission.                      |
-| `e-error`    | Error     | Two crosses                                           | None                                                              | Something broke and needs the person.                        |
-| `e-sleep`    | Asleep    | Thin lines and a floating "z"                         | The lines breathe                                                 | The hub rests, nothing is scheduled. A chat waits for setup. |
+| Class        | Name      | Eyes                                                  | Motion                                                            | Use                                                                                       |
+| ------------ | --------- | ----------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| (none)       | Neutral   | Ovals, tilted 14°                                     | Blink every 7 s                                                   | At rest. The icon and each answer.                                                        |
+| `e-joy`      | Happy     | Filled crescents (an oval with the lower part masked) | Small bounce                                                      | A new chat, a greeting, a finished task, a complete setup.                                |
+| `e-wink`     | Wink      | Two ovals                                             | One eye closes every 2.6 s and holds; the other squeezes a little | Done and saved.                                                                           |
+| `e-love`     | Delighted | Hearts                                                | Heartbeat                                                         | Thanks, a device allowed.                                                                 |
+| `e-surprise` | Surprised | Large circles                                         | A pop every 3 s                                                   | A new version, a new message.                                                             |
+| `e-think`    | Thinking  | Small, looking up                                     | Drift between the upper corners                                   | The engine thinks, with no text yet.                                                      |
+| `e-scan`     | Searching | Ovals                                                 | Look left, right, up and down, with pauses                        | Pairing a device, a search in the vault.                                                  |
+| `e-listen`   | Listening | Circles                                               | Grow and shrink                                                   | Waiting for a message or an answer.                                                       |
+| `e-focus`    | Focused   | Thin lines                                            | None                                                              | Project mode, tests.                                                                      |
+| `e-firm`     | Firm      | Flat top, tilted inward                               | None                                                              | Asks permission for something important.                                                  |
+| `e-skeptic`  | Skeptical | One line, one raised oval                             | None                                                              | A note conflict, an unconfirmed schedule.                                                 |
+| `e-worry`    | Worried   | Inner ends raised                                     | Small tremble                                                     | No connection to the hub (the one computer that runs the Telegram bot and the schedules). |
+| `e-sad`      | Sad       | Flat top, outer ends down                             | None                                                              | A schedule failed, a denied permission.                                                   |
+| `e-error`    | Error     | Two crosses                                           | None                                                              | Something broke and needs the person.                                                     |
+| `e-sleep`    | Asleep    | Thin lines and a floating "z"                         | The lines breathe                                                 | The hub rests, nothing is scheduled. A chat waits for setup.                              |
 
 `stateFaces` in `client/visor-faces.ts` maps each state to its face, as the "Use" column says. Pages pick a state face there. Only the playful faces, such as a tap on the nav visor and the festive eyes, name a face by hand. Some uses have no page yet, such as the wink for a saved note and the sad face for a failed schedule.
 
@@ -232,7 +235,9 @@ With `prefers-reduced-motion`, no face moves and no eye blinks. The waits stand 
 
 ### Festive eyes
 
-Some days are special, such as a holiday or a solstice. On such a day, the welcome places show that day's eyes: the new chat greeting, the login code page, the nav visor at rest and the tab icon. `client/special-days.ts` picks the day, and `client/festive-art.ts` draws its eyes. A festive visor has the class `festive`, a motion class `f-*`, and its own hue. On some days, the 76 px and 128 px visors also show a decoration, such as a hat, or a small scene. State faces never change, because they inform. The days are a surprise, so no page lists them. The reference page has no festive eyes.
+Some days are special, such as a holiday or a solstice. On such a day, the welcome places show that day's eyes: the new chat greeting, the login code page, the nav visor at rest and the tab icon. `client/special-days.ts` picks the day, and `client/festive-art.ts` draws its eyes.
+
+A festive visor has the class `festive`, a motion class `f-*`, and its own hue. On some days, the 76 px and 128 px visors also show a decoration, such as a hat, or a small scene. State faces never change, because they inform. The days are a surprise, so no page lists them. The reference page has no festive eyes.
 
 ## Pages
 
@@ -271,7 +276,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 - The permission card is in the chat that asks, with an amber border.
 - It shows the exact command.
-- Two ways out: allow once, or deny.
+- Two buttons: allow once, or deny.
 - The chat list shows a "Needs you" pill, and the nav rail a count badge.
 - A request from a chat that is not on screen shows as a notice line that opens that chat.
 
@@ -288,7 +293,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 ![Computer](screenshots/project-chat-computer-light.webp) ![Phone](screenshots/project-chat-phone-light.webp)
 
 - The header shows the project, the clone and the branch.
-- A "Project mode" chip tells it apart from the assistant.
+- A "Project mode" chip shows that it is not an assistant chat.
 - Each edit and each test run is a line in the step list.
 
 ### Schedules
@@ -362,28 +367,27 @@ The redesign of #161 implemented the reference, with the differences below.
 
 Each open gap has an issue that closes it.
 
-| Reference                                              | Today                                                                                                                                        | Issue |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| The context ring of a chat, for every engine           | A pi chat shows a token count only, because pi does not report its context window. A Claude Code chat does the same when no window is known. | #210  |
-| A time on each message, and a duration on the steps    | Only the running turn shows its time. A stored turn keeps only the time when it ended.                                                       | #211  |
-| "Create a project", with its folder and its repository | "Makes its folder in the vault". The New project form can now create a repository, but the suggestion does not say so.                       | #493  |
+| Reference                                              | Today                                                                                                                  | Issue |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----- |
+| "Create a project", with its folder and its repository | "Makes its folder in the vault". The New project form can now create a repository, but the suggestion does not say so. | #493  |
 
 ### Differences on purpose
 
-The pull requests of #161 chose these differences, each for the reason below. Do not copy these parts of the reference while the reason holds.
+The pull requests of #161 and the owner chose these differences, each for the reason below. Do not copy these parts of the reference while the reason holds.
 
-| Reference                                          | Today                                               | Why                                                                                                    | Pull request |
-| -------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
-| A six-character pairing code with a dot, `K7Q·4MF` | Four characters, with no dot.                       | Eva's codes have four characters, with no 0, O, 1 or I, so the person can compare them by eye.         | #183         |
-| `+N −N` on each edit, and diffs in the chat        | Each edit is a plain step line.                     | No step carries line counts.                                                                           | #186         |
-| Messages that wait while offline, and a retry time | The text stays in the box, with a "Try now" button. | The owner chose no message queue. The page retries every 2 seconds, so a countdown would only flicker. | #190         |
-| A time on each background task                     | The state only, with one icon for every task.       | Eva keeps no time and no kind for a task.                                                              | #191         |
-| Engine and model chips in the chat details         | Plain text.                                         | The composer changes the engine before the first turn, and the model between turns (#545).             | #191         |
-| Update policy chips in the version dialog          | The policy lives in Settings only.                  | Each setting has one home.                                                                             | #206         |
-| The last use of each device                        | The date when the device was allowed.               | Eva stores only that date. A last use needs a new stored field and a write at each request.            | #205         |
-| Fonts from the internet                            | Fonts bundled with the web client.                  | The executable must work with no internet access.                                                      | #182         |
-| A glance of the neutral face                       | The neutral face only blinks.                       | The reference names `glance` keyframes that it does not define.                                        | #181         |
-| Separate Telegram and Google sections              | One Connections section.                            | #166 grouped them on purpose. Each still has its own setup step page.                                  | #197         |
+| Reference                                           | Today                                                                                  | Why                                                                                                    | Pull request |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
+| A six-character pairing code with a dot, `K7Q·4MF`  | Four characters, with no dot.                                                          | Eva's codes have four characters, with no 0, O, 1 or I, so the person can compare them by eye.         | #183         |
+| `+N −N` on each edit, and diffs in the chat         | Each edit is a plain step line.                                                        | No step carries line counts.                                                                           | #186         |
+| Messages that wait while offline, and a retry time  | The text stays in the box, with a "Try now" button.                                    | The owner chose no message queue. The page retries every 2 seconds, so a countdown would only flicker. | #190         |
+| A time on each background task                      | The state only, with one icon for every task.                                          | Eva keeps no time and no kind for a task.                                                              | #191         |
+| Engine and model chips in the chat details          | Plain text.                                                                            | The composer changes the engine before the first turn, and the model between turns (#545).             | #191         |
+| Update policy chips in the version dialog           | The policy lives in Settings only.                                                     | Each setting has one home.                                                                             | #206         |
+| The last use of each device                         | The date when the device was allowed.                                                  | Eva stores only that date. A last use needs a new stored field and a write at each request.            | #205         |
+| Fonts from the internet                             | Fonts bundled with the web client.                                                     | The executable must work with no internet access.                                                      | #182         |
+| A glance of the neutral face                        | The neutral face only blinks.                                                          | The reference names `glance` keyframes that it does not define.                                        | #181         |
+| Separate Telegram and Google sections               | One Connections section.                                                               | #166 grouped them on purpose. Each still has its own setup step page.                                  | #197         |
+| A time on each message, and a duration on the steps | Only the running turn shows its time. A stored turn keeps only the time when it ended. | The owner closed #211: not a priority now.                                                             | (none)       |
 
 ## Captures
 

@@ -2,7 +2,7 @@
 #   irm https://github.com/guplem/eva/releases/latest/download/uninstall.ps1 | iex
 # It asks before each step, and Enter keeps the safe answer. It stops each Eva that you pick and
 # removes her start at logon. Then it can delete her folder, the eva program, and the programs
-# that Eva installed for every Eva on this computer. Your notebook on GitHub always stays.
+# that Eva installed for every Eva on this computer. Your vault on GitHub always stays.
 # The CI runs it after the install test (scripts/smoke-install.ps1).
 # The script never calls `exit`: under `irm | iex`, that closes the person's PowerShell window.
 
@@ -67,7 +67,7 @@ function Uninstall-Eva {
   }
 
   # Each git folder under the Eva folder with changes that are not on its remote yet: the
-  # notebook copy, and the clones of its projects.
+  # vault copy, and the clones of its projects.
   function Get-UnsavedWork([string] $evaHome) {
     $ErrorActionPreference = 'SilentlyContinue'
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return @() }
@@ -87,7 +87,7 @@ function Uninstall-Eva {
       Write-Host '  These folders have changes that are not on GitHub yet. A delete loses them:'
       foreach ($folder in $unsaved) { Write-Host "    $folder" }
     }
-    if (Confirm-Step "Delete her folder $evaHome too? It holds her settings, logins, logs and copy of your notebook." 'n') {
+    if (Confirm-Step "Delete her folder $evaHome too? It holds her settings, logins, logs and copy of your vault." 'n') {
       try {
         Remove-Item -Recurse -Force $evaHome
       } catch {
@@ -217,7 +217,7 @@ function Uninstall-Eva {
 
   Write-Host ''
   Write-Host 'Eva is removed from this computer. These steps happen outside it:'
-  Write-Host '  - Your notebook stays on GitHub. To delete it, open the repository on GitHub, then Settings.'
+  Write-Host '  - Your vault stays on GitHub. To delete it, open the repository on GitHub, then Settings.'
   Write-Host "  - GitHub: revoke Eva's login under Settings -> Applications."
   Write-Host '  - Telegram: send /deletebot to @BotFather to delete your bot.'
   Write-Host '  - Tailscale: remove this computer at https://login.tailscale.com/admin/machines if it is still there.'

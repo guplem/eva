@@ -23,7 +23,7 @@ An issue states a clear goal. It also shows which parts the person decided and w
    - `Improvement:` a better version of something that exists.
    - `Task:` other work, such as a refactor, a chore or a setup step.
 6. **Write the body.** Leave out a section that has nothing in it.
-   - Start with one line that sums up the issue.
+   - Start with one line that summarizes the issue.
    - **Context:** what happens now, why it matters, and the related files and issues. Check in the code each file, function and behavior that you name. For a bug, give the steps to reproduce it. Write a suspected cause as a guess, never as a fact.
    - **What the person decided:** only what the person said or confirmed, in their meaning.
    - **Assumptions, written by an agent. Check them:** each choice that you made or inferred. Include each proposal that the person did not reject but did not choose.
@@ -33,7 +33,7 @@ An issue states a clear goal. It also shows which parts the person decided and w
 7. **Add labels.** Add `waiting-for-human-check` when an agent wrote the issue. Add `requires-human-intervention` when only a person can do the next step. Add no other label.
 8. **Review each issue.** Do this step for every issue.
    - Read the issue again yourself, against the code and the decisions. Check each reference to another issue.
-   - Start 2 sub-agents for each issue (1 mid-tier, 1 top-tier). Give them only the issue number and each decision, with the answers that led to it. Do not give them your reasoning: they read the issue and the code by themselves. They change nothing, and they report:
+   - Start 2 sub-agents for each issue: 1 mid-tier and 1 top-tier. A top-tier sub-agent uses a strong general model of your own vendor, such as Claude Opus or GPT Sol, not a special top model such as Claude Fable or GPT Astra. A mid-tier sub-agent uses a mid-size model of that vendor. Give both sub-agents only the issue number and each decision, with the answers that led to it. Do not give them your reasoning: they read the issue and the code by themselves. They change nothing, and they report:
      - a decision that is missing, wrong or contradicted;
      - an assumption that the issue shows as a decision of the person;
      - a claim about the code that is not true;

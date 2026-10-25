@@ -3,5 +3,5 @@
 - Listen on `127.0.0.1` only.
 - Check `Host` and `Origin` on every request and every WebSocket upgrade.
 - In `Bun.serve` `routes`, serve a file as a `Response`, never as `Bun.file`: the single executable refuses `Bun.file`.
-- After you change the served files, run `bun run build:executable` and start `dist/eva` once. The CI smoke test does not load the web UI.
+- After you change the served files, run `bun run build:executable` and start `dist/eva` once. The CI smoke test does not load the web app.
 - Bun closes a request after `idleTimeout` (255 seconds, the maximum). For a route that waits longer, call `server.timeout(request, 0)`.

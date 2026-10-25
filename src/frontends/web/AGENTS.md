@@ -10,7 +10,7 @@
 - Use the shared classes before you add one: `card`, `pill`, `callout`, `field`, `field-hint`, `inline-form`, `button-row`, `guide-steps`, `command-line`. Buttons take `primary`, `ghost`, `danger` or `large`.
 - Take each icon from `client/icons.tsx`.
 - Show each wait with a shared component of `client/Loading.tsx`, never with a sentence alone, such as "Loading…".
-  - Inside a card, show `ProgressBar`. Give it the share of the work when Eva knows it, so it fills and shows the percentage. With no share, its lines run.
+  - Inside a card, show `ProgressBar`. Give it the share of the work when Eva knows it, so it fills and shows the percentage. With no share, two lines of light move across it again and again.
   - For content that fills a large area, such as a chat or a list, show a skeleton with the shape of that content.
   - A button label such as "Testing…" is not enough. While the button waits, put a `ButtonSpinner` before its label, give the button `aria-busy`, and show a `ProgressBar` below it. Give both the same share.
 
@@ -21,6 +21,6 @@
 
 ## Captures
 
-- To capture the web page, start `bun run test/e2e/serve-demo.ts`. Then run `scripts/capture-ui.ts`: its header gives the arguments.
+- To capture the web app, start `bun run test/e2e/serve-demo.ts`. Then run `scripts/capture-ui.ts`: its header gives the arguments.
 - When a change alters how a page of the EVE guide looks, update its captures in the same PR. `docs/design/eve/README.md` says when and how.
 - In Git Bash, set `MSYS_NO_PATHCONV=1` for the capture command. Otherwise Git Bash turns `#/files` into a Windows path, and the captures show the wrong page.

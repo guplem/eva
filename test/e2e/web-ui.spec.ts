@@ -2147,6 +2147,43 @@ test("Settings: a seed colour changes the whole palette and stays in this browse
   await expect(page.getByLabel("Any colour")).toHaveValue("#123abc");
 });
 
+test("Settings: the eyes beside a Project chat's answers take their own colour", async ({ page }) => {
+  test.skip(test.info().project.name === "phone", "A phone hides the visor beside each answer.");
+  const besideAnswer = (text: string): Locator =>
+    page.locator(".msg", { has: page.locator(".message.answer", { hasText: text }) }).locator(".mk");
+  const assistantTitle = `Assistant eyes (${test.info().project.name})`;
+  const projectTitle = `Project eyes (${test.info().project.name})`;
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(assistantTitle);
+  await composer.press("Enter");
+  await expect(besideAnswer(assistantTitle)).toBeVisible();
+  await expect(besideAnswer(assistantTitle)).not.toHaveClass(/project-eyes/);
+
+  await openSettings(page, "Personalize");
+  const eyes = page.getByRole("group", { name: "Project eyes" });
+  await expect(eyes.getByRole("button", { name: "Violet" })).toHaveAttribute("aria-pressed", "true");
+  await eyes.getByRole("button", { name: "Teal" }).click();
+  await expect(eyes.getByRole("button", { name: "Teal" })).toHaveAttribute("aria-pressed", "true");
+  // The seed stays EVE blue: only the eyes of a Project chat change.
+  const seeds = page.getByRole("group", { name: "Colour" });
+  await expect(seeds.getByRole("button", { name: "EVE blue" })).toHaveAttribute("aria-pressed", "true");
+
+  await openExampleApp(page);
+  await newProjectChat(page);
+  await composer.fill(projectTitle);
+  await composer.press("Enter");
+  await answerInNewClone(page, projectTitle);
+  const visor = besideAnswer(projectTitle);
+  await expect(visor).toHaveClass(/project-eyes/);
+  const eye = await visor.evaluate((element) => getComputedStyle(element).getPropertyValue("--eye"));
+  const hue = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--project-eye-h").trim(),
+  );
+  expect(eye).toContain(hue);
+});
+
 test("the page brings its own fonts, so it needs no other server", async ({ page, baseURL }) => {
   await page.route("**/*", (route) =>
     route

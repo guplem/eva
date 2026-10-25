@@ -82,12 +82,24 @@ export function AppearanceCard(): ReactElement {
     <Card
       item="appearance"
       title="Appearance"
-      description="This browser keeps its own colour, theme, density, files view, file names and long file names."
+      description="This browser keeps its own colour, Project eyes, theme, density, files view, file names and long file names."
     >
       <div className="field">
         <span className="field-label">Colour</span>
         <span className="field-hint">Pick a colour. Eva builds the whole palette from it.</span>
         <SeedColourPicker seed={appearance.seed} onPick={(seed) => change({ seed })} />
+      </div>
+      <div className="field">
+        <span className="field-label">Project eyes</span>
+        <span className="field-hint">
+          In a Project chat, Eva's eyes beside each answer take this colour, so you see the mode at a glance.
+        </span>
+        <SeedColourPicker
+          seed={appearance.projectEyes}
+          label="Project eyes"
+          customLabel="Project eyes, other colour"
+          onPick={(projectEyes) => change({ projectEyes })}
+        />
       </div>
       <ChoiceChips
         label="Theme"

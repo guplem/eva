@@ -6,8 +6,19 @@ import { Icon } from "./icons.tsx";
 /** How long a Copy button says "Copied". */
 const copiedMs = 2_000;
 
-/** `name` tells a screen reader what the button copies; "Copied" names itself. */
-export function CopyButton({ text, name }: { readonly text: string; readonly name?: string }): ReactElement {
+/**
+ * `name` tells a screen reader what the button copies; "Copied" names itself. A button with
+ * `iconOnly`, such as one over a code block, shows its name as a tooltip, so it takes little room.
+ */
+export function CopyButton({
+  text,
+  name,
+  iconOnly = false,
+}: {
+  readonly text: string;
+  readonly name?: string;
+  readonly iconOnly?: boolean;
+}): ReactElement {
   const [copied, setCopied] = useState(false);
   const showError = useShowError();
   useEffect(() => {
@@ -15,10 +26,16 @@ export function CopyButton({ text, name }: { readonly text: string; readonly nam
     const timer = setTimeout(() => setCopied(false), copiedMs);
     return () => clearTimeout(timer);
   }, [copied]);
+  const label = copied ? "Copied" : "Copy";
+  const naming = iconOnly
+    ? { "aria-label": copied ? label : (name ?? label), "data-tooltip": copied ? label : (name ?? label) }
+    : name === undefined || copied
+      ? {}
+      : { "aria-label": name };
   return (
     <button
       className="ghost"
-      {...(name === undefined || copied ? {} : { "aria-label": name })}
+      {...naming}
       onClick={() => {
         copyText(text)
           .then(() => setCopied(true))
@@ -26,7 +43,7 @@ export function CopyButton({ text, name }: { readonly text: string; readonly nam
       }}
     >
       <Icon name={copied ? "check" : "copy"} />
-      {copied ? "Copied" : "Copy"}
+      {!iconOnly && label}
     </button>
   );
 }

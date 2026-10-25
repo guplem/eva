@@ -1068,33 +1068,77 @@ textarea {
 /* The answer's Markdown, as block HTML: compact spacing that fits a chat bubble on a phone. The
    code box comes first, so the first-child and last-child rules below win over its margin. */
 .answer-body .code-box {
+  /* The side of the Copy button. A phone gets a whole touch target. */
+  --code-copy-size: 28px;
+  position: relative;
   margin: 0 0 10px;
   background: var(--chip);
   border-radius: var(--radius-input);
+}
+
+@media (max-width: 760px) {
+  .answer-body .code-box {
+    --code-copy-size: var(--touch-target);
+  }
 }
 
 .answer-body li > .code-box {
   margin: 4px 0;
 }
 
-/* The bar holds the Copy button above the code, so the button never covers a line. */
+/* The Copy button sits in the top right corner, over the code, so it takes no line of its own. */
 .answer-body .code-box-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: var(--space-1) var(--space-1) 0;
-  /* A selection by hand across the block must not copy the word "Copy". */
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
   -webkit-user-select: none;
   user-select: none;
-}
-
-/* A ghost button fills with --chip on hover, the same colour as the box, so it takes the next step. */
-.answer-body .code-box-bar button.ghost:hover {
-  background: var(--line);
 }
 
 /* A live answer has no Copy button yet. */
 .answer-body .code-box-bar:empty {
   display: none;
+}
+
+/* The fill is the box's own colour, so the button hides the code under it, and no letters overlap. */
+.answer-body .code-box-bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--code-copy-size);
+  min-width: var(--code-copy-size);
+  height: var(--code-copy-size);
+  min-height: var(--code-copy-size);
+  padding: 0;
+  border-radius: var(--radius-input);
+  background: var(--chip);
+  color: var(--muted);
+}
+
+/* The icon stays faint, so it does not pull the eye from the code, until the pointer or the focus comes. */
+.answer-body .code-box-bar button .icon {
+  opacity: 0.55;
+  transition: opacity 120ms ease-out;
+}
+
+.answer-body .code-box:hover .code-box-bar button .icon,
+.answer-body .code-box-bar button:focus-visible .icon {
+  opacity: 1;
+}
+
+.answer-body .code-box-bar button:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+/* A block of one line is still as tall as its button, so the button stays inside the box. */
+.answer-body .code-box:has(> .code-box-bar:not(:empty)) {
+  min-height: calc(var(--code-copy-size) + 2 * var(--space-1));
+}
+
+/* The right edge of the code keeps the button's room, so a wrapped line never runs under it. */
+.answer-body .code-box:has(> .code-box-bar:not(:empty)) pre {
+  padding-right: calc(var(--code-copy-size) + var(--space-2));
 }
 
 .answer-body > :first-child {

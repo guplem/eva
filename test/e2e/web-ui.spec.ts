@@ -5741,13 +5741,13 @@ test("Files: a code block in a formatted note wraps too (issue 484)", async ({ p
   await expect.poll(overflows).toBe(true);
 });
 
-test("Files: the Copy button of a code block sits above the code and stays when the code scrolls (#587)", async ({
+test("Files: the Copy button of a code block sits in its top right corner, clear of the code (#587)", async ({
   page,
   context,
 }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const line = "echo word ".repeat(80).trim();
-  const text = `# Setup\n\n\`\`\`sh\n${line}\n\`\`\`\n`;
+  const text = `# Setup\n\n\`\`\`sh\n${line}\n\`\`\`\n\n\`\`\`sh\nls\n\`\`\`\n`;
   await page.route("**/api/files?path=Notes%2Fsetup.md", (route) =>
     route.fulfill({
       json: { kind: "file", path: "Notes/setup.md", size: text.length, text, version: "v1", editable: true },
@@ -5756,19 +5756,51 @@ test("Files: the Copy button of a code block sits above the code and stays when 
   await logIn(page);
   await page.goto("/#/files/Notes/setup.md");
   const file = page.getByRole("region", { name: "File text" });
+  const box = file.locator(".code-box").first();
+  const block = box.locator("pre");
+  const copy = box.getByRole("button", { name: "Copy the code" });
+  await expect(copy).toBeVisible();
+  // The button takes no line of its own: it sits in the corner, over the top of the code.
+  const corner = await box.boundingBox();
+  const button = await copy.boundingBox();
+  const code = await block.boundingBox();
+  expect(corner !== null && button !== null && code !== null).toBe(true);
+  if (corner === null || button === null || code === null) return;
+  expect(corner.x + corner.width - (button.x + button.width)).toBeLessThanOrEqual(8);
+  expect(button.y - corner.y).toBeLessThanOrEqual(8);
+  expect(button.y).toBeGreaterThan(code.y);
+  expect(button.y + button.height).toBeLessThanOrEqual(corner.y + corner.height);
+  // A wrapped line ends before the button, so no letter runs under it.
+  // A space at the end of a wrapped line hangs past the edge, so only the letters count.
+  const textRight = await block.locator("code").evaluate((element) => {
+    const node = element.firstChild;
+    const text = node?.textContent ?? "";
+    const range = document.createRange();
+    let right = 0;
+    for (let index = 0; index < text.length; index += 1) {
+      if (node === null || /\s/.test(text.charAt(index))) continue;
+      range.setStart(node, index);
+      range.setEnd(node, index + 1);
+      right = Math.max(right, range.getBoundingClientRect().right);
+    }
+    return right;
+  });
+  expect(textRight).toBeLessThanOrEqual(button.x);
+  // A block of one line is as tall as its button, so the button does not stick out under it.
+  const short = file.locator(".code-box").last();
+  const shortBox = await short.boundingBox();
+  const shortButton = await short.getByRole("button", { name: "Copy the code" }).boundingBox();
+  expect((shortButton?.y ?? 0) + (shortButton?.height ?? 0)).toBeLessThanOrEqual(
+    (shortBox?.y ?? 0) + (shortBox?.height ?? 0),
+  );
+  // A long line scrolls under a still button.
   await chooseFileAction(page, "Do not wrap long lines");
-  const block = file.locator(".files-markdown pre");
-  const copy = file.getByRole("button", { name: "Copy the code" });
   const before = await copy.boundingBox();
   await block.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
   expect(await block.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-  const button = await copy.boundingBox();
-  expect(button?.x).toBe(before?.x);
-  const code = await block.boundingBox();
-  // The button is above the code, so it covers no line, and the scroll does not move it away.
-  expect(button !== null && code !== null && button.y + button.height <= code.y).toBe(true);
-  await expect(copy).toBeInViewport();
+  expect((await copy.boundingBox())?.x).toBe(before?.x);
   await copy.click();
+  await expect(box.getByRole("button", { name: "Copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(line);
 });
 

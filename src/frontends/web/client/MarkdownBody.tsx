@@ -1,6 +1,6 @@
 /**
  * The HTML of `toWebHtml`, with a Copy button on each code block. The HTML is a string, so it cannot
- * hold a React button: a portal puts one in each empty bar that `toWebHtml` leaves above the code.
+ * hold a React button: a portal puts one in each empty bar that `toWebHtml` leaves in the block.
  */
 import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
@@ -40,7 +40,7 @@ export function MarkdownBody({
     <>
       <div ref={body} className={className} dangerouslySetInnerHTML={{ __html: html }} />
       {bars.map(({ bar, code }, index) =>
-        createPortal(<CopyButton text={code} name="Copy the code" />, bar, String(index)),
+        createPortal(<CopyButton text={code} name="Copy the code" iconOnly />, bar, String(index)),
       )}
     </>
   );

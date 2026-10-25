@@ -100,9 +100,8 @@ Lefthook installs the hooks with the dependency install. The hooks work with any
 - **`AGENTS.md` defines a breaking change for the project.** In general, a change is breaking when the person must act by hand after the update, or loses something.
 - **A check enforces the `!`.** When a stored or public name goes away with no migration and no `!`, CI fails. An agent can forget a rule, but not a check.
 - **A stored format changes through a migration.** Each migration has a dated id, runs once at start, and is recorded as applied. A format change with a migration is not breaking.
-- **When the project installs its own updates:**
-  - **The person chooses which releases install by themselves:** only fixes, fixes and features, or all.
-  - **Before a manual update, the person sees what each release brings.**
+- **The person chooses which releases install by themselves:** only fixes, fixes and features, or all.
+- **Before a manual update, the person sees what each release brings.**
 
 ## Labels
 

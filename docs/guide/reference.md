@@ -211,7 +211,7 @@ A request from Eva's own computer can come from any program there, so only the t
 
 ## Chats
 
-- **One list.** Telegram, the web page and `eva chat` share the same chats. Telegram shows a chat from the web page or the terminal after `/chats`. Its topic (a thread inside the Telegram chat) then also shows the messages that they send.
+- **One list.** Telegram, the web page and `eva chat` share the same chats. Telegram shows a chat from the web page or the terminal after `/chats`. The topic of that chat (a thread inside your bot's Telegram chat) then also shows the messages that the web page and the terminal send.
 - **Continue a chat in Telegram:** send `/chats` and tap the chat. It opens in a topic of its own, with its last 3 turns. Without topics, the main Telegram chat continues it.
 - **Project work:** when Eva gives work to a project from Telegram, its chat opens in a topic. In a group, Eva sends the link to that topic. When Tailscale gives Eva an address, she also sends the link to the chat on the web page.
 - **Delete a chat:** send `/delete` in its topic, or pick **Delete chat** in the "More actions" menu (•••) of the chat on the web page. Eva deletes it from Telegram, the web page and the terminal, with its forks. A fork is a copy of a chat from one message, that goes another way. The engine keeps its own transcript.

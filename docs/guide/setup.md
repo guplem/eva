@@ -57,8 +57,6 @@ In the terminal, a line that starts with `>` is a question: type the answer, or 
 
 On the page, **Settings > Setup** lists each step that is left. Each answer is saved at once, in both places. You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
 
-The next sections explain each step in more detail.
-
 ### Open Eva on her own computer
 
 To open Eva on her own computer later, run `eva open`. It opens her page in this computer's browser, already logged in. You need no code and no token.
@@ -72,6 +70,8 @@ On Windows, a few seconds after you log in, Eva also has an icon in the system t
 If Eva stops by herself, for example because of a bad setting, the icon stays with a sleeping or crossed-out face. Fix the setting, then choose **Restart Eva**.
 
 With more than one Eva on the computer, each Eva has her own icon. Her name is in its tooltip and at the top of its menu.
+
+The next sections explain each setup step in more detail.
 
 ## Log in to your AI
 

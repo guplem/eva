@@ -9,7 +9,7 @@ This folder is the reference for the redesign. The redesign of #161 implemented 
 
 The reference is a mock-up. It uses example data, and its labels are English. It was made before a full review of Eva's features, so some parts differ from the code, on purpose or for now. The section [Differences](#differences-between-the-reference-and-the-code) lists them.
 
-The rest of this guide describes the web page as the code builds it. This guide wins over the reference. Where the code and the reference differ, the section Differences says why.
+The rest of this guide describes the web page as the code builds it. Where this guide and the reference differ, follow this guide. Where the code and the reference differ, the section Differences says why.
 
 ## How to use this reference
 
@@ -172,7 +172,7 @@ All of them are in `reference.html`. The class names there are short; pick clear
 | Status pill       | `.st.ok`, `.warn`, `.bad`, `.idle`, `.live`          | A dot and a word. `.live` has a glowing dot.                                                                                                                                                                                                                                                     |
 | Card              | `.card`                                              | `--panel` fill and the card shadow.                                                                                                                                                                                                                                                              |
 | Chat list item    | `.ci`                                                | Title, last line of the chat, time, and a status pill: "Needs you", "Working" or "Unread". An unread chat shows its last line in `--ink`. On a phone, a dot on the list button shows an unread chat.                                                                                             |
-| Message bubbles   | `.msg`, `.bub`                                       | Eva's bubble is a card with the visor at its side. The user's bubble is `--soft`.                                                                                                                                                                                                                |
+| Message bubbles   | `.msg`, `.bub`                                       | Eva's bubble is a card with the visor at its side. The person's bubble is `--soft`.                                                                                                                                                                                                              |
 | Folded steps      | `.steps`                                             | One line: an icon, the step count, the last step, and an arrow that opens the list. The time shows only in the working indicator.                                                                                                                                                                |
 | Step list         | `.stl`                                               | One line per step: an icon, an action pill and the detail. A step opens a dialog with its input and output.                                                                                                                                                                                      |
 | Working indicator | `.working`, `.dots`                                  | Three glowing dots and the time.                                                                                                                                                                                                                                                                 |
@@ -373,7 +373,7 @@ The pull requests of #161 and the owner chose these differences, each for the re
 | Fonts from the internet                             | Fonts bundled with the web client.                                                     | The executable must work with no internet access.                                                      | #182         |
 | A glance of the neutral face                        | The neutral face only blinks.                                                          | The reference names `glance` keyframes that it does not define.                                        | #181         |
 | Separate Telegram and Google sections               | One Connections section.                                                               | #166 grouped them on purpose. Each still has its own setup step page.                                  | #197         |
-| A time on each message, and a duration on the steps | Only the running turn shows its time. A stored turn keeps only the time when it ended. | The owner chose not to store it (#211).                                                                | (none)       |
+| A time on each message, and a duration on the steps | Only the running turn shows its time. A stored turn keeps only the time when it ended. | The owner closed #211: not a priority now.                                                             | (none)       |
 
 ## Captures
 

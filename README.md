@@ -49,7 +49,7 @@ Eva updates herself from new releases. You choose which ones in **Settings > Upd
 
 ### In Telegram
 
-Write to your bot as you write to a person. Eva answers in the same chat. Each Telegram topic, a thread inside the chat, is a separate chat with Eva. Send `/new` to start one. Telegram, the web page and the terminal share the same chats: see [Chats](docs/guide/reference.md#chats).
+Write to your bot as you write to a person. Eva answers in the same Telegram chat. Each Telegram topic (a thread inside your bot's Telegram chat) is a separate Eva chat. Send `/new` to start one. Telegram, the web page and the terminal share the same chats: see [Chats](docs/guide/reference.md#chats).
 
 Type `/` in the chat to see all the commands, with a short note for each.
 

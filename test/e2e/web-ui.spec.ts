@@ -687,6 +687,21 @@ test("a link opened before the login opens its chat after the login", async ({ p
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(linked);
 });
 
+test("on a computer, a chat that opens gives the focus to its message box, so the person types at once", async ({
+  page,
+}) => {
+  await logIn(page);
+  const first = await newAnsweredChat(page, "First focused chat");
+  await newAnsweredChat(page, "Second focused chat");
+  await openList(page);
+  await page.locator(".sidebar .list-item", { hasText: first }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(first);
+  await expect(page.getByLabel("Message").first()).toBeFocused();
+
+  await clickNewChat(page);
+  await expect(page.getByLabel("Message").first()).toBeFocused();
+});
+
 test("a link to a deleted chat says so", async ({ page }) => {
   await logIn(page);
   const title = await newAnsweredChat(page, "A chat that goes");
@@ -3143,6 +3158,32 @@ test("an attached file reaches the agent as its vault path, and a removed one do
   await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
 });
 
+test("a pasted image and a dropped file attach like a picked file", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.evaluate((textarea) => {
+    const clipboard = new DataTransfer();
+    clipboard.items.add(new File([new Uint8Array([137, 80, 78, 71])], "image.png", { type: "image/png" }));
+    textarea.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
+  });
+  const dropped = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["notes"], "notes.txt", { type: "text/plain" }));
+    return transfer;
+  });
+  await page.locator(".composer-box").dispatchEvent("dragover", { dataTransfer: dropped });
+  await page.locator(".composer-box").dispatchEvent("drop", { dataTransfer: dropped });
+  const attached = page.getByRole("list", { name: "Attached files" });
+  await expect(attached.getByRole("listitem")).toHaveCount(2);
+  await expect(attached).toContainText("image.png");
+  await expect(attached).toContainText("notes.txt");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const message = page.locator(".message.user").last();
+  await expect(message).toContainText(/saved as Scratch\/received\/image-[0-9a-f]{12}\.png/);
+  await expect(message).toContainText(/saved as Scratch\/received\/notes-[0-9a-f]{12}\.txt/);
+});
+
 test("a refused file leaves the box and says why (issue 409)", async ({ page }) => {
   await page.route("**/api/files/received*", async (route) => {
     await route.fulfill({ status: 413, json: { error: "Eva takes files up to 25 MB only." } });
@@ -4591,6 +4632,13 @@ test.describe("on a touch screen", () => {
     await expect(page.locator(".message.user")).toHaveCount(0);
     await page.getByRole("button", { name: "Send" }).first().click();
     await expect(page.locator(".message.answer").first()).toContainText("second line");
+  });
+
+  test("a chat that opens leaves the message box without the focus, so the keyboard stays down", async ({ page }) => {
+    await logIn(page);
+    await newChat(page);
+    await expect(page.getByLabel("Message").first()).toBeEnabled();
+    await expect(page.getByLabel("Message").first()).not.toBeFocused();
   });
 
   test("the tab bar hides while the keyboard is up, and comes back after", async ({ page }) => {

@@ -46,7 +46,7 @@ async function copyText(text: string): Promise<void> {
   area.style.left = "0";
   area.style.fontSize = "16px";
   area.style.opacity = "0";
-  // The text box takes the focus, so give it back: a keyboard user keeps their place.
+  // The text box takes the focus, so give it back to the button: a keyboard user keeps their place.
   const focused = document.activeElement;
   document.body.append(area);
   area.select();
@@ -55,6 +55,7 @@ async function copyText(text: string): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- the only way to copy on a page that is not secure.
   const copied = document.execCommand("copy");
   area.remove();
-  if (focused instanceof HTMLElement) focused.focus();
+  // iOS does not focus a tapped button, so the focus can be the message box: focusing it again opens the keyboard.
+  if (focused instanceof HTMLButtonElement) focused.focus({ preventScroll: true });
   if (!copied) throw new Error("This browser cannot copy here. Select the text and copy it.");
 }

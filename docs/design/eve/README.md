@@ -149,7 +149,7 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
 
 A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) and inspector (300 px). A page without a list or an inspector drops that column.
 
-- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the notification center. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news or a setup step that is left.
+- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the notification center, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news or a setup step that is left.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column of at most 760 px, and the composer.
 - **Inspector:** the details of the selected item, such as the chat details.
@@ -227,7 +227,7 @@ Only the eyes change. The visor stays round and still. Most faces blink. Happy, 
 | `e-error`    | Error     | Two crosses                                           | None                                                              | Something broke and needs the person.                                                     |
 | `e-sleep`    | Asleep    | Thin lines and a floating "z"                         | The lines breathe                                                 | The hub rests, nothing is scheduled. A chat waits for setup.                              |
 
-`stateFaces` in `client/visor-faces.ts` maps each state to its face, as the "Use" column says. Pages pick a state face there. Only the playful faces, such as the festive eyes, name a face by hand. Some uses have no page yet, such as the wink for a saved note and the sad face for a failed schedule.
+`stateFaces` in `client/visor-faces.ts` maps each state to its face, as the "Use" column says. Pages pick a state face there. Only the playful faces, such as a tap on the nav visor and the festive eyes, name a face by hand. Some uses have no page yet, such as the wink for a saved note and the sad face for a failed schedule.
 
 The login page rotates faces while it waits: searching (5 s), thinking (3 s), happy, wink, surprised, listening and delighted.
 

@@ -16,8 +16,9 @@
   gap: var(--space-3);
 }
 
+/* A phone puts the buttons under the title, so the title never breaks inside a word. */
 .center-title {
-  flex: 1;
+  flex: 1 1 240px;
   min-width: 0;
 }
 
@@ -59,7 +60,7 @@
   font-weight: 700;
 }
 
-/* The notices of "Needs you" take the shared look. A step that is left is no failure: it keeps the plain fill. */
+/* The notices of "Needs you" take the shared look: a step that is left waits for the person, as a warning does. */
 .center-section .notice {
   flex-wrap: wrap;
 }

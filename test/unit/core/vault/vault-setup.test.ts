@@ -72,7 +72,7 @@ async function failure(run: Promise<unknown>): Promise<unknown> {
   );
 }
 
-const answers = { name: "Sam", language: "English", topics: ["work", "music"] };
+const answers = { name: "Sam", language: "English", notesLanguage: "", topics: ["work", "music"] };
 
 describe("VaultSetup", () => {
   test("lists the repositories with the saved token, and asks for a token when none is saved", async () => {
@@ -120,6 +120,8 @@ describe("VaultSetup", () => {
     const folder = join(paths.root, "vault");
     expect(result).toEqual({ folder, repository: join(sandbox.root, "my-vault.git"), problem: null });
     expect(readFileSync(join(folder, "Life", "About me.md"), "utf8")).toContain("Sam");
+    // An empty answer keeps the recommended language for notes.
+    expect(readFileSync(join(folder, "AGENTS.md"), "utf8")).toContain("**Write all notes in English**");
     expect(loadConfig(paths).vaultPath).toBe(folder);
     expect(sandbox.git(join(sandbox.root, "my-vault.git"), "log", "--oneline", "main")).toContain("template");
     expect(await setup(api.baseUrl).needsPush()).toBe(false);

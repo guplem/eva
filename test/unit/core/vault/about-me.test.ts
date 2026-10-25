@@ -148,7 +148,13 @@ describe("installedOn", () => {
 
 describe("a new vault's note", () => {
   test("reads with the name and no problem", () => {
-    const files = vaultTemplateFiles({ name: 'Alex "Lex" Example', language: "English", timeZone: "UTC", topics: [] });
+    const files = vaultTemplateFiles({
+      name: 'Alex "Lex" Example',
+      language: "English",
+      notesLanguage: "English",
+      timeZone: "UTC",
+      topics: [],
+    });
     writeFileSync(join(vault, "Life", "About me.md"), files["Life/About me.md"] ?? "");
     expect(readAboutMe(vault)).toEqual({
       name: 'Alex "Lex" Example',

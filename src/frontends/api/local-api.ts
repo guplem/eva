@@ -164,6 +164,8 @@ const vaultPushSchema = vaultCloneSchema;
 const newVaultSchema = z.object({
   name: z.string().max(200),
   language: z.string().max(200),
+  // A page from before this question sends none: the notes are in English then.
+  notesLanguage: z.string().max(200).default(""),
   topics: z.array(z.string().max(200)).max(50),
   repository: z.string().max(2_000),
 });

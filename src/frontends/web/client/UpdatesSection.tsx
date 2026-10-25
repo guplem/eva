@@ -227,7 +227,10 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
         } else {
           setOpeningVersions(true);
           try {
-            await eva.openVersions();
+            // Eva can start her own update during the installs. Then the dialog would only offer a second one.
+            const status = await api.checkForUpdate();
+            eva.setUpdate(status);
+            if (status.phase === "idle" && evaNewest(status) !== null) eva.setPickingVersion(true);
           } catch (error) {
             notes.push({ ok: false, text: errorText(error) });
           } finally {

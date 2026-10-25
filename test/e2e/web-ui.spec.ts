@@ -4090,6 +4090,58 @@ test("Settings: Update all installs each clear update in turn, then opens the Ev
   await expect(card.getByRole("status").filter({ hasText: "uv failed." })).toHaveClass(/warning/);
 });
 
+test("Settings: Update all opens no version dialog when Eva started her own update meanwhile", async ({ page }) => {
+  const idle = {
+    kind: "executable",
+    frequency: "hourly",
+    install: "minor",
+    phase: "idle",
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    heldBack: null,
+    releases: [
+      { version: "0.3.0", notes: "", level: "minor", summary: "", headline: "Voice notes.", publishedAt: null },
+    ],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+    failingSince: null,
+  };
+  // The automatic update starts while the tools install.
+  let installed = false;
+  const status = (): object => (installed ? { ...idle, phase: "updating" } : idle);
+  await page.route("**/api/update/check", async (route) => {
+    await route.fulfill({ json: status() });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: status() });
+  });
+  await page.route("**/api/versions/latest", async (route) => {
+    await route.fulfill({ json: [{ program: "pi", latest: "1.4.0" }] });
+  });
+  await page.route("**/api/versions", async (route) => {
+    await route.fulfill({
+      json: {
+        eva: "0.2.0",
+        tools: [{ program: "pi", feature: "a test", version: "1.3.0", installable: true, tooOld: false }],
+        voiceNotes: { missing: [], on: true },
+      },
+    });
+  });
+  await page.route("**/api/tools/install", async (route) => {
+    installed = true;
+    await route.fulfill({ json: { ok: true, message: "Updated pi." } });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await card.getByRole("button", { name: "Update all" }).click();
+  await expect(card.getByRole("status").filter({ hasText: "Updated pi." })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Update to a version" })).toHaveCount(0);
+});
+
 test("Settings: the claude Update button runs claude update and shows its result", async ({ page }) => {
   const posts: string[] = [];
   let finished = false;

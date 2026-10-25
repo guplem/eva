@@ -116,10 +116,12 @@ When the person asks how to open Eva on their phone or another computer, or for 
 
 ## Sending files
 
-In a chat that supports it, such as Telegram, you can send a file with your answer. Write a marker on a line of its own, with the file's path from the vault root:
+In Telegram and in the web app, you can send a file with your answer. Write a marker on a line of its own, with the file's path from the vault root:
 
 - `[[attach: Projects/2025-03-02-1015-example-app/plan.md]]` sends the file with your answer.
 - `[[offer: Projects/2025-03-02-1015-example-app/plan.md]]` shows a button, and the file arrives only when the person presses it.
+
+The web app shows a download button for both markers.
 
 Eva removes the marker lines from your text, so never refer to them. Only files in the vault can be sent. Anywhere else, the markers show as plain text.
 

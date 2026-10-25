@@ -1,6 +1,6 @@
 /**
- * Files that reach a chat (lessons 72 to 74, 124). The model names a file
- * with a marker line in its answer; a marker is plain text, so every engine can write it.
+ * Files that reach a chat (lessons 72 to 74, 124). The model names a file with a marker line
+ * in its answer: `src/shared/file-markers.ts` reads it.
  * Only a file inside the vault can be sent, and the path is resolved before the check, so
  * neither `..` nor a symbolic link can point out (lesson 72).
  */
@@ -19,13 +19,6 @@ import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 
-export interface FileMarkers {
-  /** The answer without the marker lines. */
-  readonly text: string;
-  readonly attach: readonly string[];
-  readonly offer: readonly string[];
-}
-
 export type SendableFile =
   | { readonly ok: true; readonly path: string; readonly relativePath: string; readonly name: string }
   | { readonly ok: false; readonly reason: string };
@@ -35,8 +28,6 @@ export const maxSendableBytes = 50 * 1024 * 1024;
 export const scratchFolderName = "Scratch";
 /** Scratch files older than this are removed. */
 const scratchMaxAgeMs = 7 * 24 * 60 * 60_000;
-const markerPattern = /^\s*\[\[\s*(attach|offer)\s*:\s*(.+?)\s*\]\]\s*$/i;
-const fencePattern = /^\s*(```|~~~)/;
 /** File names that hold secrets by convention; the vault's .gitignore names the same ones. */
 const secretScanBytes = 2 * 1024 * 1024;
 const secretNamePattern =
@@ -45,27 +36,6 @@ const secretNamePattern =
 /** True for a file name that holds secrets by convention, such as `.env` or `id.pem`. */
 export function looksLikeSecretsFile(name: string): boolean {
   return secretNamePattern.test(name);
-}
-
-/** Reads the marker lines of an answer block. A marker inside a code fence stays text. */
-export function extractFileMarkers(answer: string): FileMarkers {
-  const kept: string[] = [];
-  const attach: string[] = [];
-  const offer: string[] = [];
-  let inFence = false;
-  for (const line of answer.split("\n")) {
-    if (fencePattern.test(line)) inFence = !inFence;
-    const match = inFence ? null : markerPattern.exec(line);
-    if (match === null) {
-      kept.push(line);
-      continue;
-    }
-    const path = match[2] ?? "";
-    const list = match[1]?.toLowerCase() === "attach" ? attach : offer;
-    if (!list.includes(path)) list.push(path);
-  }
-  // A file named twice goes once, and attach wins over offer.
-  return { text: kept.join("\n").trim(), attach, offer: offer.filter((path) => !attach.includes(path)) };
 }
 
 /** Resolves a path from the vault root and checks that it may be sent. */

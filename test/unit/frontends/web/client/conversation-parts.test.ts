@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   answeredModel,
+  answerFiles,
+  wholeAnswerAddsText,
   engineLock,
   composerPlaceholder,
   effortLabel,
@@ -93,6 +95,46 @@ describe("stepParts", () => {
     expect(stepParts(step("command", "git status"))).toEqual({ action: "Command", detail: "git status" });
     expect(stepParts(step("message", "Let me look."))).toEqual({ action: "Message", detail: "Let me look." });
     expect(stepParts(step("task", "Search the notes"))).toEqual({ action: "Task", detail: "Search the notes" });
+  });
+
+  test("hides the file markers of a message, also one that the 200-character cut left open", () => {
+    expect(stepParts(step("message", "Here it is.\n[[attach: Scratch/example-app.zip]]"))).toEqual({
+      action: "Message",
+      detail: "Here it is.",
+    });
+    expect(stepParts(step("message", "Here it is.\n[[attach: Scratch/exa…"))).toEqual({
+      action: "Message",
+      detail: "Here it is.",
+    });
+  });
+});
+
+describe("wholeAnswerAddsText", () => {
+  test("is true when an earlier message has words, and false when it holds file markers only", () => {
+    expect(wholeAnswerAddsText("Let me look.\n\nHere it is.", "Here it is.")).toBe(true);
+    expect(wholeAnswerAddsText("[[attach: Scratch/a.pdf]]\n\nHere it is.", "Here it is.")).toBe(false);
+    expect(wholeAnswerAddsText("Here it is.", "Here it is.")).toBe(false);
+  });
+});
+
+describe("answerFiles", () => {
+  test("lists each file of the whole answer once, with its name, attach first", () => {
+    const answer =
+      "First.\n[[offer: Methods/Plan.md]]\n\nThen.\n[[attach: Scratch/example-app.zip]]\n[[attach: Methods/Plan.md]]";
+    expect(answerFiles(answer)).toEqual([
+      { path: "Scratch/example-app.zip", name: "example-app.zip" },
+      { path: "Methods/Plan.md", name: "Plan.md" },
+    ]);
+  });
+
+  test("names a file of a Windows path by its last part", () => {
+    expect(answerFiles("[[attach: Scratch\\report.pdf]]")).toEqual([
+      { path: "Scratch\\report.pdf", name: "report.pdf" },
+    ]);
+  });
+
+  test("gives no file for a marker in a code fence", () => {
+    expect(answerFiles("```\n[[attach: a.md]]\n```")).toEqual([]);
   });
 });
 

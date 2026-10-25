@@ -8,6 +8,7 @@ import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { mergeMessage, partStateWords, updatedWords } from "./template-words.ts";
+import { goTo } from "./back-layers.ts";
 
 interface Listed {
   readonly parts: readonly TemplatePartView[];
@@ -51,7 +52,7 @@ export function TemplateAlignmentCard({ context }: { readonly context: SettingsC
       await api.send(chat.id, mergeMessage(part));
       await api.chooseTemplateVersion(part.path, "mine");
       reloadSetup();
-      window.location.hash = `#/chat/${encodeURIComponent(chat.id)}`;
+      goTo(`#/chat/${encodeURIComponent(chat.id)}`);
     } catch (error) {
       notify(errorText(error));
       load();

@@ -32,7 +32,7 @@ A change to one of these goals needs the owner.
 
 - **Never write personal data** in a file, commit, issue or PR: no names of private people, employers, machine addresses, tokens or home paths. Use the neutral demo vault and `example-app` style names.
 - **Spawn a child process only through a seam** (`ProcessRunner`; pi's `PiProcessStarter`; `TerminalProcessStarter` for a program that needs a terminal), with an environment from `buildChildEnvironment` and a timeout. A seam is an interface that a test replaces with a fake.
-  Some long children, such as the Windows tray icon, read Eva's newest line from a file and write their answers as lines on their output. Run such a child through `LineProcessStarter`, with a bounded close instead of a timeout.
+  Some long children, such as the Windows tray icon, read Eva's newest line from a file. They write each answer as one line on their output. Run such a child through `LineProcessStarter`, with a bounded close instead of a timeout.
   Only Eva herself, under her supervisor, runs through `LongProcessStarter`. She gets the supervisor's whole environment, and a bounded stop instead of a timeout.
 - **Write state files atomically, and read them tolerantly** (`src/shared/files.ts`). A bad file never crashes Eva.
 - **Branch on `EvaError` codes,** never on message text.
@@ -42,7 +42,7 @@ A change to one of these goals needs the owner.
 - **Before you delete a folder, list its git-ignored files** (`git status --ignored -- <folder>`). An ignored file, such as a `.env`, is in no commit, so a delete loses it forever.
 - **Reuse a shared component before you add one.** Solve the same problem with the same pattern on every page. When a shared component does not fit, extend it. Do not add a second component for the same job.
 - **Comment the why, never the what.**
-- **Use one word per concept:** instance, vault, project, clone (never "workspace"), session, fork, turn, engine, front end.
+- **Use one word per concept:** instance, vault, project, clone (never "workspace"), session (a "chat" in text for the person), fork, turn, engine, front end.
 - **A step that only a person can do** becomes a GitHub issue with the `requires-human-intervention` label. Then continue with fakes.
 
 ## Checks

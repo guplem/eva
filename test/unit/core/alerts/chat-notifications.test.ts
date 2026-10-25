@@ -84,6 +84,13 @@ describe("a chat that is free again", () => {
     expect(sent.map((notification) => notification.body)).toEqual(["Here it is."]);
   });
 
+  test("says that Eva finished when the answer holds file markers only", () => {
+    const { sent, feed, idle } = notifications();
+    feed("web", received("api"), text("[[attach: Scratch/a.zip]]"), finished);
+    idle("web");
+    expect(sent.map((notification) => notification.body)).toEqual(["Eva finished."]);
+  });
+
   test("cuts a long text", () => {
     const { sent, feed, idle } = notifications();
     feed("web", received("api"), text("word ".repeat(100)), finished);

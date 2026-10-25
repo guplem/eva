@@ -30,6 +30,10 @@ describe("shownAnswerText", () => {
     expect(shownAnswerText("Here it is.\n[[attach: Scratch/a…", true)).toBe("Here it is.");
   });
 
+  test("gives no text for an open text that only starts a marker", () => {
+    expect(shownAnswerText("[[attach: Scr", true)).toBe("");
+  });
+
   test("keeps the last line of a whole answer, which no stream left open", () => {
     expect(shownAnswerText("Here it is.\n[[")).toBe("Here it is.\n[[");
   });

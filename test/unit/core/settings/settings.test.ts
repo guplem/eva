@@ -219,6 +219,7 @@ describe("the model and the effort of new chats (#550)", () => {
   });
 
   test("eva settings set still takes the old Claude Code key, and its Default means Smart", () => {
+    expect(isSharedSettingKey("engines.claudeCode.defaultModel")).toBe(true);
     expect(settingChange("engines.claudeCode.defaultModel", "haiku")).toEqual({
       engines: { claudeCode: { defaultModel: "haiku" } },
     });

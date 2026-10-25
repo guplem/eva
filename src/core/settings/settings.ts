@@ -127,7 +127,9 @@ export function isSettingKey(key: string): boolean {
 
 /** True when the vault holds this setting, so it applies on every machine. */
 export function isSharedSettingKey(key: string): boolean {
-  return sharedSettingKeys.some((shared) => key === shared || key.startsWith(`${shared}.`));
+  return [...sharedSettingKeys, ...oldSharedSettingKeys].some(
+    (shared) => key === shared || key.startsWith(`${shared}.`),
+  );
 }
 
 /** The change for one dotted key. The value is JSON when it parses as JSON, and text otherwise. */

@@ -40,12 +40,21 @@ async function copyText(text: string): Promise<void> {
   const area = document.createElement("textarea");
   area.value = text;
   area.setAttribute("readonly", "");
+  // A fixed box at the top does not scroll the page. iOS zooms into a box with text under 16 px.
   area.style.position = "fixed";
+  area.style.top = "0";
+  area.style.left = "0";
+  area.style.fontSize = "16px";
   area.style.opacity = "0";
+  // The text box takes the focus, so give it back: a keyboard user keeps their place.
+  const focused = document.activeElement;
   document.body.append(area);
   area.select();
+  // iOS Safari often ignores select() on a read-only box.
+  area.setSelectionRange(0, text.length);
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- the only way to copy on a page that is not secure.
   const copied = document.execCommand("copy");
   area.remove();
+  if (focused instanceof HTMLElement) focused.focus();
   if (!copied) throw new Error("This browser cannot copy here. Select the text and copy it.");
 }

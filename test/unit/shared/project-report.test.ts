@@ -1,15 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { SessionRecord } from "../../../../../src/core/sessions/session-store.ts";
-import {
-  endedProjectWork,
-  reportHeadline,
-  reportPlace,
-  reportPreview,
-} from "../../../../../src/frontends/web/client/project-report.ts";
+import { reportHeadline, reportPlace, reportPreview, type ProjectReport } from "../../../src/shared/project-report.ts";
 
-type Report = SessionRecord["turns"][number]["projectReports"][number];
-
-const report: Report = {
+const report: ProjectReport = {
   projectId: "2025-03-02-1015-example-app",
   projectTitle: "Example app",
   projectSessionId: "p1",
@@ -54,21 +46,5 @@ describe("reportPreview", () => {
     expect(preview.length).toBeLessThanOrEqual(241);
     expect(preview.endsWith("…")).toBe(true);
     expect(reportPreview({ ...report, result: "the end of it.", resultCut: true })).toBe("…the end of it.");
-  });
-});
-
-describe("endedProjectWork", () => {
-  test("maps each Project chat that sent a result to whether its work failed", () => {
-    const turns = [
-      { projectReports: [] },
-      { projectReports: [report] },
-      { projectReports: [{ ...report, projectSessionId: "p2", failed: true }] },
-    ];
-    expect(endedProjectWork(turns)).toEqual(
-      new Map([
-        ["p1", false],
-        ["p2", true],
-      ]),
-    );
   });
 });

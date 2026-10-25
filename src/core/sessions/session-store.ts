@@ -8,6 +8,7 @@ import { z } from "zod";
 import { effortLevels, modelAliases } from "../../shared/engine-port.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
+import type { ProjectReport } from "../../shared/project-report.ts";
 import { stepKinds } from "../../shared/turn-steps.ts";
 
 const stepSchema = z.object({
@@ -35,9 +36,7 @@ const projectReportSchema = z.object({
   result: z.string(),
   /** The answer was longer, so `result` holds only its end. */
   resultCut: z.boolean(),
-});
-
-export type ProjectReport = z.infer<typeof projectReportSchema>;
+}) satisfies z.ZodType<ProjectReport>;
 
 const turnSchema = z.object({
   userText: z.string(),

@@ -30,6 +30,7 @@ import {
 import { SequenceCounter } from "../../shared/clock.ts";
 import { answerFits } from "../../shared/questions.ts";
 import type { Logger } from "../../shared/logger.ts";
+import type { ProjectReport } from "../../shared/project-report.ts";
 import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
 import { boundedDetail, maxTurnDetailLength, redactedJsonText } from "../../shared/tool-details.ts";
 import {
@@ -41,7 +42,7 @@ import {
   type StepDetail,
   type TurnStep,
 } from "../../shared/turn-steps.ts";
-import type { ProjectReport, SessionRecord, SessionStore } from "./session-store.ts";
+import type { SessionRecord, SessionStore } from "./session-store.ts";
 import type { StepDetailsStore } from "./step-details-store.ts";
 
 export interface PreparedTurn {
@@ -204,9 +205,12 @@ type IdleListener = (sessionId: string, state: { readonly stopped: boolean }) =>
 interface PendingBatch {
   readonly texts: string[];
   /** The messages that people and Eva sent, for the front ends. A follow-up of the mode is no message. */
-  readonly messages: { readonly text: string; readonly origin: MessageOrigin }[];
-  /** The project work results among the messages, already redacted. */
-  readonly reports: ProjectReport[];
+  /** A project work result keeps its facts, already redacted. */
+  readonly messages: {
+    readonly text: string;
+    readonly origin: MessageOrigin;
+    readonly projectReport?: ProjectReport;
+  }[];
   /** The result of this batch's own turn, kept in memory: the record can fail to save. */
   readonly outcome: TurnResult;
   readonly done: Promise<void>;
@@ -527,8 +531,11 @@ export class SessionManager {
     const batch = runtime.pending ?? createBatch();
     runtime.pending = batch;
     batch.texts.push(text);
-    batch.messages.push({ text, origin });
-    if (report !== undefined) batch.reports.push(redactReport(report, this.options.redactor));
+    batch.messages.push({
+      text,
+      origin,
+      ...(report === undefined ? {} : { projectReport: redactReport(report, this.options.redactor) }),
+    });
     this.lastActivity.set(sessionId, this.options.now().getTime());
     if (!runtime.busy) this.startGathering(sessionId, runtime);
     return batch;
@@ -923,7 +930,7 @@ export class SessionManager {
           const sender = {
             // A follow-up of the mode has no message, so Eva sent all of it.
             fromEva: batch.messages.every((message) => message.origin === "eva"),
-            projectReports: [...batch.reports],
+            projectReports: batch.messages.flatMap((message) => message.projectReport ?? []),
           };
           followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), sender, batch.outcome);
           // Telegram showed the answer where the person asked, so the web app must not show it as unread.
@@ -1499,7 +1506,7 @@ function createBatch(): PendingBatch {
   const done = new Promise<void>((settle) => {
     resolve = settle;
   });
-  return { texts: [], messages: [], reports: [], outcome: { failure: null, stopped: false }, done, resolve };
+  return { texts: [], messages: [], outcome: { failure: null, stopped: false }, done, resolve };
 }
 
 function redactReport(report: ProjectReport, redactor: Redactor): ProjectReport {

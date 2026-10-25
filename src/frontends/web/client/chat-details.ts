@@ -161,3 +161,12 @@ export function tasksOfTurn(
   }
   return tasks;
 }
+
+/** Each Project chat that sent its result back, and whether its work failed. */
+export function endedProjectWork(
+  turns: readonly Pick<SessionRecord["turns"][number], "projectReports">[],
+): Map<string, boolean> {
+  return new Map(
+    turns.flatMap((turn) => turn.projectReports.map((report) => [report.projectSessionId, report.failed] as const)),
+  );
+}

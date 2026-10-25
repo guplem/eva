@@ -11,6 +11,7 @@ import {
   modelNames,
   taskStatus,
   tasksOfTurn,
+  endedProjectWork,
   titleCase,
 } from "../../../../../src/frontends/web/client/chat-details.ts";
 import type { SessionRecord } from "../../../../../src/core/sessions/session-store.ts";
@@ -236,5 +237,32 @@ describe("chatLinks (#522)", () => {
 
   test("a chat whose old chat is gone links to nothing", () => {
     expect(chatLinks([chat("next", "deleted")], [])).toEqual({ from: null, next: [] });
+  });
+});
+
+describe("endedProjectWork", () => {
+  test("maps each Project chat that sent a result to whether its work failed", () => {
+    const report: Turn["projectReports"][number] = {
+      projectId: "2025-03-02-1015-example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix the login bug.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    const turns = [
+      { projectReports: [] },
+      { projectReports: [report] },
+      { projectReports: [{ ...report, projectSessionId: "p2", failed: true }] },
+    ];
+    expect(endedProjectWork(turns)).toEqual(
+      new Map([
+        ["p1", false],
+        ["p2", true],
+      ]),
+    );
   });
 });

@@ -20,6 +20,7 @@ import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.
 import { modelAliases, modelTierName, type ModelAlias } from "../../shared/engine-port.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import type { SessionEvent } from "../../shared/events.ts";
+import { reportHeadline, reportPlace, reportPreview } from "../../shared/project-report.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
 import type { Logger } from "../../shared/logger.ts";
@@ -912,7 +913,7 @@ export class TelegramBot {
         if (event.origin === "telegram" || event.origin === "schedule") return;
         // In the chat's order: a long message goes in parts, and the answer must not come between them.
         await this.inOrder(event.sessionId, async () => {
-          await this.sender.sendPlain(target.chatId, target.topicId, `Message: ${event.text}`);
+          await this.sender.sendPlain(target.chatId, target.topicId, messageText(event));
         });
         return;
       case "history_lost":
@@ -1159,4 +1160,11 @@ export class TelegramBot {
   private saveState(): void {
     saveBotState(this.options.statePath, this.state);
   }
+}
+
+/** A message that another front end or Eva sent. A project work result shows as a short summary. */
+function messageText(event: Extract<SessionEvent, { kind: "message_received" }>): string {
+  const report = event.projectReport;
+  if (report === undefined) return `Message: ${event.text}`;
+  return `${reportHeadline(report)}\n${reportPlace(report)}\n\n${reportPreview(report)}`;
 }

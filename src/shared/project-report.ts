@@ -1,10 +1,27 @@
 /**
- * The words of a project work result card. Eva sends the result of a Project chat back to the
- * Assistant chat that gave the work, and the card shows it as the Project side's own message.
+ * The result of project work. Eva sends the result of a Project chat back to the Assistant chat
+ * that gave the work. Each front end shows it as the Project side's own message, with these words.
  */
-import type { SessionRecord } from "./api.ts";
 
-type ProjectReport = SessionRecord["turns"][number]["projectReports"][number];
+/** The facts of one result. The session store keeps them, so their names are a schema. */
+export interface ProjectReport {
+  readonly projectId: string;
+  readonly projectTitle: string;
+  /** The Project chat that did the work. */
+  readonly projectSessionId: string;
+  readonly request: string;
+  readonly clone: string;
+  readonly repositories: {
+    readonly name: string;
+    readonly branch: string | null;
+    readonly pullRequest: number | null;
+  }[];
+  readonly failed: boolean;
+  /** The end of the last answer of the Project chat, or the failure reason. */
+  readonly result: string;
+  /** The answer was longer, so `result` holds only its end. */
+  readonly resultCut: boolean;
+}
 
 const previewLength = 240;
 
@@ -23,20 +40,11 @@ export function reportPlace(report: ProjectReport): string {
   return [report.clone, ...repositories].join(" · ");
 }
 
-/** The first paragraph of the result, short enough for the card. The person can open the whole result. */
+/** The first paragraph of the result, short enough for a card. The person can open the whole result. */
 export function reportPreview(report: ProjectReport): string {
   const first = report.result.split(/\n\s*\n/).find((paragraph) => paragraph.trim() !== "") ?? "";
   const line = first.replace(/\s+/g, " ").trim();
   const cut = line.length > previewLength ? `${line.slice(0, previewLength).trimEnd()}…` : line;
   // A cut result keeps only its end, so its first paragraph starts in the middle of the answer.
   return report.resultCut ? `…${cut}` : cut;
-}
-
-/** Each Project chat that sent its result back, and whether its work failed. */
-export function endedProjectWork(
-  turns: readonly Pick<SessionRecord["turns"][number], "projectReports">[],
-): Map<string, boolean> {
-  return new Map(
-    turns.flatMap((turn) => turn.projectReports.map((report) => [report.projectSessionId, report.failed] as const)),
-  );
 }

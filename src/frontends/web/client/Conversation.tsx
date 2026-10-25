@@ -28,7 +28,7 @@ import {
 import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
 import { forkedFromText, historyNotice } from "./branch-choices.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
-import { tasksOfTurn } from "./chat-details.ts";
+import { endedProjectWork, tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
 import {
   composerPlaceholder,
@@ -51,13 +51,13 @@ import { Icon } from "./icons.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
-import { endedProjectWork, reportHeadline, reportPlace, reportPreview } from "./project-report.ts";
 import { RetryUndoDialog } from "./RetryUndoDialog.tsx";
 import { StepFold } from "./TurnSteps.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 import { RecordingShelf } from "./voice-notes.ts";
 import { toWebHtml } from "./web-format.ts";
+import { reportHeadline, reportPlace, reportPreview, type ProjectReport } from "../../../shared/project-report.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 
@@ -599,7 +599,7 @@ function ProjectReportCard({
   report,
   turnKey,
 }: {
-  readonly report: SessionRecord["turns"][number]["projectReports"][number];
+  readonly report: ProjectReport;
   readonly turnKey: string | undefined;
 }): ReactElement {
   const [showWhole, setShowWhole] = useState(false);

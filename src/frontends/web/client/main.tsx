@@ -4,6 +4,7 @@ import { App } from "./App.tsx";
 import { applyAppearance, readAppearance } from "./appearance.ts";
 import { startCues } from "./cues.ts";
 import { watchLeaving } from "./leave-guard.ts";
+import { watchLayers } from "./back-layers.ts";
 import { logInWithLink, loginLinkOf } from "./login-link.ts";
 import { sameSettingsPage } from "./settings-routes.ts";
 
@@ -17,6 +18,7 @@ if (link !== null) window.history.replaceState(null, "", link.address);
 // After the address is clean, so the place of the first entry stays. Before the first render,
 // so its listener runs before the listeners of the views.
 watchLeaving(window, (oldURL, newURL) => sameSettingsPage(new URL(oldURL).hash, new URL(newURL).hash));
+watchLayers(window);
 const loginNotice =
   link === null
     ? Promise.resolve(null)

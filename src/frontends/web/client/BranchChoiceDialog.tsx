@@ -8,6 +8,7 @@ import { defaultChoice, forkChoices, movedToOtherClone, retryChoices, type Branc
 import { Dialog } from "./Dialog.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
+import { goTo } from "./back-layers.ts";
 
 type Turn = SessionRecord["turns"][number];
 
@@ -24,7 +25,7 @@ export function useFinishBranch(onChanged: () => Promise<void>): (result: Branch
   return useCallback(
     async (result: BranchResult): Promise<void> => {
       await onChanged();
-      if (movedToOtherClone(result.session)) window.location.hash = `#/chat/${encodeURIComponent(result.session.id)}`;
+      if (movedToOtherClone(result.session)) goTo(`#/chat/${encodeURIComponent(result.session.id)}`);
     },
     [onChanged],
   );

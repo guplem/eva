@@ -8,6 +8,7 @@ import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { stepProblems, unavailableSteps } from "./new-project-form.ts";
 import { splitWords, statusChoices, statusOf } from "./ProjectDetailsEditor.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 interface NewProjectDialogProps {
   readonly onClose: () => void;
@@ -34,16 +35,20 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
   // While Create runs, the guard waits: the new project then opens with no question.
   const askFirst = useLeaveGuard(typed && created === null && !busy, null);
 
+  const leave = (): void => {
+    if (busy) return;
+    // The project exists already, so the list must show it.
+    if (created === null) askFirst(onClose);
+    else onCreated(created.projectId);
+  };
+  useBackLayer(true, leave);
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape" || busy) return;
-      // The project exists already, so the list must show it.
-      if (created === null) askFirst(onClose);
-      else onCreated(created.projectId);
+      if (event.key === "Escape") leave();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onCreated, busy, created, askFirst]);
+  });
 
   // Without the settings, both steps stay off, so a send never asks for a step that cannot run.
   useEffect(() => {

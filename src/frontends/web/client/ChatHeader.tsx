@@ -11,9 +11,11 @@ import { ChatInfoSheet, chatPanelId, type ChatProps } from "./ChatPanel.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
-import { ShowListButton } from "./MainNav.tsx";
+import { BackButton, ShowListButton } from "./MainNav.tsx";
 import { MoreMenu, type MenuItem } from "./Menu.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
+import { goTo } from "./back-layers.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 /** A header action that a list asks for, such as Rename from the context menu of a chat in the list. */
 export type ChatAction = "rename" | "delete";
@@ -109,7 +111,9 @@ interface ChatHeaderProps {
   readonly subtitle: ReactNode;
   /** Parts between the title and the menu, such as the pull request of a clone. */
   readonly extra?: ReactNode;
-  readonly onShowList: () => void;
+  /** A phone shows the list button, or this arrow when the chat has a page above it, such as its project. */
+  readonly back?: { readonly label: string; readonly onClick: () => void };
+  readonly onShowList?: () => void;
   /** True when another chat in the list has an answer that the person did not see. */
   readonly listHasUnread?: boolean;
   /** Whether a computer shows the chat details column. */
@@ -127,7 +131,8 @@ export function ChatHeader({
   details,
   subtitle,
   extra,
-  onShowList,
+  back,
+  onShowList = () => undefined,
   listHasUnread = false,
   panelShown,
   onTogglePanel,
@@ -165,7 +170,11 @@ export function ChatHeader({
 
   return (
     <div className="main-header chat-header">
-      <ShowListButton onClick={onShowList} unread={listHasUnread} />
+      {back === undefined ? (
+        <ShowListButton onClick={onShowList} unread={listHasUnread} />
+      ) : (
+        <BackButton label={back.label} onClick={back.onClick} className="phone-only" />
+      )}
       <div className="header-text">
         <h1>
           {isPhone ? (
@@ -232,8 +241,11 @@ export function ChatHeader({
   );
 }
 
-/** Closes a dialog on Escape, unless it waits for a request. */
+/** Closes a dialog on Escape or the Back button, unless it waits for a request. */
 function useEscape(onEscape: () => void, busy: boolean): void {
+  useBackLayer(true, () => {
+    if (!busy) onEscape();
+  });
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape" && !busy) onEscape();
@@ -403,7 +415,7 @@ function SummaryChatQuestion({
       await onChanged();
       // Closed here: the page may fail to open the new chat, and the old header then stays.
       onKeep();
-      window.location.hash = `#/chat/${encodeURIComponent(session.id)}`;
+      goTo(`#/chat/${encodeURIComponent(session.id)}`);
       if (summaryFailure !== null)
         showError(new Error(`Eva could not write the summary: ${summaryFailure} The new chat starts empty.`));
     } catch (caught) {

@@ -8,6 +8,7 @@ import type { RepositoryDetails } from "./api.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { countOf } from "./project-format.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 interface PushCloneDialogProps {
   readonly cloneName: string;
@@ -27,6 +28,9 @@ export function PushCloneDialog({ cloneName, repository, onClose, onPush }: Push
   // A save would push, so the question offers no save. While the push runs, the guard waits.
   const askFirst = useLeaveGuard(note.trim() !== "" && !busy, null);
 
+  useBackLayer(true, () => {
+    if (!busy) askFirst(onClose);
+  });
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape" && !busy) askFirst(onClose);

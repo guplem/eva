@@ -99,3 +99,20 @@ export function ShowListButton({
     </button>
   );
 }
+
+/** The arrow to the page above, such as from a chat to its project. */
+export function BackButton({
+  label,
+  onClick,
+  className = "",
+}: {
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly className?: string;
+}): ReactElement {
+  return (
+    <button className={`icon-button ${className}`} aria-label={label} onClick={onClick}>
+      <Icon name="back" />
+    </button>
+  );
+}

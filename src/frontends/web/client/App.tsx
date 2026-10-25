@@ -66,6 +66,8 @@ import { UnsavedChangesDialog } from "./UnsavedChangesDialog.tsx";
 import { AppSkeleton } from "./Loading.tsx";
 import { SpecialDayProvider } from "./FestiveDay.tsx";
 import { useLocationSharing } from "./LocationCard.tsx";
+import { goTo, layersOfEntry, replaceAddress } from "./back-layers.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { startPushPresence } from "./push-presence.ts";
 import { browserPresencePage } from "./PushCard.tsx";
@@ -155,7 +157,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       const destination = destinationOf(window.location.hash);
       if (destination !== null) setScreen(destination);
       setLinkedChatId(linkedChatIdOf(window.location.hash));
-      setSidebarOpen(false);
+      // Back to an entry of the chat list opened the list again: it stays open.
+      if (!layersOfEntry().includes("list")) setSidebarOpen(false);
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -174,20 +177,29 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   /**
    * A view opened the linked chat: the link is used up. A view mounts again at each screen
    * change, so a kept link would undo the person's own choice. The address becomes that of the
-   * destination in place, so the back button skips the used link, and the same link can open again.
+   * destination in place, or that of the chat's own page, so the back button skips the used link,
+   * and the same link can open again.
    */
-  const onLinkedChatOpened = useCallback((): void => {
+  const onLinkedChatOpened = useCallback((address?: string): void => {
     setLinkedChatId(null);
-    // The state keeps the entry's place for the unsaved changes guard.
-    window.history.replaceState(window.history.state, "", addressOf(screenRef.current));
+    replaceAddress(address ?? addressOf(screenRef.current));
   }, []);
 
   /** A new address adds a history entry, so the back button goes to the previous destination. */
   const openDestination = (destination: Destination): void => {
     setSidebarOpen(false);
-    if (window.location.hash === addressOf(destination)) setScreen(destination);
-    else window.location.hash = addressOf(destination);
+    goTo(addressOf(destination), () => setScreen(destination));
   };
+
+  // On a phone the list covers the page, so Back closes it first. Back from a chat that the list
+  // opened shows the list again.
+  useBackLayer(
+    sidebarOpen && isPhone,
+    () => setSidebarOpen(false),
+    "list",
+    isPhone ? () => setSidebarOpen(true) : undefined,
+  );
+  useBackLayer(conflictsOpen, () => setConflictsOpen(false));
 
   /** A tap in the main navigation. A tap on Chats while Chats is open gives the person a next step. */
   const openFromNav = (destination: Destination): void => {
@@ -513,7 +525,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     place: approvalPlace(sessions.find((session) => session.id === approval.sessionId)),
     open: () => {
       // The link names the session itself, so the chat opens on the branch that asks.
-      window.location.hash = `#/chat/${encodeURIComponent(approval.sessionId)}`;
+      goTo(`#/chat/${encodeURIComponent(approval.sessionId)}`);
     },
   }));
 
@@ -560,10 +572,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   const runProblemAction = (action: ProblemAction): void => {
     if (action === "pick_version") setConflictsOpen(true);
-    else if (action === "choose_template_version")
-      window.location.hash = settingsHash({ section: "vault", item: "template-alignment" });
-    else if (action === "open_claude_login")
-      window.location.hash = settingsHash({ section: "engines", item: "claude-code" });
+    else if (action === "choose_template_version") goTo(settingsHash({ section: "vault", item: "template-alignment" }));
+    else if (action === "open_claude_login") goTo(settingsHash({ section: "engines", item: "claude-code" }));
     else openDestination(action === "open_schedules" ? "schedules" : "settings");
   };
   const hideProblem = (key: string): void => {
@@ -685,7 +695,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
             sessions={sessions}
             live={live}
             sidebarOpen={sidebarOpen}
-            onShowList={() => setSidebarOpen(true)}
             linkedChat={linkedChat}
             onLinkedChatOpened={onLinkedChatOpened}
             onChanged={refreshSessions}

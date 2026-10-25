@@ -8,6 +8,7 @@ import { playCue } from "./cues.ts";
 import { errorFix, type ErrorFix } from "./error-fixes.ts";
 import { destinationOf } from "./navigation.ts";
 import { Toast } from "./Toast.tsx";
+import { goTo } from "./back-layers.ts";
 
 interface ErrorMessage {
   readonly message: string;
@@ -56,7 +57,7 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
                 className="primary"
                 onClick={() => {
                   setToast(null);
-                  window.location.hash = fix.address;
+                  goTo(fix.address);
                 }}
               >
                 {fix.label}

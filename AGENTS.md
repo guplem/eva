@@ -1,7 +1,7 @@
 # Eva
 
 Eva is a personal "super harness": one service that runs AI coding agents (Claude Code, pi) over a person's vault and projects, from a terminal, Telegram and a web app. TypeScript on Bun.
-The code is the source of truth for every fact. `README.md` and `docs/guide/` are for humans.
+The code is the source of truth for every fact. `README.md` and `docs/guide/` are for people.
 
 ## What must not change
 
@@ -31,18 +31,18 @@ A change to one of these goals needs the owner.
 ## Rules
 
 - **Never write personal data** in a file, commit, issue or PR: no names of private people, employers, machine addresses, tokens or home paths. Use the neutral demo vault and `example-app` style names.
-- **Spawn a child process only through a seam** (`ProcessRunner`; pi's `PiProcessStarter`; `TerminalProcessStarter` for a program that needs a terminal), with an environment from `buildChildEnvironment` and a timeout.
-  A long child that reads Eva's newest line from a file and answers in lines, such as the Windows tray icon, runs through `LineProcessStarter`, with a bounded close instead of a timeout.
+- **Spawn a child process only through a seam** (`ProcessRunner`; pi's `PiProcessStarter`; `TerminalProcessStarter` for a program that needs a terminal), with an environment from `buildChildEnvironment` and a timeout. A seam is an interface that a test replaces with a fake.
+  Some long children, such as the Windows tray icon, read Eva's newest line from a file. They write each answer as one line on their output. Run such a child through `LineProcessStarter`, with a bounded close instead of a timeout.
   Only Eva herself, under her supervisor, runs through `LongProcessStarter`. She gets the supervisor's whole environment, and a bounded stop instead of a timeout.
 - **Write state files atomically, and read them tolerantly** (`src/shared/files.ts`). A bad file never crashes Eva.
 - **Branch on `EvaError` codes,** never on message text.
 - **Redact the text of each event with `Redactor`** before it leaves the core.
 - **Order events by `seq`,** never by `at` (lesson 83).
 - **Import a file in `src/` either as code or `with { type: "text" }`,** never both: the bundler keeps one form, and the executable breaks.
-- **Before you delete a folder, list its git-ignored files** (`git status --ignored -- <folder>`). An ignored file, such as a `.env`, is in no commit, so a delete loses it for good.
+- **Before you delete a folder, list its git-ignored files** (`git status --ignored -- <folder>`). An ignored file, such as a `.env`, is in no commit, so a delete loses it forever.
 - **Reuse a shared component before you add one.** Solve the same problem with the same pattern on every page. When a shared component does not fit, extend it. Do not add a second component for the same job.
 - **Comment the why, never the what.**
-- **Use one word per concept:** instance, vault, project, clone (never "workspace"), session, fork, turn, engine, front end.
+- **Use one word per concept:** instance, vault, project, clone (never "workspace"), session (a "chat" in text for the person), fork, turn, engine, front end.
 - **A step that only a person can do** becomes a GitHub issue with the `requires-human-intervention` label. Then continue with fakes.
 
 ## Checks
@@ -62,7 +62,7 @@ A change to one of these goals needs the owner.
 
 - Layers: `src/shared/` (types, seams), `src/core/`, `src/engines/<engine>/`, `src/frontends/`, and `src/main.ts` (wiring only). `bun run arch` enforces the imports.
 - `templates/vault/` is runtime content that each new vault gets, not rules for agents.
-- `install/` holds the one-command install scripts. Each release publishes them, and `scripts/smoke-install.sh` and `scripts/smoke-install.ps1` check them in CI. Give a change to them a `feat` or `fix` commit: only those make a release, so only those publish the change.
+- `install/` holds the one-command install scripts. Each release publishes them, and `scripts/smoke-install.sh` and `scripts/smoke-install.ps1` check them in CI. Give a change to them a commit that makes a release (see the `write-commit` skill). Otherwise, no release publishes the change.
 - These folders have their own `AGENTS.md`: `src/core/instance/`, `src/core/migrations/`, `src/core/modes/`, `src/core/remote-access/`, `src/core/settings/`, `src/core/updates/`, `src/core/vault/`, `src/engines/`, `src/frontends/api/`, `src/frontends/web/` and `test/`.
 
 ## Windows
@@ -81,9 +81,9 @@ A commit that changes `src/` with no test change says why in its message.
 - Branch with `git checkout -b <branch> origin/main && git push -u origin <branch>`.
 - Merge with `gh pr merge --auto --merge`. The ruleset waits for every check. Run `gh pr update-branch` once, before you turn on auto-merge. Do not update the branch again when other PRs merge.
 - Never push to a person's vault.
-- One owner per branch. Agent worktrees live in `.claude/worktrees/`.
+- Let one agent or person own each branch. Nobody else pushes to it. Agent worktrees live in `.claude/worktrees/`.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.
-- Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To create an issue, follow `.agents/skills/create-issue/SKILL.md`. To implement an issue or make any change, follow `.agents/skills/implement-issue/SKILL.md`.
+- Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To create an issue, follow `.agents/skills/create-issue/SKILL.md`. To implement an issue or make any change, follow `.agents/skills/implement-issue/SKILL.md`. Skip `implement-issue` only very rarely: its review can find the same problem in more places.
 
 ## Shell commands
 
@@ -92,7 +92,7 @@ Follow these rules in Claude Code. `.claude/settings.json` cannot allow the othe
 - Do not put `&&` before a heredoc, or text after `<<'EOF'` on its line. Join the next command after `EOF` with a new line.
 - Quote each heredoc delimiter: `<<'EOF'`, never `<<EOF`.
 - Write literal paths. Do not put a `$VAR` in a path or a redirect target.
-- Run git in the clone root. Do not use `cd <folder> && git` or `git -C`.
+- Run git in the root folder of the repository. Do not use `cd <folder> && git` or `git -C`.
 - Use the Write and Edit tools to write files. Do not use `python3`.
 - Write each commit message with `git commit -q -F - <<'EOF'`. A deny rule also reads the text of `-m "..."`, so a message that names `--amend` fails.
 
@@ -102,6 +102,6 @@ Follow these rules in Claude Code. `.claude/settings.json` cannot allow the othe
 - Rules live only in `AGENTS.md` files. The nearest folder's file applies first.
 - Skills live in `.agents/skills/`. The dependency install and the git hooks copy them to the git-ignored `.claude/skills/`, where Claude Code finds them.
 - Never write a rule that a check enforces, or a fact that the code shows.
-- When you learn a hard-won trap, add one line to the nearest `AGENTS.md`.
+- When you learn a trap that cost time to find, add one line to the nearest `AGENTS.md`.
 - Keep each instruction short, with one home per fact. Delete a contradiction when you find one.
 - `docs/lessons-from-v1.md` is history. Code comments cite it as "lesson N".

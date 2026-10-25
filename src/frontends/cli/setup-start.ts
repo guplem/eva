@@ -148,7 +148,7 @@ async function openOnThisComputer(options: StartOptions): Promise<void> {
 
 async function askFinishPlace(options: StartOptions): Promise<FinishPlace> {
   options.write("");
-  options.write(noteLine("The next steps are your notebook, GitHub, the AI login, Telegram and Google."));
+  options.write(noteLine("The next steps are your vault, GitHub, the AI login, Telegram and Google."));
   options.write(noteLine("You can answer them here, or on Eva's web page. The page explains each step."));
   options.write(noteLine("  1. Here, in this terminal."));
   options.write(noteLine("  2. On Eva's web page, in a browser."));

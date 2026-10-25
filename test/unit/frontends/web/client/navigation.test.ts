@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
   addressOf,
+  assistantChatAddressOf,
+  assistantChatIdOf,
   chatsTapAgain,
   destinations,
   destinationOf,
   linkedChatIdOf,
+  projectAddressOf,
+  projectRouteOf,
+  type ProjectRoute,
 } from "../../../../../src/frontends/web/client/navigation.ts";
 
 describe("destinationOf", () => {
@@ -67,5 +72,55 @@ describe("chatsTapAgain", () => {
 
   test("a computer always shows the list, so it opens a new chat", () => {
     expect(chatsTapAgain(false)).toBe("new-chat");
+  });
+});
+
+describe("assistantChatIdOf and assistantChatAddressOf", () => {
+  test("a chat of Chats has an address that reads back", () => {
+    expect(assistantChatAddressOf("abc def")).toBe("#/chats/abc%20def");
+    expect(assistantChatIdOf("#/chats/abc%20def")).toBe("abc def");
+  });
+
+  test("Chats with no chat named opens the newest chat", () => {
+    expect(assistantChatAddressOf(null)).toBe("#/chats");
+    expect(assistantChatIdOf("#/chats")).toBeNull();
+    expect(assistantChatIdOf("#/chat/abc")).toBeNull();
+  });
+
+  test("a chat address opens Chats", () => {
+    expect(destinationOf("#/chats/abc")).toBe("chats");
+  });
+});
+
+describe("projectRouteOf and projectAddressOf", () => {
+  const routes: ProjectRoute[] = [
+    { kind: "list" },
+    { kind: "project", projectId: "2025-03-02-1015-example-app" },
+    { kind: "details", projectId: "2025-03-02-1015-example-app" },
+    { kind: "setup", projectId: "2025-03-02-1015-example-app" },
+    { kind: "chat", projectId: "2025-03-02-1015-example-app", chatId: "a b" },
+  ];
+
+  test("each page of Projects has an address that reads back", () => {
+    for (const route of routes) expect(projectRouteOf(projectAddressOf(route))).toEqual(route);
+  });
+
+  test("the addresses nest, so a chat's address starts with its project's", () => {
+    expect(routes.map(projectAddressOf)).toEqual([
+      "#/projects",
+      "#/projects/2025-03-02-1015-example-app",
+      "#/projects/2025-03-02-1015-example-app/details",
+      "#/projects/2025-03-02-1015-example-app/setup",
+      "#/projects/2025-03-02-1015-example-app/chat/a%20b",
+    ]);
+  });
+
+  test("an unknown page of a project opens the list", () => {
+    expect(projectRouteOf("#/projects/p/other")).toEqual({ kind: "list" });
+    expect(projectRouteOf("#/chats")).toEqual({ kind: "list" });
+  });
+
+  test("each page opens Projects", () => {
+    for (const route of routes) expect(destinationOf(projectAddressOf(route))).toBe("projects");
   });
 });

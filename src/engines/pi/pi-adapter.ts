@@ -27,7 +27,13 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ApprovalAnswer, EnginePort, ModelAlias, TurnRequest } from "../../shared/engine-port.ts";
+import {
+  modelTierName,
+  type ApprovalAnswer,
+  type EnginePort,
+  type ModelAlias,
+  type TurnRequest,
+} from "../../shared/engine-port.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -113,6 +119,17 @@ export class PiEngine implements EnginePort {
     }
     // Lesson 46: the turn still runs, in a fresh conversation, and the person is told.
     if (historyLost) yield { kind: "history_lost" };
+    const model = this.options.models[request.model];
+    // With no --model flag, pi goes on with the model that the session last used, not the new tier.
+    if (model === null && request.previousModel !== undefined && request.previousModel !== request.model) {
+      const tier = modelTierName(request.model);
+      yield {
+        kind: "notice",
+        text:
+          `pi has no model for the ${tier} tier, so this answer can come from the chat's last model. ` +
+          `Choose a pi model for ${tier} in Settings, under Engines, pi.`,
+      };
+    }
 
     const extensionFile = this.writeIfChanged("eva-approval-extension.ts", approvalExtensionSource);
     // A model call has no session to continue, so its prompt file is named by its text, and calls share it.
@@ -139,7 +156,7 @@ export class PiEngine implements EnginePort {
       extensionFile,
       mcpExtensionFile,
       promptFile,
-      model: this.options.models[request.model],
+      model,
     });
     if (specsFile !== null) {
       try {

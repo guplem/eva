@@ -45,3 +45,38 @@ export function destinationOf(hash: string): Destination | null {
 export function chatsTapAgain(isPhone: boolean): "show-list" | "new-chat" {
   return isPhone ? "show-list" : "new-chat";
 }
+
+/** The open chat of Chats, as `#/chats/<id>`. Null for `#/chats`: the newest chat opens. */
+export function assistantChatIdOf(hash: string): string | null {
+  const match = /^#\/chats\/([^/]+)$/.exec(hash);
+  return match?.[1] === undefined ? null : decodeURIComponent(match[1]);
+}
+
+export function assistantChatAddressOf(chatId: string | null): string {
+  return chatId === null ? addressOf("chats") : `${addressOf("chats")}/${encodeURIComponent(chatId)}`;
+}
+
+/** A page of Projects. Each page has an address, so Back goes from a chat to its project, then to the list. */
+export type ProjectRoute =
+  | { readonly kind: "list" }
+  | { readonly kind: "project" | "details" | "setup"; readonly projectId: string }
+  | { readonly kind: "chat"; readonly projectId: string; readonly chatId: string };
+
+/** Any address that names no page of Projects opens the list. */
+export function projectRouteOf(hash: string): ProjectRoute {
+  const match = /^#\/projects\/([^/]+)(?:\/(details|setup|chat\/([^/]+)))?$/.exec(hash);
+  const projectId = match?.[1];
+  if (match === null || projectId === undefined) return { kind: "list" };
+  const id = decodeURIComponent(projectId);
+  if (match[3] !== undefined) return { kind: "chat", projectId: id, chatId: decodeURIComponent(match[3]) };
+  if (match[2] === "details" || match[2] === "setup") return { kind: match[2], projectId: id };
+  return { kind: "project", projectId: id };
+}
+
+export function projectAddressOf(route: ProjectRoute): string {
+  if (route.kind === "list") return addressOf("projects");
+  const project = `${addressOf("projects")}/${encodeURIComponent(route.projectId)}`;
+  if (route.kind === "project") return project;
+  if (route.kind === "chat") return `${project}/chat/${encodeURIComponent(route.chatId)}`;
+  return `${project}/${route.kind}`;
+}

@@ -1,8 +1,9 @@
 /**
- * The shared dialog: a modal box with a close button, or a bottom sheet on a phone. Escape closes
- * only the top dialog.
+ * The shared dialog: a modal box with a close button, or a bottom sheet on a phone. Escape and
+ * the Back button close only the top dialog.
  */
 import { useEffect, useRef, type ReactElement, type ReactNode } from "react";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 export function Dialog({
   label,
@@ -10,6 +11,7 @@ export function Dialog({
   sheet = false,
   closeLabel = "Close",
   closeDisabled = false,
+  back = true,
   children,
 }: {
   readonly label: string;
@@ -20,10 +22,15 @@ export function Dialog({
   readonly closeDisabled?: boolean;
   /** A bottom sheet, which slides up from the bottom of a phone screen. */
   readonly sheet?: boolean;
+  /** False for a dialog that the Back button itself opens, such as the unsaved changes question. */
+  readonly back?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   const close = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null);
+  useBackLayer(back, () => {
+    if (!closeDisabled) onClose();
+  });
   useEffect(() => {
     close.current?.focus();
     // An Escape that opened this dialog, such as in a rename field, must not close it at once.

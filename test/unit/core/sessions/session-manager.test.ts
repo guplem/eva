@@ -428,6 +428,8 @@ describe("models (lesson 41)", () => {
     expect(manager.get(sessionId).turns.map((turn) => turn.modelAlias)).toEqual(["haiku", "opus"]);
     // The second turn continues the same engine session: only the model changed.
     expect(engine.requests[1]?.history.kind).not.toBe("new");
+    // The engine learns the tier of the turn before, so it can say when it cannot change the model (#552).
+    expect(engine.requests.map((request) => request.previousModel)).toEqual([undefined, "haiku"]);
   });
 
   test("a chat's effort goes to each turn, and changes between turns (#419)", async () => {

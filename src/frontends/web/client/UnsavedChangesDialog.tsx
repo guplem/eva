@@ -42,7 +42,7 @@ export function UnsavedChangesDialog(): ReactElement | null {
 
   return (
     // While the save runs, Escape and Stay do nothing: the dialog closes when it ends.
-    <Dialog label="Unsaved changes" onClose={saving ? ignore : stay} closeLabel="Stay">
+    <Dialog label="Unsaved changes" onClose={saving ? ignore : stay} closeLabel="Stay" back={false}>
       <h2>{question.canSave ? "Save your changes?" : "Discard your changes?"}</h2>
       <p>You have changes that you did not save. Discarded changes are lost.</p>
       <div className="button-row">

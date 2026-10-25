@@ -1610,6 +1610,128 @@ test("on a phone, the project list is the page, and Back to the list returns to 
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
 });
 
+test("on a phone, Back goes from a clone's chat to its project, then to the project list", async ({ page }) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  await openExampleApp(page);
+  await newProjectChat(page);
+  await expect(page).toHaveURL(/#\/projects\/2025-03-02-1015-example-app\/chat\/[^/]+$/);
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/projects\/2025-03-02-1015-example-app$/);
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+});
+
+test("on a phone, the arrow of a clone's chat opens its project, and Back does not return to the chat", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  await openExampleApp(page);
+  await newProjectChat(page);
+  // The chat has a page above it, so the arrow replaces the list button.
+  await expect(page.getByRole("button", { name: "Show the list" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Back to the project" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+  // The arrow stepped back, so the history did not grow: Back now leaves the project.
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+});
+
+test("a reload keeps the open project page and its chat", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+  await newProjectChat(page);
+  await page.reload();
+  await expect(page.getByText("Project mode")).toBeVisible();
+  await expect(page.locator(".main-header .sub")).toContainText("Example app ›");
+});
+
+test("on a phone, Back closes the chat list, and Back from a chat that the list opened shows the list again", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  const first = await clickNewChat(page);
+  await clickNewChat(page);
+  const list = page.getByRole("navigation", { name: "Chats" });
+  await page.getByRole("button", { name: /^Show the list/ }).click();
+  await expect(list).toBeVisible();
+  await page.goBack();
+  await expect(list).toBeHidden();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Show the list/ }).click();
+  await list.locator(`.list-item`).nth(1).click();
+  await expect(list).toBeHidden();
+  await expect(page).toHaveURL(new RegExp(`#/chats/${first}$`));
+  await page.goBack();
+  await expect(list).toBeVisible();
+  await page.goBack();
+  await expect(list).toBeHidden();
+});
+
+test("Back closes a menu or a dialog first, and the page stays", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const address = page.url();
+  await page.getByRole("button", { name: "More actions" }).click();
+  const menu = page.getByRole("menu", { name: "Chat actions" });
+  await expect(menu).toBeVisible();
+  await page.goBack();
+  await expect(menu).toHaveCount(0);
+  expect(page.url()).toBe(address);
+
+  await chooseFromMore(page, "Delete chat");
+  const question = page.getByRole("dialog", { name: /^Delete “/ });
+  await expect(question).toBeVisible();
+  await page.goBack();
+  await expect(question).toHaveCount(0);
+  expect(page.url()).toBe(address);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+
+  // A dialog that closes with its own button leaves no entry, so one Back leaves the chat.
+  await chooseFromMore(page, "Delete chat");
+  await question.getByRole("button", { name: "Keep" }).click();
+  await expect(question).toHaveCount(0);
+  await page.goBack();
+  await expect(page).not.toHaveURL(address);
+});
+
+test("Back with a rename that is not saved asks first, and Stay keeps the dialog for the next Back", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  await chooseFromMore(page, "Rename");
+  const rename = page.getByRole("dialog", { name: "Rename chat" });
+  await rename.getByLabel("Chat title").fill("A new title");
+  await page.goBack();
+  const ask = page.getByRole("dialog", { name: "Unsaved changes" });
+  await expect(ask).toBeVisible();
+  await ask.getByRole("button", { name: "Stay" }).click();
+  await expect(rename).toBeVisible();
+  await page.goBack();
+  await expect(ask).toBeVisible();
+  await ask.getByRole("button", { name: /^Discard/ }).click();
+  await expect(rename).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+});
+
+test("Settings: the back arrow returns to the page before, so Back then leaves Settings", async ({ page }) => {
+  await logIn(page);
+  const before = page.url();
+  await openSettings(page, "Personalize");
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
+  await page.goBack();
+  expect(page.url()).toBe(before);
+});
+
 test("on a short phone, a long project list scrolls, and no card cuts its text", async ({ page }) => {
   test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
   // A screen shorter than the list makes the flex column squeeze each card to the 44 px of a button.
@@ -4087,6 +4209,127 @@ test("Settings: the Versions card shows Update only for a tool with a newer vers
   await expect(page.getByRole("region", { name: "Claude Code update" })).toHaveCount(0);
 });
 
+test("Settings: Update all installs each clear update in turn, then opens the Eva version dialog", async ({ page }) => {
+  const status = {
+    kind: "executable",
+    frequency: "daily",
+    install: "minor",
+    phase: "idle",
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    heldBack: null,
+    releases: [
+      { version: "0.3.0", notes: "", level: "minor", summary: "", headline: "Voice notes.", publishedAt: null },
+    ],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+    failingSince: null,
+  };
+  await page.route("**/api/update/check", async (route) => {
+    await route.fulfill({ json: status });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: status });
+  });
+  const posts: unknown[] = [];
+  await page.route("**/api/versions/latest", async (route) => {
+    await route.fulfill({ json: [{ program: "pi", latest: "1.4.0" }] });
+  });
+  await page.route("**/api/versions", async (route) => {
+    const tool = (program: string, version: string, tooOld = false): object => ({
+      program,
+      feature: "a test",
+      version,
+      installable: true,
+      tooOld,
+    });
+    await route.fulfill({
+      json: {
+        eva: "0.2.0",
+        // Eva cannot tell whether gh is old, so Update all leaves it.
+        tools: [tool("pi", "1.3.0"), tool("uv", "0.1.0", true), tool("gh", "2.62.0")],
+        voiceNotes: { missing: ["ffmpeg"], on: false },
+      },
+    });
+  });
+  await page.route("**/api/tools/install", async (route) => {
+    const body = route.request().postDataJSON() as { program: string };
+    posts.push(body.program);
+    await route.fulfill({
+      json: body.program === "uv" ? { ok: false, message: "uv failed." } : { ok: true, message: "Updated pi." },
+    });
+  });
+  await page.route("**/api/voice-notes/install", async (route) => {
+    posts.push("voice notes");
+    await route.fulfill({ json: { ok: true, message: "Installed voice notes." } });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await card.getByRole("button", { name: "Update all" }).click();
+  const dialog = page.getByRole("dialog", { name: "Update to a version" });
+  await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeChecked();
+  expect(posts).toEqual(["pi", "uv", "voice notes"]);
+  // The note joins every result, so the failed install stays in it.
+  await expect(card.getByRole("status").filter({ hasText: "uv failed." })).toContainText("Installed voice notes.");
+  await expect(card.getByRole("status").filter({ hasText: "uv failed." })).toHaveClass(/warning/);
+});
+
+test("Settings: Update all opens no version dialog when Eva started her own update meanwhile", async ({ page }) => {
+  const idle = {
+    kind: "executable",
+    frequency: "hourly",
+    install: "minor",
+    phase: "idle",
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    heldBack: null,
+    releases: [
+      { version: "0.3.0", notes: "", level: "minor", summary: "", headline: "Voice notes.", publishedAt: null },
+    ],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+    failingSince: null,
+  };
+  // The automatic update starts while the tools install.
+  let installed = false;
+  const status = (): object => (installed ? { ...idle, phase: "updating" } : idle);
+  await page.route("**/api/update/check", async (route) => {
+    await route.fulfill({ json: status() });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: status() });
+  });
+  await page.route("**/api/versions/latest", async (route) => {
+    await route.fulfill({ json: [{ program: "pi", latest: "1.4.0" }] });
+  });
+  await page.route("**/api/versions", async (route) => {
+    await route.fulfill({
+      json: {
+        eva: "0.2.0",
+        tools: [{ program: "pi", feature: "a test", version: "1.3.0", installable: true, tooOld: false }],
+        voiceNotes: { missing: [], on: true },
+      },
+    });
+  });
+  await page.route("**/api/tools/install", async (route) => {
+    installed = true;
+    await route.fulfill({ json: { ok: true, message: "Updated pi." } });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await card.getByRole("button", { name: "Update all" }).click();
+  await expect(card.getByRole("status").filter({ hasText: "Updated pi." })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Update to a version" })).toHaveCount(0);
+});
+
 test("Settings: the claude Update button runs claude update and shows its result", async ({ page }) => {
   const posts: string[] = [];
   let finished = false;
@@ -4228,13 +4471,12 @@ test.describe("on a phone", () => {
     await tabs.getByRole("button", { name: "Projects", exact: true }).click();
     // With no project open, the project list is the page.
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
-    // With a chat open, the list stays one tap away in its drawer.
+    // A chat of a clone has an arrow to its project, and the project page has one to the list.
     await openExampleApp(page);
     await newProjectChat(page);
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
-    const menu = page.getByRole("button", { name: "Show the list" });
-    await expect(menu).toBeVisible();
-    await menu.click();
+    await page.getByRole("button", { name: "Back to the project" }).click();
+    await page.getByRole("button", { name: "Back to the list" }).click();
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
   });
 
@@ -4421,6 +4663,8 @@ test("a page with unsaved changes asks to save or discard them before the person
   await openExampleApp(page);
   await page.getByRole("button", { name: "Details", exact: true }).click();
   const title = page.getByLabel("Title");
+  const details = /#\/projects\/2025-03-02-1015-example-app\/details$/;
+  await expect(page).toHaveURL(details);
   await title.fill(`Unsaved ${run}`);
   await title.blur();
 
@@ -4435,7 +4679,7 @@ test("a page with unsaved changes asks to save or discard them before the person
   await title.focus();
   await page.goBack();
   await expect(dialog).toBeVisible();
-  await expect(page).toHaveURL(/#\/projects$/);
+  await expect(page).toHaveURL(details);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(title).toHaveValue(`Unsaved ${run}`);
@@ -4446,12 +4690,12 @@ test("a page with unsaved changes asks to save or discard them before the person
   await mainNav.getByRole("button", { name: /^Files/ }).click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Stay" }).click();
-  await expect(page).toHaveURL(/#\/projects$/);
+  await expect(page).toHaveURL(details);
   // So Back asks again, and Discard goes to the page before, with no save.
   await page.goBack();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Discard and leave" }).click();
-  await expect(page).not.toHaveURL(/#\/projects$/);
+  await expect(page).not.toHaveURL(details);
   await openExampleApp(page);
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByLabel("Title")).toHaveValue("Example app");
@@ -4491,9 +4735,13 @@ test("a dialog with typed text asks before it closes, and a create offers no sav
   await question.getByRole("button", { name: "Stay" }).click();
   await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
 
-  // The back button under the dialog asks about leaving the page.
+  // The back button closes the dialog first, so it asks about the dialog. Stay keeps it for the next Back.
   await page.goBack();
-  await expect(question.getByRole("button", { name: "Discard and leave" })).toBeVisible();
+  await expect(question.getByRole("button", { name: "Discard and close" })).toBeVisible();
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
+  await page.goBack();
+  await expect(question.getByRole("button", { name: "Discard and close" })).toBeVisible();
   await question.getByRole("button", { name: "Stay" }).click();
   await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
 

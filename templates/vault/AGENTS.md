@@ -1,6 +1,6 @@
 # Vault
 
-This repository is a personal knowledge vault: the notes that its owner chose to keep, and their projects.
+This repository is a personal knowledge vault: the notes that the person chose to keep, and their projects.
 
 Everything stays plain text where it can, so one search finds it and almost any device opens it.
 
@@ -26,7 +26,7 @@ Everything stays plain text where it can, so one search finds it and almost any 
 Notes are grouped along two axes. Pick the axis first, the folder second.
 
 - **By purpose:** general knowledge that outlives any single project. The person wants to find it again later, whatever they work on.
-- **By context:** everything about one bounded thing, with mixed purposes together, because the person wants all of it at hand while they work on that thing.
+- **By context:** everything about one bounded thing, with mixed purposes together, because the person wants all of it in one place while they work on that thing.
 
 **The test:** does this note still matter after the project or context ends? Yes → purpose. No → context.
 
@@ -38,7 +38,7 @@ So "how we priced the shop" lives in the project. "How I decide prices" moves to
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Principles/`    | To remember who they want to be: values, mantras, philosophy.                                                                                            |
 | `Methods/`       | To do or decide something their way: their own procedures and frameworks.                                                                                |
-| `Toolbox/`       | To grab something and use it: commands, scripts, prompts, cheat sheets, lookup facts.                                                                    |
+| `Toolbox/`       | To take something and use it: commands, scripts, prompts, cheat sheets, lookup facts.                                                                    |
 | `Library/`       | To understand something: explanations worth keeping.                                                                                                     |
 | `Projects/<id>/` | To work on one project: everything about it, any purpose, together.                                                                                      |
 | `Life/<name>/`   | The same shape, for personal contexts, such as `Life/Home/`, `Life/Health/` or `Life/Diary/`. `Life/About me.md` holds the basic facts about the person. |
@@ -49,18 +49,18 @@ Inside each folder, group by topic. Purpose first, topic second.
 
 ### Rules
 
-- **Anything can live in the vault:** notes, documents, scans, photos. Prefer plain text when the content is text. A file made only to send, such as a PDF of an answer, goes in `Scratch/`. Copy a file from `Scratch/` worth keeping into the vault.
-- **One fact lives in one file.** Other files link to it, never copy it. Two copies drift apart, and then neither can be trusted.
+- **Anything can live in the vault:** notes, documents, scans, photos. Prefer plain text when the content is text. Copy a file from `Scratch/` worth keeping into the vault.
+- **One fact lives in one file.** Other files link to it, never copy it. Two copies become different over time, and then neither can be trusted.
 - **Name a file after the moment when the person would open it**, not after where its content came from. Write `Mental Strength Checklist`, not `13 Things Mentally Strong People Don't Do`. The test: standing in that situation, could the person guess the file name?
 - **Write notes impersonally**, as statements about the world. Write "The mind believes what it hears by default", not "My mind believes what it hears". A diary is the exception: it is the person's own voice.
 - **Write all notes in one language**, so that one search finds everything.
 - **Close a note with its source** when the person says where it came from: `> Source: *Title*, Author`, plus a link when one exists.
 - **Mark few notes as important.** When the person would want to see a note even while they ask about another topic, put `> Important: <why it matters>` under its title.
-- **Secrets** (keys, passwords) may live only inside the project folder that they belong to. Never copy one into a note outside that folder. One known place for each secret makes it possible to change it later.
+- **Secrets** (keys, passwords) may live only in the folder of the project that uses them. Never copy one into a note outside that folder. One known place for each secret makes it possible to change it later.
 
 ## Grow the vault
 
-The vault starts empty and grows with each conversation. Keep its shape clear as it grows.
+The vault starts empty and grows with each chat. Keep its shape clear as it grows.
 
 1. **Search first.** Look for notes on the same topic (grep and glob), and compare them with the new information:
    - **Same:** say that it is already stored, name the file, and write nothing.
@@ -68,15 +68,15 @@ The vault starts empty and grows with each conversation. Keep its shape clear as
    - **Incomplete:** add the new information to that note.
    - **Nothing similar:** go on below.
 2. **Pick the axis, then the folder,** as _Knowledge_ says.
-3. **Create the topic folder** inside that folder when none fits, with a clear name. Never drop a note in the nearest folder because it is close.
+3. **Create the topic folder** inside that folder when none fits, with a clear name. Never put a note in a folder only because the folder is near.
 4. **Create the note,** and match the names of the files beside it.
 5. **Tell the person** where you put it.
 
 Prefer fewer, larger notes. Every extra file makes the important ones harder to find. When a note or a folder grows too long to scan, propose to split it.
 
-**This file is the map of the vault. Keep it true.** When you create, rename or remove a folder at the vault root, change the _What is where_ table in the same commit. A folder that the map does not show gets lost.
+**This file is the map of the vault. Keep it true.** When you create, rename or remove a folder at the vault root, change the _What is where_ table in the same turn. A folder that the map does not show gets lost.
 
-**Fix this file yourself when it is simply wrong,** such as a path that moved. **Propose a change and wait when you only prefer it different,** such as a new rule or a new structure. Those carry what the person decided.
+**Fix this file yourself when it is simply wrong,** such as a path that moved. **Propose a change and wait when you only prefer it different,** such as a new rule or a new structure. Rules and structure record the person's decisions.
 
 ## Projects
 

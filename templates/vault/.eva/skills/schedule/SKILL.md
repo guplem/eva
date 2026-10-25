@@ -7,6 +7,8 @@ description: Create, change, pause or remove a scheduled message by editing .eva
 
 A schedule makes Eva post on her own, at a set time, in a chat of its own (a Telegram topic). The schedules live in `.eva/schedules.json`. Eva reads the file every 30 seconds, so a change takes effect within a minute. Eva's autosave commits the file like a note, so never commit it yourself.
 
+After a new schedule, a change, or a start after a pause, Eva opens the schedule's chat within a minute and posts a setup card there. A card for a new schedule shows every field and the next run. A card for a change names what changed. Without Telegram, the web app shows the card in a dialog. The schedule runs only after a card reaches the person: in the web app, after they tap "Got it".
+
 ## 1. Read the file
 
 Read `.eva/schedules.json`. When it is missing, start from this shape:
@@ -29,21 +31,21 @@ Each schedule is one object in `schedules`:
   "at": "07:30",
   "days": ["mon", "tue", "wed", "thu", "fri"],
   "text": "Drink water. Check the calendar.",
-  "file": "Notes/morning-checklist.md",
-  "prompt": "Summarise my calendar for today.",
+  "file": "Toolbox/morning-checklist.md",
+  "prompt": "Summarize my calendar for today.",
   "model": "haiku"
 }
 ```
 
-- **`id`**: 1 to 32 lowercase letters, digits or dashes. It must be unique. Never change the id of an existing schedule, because Eva keys its chat by the id. Never reuse the id of a removed schedule either, because Eva can still hold that schedule's old chat under it. It can also hold that schedule's last setup card, so the next card reads as a change to the old schedule.
+- **`id`**: 1 to 32 lowercase letters, digits or dashes. It must be unique. Never change the id of an existing schedule, because Eva finds its chat by the id. Never reuse the id of a removed schedule either, because Eva can still hold that schedule's old chat under it. It can also hold that schedule's last setup card, so the next card reads as a change to the old schedule.
 - **`name`**: required. It names the schedule's topic in Telegram. Eva names the topic when she opens it. A later change to `name` does not rename the topic, so tell the person to rename it in Telegram.
-- **`at`**: `HH:MM`, 24 hours, in the time zone that each prompt's first line names. Eva's settings hold it.
+- **`at`**: `HH:MM`, 24 hours, in the time zone that the `[Local time: ...]` line at the start of each message names.
 - **`days`**: leave it out for every day. Otherwise list some of `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`.
 - **An interval instead of `at` and `days`.** To repeat every few hours, days or weeks, write `every` and `from`, and leave out `at` and `days`:
   - **`every`**: a number from 1 to 999 and a unit: `h` for hours, `d` for days, `w` for weeks. Examples: `2h`, `3d`, `1w`.
   - **`from`**: the first run, as `YYYY-MM-DDTHH:MM`, such as `2026-10-22T07:30`. Each later run comes one interval after the last. A day or week interval keeps the time of day of `from`.
   - Example: `"every": "3d", "from": "2026-10-22T07:30"` runs at 07:30 every third day from 22 October.
-- **At least one step.** `text` is a fixed message. `file` is a path from the vault root, as an `[[attach:]]` marker names it. Never use `Scratch/`, because that folder empties after a week, and Eva skips such an entry. `prompt` is a message that you answer, in a fresh conversation, at that time. The steps run in that order.
+- **At least one step.** `text` is a fixed message. `file` is a path from the vault root, as an `[[attach:]]` marker names it. Never use `Scratch/`, because that folder empties after a week, and Eva skips such an entry. `prompt` is a message that you answer, in a fresh chat, at that time. The steps run in that order.
 - **`model`**: optional, for a `prompt` only. Use `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast). Without it, or with any other value, the chat uses the model from the settings.
 - **`enabled`**: optional. Write `false` to turn the schedule off. It then never runs, and it keeps its fields. Leave the key out to turn it on. Use only `true` or `false` as the value. Never write it in quotes.
 
@@ -72,12 +74,12 @@ Eva skips an entry that fails a check. It says so once in the main chat, in a me
 
 ## 4. Change, pause or remove one
 
-To change a schedule, edit its entry and keep its `id`. Within a minute Eva posts a card in its chat that names what changed. Without Telegram, the web app shows that card in a dialog.
+To change a schedule, edit its entry and keep its `id`. Eva then posts a setup card that names what changed.
 
-To pause one (turn it off), set `"enabled": false`. Within a minute it stops, and Eva posts no card. To start it again, delete the `enabled` key. Eva then posts a new card. The schedule runs only after that card reaches the person.
+To pause one (turn it off), set `"enabled": false`. Within a minute it stops, and Eva posts no card. To start it again, delete the `enabled` key. Eva then posts a new setup card.
 
 To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
 
 ## 5. Reply
 
-Say in one sentence what will be sent, when, and in which topic. A schedule created after its time today first runs on its next day. Tell them that within a minute Eva opens the chat and posts a setup card there, with every field and the next run. Ask them to check that card. Without Telegram, the web app shows the card in a dialog. The schedule runs only after a card reaches them: in the web app, after they tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.
+Say in one sentence what Eva sends, when, and in which topic. A schedule created after its time today first runs on the next matching day. Tell the person to check the setup card that Eva posts within a minute. Tell them that the schedule runs only after the card reaches them. Without Telegram, the card is a dialog in the web app, and they must tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.

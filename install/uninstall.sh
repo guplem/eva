@@ -3,7 +3,7 @@
 #   curl -fsSL https://github.com/guplem/eva/releases/latest/download/uninstall.sh | sh
 # It asks before each step, and Enter keeps the safe answer. It stops each Eva that you pick and
 # removes her start at login. Then it can delete her folder, the eva program, and the programs
-# that Eva installed for every Eva on this computer. Your notebook on GitHub always stays.
+# that Eva installed for every Eva on this computer. Your vault on GitHub always stays.
 # The CI runs it after the install test (scripts/smoke-install.sh).
 set -eu
 
@@ -97,7 +97,7 @@ stop_eva() {
 }
 
 # Lists each git folder under the Eva folder with changes that are not on its remote yet: the
-# notebook copy, and the clones of its projects.
+# vault copy, and the clones of its projects.
 unsaved_work() {
   for repository in "$1/vault" "$1"/vault/Projects/*/repos/*; do
     [ -d "$repository/.git" ] || [ -f "$repository/.git" ] || continue
@@ -117,7 +117,7 @@ delete_eva_folder() {
     say "  These folders have changes that are not on GitHub yet. A delete loses them:"
     printf '%s\n' "$unsaved" | sed 's/^/    /'
   fi
-  if confirm "Delete her folder $home too? It holds her settings, logins, logs and copy of your notebook." n; then
+  if confirm "Delete her folder $home too? It holds her settings, logins, logs and copy of your vault." n; then
     rm -rf "$home"
     say "  [ok] Deleted $home."
   else
@@ -197,7 +197,7 @@ remove_shared_programs() {
 after_steps() {
   say ""
   say "Eva is removed from this computer. These steps happen outside it:"
-  say "  - Your notebook stays on GitHub. To delete it, open the repository on GitHub, then Settings."
+  say "  - Your vault stays on GitHub. To delete it, open the repository on GitHub, then Settings."
   say "  - GitHub: revoke Eva's login under Settings -> Applications."
   say "  - Telegram: send /deletebot to @BotFather to delete your bot."
   say "  - Tailscale: remove this computer at https://login.tailscale.com/admin/machines if it is still there."

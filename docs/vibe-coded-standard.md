@@ -7,20 +7,20 @@ Eva follows it and is the reference repository. Eva's repository setup report ch
 
 - **Any coding tool works.** A required file or check never depends on one harness (Claude Code, Codex, Cursor, pi). A harness-specific file is an optional extra.
 - **Short and clear documentation.** A person new to the project, or an agent, understands each file on the first read.
-- **Guards live on the server.** GitHub enforces the merge gate, the token rights and the secret scan. No agent can skip them.
-- **Agents work alone.** A person steps in only where a label asks for it.
+- **GitHub enforces the guards.** It blocks a merge that fails a check, limits the rights of the token that the automatic checks (CI, continuous integration) use, and scans for secrets. No agent can skip them.
+- **Agents work alone.** A person acts only where a label asks for it.
 
 ## Structure
 
-| Path                             | Content                                                                       |
-| -------------------------------- | ----------------------------------------------------------------------------- |
-| `AGENTS.md`                      | The map for agents: goals that must not change, rules, architecture, gotchas. |
-| `<module>/AGENTS.md`             | The context of one module, when the module has its own rules.                 |
-| `README.md`                      | For people: what the project is, how to install and run it.                   |
-| `.agents/skills/<name>/SKILL.md` | The workflows. See [Skills](#skills).                                         |
-| `SECURITY.md`                    | How to report a vulnerability in private.                                     |
-| `lefthook.yml`                   | The git hooks.                                                                |
-| `.github/workflows/`             | The CI checks on each pull request.                                           |
+| Path                             | Content                                                                     |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| `AGENTS.md`                      | The map for agents: goals that must not change, rules, architecture, traps. |
+| `<module>/AGENTS.md`             | The context of one module, when the module has its own rules.               |
+| `README.md`                      | For people: what the project is, how to install and run it.                 |
+| `.agents/skills/<name>/SKILL.md` | The workflows. See [Skills](#skills).                                       |
+| `SECURITY.md`                    | How to report a vulnerability in private.                                   |
+| `lefthook.yml`                   | The git hooks.                                                              |
+| `.github/workflows/`             | The CI checks on each pull request.                                         |
 
 - **No `CLAUDE.md` anywhere.** A `CLAUDE.md` in a folder or a parent folder stops Claude Code from reading `AGENTS.md`. A pre-commit hook and a CI test refuse a `CLAUDE.md`.
 - **Organize the code by modules.** A module holds one concern. An architecture check enforces the allowed imports between modules.
@@ -30,8 +30,8 @@ Eva follows it and is the reference repository. Eva's repository setup report ch
 - Keep each file as short as possible, without loss of a needed fact.
 - Write for a reader who does not know the project or its tools. Explain each term on first use.
 - Give each fact one home. A rule that a check enforces, or a fact that the code shows, gets no line.
-- Follow the writing style in Eva's `AGENTS.md`: Zinsser for all prose, ASD-STE100 for technical text.
-- When an agent learns a hard-won trap, it adds one line to the nearest `AGENTS.md`.
+- Follow the writing style in Eva's `AGENTS.md`. Use the rules of William Zinsser's book "On Writing Well" for all prose: simple, short and clear. Also use ASD-STE100 (Simplified Technical English, a controlled language for manuals) for technical text.
+- When an agent learns a trap that cost time to find, it adds one line to the nearest `AGENTS.md`.
 
 ## Skills
 
@@ -46,18 +46,18 @@ Work red-green: write a failing test first, then the smallest code that passes i
 
 ## Checks
 
-- **One umbrella script** (for example `check`) runs every check. CI runs it, and a developer can run it by hand.
-- **The script runs:** format, lint, types, architecture, dead code, tests with coverage, and commit messages. A secret scan runs in the script or in its own CI job.
+- **One script** (for example `check`) runs every check. CI runs it, and a developer can run it by hand.
+- **The script runs:** format, lint, types, architecture, dead code (unused code), tests with coverage, and commit messages. A secret scan runs in the script or in its own CI job.
 - **A check that matters runs in CI.** A git hook only gives early feedback: a cloud agent commits with no git hooks.
 
 ### Fast checks (recommended)
 
-The minimum is CI with tests and red-green TDD. A fast check loop is better: agents wait less, and fewer slow runs fail by chance.
+These rules are recommended, not required. The minimum is CI with tests and red-green TDD (test-driven development). A fast check loop is better: agents wait less, and fewer slow runs fail by chance.
 
 - **Run each check where it can fail.** A check that reads only source files runs on one operating system. The tests run on each supported system.
-- **Skip work that a change cannot affect.** A docs-only PR skips the code jobs. Any doubt runs the full set.
+- **Skip work that a change cannot affect.** A docs-only PR skips the code jobs. When it is not clear what a change can affect, run every job.
 - **Put the skip on the steps, not on the job.** A skipped job can leave a required check without a result.
-- **Share costly test setup.** Build a fixture once per test run, and give each test its own copy.
+- **Share costly test setup.** Build a fixture (a fixed setup that tests start from, such as a test repository) once per test run, and give each test its own copy.
 - **Keep tests independent.** Run the suite in random order to find tests that depend on each other.
 - **Cache what does not change,** such as a downloaded model or a built tool.
 - **Cancel an old CI run** when a new commit arrives on the same branch.
@@ -72,7 +72,7 @@ When the project uses environment variables:
 
 ## Git hooks
 
-Lefthook installs the hooks with the dependency install. The hooks are harness-agnostic, so they replace agent hooks. A cloud agent runs no git hooks, so CI repeats each hook check.
+Lefthook installs the hooks with the dependency install. The hooks work with any coding tool, so they replace agent hooks. A cloud agent runs no git hooks, so CI repeats each hook check.
 
 | Hook                      | Work                                                                                                                                        |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -83,10 +83,10 @@ Lefthook installs the hooks with the dependency install. The hooks are harness-a
 ## Pull requests and merge
 
 - **A ruleset named "Requirements for merge"** on the default branch: every CI check passes, no deletion, no force-push.
-- **The ruleset does not require an up-to-date branch.** That rule makes each PR wait for the others and run its checks again. CI on the default branch catches two PRs that break each other. When CI fails on the default branch, fix it first: a red default branch stops releases.
+- **The ruleset does not require an up-to-date branch.** That rule makes each PR wait for the others and run its checks again. CI on the default branch catches two PRs that break each other. When CI fails on the default branch, fix it first: a failing default branch stops releases.
 - **Repository settings:** auto-merge on, the update-branch button on, and head branches deleted after merge.
 - **Squash merge off.** A squash merge loses the commit prefixes that pick the version.
-- **The repository admin can bypass the ruleset for pull requests only.** Direct pushes to the default branch still follow the rules.
+- **In the ruleset, add the Repository admin role to the bypass list, in the "For pull requests only" mode.** Direct pushes to the default branch still follow the rules.
 - **A large change starts with a plan** in `docs/plans/<name>.md`, pushed to a draft PR. Delete the plan before the merge: the branch history keeps it.
 - **An agent merges its own PR** with auto-merge. First it updates a branch that is behind, once, so the checks run on the newest code. It does not update the branch again when other PRs merge. GitHub merges the PR when the checks pass.
 - **When the PR does not merge, the agent finds the cause and fixes it:** it resolves a conflict or fixes a red check.
@@ -97,11 +97,11 @@ Lefthook installs the hooks with the dependency install. The hooks are harness-a
 - **Each merge to the default branch that changes the shipped code makes a release,** after the checks pass there.
 - **The commit prefixes pick the version** (`MAJOR.MINOR.PATCH`): `feat:` raises `MINOR`; `fix:`, `perf:`, `refactor:` and `build:` raise `PATCH`; a `!` raises `MAJOR`. Other prefixes, such as `docs:`, make no release.
 - **A check refuses a commit subject without a known prefix.**
-- **`AGENTS.md` defines a breaking change for the project.** In general, a change is breaking when the user must act by hand after the update, or loses something.
+- **`AGENTS.md` defines a breaking change for the project.** In general, a change is breaking when the person must act by hand after the update, or loses something.
 - **A check enforces the `!`.** When a stored or public name goes away with no migration and no `!`, CI fails. An agent can forget a rule, but not a check.
 - **A stored format changes through a migration.** Each migration has a dated id, runs once at start, and is recorded as applied. A format change with a migration is not breaking.
-- **The user chooses which releases install by themselves:** only fixes, fixes and features, or all.
-- **Before a manual update, the user sees what each release brings.**
+- **The person chooses which releases install by themselves:** only fixes, fixes and features, or all.
+- **Before a manual update, the person sees what each release brings.**
 
 ## Labels
 

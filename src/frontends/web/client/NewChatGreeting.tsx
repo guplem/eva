@@ -12,6 +12,7 @@ import { usePersonalFacts, useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
+import { goTo } from "./back-layers.ts";
 
 export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) => void }): ReactElement {
   // Null until the settings answer, so the cards do not jump from three to four.
@@ -71,7 +72,7 @@ export function NewChatSetup({ blocker }: { readonly blocker: ChatBlocker }): Re
       <button
         className="primary large"
         onClick={() => {
-          window.location.hash = block.address;
+          goTo(block.address);
         }}
       >
         {block.action}

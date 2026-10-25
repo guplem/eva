@@ -9,6 +9,7 @@ import { Icon } from "./icons.tsx";
 import { installLabel, restartNote, versionRows } from "./update-words.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 export function UpdateVersionDialog(props: {
   update: UpdateStatus;
@@ -35,6 +36,7 @@ export function UpdateVersionDialog(props: {
     };
   }, []);
 
+  useBackLayer(true, onClose);
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") onClose();

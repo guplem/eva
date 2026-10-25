@@ -2,18 +2,18 @@
 
 <p align="center"><img src="docs/design/eve/eva.svg" width="160" height="160" alt="Eva's face: a black visor with two glowing blue eyes that look around and blink."></p>
 
-**Eva is a personal AI assistant that runs on a computer of your own.** You talk to her from your phone, your computer or any other device, through Telegram or her web page. She remembers everything in a private notebook (a vault) that only you own.
+**Eva is a personal AI assistant that runs on a computer of your own.** You talk to her from your phone, your computer or any other device, through Telegram or her web page. She keeps what she learns in your vault, a private folder of notes that only you own.
 
 **Eva is a "super harness".** A harness is a program that runs an AI agent, such as Claude Code or pi. Eva does not think by herself: she runs these harnesses for you, and organizes their work. You can change the harness, and keep the same chats, notes and projects.
 
-## How Eva works, in one picture
+## How Eva works
 
 Think of Eva as a helper who lives in one computer at your home:
 
 | Piece                 | In everyday words                                                                                                        | Technical name               |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
 | **The helper's desk** | A computer that stays on, such as an old laptop. Eva runs there.                                                         | the hub                      |
-| **The notebook**      | A private folder of notes. Eva reads and writes it, and keeps a copy on GitHub so that nothing gets lost.                | the vault (a git repository) |
+| **The vault**         | A private folder of notes. Eva reads and writes it, and keeps a copy on GitHub so that nothing gets lost.                | a git repository             |
 | **The brain**         | An AI harness that does the thinking, with your own subscription.                                                        | the engine (Claude Code, pi) |
 | **The phone line**    | How you talk to Eva: a Telegram chat, or her web page.                                                                   | the front ends               |
 | **The private road**  | A free app that connects your phone and computers to the helper's desk, and to nothing else. Strangers cannot reach Eva. | Tailscale                    |
@@ -27,7 +27,7 @@ Think of Eva as a helper who lives in one computer at your home:
 
 ## Get started
 
-Run one command on the computer that stays on. It works over SSH too.
+Run one command on the computer that stays on. It also works over SSH, a secure terminal connection from another computer.
 
 - Linux:
 
@@ -43,23 +43,23 @@ Run one command on the computer that stays on. It works over SSH too.
 
 The command installs what Eva needs, and starts `eva setup`. Setup starts Eva and shows her address. Open it on your phone, and finish there, or in the terminal. [docs/guide/setup.md](docs/guide/setup.md) explains each step.
 
-Eva updates herself from new releases. You choose which ones in Settings.
+Eva updates herself from new releases. You choose which ones in **Settings > Updates**.
 
 ## Use Eva every day
 
 ### In Telegram
 
-Write to your bot as you write to a person. Eva answers in the same chat. Each new topic (`/new`) is a separate conversation. Telegram, the web page and the terminal share the same conversations: see [Conversations](docs/guide/reference.md#conversations).
+Write to your bot as you write to a person. Eva answers in the same Telegram chat. Each Telegram topic (a thread inside your bot's Telegram chat) is a separate Eva chat. Send `/new` to start one. Telegram, the web page and the terminal share the same chats: see [Chats](docs/guide/reference.md#chats).
 
-Type `/` in the chat to see all the commands, with a short note for each.
+Type `/` in the Telegram chat to see all the commands, with a short note for each.
 
 You can also send voice notes, photos and files.
 
 ### On the web page
 
-Eva's web page shows your conversations, your projects, your reminders and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`: send `/link` in Telegram to get it. See [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone).
+Eva's web page shows your chats, your projects, your files, your schedules (reminders) and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`: send `/link` in Telegram to get it. See [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone).
 
-On Eva's own computer, run `eva open`. It opens her page in that computer's browser, already logged in. On Windows, her icon in the system tray, next to the clock, opens it too, and shows whether she runs.
+On Eva's own computer, run `eva open` to open her page. On Windows, her icon next to the clock opens it too: see [Open Eva on her own computer](docs/guide/setup.md#open-eva-on-her-own-computer).
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
 
@@ -67,15 +67,15 @@ A device without Tailscale cannot open Eva. That is on purpose: Eva can act on y
 
 ## Words you will see
 
-| Word          | Meaning                                                                                                                                         |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Vault**     | Your notebook: the private folder of notes that Eva reads and writes, saved on GitHub.                                                          |
-| **Hub**       | The computer that runs your Telegram bot and your reminders. Only one computer is the hub.                                                      |
-| **Satellite** | Any other computer with Eva and the same notebook. It keeps the notebook in step, but stays quiet in Telegram.                                  |
-| **Token**     | A long secret code that works like a password for one service. Never share it. Eva keeps each token on her own computer, never in the notebook. |
-| **Tailscale** | A free app that links your own devices privately, so your phone can open Eva's page from anywhere.                                              |
-| **Project**   | A folder in your notebook for one piece of work, often with code on GitHub.                                                                     |
-| **Sync**      | Saving the notebook to GitHub, and bringing in what other computers saved.                                                                      |
+| Word          | Meaning                                                                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Vault**     | Your private folder of notes, which Eva reads and writes, saved on GitHub.                                                                   |
+| **Hub**       | The computer that runs your Telegram bot and your schedules. Only one computer is the hub.                                                   |
+| **Satellite** | Any other computer with Eva and the same vault. It keeps the vault up to date, but stays quiet in Telegram.                                  |
+| **Token**     | A long secret code that works like a password for one service. Never share it. Eva keeps each token on her own computer, never in the vault. |
+| **Tailscale** | A free app that links your own devices privately, so your phone can open Eva's page from anywhere.                                           |
+| **Project**   | A folder in your vault for one piece of work, often with code on GitHub.                                                                     |
+| **Sync**      | Saving the vault to GitHub, and getting what other computers saved.                                                                          |
 
 ## Problems and answers
 
@@ -87,8 +87,8 @@ Open the web page and look at Settings, or run `eva status` on Eva's computer. C
 **The web page does not open on my phone.**
 Open the Tailscale app and check that it says "Connected", with the same account as Eva's computer. Then send `/link` in Telegram and open that exact address.
 
-**Eva says "conflict" for the notebook.**
-Two computers changed the same note. Eva stops saving to GitHub until you pick a version, so that nothing is lost. Send `/conflicts` in Telegram: see [Notebook conflicts](docs/guide/reference.md#notebook-conflicts).
+**Eva says "conflict" for the vault.**
+Two computers changed the same note. Eva stops saving to GitHub until you pick a version, so that nothing is lost. Send `/conflicts` in Telegram: see [Vault conflicts](docs/guide/reference.md#vault-conflicts).
 
 **Something else.**
 Run `eva doctor` on Eva's computer. It lists the tools that are missing, and how to install each one.

@@ -37,6 +37,8 @@ import { setupBlock } from "./new-chat.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType } from "./voice-notes.ts";
+import { goTo } from "./back-layers.ts";
+import { useBackLayer } from "./back-layer-hook.ts";
 
 /** What the composer shows of a chat. A new chat has no record until its first message. */
 type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns"> &
@@ -270,7 +272,7 @@ export function Composer({
               onClick={() => {
                 // A missing button tells nothing; this one leads to the button that installs voice notes.
                 if (voiceNotes) void voice.start();
-                else window.location.hash = settingsHash({ section: "updates", item: "versions" });
+                else goTo(settingsHash({ section: "updates", item: "versions" }));
               }}
             >
               <Icon name="mic" />
@@ -323,6 +325,7 @@ function EngineChip({
   readonly onChanged: () => Promise<void>;
 }): ReactElement {
   const [open, setOpen] = useState(false);
+  useBackLayer(open, () => setOpen(false));
   const [found, setFound] = useState<readonly EngineName[]>([]);
   const [savingCount, setSaving] = useState(0);
   const saving = savingCount > 0;

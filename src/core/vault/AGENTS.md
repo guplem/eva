@@ -2,7 +2,7 @@
 
 - Never let sync enter `Projects/*/repos/`.
 - Never lose a change in a conflict. Never commit conflict markers, and never drop the stash.
-- Let the secret scan keep one file out of the commit. Never let it block the whole commit.
+- When the secret scan flags a file, commit the other files and leave that file out. Never let the scan block the whole commit.
 
 # Template alignment
 

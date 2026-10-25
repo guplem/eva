@@ -87,7 +87,7 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           "vault",
           "Your vault",
           "missing",
-          "Your vault is the notebook of your notes. Pick it from your GitHub repositories in the vault step of Eva's page, or start a new one there.",
+          "Your vault is the private folder of your notes. Pick it from your GitHub repositories in the vault step of Eva's page, or start a new one there.",
           "vault",
         )
       : make("vault", "Your vault", "done", `The vault is in ${input.vaultPath}.`, "vault"),

@@ -29,6 +29,8 @@ export interface VaultSetupOptions {
 export interface NewVaultAnswers {
   readonly name: string;
   readonly language: string;
+  /** The language of the notes. Empty: English. */
+  readonly notesLanguage: string;
   readonly topics: readonly string[];
   /** The name of a new private repository, or the address of an empty one. Empty: the vault stays local. */
   readonly repository: string;
@@ -83,6 +85,7 @@ export class VaultSetup {
           answers: {
             name: answers.name.trim() || "the owner",
             language: answers.language.trim() || "English",
+            notesLanguage: answers.notesLanguage.trim() || "English",
             timeZone: this.timeZone(),
             topics: answers.topics.map((topic) => topic.trim()).filter((topic) => topic !== ""),
           },

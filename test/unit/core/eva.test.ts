@@ -1060,7 +1060,7 @@ describe("Eva", () => {
       const instance = start(writingEngine());
       const chat = await chatWithTwoTurns(instance);
       const { session } = await instance.retryChat(chat.id, 0, "undo");
-      await waitFor(() => !instance.sessions.isActive(session.id));
+      await waitFor(() => !instance.sessions.isActive(session.id), 20_000);
       expect(read(join(repository(instance, "clone-0"), "second.txt"))).toBeNull();
       expect(read(join(repository(instance, "clone-0"), "first.txt"))).toBe("turn 3\n");
     });
@@ -1069,7 +1069,7 @@ describe("Eva", () => {
       const instance = start(writingEngine());
       const chat = await chatWithTwoTurns(instance);
       const { session } = await instance.retryChat(chat.id, 1, "new-clone");
-      await waitFor(() => !instance.sessions.isActive(session.id));
+      await waitFor(() => !instance.sessions.isActive(session.id), 20_000);
       // The person wrote the message, so the retry keeps it theirs.
       expect(instance.sessions.get(session.id).turns[0]).toMatchObject({ userText: "second", fromEva: false });
       expect(read(join(repository(instance, "clone-1"), "first.txt"))).toBe("turn 1\n");

@@ -68,6 +68,11 @@ export interface TurnRequest {
   readonly startFolder: string;
   readonly prompt: string;
   readonly model: ModelAlias;
+  /**
+   * The tier of the chat's turn before, which may still hold the engine's model. Absent for a first
+   * turn or a model call. pi keeps a session's model when Eva names none (#552).
+   */
+  readonly previousModel?: ModelAlias;
   /** Null: the engine keeps its own level, as for a model call or a model with no effort. */
   readonly effort: EffortLevel | null;
   /**

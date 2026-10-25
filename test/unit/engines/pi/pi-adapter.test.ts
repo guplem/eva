@@ -230,6 +230,26 @@ describe("PiEngine", () => {
     expect(fake.runs[0]?.command[fake.runs[0].command.indexOf("--model") + 1]).toBe("openai/gpt-5");
   });
 
+  test("a change to a tier with no pi model tells the person, because pi keeps the chat's last model (#552)", async () => {
+    const fake = new FakePi([
+      { records: loadPiFixture("plain") },
+      { records: loadPiFixture("plain") },
+      { records: loadPiFixture("plain") },
+    ]);
+    const models = { opus: "openai/gpt-5", sonnet: null, haiku: "openai/gpt-5-mini" };
+    const notices = async (overrides: Partial<TurnRequest>): Promise<string[]> =>
+      (await drain(engine(fake, { models }).runTurn(request(overrides)))).flatMap((event) =>
+        event.kind === "notice" ? [event.text] : [],
+      );
+    expect(await notices({ model: "sonnet", previousModel: "opus" })).toEqual([
+      "pi has no model for the Balanced tier, so this answer can come from the chat's last model. " +
+        "Choose a pi model for Balanced in Settings, under Engines, pi.",
+    ]);
+    // No change, or a change to a tier with its own model: pi runs what the person chose.
+    expect(await notices({ model: "sonnet", previousModel: "sonnet" })).toEqual([]);
+    expect(await notices({ model: "haiku", previousModel: "opus" })).toEqual([]);
+  });
+
   test("Eva writes her extension and the turn's prompt file, and keeps them when nothing changed", async () => {
     const fake = new FakePi([{ records: loadPiFixture("plain") }, { records: loadPiFixture("plain") }]);
     await drain(engine(fake).runTurn(request()));

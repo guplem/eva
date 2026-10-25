@@ -2582,7 +2582,9 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   }
 });
 
-test("the nav visor names the approval that waits, and a tap opens the notification center", async ({ page }) => {
+test("the nav visor names the approval that waits, and a tap opens the center with a face that ends", async ({
+  page,
+}) => {
   // The tooltip shows on hover, which a phone does not have.
   test.skip(test.info().project.name !== "desktop", "Only a computer shows the tooltip.");
   await page.route("**/api/approvals", (route) =>
@@ -2599,6 +2601,9 @@ test("the nav visor names the approval that waits, and a tap opens the notificat
   await visorButton.click();
   await expect(page).toHaveURL(/#\/notifications$/);
   await expect(visorButton).toHaveAttribute("aria-current", "page");
+  // The tap also plays a playful face for a moment, then the face of the main state comes back.
+  await expect(visor).not.toHaveClass(/e-firm/);
+  await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
 });
 
 test("the Settings home page shows Eva's status", async ({ page }) => {

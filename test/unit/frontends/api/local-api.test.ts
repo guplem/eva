@@ -967,6 +967,23 @@ describe("routes", () => {
     // A new chat takes its effort in the same call, so a failed second call leaves no empty chat.
     const made = await call("/api/sessions", { method: "POST", body: { mode: "assistant", effort: "low" } });
     expect((await json<{ effort: string }>(made)).effort).toBe("low");
+    // A page from before #550 sends the old Default. It means the settings' model and effort.
+    const old = await call("/api/sessions", {
+      method: "POST",
+      body: { mode: "assistant", model: "default", effort: "default" },
+    });
+    expect(old.status).toBe(201);
+    const oldChat = await json<{ id: string; modelAlias: string; effort: string }>(old);
+    expect(oldChat).toMatchObject({ modelAlias: "opus", effort: "medium" });
+    await call(`/api/sessions/${oldChat.id}/model`, { method: "POST", body: { model: "haiku" } });
+    await call(`/api/sessions/${oldChat.id}/effort`, { method: "POST", body: { effort: "max" } });
+    const oldModel = await call(`/api/sessions/${oldChat.id}/model`, { method: "POST", body: { model: "default" } });
+    expect((await json<{ modelAlias: string }>(oldModel)).modelAlias).toBe("opus");
+    const oldEffort = await call(`/api/sessions/${oldChat.id}/effort`, {
+      method: "POST",
+      body: { effort: "default" },
+    });
+    expect((await json<{ effort: string }>(oldEffort)).effort).toBe("medium");
   });
 
   test("searches projects", async () => {

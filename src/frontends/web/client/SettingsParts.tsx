@@ -38,7 +38,7 @@ export interface SettingsContext {
   readonly reloadSetup: () => void;
   readonly reloadSettings: () => void;
   readonly setStatus: (status: EvaStatus) => void;
-  /** Opens the restart question, which names the running chats. */
+  /** Opens the restart question, which names the running chats. With no running chat, restarts Eva at once. */
   readonly askRestart: () => void;
   readonly navigate: (route: SettingsRoute) => void;
   readonly onLoggedOut: () => void;

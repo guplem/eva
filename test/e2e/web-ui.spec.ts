@@ -196,6 +196,7 @@ test("Assistant mode: the task dialog of an answer opens the Project chat of its
   await composer.fill("Please give work to the example app");
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText("Started the work.");
+  const askingChat = page.url();
   await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   const work = dialog.getByRole("listitem").filter({ hasText: "Fix the login bug." });
@@ -209,6 +210,9 @@ test("Assistant mode: the task dialog of an answer opens the Project chat of its
   await expect(answer.or(deny).first()).toBeVisible();
   if (await deny.isVisible()) await deny.click();
   await expect(answer).toContainText("Fix the login bug.");
+  // The report of the work starts a turn in the asking chat. A later test must not share the vault sync with it.
+  await page.goto(askingChat);
+  await expect(page.locator(".message.answer").nth(1)).toContainText("Fix the login bug.");
 });
 
 test("Assistant mode: the result of project work comes back as a card of the Project side", async ({ page }) => {

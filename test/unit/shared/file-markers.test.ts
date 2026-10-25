@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractFileMarkers } from "../../../src/shared/file-markers.ts";
+import { extractFileMarkers, shownAnswerText } from "../../../src/shared/file-markers.ts";
 
 describe("extractFileMarkers (lesson 124)", () => {
   test("removes marker lines and lists their paths; any case, spaces allowed", () => {
@@ -15,5 +15,21 @@ describe("extractFileMarkers (lesson 124)", () => {
   test("a file named twice goes once, and attach wins over offer", () => {
     const markers = extractFileMarkers("[[offer: a.md]]\n[[attach: a.md]]\n[[attach: a.md]]\n[[offer: b.md]]");
     expect(markers).toEqual({ text: "", attach: ["a.md"], offer: ["b.md"] });
+  });
+});
+
+describe("shownAnswerText", () => {
+  test("drops the marker lines", () => {
+    expect(shownAnswerText("Here it is.\n[[attach: Scratch/a.zip]]")).toBe("Here it is.");
+  });
+
+  test("drops a last line that a marker starts but that a cut or a stream left open", () => {
+    expect(shownAnswerText("Here it is.\n[[attach: Scrat")).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n[")).toBe("Here it is.");
+  });
+
+  test("keeps an open bracket that is not the start of a marker, and a marker in a code fence", () => {
+    expect(shownAnswerText("See [[Plan]] and\n[[not a marker")).toBe("See [[Plan]] and\n[[not a marker");
+    expect(shownAnswerText("```\n[[attach: a.md]]\n```")).toBe("```\n[[attach: a.md]]\n```");
   });
 });

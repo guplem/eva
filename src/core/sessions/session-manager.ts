@@ -632,9 +632,14 @@ export class SessionManager {
 
   /** Tells the front ends that a chat gave work to a project, and which Project chat runs it. */
   announceProjectWork(sessionId: string, work: { projectId: string; projectSessionId: string; request: string }): void {
-    const payload = redactPayload({ kind: "project_work_started", ...work }, this.options.redactor);
+    // The turn keeps the request, so it gets the redaction that `emit` gives the event.
+    const payload: ProjectWorkStarted = {
+      kind: "project_work_started",
+      ...work,
+      request: this.options.redactor.redact(work.request),
+    };
     // `eva work` runs in the shell of a turn, so the work is a task of the answer that started it.
-    if (payload.kind === "project_work_started") this.runtimes.get(sessionId)?.addProjectWork?.(payload);
+    this.runtimes.get(sessionId)?.addProjectWork?.(payload);
     this.emit(sessionId, payload);
   }
 

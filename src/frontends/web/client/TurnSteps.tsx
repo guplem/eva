@@ -163,10 +163,13 @@ function StepDialog({
     <Dialog label={`Step: ${action}`} onClose={onClose} sheet>
       <div className="step-dialog-title">
         <span className={`pill step-pill${step.isError ? " failed" : ""}`}>{action}</span>
-        <span className={`status-pill ${state === "Failed" ? "bad" : state === "Running" ? "live" : "ok"}`}>
+        <span
+          className={`status-pill ${state === "Failed" ? "bad" : state === "Running" ? "live" : state === "Started" ? "idle" : "ok"}`}
+        >
           {state}
         </span>
       </div>
+      {step.chatId !== undefined && <a href={`#/chat/${encodeURIComponent(step.chatId)}`}>Open chat</a>}
       {(origin !== null || description !== null) && (
         <dl className="facts">
           {tool !== null && (

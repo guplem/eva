@@ -168,6 +168,13 @@
   font-size: 13px;
 }
 
+/* A narrow phone must not break the link over two lines. */
+.task-chat-link {
+  flex: none;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 .task-card > .icon {
   flex: none;
   width: 18px;

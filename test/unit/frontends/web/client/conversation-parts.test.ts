@@ -419,6 +419,12 @@ describe("step dialog", () => {
     expect(stepState({ kind: "message", text: "Hi", isError: false, id: "m1" }, true)).toBe("Done");
   });
 
+  test("project work only started: its Project chat may still run, so its step never says Done (#571)", () => {
+    const work: TurnStep = { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" };
+    expect(stepState(work, false)).toBe("Started");
+    expect(stepState(work, true)).toBe("Started");
+  });
+
   test("a missing part says why it is missing", () => {
     expect(missingDetail("output", true)).toBe("The tool still runs.");
     expect(missingDetail("output", false)).toBe("Eva kept no output for this step.");

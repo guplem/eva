@@ -38,9 +38,11 @@ import {
   undoQuestion,
   type PendingMessage,
 } from "./conversation-parts.ts";
+import { CopyButton } from "./CopyButton.tsx";
 import { DownloadButton } from "./DownloadButton.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
+import { MarkdownBody } from "./MarkdownBody.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
@@ -54,8 +56,6 @@ import { shownAnswerText } from "../../../shared/file-markers.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 
-/** How long a Copy button says "Copied". */
-const copiedMs = 2_000;
 /** The voice notes of this tab, so a sent message can play what the person said. */
 const recordings = new RecordingShelf((url) => URL.revokeObjectURL(url));
 
@@ -653,10 +653,7 @@ function AnswerBody({
         {...(summary === undefined ? {} : { summary })}
         {...(sessionId === undefined ? {} : { sessionId })}
       />
-      {body !== "" && (
-        // toWebHtml escapes all text and adds only its own tags, so the HTML is safe.
-        <div className="answer-body" dangerouslySetInnerHTML={{ __html: html }} />
-      )}
+      {body !== "" && <MarkdownBody html={html} className="answer-body" copy={!live} />}
       {files.length > 0 && (
         <div className="answer-files">
           {files.map((file) => (
@@ -752,48 +749,6 @@ function useStartTime(running: boolean): number {
     return () => clearInterval(timer);
   }, [running]);
   return startedAt ?? Date.now();
-}
-
-function CopyButton({ text }: { readonly text: string }): ReactElement {
-  const [copied, setCopied] = useState(false);
-  const showError = useShowError();
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), copiedMs);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <button
-      className="ghost"
-      onClick={() => {
-        copyText(text)
-          .then(() => setCopied(true))
-          .catch((caught: unknown) => showError(caught));
-      }}
-    >
-      <Icon name={copied ? "check" : "copy"} />
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
-
-/** The Clipboard API needs a secure page. A page over plain HTTP uses a hidden text box instead. */
-async function copyText(text: string): Promise<void> {
-  if (window.isSecureContext && "clipboard" in navigator) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.append(area);
-  area.select();
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- the only way to copy on a page that is not secure.
-  const copied = document.execCommand("copy");
-  area.remove();
-  if (!copied) throw new Error("This browser cannot copy here. Select the text and copy it.");
 }
 
 /** "3 commands, 1 tool": what a turn did, with each zero part left out. */

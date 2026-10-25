@@ -12,6 +12,7 @@ import { DiffLines } from "./DiffLines.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { diffLines, type DiffRow } from "./line-diff.ts";
 import { ProgressBar } from "./Loading.tsx";
+import { MarkdownBody } from "./MarkdownBody.tsx";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { nestedWebHtml } from "./web-format.ts";
 
@@ -115,11 +116,7 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
             {rules.text.trim() === "" ? (
               <p className="muted">You have no rules yet. Eva uses only her built-in rules.</p>
             ) : (
-              // nestedWebHtml escapes all text and adds only its own tags, so the HTML is safe.
-              <div
-                className="answer-body rules-text"
-                dangerouslySetInnerHTML={{ __html: nestedWebHtml(rules.text, cardHeadingLevel) }}
-              />
+              <MarkdownBody html={nestedWebHtml(rules.text, cardHeadingLevel)} className="answer-body rules-text" />
             )}
           </section>
           {rules.text.trim() !== "" && <RulesDiff rows={changes} />}
@@ -161,10 +158,7 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
           Each chat with Eva starts with these rules, then yours. Your rules win where the two disagree. An update of
           Eva can change these.
         </p>
-        <div
-          className="answer-body rules-text"
-          dangerouslySetInnerHTML={{ __html: nestedWebHtml(rules.builtIn, cardHeadingLevel) }}
-        />
+        <MarkdownBody html={nestedWebHtml(rules.builtIn, cardHeadingLevel)} className="answer-body rules-text" />
       </details>
       {restoring && <RestoreDialog busy={busy} onRestore={(backup) => void restore(backup)} onClose={closeRestore} />}
     </Card>

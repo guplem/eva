@@ -203,7 +203,19 @@ describe("the model and the effort of new chats (#550)", () => {
     expect(readJson(vaultSettingsPath(vault))).toMatchObject({
       engines: { defaultModel: "opus", defaultEffort: "medium", pi: { models: { haiku: "openai/gpt-5-mini" } } },
     });
+    // Each tier names a model, so an older hub also gets its one pi model: the one of the default tier.
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({
+      engines: { pi: { models: { default: "openai/gpt-5" } } },
+    });
+    expect(loadSettings(paths).config.engines.pi.models).toEqual(config.engines.pi.models);
+  });
+
+  test("a pi tier with no model writes no old pi entry, so the tier keeps pi's own default", () => {
+    const models = { opus: "openai/gpt-5", sonnet: null, haiku: null };
+    const engines = { ...defaultConfig.engines, pi: { executable: null, models } };
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, engines });
     expect(JSON.stringify(readJson(vaultSettingsPath(vault)))).not.toContain('"default":"openai');
+    expect(loadSettings(paths).config.engines.pi.models).toEqual(models);
   });
 
   test("a save also writes the old Claude Code key, so an older hub keeps the person's model", () => {

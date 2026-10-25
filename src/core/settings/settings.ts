@@ -32,14 +32,21 @@ export const sharedSettingKeys: readonly string[] = [
 const oldSharedSettingKeys: readonly string[] = ["engines.claudeCode.defaultModel"];
 
 /**
- * The vault's settings with the old Claude Code key too. An older hub reads only that key, and its
- * next save would put its own default back for every machine. Remove it one release after #550.
+ * The vault's settings with the old keys too. An older hub reads only those, and its next save would
+ * put its own defaults back for every machine. Remove them one release after #550.
  */
 function withOldVaultKeys(shared: SettingsObject): SettingsObject {
   const engines = shared["engines"];
-  if (!isObject(engines) || engines["defaultModel"] === undefined) return shared;
+  if (!isObject(engines) || typeof engines["defaultModel"] !== "string") return shared;
+  const defaultModel = engines["defaultModel"];
   const claudeCode = isObject(engines["claudeCode"]) ? engines["claudeCode"] : {};
-  return { ...shared, engines: { ...engines, claudeCode: { ...claudeCode, defaultModel: engines["defaultModel"] } } };
+  const withClaude = { ...engines, claudeCode: { ...claudeCode, defaultModel } };
+  const pi = engines["pi"];
+  const models = isObject(pi) ? pi["models"] : undefined;
+  // A read fills each empty tier from the old entry, so it goes only where every tier names a model.
+  if (!isObject(pi) || !isObject(models) || Object.values(models).some((model) => model === null))
+    return { ...shared, engines: withClaude };
+  return { ...shared, engines: { ...withClaude, pi: { ...pi, models: { ...models, default: models[defaultModel] } } } };
 }
 
 type SettingsObject = Record<string, unknown>;

@@ -687,6 +687,21 @@ test("a link opened before the login opens its chat after the login", async ({ p
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(linked);
 });
 
+test("on a computer, a chat that opens gives the focus to its message box, so the person types at once", async ({
+  page,
+}) => {
+  await logIn(page);
+  const first = await newAnsweredChat(page, "First focused chat");
+  await newAnsweredChat(page, "Second focused chat");
+  await openList(page);
+  await page.locator(".sidebar .list-item", { hasText: first }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(first);
+  await expect(page.getByLabel("Message").first()).toBeFocused();
+
+  await clickNewChat(page);
+  await expect(page.getByLabel("Message").first()).toBeFocused();
+});
+
 test("a link to a deleted chat says so", async ({ page }) => {
   await logIn(page);
   const title = await newAnsweredChat(page, "A chat that goes");
@@ -4554,6 +4569,13 @@ test.describe("on a touch screen", () => {
     await expect(page.locator(".message.user")).toHaveCount(0);
     await page.getByRole("button", { name: "Send" }).first().click();
     await expect(page.locator(".message.answer").first()).toContainText("second line");
+  });
+
+  test("a chat that opens leaves the message box without the focus, so the keyboard stays down", async ({ page }) => {
+    await logIn(page);
+    await newChat(page);
+    await expect(page.getByLabel("Message").first()).toBeEnabled();
+    await expect(page.getByLabel("Message").first()).not.toBeFocused();
   });
 
   test("the tab bar hides while the keyboard is up, and comes back after", async ({ page }) => {

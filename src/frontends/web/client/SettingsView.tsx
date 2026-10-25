@@ -159,14 +159,16 @@ export function SettingsView({
     return true;
   };
 
-  /** The question names the running chats, because a restart stops them. */
+  /** The question names the running chats, because a restart stops them. With none, Eva restarts at once. */
   const askRestart = (): void => {
     if (restarting) return;
     Promise.all([api.status(), api.sessions()])
       .then(([current, sessions]) => {
         const busy = new Set(current.busySessionIds);
         const names = sessions.filter((session) => busy.has(session.id)).map((session) => session.title);
-        setRestartAsk(restartQuestion(names));
+        const question = restartQuestion(names);
+        if (question === null) void restartNow();
+        else setRestartAsk(question);
       })
       // A list that does not load must not block the restart, which may be the fix.
       .catch(() => setRestartAsk("The page could not read which chats run. A restart stops them. Restart Eva now?"));

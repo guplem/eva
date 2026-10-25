@@ -2,13 +2,13 @@
  * The main navigation of the EVE shell: a nav rail on a computer and a bottom tab bar on a phone.
  * It is one element that the stylesheet places, so each destination has one accessible name.
  */
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
-import { navVisorState, visorSignal, type NavVisorInput } from "./nav-visor.ts";
+import { navVisorState, tapFace, tapFaceMs, visorSignal, type NavVisorInput } from "./nav-visor.ts";
 import { destinations, notificationCenter, type Destination } from "./navigation.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
-import { stateFaces } from "./visor-faces.ts";
+import { stateFaces, type Face } from "./visor-faces.ts";
 
 interface MainNavProps extends NavVisorInput {
   readonly current: Destination;
@@ -32,6 +32,13 @@ export function MainNav(props: MainNavProps): ReactElement {
   // At rest, on a special day, the visor wears that day's eyes. Any state that informs comes first.
   const day = useSpecialDay();
   const festive = visor.face === stateFaces.idle ? (day?.id ?? null) : null;
+  // A tap opens the center and plays a playful face for a moment. Then the face of the main state comes back.
+  const [tapped, setTapped] = useState<{ face: Face } | null>(null);
+  useEffect(() => {
+    if (tapped === null) return undefined;
+    const timer = setTimeout(() => setTapped(null), tapFaceMs);
+    return () => clearTimeout(timer);
+  }, [tapped]);
   // The visible badge is only a number. The hidden words say what it counts.
   const badges: Partial<Record<Destination, { count: number; words: string }>> = {
     chats: { count: approvals, words: approvals === 1 ? "approval waits" : "approvals wait" },
@@ -70,10 +77,18 @@ export function MainNav(props: MainNavProps): ReactElement {
         aria-current={current === notificationCenter ? "page" : undefined}
         data-tooltip={visor.words}
         data-tooltip-side="right"
-        onClick={() => onOpen(notificationCenter)}
+        onClick={() => {
+          setTapped((last) => ({ face: tapFace(Math.random, last?.face) }));
+          onOpen(notificationCenter);
+        }}
       >
         <span className="nav-icon">
-          <Visor size={36} face={visor.face} festive={festive} alarm={alarm} />
+          <Visor
+            size={36}
+            face={tapped?.face ?? visor.face}
+            festive={tapped === null ? festive : null}
+            alarm={tapped === null && alarm}
+          />
           {signal.count > 0 && (
             <span className={`nav-badge${props.unreadError ? " bad" : ""}`} aria-hidden="true">
               {signal.count}

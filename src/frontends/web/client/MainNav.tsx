@@ -31,7 +31,7 @@ export function MainNav(props: MainNavProps): ReactElement {
   const name = `Eva: ${visor.words}${signal.dot ? ". Something new waits" : ""}`;
   // At rest, on a special day, the visor wears that day's eyes. Any state that informs comes first.
   const day = useSpecialDay();
-  const festive = visor.face === stateFaces.idle && !signal.dot ? (day?.id ?? null) : null;
+  const festive = visor.face === stateFaces.idle ? (day?.id ?? null) : null;
   // The visible badge is only a number. The hidden words say what it counts.
   const badges: Partial<Record<Destination, { count: number; words: string }>> = {
     chats: { count: approvals, words: approvals === 1 ? "approval waits" : "approvals wait" },

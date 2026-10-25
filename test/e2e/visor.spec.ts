@@ -114,8 +114,7 @@ test("with reduced motion, the rotate mode stays on one face", async ({ page }) 
   await expect(page.getByRole("figure", { name: "rotate" }).locator(".mk")).toHaveClass(/e-scan/);
 });
 
-test("the nav rail shows EVE, worried while the page reconnects", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === "phone", "The tab bar of a phone has no visor.");
+test("the nav visor shows EVE, worried while the page reconnects", async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
   await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
     socket.connectToServer();
@@ -134,8 +133,7 @@ test("the nav rail shows EVE, worried while the page reconnects", async ({ page 
   await expect(visor).toHaveClass("mk");
 });
 
-test("on a special day, the nav visor at rest wears that day's eyes", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === "phone", "The tab bar of a phone has no visor.");
+test("on a special day, the nav visor at rest wears that day's eyes", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-10-31T12:00:00"));
   await page.goto("/");
   await page.getByLabel(/Token/).fill("e2e-demo-token");

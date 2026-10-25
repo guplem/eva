@@ -1729,7 +1729,8 @@ test("Settings: the back arrow returns to the page before, so Back then leaves S
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
   await page.goBack();
-  expect(page.url()).toBe(before);
+  // On a phone, Settings opens from the notification center, so Back returns there (#566).
+  expect(page.url()).toBe(test.info().project.name === "desktop" ? before : `${before}#/notifications`);
 });
 
 test("on a short phone, a long project list scrolls, and no card cuts its text", async ({ page }) => {

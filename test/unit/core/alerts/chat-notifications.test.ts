@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { ChatNotifications, type ChatNotification } from "../../../../src/core/alerts/chat-notifications.ts";
+import {
+  ChatNotifications,
+  holdingChat,
+  type ChatNotification,
+} from "../../../../src/core/alerts/chat-notifications.ts";
 import type { CoreEventPayload, EngineEventPayload } from "../../../../src/shared/events.ts";
 
 type Payload = EngineEventPayload | CoreEventPayload;
@@ -233,5 +237,24 @@ describe("an approval", () => {
       "Eva has a question: Which format?",
       "Eva has 2 questions: Which format?",
     ]);
+  });
+});
+
+describe("holdingChat", () => {
+  const notification = (kind: ChatNotification["kind"]): ChatNotification => ({
+    kind,
+    sessionId: "chat-a",
+    key: "chat:chat-a",
+    title: "Plan the trip",
+    body: "Done.",
+  });
+
+  test("an answer waits only for a page that shows its chat (#614)", () => {
+    expect(holdingChat(notification("replies"))).toBe("chat-a");
+    expect(holdingChat(notification("schedules"))).toBe("chat-a");
+  });
+
+  test("an approval waits for any page in view: each page shows its notice", () => {
+    expect(holdingChat(notification("approvals"))).toBeNull();
   });
 });

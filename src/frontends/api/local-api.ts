@@ -198,11 +198,15 @@ const pushDeviceSchema = z.object({
 });
 const pushEndpointSchema = z.object({ endpoint: z.string().min(1).max(2_000) });
 const pushKindsSchema = pushEndpointSchema.extend({ kinds: z.array(z.enum(notificationKinds)).max(10) });
-/** `chats`: the sessions that the page shows. An older page sends none. */
+/** `chats`: the sessions that the page shows. A page from before #614 sends none, and reads as null. */
 const pushInViewSchema = pushEndpointSchema.extend({
   pageId: z.string().min(1).max(100),
   inView: z.boolean(),
-  chats: z.array(z.string().min(1).max(100)).max(20).default([]),
+  chats: z
+    .array(z.string().min(1).max(100))
+    .max(20)
+    .optional()
+    .transform((chats) => chats ?? null),
 });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 /** A PATCH turns a schedule off or on, or edits the fields that the schedule form shows. */

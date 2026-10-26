@@ -95,7 +95,8 @@ const inViewMs = 90_000;
 
 interface PageClaim {
   readonly until: number;
-  readonly chats: ReadonlySet<string>;
+  /** Null for a page from before #614: it names no chat, so it holds back every chat's push. */
+  readonly chats: ReadonlySet<string> | null;
 }
 
 const fetchSender: PushSender = async (request) => {
@@ -206,12 +207,12 @@ export class WebPush {
    * of view. False for an address with no subscription: Eva keeps no claim for it, so a page
    * cannot fill her memory.
    */
-  markInView(endpoint: string, pageId: string, inView: boolean, chats: readonly string[] = []): boolean {
+  markInView(endpoint: string, pageId: string, inView: boolean, chats: readonly string[] | null = []): boolean {
     if (!this.read().some((each) => each.endpoint === endpoint)) return false;
     const pages = this.inViewUntil.get(endpoint) ?? new Map<string, PageClaim>();
     const now = this.options.now().getTime();
     for (const [page, claim] of pages) if (claim.until <= now) pages.delete(page);
-    if (inView) pages.set(pageId, { until: now + inViewMs, chats: new Set(chats) });
+    if (inView) pages.set(pageId, { until: now + inViewMs, chats: chats === null ? null : new Set(chats) });
     else pages.delete(pageId);
     if (pages.size === 0) this.inViewUntil.delete(endpoint);
     else this.inViewUntil.set(endpoint, pages);
@@ -224,7 +225,7 @@ export class WebPush {
    */
   private isInView(endpoint: string, now: number, sessionId: string | null): boolean {
     return [...(this.inViewUntil.get(endpoint)?.values() ?? [])].some(
-      (claim) => claim.until > now && (sessionId === null || claim.chats.has(sessionId)),
+      (claim) => claim.until > now && (sessionId === null || claim.chats === null || claim.chats.has(sessionId)),
     );
   }
 

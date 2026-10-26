@@ -243,8 +243,15 @@ describe("a page in view", () => {
     expect(pusher.recipients("alerts")).toEqual([]);
     pusher.markInView(subscription.endpoint, "tab-1", true, ["chat-b"]);
     expect(pusher.recipients("replies", "chat-a")).toEqual([subscription.endpoint]);
-    pusher.markInView(subscription.endpoint, "tab-1", true);
+    pusher.markInView(subscription.endpoint, "tab-1", true, []);
     expect(pusher.recipients("replies", "chat-b")).toEqual([subscription.endpoint]);
+  });
+
+  test("of a page from before the chats were named holds back every chat's push", () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Laptop");
+    pusher.markInView(subscription.endpoint, "tab-1", true, null);
+    expect(pusher.recipients("replies", "chat-a")).toEqual([]);
   });
 
   test("of an address with no subscription keeps no claim, and a removal ends the claims", () => {

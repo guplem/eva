@@ -2792,6 +2792,27 @@ test("the nav visor names the approval that waits, and a tap opens the center wi
   await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
 });
 
+test("the nav visor wears the Project eyes in Projects on a phone only, even on a special day", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-12-25T12:00:00"));
+  await logIn(page);
+  const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor .mk");
+  await expect(visor).toHaveClass(/festive/);
+  await expect(visor).not.toHaveClass(/project-eyes/);
+  await openProjects(page);
+  // The tab is current first, so the computer check below does not pass before the page renders.
+  await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveAttribute("aria-current", "page");
+  if (test.info().project.name === "phone") {
+    // The mode tells the person more than the day, so it wins.
+    await expect(visor).toHaveClass(/project-eyes/);
+    await expect(visor).not.toHaveClass(/festive/);
+  } else {
+    await expect(visor).not.toHaveClass(/project-eyes/);
+  }
+  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await expect(visor).not.toHaveClass(/project-eyes/);
+  await expect(visor).toHaveClass(/festive/);
+});
+
 test("the Settings home page shows Eva's status", async ({ page }) => {
   await logIn(page);
   await openSettings(page);

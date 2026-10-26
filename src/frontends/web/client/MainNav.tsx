@@ -4,7 +4,14 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
-import { navVisorState, tapFace, tapFaceMs, visorSignal, type NavVisorInput } from "./nav-visor.ts";
+import {
+  navVisorProjectEyes,
+  navVisorState,
+  tapFace,
+  tapFaceMs,
+  visorSignal,
+  type NavVisorInput,
+} from "./nav-visor.ts";
 import { destinations, notificationCenter, type Destination } from "./navigation.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
@@ -12,6 +19,7 @@ import { stateFaces, type Face } from "./visor-faces.ts";
 
 interface MainNavProps extends NavVisorInput {
   readonly current: Destination;
+  readonly isPhone: boolean;
   readonly onOpen: (destination: Destination) => void;
   readonly setupMissing: number;
   /** An unread problem is an error, so the visor's crosses pulse. */
@@ -29,9 +37,11 @@ export function MainNav(props: MainNavProps): ReactElement {
   // The visible label "Eva" starts the name, so a voice command that says it finds the button.
   // The count is in the words. The dot, which has no words, adds its own.
   const name = `Eva: ${visor.words}${signal.dot ? ". Something new waits" : ""}`;
-  // At rest, on a special day, the visor wears that day's eyes. Any state that informs comes first.
+  const projectEyes = navVisorProjectEyes(current, props.isPhone);
+  // At rest, on a special day, the visor wears that day's eyes. Any state that informs comes first,
+  // and so do the Project eyes: they are the phone's only sign of the mode.
   const day = useSpecialDay();
-  const festive = visor.face === stateFaces.idle ? (day?.id ?? null) : null;
+  const festive = visor.face === stateFaces.idle && !projectEyes ? (day?.id ?? null) : null;
   // A tap opens the center and plays a playful face for a moment. Then the face of the main state comes back.
   const [tapped, setTapped] = useState<{ face: Face } | null>(null);
   useEffect(() => {
@@ -88,6 +98,7 @@ export function MainNav(props: MainNavProps): ReactElement {
             face={tapped?.face ?? visor.face}
             festive={tapped === null ? festive : null}
             alarm={tapped === null && alarm}
+            projectEyes={projectEyes}
           />
           {signal.count > 0 && (
             <span className={`nav-badge${props.unreadError ? " bad" : ""}`} aria-hidden="true">

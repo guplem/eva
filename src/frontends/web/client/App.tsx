@@ -656,6 +656,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       {/* A badge, not a banner, says what is left to set up: a short phone screen keeps its room for the chats. */}
       <MainNav
         current={screen}
+        isPhone={isPhone}
         onOpen={openFromNav}
         approvals={approvals.length}
         setupMissing={setupMissing}

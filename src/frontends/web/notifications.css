@@ -98,6 +98,8 @@
 }
 
 .center-history {
+  /* The details line up with the text of their row, after its icon. */
+  --center-icon: 32px;
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -144,8 +146,8 @@
 
 .center-row-icon {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: var(--center-icon);
+  height: var(--center-icon);
   border-radius: 10px;
   display: grid;
   place-items: center;
@@ -173,6 +175,45 @@
   color: var(--ok);
 }
 
+.center-row-chevron {
+  flex: none;
+  display: grid;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.center-row[aria-expanded="true"] .center-row-chevron {
+  transform: rotate(180deg);
+}
+
+.center-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4) var(--space-4) calc(var(--space-4) + var(--center-icon) + var(--space-3));
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.center-details p {
+  margin: 0;
+}
+
+.center-details-state {
+  font-weight: 700;
+}
+
+.center-details-steps {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--muted);
+}
+
+.center-details-steps .current {
+  color: var(--ink);
+  font-weight: 700;
+}
+
 .center-empty {
   display: flex;
   flex-direction: column;
@@ -190,5 +231,11 @@
 @media (max-width: 760px) {
   .notification-center {
     padding: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .center-row-chevron {
+    transition: none;
   }
 }

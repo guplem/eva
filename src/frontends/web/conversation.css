@@ -303,7 +303,8 @@
   margin-bottom: 3px;
 }
 
-.message .failed {
+/* Only the failure line of a turn. A failed step keeps the size of its list. */
+.message .turn-failure {
   margin-top: 8px;
   color: var(--bad);
   font-size: 13px;

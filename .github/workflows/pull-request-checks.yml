@@ -44,6 +44,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # A full run takes about 14 to 20 minutes. A Bun test worker can hang with no error, and the
+    # 30-second test timeout does not stop it (#574). Without this limit, the job waits 6 hours.
+    timeout-minutes: 35
     env:
       # Ubuntu always runs in full: the format and public-content checks read the docs too.
       RUN_CODE_CHECKS: ${{ matrix.os == 'ubuntu-latest' || needs.changes.outputs.code_changed != 'false' }}

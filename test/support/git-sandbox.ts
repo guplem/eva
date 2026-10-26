@@ -21,8 +21,24 @@ const gitEnvironment: Record<string, string> = {
   GIT_TERMINAL_PROMPT: "0",
 };
 
-function runGit(cwd: string, arguments_: string[]): string {
-  const result = Bun.spawnSync(["git", ...arguments_], { cwd, env: gitEnvironment, stdout: "pipe", stderr: "pipe" });
+/** A git command of a sandbox takes well under a second, even on a Windows CI runner. */
+const gitTimeoutMs = 20_000;
+
+/**
+ * Runs git and waits for it. The wait blocks the event loop, so Bun's test timeout cannot end it:
+ * only the timeout of the spawn itself stops a git that hangs.
+ */
+export function runGit(cwd: string, arguments_: string[], timeoutMs = gitTimeoutMs): string {
+  const result = Bun.spawnSync(["git", ...arguments_], {
+    cwd,
+    env: gitEnvironment,
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: timeoutMs,
+  });
+  if (result.exitedDueToTimeout === true) {
+    throw new Error(`git ${arguments_.join(" ")} timed out after ${String(timeoutMs)} ms`);
+  }
   if (result.exitCode !== 0) {
     throw new Error(`git ${arguments_.join(" ")} failed: ${result.stderr.toString()}`);
   }

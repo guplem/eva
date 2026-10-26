@@ -1,5 +1,5 @@
 /**
- * The steps of an answer, folded into one line: the count, the last step and an arrow. A tap
+ * The steps of an answer, folded into one line: the last step and an arrow. A tap
  * opens the list, one line for each message, command, tool and task. A message shows its text
  * beside the face of Eva. For every other step, a pill says what the step
  * did, and plain text says what it did it to, such as the file that it read. A tap on a step
@@ -91,7 +91,6 @@ export function StepFold({
         <span className={failed ? "failed" : undefined}>
           <Icon name={failed ? "alert" : live ? "sync" : "check"} />
         </span>
-        <span className="steps-count">{counted(total, "step")}</span>
         {last !== undefined && (
           <span className="steps-last">
             <StepParts step={last} />

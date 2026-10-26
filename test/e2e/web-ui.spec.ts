@@ -5680,6 +5680,19 @@ test("Files: a wide column takes at least a quarter of the row", async ({ page }
   expect(columnWidth).toBeGreaterThanOrEqual(rowWidth / 4 - 16);
 });
 
+test("Files: an open file takes at least two fifths of the row", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  const row = page.locator(".files-columns");
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file).toBeVisible();
+  const rowWidth = (await row.boundingBox())?.width ?? 0;
+  const fileWidth = (await file.boundingBox())?.width ?? 0;
+  // The gaps and the padding of the row take a few pixels.
+  expect(fileWidth).toBeGreaterThanOrEqual((rowWidth * 2) / 5 - 24);
+});
+
 test("Files: the one folder view shows only the open folder, and the path leads back", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "A phone always shows one folder.");
   await logIn(page);

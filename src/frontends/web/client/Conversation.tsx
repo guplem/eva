@@ -403,6 +403,7 @@ function Branch({
                 wholeAnswer={turn.answerText}
                 summary={activityOf(turn)}
                 endedWork={endedWork}
+                vaultLinks={owner.mode === "assistant"}
                 actions={(shown) => (
                   <div className="answer-actions">
                     {turn.taskCount > 0 && (
@@ -708,6 +709,7 @@ function AnswerBody({
   actions,
   failure = null,
   endedWork,
+  vaultLinks = false,
 }: {
   readonly steps: readonly TurnStep[];
   readonly omitted: number;
@@ -723,6 +725,8 @@ function AnswerBody({
   readonly failure?: string | null;
   /** Each Project chat whose result came back, and whether its work failed, for the step dialog. */
   readonly endedWork?: ReadonlyMap<string, boolean>;
+  /** True in an Assistant chat: its agent works in the vault root, so a path in a code span opens the Files page. */
+  readonly vaultLinks?: boolean;
 }): ReactElement {
   const [showWhole, setShowWhole] = useState(false);
   const { listed, lastMessage } = foldSteps(steps);
@@ -730,7 +734,7 @@ function AnswerBody({
   const fullBody = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
   // Each streamed token and each clock tick render every answer, so parse only a changed text.
   const body = useMemo(() => shownAnswerText(fullBody, live), [fullBody, live]);
-  const html = useMemo(() => toWebHtml(body), [body]);
+  const html = useMemo(() => toWebHtml(body, { vaultLinks }), [body, vaultLinks]);
   // A running turn can still change its files, so the buttons come with the stored turn, as in Telegram.
   const files = useMemo(() => (live ? [] : answerFiles(wholeAnswer)), [live, wholeAnswer]);
   return (
@@ -789,7 +793,13 @@ function LiveAnswer({
   const hasText = steps.some((step) => step.kind === "message");
   return (
     <EvaMessage face={liveFace(hasText, mode)} mode={mode}>
-      <AnswerBody steps={shown.steps} omitted={shown.omittedSteps} wholeAnswer={wholeAnswer} live />
+      <AnswerBody
+        steps={shown.steps}
+        omitted={shown.omittedSteps}
+        wholeAnswer={wholeAnswer}
+        live
+        vaultLinks={mode === "assistant"}
+      />
       <div className="working">
         <span className="dots" aria-hidden="true">
           <i />

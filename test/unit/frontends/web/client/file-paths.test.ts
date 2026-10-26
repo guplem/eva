@@ -8,6 +8,7 @@ import {
   pathCrumbs,
   sizeWords,
   splitFrontMatter,
+  vaultPathOf,
 } from "../../../../../src/frontends/web/client/file-paths.ts";
 
 describe("fileAddressOf and filePathOf", () => {
@@ -98,5 +99,63 @@ describe("splitFrontMatter", () => {
   test("a rule that is not at the start, or never closes, is no front matter", () => {
     expect(splitFrontMatter("# A\n---\nb\n---\n")).toEqual({ frontMatter: null, body: "# A\n---\nb\n---\n" });
     expect(splitFrontMatter("---\nstatus: active\n")).toEqual({ frontMatter: null, body: "---\nstatus: active\n" });
+  });
+});
+
+describe("vaultPathOf", () => {
+  test("a relative path with a slash, or one Markdown note, is a vault path", () => {
+    expect(vaultPathOf("Toolbox/Health/Workout Routines.md")).toBe("Toolbox/Health/Workout Routines.md");
+    expect(vaultPathOf("Inbox.md")).toBe("Inbox.md");
+    expect(vaultPathOf(".eva/skills/schedule/SKILL.md")).toBe(".eva/skills/schedule/SKILL.md");
+    expect(vaultPathOf("R&D/plan.md")).toBe("R&D/plan.md");
+    expect(vaultPathOf("Books/Dune (1965).md")).toBe("Books/Dune (1965).md");
+    expect(vaultPathOf("People/Ana's notes.md")).toBe("People/Ana's notes.md");
+  });
+
+  test("a folder loses its last slash, and a leading ./ folds away", () => {
+    expect(vaultPathOf("Toolbox/Health/")).toBe("Toolbox/Health");
+    expect(vaultPathOf("Toolbox/")).toBe("Toolbox");
+    expect(vaultPathOf("notes/daily/")).toBe("notes/daily");
+    expect(vaultPathOf("scripts/sync.sh")).toBe("scripts/sync.sh");
+    expect(vaultPathOf("./Projects/notes.md")).toBe("Projects/notes.md");
+    expect(vaultPathOf(" Toolbox/Health ")).toBe("Toolbox/Health");
+  });
+
+  test("a heading anchor or a line number after a note folds away", () => {
+    expect(vaultPathOf("Notes/a.md#Heading")).toBe("Notes/a.md");
+    expect(vaultPathOf("Notes/a.md:12")).toBe("Notes/a.md");
+    expect(vaultPathOf("Notes/a.md:12:4")).toBe("Notes/a.md");
+    expect(vaultPathOf("Notes/C# tips.md")).toBe("Notes/C# tips.md");
+  });
+
+  test("code that only looks like a name is no path", () => {
+    expect(vaultPathOf("console.log")).toBeNull();
+    expect(vaultPathOf("package.json")).toBeNull();
+    expect(vaultPathOf("v1.2.3")).toBeNull();
+    expect(vaultPathOf("Projects")).toBeNull();
+    expect(vaultPathOf("origin/main")).toBeNull();
+    expect(vaultPathOf("application/json")).toBeNull();
+    expect(vaultPathOf("and/or")).toBeNull();
+    expect(vaultPathOf("1/2")).toBeNull();
+    expect(vaultPathOf("@types/node")).toBeNull();
+    expect(vaultPathOf("git@github.com:o/r.git")).toBeNull();
+    expect(vaultPathOf("Notes:old/a.md")).toBeNull();
+    expect(vaultPathOf("")).toBeNull();
+    expect(vaultPathOf("/")).toBeNull();
+  });
+
+  test("a command, a URL, an absolute path or a step out of the vault is no path", () => {
+    expect(vaultPathOf("cd Toolbox/Health")).toBeNull();
+    expect(vaultPathOf("cat >> notes/a.md")).toBeNull();
+    expect(vaultPathOf("https://example.com/a.md")).toBeNull();
+    expect(vaultPathOf("/srv/vault/a.md")).toBeNull();
+    expect(vaultPathOf("~/vault/a.md")).toBeNull();
+    expect(vaultPathOf("C:/vault/a.md")).toBeNull();
+    expect(vaultPathOf("../secrets/a.md")).toBeNull();
+    expect(vaultPathOf("Projects/../../a.md")).toBeNull();
+    expect(vaultPathOf("src/*.ts")).toBeNull();
+    expect(vaultPathOf("a / b")).toBeNull();
+    expect(vaultPathOf("Projects//a.md")).toBeNull();
+    expect(vaultPathOf("a/b\\c.md")).toBeNull();
   });
 });

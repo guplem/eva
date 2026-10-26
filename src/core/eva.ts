@@ -23,7 +23,7 @@ import type { SessionEvent, TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
-import { ChatNotifications, type NotificationKind } from "./alerts/chat-notifications.ts";
+import { ChatNotifications, holdingChat, type NotificationKind } from "./alerts/chat-notifications.ts";
 import { readHiddenProblems, writeHiddenProblems } from "./alerts/hidden-problems.ts";
 import { readNotificationHistory, writeNotificationHistory, type HistoryEntry } from "./alerts/notification-history.ts";
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
@@ -756,6 +756,7 @@ export class Eva {
             url: `/#/chat/${encodeURIComponent(notification.sessionId)}`,
           },
           notification.kind,
+          holdingChat(notification),
         );
       },
     });
@@ -1084,11 +1085,13 @@ export class Eva {
   }
 
   /**
-   * A page of a device is in view, or went out of view: Eva sends that device no push while one of
-   * its pages is in view. False when the device has no subscription.
+   * A page of a device is in view, with the chats that it shows, or went out of view. Eva sends
+   * that device no alert while one of its pages is in view, and no chat's answer while one of its
+   * pages shows that chat. `chats` null: a page from before #614, which holds back every chat's push.
+   * False when the device has no subscription.
    */
-  markPushInView(endpoint: string, pageId: string, inView: boolean): boolean {
-    return this.webPush.markInView(endpoint, pageId, inView);
+  markPushInView(endpoint: string, pageId: string, inView: boolean, chats: readonly string[] | null = []): boolean {
+    return this.webPush.markInView(endpoint, pageId, inView, chats);
   }
 
   /** Sends a test notification to the devices only, not to Telegram. */
@@ -1114,9 +1117,16 @@ export class Eva {
       .map((entry) => entry.alert);
   }
 
-  /** `kind` null is a test: it goes to every device. */
-  private async pushAlert(alert: PushedAlertInput, kind: NotificationKind | null): Promise<void> {
-    const endpoints = this.webPush.recipients(kind);
+  /**
+   * `kind` null is a test: it goes to every device. `sessionId`: the chat whose page in view holds
+   * the alert back, or null for any page in view.
+   */
+  private async pushAlert(
+    alert: PushedAlertInput,
+    kind: NotificationKind | null,
+    sessionId: string | null = null,
+  ): Promise<void> {
+    const endpoints = this.webPush.recipients(kind, sessionId);
     // An entry for nobody would push the entries of the other devices out of the short list.
     if (kind !== null && endpoints.length === 0) return;
     this.pushedCount += 1;

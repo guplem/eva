@@ -5,10 +5,11 @@ type Listener = () => void;
 
 interface FakePage {
   readonly page: PresencePage;
-  readonly sent: [string, string, boolean][];
+  readonly sent: [string, string, boolean, readonly string[]][];
   inView: boolean;
+  chats: readonly string[];
   endpoint: string | null;
-  readonly fire: (name: "view" | "leave" | "device" | "timer") => void;
+  readonly fire: (name: "view" | "chats" | "leave" | "device" | "timer") => void;
   readonly listening: () => number;
 }
 
@@ -23,17 +24,20 @@ function fakePage(): FakePage {
   const fake: FakePage = {
     sent: [],
     inView: true,
+    chats: [],
     endpoint: "https://fcm.googleapis.com/fcm/send/phone",
     fire: (name) => listeners.get(name)?.(),
     listening: () => listeners.size,
     page: {
       isInView: () => fake.inView,
       readEndpoint: () => Promise.resolve(fake.endpoint),
-      send: (endpoint, pageId, inView) => {
-        fake.sent.push([endpoint, pageId, inView]);
+      shownChats: () => fake.chats,
+      send: (endpoint, pageId, inView, chats) => {
+        fake.sent.push([endpoint, pageId, inView, chats]);
         return Promise.resolve();
       },
       onViewChange: on("view"),
+      onChatsChange: on("chats"),
       onLeave: on("leave"),
       onDeviceChange: on("device"),
       setInterval: (callback) => on("timer")(callback),
@@ -60,11 +64,11 @@ describe("the page's claim that it is in view", () => {
     fake.fire("leave");
     const endpoint = fake.endpoint ?? "";
     expect(fake.sent).toEqual([
-      [endpoint, "tab-1", true],
-      [endpoint, "tab-1", true],
-      [endpoint, "tab-1", false],
-      [endpoint, "tab-1", true],
-      [endpoint, "tab-1", false],
+      [endpoint, "tab-1", true, []],
+      [endpoint, "tab-1", true, []],
+      [endpoint, "tab-1", false, []],
+      [endpoint, "tab-1", true, []],
+      [endpoint, "tab-1", false, []],
     ]);
   });
 
@@ -77,6 +81,26 @@ describe("the page's claim that it is in view", () => {
     fake.fire("view");
     fake.fire("leave");
     expect(fake.sent.map(([, , inView]) => inView)).toEqual([true, false]);
+  });
+
+  test("names the chats that the page shows, and goes out again when they change (#614)", async () => {
+    const fake = fakePage();
+    fake.chats = ["chat-a"];
+    startPushPresence(fake.page);
+    await settle();
+    fake.chats = ["chat-b"];
+    fake.fire("chats");
+    fake.fire("chats");
+    fake.fire("timer");
+    fake.inView = false;
+    fake.chats = [];
+    fake.fire("chats");
+    expect(fake.sent.map(([, , inView, chats]) => [inView, chats])).toEqual([
+      [true, ["chat-a"]],
+      [true, ["chat-b"]],
+      [true, ["chat-b"]],
+      [false, []],
+    ]);
   });
 
   test("ends its claim when it stops, as after a logout", async () => {
@@ -108,7 +132,7 @@ describe("the page's claim that it is in view", () => {
     fake.endpoint = "https://fcm.googleapis.com/fcm/send/new";
     fake.fire("device");
     await settle();
-    expect(fake.sent).toEqual([[fake.endpoint, "tab-1", true]]);
+    expect(fake.sent).toEqual([[fake.endpoint, "tab-1", true, []]]);
   });
 
   test("a failed claim or a failed read stays quiet", async () => {

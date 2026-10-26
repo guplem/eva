@@ -16,14 +16,14 @@ import {
 import { PushCloneDialog } from "./PushCloneDialog.tsx";
 import { Toast } from "./Toast.tsx";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
-import { chatState, type ChatState } from "./chat-list.ts";
+import { chatState, unreadChats, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
 import { seenPart } from "./branch-path.ts";
 import { BranchesButton, useBranchStates, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
-import { ChatHeader, useChatActionRequest } from "./ChatHeader.tsx";
+import { ChatHeader, ChatStatePill, useChatActionRequest } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
@@ -485,6 +485,10 @@ export function ProjectView({
     chatState(chatTree(candidate, sessions), (sessionId) => live.steps[sessionId] !== undefined, approvalSessionIds);
   // On a phone, the open list covers the chat.
   useMarkSeen(branch.id === null ? [] : seenPart(tree, branch.id), !sidebarOpen);
+  // A project card says when one of its chats has an answer that the person did not see (#614).
+  const unreadProjects = new Set(
+    unreadChats(sessions, branch.id === null || sidebarOpen ? [] : [branch.id]).map((session) => session.projectId),
+  );
   const [panelShown, togglePanel] = useChatPanelShown();
   const chatDetails = {
     tree,
@@ -565,6 +569,7 @@ export function ProjectView({
               key={project.id}
               project={project}
               chatCount={chatCount(project)}
+              unread={unreadProjects.has(project.id)}
               isOpen={page?.project.id === project.id}
               onOpen={(kind) => open({ kind, project })}
               onNewClone={() => {
@@ -716,12 +721,14 @@ export function ProjectView({
 function ProjectCard({
   project,
   chatCount,
+  unread,
   isOpen,
   onOpen,
   onNewClone,
 }: {
   readonly project: Project;
   readonly chatCount: number;
+  readonly unread: boolean;
   readonly isOpen: boolean;
   readonly onOpen: (kind: "project" | "details" | "setup") => void;
   readonly onNewClone: () => void;
@@ -744,6 +751,7 @@ function ProjectCard({
         </span>
         <span className="card-row muted">
           <span>{projectSummary(project.clones.length, chatCount)}</span>
+          {unread && <ChatStatePill state="unread" />}
           {project.warnings.length > 0 && (
             <span className="pill warn">{countOf(project.warnings.length, "warning")}</span>
           )}

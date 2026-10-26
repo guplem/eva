@@ -149,7 +149,7 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
 
 A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) and inspector (300 px). A page without a list or an inspector drops that column.
 
-- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the notification center, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news or a setup step that is left.
+- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the notification center, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news or a setup step that is left.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column of at most 760 px, and the composer.
 - **Inspector:** the details of the selected item, such as the chat details.
@@ -287,6 +287,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - The status and tag filters are one-tap chips, not drop-down menus.
 - The status has a colour and a shape.
 - Each clone is a card with its branch, its state and its chats.
+- A project card shows the "Unread" pill while one of its chats has an answer that the person did not see.
 
 ### A chat in a clone
 

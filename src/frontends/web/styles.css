@@ -545,6 +545,12 @@ textarea {
   right: -8px;
 }
 
+/* An unread chat is news, not a wait: it takes the accent, as the unread dot of the chat list does. */
+.nav-badge.news {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 .nav-badge.bad {
   background: var(--bad);
   color: var(--bad-bg);

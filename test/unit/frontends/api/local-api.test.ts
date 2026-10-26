@@ -1606,6 +1606,12 @@ describe("web routes", () => {
       body: { endpoint: "https://fcm.googleapis.com/fcm/send/none", pageId: "tab-1", inView: true },
     });
     expect(unknownClaim.status).toBe(404);
+    // A claim names the chats that the page shows (#614).
+    const chatsClaim = (chats: unknown): Promise<Response> =>
+      call("/api/push/in-view", { method: "POST", body: { endpoint, pageId: "tab-1", inView: true, chats } });
+    expect((await chatsClaim(["chat-a"])).status).toBe(204);
+    expect((await chatsClaim([42])).status).toBe(400);
+    expect((await chatsClaim(null)).status).toBe(400);
     expect((await call("/api/notifications/recent", { method: "POST", body: {} })).status).toBe(400);
   });
 

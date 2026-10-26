@@ -268,13 +268,28 @@ export function stepKey(sessionId: string, index: number | null): string {
 /** What a branch that the page does not show is doing, so the person can find a question or an answer. */
 export type BranchState = "waiting" | "running" | "unread";
 
+/** What tells whether a session has an answer that the person did not see. */
+export interface UnseenFacts {
+  readonly turns: readonly unknown[];
+  readonly seenTurns: number;
+  readonly reportsTo?: string | null;
+}
+
+/**
+ * The core stores a turn only when it ends, so a running turn never counts as unseen. A Project
+ * chat that Eva made for another chat never counts (#614): its report reaches the chat that asked.
+ */
+export function hasUnseenTurns(session: UnseenFacts): boolean {
+  return (session.reportsTo ?? null) === null && session.turns.length > session.seenTurns;
+}
+
 /**
  * The state of each branch that waits for the person, runs a turn, or has an answer that the
  * person did not see. A request comes first, as it stops the turn. The shown branch is never
  * unread: the page shows its answers.
  */
 export function branchStates(
-  tree: readonly (BranchSession & { readonly seenTurns: number })[],
+  tree: readonly (BranchSession & UnseenFacts)[],
   shownId: string | null,
   waitingIds: ReadonlySet<string>,
   runningIds: ReadonlySet<string>,
@@ -283,8 +298,7 @@ export function branchStates(
     tree.flatMap((session): [string, BranchState][] => {
       if (waitingIds.has(session.id)) return [[session.id, "waiting"]];
       if (runningIds.has(session.id)) return [[session.id, "running"]];
-      // The same test as hasUnseenTurns of the chat list: more turns than the person saw.
-      if (session.id !== shownId && session.turns.length > session.seenTurns) return [[session.id, "unread"]];
+      if (session.id !== shownId && hasUnseenTurns(session)) return [[session.id, "unread"]];
       return [];
     }),
   );

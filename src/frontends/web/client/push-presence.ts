@@ -1,6 +1,7 @@
 /**
- * Tells Eva while this page is in view, so she sends this device no notification then (#360). The
- * claim ends by itself after 90 seconds on Eva's side, so the page renews it each minute.
+ * Tells Eva while this page is in view, and which chats it shows (#360, #614). Eva then sends this
+ * device no notification of those chats, and no problem alert. The claim ends by itself after 90
+ * seconds on Eva's side, so the page renews it each minute.
  */
 
 /** Shorter than Eva's 90 seconds, so one late renewal does not end the claim. */
@@ -12,8 +13,11 @@ export interface PresencePage {
   readonly isInView: () => boolean;
   /** This device's push address, or null when it gets no notifications. */
   readonly readEndpoint: () => Promise<string | null>;
-  readonly send: (endpoint: string, pageId: string, inView: boolean) => Promise<void>;
+  /** The sessions of the chat on screen. */
+  readonly shownChats: () => readonly string[];
+  readonly send: (endpoint: string, pageId: string, inView: boolean, chats: readonly string[]) => Promise<void>;
   readonly onViewChange: (listener: () => void) => () => void;
+  readonly onChatsChange: (listener: () => void) => () => void;
   /** The browser closes the page, or opens another address in its tab. */
   readonly onLeave: (listener: () => void) => () => void;
   /** The person turned the notifications of this device on or off. */
@@ -31,15 +35,16 @@ export function startPushPresence(page: PresencePage): () => void {
    * The last claim that went out. A blur and a hide often come together, and two requests can
    * arrive in either order, so the page sends only a change. Only the timer renews a claim.
    */
-  let lastSent: boolean | null = null;
+  let lastSent: string | null = null;
   const report = (inView: boolean): void => {
     if (endpoint === null) return;
-    lastSent = inView;
+    const chats = page.shownChats();
+    lastSent = JSON.stringify([inView, chats]);
     // A missed claim only means one notification that the person did not need.
-    page.send(endpoint, page.pageId, inView).catch(() => undefined);
+    page.send(endpoint, page.pageId, inView, chats).catch(() => undefined);
   };
   const reportChange = (inView: boolean): void => {
-    if (inView !== lastSent) report(inView);
+    if (JSON.stringify([inView, page.shownChats()]) !== lastSent) report(inView);
   };
   const reportView = (): void => {
     reportChange(page.isInView());
@@ -57,6 +62,7 @@ export function startPushPresence(page: PresencePage): () => void {
   refresh();
   const stops = [
     page.onViewChange(reportView),
+    page.onChatsChange(reportView),
     page.onLeave(() => {
       reportChange(false);
     }),

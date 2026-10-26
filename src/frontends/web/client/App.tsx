@@ -2,7 +2,7 @@
  * The web UI: the main navigation, the destinations, approvals, and the setup cards of
  * schedules. The address names the destination, so the back button and a reload work.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   api,
   ApiError,
@@ -70,7 +70,8 @@ import { goTo, layersOfEntry, replaceAddress } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { startPushPresence } from "./push-presence.ts";
-import { browserPresencePage } from "./PushCard.tsx";
+import { unreadChats } from "./chat-list.ts";
+import { announceShownChats, browserPresencePage } from "./PushCard.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -421,7 +422,18 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     };
   }, [authenticated, recover]);
 
-  useEffect(() => (authenticated === true ? startPushPresence(browserPresencePage()) : undefined), [authenticated]);
+  // On a phone, the open list covers the chat: the person reads no answer, as useMarkSeen knows.
+  const readChats = useMemo(() => (sidebarOpen ? [] : shownSessionIds), [sidebarOpen, shownSessionIds]);
+  // The claims read the chat on screen at each send, so they start once and hear each change.
+  const shownChats = useRef(readChats);
+  useEffect(() => {
+    shownChats.current = readChats;
+    announceShownChats();
+  }, [readChats]);
+  useEffect(
+    () => (authenticated === true ? startPushPresence(browserPresencePage(() => shownChats.current)) : undefined),
+    [authenticated],
+  );
 
   useEffect(() => {
     if (authenticated !== true) return undefined;
@@ -645,6 +657,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   };
   const notices = <ProblemNotices isConnected={isConnected} onRetryNow={() => events.current?.retryNow()} />;
   const unreadProblems = shownProblems(problems);
+  const unread = unreadChats(sessions, readChats);
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
   const onConflictState = (state: VaultSyncState): void => {
     setSyncState(state);
@@ -665,6 +678,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         unreadProblems={unreadProblems.length}
         unreadError={unreadProblems.some((problem) => problem.level === "error")}
         news={setupMissing > 0 || notifications.some((entry) => !entry.read)}
+        unreadChats={unread.filter((chat) => chat.mode === "assistant").length}
+        unreadProjectChats={unread.filter((chat) => chat.mode === "project").length}
         chatBlocked={chatBlocker !== null}
         assistantTurns={runningTurns.assistant}
         projectTurns={runningTurns.project}

@@ -15,8 +15,16 @@ import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
 /** The card says so when the person turns the notifications of this device on or off. */
 const deviceChangeEvent = "eva-push-device";
 
+/** The app says so when another chat comes on screen. */
+const shownChatsEvent = "eva-shown-chats";
+
+/** Tells the claims that another chat is on screen. */
+export function announceShownChats(): void {
+  window.dispatchEvent(new Event(shownChatsEvent));
+}
+
 /** The browser's side of the claims that this page is in view (`push-presence.ts`). */
-export function browserPresencePage(): PresencePage {
+export function browserPresencePage(shownChats: () => readonly string[]): PresencePage {
   const listen = (target: EventTarget, names: readonly string[], listener: () => void): (() => void) => {
     for (const name of names) target.addEventListener(name, listener);
     return () => {
@@ -31,7 +39,8 @@ export function browserPresencePage(): PresencePage {
       const subscription = await registration?.pushManager.getSubscription();
       return subscription?.endpoint ?? null;
     },
-    send: (endpoint, pageId, inView) => api.setPushInView(endpoint, pageId, inView),
+    shownChats,
+    send: (endpoint, pageId, inView, chats) => api.setPushInView(endpoint, pageId, inView, chats),
     onViewChange: (listener) => {
       const stopDocument = listen(document, ["visibilitychange"], listener);
       const stopWindow = listen(window, ["focus", "blur"], listener);
@@ -40,6 +49,7 @@ export function browserPresencePage(): PresencePage {
         stopWindow();
       };
     },
+    onChatsChange: (listener) => listen(window, [shownChatsEvent], listener),
     onLeave: (listener) => listen(window, ["pagehide"], listener),
     onDeviceChange: (listener) => listen(window, [deviceChangeEvent], listener),
     setInterval: (callback, ms) => {

@@ -46,6 +46,7 @@ function session(id: string): SessionRecord {
     firstMessageDraft: null,
     pendingRestore: null,
     forkedFrom: null,
+    reportsTo: null,
   };
 }
 
@@ -141,6 +142,14 @@ describe("SessionStore", () => {
       expect(openStore().get(id)?.continuedFrom).toBeNull();
       expect(openStore().get(id)?.firstMessageDraft).toBeNull();
     }
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a session from before the report link, or with a bad one, is the person's own (#614)", () => {
+    const { reportsTo: _left, ...old } = session("one");
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), reportsTo: 7 }] }));
+    expect(openStore().get("one")?.reportsTo).toBeNull();
+    expect(openStore().get("two")?.reportsTo).toBeNull();
     expect(corruptCopies()).toEqual([]);
   });
 

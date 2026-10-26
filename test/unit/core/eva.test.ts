@@ -361,7 +361,8 @@ describe("Eva", () => {
       request: "Fix the login bug.",
       reportToSessionId: assistantChat.id,
     });
-    expect(work).toMatchObject({ mode: "project", clone: "clone-0" });
+    // The record says that Eva made the chat for another chat, so the web app never lists it as unread (#614).
+    expect(work).toMatchObject({ mode: "project", clone: "clone-0", reportsTo: assistantChat.id });
     // The asking chat learns of the Project chat before its first message, so a front end can show both.
     expect(events).toMatchObject([
       {
@@ -441,6 +442,8 @@ describe("Eva", () => {
     const input = { projectId: "2025-03-02-1015-example-app", request: "Fix it.", reportToSessionId: null };
     const works = await Promise.all([instance.startProjectWork(input), instance.startProjectWork(input)]);
     expect(works.map((work) => work.clone).sort()).toEqual(["clone-0", "clone-1"]);
+    // A work from a terminal reports to no chat: the person asked for it.
+    expect(works.map((work) => work.reportsTo)).toEqual([null, null]);
     await instance.idle();
     const third = await instance.startProjectWork(input);
     expect(third.clone).toBe("clone-0");

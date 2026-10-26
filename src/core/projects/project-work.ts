@@ -366,6 +366,7 @@ export class ProjectWork {
       source: "cli",
       projectId: project.id,
       clone: clone.name,
+      ...(input.reportToSessionId === null ? {} : { reportsTo: input.reportToSessionId }),
     });
     // Before the work starts, so a front end can show the Project chat with its first message.
     if (input.reportToSessionId !== null)

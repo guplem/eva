@@ -150,6 +150,12 @@ export const sessionSchema = z
     pendingRestore: z.string().nullable().default(null).catch(null),
     /** The chat in another clone that this chat branched from (issue 523), or null. It is not its parent. */
     forkedFrom: forkedFromSchema.nullable().default(null).catch(null),
+    /**
+     * The Assistant chat that this Project chat does a work for and reports to (#614), or null when
+     * the person made the chat. The web app never lists Eva's own chat as unread. A record from
+     * before the field, or a bad value, is the person's.
+     */
+    reportsTo: z.string().nullable().default(null).catch(null),
   })
   .transform((session) => ({ ...session, seenTurns: session.seenTurns ?? session.turns.length }));
 

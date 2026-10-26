@@ -3057,7 +3057,8 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   await expect(answer.locator(".answer-body")).toContainText(/Echo \d+: Hello Eva/);
   // The demo turn runs a task, a tool and a command before its one message. The line shows the last one.
   const toggle = answer.getByRole("button", { name: "Show 3 steps" });
-  await expect(toggle).toContainText("3 steps");
+  // The count stays in the label only: on a phone, visible text would cut the last step short.
+  await expect(toggle).not.toContainText("3 steps");
   await expect(toggle.locator(".steps-last .pill")).toHaveText("Command");
   await expect(toggle.locator(".steps-last .step-text")).toHaveText("ls");
   if (test.info().project.name === "phone") {

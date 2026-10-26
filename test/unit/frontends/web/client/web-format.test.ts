@@ -169,3 +169,29 @@ describe("nestedWebHtml", () => {
     expect(nestedWebHtml("A <h1> tag", 2)).toBe(toWebHtml("A <h1> tag"));
   });
 });
+
+describe("toWebHtml with vault links", () => {
+  test("a code span that names a vault path links to the Files page", () => {
+    expect(toWebHtml("Added to `Toolbox/Health/Workout Routines.md`.", { vaultLinks: true })).toBe(
+      '<p>Added to <a class="vault-link" href="#/files/Toolbox/Health/Workout%20Routines.md">' +
+        "<code>Toolbox/Health/Workout Routines.md</code></a>.</p>",
+    );
+    expect(toWebHtml("See `R&D/`", { vaultLinks: true })).toBe(
+      '<p>See <a class="vault-link" href="#/files/R%26D"><code>R&amp;D/</code></a></p>',
+    );
+  });
+
+  test("other code stays plain code, and a link keeps its own target", () => {
+    expect(toWebHtml("Run `cd Toolbox/Health` and `bun run check`", { vaultLinks: true })).toBe(
+      "<p>Run <code>cd Toolbox/Health</code> and <code>bun run check</code></p>",
+    );
+    expect(toWebHtml("```\nNotes/a.md\n```", { vaultLinks: true })).toBe(toWebHtml("```\nNotes/a.md\n```"));
+    expect(toWebHtml("[the `Notes/a.md` page](https://example.com)", { vaultLinks: true })).toBe(
+      toWebHtml("[the `Notes/a.md` page](https://example.com)"),
+    );
+  });
+
+  test("without the option, a vault path stays plain code", () => {
+    expect(toWebHtml("`Notes/a.md`")).toBe("<p><code>Notes/a.md</code></p>");
+  });
+});

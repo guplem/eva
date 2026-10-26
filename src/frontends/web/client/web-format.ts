@@ -7,6 +7,7 @@
  */
 import { closesFence, openingFencePattern } from "../../markdown-fence.ts";
 import { escapeHtml, inlineHtml } from "../../markdown-inline.ts";
+import { fileAddressOf, vaultPathOf } from "./file-paths.ts";
 
 const headingPattern = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const quotePattern = /^\s{0,3}>\s?(.*)$/;
@@ -26,11 +27,31 @@ interface ListItem {
   readonly text: string;
 }
 
-export function toWebHtml(markdown: string): string {
+export function toWebHtml(markdown: string, { vaultLinks = false }: { readonly vaultLinks?: boolean } = {}): string {
   const html = blocks(expandIndentTabs(markdown.replaceAll("\r\n", "\n").split("\n")), false);
   // A link opens in a new tab, so the chat stays open. Telegram takes only href, so the shared
   // inlineHtml leaves these out. Every "<a " in the output is a link tag, as all text is escaped.
-  return html.replaceAll("<a href=", '<a target="_blank" rel="noreferrer" href=');
+  const linked = html.replaceAll("<a href=", '<a target="_blank" rel="noreferrer" href=');
+  return vaultLinks ? linkVaultPaths(linked) : linked;
+}
+
+/**
+ * Wraps each inline code span that names a vault path in a link to the Files page. The link
+ * stays in the tab, so the back button returns to the chat. A code block starts with `<pre>`,
+ * and a code span inside a link keeps that link: HTML allows no link in a link.
+ */
+function linkVaultPaths(html: string): string {
+  return html.replace(/<a [^>]*>.*?<\/a>|(?<!<pre>)<code>([^<]*)<\/code>/g, (match, code: string | undefined) => {
+    if (code === undefined) return match;
+    const path = vaultPathOf(unescapeHtml(code));
+    if (path === null) return match;
+    return `<a class="vault-link" href="${fileAddressOf(path)}">${match}</a>`;
+  });
+}
+
+/** The text of `escapeHtml` back, which is all the escaping that a code span gets. */
+function unescapeHtml(text: string): string {
+  return text.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
 }
 
 /**

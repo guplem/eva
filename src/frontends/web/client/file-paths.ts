@@ -71,3 +71,25 @@ export function splitFrontMatter(text: string): { frontMatter: string | null; bo
   if (match === null) return { frontMatter: null, body: text };
   return { frontMatter: match[1] ?? "", body: text.slice(match[0].length) };
 }
+
+/** A first word in lower case and a space start a command, such as `cd Notes/a`. */
+const commandPattern = /^[a-z][\w-]*\s/;
+/** Shell signs never sit in a note name. Brackets and an apostrophe do, as in `Book (2024).md`. */
+const shellSignPattern = /[\\*?<>|"`$;={}]/;
+
+/**
+ * The vault path that a code span of an Assistant answer names, or null. Its agent works in
+ * the vault root, so a relative path is a vault path. A lone name counts only as a folder
+ * (`Toolbox/`) or a note (`.md`): `package.json` or `console.log` in an answer is code, not a vault file.
+ */
+export function vaultPathOf(code: string): string | null {
+  let path = code.trim();
+  if (commandPattern.test(path) || shellSignPattern.test(path) || path.includes("://")) return null;
+  if (/^(?:[/~]|[A-Za-z]:)/.test(path)) return null;
+  const folder = path.endsWith("/");
+  path = path.replace(/^\.\//, "").replace(/\/$/, "");
+  const parts = path.split("/");
+  if (parts.some((part) => part.trim() !== part || part === "" || part === "." || part === "..")) return null;
+  if (parts.length === 1 && !folder && !/\.md$/i.test(path)) return null;
+  return path;
+}

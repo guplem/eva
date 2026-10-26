@@ -12,7 +12,7 @@ import {
   visorSignal,
   type NavVisorInput,
 } from "./nav-visor.ts";
-import { destinations, notificationCenter, type Destination } from "./navigation.ts";
+import { destinations, navBadges, notificationCenter, type Destination } from "./navigation.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -26,6 +26,10 @@ interface MainNavProps extends NavVisorInput {
   readonly unreadError: boolean;
   /** An unread entry of the history, or a setup step that is left. */
   readonly news: boolean;
+  /** The Assistant chats with an answer that the person did not see. */
+  readonly unreadChats: number;
+  /** The Project chats with an answer that the person did not see. */
+  readonly unreadProjectChats: number;
 }
 
 export function MainNav(props: MainNavProps): ReactElement {
@@ -49,11 +53,12 @@ export function MainNav(props: MainNavProps): ReactElement {
     const timer = setTimeout(() => setTapped(null), tapFaceMs);
     return () => clearTimeout(timer);
   }, [tapped]);
-  // The visible badge is only a number. The hidden words say what it counts.
-  const badges: Partial<Record<Destination, { count: number; words: string }>> = {
-    chats: { count: approvals, words: approvals === 1 ? "approval waits" : "approvals wait" },
-    settings: { count: setupMissing, words: "to set up" },
-  };
+  const badges = navBadges({
+    approvals,
+    setupMissing,
+    unreadChats: props.unreadChats,
+    unreadProjectChats: props.unreadProjectChats,
+  });
   const button = (destination: (typeof destinations)[number]): ReactElement => {
     const badge = badges[destination.id];
     return (
@@ -69,8 +74,8 @@ export function MainNav(props: MainNavProps): ReactElement {
           <Icon name={destination.icon} />
         </span>
         <span className="nav-label">{destination.label}</span>
-        {badge !== undefined && badge.count > 0 && (
-          <span className="nav-badge">
+        {badge !== undefined && (
+          <span className={`nav-badge${badge.tone === "news" ? " news" : ""}`}>
             {badge.count}
             <span className="visually-hidden"> {badge.words}</span>
           </span>

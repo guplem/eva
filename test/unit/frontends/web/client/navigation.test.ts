@@ -7,6 +7,7 @@ import {
   destinations,
   destinationOf,
   linkedChatIdOf,
+  navBadges,
   projectAddressOf,
   projectRouteOf,
   type ProjectRoute,
@@ -122,5 +123,27 @@ describe("projectRouteOf and projectAddressOf", () => {
 
   test("each page opens Projects", () => {
     for (const route of routes) expect(destinationOf(projectAddressOf(route))).toBe("projects");
+  });
+});
+
+describe("navBadges", () => {
+  const none = { approvals: 0, setupMissing: 0, unreadChats: 0, unreadProjectChats: 0 };
+
+  test("shows nothing when nothing waits", () => {
+    expect(navBadges(none)).toEqual({});
+  });
+
+  test("counts the unread chats on Chats and on Projects (#614)", () => {
+    expect(navBadges({ ...none, unreadChats: 2, unreadProjectChats: 1 })).toEqual({
+      chats: { count: 2, words: "unread chats", tone: "news" },
+      projects: { count: 1, words: "unread chat", tone: "news" },
+    });
+  });
+
+  test("a waiting approval wins on Chats, and its words still name the unread chats", () => {
+    expect(navBadges({ ...none, approvals: 1, unreadChats: 3, setupMissing: 2 })).toEqual({
+      chats: { count: 1, words: "approval waits, 3 unread chats", tone: "warn" },
+      settings: { count: 2, words: "to set up", tone: "warn" },
+    });
   });
 });

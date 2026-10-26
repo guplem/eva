@@ -30,6 +30,15 @@ export interface ChatNotificationsOptions {
   readonly onNotification: (notification: ChatNotification) => void;
 }
 
+/**
+ * The chat whose page in view holds the push back, or null when any page in view holds it back.
+ * The person who reads another chat still wants to know that this one has an answer (#614). An
+ * approval shows as a notice on every page of the app, so a push would only say it twice.
+ */
+export function holdingChat(notification: ChatNotification): string | null {
+  return notification.kind === "approvals" ? null : notification.sessionId;
+}
+
 /** A lock screen shows about two lines. */
 const maxBodyLength = 160;
 

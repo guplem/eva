@@ -361,7 +361,8 @@ describe("Eva", () => {
       request: "Fix the login bug.",
       reportToSessionId: assistantChat.id,
     });
-    expect(work).toMatchObject({ mode: "project", clone: "clone-0" });
+    // The record says that Eva made the chat for another chat, so the web app never lists it as unread (#614).
+    expect(work).toMatchObject({ mode: "project", clone: "clone-0", reportsTo: assistantChat.id });
     // The asking chat learns of the Project chat before its first message, so a front end can show both.
     expect(events).toMatchObject([
       {
@@ -441,6 +442,8 @@ describe("Eva", () => {
     const input = { projectId: "2025-03-02-1015-example-app", request: "Fix it.", reportToSessionId: null };
     const works = await Promise.all([instance.startProjectWork(input), instance.startProjectWork(input)]);
     expect(works.map((work) => work.clone).sort()).toEqual(["clone-0", "clone-1"]);
+    // A work from a terminal reports to no chat: the person asked for it.
+    expect(works.map((work) => work.reportsTo)).toEqual([null, null]);
     await instance.idle();
     const third = await instance.startProjectWork(input);
     expect(third.clone).toBe("clone-0");
@@ -2434,7 +2437,7 @@ describe("migrations (#119)", () => {
     expect(satellite.pushKey().isHub).toBe(false);
   });
 
-  test("a finished turn goes to each device that picked replies and has no page in view, also on a satellite", async () => {
+  test("a finished turn goes to each device that picked replies and shows no page of the chat, also on a satellite", async () => {
     const pushed: string[] = [];
     const pushSender = (request: { endpoint: string }): Promise<number> => {
       pushed.push(request.endpoint);
@@ -2443,6 +2446,7 @@ describe("migrations (#119)", () => {
     const phone = { endpoint: "https://fcm.googleapis.com/fcm/send/phone", keys: { p256dh: "k", auth: "a" } };
     const laptop = { endpoint: "https://fcm.googleapis.com/fcm/send/laptop", keys: { p256dh: "k", auth: "a" } };
     const desk = { endpoint: "https://fcm.googleapis.com/fcm/send/desk", keys: { p256dh: "k", auth: "a" } };
+    const tablet = { endpoint: "https://fcm.googleapis.com/fcm/send/tablet", keys: { p256dh: "k", auth: "a" } };
     sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
     const instance = start(
       new FakeEngine((request) => FakeEngine.answer(request, "The report is ready.")),
@@ -2452,12 +2456,15 @@ describe("migrations (#119)", () => {
     instance.subscribePush(phone, "Phone", null);
     instance.subscribePush(laptop, "Laptop", null);
     instance.subscribePush(desk, "Desk", null);
+    instance.subscribePush(tablet, "Tablet", null);
     instance.setPushKinds(laptop.endpoint, ["alerts"]);
-    instance.markPushInView(desk.endpoint, "desk-tab", true);
     const session = instance.createAssistantSession({ source: "web", title: "Weekly report" });
+    instance.markPushInView(desk.endpoint, "desk-tab", true, [session.id]);
+    // A page in view on another chat still gets the answer of this one (#614).
+    instance.markPushInView(tablet.endpoint, "tablet-tab", true, ["other-chat"]);
     await instance.sessions.send(session.id, "Write the report.", "api");
     await Bun.sleep(10);
-    expect(pushed).toEqual([phone.endpoint]);
+    expect(pushed).toEqual([phone.endpoint, tablet.endpoint]);
     expect(instance.recentNotifications(laptop.endpoint)).toEqual([]);
     expect(instance.recentNotifications(phone.endpoint)).toMatchObject([
       {

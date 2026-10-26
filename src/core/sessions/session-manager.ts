@@ -110,6 +110,8 @@ export interface NewSessionInput {
   readonly telegramTopicId?: number;
   /** A fixed title, such as a schedule's name. Without one, the first message names the chat. */
   readonly title?: string;
+  /** The Assistant chat that this Project chat does a work for. */
+  readonly reportsTo?: string;
 }
 
 /** What the person's settings choose for a new chat. */
@@ -328,6 +330,7 @@ export class SessionManager {
       firstMessageDraft: null,
       pendingRestore: null,
       forkedFrom: null,
+      reportsTo: input.reportsTo ?? null,
     };
     this.options.store.save(record);
     return record;

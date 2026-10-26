@@ -55,6 +55,7 @@ function session(turns: Turn[]): SessionRecord {
     firstMessageDraft: null,
     pendingRestore: null,
     forkedFrom: null,
+    reportsTo: null,
     turns,
   };
 }

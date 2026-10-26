@@ -93,6 +93,12 @@ const maxDevices = 20;
  */
 const inViewMs = 90_000;
 
+interface PageClaim {
+  readonly until: number;
+  /** Null for a page from before #614: it names no chat, so it holds back every chat's push. */
+  readonly chats: ReadonlySet<string> | null;
+}
+
 const fetchSender: PushSender = async (request) => {
   const response = await fetch(request.endpoint, {
     method: "POST",
@@ -125,11 +131,11 @@ export class WebPush {
   private readonly options: WebPushOptions;
   private readonly send: PushSender;
   /**
-   * The end of each page's claim that it is in view, by push address and then by page. The tabs
-   * of one browser share one push address, so one tab that goes out of view must not end the
-   * claim of another. It lives in memory only.
+   * Each page's claim that it is in view, by push address and then by page: when it ends, and the
+   * chats that the page shows. The tabs of one browser share one push address, so one tab that
+   * goes out of view must not end the claim of another. It lives in memory only.
    */
-  private readonly inViewUntil: Map<string, Map<string, number>>;
+  private readonly inViewUntil: Map<string, Map<string, PageClaim>>;
 
   constructor(options: WebPushOptions) {
     this.options = options;
@@ -197,23 +203,30 @@ export class WebPush {
   }
 
   /**
-   * A page of a device says that it is in view, or that it went out of view. False for an
-   * address with no subscription: Eva keeps no claim for it, so a page cannot fill her memory.
+   * A page of a device says that it is in view, with the chats that it shows, or that it went out
+   * of view. False for an address with no subscription: Eva keeps no claim for it, so a page
+   * cannot fill her memory.
    */
-  markInView(endpoint: string, pageId: string, inView: boolean): boolean {
+  markInView(endpoint: string, pageId: string, inView: boolean, chats: readonly string[] | null = []): boolean {
     if (!this.read().some((each) => each.endpoint === endpoint)) return false;
-    const pages = this.inViewUntil.get(endpoint) ?? new Map<string, number>();
+    const pages = this.inViewUntil.get(endpoint) ?? new Map<string, PageClaim>();
     const now = this.options.now().getTime();
-    for (const [page, until] of pages) if (until <= now) pages.delete(page);
-    if (inView) pages.set(pageId, now + inViewMs);
+    for (const [page, claim] of pages) if (claim.until <= now) pages.delete(page);
+    if (inView) pages.set(pageId, { until: now + inViewMs, chats: chats === null ? null : new Set(chats) });
     else pages.delete(pageId);
     if (pages.size === 0) this.inViewUntil.delete(endpoint);
     else this.inViewUntil.set(endpoint, pages);
     return true;
   }
 
-  private isInView(endpoint: string, now: number): boolean {
-    return [...(this.inViewUntil.get(endpoint)?.values() ?? [])].some((until) => until > now);
+  /**
+   * With a chat, only a page that shows that chat counts: the person who reads another chat still
+   * wants to know that this one has an answer (#614).
+   */
+  private isInView(endpoint: string, now: number, sessionId: string | null): boolean {
+    return [...(this.inViewUntil.get(endpoint)?.values() ?? [])].some(
+      (claim) => claim.until > now && (sessionId === null || claim.chats === null || claim.chats.has(sessionId)),
+    );
   }
 
   /** Ends the subscriptions of each device login that is gone. A subscription with no device login stays. */
@@ -225,14 +238,15 @@ export class WebPush {
 
   /**
    * The devices that get a push of this kind: each one that picked it, and whose page is not in view.
+   * A chat's push skips only a device whose page in view shows that chat.
    * A test (null) goes to every device, also one in view: the person pressed its button there.
    */
-  recipients(kind: NotificationKind | null): string[] {
+  recipients(kind: NotificationKind | null, sessionId: string | null = null): string[] {
     if (kind === null) return this.read().map((each) => each.endpoint);
     const now = this.options.now().getTime();
     return this.read()
       .filter((each) => (each.kinds ?? notificationKinds).includes(kind))
-      .filter((each) => !this.isInView(each.endpoint, now))
+      .filter((each) => !this.isInView(each.endpoint, now, sessionId))
       .map((each) => each.endpoint);
   }
 

@@ -883,6 +883,10 @@ test("a chat that answers while another chat is open shows as unread until the p
   if (test.info().project.name === "phone") {
     await expect(page.getByRole("button", { name: "Show the list (unread)" })).toBeVisible();
   }
+  // The main navigation counts the unread chats too (#614). Other tests share the demo, so only the words count.
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Chats.*unread chat/ }),
+  ).toBeVisible();
   await openList(page);
   const slow = page.locator(".sidebar .list-item", { hasText: message });
   await expect(slow.locator(".status-pill")).toHaveText("Unread");

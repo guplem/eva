@@ -1,7 +1,7 @@
 /** The parts of the chat list that need no page: groups, times, previews, states and the search. */
 import { shownAnswerText } from "../../../shared/file-markers.ts";
 import type { SessionRecord } from "./api.ts";
-import { branchNames, type BranchSession } from "./branch-path.ts";
+import { branchNames, hasUnseenTurns, type BranchSession, type UnseenFacts } from "./branch-path.ts";
 import { turnLine } from "../../../shared/project-report.ts";
 
 export type ChatGroup = "Today" | "This week" | "Older";
@@ -80,7 +80,7 @@ function oneLine(text: string): string {
 
 /** The state of a chat and its forks. Any session of the tree counts. */
 export function chatState(
-  tree: readonly Pick<SessionRecord, "id" | "turns" | "seenTurns">[],
+  tree: readonly (Pick<SessionRecord, "id"> & UnseenFacts)[],
   isRunning: (sessionId: string) => boolean,
   approvalSessionIds: readonly string[],
 ): ChatState {
@@ -89,9 +89,39 @@ export function chatState(
   return tree.some(hasUnseenTurns) ? "unread" : null;
 }
 
-/** The core stores a turn only when it ends, so a running turn never counts as unseen. */
-export function hasUnseenTurns(session: Pick<SessionRecord, "turns" | "seenTurns">): boolean {
-  return session.turns.length > session.seenTurns;
+/**
+ * The first chats whose tree has an answer that the person did not see, for the badges of the
+ * main navigation and the project list (#614). An archived chat waits apart, so it does not count.
+ * Neither does the chat on screen: the person reads it now, and its mark reaches the core a moment later.
+ */
+export function unreadChats<S extends Pick<SessionRecord, "id" | "parentId" | "archived"> & UnseenFacts>(
+  sessions: readonly S[],
+  shownIds: readonly string[],
+): S[] {
+  const byId = new Map(sessions.map((session) => [session.id, session]));
+  const rootOf = (session: S): S => {
+    let root = session;
+    // The bound stops a loop of parents, which only a damaged list can hold.
+    for (let depth = 0; root.parentId !== null && depth < 1000; depth += 1) {
+      const parent = byId.get(root.parentId);
+      if (parent === undefined) break;
+      root = parent;
+    }
+    return root;
+  };
+  const shownRoots = new Set(
+    shownIds.flatMap((id) => {
+      const shown = byId.get(id);
+      return shown === undefined ? [] : [rootOf(shown).id];
+    }),
+  );
+  const unread = new Map<string, S>();
+  for (const session of sessions) {
+    if (!hasUnseenTurns(session)) continue;
+    const root = rootOf(session);
+    if (!root.archived && !shownRoots.has(root.id)) unread.set(root.id, root);
+  }
+  return sessions.filter((session) => unread.has(session.id));
 }
 
 /** Case and the spaces around the query do not count. An empty query keeps every chat. */

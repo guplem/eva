@@ -745,6 +745,13 @@
   animation: festive-streak 2.6s ease-out infinite;
 }
 
+/* A shooting star now and then: most of the cycle, the sky stays empty. */
+.f-shoot {
+  width: 0.26em;
+  opacity: 0;
+  animation: festive-shoot 9s ease-out 2s infinite;
+}
+
 .f-puff {
   top: auto;
   bottom: 0.1em;
@@ -1011,6 +1018,21 @@
   }
   to {
     transform: translateY(1em) rotate(300deg);
+  }
+}
+
+@keyframes festive-shoot {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  1% {
+    opacity: 1;
+  }
+  9%,
+  100% {
+    transform: translate(-0.3em, 0.2em);
+    opacity: 0;
   }
 }
 

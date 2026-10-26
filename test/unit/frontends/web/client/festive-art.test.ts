@@ -44,11 +44,37 @@ describe("sceneMarkup", () => {
     for (const scene of scenes) expect(sceneMarkup(scene)).toMatch(/^<(span|svg) class="f-/);
   });
 
-  test("gives the full moon one shooting star and two stars that fade in and out", () => {
+  const skyStars = [
+    ...sceneMarkup("shootingStar").matchAll(
+      /class="f-star f-sky( f-fade)?" style="left:(\d+)%;top:(\d+)%;--size:([\d.]+)em;opacity:([\d.]+)/g,
+    ),
+  ].map(([, fade, left, top, size, brightness]) => ({
+    twinkles: fade !== undefined,
+    left: Number(left),
+    top: Number(top),
+    size: Number(size),
+    brightness: Number(brightness),
+  }));
+
+  test("gives the full moon one shooting star and a sky of many tiny stars", () => {
     expect(festiveArt.fullMoon.scene).toBe("shootingStar");
-    const markup = sceneMarkup("shootingStar");
-    expect(markup.match(/class="f-meteor f-shoot"/g)).toHaveLength(1);
-    expect(markup.match(/class="f-star f-fade"/g)).toHaveLength(2);
+    expect(sceneMarkup("shootingStar").match(/class="f-meteor f-shoot"/g)).toHaveLength(1);
+    expect(skyStars.length).toBeGreaterThanOrEqual(20);
+    expect(new Set(skyStars.map((star) => star.size)).size).toBeGreaterThan(1);
+    expect(new Set(skyStars.map((star) => star.brightness)).size).toBeGreaterThan(1);
+  });
+
+  test("lets only a few full moon stars twinkle, so most of the sky always shows", () => {
+    const twinkling = skyStars.filter((star) => star.twinkles).length;
+    expect(twinkling).toBeGreaterThan(0);
+    expect(twinkling).toBeLessThan(skyStars.length / 3);
+  });
+
+  test("scatters the full moon stars with no mirror pairs", () => {
+    const spots = skyStars.map((star) => [star.left, star.top] as const);
+    for (const [left, top] of spots) {
+      expect(spots.some(([otherLeft, otherTop]) => otherLeft === 100 - left && otherTop === top)).toBe(false);
+    }
   });
 
   test("gives each leaf a colour", () => {

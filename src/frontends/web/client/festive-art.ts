@@ -193,6 +193,45 @@ function falling(count: number, colours: readonly string[]): string {
   );
 }
 
+/**
+ * The sky of the full moon: left and top in percent, size in em of the visor, and brightness.
+ * Uneven spots, sizes and brightness, with a small cluster at the top: a sky in a pattern looks drawn.
+ */
+const fullMoonSky: readonly (readonly [number, number, number, number])[] = [
+  [44, 12, 0.008, 0.7],
+  [48, 9, 0.014, 0.9],
+  [52, 14, 0.008, 0.5],
+  [47, 17, 0.008, 0.6],
+  [55, 10, 0.008, 0.8],
+  [22, 14, 0.014, 0.8],
+  [33, 22, 0.008, 0.5],
+  [68, 8, 0.008, 0.6],
+  [78, 18, 0.022, 1],
+  [88, 30, 0.008, 0.5],
+  [12, 26, 0.008, 0.6],
+  [6, 48, 0.014, 0.7],
+  [51, 40, 0.008, 0.5],
+  [49, 58, 0.008, 0.6],
+  [94, 46, 0.008, 0.7],
+  [51, 72, 0.014, 0.8],
+  [15, 72, 0.008, 0.6],
+  [27, 84, 0.022, 0.9],
+  [38, 76, 0.008, 0.5],
+  [44, 92, 0.008, 0.7],
+  [62, 86, 0.014, 0.8],
+  [70, 78, 0.008, 0.5],
+  [83, 70, 0.008, 0.6],
+  [90, 62, 0.014, 0.7],
+  [33, 95, 0.008, 0.5],
+];
+
+// Only every fourth star twinkles, so most of the sky always shows.
+function skyStar([left, top, size, brightness]: readonly [number, number, number, number], step: number): string {
+  const twinkles = step % 4 === 1;
+  const clock = twinkles ? `;animation-duration:${String(3 + step * 0.3)}s` : "";
+  return `<span class="f-star f-sky${twinkles ? " f-fade" : ""}" style="left:${String(left)}%;top:${String(top)}%;--size:${String(size)}em;opacity:${String(brightness)}${clock}"></span>`;
+}
+
 /** The markup of a scene: spans that the classes in `visor.css` move. */
 export function sceneMarkup(scene: FestiveScene): string {
   switch (scene) {
@@ -226,11 +265,7 @@ export function sceneMarkup(scene: FestiveScene): string {
           `<span class="f-meteor" style="left:${String(55 + step * 15)}%;top:${String(8 + step * 10)}%;animation-delay:-${String(step * 0.9)}s"></span>`,
       );
     case "shootingStar":
-      return (
-        '<span class="f-star f-fade" style="left:18%;top:25%;animation-duration:5s"></span>' +
-        '<span class="f-star f-fade" style="left:78%;top:21%;animation-duration:6.5s;animation-delay:-3s"></span>' +
-        '<span class="f-meteor f-shoot" style="left:21%;top:19%"></span>'
-      );
+      return fullMoonSky.map(skyStar).join("") + '<span class="f-meteor f-shoot" style="left:21%;top:19%"></span>';
     case "bee":
       return '<svg class="f-bee" viewBox="0 0 14 10"><ellipse cx="7" cy="6" rx="5" ry="3.6" fill="#ffd43b"/><path d="M5 2.6v6.8M8.4 2.6v6.8" stroke="#222" stroke-width="1.4"/><ellipse cx="6" cy="2" rx="2.4" ry="1.6" fill="#fff" opacity=".8"/></svg>';
     case "smoke":

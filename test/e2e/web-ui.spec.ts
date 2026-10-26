@@ -3539,6 +3539,49 @@ test("the center lists the history by day, and marks an entry or every entry as 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("a tap on a history entry explains it, and holds the fix of a problem that is still open (#599)", async ({
+  page,
+}) => {
+  const at = new Date().toISOString();
+  const entries = [
+    { seq: 1, key: "schedule_card:morning", level: "warn", message: "The schedule Morning waits.", at, read: true },
+    { seq: 2, key: "schedule_card:morning", level: "resolved", message: "Morning no longer waits.", at, read: false },
+    { seq: 3, key: "schedule:lunch", level: "error", message: "The schedule Lunch failed.", at, read: true },
+  ];
+  await routeProblems(page, [{ key: "schedule:lunch", level: "error", message: "The schedule Lunch failed." }]);
+  await page.route("**/api/notifications", (route) => route.fulfill({ json: { entries } }));
+  const reads: unknown[] = [];
+  await page.route("**/api/notifications/read", async (route) => {
+    reads.push(route.request().postDataJSON());
+    await route.fulfill({ json: { entries: entries.map((entry) => ({ ...entry, read: true })) } });
+  });
+  await logIn(page);
+  await openCenter(page);
+  const earlier = page.getByRole("region", { name: "Earlier" });
+  const solved = earlier.getByRole("button", { name: /Morning no longer waits/ });
+  await expect(solved).toHaveAttribute("aria-expanded", "false");
+  await solved.click();
+  await expect(solved).toHaveAttribute("aria-expanded", "true");
+  // The tap still marks the entry as read.
+  await expect(solved.locator(".unread-mark")).toHaveCount(0);
+  expect(reads).toEqual([{ seqs: [2] }]);
+  const details = earlier.locator(".center-details");
+  await expect(details).toContainText("Schedule check");
+  await expect(details).toContainText("you confirm the card");
+  await expect(details).toContainText("This problem is solved.");
+  await expect(details.getByRole("listitem")).toHaveCount(2);
+  // A second tap closes the details.
+  await solved.click();
+  await expect(details).toHaveCount(0);
+  // An open problem waits for a tap on its button: the row itself only opens the details.
+  await earlier.getByRole("button", { name: /The schedule Lunch failed/ }).click();
+  await expect(details).toContainText("This problem is still open.");
+  await details.getByRole("button", { name: "Open schedules" }).click();
+  await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible();
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("a note conflict opens from the center, and the last pick closes it", async ({ page }) => {
   await routeProblems(page, [{ key: "vault_sync", level: "error", message: "Notes/plan.md has a conflict." }], {
     status: "conflict",

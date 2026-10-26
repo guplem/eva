@@ -8,6 +8,7 @@ import type { EvaStatus, ProgressStep } from "./api.ts";
 import type { HistoryEntry } from "../../../core/alerts/notification-history.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { centerFilters, historyGroups, shownNeeds, timeLabel, type CenterFilter } from "./notification-center.ts";
+import { entryState, notificationTopic, sameProblemEntries } from "./notification-details.ts";
 import { problemAction, problemActionLabels, shownProblems, type ProblemAction } from "./problem-actions.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
@@ -34,17 +35,19 @@ const levelIcons: Record<HistoryEntry["level"], IconName> = {
   news: "info",
 };
 
-/** The icon shows the level, so a screen reader needs the words. */
+/** The level in words: for a screen reader, which cannot see the icon, and in the list of a problem's entries. */
 const levelWords: Record<HistoryEntry["level"], string> = {
-  error: "Error: ",
-  warn: "Warning: ",
-  resolved: "Solved: ",
-  news: "News: ",
+  error: "Error",
+  warn: "Warning",
+  resolved: "Solved",
+  news: "News",
 };
 
 export function NotificationCenter(props: NotificationCenterProps): ReactElement {
   const { problems, entries, steps, syncStatus, onAction } = props;
   const [filter, setFilter] = useState<CenterFilter>("all");
+  /** The `seq` of the entry whose details show. One at a time keeps a phone screen short. */
+  const [openSeq, setOpenSeq] = useState<number | null>(null);
   const now = new Date();
   const needs = shownNeeds(problems, filter);
   const shownSteps = filter === "problems" ? [] : steps;
@@ -138,27 +141,45 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
                   <div key={group.day} className="center-day">
                     <div className="center-day-name">{group.day}</div>
                     {group.entries.map((entry) => {
-                      // A row whose problem is still open opens its fix. Any other row only becomes read.
-                      const action = openKeys.has(entry.key) ? problemAction(entry.key, syncStatus) : null;
+                      // A tap opens the details, which hold the fix: a jump to another page explained nothing (#599).
+                      const expanded = entry.seq === openSeq;
+                      const detailsId = `center-details-${String(entry.seq)}`;
                       return (
-                        <button
-                          key={entry.seq}
-                          className={`center-row ${entry.level}${entry.read ? "" : " unread"}`}
-                          onClick={() => {
-                            if (!entry.read) props.onReadEntries([entry.seq]);
-                            if (action !== null) onAction(action);
-                          }}
-                        >
-                          <span className="center-row-icon">
-                            <Icon name={levelIcons[entry.level]} />
-                          </span>
-                          <span className="center-row-text">
-                            <span className="visually-hidden">{levelWords[entry.level]}</span>
-                            {entry.message}
-                          </span>
-                          <span className="center-time">{timeLabel(entry.at, now)}</span>
-                          {!entry.read && <UnreadMark />}
-                        </button>
+                        <div key={entry.seq}>
+                          <button
+                            className={`center-row ${entry.level}${entry.read ? "" : " unread"}`}
+                            aria-expanded={expanded}
+                            aria-controls={detailsId}
+                            onClick={() => {
+                              if (!entry.read) props.onReadEntries([entry.seq]);
+                              setOpenSeq(expanded ? null : entry.seq);
+                            }}
+                          >
+                            <span className="center-row-icon">
+                              <Icon name={levelIcons[entry.level]} />
+                            </span>
+                            <span className="center-row-text">
+                              <span className="visually-hidden">{levelWords[entry.level]}: </span>
+                              {entry.message}
+                            </span>
+                            <span className="center-time">{timeLabel(entry.at, now)}</span>
+                            {!entry.read && <UnreadMark />}
+                            <span className="center-row-chevron">
+                              <Icon name="down" />
+                            </span>
+                          </button>
+                          {expanded && (
+                            <EntryDetails
+                              id={detailsId}
+                              entry={entry}
+                              entries={entries}
+                              openKeys={openKeys}
+                              syncStatus={syncStatus}
+                              now={now}
+                              onAction={onAction}
+                            />
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -178,6 +199,58 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
           <p className="center-note">Eva deletes an entry after 30 days. An open problem stays until it ends.</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** What a tapped entry means, where its problem stands, and the button that fixes it while it is open. */
+function EntryDetails(props: {
+  readonly id: string;
+  readonly entry: HistoryEntry;
+  readonly entries: readonly HistoryEntry[];
+  readonly openKeys: ReadonlySet<string>;
+  readonly syncStatus: EvaStatus["vaultSync"]["status"];
+  readonly now: Date;
+  readonly onAction: (action: ProblemAction) => void;
+}): ReactElement {
+  const { entry, now } = props;
+  const topic = notificationTopic(entry.key);
+  const state = entryState(entry, props.openKeys);
+  const action = state === "open" ? problemAction(entry.key, props.syncStatus) : null;
+  const steps = sameProblemEntries(props.entries, entry.key);
+  return (
+    <div id={props.id} className="center-details">
+      <strong>{topic.title}</strong>
+      <p>{topic.meaning}</p>
+      {state !== null && (
+        <p className="center-details-state">
+          {state === "open" ? "This problem is still open." : "This problem is solved."}
+        </p>
+      )}
+      {steps.length > 1 && (
+        <ul
+          className="center-details-steps"
+          aria-label={state === null ? "Entries like this one" : "Entries of this problem"}
+        >
+          {steps.map((step) => (
+            <li
+              key={step.seq}
+              className={step.seq === entry.seq ? "current" : undefined}
+              aria-current={step.seq === entry.seq}
+            >
+              {levelWords[step.level]} · {timeLabel(step.at, now)}
+              {step.seq === entry.seq && " (this one)"}
+            </li>
+          ))}
+        </ul>
+      )}
+      {action !== null && (
+        <div className="button-row">
+          <button className="primary" onClick={() => props.onAction(action)}>
+            {problemActionLabels[action]}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

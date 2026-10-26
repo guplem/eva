@@ -226,10 +226,23 @@ export function sceneMarkup(scene: FestiveScene): string {
           `<span class="f-meteor" style="left:${String(55 + step * 15)}%;top:${String(8 + step * 10)}%;animation-delay:-${String(step * 0.9)}s"></span>`,
       );
     case "shootingStar":
+      // Uneven spots and clocks: a sky in a pattern looks drawn, and several stars show at once.
       return (
-        '<span class="f-star f-fade" style="left:18%;top:25%;animation-duration:5s"></span>' +
-        '<span class="f-star f-fade" style="left:78%;top:21%;animation-duration:6.5s;animation-delay:-3s"></span>' +
-        '<span class="f-meteor f-shoot" style="left:21%;top:19%"></span>'
+        [
+          [9, 44],
+          [31, 11],
+          [43, 7],
+          [64, 19],
+          [91, 55],
+          [23, 81],
+          [58, 89],
+          [79, 74],
+        ]
+          .map(
+            ([left, top], step) =>
+              `<span class="f-star f-fade f-small" style="left:${String(left)}%;top:${String(top)}%;animation-duration:${String(4 + (step % 3) * 1.3)}s;animation-delay:-${String(step * 1.7)}s"></span>`,
+          )
+          .join("") + '<span class="f-meteor f-shoot" style="left:21%;top:19%"></span>'
       );
     case "bee":
       return '<svg class="f-bee" viewBox="0 0 14 10"><ellipse cx="7" cy="6" rx="5" ry="3.6" fill="#ffd43b"/><path d="M5 2.6v6.8M8.4 2.6v6.8" stroke="#222" stroke-width="1.4"/><ellipse cx="6" cy="2" rx="2.4" ry="1.6" fill="#fff" opacity=".8"/></svg>';

@@ -736,6 +736,11 @@
   --glow-low: 0;
 }
 
+.f-small {
+  width: 0.03em;
+  height: 0.03em;
+}
+
 .f-confetti {
   width: 0.05em;
   height: 0.025em;

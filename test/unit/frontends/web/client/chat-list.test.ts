@@ -7,6 +7,7 @@ import {
   chatTime,
   groupChats,
   matchesSearch,
+  unreadChats,
 } from "../../../../../src/frontends/web/client/chat-list.ts";
 import type { SessionRecord } from "../../../../../src/core/sessions/session-store.ts";
 
@@ -127,6 +128,46 @@ describe("chatState", () => {
 
   test("a quiet chat has no state", () => {
     expect(chatState([seen("root")], running, ["other"])).toBeNull();
+  });
+
+  test("a Project chat that Eva made for another chat is never unread, but the person's fork of it is (#614)", () => {
+    const evas = { ...unseen("root"), reportsTo: "asking" };
+    expect(chatState([evas], running, [])).toBeNull();
+    expect(chatState([evas, unseen("side")], running, [])).toBe("unread");
+  });
+});
+
+describe("unreadChats", () => {
+  type Listed = Pick<SessionRecord, "id" | "parentId" | "archived" | "turns" | "seenTurns" | "reportsTo">;
+  const chat = (id: string, fields: Partial<Listed> = {}): Listed => ({
+    id,
+    parentId: null,
+    archived: false,
+    turns: [turn({})],
+    seenTurns: 1,
+    reportsTo: null,
+    ...fields,
+  });
+
+  test("lists each first chat once, when it or a fork has an answer that the person did not see (#614)", () => {
+    const sessions = [
+      chat("quiet"),
+      chat("new", { seenTurns: 0 }),
+      chat("forked"),
+      chat("fork-1", { parentId: "forked", seenTurns: 0 }),
+      chat("fork-2", { parentId: "fork-1", seenTurns: 0 }),
+    ];
+    expect(unreadChats(sessions, []).map((each) => each.id)).toEqual(["new", "forked"]);
+  });
+
+  test("leaves out an archived chat, Eva's own Project chat, and the chat on screen", () => {
+    const sessions = [
+      chat("archived", { archived: true, seenTurns: 0 }),
+      chat("evas", { reportsTo: "asking", seenTurns: 0 }),
+      chat("shown"),
+      chat("shown-fork", { parentId: "shown", seenTurns: 0 }),
+    ];
+    expect(unreadChats(sessions, ["shown-fork"])).toEqual([]);
   });
 });
 

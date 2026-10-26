@@ -257,6 +257,11 @@ describe("branchStates", () => {
     );
   });
 
+  test("Eva's own Project chat is never unread (#614)", () => {
+    const states = branchStates([{ ...seen(main, 0), reportsTo: "asking" }], "none", new Set(), new Set());
+    expect(states.size).toBe(0);
+  });
+
   test("the shown branch is never unread, and a seen branch has no state", () => {
     const states = branchStates([seen(main, 0), seen(fork1, 2)], "main", new Set(), new Set());
     expect(states.size).toBe(0);

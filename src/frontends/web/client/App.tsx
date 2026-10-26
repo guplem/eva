@@ -70,6 +70,7 @@ import { goTo, layersOfEntry, replaceAddress } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { startPushPresence } from "./push-presence.ts";
+import { unreadChats } from "./chat-list.ts";
 import { announceShownChats, browserPresencePage } from "./PushCard.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
@@ -654,6 +655,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   };
   const notices = <ProblemNotices isConnected={isConnected} onRetryNow={() => events.current?.retryNow()} />;
   const unreadProblems = shownProblems(problems);
+  const unread = unreadChats(sessions, shownSessionIds);
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
   const onConflictState = (state: VaultSyncState): void => {
     setSyncState(state);
@@ -674,6 +676,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         unreadProblems={unreadProblems.length}
         unreadError={unreadProblems.some((problem) => problem.level === "error")}
         news={setupMissing > 0 || notifications.some((entry) => !entry.read)}
+        unreadChats={unread.filter((chat) => chat.mode === "assistant").length}
+        unreadProjectChats={unread.filter((chat) => chat.mode === "project").length}
         chatBlocked={chatBlocker !== null}
         assistantTurns={runningTurns.assistant}
         projectTurns={runningTurns.project}

@@ -17,6 +17,40 @@ export const notificationCenter = "notifications";
 
 export type Destination = (typeof destinations)[number]["id"] | typeof notificationCenter;
 
+/** A badge of the main navigation. The visible part is only the number: the hidden words say what it counts. */
+export interface NavBadge {
+  readonly count: number;
+  readonly words: string;
+  /** `warn`: something waits for the person. `news`: something new to read. */
+  readonly tone: "warn" | "news";
+}
+
+/**
+ * The badges of the main navigation. A waiting approval wins on Chats, as in the chat list: it
+ * stops a turn. Then the unread chats show, on Chats and on Projects (#614).
+ */
+export function navBadges(input: {
+  readonly approvals: number;
+  readonly setupMissing: number;
+  readonly unreadChats: number;
+  readonly unreadProjectChats: number;
+}): Partial<Record<Destination, NavBadge>> {
+  const unread = (count: number): string => (count === 1 ? "unread chat" : "unread chats");
+  const badges: Partial<Record<Destination, NavBadge>> = {};
+  if (input.approvals > 0) {
+    const waits = input.approvals === 1 ? "approval waits" : "approvals wait";
+    const also = input.unreadChats > 0 ? `, ${String(input.unreadChats)} ${unread(input.unreadChats)}` : "";
+    badges.chats = { count: input.approvals, words: waits + also, tone: "warn" };
+  } else if (input.unreadChats > 0) {
+    badges.chats = { count: input.unreadChats, words: unread(input.unreadChats), tone: "news" };
+  }
+  if (input.unreadProjectChats > 0) {
+    badges.projects = { count: input.unreadProjectChats, words: unread(input.unreadProjectChats), tone: "news" };
+  }
+  if (input.setupMissing > 0) badges.settings = { count: input.setupMissing, words: "to set up", tone: "warn" };
+  return badges;
+}
+
 export function addressOf(destination: Destination): string {
   return `#/${destination}`;
 }

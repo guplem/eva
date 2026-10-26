@@ -650,8 +650,10 @@
   animation: festive-slit 4s ease-in-out infinite;
 }
 
+/* A slow, shallow glow: a fast or deep one makes the moons flicker. */
 .f-moon .eyes svg {
-  animation: festive-glow 3s ease-in-out infinite;
+  --glow-low: 0.88;
+  animation: festive-glow 8s ease-in-out infinite;
 }
 
 .f-beat .eyes svg:last-child,
@@ -730,6 +732,10 @@
   animation: festive-glow ease-in-out infinite;
 }
 
+.f-fade {
+  --glow-low: 0;
+}
+
 .f-confetti {
   width: 0.05em;
   height: 0.025em;
@@ -745,9 +751,14 @@
   animation: festive-streak 2.6s ease-out infinite;
 }
 
-/* A shooting star now and then: most of the cycle, the sky stays empty. */
+/*
+ * A shooting star now and then: most of the cycle, the sky stays empty. It falls to the right, head
+ * first. The rotate property turns the frame of its transform, so it moves along its own length.
+ */
 .f-shoot {
   width: 0.26em;
+  background: linear-gradient(90deg, transparent, oklch(0.97 0.03 var(--festive-hue)));
+  rotate: 25deg;
   opacity: 0;
   animation: festive-shoot 9s ease-out 2s infinite;
 }
@@ -891,7 +902,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.6;
+    opacity: var(--glow-low, 0.6);
   }
 }
 
@@ -1031,7 +1042,7 @@
   }
   9%,
   100% {
-    transform: translate(-0.3em, 0.2em);
+    transform: translate(0.26em, 0);
     opacity: 0;
   }
 }

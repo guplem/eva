@@ -7,7 +7,7 @@
 import type { SpecialDayId } from "./special-days.ts";
 
 /** A scene plays inside the visor, and only on the large visors. */
-export type FestiveScene = "snow" | "confetti" | "leaves" | "stars" | "meteors" | "bee" | "smoke";
+export type FestiveScene = "snow" | "confetti" | "leaves" | "stars" | "meteors" | "shootingStar" | "bee" | "smoke";
 
 export interface FestiveArt {
   /** The hue and the chroma of the eyes, as the EVE tokens take them. */
@@ -49,7 +49,7 @@ const eye = {
   nine: glyph("9", "system-ui,sans-serif"),
   sun: `<circle cx="12" cy="12" r="5.5" ${fill}/><path stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 1v3M12 20v3M1 12h3M20 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>`,
   moon: `<path ${fill} d="M15 2a10 10 0 1 0 7 15A8 8 0 0 1 15 2z"/>`,
-  fullMoon: `<circle cx="12" cy="12" r="10.5" ${fill}/><g class="cut" opacity=".22"><circle cx="8" cy="9" r="2.6"/><circle cx="15" cy="14" r="3.2"/><circle cx="9" cy="16" r="1.5"/><circle cx="16" cy="7" r="1.2"/></g>`,
+  fullMoon: `<defs><radialGradient id="full-moon-light" cx="38%" cy="35%" r="70%"><stop offset="0" stop-color="#fff"/><stop offset=".72" stop-color="currentColor"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#full-moon-light)"/><path class="cut" opacity=".12" d="M5 8c2-2 5-2 6 0s-1 4-3 4-4-2-3-4zM13 12c2-1 5 0 5 2s-2 4-4 3-3-3-1-5zM8 15.5c1-.6 2.4-.2 2.4.8s-1.2 1.6-2.2 1.2-1-1.4-.2-2z"/>`,
   sprout: `<path d="M12 22V11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path ${fill} d="M12 12C12 6 8 3 2 3c0 6 4 9 10 9zM12 14c0-5 3-8 10-8 0 6-4 8-10 8z"/>`,
   leaf: `<path ${fill} d="M12 1l2 5 4-2-1 5 5 1-4 3 2 3-5-1-1 4h-4l-1-4-5 1 2-3-4-3 5-1-1-5 4 2z"/><path d="M12 23v-8" stroke="currentColor" stroke-width="1.8"/>`,
   globe: `<circle cx="12" cy="12" r="10.5" ${fill}/><path class="cut" opacity=".55" d="M5 6c3 0 4 2 3 4s1 3 0 5-3 1-4-2-1-6 1-7zm9-3c3 1 3 3 1 4s-1 3 2 3 3 3 1 6-4 3-4 0-3-3-2-6 0-6 2-7z"/>`,
@@ -175,7 +175,7 @@ export const festiveArt: Record<SpecialDayId, FestiveArt> = {
   coffeeDay: { hue: 55, chroma: 0.08, eyes: [eye.cup, eye.cup], motion: "f-steam" },
   leapDay: { hue: 195, chroma: 0.13, eyes: [eye.two, eye.nine], motion: "f-jump" },
   fridayThe13th: { hue: 130, chroma: 0.13, eyes: [eye.horseshoe, eye.horseshoe], motion: "f-tremble" },
-  fullMoon: { hue: 250, chroma: 0.05, eyes: [eye.fullMoon, eye.fullMoon], motion: "f-moon", scene: "stars" },
+  fullMoon: { hue: 250, chroma: 0.05, eyes: [eye.fullMoon, eye.fullMoon], motion: "f-moon", scene: "shootingStar" },
 };
 
 function spots(count: number, each: (step: number) => string): string {
@@ -225,6 +225,8 @@ export function sceneMarkup(scene: FestiveScene): string {
         (step) =>
           `<span class="f-meteor" style="left:${String(55 + step * 15)}%;top:${String(8 + step * 10)}%;animation-delay:-${String(step * 0.9)}s"></span>`,
       );
+    case "shootingStar":
+      return '<span class="f-meteor f-shoot" style="left:62%;top:14%"></span>';
     case "bee":
       return '<svg class="f-bee" viewBox="0 0 14 10"><ellipse cx="7" cy="6" rx="5" ry="3.6" fill="#ffd43b"/><path d="M5 2.6v6.8M8.4 2.6v6.8" stroke="#222" stroke-width="1.4"/><ellipse cx="6" cy="2" rx="2.4" ry="1.6" fill="#fff" opacity=".8"/></svg>';
     case "smoke":

@@ -7,7 +7,16 @@ import {
 } from "../../../../../src/frontends/web/client/festive-art.ts";
 import type { SpecialDayId } from "../../../../../src/frontends/web/client/special-days.ts";
 
-const scenes: readonly FestiveScene[] = ["snow", "confetti", "leaves", "stars", "meteors", "bee", "smoke"];
+const scenes: readonly FestiveScene[] = [
+  "snow",
+  "confetti",
+  "leaves",
+  "stars",
+  "meteors",
+  "shootingStar",
+  "bee",
+  "smoke",
+];
 
 describe("festiveArt", () => {
   test("gives each day two eyes, a motion and a hue", () => {
@@ -22,8 +31,8 @@ describe("festiveArt", () => {
   test("closes every tag of its eyes and decorations", () => {
     for (const art of Object.values(festiveArt)) {
       for (const markup of [...art.eyes, art.decoration ?? ""]) {
-        const opened = (markup.match(/<(?!\/)[a-z]+[^>]*[^/]>/g) ?? []).length;
-        const closed = (markup.match(/<\/[a-z]+>/g) ?? []).length;
+        const opened = (markup.match(/<(?!\/)[a-zA-Z]+[^>]*[^/]>/g) ?? []).length;
+        const closed = (markup.match(/<\/[a-zA-Z]+>/g) ?? []).length;
         expect(closed).toBe(opened);
       }
     }
@@ -33,6 +42,13 @@ describe("festiveArt", () => {
 describe("sceneMarkup", () => {
   test("draws each scene", () => {
     for (const scene of scenes) expect(sceneMarkup(scene)).toMatch(/^<(span|svg) class="f-/);
+  });
+
+  test("gives the full moon one shooting star and no fixed stars", () => {
+    expect(festiveArt.fullMoon.scene).toBe("shootingStar");
+    const markup = sceneMarkup("shootingStar");
+    expect(markup.match(/class="f-meteor f-shoot"/g)).toHaveLength(1);
+    expect(markup).not.toContain("f-star");
   });
 
   test("gives each leaf a colour", () => {

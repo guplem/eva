@@ -115,8 +115,17 @@ describe("vaultPathOf", () => {
   test("a folder loses its last slash, and a leading ./ folds away", () => {
     expect(vaultPathOf("Toolbox/Health/")).toBe("Toolbox/Health");
     expect(vaultPathOf("Toolbox/")).toBe("Toolbox");
+    expect(vaultPathOf("notes/daily/")).toBe("notes/daily");
+    expect(vaultPathOf("scripts/sync.sh")).toBe("scripts/sync.sh");
     expect(vaultPathOf("./Projects/notes.md")).toBe("Projects/notes.md");
     expect(vaultPathOf(" Toolbox/Health ")).toBe("Toolbox/Health");
+  });
+
+  test("a heading anchor or a line number after a note folds away", () => {
+    expect(vaultPathOf("Notes/a.md#Heading")).toBe("Notes/a.md");
+    expect(vaultPathOf("Notes/a.md:12")).toBe("Notes/a.md");
+    expect(vaultPathOf("Notes/a.md:12:4")).toBe("Notes/a.md");
+    expect(vaultPathOf("Notes/C# tips.md")).toBe("Notes/C# tips.md");
   });
 
   test("code that only looks like a name is no path", () => {
@@ -124,6 +133,13 @@ describe("vaultPathOf", () => {
     expect(vaultPathOf("package.json")).toBeNull();
     expect(vaultPathOf("v1.2.3")).toBeNull();
     expect(vaultPathOf("Projects")).toBeNull();
+    expect(vaultPathOf("origin/main")).toBeNull();
+    expect(vaultPathOf("application/json")).toBeNull();
+    expect(vaultPathOf("and/or")).toBeNull();
+    expect(vaultPathOf("1/2")).toBeNull();
+    expect(vaultPathOf("@types/node")).toBeNull();
+    expect(vaultPathOf("git@github.com:o/r.git")).toBeNull();
+    expect(vaultPathOf("Notes:old/a.md")).toBeNull();
     expect(vaultPathOf("")).toBeNull();
     expect(vaultPathOf("/")).toBeNull();
   });

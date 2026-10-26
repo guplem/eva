@@ -75,21 +75,28 @@ export function splitFrontMatter(text: string): { frontMatter: string | null; bo
 /** A first word in lower case and a space start a command, such as `cd Notes/a`. */
 const commandPattern = /^[a-z][\w-]*\s/;
 /** Shell signs never sit in a note name. Brackets and an apostrophe do, as in `Book (2024).md`. */
-const shellSignPattern = /[\\*?<>|"`$;={}]/;
+const shellSignPattern = /[\\*?<>|"`$;={}@]/;
+/** An agent cites a note with a heading or a line, as in `Notes/a.md#Plan` or `Notes/a.md:12`. */
+const placeSuffixPattern = /(?:(?<=\.md)#[^/]*|:\d+(?::\d+)?)$/i;
 
 /**
  * The vault path that a code span of an Assistant answer names, or null. Its agent works in
  * the vault root, so a relative path is a vault path. A lone name counts only as a folder
- * (`Toolbox/`) or a note (`.md`): `package.json` or `console.log` in an answer is code, not a vault file.
+ * (`Toolbox/`) or a note (`.md`): `package.json` or `console.log` in an answer is code.
  */
 export function vaultPathOf(code: string): string | null {
-  let path = code.trim();
-  if (commandPattern.test(path) || shellSignPattern.test(path) || path.includes("://")) return null;
-  if (/^(?:[/~]|[A-Za-z]:)/.test(path)) return null;
+  let path = code.trim().replace(placeSuffixPattern, "");
+  if (commandPattern.test(path) || shellSignPattern.test(path)) return null;
+  // A colon starts a drive, as in `C:/vault`, or a remote, as in `host:notes`.
+  if (/^[/~]/.test(path) || path.includes(":")) return null;
   const folder = path.endsWith("/");
   path = path.replace(/^\.\//, "").replace(/\/$/, "");
   const parts = path.split("/");
   if (parts.some((part) => part.trim() !== part || part === "" || part === "." || part === "..")) return null;
-  if (parts.length === 1 && !folder && !/\.md$/i.test(path)) return null;
-  return path;
+  if (folder) return path;
+  if (parts.length === 1) return /\.md$/i.test(path) ? path : null;
+  // `origin/main`, `application/json` and `and/or` are no files. A vault folder starts with a
+  // capital or a dot, as in `Toolbox/` or `.eva/`, and a file has an extension.
+  if (parts.some((part) => /^[A-Z.]/.test(part)) || /\.[A-Za-z\d]+$/.test(path)) return path;
+  return null;
 }

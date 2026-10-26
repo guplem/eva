@@ -756,7 +756,7 @@ function AnswerBody({
           {showWhole ? "Show the last message only" : "Show the whole answer"}
         </button>
       )}
-      {failure !== null && <div className="failed">The turn failed: {failure}</div>}
+      {failure !== null && <div className="turn-failure">The turn failed: {failure}</div>}
       {actions?.(body)}
     </>
   );

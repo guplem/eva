@@ -44,11 +44,11 @@ describe("sceneMarkup", () => {
     for (const scene of scenes) expect(sceneMarkup(scene)).toMatch(/^<(span|svg) class="f-/);
   });
 
-  test("gives the full moon one shooting star and no fixed stars", () => {
+  test("gives the full moon one shooting star and two stars that fade in and out", () => {
     expect(festiveArt.fullMoon.scene).toBe("shootingStar");
     const markup = sceneMarkup("shootingStar");
     expect(markup.match(/class="f-meteor f-shoot"/g)).toHaveLength(1);
-    expect(markup).not.toContain("f-star");
+    expect(markup.match(/class="f-star f-fade"/g)).toHaveLength(2);
   });
 
   test("gives each leaf a colour", () => {

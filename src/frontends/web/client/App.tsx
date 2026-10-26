@@ -2,7 +2,7 @@
  * The web UI: the main navigation, the destinations, approvals, and the setup cards of
  * schedules. The address names the destination, so the back button and a reload work.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   api,
   ApiError,
@@ -422,12 +422,14 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     };
   }, [authenticated, recover]);
 
+  // On a phone, the open list covers the chat: the person reads no answer, as useMarkSeen knows.
+  const readChats = useMemo(() => (sidebarOpen ? [] : shownSessionIds), [sidebarOpen, shownSessionIds]);
   // The claims read the chat on screen at each send, so they start once and hear each change.
-  const shownChats = useRef(shownSessionIds);
+  const shownChats = useRef(readChats);
   useEffect(() => {
-    shownChats.current = shownSessionIds;
+    shownChats.current = readChats;
     announceShownChats();
-  }, [shownSessionIds]);
+  }, [readChats]);
   useEffect(
     () => (authenticated === true ? startPushPresence(browserPresencePage(() => shownChats.current)) : undefined),
     [authenticated],
@@ -655,7 +657,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   };
   const notices = <ProblemNotices isConnected={isConnected} onRetryNow={() => events.current?.retryNow()} />;
   const unreadProblems = shownProblems(problems);
-  const unread = unreadChats(sessions, shownSessionIds);
+  const unread = unreadChats(sessions, readChats);
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
   const onConflictState = (state: VaultSyncState): void => {
     setSyncState(state);

@@ -736,9 +736,15 @@
   --glow-low: 0;
 }
 
-.f-small {
-  width: 0.03em;
-  height: 0.03em;
+/* At least one pixel: the smallest stars would vanish on the 76 px visor. */
+.f-sky {
+  width: max(1px, var(--size));
+  height: max(1px, var(--size));
+  animation: none;
+}
+
+.f-sky.f-fade {
+  animation: festive-glow ease-in-out infinite;
 }
 
 .f-confetti {

@@ -104,6 +104,12 @@ describe("Icon", () => {
     expect(send).toContain('transform="rotate(45 12 12)"');
   });
 
+  test("eve is EVE's black visor with two glowing eyes, so it reads as Eva at 14 px", () => {
+    const eve = render("eve");
+    expect(eve).toMatch(/<path d="M12 3A10 9.9[^"]+z" style="fill:var\(--visor2\)[^"]*"/);
+    expect(eve.match(/<ellipse [^>]*style="fill:var\(--eye\)[^"]*"/g)).toHaveLength(2);
+  });
+
   test("an icon without a name is hidden from a screen reader", () => {
     const svg = render("menu");
     expect(svg).toContain('aria-hidden="true"');

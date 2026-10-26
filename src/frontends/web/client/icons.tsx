@@ -284,11 +284,32 @@ const drawings = {
       <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
     </>
   ),
-  /** EVE: the round head and the visor of the robot. */
+  /**
+   * EVE: the visor of the app icon, in her colours. An outline drawing of her head read as "⊖" at
+   * 14 px, so this one icon is filled. The thin edge keeps the black visor visible on a dark page.
+   */
   eve: (
     <>
-      <path d="M12 3c4.2 0 7 4 7 9s-3 8.5-7 8.5S5 17 5 12s2.8-9 7-9z" />
-      <path d="M7.4 10.6c1.6-1.4 7.6-1.4 9.2 0 .5 1.7-.2 3.3-1.1 3.8-1.6.8-5.4.8-7 0-.9-.5-1.6-2.1-1.1-3.8z" />
+      <path
+        d="M12 3A10 9.9 0 0 1 22 12.9A9.2 8.1 0 0 1 12.8 21H11.2A9.2 8.1 0 0 1 2 12.9A10 9.9 0 0 1 12 3z"
+        style={{ fill: "var(--visor2)", stroke: "var(--line)", strokeWidth: 1 }}
+      />
+      <ellipse
+        cx="7.8"
+        cy="12"
+        rx="2.7"
+        ry="1.7"
+        transform="rotate(14 7.8 12)"
+        style={{ fill: "var(--eye)", stroke: "none" }}
+      />
+      <ellipse
+        cx="16.2"
+        cy="12"
+        rx="2.7"
+        ry="1.7"
+        transform="rotate(-14 16.2 12)"
+        style={{ fill: "var(--eye)", stroke: "none" }}
+      />
     </>
   ),
 } satisfies Record<string, ReactElement>;

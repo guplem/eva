@@ -233,6 +233,20 @@ describe("a page in view", () => {
     expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
   });
 
+  test("holds back only the notification of a chat that it shows", () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Laptop");
+    pusher.markInView(subscription.endpoint, "tab-1", true, ["chat-a"]);
+    expect(pusher.recipients("replies", "chat-a")).toEqual([]);
+    expect(pusher.recipients("replies", "chat-b")).toEqual([subscription.endpoint]);
+    // A problem alert has no chat: any page in view holds it back.
+    expect(pusher.recipients("alerts")).toEqual([]);
+    pusher.markInView(subscription.endpoint, "tab-1", true, ["chat-b"]);
+    expect(pusher.recipients("replies", "chat-a")).toEqual([subscription.endpoint]);
+    pusher.markInView(subscription.endpoint, "tab-1", true);
+    expect(pusher.recipients("replies", "chat-b")).toEqual([subscription.endpoint]);
+  });
+
   test("of an address with no subscription keeps no claim, and a removal ends the claims", () => {
     const pusher = push();
     expect(pusher.markInView(subscription.endpoint, "tab-1", true)).toBe(false);

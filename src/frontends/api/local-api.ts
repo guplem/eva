@@ -198,7 +198,12 @@ const pushDeviceSchema = z.object({
 });
 const pushEndpointSchema = z.object({ endpoint: z.string().min(1).max(2_000) });
 const pushKindsSchema = pushEndpointSchema.extend({ kinds: z.array(z.enum(notificationKinds)).max(10) });
-const pushInViewSchema = pushEndpointSchema.extend({ pageId: z.string().min(1).max(100), inView: z.boolean() });
+/** `chats`: the sessions that the page shows. An older page sends none. */
+const pushInViewSchema = pushEndpointSchema.extend({
+  pageId: z.string().min(1).max(100),
+  inView: z.boolean(),
+  chats: z.array(z.string().min(1).max(100)).max(20).default([]),
+});
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 /** A PATCH turns a schedule off or on, or edits the fields that the schedule form shows. */
 const scheduleChangeSchema = z.union([
@@ -916,8 +921,8 @@ async function pushRoute(
     return json({ devices: eva.pushDevices() });
   }
   if (method === "POST" && path === "/api/push/in-view") {
-    const { endpoint, pageId, inView } = pushInViewSchema.parse(await request.json());
-    if (!eva.markPushInView(endpoint, pageId, inView)) {
+    const { endpoint, pageId, inView, chats } = pushInViewSchema.parse(await request.json());
+    if (!eva.markPushInView(endpoint, pageId, inView, chats)) {
       return json({ error: "This device gets no notifications." }, 404);
     }
     return new Response(null, { status: 204 });

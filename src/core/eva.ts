@@ -756,6 +756,7 @@ export class Eva {
             url: `/#/chat/${encodeURIComponent(notification.sessionId)}`,
           },
           notification.kind,
+          notification.sessionId,
         );
       },
     });
@@ -1084,11 +1085,12 @@ export class Eva {
   }
 
   /**
-   * A page of a device is in view, or went out of view: Eva sends that device no push while one of
-   * its pages is in view. False when the device has no subscription.
+   * A page of a device is in view, with the chats that it shows, or went out of view. Eva sends
+   * that device no alert while one of its pages is in view, and no chat's answer while one of its
+   * pages shows that chat. False when the device has no subscription.
    */
-  markPushInView(endpoint: string, pageId: string, inView: boolean): boolean {
-    return this.webPush.markInView(endpoint, pageId, inView);
+  markPushInView(endpoint: string, pageId: string, inView: boolean, chats: readonly string[] = []): boolean {
+    return this.webPush.markInView(endpoint, pageId, inView, chats);
   }
 
   /** Sends a test notification to the devices only, not to Telegram. */
@@ -1114,9 +1116,13 @@ export class Eva {
       .map((entry) => entry.alert);
   }
 
-  /** `kind` null is a test: it goes to every device. */
-  private async pushAlert(alert: PushedAlertInput, kind: NotificationKind | null): Promise<void> {
-    const endpoints = this.webPush.recipients(kind);
+  /** `kind` null is a test: it goes to every device. `sessionId`: the chat that the alert is about, or null. */
+  private async pushAlert(
+    alert: PushedAlertInput,
+    kind: NotificationKind | null,
+    sessionId: string | null = null,
+  ): Promise<void> {
+    const endpoints = this.webPush.recipients(kind, sessionId);
     // An entry for nobody would push the entries of the other devices out of the short list.
     if (kind !== null && endpoints.length === 0) return;
     this.pushedCount += 1;

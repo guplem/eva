@@ -70,7 +70,7 @@ import { goTo, layersOfEntry, replaceAddress } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { startPushPresence } from "./push-presence.ts";
-import { browserPresencePage } from "./PushCard.tsx";
+import { announceShownChats, browserPresencePage } from "./PushCard.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -421,7 +421,16 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     };
   }, [authenticated, recover]);
 
-  useEffect(() => (authenticated === true ? startPushPresence(browserPresencePage()) : undefined), [authenticated]);
+  // The claims read the chat on screen at each send, so they start once and hear each change.
+  const shownChats = useRef(shownSessionIds);
+  useEffect(() => {
+    shownChats.current = shownSessionIds;
+    announceShownChats();
+  }, [shownSessionIds]);
+  useEffect(
+    () => (authenticated === true ? startPushPresence(browserPresencePage(() => shownChats.current)) : undefined),
+    [authenticated],
+  );
 
   useEffect(() => {
     if (authenticated !== true) return undefined;

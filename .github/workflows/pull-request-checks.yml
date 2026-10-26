@@ -159,6 +159,10 @@ jobs:
     needs: changes
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    # The install of ffmpeg and espeak-ng once took 31 minutes on a slow package mirror. The release
+    # waits for this job, so a hung step must fail fast, not after 6 hours. The job limit leaves room
+    # for a cache miss, which builds whisper.cpp.
+    timeout-minutes: 45
     env:
       WHISPER_VERSION: v1.7.6
       RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
@@ -172,6 +176,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       - if: env.RUN_CODE_CHECKS == 'true'
+        timeout-minutes: 20
         run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: actions/cache@v4

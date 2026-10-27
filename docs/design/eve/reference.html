@@ -414,6 +414,10 @@
         --bad: oklch(0.56 0.19 25);
         --bad-bg: oklch(0.95 0.03 25);
         --scrim: oklch(0.25 0.03 var(--h) / 0.32);
+        --send-fill: radial-gradient(circle at 50% 28%, oklch(1 0 0), oklch(0.93 0.014 var(--h)) 85%);
+        --send-shadow:
+          inset 0 0 0 1px oklch(0.86 0.02 var(--h) / 0.7), 0 6px 14px -6px oklch(0.35 0.06 var(--h) / 0.45);
+        --send-icon-glow: none;
         font: 500 14px/1.5 var(--font);
         color: var(--ink);
         background: var(--bg);
@@ -445,6 +449,9 @@
         --bad: oklch(0.74 0.16 25);
         --bad-bg: oklch(0.32 0.07 25);
         --scrim: oklch(0.05 0.01 var(--h) / 0.55);
+        --send-fill: radial-gradient(circle at 50% 28%, oklch(0.4 0.025 var(--h)), oklch(0.3 0.022 var(--h)) 85%);
+        --send-shadow: inset 0 0 0 1px oklch(0.5 0.03 var(--h) / 0.6), 0 6px 14px -6px oklch(0 0 0 / 0.6);
+        --send-icon-glow: drop-shadow(0 0 4px var(--glow));
       }
       .eve * {
         box-sizing: border-box;
@@ -1438,25 +1445,22 @@
         width: 40px;
         height: 40px;
         border-radius: 50%;
-        background: radial-gradient(ellipse at 50% 22%, var(--visor), var(--visor2) 72%);
-        color: var(--eye);
+        background: var(--send-fill);
+        color: var(--accent-ink);
         display: grid;
         place-items: center;
-        box-shadow:
-          0 0 0 2px var(--shell),
-          0 0 18px -2px var(--glow);
+        box-shadow: var(--send-shadow);
         flex: none;
       }
       .send svg {
-        filter: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow));
+        stroke-width: 2.3;
+        filter: var(--send-icon-glow);
       }
       .send.stop svg {
         filter: none;
       }
       .send.stop {
-        background: var(--ink);
-        color: var(--bg);
-        box-shadow: none;
+        color: var(--ink);
       }
       .ic {
         width: 34px;
@@ -2138,7 +2142,7 @@
         gear: '<path d="M3.88 16.7A9.29 9.29 0 0 1 2.94 14.42l1.57-1.97a7.65 7.65 0 0 1 0-.9l-1.57-1.97a9.32 9.32 0 0 1 .94-2.28l2.5-.28a7.59 7.59 0 0 1 .64-.64l.28-2.5A9.29 9.29 0 0 1 9.58 2.94l1.97 1.57a7.65 7.65 0 0 1 .9 0l1.97-1.57a9.32 9.32 0 0 1 2.28.94l.28 2.5a7.59 7.59 0 0 1 .64.64l2.5.28a9.29 9.29 0 0 1 .94 2.28l-1.57 1.97a7.65 7.65 0 0 1 0 .9l1.57 1.97a9.32 9.32 0 0 1-.94 2.28l-2.5.28a7.59 7.59 0 0 1-.64.64l-.28 2.5a9.29 9.29 0 0 1-2.28.94l-1.97-1.57a7.65 7.65 0 0 1-.9 0l-1.97 1.57a9.32 9.32 0 0 1-2.28-.94l-.28-2.5a7.59 7.59 0 0 1-.64-.64z"/><circle cx="12" cy="12" r="3.75"/>',
         plus: '<path d="M12 5v14M5 12h14"/>',
         search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
-        send: '<path d="M12 3.5L18.5 19L12 15.6L5.5 19z" fill="currentColor" transform="rotate(45 12 12)"/>',
+        send: '<path d="M12 19V5.5M6 11l6-6 6 6"/>',
         clip: '<path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.4 8.4a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6"/>',
         check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
         x: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -2283,7 +2287,7 @@
       ) => `<div class="cmp"><div class="box">
   <span class="ph">Message Eva</span>
   <div class="row"><span class="ic">${I("clip")}</span><span class="chip">${I("bolt")} ${engine} ${I("down")}</span><span class="chip soft">${mode}</span><span class="grow"></span>
-  ${stop ? `<span class="send stop">${I("x")}</span>` : `<span class="send">${I("send")}</span>`}</div></div></div>`;
+  ${stop ? `<span class="send stop">${I("stop")}</span>` : `<span class="send">${I("send")}</span>`}</div></div></div>`;
 
       const chatPanel = (p = 38) => `
   <div><h3>This chat</h3><div class="row" style="gap:14px"><div class="ring" style="--p:${p}"><b>${p}%</b></div><div class="small muted">Context used<br><b style="color:var(--ink)">76k of 200k</b> tokens</div></div></div>

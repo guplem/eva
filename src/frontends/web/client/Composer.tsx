@@ -316,7 +316,7 @@ export function Composer({
           )}
           {showStop ? (
             <button className="send stop" aria-label="Stop" data-tooltip="Stop" onClick={onStop}>
-              <Icon name="x" />
+              <Icon name="stop" />
             </button>
           ) : (
             !showMic && (

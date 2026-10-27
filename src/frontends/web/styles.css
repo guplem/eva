@@ -134,14 +134,13 @@
      replace the padding of each component, such as the tabs, and widen the tab bar (#413). */
   --button-padding: 6px 12px;
   --dialog-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
-  /* A ready Send is a small visor with a shell ring, and its arrow glows as EVE's eyes. */
-  --send-fill: var(--visor-fill);
-  --send-glow: 0 0 0 2px var(--shell), 0 0 18px -2px var(--glow);
+  /* A ready Send is EVE's pearl shell, not her visor: a black disc read as a hole in the box. */
+  --send-fill: radial-gradient(circle at 50% 28%, oklch(1 0 0), oklch(0.93 0.014 var(--h)) 85%);
+  --send-shadow: inset 0 0 0 1px oklch(0.86 0.02 var(--h) / 0.7), 0 6px 14px -6px oklch(0.35 0.06 var(--h) / 0.45);
+  --send-icon-glow: none;
   /* The knob of a toggle stays white in both themes, as in the EVE design. */
   --knob: oklch(1 0 0);
   --knob-shadow: 0 1px 3px oklch(0 0 0 / 0.25);
-  --visor-fill: radial-gradient(ellipse at 50% 22%, var(--visor), var(--visor2) 72%);
-  --eye-glow: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow));
 
   --radius-pill: 999px;
   --radius-card: 22px;
@@ -199,6 +198,10 @@
     /* A shadow does not show on a dark ground, so dark surfaces get a ring too. */
     --shadow: 0 0 0 1px var(--line), 0 12px 30px oklch(0 0 0 / 0.4);
     --scrim: oklch(0.05 0.01 var(--h) / 0.55);
+    /* A dark pearl: a white one would glare on the dark box. Its icon glows a little, as the eyes do. */
+    --send-fill: radial-gradient(circle at 50% 28%, oklch(0.4 0.025 var(--h)), oklch(0.3 0.022 var(--h)) 85%);
+    --send-shadow: inset 0 0 0 1px oklch(0.5 0.03 var(--h) / 0.6), 0 6px 14px -6px oklch(0 0 0 / 0.6);
+    --send-icon-glow: drop-shadow(0 0 4px var(--glow));
     color-scheme: dark;
   }
 }
@@ -235,6 +238,9 @@
   --type-pink: oklch(0.78 0.15 350);
   --shadow: 0 0 0 1px var(--line), 0 12px 30px oklch(0 0 0 / 0.4);
   --scrim: oklch(0.05 0.01 var(--h) / 0.55);
+  --send-fill: radial-gradient(circle at 50% 28%, oklch(0.4 0.025 var(--h)), oklch(0.3 0.022 var(--h)) 85%);
+  --send-shadow: inset 0 0 0 1px oklch(0.5 0.03 var(--h) / 0.6), 0 6px 14px -6px oklch(0 0 0 / 0.6);
+  --send-icon-glow: drop-shadow(0 0 4px var(--glow));
   color-scheme: dark;
 }
 

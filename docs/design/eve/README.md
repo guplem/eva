@@ -87,8 +87,8 @@ The file kinds of the Files page have their own fixed colours, `--type-red` to `
 `styles.css` gives a name to each shared value of this guide. Use the name, not the value:
 
 - Shadows: `--shadow`, `--dialog-shadow`, `--sheet-shadow` and `--send-shadow`.
-- Glows: `--button-glow`, `--send-icon-glow` and `--eye-glow`.
-- Fills: `--main-gradient`, `--visor-fill`, `--send-fill` and `--scrim`.
+- Glows: `--button-glow` and `--send-icon-glow`.
+- Fills: `--main-gradient`, `--send-fill` and `--scrim`.
 - Radii: `--radius-*`. Fonts: `--font` and `--mono`.
 - Space and text steps: `--space-*` and `--text-*`.
 

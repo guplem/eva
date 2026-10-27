@@ -141,8 +141,6 @@
   /* The knob of a toggle stays white in both themes, as in the EVE design. */
   --knob: oklch(1 0 0);
   --knob-shadow: 0 1px 3px oklch(0 0 0 / 0.25);
-  --visor-fill: radial-gradient(ellipse at 50% 22%, var(--visor), var(--visor2) 72%);
-  --eye-glow: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow));
 
   --radius-pill: 999px;
   --radius-card: 22px;

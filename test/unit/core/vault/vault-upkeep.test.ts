@@ -275,3 +275,30 @@ describe("VaultUpkeep alerts for a sync error (#631)", () => {
     expect(state.reports.at(-1)?.message).toContain("fatal: boom");
   });
 });
+
+describe("VaultUpkeep alerts for a save that fails while pulls work (#631)", () => {
+  test("a pull that works neither resets the count nor closes the alert of a failed save", async () => {
+    const state = { reports: [] as (AlertProblem | null)[] };
+    const runner: ProcessRunner = {
+      run(command, options) {
+        if (command[1] === "commit") return Promise.resolve({ exitCode: 1, stdout: "", stderr: "fatal: boom" });
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const now = (): Date => new Date(2026, 9, 14, 12, 0);
+    const upkeep = new VaultUpkeep({
+      vaultSync: new VaultSync({ vaultPath: vault, runner, environment: gitEnvironment, now }),
+      now,
+      syncEnabled: () => true,
+      assistantBusy: () => false,
+      reportProblem: (problem) => state.reports.push(problem),
+    });
+    sandbox.write(vault, "note.md", "kept\n");
+    expect(await upkeep.sweep()).toBe("error");
+    expect((await upkeep.pull()).status).toBe("ok");
+    expect(await upkeep.sweep()).toBe("error");
+    expect(state.reports.at(-1)).toMatchObject({ level: "error" });
+    expect((await upkeep.pull()).status).toBe("ok");
+    expect(state.reports.at(-1)).toMatchObject({ level: "error" });
+  });
+});

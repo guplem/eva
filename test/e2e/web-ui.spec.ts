@@ -5708,6 +5708,8 @@ async function expectWidth(column: Locator, expected: number): Promise<void> {
 
 /** Drags the divider sideways by the offset, in steps, as a hand does. */
 async function dragDivider(page: Page, divider: Locator, offset: number): Promise<void> {
+  // A wider column can make the row scroll. A divider near the edge of the window leaves no room for the drag.
+  await divider.evaluate((element) => element.closest(".files-columns")?.scrollTo({ left: 0 }));
   const box = await divider.boundingBox();
   if (box === null) throw new Error("The divider has no box.");
   const x = box.x + box.width / 2;
@@ -5736,7 +5738,7 @@ test("Files: a drag of a divider resizes only the column at its left (issue 626)
   for (const [index, other] of others.entries()) await expectWidth(other, otherWidths[index] ?? 0);
 
   // A column never gets narrower than its minimum.
-  await dragDivider(page, divider, -400);
+  await dragDivider(page, divider, -300);
   await expectWidth(vault, 180);
 
   // A click is not a drag, so the arrow keys move the divider right after it.

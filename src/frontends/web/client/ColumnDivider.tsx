@@ -9,13 +9,6 @@ const keyStep = 16;
 /** A click that moves a few pixels is still a click, so it keeps the usual width. */
 const dragStart = 3;
 
-interface Drag {
-  readonly pointerId: number;
-  readonly x: number;
-  readonly width: number;
-  moved: boolean;
-}
-
 export function ColumnDivider({
   label,
   minWidth,
@@ -27,7 +20,8 @@ export function ColumnDivider({
   readonly onWidth: (width: number | null) => void;
 }): ReactElement {
   const divider = useRef<HTMLDivElement>(null);
-  const drag = useRef<Drag | null>(null);
+  /** Stops the running drag, or null when no drag runs. */
+  const drag = useRef<(() => void) | null>(null);
   const keepWidth = useRef(onWidth);
   keepWidth.current = onWidth;
   /** The width on the screen and the width of the row, so a screen reader reads the width in pixels. */
@@ -54,36 +48,44 @@ export function ColumnDivider({
     return () => {
       observer.disconnect();
       // A column that stops showing its folder during a drag keeps the width, so a reset can clear it later.
-      if (drag.current?.moved === true)
-        keepWidth.current(Math.max(minWidth, Math.round(element.getBoundingClientRect().width)));
+      drag.current?.();
     };
   }, [minWidth]);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    if (event.button !== 0 || drag.current !== null) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { pointerId: event.pointerId, x: event.clientX, width: columnWidth(), moved: false };
-  };
-  // Each move sets the width on the column only: a render of the whole page at each move makes a drag stutter.
-  const onPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
-    const current = drag.current;
     const element = column();
-    if (current === null || element === null || event.pointerId !== current.pointerId) return;
-    if ((event.buttons & 1) === 0) {
-      end(event);
-      return;
-    }
-    const offset = event.clientX - current.x;
-    if (!current.moved && Math.abs(offset) < dragStart) return;
-    current.moved = true;
-    element.classList.add("resized");
-    element.style.setProperty("--files-width", `${String(clamp(current.width + offset))}px`);
-  };
-  const end = (event: PointerEvent<HTMLDivElement>): void => {
-    const current = drag.current;
-    if (current?.pointerId !== event.pointerId) return;
-    drag.current = null;
-    if (current.moved) onWidth(clamp(columnWidth()));
+    if (event.button !== 0 || drag.current !== null || element === null) return;
+    const start = { pointerId: event.pointerId, x: event.clientX, width: columnWidth() };
+    let moved = false;
+    // The window follows the drag, not a pointer capture: some browsers drop the capture when the divider moves
+    // away from the pointer, and the drag then stops halfway.
+    const onMove = (move: globalThis.PointerEvent): void => {
+      if (move.pointerId !== start.pointerId) return;
+      if ((move.buttons & 1) === 0) {
+        stop();
+        return;
+      }
+      const offset = move.clientX - start.x;
+      if (!moved && Math.abs(offset) < dragStart) return;
+      moved = true;
+      // Each move sets the width on the column only: a render of the whole page at each move makes a drag stutter.
+      element.classList.add("resized");
+      element.style.setProperty("--files-width", `${String(clamp(start.width + offset))}px`);
+    };
+    const onEnd = (end: globalThis.PointerEvent): void => {
+      if (end.pointerId === start.pointerId) stop();
+    };
+    const stop = (): void => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+      drag.current = null;
+      if (moved) keepWidth.current(clamp(element.getBoundingClientRect().width));
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+    drag.current = stop;
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === "Enter") {
@@ -111,10 +113,6 @@ export function ColumnDivider({
       data-tooltip="Drag or press the arrow keys to resize. Double click or press Enter for the usual width."
       data-tooltip-side="right"
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={end}
-      onPointerCancel={end}
-      onLostPointerCapture={end}
       onKeyDown={onKeyDown}
       onDoubleClick={() => onWidth(null)}
     />

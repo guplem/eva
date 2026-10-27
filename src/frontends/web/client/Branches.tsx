@@ -3,7 +3,7 @@
  * branch map, and on a phone the header button that opens the map in a bottom sheet.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
-import type { SessionRecord } from "./api.ts";
+import { api, type SessionRecord } from "./api.ts";
 import {
   branchMap,
   branchNames,
@@ -15,11 +15,11 @@ import {
   type MapLine,
   type MapRow,
 } from "./branch-path.ts";
-import { DeleteQuestion, useIsPhone } from "./ChatHeader.tsx";
+import { DeleteQuestion, RenameDialog, useIsPhone } from "./ChatHeader.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
-import { useContextMenu } from "./Menu.tsx";
+import { useContextMenu, type ContextMenuProps, type MenuItem } from "./Menu.tsx";
 
 /** The branch that the page shows, and the turn to bring into view after a pick. */
 export interface ShownBranch {
@@ -198,7 +198,51 @@ export function BranchMap({
   );
 }
 
-/** One row of the map. The first row of a fork has a menu that deletes the fork. */
+/**
+ * The context menu of a fork: Open when the place gives it, then Rename and Delete fork (issue 637).
+ * Spread `props` on the fork's element, and draw `parts` next to it. With no fork, the element keeps
+ * the browser's menu, as it has no Eva action.
+ */
+export function useForkMenu(
+  fork: SessionRecord | undefined,
+  forkName: string,
+  onOpen?: () => void,
+): { readonly props: ContextMenuProps | Record<string, never>; readonly parts: ReactElement } {
+  const [asking, setAsking] = useState<"rename" | "delete" | null>(null);
+  const items: MenuItem[] = [
+    ...(onOpen === undefined ? [] : [{ label: "Open", icon: "chat" as const, onChoose: onOpen }]),
+    { label: "Rename", icon: "pen", onChoose: () => setAsking("rename") },
+    { label: "Delete fork", icon: "trash", danger: true, onChoose: () => setAsking("delete") },
+  ];
+  const { props, menu } = useContextMenu(items, `Actions of ${forkName}`);
+  // The fork_named and session_deleted events reload the list, on this page and on every other one.
+  const reloadByEvent = (): Promise<void> => {
+    setAsking(null);
+    return Promise.resolve();
+  };
+  const parts = (
+    <>
+      {menu}
+      {asking === "rename" && fork !== undefined && (
+        <RenameDialog
+          heading={`Rename ${forkName}`}
+          label="Fork name"
+          original={forkName}
+          onSave={(name) => api.nameFork(fork.id, name)}
+          onEnd={() => setAsking(null)}
+          onChanged={reloadByEvent}
+        />
+      )}
+      {/* The page then shows another branch. */}
+      {asking === "delete" && fork !== undefined && (
+        <DeleteQuestion chat={fork} fork={forkName} onKeep={() => setAsking(null)} onChanged={reloadByEvent} />
+      )}
+    </>
+  );
+  return { props: fork === undefined ? {} : props, parts };
+}
+
+/** One row of the map. The first row of a fork has the fork's menu. */
 function BranchRow({
   row,
   width,
@@ -214,28 +258,10 @@ function BranchRow({
   readonly state: BranchState | undefined;
   readonly onPick: (row: MapRow) => void;
 }): ReactElement {
-  const [deleting, setDeleting] = useState(false);
-  const { props, menu } = useContextMenu(
-    [{ label: "Delete fork", icon: "trash", danger: true, onChoose: () => setDeleting(true) }],
-    `Actions of ${forkName}`,
-  );
-  // Only a fork head blocks the browser's menu: another row has no Eva action.
-  const menuProps = fork === undefined ? {} : props;
+  const { props: menuProps, parts } = useForkMenu(fork, forkName);
   return (
     <li>
-      {menu}
-      {deleting && fork !== undefined && (
-        <DeleteQuestion
-          chat={fork}
-          fork={forkName}
-          onKeep={() => setDeleting(false)}
-          // The session_deleted event reloads the tree, and the page then shows another branch.
-          onChanged={() => {
-            setDeleting(false);
-            return Promise.resolve();
-          }}
-        />
-      )}
+      {parts}
       <button
         className={row.onPath ? "branch-row on-path" : "branch-row"}
         aria-current={row.current ? "true" : undefined}

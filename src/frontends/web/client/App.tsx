@@ -476,8 +476,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       } else if (event.kind === "session_deleted") {
         // Another front end deleted a chat: the list drops it.
         void refreshSessions();
-      } else if (event.kind === "session_renamed") {
-        // A rename can come from Telegram or the terminal.
+      } else if (event.kind === "session_renamed" || event.kind === "fork_named") {
+        // A rename can come from Telegram, the terminal or another device.
         void refreshSessions();
       } else if (event.kind === "session_seen") {
         // The person read the chat here or on another device: the list drops its unread mark.

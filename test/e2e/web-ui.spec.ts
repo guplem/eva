@@ -301,14 +301,27 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   }
   await expect(start).toContainText("Fork 1 · 2 of 2");
 
-  // A right click on the head of a fork deletes it. The chat then has no fork, so the switcher goes.
   if (test.info().project.name !== "phone") {
+    // A right click on a fork in the chat list renames it. The switcher and the map show the name (issue 637).
+    const list = page.getByRole("navigation", { name: "Chats" });
+    await list.getByRole("button", { name: /2 branches/ }).click();
+    await list
+      .getByRole("list", { name: /^Branches of / })
+      .getByRole("button", { name: /^Fork 1/ })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Rename" }).click();
+    const rename = page.getByRole("dialog", { name: "Rename Fork 1" });
+    await rename.getByLabel("Fork name").fill("Second try");
+    await rename.getByRole("button", { name: "Save" }).click();
+    await expect(start).toContainText("Second try · 2 of 2");
+
+    // A right click on the head of a fork deletes it. The chat then has no fork, so the switcher goes.
     await page
       .getByRole("navigation", { name: "Branch map" })
-      .getByRole("button", { name: /Fork 1 · answer 1/ })
+      .getByRole("button", { name: /Second try · answer 1/ })
       .click({ button: "right" });
     await page.getByRole("menuitem", { name: "Delete fork" }).click();
-    await page.getByRole("dialog", { name: "Delete Fork 1?" }).getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("dialog", { name: "Delete Second try?" }).getByRole("button", { name: "Delete" }).click();
     await expect(start).toBeHidden();
     await expect(page.getByRole("navigation", { name: "Branch map" })).toHaveCount(0);
   }

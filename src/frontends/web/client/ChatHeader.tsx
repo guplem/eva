@@ -208,7 +208,10 @@ export function ChatHeader({
       <MoreMenu items={items} label="Chat actions" toggle={moreButton} />
       {renaming && (
         <RenameDialog
-          chat={chat}
+          heading="Rename chat"
+          label="Chat title"
+          original={chat.title}
+          onSave={(title) => api.rename(chat.id, title)}
           onEnd={() => {
             setRenaming(false);
             moreButton.current?.focus();
@@ -255,18 +258,29 @@ function useEscape(onEscape: () => void, busy: boolean): void {
   }, [onEscape, busy]);
 }
 
-/** Asks for a new title. Enter saves. Escape or Cancel keeps the old title, after a question when the title changed. */
-function RenameDialog({
-  chat,
+/**
+ * Asks for a new name: the title of a chat, or the name of a fork. Enter saves. Escape or Cancel keeps
+ * the old name, after a question when the name changed.
+ */
+export function RenameDialog({
+  heading,
+  label,
+  original,
+  onSave,
   onEnd,
   onChanged,
 }: {
-  readonly chat: SessionRecord;
-  /** Closes the dialog, with the new title saved or not. */
+  /** Such as "Rename chat". */
+  readonly heading: string;
+  /** The label of the field, such as "Chat title". */
+  readonly label: string;
+  readonly original: string;
+  readonly onSave: (name: string) => Promise<unknown>;
+  /** Closes the dialog, with the new name saved or not. */
   readonly onEnd: () => void;
   readonly onChanged: () => Promise<void>;
 }): ReactElement {
-  const [draft, setDraft] = useState(chat.title);
+  const [draft, setDraft] = useState(original);
   // A second Enter while the request runs must not send it again.
   const [saving, setSaving] = useState(false);
   const showError = useShowError();
@@ -276,7 +290,7 @@ function RenameDialog({
     if (saving) return false;
     setSaving(true);
     try {
-      await api.rename(chat.id, draft);
+      await onSave(draft);
       await onChanged();
       onEnd();
       return true;
@@ -288,15 +302,15 @@ function RenameDialog({
     }
   };
   // While the rename runs, the guard waits: the request is sent already.
-  const askFirst = useLeaveGuard(!saving && draft.trim() !== "" && draft !== chat.title, save);
+  const askFirst = useLeaveGuard(!saving && draft.trim() !== "" && draft !== original, save);
   const cancel = useCallback(() => askFirst(onEnd), [askFirst, onEnd]);
   useEscape(cancel, saving);
 
   return (
     // A tap beside the dialog does not close it, so a slip never loses a half-written title.
     <div className="dialog-backdrop schedule-backdrop">
-      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label="Rename chat">
-        <h2>Rename chat</h2>
+      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={heading}>
+        <h2>{heading}</h2>
         <form
           className="schedule-form"
           onSubmit={(event) => {
@@ -305,7 +319,7 @@ function RenameDialog({
           }}
         >
           <label>
-            Chat title
+            {label}
             <input
               value={draft}
               autoFocus

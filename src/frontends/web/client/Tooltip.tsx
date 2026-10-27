@@ -41,6 +41,8 @@ export function TooltipLayer(): ReactElement | null {
     const onPointerOver = (event: PointerEvent): void => {
       // A touch has no hover. On a phone, the label or the visible words carry the meaning.
       if (event.pointerType === "touch") return;
+      // A pointer with a button down drags, as on a column divider: a tooltip then hides what it moves.
+      if (event.buttons !== 0) return;
       const anchor = tooltipAnchor(event.target);
       if (anchor === current) return;
       clearTimeout(timer);

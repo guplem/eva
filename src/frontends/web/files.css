@@ -172,12 +172,71 @@ a.files-favorite[aria-current="page"] {
 }
 
 .files-pane {
+  position: relative;
   flex: 0 0 var(--files-quarter);
   min-width: 180px;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+/* The person dragged the divider of this column (issue 626). */
+.files-pane.resized {
+  flex-basis: var(--files-width);
+}
+
+/* The divider fills the gap at the right of its column, so it moves no column. */
+.column-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(-1 * var(--space-3));
+  width: var(--space-3);
+  cursor: col-resize;
+  /* A drag must not select the names in the columns. */
+  user-select: none;
+  touch-action: pan-y;
+  z-index: 1;
+}
+
+.column-divider::after {
+  content: "";
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  left: calc(50% - 1px);
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.column-divider:hover::after,
+.column-divider:active::after,
+.column-divider:focus-visible::after {
+  background: var(--accent);
+}
+
+.column-divider:focus-visible {
+  outline: none;
+}
+
+/* Forced colours drop the background of the line, so the focus needs a system colour. */
+@media (forced-colors: active) {
+  .column-divider:hover::after,
+  .column-divider:active::after,
+  .column-divider:focus-visible::after {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+}
+
+/* A finger needs a wider target than the gap: the divider then covers the edges of both columns. */
+@media (pointer: coarse) {
+  .column-divider {
+    width: var(--touch-target);
+    right: calc((var(--space-3) + var(--touch-target)) / -2);
+  }
 }
 
 .files-pane > .files-list {
@@ -215,6 +274,11 @@ a.files-favorite[aria-current="page"] {
 
 :root[data-files-view="single"] .files-pane {
   flex: 1 1 auto;
+}
+
+/* One column has nothing to share the row with. */
+:root[data-files-view="single"] .column-divider {
+  display: none;
 }
 
 .files-list {
@@ -507,7 +571,8 @@ a.files-entry[aria-current="true"] {
 
   /* A phone has no room for columns: it shows the last one, and the page scrolls. */
   .files-parent,
-  .files-placeholder {
+  .files-placeholder,
+  .column-divider {
     display: none;
   }
 

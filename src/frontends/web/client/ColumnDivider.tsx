@@ -57,8 +57,7 @@ export function ColumnDivider({
     if (event.button !== 0 || drag.current !== null || element === null) return;
     const start = { pointerId: event.pointerId, x: event.clientX, width: columnWidth() };
     let moved = false;
-    // The window follows the drag, not a pointer capture: some browsers drop the capture when the divider moves
-    // away from the pointer, and the drag then stops halfway.
+    // The window follows the drag, so the drag goes on when the pointer leaves the divider.
     const onMove = (move: globalThis.PointerEvent): void => {
       if (move.pointerId !== start.pointerId) return;
       if ((move.buttons & 1) === 0) {
@@ -72,6 +71,9 @@ export function ColumnDivider({
       element.classList.add("resized");
       element.style.setProperty("--files-width", `${String(clamp(start.width + offset))}px`);
     };
+    // A text selection or a link under the pointer can start a drag of the browser. It ends the pointer events, so the
+    // divider stops halfway.
+    const noNativeDrag = (event: DragEvent): void => event.preventDefault();
     const onEnd = (end: globalThis.PointerEvent): void => {
       if (end.pointerId === start.pointerId) stop();
     };
@@ -79,12 +81,14 @@ export function ColumnDivider({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
+      window.removeEventListener("dragstart", noNativeDrag);
       drag.current = null;
       if (moved) keepWidth.current(clamp(element.getBoundingClientRect().width));
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onEnd);
     window.addEventListener("pointercancel", onEnd);
+    window.addEventListener("dragstart", noNativeDrag);
     drag.current = stop;
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {

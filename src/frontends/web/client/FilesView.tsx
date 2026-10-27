@@ -6,10 +6,11 @@
  * and save it in the vault, and rename a file or a folder (issue 343). A search finds a file or a
  * folder by its name, or by the text inside a file.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry, type SearchResult } from "./api.ts";
 import { readAppearance } from "./appearance.ts";
 import { useIsPhone } from "./ChatHeader.tsx";
+import { ColumnDivider } from "./ColumnDivider.tsx";
 import { DownloadButton, DownloadWait, useDownload } from "./DownloadButton.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
@@ -57,6 +58,8 @@ export function FilesView(): ReactElement {
   /** The search field's text. A path that opens closes the search, so the folders show again. */
   const [query, setQuery] = useState("");
   const [inside, setInside] = useState(false);
+  /** The width that the person dragged each folder column to, by path. A reload forgets it (issue 626). */
+  const [widths, setWidths] = useState<ReadonlyMap<string, number>>(new Map());
   /** The answers of the last render, so the read below does not run again for each new answer. */
   const known = useRef(answers);
   known.current = answers;
@@ -255,6 +258,15 @@ export function FilesView(): ReactElement {
                   onWrap={setWrap}
                   onSaved={onSaved}
                   onTryAgain={() => setAttempt((count) => count + 1)}
+                  width={widths.get(crumb.path) ?? null}
+                  onWidth={(width) =>
+                    setWidths((current) => {
+                      const next = new Map(current);
+                      if (width === null) next.delete(crumb.path);
+                      else next.set(crumb.path, width);
+                      return next;
+                    })
+                  }
                 />
               ))}
               {!fileIsOpen && (
@@ -377,7 +389,13 @@ interface ColumnProps {
   readonly onWrap: (wrap: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
   readonly onTryAgain: () => void;
+  /** The width that the person dragged a folder column to, or null for the usual width. */
+  readonly width: number | null;
+  readonly onWidth: (width: number | null) => void;
 }
+
+/** The narrowest folder column, as the `min-width` of `.files-pane` in `files.css`. */
+const columnMinWidth = 180;
 
 /** One folder of the path, or the open file. A phone shows only the last column. */
 function Column({
@@ -393,6 +411,8 @@ function Column({
   onWrap,
   onSaved,
   onTryAgain,
+  width,
+  onWidth,
 }: ColumnProps): ReactElement | null {
   const place = isLast ? "files-pane" : "files-pane files-parent";
   if (answer === undefined)
@@ -413,8 +433,12 @@ function Column({
   const shown = answer.answer;
   if (shown.kind === "folder")
     return (
-      <div className={place}>
+      <div
+        className={width === null ? place : `${place} resized`}
+        style={width === null ? undefined : ({ "--files-width": `${String(width)}px` } as CSSProperties)}
+      >
         <FolderList path={path} name={name} entries={shown.entries} openChild={openChild} smart={smart} />
+        <ColumnDivider label={`Resize the column ${name}`} width={width} minWidth={columnMinWidth} onWidth={onWidth} />
       </div>
     );
   if (!isLast) return null;

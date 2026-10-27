@@ -5693,6 +5693,61 @@ test("Files: an open file takes at least two fifths of the row", async ({ page }
   expect(fileWidth).toBeGreaterThanOrEqual((rowWidth * 2) / 5 - 24);
 });
 
+test("Files: a drag of a divider resizes only the column at its left (issue 626)", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
+  const vault = page.locator(".files-pane").filter({ has: page.getByRole("list", { name: "Contents of Vault" }) });
+  const projects = page
+    .locator(".files-pane")
+    .filter({ has: page.getByRole("list", { name: "Contents of Projects" }) });
+  const divider = page.getByRole("separator", { name: "Resize the column Vault" });
+  await expect(divider).toBeVisible();
+  const width = async (column: Locator): Promise<number> => (await column.boundingBox())?.width ?? 0;
+  const vaultBefore = await width(vault);
+  const projectsBefore = await width(projects);
+
+  const box = await divider.boundingBox();
+  if (box === null) throw new Error("The divider has no box.");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 60, y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => width(vault)).toBeCloseTo(vaultBefore + 60, 0);
+  expect(await width(projects)).toBeCloseTo(projectsBefore, 0);
+
+  // A column never gets narrower than its minimum.
+  const moved = await divider.boundingBox();
+  if (moved === null) throw new Error("The divider has no box.");
+  await page.mouse.move(moved.x + moved.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(moved.x - 2000, y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => width(vault)).toBeCloseTo(180, 0);
+
+  // The arrow keys move a focused divider.
+  await divider.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => width(vault)).toBeCloseTo(196, 0);
+
+  // A double click gives the usual width again.
+  await divider.dblclick();
+  await expect.poll(() => width(vault)).toBeCloseTo(vaultBefore, 0);
+});
+
+test("Files: the one folder view and a phone show no divider (issue 626)", async ({ page }, testInfo) => {
+  await logIn(page);
+  if (testInfo.project.name !== "phone") {
+    await openSettings(page, "Personalize");
+    await page.getByRole("group", { name: "Files view" }).getByRole("button", { name: "One folder" }).click();
+  }
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
+  await expect(page.getByRole("list", { name: "Contents of 2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.getByRole("separator")).toHaveCount(0);
+});
+
 test("Files: the one folder view shows only the open folder, and the path leads back", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "A phone always shows one folder.");
   await logIn(page);

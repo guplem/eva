@@ -156,12 +156,50 @@ a.files-favorite[aria-current="page"] {
 }
 
 .files-pane {
+  position: relative;
   flex: 0 0 var(--files-quarter);
   min-width: 180px;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+/* The person dragged the divider of this column (issue 626). */
+.files-pane.resized {
+  flex-basis: var(--files-width);
+}
+
+/* The divider fills the gap at the right of its column, so it moves no column. */
+.column-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(-1 * var(--space-3));
+  width: var(--space-3);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.column-divider::after {
+  content: "";
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  left: calc(50% - 1px);
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.column-divider:hover::after,
+.column-divider:active::after,
+.column-divider:focus-visible::after {
+  background: var(--accent);
+}
+
+.column-divider:focus-visible {
+  outline: none;
 }
 
 .files-pane > .files-list {
@@ -199,6 +237,11 @@ a.files-favorite[aria-current="page"] {
 
 :root[data-files-view="single"] .files-pane {
   flex: 1 1 auto;
+}
+
+/* One column has nothing to share the row with. */
+:root[data-files-view="single"] .column-divider {
+  display: none;
 }
 
 .files-list {
@@ -490,7 +533,8 @@ a.files-entry[aria-current="true"] {
 
   /* A phone has no room for columns: it shows the last one, and the page scrolls. */
   .files-parent,
-  .files-placeholder {
+  .files-placeholder,
+  .column-divider {
     display: none;
   }
 

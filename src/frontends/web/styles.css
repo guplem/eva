@@ -125,6 +125,8 @@
   --type-pink: oklch(0.58 0.2 350);
 
   --shadow: 0 10px 30px oklch(0.4 0.05 var(--h) / 0.11), 0 1px 2px oklch(0.4 0.05 var(--h) / 0.06);
+  /* How far below a card --shadow shows, in both themes. A box that scrolls cuts a shadow at its padding. */
+  --shadow-room: 36px;
   --scrim: oklch(0.25 0.03 var(--h) / 0.32);
   --main-gradient: radial-gradient(ellipse 90% 70% at 50% 0%, var(--bg), var(--bg2) 120%);
   --button-glow: 0 6px 18px -6px var(--glow);

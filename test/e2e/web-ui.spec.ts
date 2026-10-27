@@ -5668,6 +5668,14 @@ test("Files: the search finds a name, then the text inside a file, and a match o
   await expect(page.getByRole("region", { name: "File text" })).toBeVisible();
 });
 
+/** The width inside the padding: the row of columns has padding for the shadows of its cards. */
+function contentWidth(locator: Locator): Promise<number> {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  });
+}
+
 test("Files: a wide column takes at least a quarter of the row", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
   await logIn(page);
@@ -5675,7 +5683,7 @@ test("Files: a wide column takes at least a quarter of the row", async ({ page }
   const row = page.locator(".files-columns");
   const column = page.locator(".files-pane").filter({ has: page.getByRole("list", { name: "Contents of Vault" }) });
   await expect(column).toBeVisible();
-  const rowWidth = (await row.boundingBox())?.width ?? 0;
+  const rowWidth = await contentWidth(row);
   const columnWidth = (await column.boundingBox())?.width ?? 0;
   expect(columnWidth).toBeGreaterThanOrEqual(rowWidth / 4 - 16);
 });
@@ -5687,9 +5695,9 @@ test("Files: an open file takes at least two fifths of the row", async ({ page }
   const row = page.locator(".files-columns");
   const file = page.getByRole("region", { name: "File text" });
   await expect(file).toBeVisible();
-  const rowWidth = (await row.boundingBox())?.width ?? 0;
+  const rowWidth = await contentWidth(row);
   const fileWidth = (await file.boundingBox())?.width ?? 0;
-  // The gaps and the padding of the row take a few pixels.
+  // The gaps take a few pixels.
   expect(fileWidth).toBeGreaterThanOrEqual((rowWidth * 2) / 5 - 24);
 });
 

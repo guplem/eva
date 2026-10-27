@@ -874,45 +874,49 @@ button.ghost .icon {
   border: 0;
   border-radius: 50%;
   background: var(--send-fill);
-  color: var(--eye);
-  box-shadow: var(--send-glow);
+  color: var(--accent-ink);
+  box-shadow: var(--send-shadow);
   transition:
     background 0.2s ease,
     color 0.2s ease,
     box-shadow 0.25s ease;
 }
 
+/* A thicker line than other icons: the light pearl needs it to read as the main action. */
 .send .icon {
-  filter: var(--eye-glow);
+  stroke-width: 2.3;
+  filter: var(--send-icon-glow);
   transition: transform 0.25s ease;
 }
 
 .send:not(:disabled):hover .icon {
-  transform: translate(1px, -1px);
+  transform: translateY(-1px);
 }
 
 .send.stop {
-  background: var(--ink);
-  color: var(--bg);
-  box-shadow: none;
+  color: var(--ink);
 }
 
-/* An empty box turns the visor off: a flat chip, so the change shows in shape and not only in light. */
+/* An empty box takes the pearl away: a flat chip, so the change shows in shape and not only in colour. */
 .send:disabled {
   background: var(--chip);
   color: var(--muted);
   box-shadow: none;
 }
 
-/* The microphone sits next to Send, quieter, so Send stays the main action. */
+/* The microphone sits next to Stop, quieter, so Stop stays the main action. */
 .send.voice {
-  background: var(--chip);
-  color: var(--ink);
+  background: transparent;
+  color: var(--muted);
   box-shadow: none;
 }
 
 .send:is(.stop, .voice, :disabled) .icon {
   filter: none;
+}
+
+.send.voice .icon {
+  stroke-width: 1.8;
 }
 
 @media (prefers-reduced-motion: reduce) {

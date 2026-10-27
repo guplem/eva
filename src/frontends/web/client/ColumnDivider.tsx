@@ -28,7 +28,9 @@ export function ColumnDivider({
 }): ReactElement {
   const divider = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
-  /** The width on the screen and the room of the row, so a screen reader reads the width in pixels. */
+  const keepWidth = useRef(onWidth);
+  keepWidth.current = onWidth;
+  /** The width on the screen and the width of the row, so a screen reader reads the width in pixels. */
   const [shown, setShown] = useState<{ readonly now: number; readonly max: number } | null>(null);
   const column = (): HTMLElement | null => divider.current?.parentElement ?? null;
   const columnWidth = (): number => column()?.getBoundingClientRect().width ?? minWidth;
@@ -40,18 +42,28 @@ export function ColumnDivider({
     if (element === null) return;
     const measure = (): void => {
       const row = element.parentElement?.clientWidth ?? 0;
-      setShown({ now: Math.round(element.getBoundingClientRect().width), max: Math.max(row, minWidth) });
+      const now = Math.round(element.getBoundingClientRect().width);
+      // A column can be wider than the row, which then scrolls.
+      setShown({ now, max: Math.max(row, now, minWidth) });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
+    // A resized column keeps its width when the window changes, but the row does not.
+    if (element.parentElement !== null) observer.observe(element.parentElement);
+    return () => {
+      observer.disconnect();
+      // A column that stops showing its folder during a drag keeps the width, so a reset can clear it later.
+      if (drag.current?.moved === true)
+        keepWidth.current(Math.max(minWidth, Math.round(element.getBoundingClientRect().width)));
+    };
   }, [minWidth]);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0 || drag.current !== null) return;
     event.preventDefault();
-    event.currentTarget.focus();
+    // A divider at the edge of the row must not scroll the row away from the pointer.
+    event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { pointerId: event.pointerId, x: event.clientX, width: columnWidth(), moved: false };
   };

@@ -178,7 +178,8 @@ a.files-favorite[aria-current="page"] {
   right: calc(-1 * var(--space-3));
   width: var(--space-3);
   cursor: col-resize;
-  touch-action: none;
+  touch-action: pan-y;
+  z-index: 1;
 }
 
 .column-divider::after {
@@ -200,6 +201,16 @@ a.files-favorite[aria-current="page"] {
 
 .column-divider:focus-visible {
   outline: none;
+}
+
+/* Forced colours drop the background of the line, so the focus needs a system colour. */
+@media (forced-colors: active) {
+  .column-divider:hover::after,
+  .column-divider:active::after,
+  .column-divider:focus-visible::after {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
 }
 
 /* A finger needs a wider target than the gap: the divider then covers the edges of both columns. */

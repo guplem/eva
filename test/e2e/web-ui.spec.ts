@@ -5744,6 +5744,18 @@ test("Files: a drag of a divider resizes only the column at its left (issue 626)
   await divider.dblclick();
   await expectWidth(vault, usual);
 
+  // A drag shows no tooltip over the columns that it moves.
+  const box = await divider.boundingBox();
+  if (box === null) throw new Error("The divider has no box.");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 40, box.y + box.height / 2, { steps: 5 });
+  await page.waitForTimeout(800);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.mouse.up();
+  await divider.dblclick();
+  await expectWidth(vault, usual);
+
   // A reload forgets the width.
   await dragDivider(page, divider, 60);
   await expectWidth(vault, usual + 60);

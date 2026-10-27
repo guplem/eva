@@ -61,9 +61,6 @@ export function ColumnDivider({
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0 || drag.current !== null) return;
-    event.preventDefault();
-    // A divider at the edge of the row must not scroll the row away from the pointer.
-    event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { pointerId: event.pointerId, x: event.clientX, width: columnWidth(), moved: false };
   };

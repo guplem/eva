@@ -178,6 +178,8 @@ a.files-favorite[aria-current="page"] {
   right: calc(-1 * var(--space-3));
   width: var(--space-3);
   cursor: col-resize;
+  /* A drag must not select the names in the columns. */
+  user-select: none;
   touch-action: pan-y;
   z-index: 1;
 }

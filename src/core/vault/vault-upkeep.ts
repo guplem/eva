@@ -58,11 +58,14 @@ export class VaultUpkeep {
   private sweeping: boolean;
   /** When the vault sync went offline, for the 30-minute alert; null while it is not offline. */
   private offlineSince: Date | null;
+  /** The sync steps in a row that ended in an error, for the alert on the second one. */
+  private errorsInRow: number;
 
   constructor(options: VaultUpkeepOptions) {
     this.lastPullAt = null;
     this.sweeping = false;
     this.offlineSince = null;
+    this.errorsInRow = 0;
     this.options = options;
   }
 
@@ -111,7 +114,7 @@ export class VaultUpkeep {
     const vaultSync = this.options.vaultSync;
     if (vaultSync === null) return { state: noVaultState, conflicts: [] };
     const report = await vaultSync.conflicts();
-    return { ...report, state: this.logSyncState(report.state) };
+    return { ...report, state: this.logSyncState(report.state, false) };
   }
 
   /** A pick for one conflicted note. It waits for the end of an Assistant turn, as a sync does: the turn can write the same note. */
@@ -207,18 +210,22 @@ export class VaultUpkeep {
     return state;
   }
 
-  private noticeSyncProblem(state: VaultSyncState): void {
+  private noticeSyncProblem(state: VaultSyncState, ranStep: boolean): void {
     const now = this.options.now();
     if (state.status !== "offline") this.offlineSince = null;
     else this.offlineSince ??= now;
     const offlineForMs = this.offlineSince === null ? 0 : now.getTime() - this.offlineSince.getTime();
-    const problem = vaultSyncProblem(state, offlineForMs);
+    if (ranStep) this.errorsInRow = state.status === "error" ? this.errorsInRow + 1 : 0;
+    const problem = vaultSyncProblem(state, offlineForMs, this.errorsInRow);
     if (problem !== "keep") this.options.reportProblem(problem);
   }
 
-  /** Logs a sync problem and the files that the sync held back (lessons 16, 26), and raises its alert. */
-  private logSyncState(state: VaultSyncState): VaultSyncState {
-    this.noticeSyncProblem(state);
+  /**
+   * Logs a sync problem and the files that the sync held back (lessons 16, 26), and raises its alert.
+   * A read of the conflicts runs no sync step, so it does not count as a second failed step.
+   */
+  private logSyncState(state: VaultSyncState, ranStep = true): VaultSyncState {
+    this.noticeSyncProblem(state, ranStep);
     // A pull can bring a migration record from a newer Eva at any time.
     this.options.afterSync?.();
     if (state.status === "conflict" || state.status === "error" || state.status === "offline") {

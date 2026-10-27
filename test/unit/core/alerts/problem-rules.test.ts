@@ -8,6 +8,7 @@ import {
   engineUpdateProblem,
   relayedProblem,
   updateProblem,
+  vaultErrorAlertSteps,
   vaultOfflineAlertMs,
   vaultSyncProblem,
 } from "../../../../src/core/alerts/problem-rules.ts";
@@ -38,7 +39,7 @@ const idleUpdate: UpdateStatus = {
 
 describe("vaultSyncProblem", () => {
   test("a conflict is an error that names the files and the fix from a phone", () => {
-    const problem = vaultSyncProblem(syncState("conflict", "Conflict in Notes/a.md"), 0);
+    const problem = vaultSyncProblem(syncState("conflict", "Conflict in Notes/a.md"), 0, 0);
     expect(problem).toMatchObject({ level: "error" });
     const message = problem === "keep" ? "" : (problem?.message ?? "");
     expect(message).toContain("Conflict in Notes/a.md");
@@ -48,27 +49,33 @@ describe("vaultSyncProblem", () => {
   });
 
   test("a sync error is an error with git's reason", () => {
-    const problem = vaultSyncProblem(syncState("error", "git commit failed: disk full"), 0);
+    const problem = vaultSyncProblem(syncState("error", "git commit failed: disk full"), 0, vaultErrorAlertSteps);
     expect(problem).toMatchObject({ level: "error" });
     expect(problem === "keep" ? "" : (problem?.message ?? "")).toContain("disk full");
-    const ended = vaultSyncProblem(syncState("error", "git push failed."), 0);
+    const ended = vaultSyncProblem(syncState("error", "git push failed."), 0, vaultErrorAlertSteps);
     expect(ended === "keep" ? "" : ended?.message).toStartWith("The vault sync failed: git push failed. Send");
   });
 
+  test("a sync error is a problem only when the next sync step fails too (#631)", () => {
+    const error = syncState("error", "git add failed: a note moved");
+    expect(vaultSyncProblem(error, 0, vaultErrorAlertSteps - 1)).toBe("keep");
+    expect(vaultSyncProblem(error, 0, vaultErrorAlertSteps)).toMatchObject({ level: "error" });
+  });
+
   test("offline is a problem only after 30 minutes", () => {
-    expect(vaultSyncProblem(syncState("offline"), vaultOfflineAlertMs)).toBe("keep");
-    expect(vaultSyncProblem(syncState("offline"), vaultOfflineAlertMs + 1)).toMatchObject({ level: "warn" });
+    expect(vaultSyncProblem(syncState("offline"), vaultOfflineAlertMs, 0)).toBe("keep");
+    expect(vaultSyncProblem(syncState("offline"), vaultOfflineAlertMs + 1, 0)).toMatchObject({ level: "warn" });
   });
 
   test("ok clears the problem, and a skip with no reason keeps whatever was there", () => {
-    expect(vaultSyncProblem(syncState("ok"), 0)).toBeNull();
-    expect(vaultSyncProblem(syncState("skipped"), 0)).toBe("keep");
+    expect(vaultSyncProblem(syncState("ok"), 0, 0)).toBeNull();
+    expect(vaultSyncProblem(syncState("skipped"), 0, 0)).toBe("keep");
   });
 
   test("a skip on the wrong branch warns, with the reason and a fix from a phone (#505)", () => {
     const reason =
       "Eva syncs main, but the vault is on feat/work. If main is right, ask the Assistant to switch the vault back to it.";
-    const problem = vaultSyncProblem(syncState("skipped", reason), 0);
+    const problem = vaultSyncProblem(syncState("skipped", reason), 0, 0);
     expect(problem).toMatchObject({ level: "warn" });
     expect(problem === "keep" ? "" : problem?.message).toBe(`The vault sync is paused. ${reason} Then send /sync.`);
   });

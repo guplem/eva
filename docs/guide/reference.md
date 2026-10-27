@@ -164,7 +164,7 @@ From a phone: `/status` shows the problems and the version of Eva and each tool,
 | Alert                                | When                                                                                                 |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | The vault sync stopped on a conflict | Two computers changed the same note: see [Vault conflicts](#vault-conflicts).                        |
-| The vault sync failed                | A git step failed, for example a full disk or a refused push.                                        |
+| The vault sync failed                | A git step failed two times in a row, for example on a full disk or a refused push.                  |
 | The vault cannot reach GitHub        | The vault was offline for more than 30 minutes.                                                      |
 | The update check or install failed   | The checks failed for 2 hours or more, or an install failed. A failed install keeps the old version. |
 | The Claude Code update failed        | The alert names the reason. Chats keep the old version of Claude Code.                               |

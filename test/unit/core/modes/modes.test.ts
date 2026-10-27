@@ -79,6 +79,7 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     pendingRestore: null,
     forkedFrom: null,
     reportsTo: null,
+    forkName: null,
     turns: [],
     ...overrides,
   };

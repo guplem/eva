@@ -144,6 +144,7 @@ machine state/sessions.json sessions[].engineSessionId
 machine state/sessions.json sessions[].firstMessageDraft
 machine state/sessions.json sessions[].forkAtMessageId
 machine state/sessions.json sessions[].forkFromEngineSessionId
+machine state/sessions.json sessions[].forkName
 machine state/sessions.json sessions[].forkedFrom
 machine state/sessions.json sessions[].forkedFrom.atMessageId
 machine state/sessions.json sessions[].forkedFrom.clone

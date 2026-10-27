@@ -249,6 +249,7 @@ describe("applyEvent", () => {
     expect(applyEvent(state, event({ kind: "session_renamed", title: "x" }))).toBe(state);
     expect(applyEvent(state, event({ kind: "session_seen", seenTurns: 1 }))).toBe(state);
     expect(applyEvent(state, event({ kind: "session_archived", archived: true }))).toBe(state);
+    expect(applyEvent(state, event({ kind: "fork_named", name: "Short answer" }))).toBe(state);
   });
 });
 

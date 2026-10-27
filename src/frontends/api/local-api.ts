@@ -97,6 +97,7 @@ const retrySchema = z.object({
   files: z.enum(["undo", "keep", "new-clone"]).optional(),
 });
 const renameSchema = z.object({ title: z.string() });
+const forkNameSchema = z.object({ name: z.string() });
 const seenSchema = z.object({ turnCount: z.number().int().min(0) });
 const archiveSchema = z.object({ archived: z.boolean() });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
@@ -633,6 +634,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     if (action === "rename") {
       const { title } = renameSchema.parse(await request.json());
       return json(eva.sessions.rename(sessionId, title));
+    }
+    if (action === "fork-name") {
+      const { name } = forkNameSchema.parse(await request.json());
+      return json(eva.sessions.nameFork(sessionId, name));
     }
     if (action === "seen") {
       const { turnCount } = seenSchema.parse(await request.json());

@@ -707,6 +707,35 @@ describe("renames (issue 46)", () => {
     expect(manager.get(sessionId).title).toBe("Trip plans");
   });
 
+  test("a fork name is the fork's own: it tells every front end, survives a restart, and leaves the title (issue 637)", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "Hello there, Eva");
+    const fork = manager.fork(rootId, manager.get(rootId).turns[0]?.lastMessageId ?? "");
+    expect(fork.forkName).toBeNull();
+    events.length = 0;
+    expect(manager.nameFork(fork.id, "  Short\nanswer  ").forkName).toBe("Short answer");
+    expect(events).toMatchObject([{ kind: "fork_named", sessionId: fork.id, name: "Short answer" }]);
+    const restarted = createManager(new FakeEngine());
+    expect(restarted.get(fork.id).forkName).toBe("Short answer");
+    expect(restarted.get(fork.id).title).toBe(manager.get(rootId).title);
+    // A rename of the chat leaves the fork name.
+    restarted.rename(rootId, "Trip plans");
+    expect(restarted.get(fork.id).forkName).toBe("Short answer");
+  });
+
+  test("a fork name is redacted, and only a fork takes one (issue 637)", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-telegram-token-value");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "Hello there, Eva");
+    const fork = manager.fork(rootId, manager.get(rootId).turns[0]?.lastMessageId ?? "");
+    expect(manager.nameFork(fork.id, "key the-telegram-token-value").forkName).toBe("key [redacted]");
+    expect(() => manager.nameFork(fork.id, "   ")).toThrow(expect.objectContaining({ code: "title_invalid" }));
+    expect(() => manager.nameFork(rootId, "Main")).toThrow(expect.objectContaining({ code: "title_invalid" }));
+  });
+
   test("a title is one line, cut to the title length, and redacted", () => {
     const redactor = new Redactor();
     redactor.addSecret("the-telegram-token-value");

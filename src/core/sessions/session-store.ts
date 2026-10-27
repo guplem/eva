@@ -156,6 +156,11 @@ export const sessionSchema = z
      * before the field, or a bad value, is the person's.
      */
     reportsTo: z.string().nullable().default(null).catch(null),
+    /**
+     * The name that the person gave a fork (issue 637), or null. A fork with no name shows as "Fork N".
+     * A record from before the field, or a bad value, has no name.
+     */
+    forkName: z.string().nullable().default(null).catch(null),
   })
   .transform((session) => ({ ...session, seenTurns: session.seenTurns ?? session.turns.length }));
 

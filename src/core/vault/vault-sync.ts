@@ -791,9 +791,13 @@ export class VaultSync {
 
     // The old path of a staged rename, and a staged deletion (`git rm`), are in neither the folder
     // nor the index, so `git add` refuses them ("did not match any files"). Their removal is staged
-    // already; the commit still takes it.
+    // already; the commit still takes it. After `git rm --cached`, the file is still in the folder
+    // ("??"), and the add puts it back.
+    const untracked = new Set(entries.filter((entry) => entry.code === "??").map((entry) => entry.path));
     const stagedRemovals = new Set(
-      entries.filter((entry) => entry.isStagedSource === true || entry.code === "D ").map((entry) => entry.path),
+      entries
+        .filter((entry) => (entry.isStagedSource === true || entry.code === "D ") && !untracked.has(entry.path))
+        .map((entry) => entry.path),
     );
     const toAdd = kept.filter((path) => !stagedRemovals.has(path));
     const add =
@@ -814,6 +818,9 @@ export class VaultSync {
     const addedThenDeleted = new Set(entries.filter((entry) => entry.code === "AD").map((entry) => entry.path));
     const committed = kept.filter((path) => !addedThenDeleted.has(path));
     if (committed.length === 0) return true;
+    // The add can undo every change, such as a `git rm --cached` of a file that is still in the
+    // folder, and git refuses an empty commit.
+    if ((await this.git(["diff", "--cached", "--quiet"], localTimeoutMs)).exitCode === 0) return true;
     const plural = committed.length === 1 ? "file" : "files";
     // git refuses a full commit while a file has conflict markers, and a pick or a person can stage
     // a withheld or Scratch file: --only commits just the kept files.

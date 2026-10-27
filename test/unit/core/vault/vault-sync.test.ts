@@ -117,6 +117,16 @@ describe("VaultSync.save", () => {
     expect(sandbox.git(sandbox.remote, "show", "main:Notes/Keep.md")).toBe("Kept, with an edit.");
   });
 
+  test("keeps a note on the remote that git rm --cached took out of the index only (#631)", async () => {
+    sandbox.write(vault, "Notes/Kept.md", "Kept.\n");
+    expect((await createSync(vault).save()).status).toBe("ok");
+    sandbox.git(vault, "rm", "-q", "--cached", "Notes/Kept.md");
+    const after = await createSync(vault).save();
+    expect(after.lastError).toBeNull();
+    expect(after.status).toBe("ok");
+    expect(remoteFiles()).toContain("Notes/Kept.md");
+  });
+
   test("saves the other notes when a new note vanishes between the status read and the add (#631)", async () => {
     sandbox.write(vault, "Notes/Draft.md", "Gone soon.\n");
     sandbox.write(vault, "Notes/Stays.md", "Stays.\n");

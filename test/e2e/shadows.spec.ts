@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /**
  * A box that scrolls cuts everything outside its padding, also the shadow of a card in it.
@@ -69,14 +69,16 @@ function cutShadows(page: Page): Promise<string[]> {
           bottom: clip.bottom - box.bottom,
           left: box.left - clip.left,
         };
-        // The edge of the screen hides a cut.
-        const atScreenEdge: Sides = {
-          top: clip.top <= 1 ? 1 : 0,
-          right: clip.right >= innerWidth - 1 ? 1 : 0,
-          bottom: clip.bottom >= innerHeight - 1 ? 1 : 0,
-          left: clip.left <= 1 ? 1 : 0,
+        // The edge of the screen hides a cut. Mid-scroll, more cards wait past the edge, so a cut there is a scroll.
+        const hidden: Sides = {
+          top: clip.top <= 1 || parent.scrollTop > 1 ? 1 : 0,
+          right:
+            clip.right >= innerWidth - 1 || parent.scrollLeft + parent.clientWidth < parent.scrollWidth - 1 ? 1 : 0,
+          bottom:
+            clip.bottom >= innerHeight - 1 || parent.scrollTop + parent.clientHeight < parent.scrollHeight - 1 ? 1 : 0,
+          left: clip.left <= 1 || parent.scrollLeft > 1 ? 1 : 0,
         };
-        const cut = sides.filter((side) => atScreenEdge[side] === 0 && needs[side] > room[side] + 1);
+        const cut = sides.filter((side) => hidden[side] === 0 && needs[side] > room[side] + 1);
         if (cut.length > 0) found.add(`${label(card)}: ${cut.join(" ")}`);
         break;
       }
@@ -96,14 +98,21 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
   );
   await logIn(page);
   const file = `Notes/${testInfo.project.name}-list.md`;
-  for (const address of ["#/chats", "#/files/Notes", `#/files/${file}`, "#/projects", "#/schedules", "#/settings"]) {
+  // Only the hash changes, so the page does not load again: wait for the cards of each page.
+  const pages: [string, Locator[]][] = [
+    ["#/chats", [page.locator(".composer-box")]],
+    ["#/files/Notes", [page.getByRole("list", { name: "Contents of Notes" })]],
+    [`#/files/${file}`, [page.getByRole("region", { name: "File text" })]],
+    ["#/projects", [page.locator(".project-card").first()]],
+    ["#/schedules", [page.locator(".schedule-panel").first()]],
+    ["#/settings", [page.locator(".section-card").first()]],
+  ];
+  for (const [address, cards] of pages) {
     await page.goto(`/${address}`);
-    await page.waitForLoadState("networkidle");
     if (address.startsWith("#/files")) {
-      await expect(
-        page.getByRole("navigation", { name: "Favorites" }).getByRole("link", { name: "Notes" }),
-      ).toBeVisible();
+      cards.push(page.getByRole("navigation", { name: "Favorites" }).getByRole("link", { name: "Notes" }));
     }
+    for (const card of cards) await expect(card).toBeVisible();
     expect(await cutShadows(page), address).toEqual([]);
   }
 

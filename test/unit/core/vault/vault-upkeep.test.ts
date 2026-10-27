@@ -3,7 +3,7 @@ import type { AlertProblem } from "../../../../src/core/alerts/alert-center.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { VaultUpkeep } from "../../../../src/core/vault/vault-upkeep.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
-import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
@@ -228,5 +228,77 @@ describe("VaultUpkeep afterFetch (#529)", () => {
     });
     await upkeep.pullIfDue(sync);
     expect(state.fetches).toBe(0);
+  });
+});
+
+describe("VaultUpkeep alerts for a sync error (#631)", () => {
+  /** git commit fails while `failing.on` is true; every other step runs for real. */
+  function failingUpkeep(state: { reports: (AlertProblem | null)[] }, failing: { on: boolean }): VaultUpkeep {
+    const runner: ProcessRunner = {
+      run(command, options) {
+        if (failing.on && command[1] === "commit")
+          return Promise.resolve({ exitCode: 1, stdout: "", stderr: "fatal: boom" });
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const now = (): Date => new Date(2026, 9, 14, 12, 0);
+    return new VaultUpkeep({
+      vaultSync: new VaultSync({ vaultPath: vault, runner, environment: gitEnvironment, now }),
+      now,
+      syncEnabled: () => true,
+      assistantBusy: () => false,
+      reportProblem: (problem) => state.reports.push(problem),
+    });
+  }
+
+  test("one failed sweep that the next sweep fixes opens no alert", async () => {
+    const state = { reports: [] as (AlertProblem | null)[] };
+    const failing = { on: true };
+    const upkeep = failingUpkeep(state, failing);
+    sandbox.write(vault, "note.md", "kept\n");
+    expect(await upkeep.sweep()).toBe("error");
+    failing.on = false;
+    expect(await upkeep.sweep()).toBe("ok");
+    expect(state.reports.filter((problem) => problem !== null)).toEqual([]);
+  });
+
+  test("an error on two sweeps in a row opens the alert, and a read of the conflicts does not count", async () => {
+    const state = { reports: [] as (AlertProblem | null)[] };
+    const upkeep = failingUpkeep(state, { on: true });
+    sandbox.write(vault, "note.md", "kept\n");
+    expect(await upkeep.sweep()).toBe("error");
+    // The web app reads the conflicts on its own; the read runs no sync step.
+    await upkeep.conflicts();
+    expect(state.reports.filter((problem) => problem !== null)).toEqual([]);
+    expect(await upkeep.sweep()).toBe("error");
+    expect(state.reports.at(-1)).toMatchObject({ level: "error" });
+    expect(state.reports.at(-1)?.message).toContain("fatal: boom");
+  });
+});
+
+describe("VaultUpkeep alerts for a save that fails while pulls work (#631)", () => {
+  test("a pull that works neither resets the count nor closes the alert of a failed save", async () => {
+    const state = { reports: [] as (AlertProblem | null)[] };
+    const runner: ProcessRunner = {
+      run(command, options) {
+        if (command[1] === "commit") return Promise.resolve({ exitCode: 1, stdout: "", stderr: "fatal: boom" });
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const now = (): Date => new Date(2026, 9, 14, 12, 0);
+    const upkeep = new VaultUpkeep({
+      vaultSync: new VaultSync({ vaultPath: vault, runner, environment: gitEnvironment, now }),
+      now,
+      syncEnabled: () => true,
+      assistantBusy: () => false,
+      reportProblem: (problem) => state.reports.push(problem),
+    });
+    sandbox.write(vault, "note.md", "kept\n");
+    expect(await upkeep.sweep()).toBe("error");
+    expect((await upkeep.pull()).status).toBe("ok");
+    expect(await upkeep.sweep()).toBe("error");
+    expect(state.reports.at(-1)).toMatchObject({ level: "error" });
+    expect((await upkeep.pull()).status).toBe("ok");
+    expect(state.reports.at(-1)).toMatchObject({ level: "error" });
   });
 });

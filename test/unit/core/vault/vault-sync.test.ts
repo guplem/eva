@@ -105,6 +105,44 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain("jobseaker");
   });
 
+  test("saves a note that an agent deleted with git rm, so the deletion is staged already (#631)", async () => {
+    sandbox.write(vault, "Notes/Next Steps.md", "Steps.\n");
+    sandbox.write(vault, "Notes/Keep.md", "Kept.\n");
+    expect((await createSync(vault).save()).status).toBe("ok");
+    sandbox.git(vault, "rm", "-q", "Notes/Next Steps.md");
+    sandbox.write(vault, "Notes/Keep.md", "Kept, with an edit.\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).not.toContain("Next Steps.md");
+    expect(sandbox.git(sandbox.remote, "show", "main:Notes/Keep.md")).toBe("Kept, with an edit.");
+  });
+
+  test("keeps a note on the remote that git rm --cached took out of the index only (#631)", async () => {
+    sandbox.write(vault, "Notes/Kept.md", "Kept.\n");
+    expect((await createSync(vault).save()).status).toBe("ok");
+    sandbox.git(vault, "rm", "-q", "--cached", "Notes/Kept.md");
+    const after = await createSync(vault).save();
+    expect(after.lastError).toBeNull();
+    expect(after.status).toBe("ok");
+    expect(remoteFiles()).toContain("Notes/Kept.md");
+  });
+
+  test("saves the other notes when a new note vanishes between the status read and the add (#631)", async () => {
+    sandbox.write(vault, "Notes/Draft.md", "Gone soon.\n");
+    sandbox.write(vault, "Notes/Stays.md", "Stays.\n");
+    // A person or an agent can rename a note while Eva saves; the status read then names a path that is gone.
+    const racing: ProcessRunner = {
+      run(command, options) {
+        if (command[1] === "add") rmSync(join(vault, "Notes/Draft.md"), { force: true });
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const state = await createSync(vault, { runner: racing }).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).toContain("Notes/Stays.md");
+    expect(remoteFiles()).not.toContain("Notes/Draft.md");
+  });
+
   test("a failing pre-commit hook in the vault never blocks an autosave (lesson 27)", async () => {
     sandbox.write(vault, ".git/hooks/pre-commit", "#!/bin/sh\nexit 1\n");
     chmodSync(join(vault, ".git", "hooks", "pre-commit"), 0o755);

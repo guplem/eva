@@ -27,6 +27,9 @@ export const noVaultState: VaultSyncState = {
 /** Why "sync now" did not run, so a client can tell a wait from a failure without reading the text. */
 export type SyncSkipReason = "assistant_busy" | "no_vault";
 
+/** A read of the conflicts counts as a pull: it saves nothing. */
+type SyncStep = "pull" | "save";
+
 /** The state after "sync now". An older Eva sends no reason. */
 export interface SyncNowState extends VaultSyncState {
   readonly skipReason?: SyncSkipReason;
@@ -58,11 +61,17 @@ export class VaultUpkeep {
   private sweeping: boolean;
   /** When the vault sync went offline, for the 30-minute alert; null while it is not offline. */
   private offlineSince: Date | null;
+  /** The sync steps in a row that ended in an error, for the alert on the second one. */
+  private errorsInRow: number;
+  /** The state of the last call, to tell a new failed step from a call that ran none. */
+  private lastState: VaultSyncState | null;
 
   constructor(options: VaultUpkeepOptions) {
     this.lastPullAt = null;
     this.sweeping = false;
     this.offlineSince = null;
+    this.errorsInRow = 0;
+    this.lastState = null;
     this.options = options;
   }
 
@@ -77,7 +86,7 @@ export class VaultUpkeep {
     // No log line: a skip says nothing new, and logSyncState would clear a sync alert.
     if (!this.options.syncEnabled()) return vaultSync.currentState;
     this.lastPullAt = this.options.now();
-    return this.logSyncState(await vaultSync.pull());
+    return this.logSyncState(await vaultSync.pull(), "pull");
   }
 
   /** The save after an Assistant turn. With sync off, the changes wait for "Sync now". */
@@ -111,7 +120,7 @@ export class VaultUpkeep {
     const vaultSync = this.options.vaultSync;
     if (vaultSync === null) return { state: noVaultState, conflicts: [] };
     const report = await vaultSync.conflicts();
-    return { ...report, state: this.logSyncState(report.state) };
+    return { ...report, state: this.logSyncState(report.state, "pull") };
   }
 
   /** A pick for one conflicted note. It waits for the end of an Assistant turn, as a sync does: the turn can write the same note. */
@@ -200,25 +209,32 @@ export class VaultUpkeep {
   /** A conflict read or pick never fetches, so it never comes here. */
   private async pullThenAfterFetch(vaultSync: VaultSync, syncEnabled: boolean): Promise<VaultSyncState> {
     const freshBefore = vaultSync.freshPulls;
-    const state = this.logSyncState(await vaultSync.pull());
+    const state = this.logSyncState(await vaultSync.pull(), "pull");
     // An Assistant turn can start while git fetches.
     if (syncEnabled && state.status === "ok" && vaultSync.freshPulls > freshBefore && !this.options.assistantBusy())
       this.options.afterFetch?.();
     return state;
   }
 
-  private noticeSyncProblem(state: VaultSyncState): void {
+  private noticeSyncProblem(state: VaultSyncState, step: SyncStep): void {
     const now = this.options.now();
     if (state.status !== "offline") this.offlineSince = null;
     else this.offlineSince ??= now;
     const offlineForMs = this.offlineSince === null ? 0 : now.getTime() - this.offlineSince.getTime();
-    const problem = vaultSyncProblem(state, offlineForMs);
+    // A call that ran no git step returns the same state object, so it is no new failure.
+    const newStep = state !== this.lastState;
+    this.lastState = state;
+    if (newStep && state.status === "error") this.errorsInRow += 1;
+    // A pull can work while every push fails, so only a save ends a run of errors (#631).
+    else if (newStep && step === "save") this.errorsInRow = 0;
+    if (step === "pull" && state.status === "ok" && this.errorsInRow > 0) return;
+    const problem = vaultSyncProblem(state, offlineForMs, this.errorsInRow);
     if (problem !== "keep") this.options.reportProblem(problem);
   }
 
   /** Logs a sync problem and the files that the sync held back (lessons 16, 26), and raises its alert. */
-  private logSyncState(state: VaultSyncState): VaultSyncState {
-    this.noticeSyncProblem(state);
+  private logSyncState(state: VaultSyncState, step: SyncStep = "save"): VaultSyncState {
+    this.noticeSyncProblem(state, step);
     // A pull can bring a migration record from a newer Eva at any time.
     this.options.afterSync?.();
     if (state.status === "conflict" || state.status === "error" || state.status === "offline") {

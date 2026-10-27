@@ -14,10 +14,20 @@ import type { VaultAhead } from "../migrations/migrations.ts";
 export const vaultOfflineAlertMs = 30 * 60_000;
 
 /**
- * The vault sync problem of a state. "keep" leaves the open problem as it is: a skip with no
- * reason says nothing new, and a short offline spell is not a problem yet.
+ * A note that a person moves while Eva saves fails one sync step, and the next step works (#631).
+ * Only an error that the next step repeats needs the owner.
  */
-export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): AlertProblem | null | "keep" {
+export const vaultErrorAlertSteps = 2;
+
+/**
+ * The vault sync problem of a state. "keep" leaves the open problem as it is: a skip with no
+ * reason says nothing new, and a short offline spell or a single failed step is not a problem yet.
+ */
+export function vaultSyncProblem(
+  state: VaultSyncState,
+  offlineForMs: number,
+  errorsInRow: number,
+): AlertProblem | null | "keep" {
   const resolvedMessage = "The vault sync works again.";
   switch (state.status) {
     case "ok":
@@ -45,6 +55,7 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
         resolvedMessage,
       };
     case "error":
+      if (errorsInRow < vaultErrorAlertSteps) return "keep";
       return {
         level: "error",
         message: `The vault sync failed: ${withoutFinalPeriod(state.lastError ?? "unknown reason")}. Send /sync to try again, or /logs to see more.`,

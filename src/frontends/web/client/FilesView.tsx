@@ -133,6 +133,16 @@ export function FilesView(): ReactElement {
     const renamed = (await api.renameFile(path, name)).path;
     if (renamed === path) return;
     moveDrafts(path, renamed);
+    // A renamed folder keeps the width that the person gave it.
+    setWidths(
+      (current) =>
+        new Map(
+          [...current].map(([known, width]) => [
+            isUnder(known, path) ? renamed + known.slice(path.length) : known,
+            width,
+          ]),
+        ),
+    );
     // The old answers name a path that is gone, so the new path and its folder read again.
     setAnswers((current) => new Map([...current].filter(([known]) => !isUnder(known, path))));
     const folder = parentOf(renamed);
@@ -414,16 +424,18 @@ function Column({
   width,
   onWidth,
 }: ColumnProps): ReactElement | null {
-  const place = isLast ? "files-pane" : "files-pane files-parent";
+  // A folder that reads again keeps its width, so the row does not jump while it loads.
+  const place = `${isLast ? "files-pane" : "files-pane files-parent"}${width === null ? "" : " resized"}`;
+  const sized = width === null ? undefined : ({ "--files-width": `${String(width)}px` } as CSSProperties);
   if (answer === undefined)
     return (
-      <div className={place}>
+      <div className={place} style={sized}>
         <ListSkeleton label="Loading the folder…" rows={8} />
       </div>
     );
   if (answer.state === "failed")
     return (
-      <div className={place}>
+      <div className={place} style={sized}>
         <div role="alert" className="callout danger callout-action">
           <span>{answer.reason}</span>
           <button onClick={onTryAgain}>Try again</button>
@@ -433,12 +445,9 @@ function Column({
   const shown = answer.answer;
   if (shown.kind === "folder")
     return (
-      <div
-        className={width === null ? place : `${place} resized`}
-        style={width === null ? undefined : ({ "--files-width": `${String(width)}px` } as CSSProperties)}
-      >
+      <div className={place} style={sized}>
         <FolderList path={path} name={name} entries={shown.entries} openChild={openChild} smart={smart} />
-        <ColumnDivider label={`Resize the column ${name}`} width={width} minWidth={columnMinWidth} onWidth={onWidth} />
+        <ColumnDivider label={`Resize the column ${name}`} minWidth={columnMinWidth} onWidth={onWidth} />
       </div>
     );
   if (!isLast) return null;

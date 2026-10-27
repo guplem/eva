@@ -202,6 +202,14 @@ a.files-favorite[aria-current="page"] {
   outline: none;
 }
 
+/* A finger needs a wider target than the gap: the divider then covers the edges of both columns. */
+@media (pointer: coarse) {
+  .column-divider {
+    width: var(--touch-target);
+    right: calc((var(--space-3) + var(--touch-target)) / -2);
+  }
+}
+
 .files-pane > .files-list {
   min-height: 0;
   overflow-y: auto;

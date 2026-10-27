@@ -1,48 +1,90 @@
 /**
- * The divider at the right of a column (issue 626). A drag or the arrow keys change the width of the column, and a
- * double click gives the column its usual width again. The divider sits inside its column, so the column measures it.
+ * The divider at the right of a column (issue 626). A drag or the arrow keys change the width of the column. A double
+ * click or Enter gives the column its usual width again. The divider sits inside its column, so it measures the column.
  */
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from "react";
 
 /** One press of an arrow key. */
 const keyStep = 16;
+/** A click that moves a few pixels is still a click, so it keeps the usual width. */
+const dragStart = 3;
+
+interface Drag {
+  readonly pointerId: number;
+  readonly x: number;
+  readonly width: number;
+  moved: boolean;
+}
 
 export function ColumnDivider({
   label,
-  width,
   minWidth,
   onWidth,
 }: {
   readonly label: string;
-  /** The width that the person chose, or null for the usual width. */
-  readonly width: number | null;
   readonly minWidth: number;
+  /** A width in pixels, or null for the usual width. */
   readonly onWidth: (width: number | null) => void;
 }): ReactElement {
   const divider = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ readonly x: number; readonly width: number } | null>(null);
-  /** The width on the screen, so a screen reader reads it also before the first drag. */
-  const [shown, setShown] = useState<number | null>(null);
-  const columnWidth = (): number => divider.current?.parentElement?.getBoundingClientRect().width ?? minWidth;
-  const resize = (next: number): void => onWidth(Math.max(minWidth, Math.round(next)));
-  useLayoutEffect(() => setShown(Math.round(columnWidth())), [width]);
+  const drag = useRef<Drag | null>(null);
+  /** The width on the screen and the room of the row, so a screen reader reads the width in pixels. */
+  const [shown, setShown] = useState<{ readonly now: number; readonly max: number } | null>(null);
+  const column = (): HTMLElement | null => divider.current?.parentElement ?? null;
+  const columnWidth = (): number => column()?.getBoundingClientRect().width ?? minWidth;
+  const clamp = (width: number): number => Math.max(minWidth, Math.round(width));
+
+  // The usual width follows the window, so the value is measured each time the column changes size.
+  useEffect(() => {
+    const element = column();
+    if (element === null) return;
+    const measure = (): void => {
+      const row = element.parentElement?.clientWidth ?? 0;
+      setShown({ now: Math.round(element.getBoundingClientRect().width), max: Math.max(row, minWidth) });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [minWidth]);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || drag.current !== null) return;
     event.preventDefault();
+    event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { x: event.clientX, width: columnWidth() };
+    drag.current = { pointerId: event.pointerId, x: event.clientX, width: columnWidth(), moved: false };
   };
+  // Each move sets the width on the column only: a render of the whole page at each move makes a drag stutter.
   const onPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
-    if (drag.current !== null) resize(drag.current.width + event.clientX - drag.current.x);
+    const current = drag.current;
+    const element = column();
+    if (current === null || element === null || event.pointerId !== current.pointerId) return;
+    if ((event.buttons & 1) === 0) {
+      end(event);
+      return;
+    }
+    const offset = event.clientX - current.x;
+    if (!current.moved && Math.abs(offset) < dragStart) return;
+    current.moved = true;
+    element.classList.add("resized");
+    element.style.setProperty("--files-width", `${String(clamp(current.width + offset))}px`);
   };
-  const onPointerEnd = (): void => {
+  const end = (event: PointerEvent<HTMLDivElement>): void => {
+    const current = drag.current;
+    if (current?.pointerId !== event.pointerId) return;
     drag.current = null;
+    if (current.moved) onWidth(clamp(columnWidth()));
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onWidth(null);
+      return;
+    }
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
-    resize(columnWidth() + (event.key === "ArrowRight" ? keyStep : -keyStep));
+    onWidth(clamp(columnWidth() + (event.key === "ArrowRight" ? keyStep : -keyStep)));
   };
 
   return (
@@ -53,13 +95,17 @@ export function ColumnDivider({
       aria-orientation="vertical"
       aria-label={label}
       aria-valuemin={minWidth}
-      aria-valuenow={shown ?? undefined}
+      aria-valuemax={shown?.max}
+      aria-valuenow={shown?.now}
+      aria-valuetext={shown === null ? undefined : `${String(shown.now)} pixels`}
       tabIndex={0}
-      data-tooltip="Drag to resize. Double click for the usual width."
+      data-tooltip="Drag or press the arrow keys to resize. Double click or press Enter for the usual width."
+      data-tooltip-side="right"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      onPointerCancel={onPointerEnd}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onLostPointerCapture={end}
       onKeyDown={onKeyDown}
       onDoubleClick={() => onWidth(null)}
     />

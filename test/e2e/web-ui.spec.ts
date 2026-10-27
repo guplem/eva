@@ -5693,55 +5693,77 @@ test("Files: an open file takes at least two fifths of the row", async ({ page }
   expect(fileWidth).toBeGreaterThanOrEqual((rowWidth * 2) / 5 - 24);
 });
 
-test("Files: a drag of a divider resizes only the column at its left (issue 626)", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
-  await logIn(page);
-  await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
-  const vault = page.locator(".files-pane").filter({ has: page.getByRole("list", { name: "Contents of Vault" }) });
-  const projects = page
-    .locator(".files-pane")
-    .filter({ has: page.getByRole("list", { name: "Contents of Projects" }) });
-  const divider = page.getByRole("separator", { name: "Resize the column Vault" });
-  await expect(divider).toBeVisible();
-  const width = async (column: Locator): Promise<number> => (await column.boundingBox())?.width ?? 0;
-  const vaultBefore = await width(vault);
-  const projectsBefore = await width(projects);
+/** Waits until the column is the given width, give or take the rounding of a pixel. */
+async function expectWidth(column: Locator, expected: number): Promise<void> {
+  await expect.poll(async () => Math.abs(((await column.boundingBox())?.width ?? 0) - expected)).toBeLessThanOrEqual(1);
+}
 
+/** Drags the divider sideways by the offset, in steps, as a hand does. */
+async function dragDivider(page: Page, divider: Locator, offset: number): Promise<void> {
   const box = await divider.boundingBox();
   if (box === null) throw new Error("The divider has no box.");
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.mouse.move(x + 60, y, { steps: 5 });
+  await page.mouse.move(x + offset, y, { steps: 5 });
   await page.mouse.up();
-  await expect.poll(() => width(vault)).toBeCloseTo(vaultBefore + 60, 0);
-  expect(await width(projects)).toBeCloseTo(projectsBefore, 0);
+}
+
+test("Files: a drag of a divider resizes only the column at its left (issue 626)", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
+  const column = (name: string): Locator =>
+    page.locator(".files-pane").filter({ has: page.getByRole("list", { name: `Contents of ${name}` }) });
+  const vault = column("Vault");
+  const others = [column("Projects"), column("2025-03-02-1015-example-app")];
+  const divider = page.getByRole("separator", { name: "Resize the column Vault" });
+  await expect(divider).toBeVisible();
+  const usual = (await vault.boundingBox())?.width ?? 0;
+  const otherWidths = await Promise.all(others.map(async (other) => (await other.boundingBox())?.width ?? 0));
+
+  await dragDivider(page, divider, 60);
+  await expectWidth(vault, usual + 60);
+  for (const [index, other] of others.entries()) await expectWidth(other, otherWidths[index] ?? 0);
 
   // A column never gets narrower than its minimum.
-  const moved = await divider.boundingBox();
-  if (moved === null) throw new Error("The divider has no box.");
-  await page.mouse.move(moved.x + moved.width / 2, y);
-  await page.mouse.down();
-  await page.mouse.move(moved.x - 2000, y, { steps: 5 });
-  await page.mouse.up();
-  await expect.poll(() => width(vault)).toBeCloseTo(180, 0);
+  await dragDivider(page, divider, -400);
+  await expectWidth(vault, 180);
 
-  // The arrow keys move a focused divider.
-  await divider.focus();
+  // A click is not a drag, so the arrow keys move the divider right after it.
+  await divider.click();
   await page.keyboard.press("ArrowRight");
-  await expect.poll(() => width(vault)).toBeCloseTo(196, 0);
+  await expectWidth(vault, 196);
 
-  // A double click gives the usual width again.
+  // Enter and a double click give the usual width again.
+  await page.keyboard.press("Enter");
+  await expectWidth(vault, usual);
+  await dragDivider(page, divider, 60);
+  await expectWidth(vault, usual + 60);
   await divider.dblclick();
-  await expect.poll(() => width(vault)).toBeCloseTo(vaultBefore, 0);
+  await expectWidth(vault, usual);
+
+  // A reload forgets the width.
+  await dragDivider(page, divider, 60);
+  await expectWidth(vault, usual + 60);
+  await page.reload();
+  await expect(divider).toBeVisible();
+  await expectWidth(vault, usual);
 });
 
-test("Files: the one folder view and a phone show no divider (issue 626)", async ({ page }, testInfo) => {
+test("Files: the one folder view, the large file and a phone show no divider (issue 626)", async ({
+  page,
+}, testInfo) => {
   await logIn(page);
   if (testInfo.project.name !== "phone") {
+    await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+    await expect(page.getByRole("separator", { name: "Resize the column Vault" })).toBeVisible();
+    await chooseFileAction(page, "Make the file large");
+    await expect(page.getByRole("separator")).toHaveCount(0);
     await openSettings(page, "Personalize");
     await page.getByRole("group", { name: "Files view" }).getByRole("button", { name: "One folder" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-files-view", "single");
   }
   await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
   await expect(page.getByRole("list", { name: "Contents of 2025-03-02-1015-example-app" })).toBeVisible();

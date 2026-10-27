@@ -98,10 +98,11 @@ describe("Icon", () => {
     expect(gear).toMatch(/<path d="M[^"]+z"/);
   });
 
-  test("send is a solid delta that points to the top right, as in a messaging app", () => {
+  test("send is a line arrow that points up, of the same family as the other line icons", () => {
     const send = render("send");
-    expect(send).toContain('fill="currentColor"');
-    expect(send).toContain('transform="rotate(45 12 12)"');
+    expect(send).toContain('<path d="M12 19V5.5M6 11l6-6 6 6"');
+    expect(send).not.toContain('fill="currentColor"');
+    expect(send).not.toContain("rotate(");
   });
 
   test("eve is EVE's black visor with two glowing eyes, so it reads as Eva at 14 px", () => {

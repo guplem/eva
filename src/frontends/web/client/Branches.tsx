@@ -3,6 +3,7 @@
  * branch map, and on a phone the header button that opens the map in a bottom sheet.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { createPortal } from "react-dom";
 import { api, type SessionRecord } from "./api.ts";
 import {
   branchMap,
@@ -209,37 +210,57 @@ export function useForkMenu(
   onOpen?: () => void,
 ): { readonly props: ContextMenuProps | Record<string, never>; readonly parts: ReactElement } {
   const [asking, setAsking] = useState<"rename" | "delete" | null>(null);
+  // A closed dialog gives the focus back to the row, so a keyboard or a screen reader keeps its place.
+  const opener = useRef<HTMLElement | null>(null);
+  const end = (): void => {
+    setAsking(null);
+    // A deleted fork has no row any more.
+    if (opener.current?.isConnected === true) opener.current.focus();
+  };
   const items: MenuItem[] = [
     ...(onOpen === undefined ? [] : [{ label: "Open", icon: "chat" as const, onChoose: onOpen }]),
     { label: "Rename", icon: "pen", onChoose: () => setAsking("rename") },
     { label: "Delete fork", icon: "trash", danger: true, onChoose: () => setAsking("delete") },
   ];
   const { props, menu } = useContextMenu(items, `Actions of ${forkName}`);
+  const menuProps: ContextMenuProps = {
+    ...props,
+    onContextMenu: (event) => {
+      opener.current = event.currentTarget;
+      props.onContextMenu(event);
+    },
+    onPointerDown: (event) => {
+      opener.current = event.currentTarget;
+      props.onPointerDown(event);
+    },
+  };
   // The fork_named and session_deleted events reload the list, on this page and on every other one.
-  const reloadByEvent = (): Promise<void> => {
-    setAsking(null);
+  const endAfterEvent = (): Promise<void> => {
+    end();
     return Promise.resolve();
   };
+  const dialog =
+    fork === undefined ? null : asking === "rename" ? (
+      <RenameDialog
+        heading={`Rename ${forkName}`}
+        label="Fork name"
+        original={forkName}
+        onSave={(name) => api.nameFork(fork.id, name)}
+        onEnd={end}
+        onChanged={endAfterEvent}
+      />
+    ) : asking === "delete" ? (
+      // The page then shows another branch.
+      <DeleteQuestion chat={fork} fork={forkName} onKeep={end} onChanged={endAfterEvent} />
+    ) : null;
   const parts = (
     <>
       {menu}
-      {asking === "rename" && fork !== undefined && (
-        <RenameDialog
-          heading={`Rename ${forkName}`}
-          label="Fork name"
-          original={forkName}
-          onSave={(name) => api.nameFork(fork.id, name)}
-          onEnd={() => setAsking(null)}
-          onChanged={reloadByEvent}
-        />
-      )}
-      {/* The page then shows another branch. */}
-      {asking === "delete" && fork !== undefined && (
-        <DeleteQuestion chat={fork} fork={forkName} onKeep={() => setAsking(null)} onChanged={reloadByEvent} />
-      )}
+      {/* On a phone, the open chat list is a layer of its own. The body puts the dialog above every other layer. */}
+      {dialog !== null && createPortal(dialog, document.body)}
     </>
   );
-  return { props: fork === undefined ? {} : props, parts };
+  return { props: fork === undefined ? {} : menuProps, parts };
 }
 
 /** One row of the map. The first row of a fork has the fork's menu. */

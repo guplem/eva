@@ -301,20 +301,25 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   }
   await expect(start).toContainText("Fork 1 · 2 of 2");
 
-  if (test.info().project.name !== "phone") {
-    // A right click on a fork in the chat list renames it. The switcher and the map show the name (issue 637).
-    const list = page.getByRole("navigation", { name: "Chats" });
-    await list.getByRole("button", { name: /2 branches/ }).click();
-    await list
-      .getByRole("list", { name: /^Branches of / })
-      .getByRole("button", { name: /^Fork 1/ })
-      .click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Rename" }).click();
-    const rename = page.getByRole("dialog", { name: "Rename Fork 1" });
-    await rename.getByLabel("Fork name").fill("Second try");
-    await rename.getByRole("button", { name: "Save" }).click();
-    await expect(start).toContainText("Second try · 2 of 2");
+  // A right click on a fork in the chat list renames it. The switcher shows the name (issue 637).
+  await openList(page);
+  const list = page.getByRole("navigation", { name: "Chats" });
+  // Other chats of the demo can have forks too, so the toggle and the list are the open chat's.
+  await list.locator('.chat-item[aria-current="true"] + .chat-forks-toggle').click();
+  const branches = list.locator('.chat-item[aria-current="true"] + .chat-forks-toggle + .chat-forks');
+  // The main line is the chat, whose own row has the menu.
+  await branches.getByRole("button", { name: /^Main line/ }).click({ button: "right" });
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await branches.getByRole("button", { name: /^Fork 1/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  const rename = page.getByRole("dialog", { name: "Rename Fork 1" });
+  await rename.getByLabel("Fork name").fill("Second try");
+  await rename.getByRole("button", { name: "Save" }).click();
+  await expect(rename).toBeHidden();
+  await expect(branches.getByRole("button", { name: /^Second try/ })).toBeFocused();
+  await expect(start).toContainText("Second try · 2 of 2");
 
+  if (test.info().project.name !== "phone") {
     // A right click on the head of a fork deletes it. The chat then has no fork, so the switcher goes.
     await page
       .getByRole("navigation", { name: "Branch map" })

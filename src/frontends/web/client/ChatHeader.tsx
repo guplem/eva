@@ -288,6 +288,11 @@ export function RenameDialog({
   /** True means that the title saved. */
   const save = async (): Promise<boolean> => {
     if (saving) return false;
+    // A fork shows "Fork N" until the person names it. A save of that same text must not fix the number.
+    if (draft === original) {
+      onEnd();
+      return true;
+    }
     setSaving(true);
     try {
       await onSave(draft);

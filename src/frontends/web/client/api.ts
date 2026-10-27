@@ -225,6 +225,8 @@ export const api = {
     request("DELETE", `/api/sessions/${encodeURIComponent(sessionId)}`),
   rename: (sessionId: string, title: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
+  nameFork: (sessionId: string, name: string): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork-name`, { name }),
   archive: (sessionId: string, archived: boolean): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/archive`, { archived }),
   markSeen: (sessionId: string, turnCount: number): Promise<SessionRecord> =>

@@ -99,6 +99,8 @@ export type EngineEventPayload =
    * `automatic`: a model named the chat, not the person (issue 50). An older event has no field.
    */
   | { readonly kind: "session_renamed"; readonly title: string; readonly automatic?: true }
+  /** The person gave a fork its own name (issue 637). Only the web app shows it. */
+  | { readonly kind: "fork_named"; readonly name: string }
   /** The person saw the first `seenTurns` turns of the chat in the web app (issue 381). */
   | { readonly kind: "session_seen"; readonly seenTurns: number }
   /** The person archived the chat, or brought it back to the chat list (issue 388). */

@@ -56,6 +56,7 @@ function session(turns: Turn[]): SessionRecord {
     pendingRestore: null,
     forkedFrom: null,
     reportsTo: null,
+    forkName: null,
     turns,
   };
 }

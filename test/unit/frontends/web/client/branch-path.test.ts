@@ -125,6 +125,16 @@ describe("branchNames", () => {
       ]),
     );
   });
+
+  test("a fork that the person named shows its name (issue 637)", () => {
+    expect(branchNames([main, { ...fork1, forkName: "Short answer" }, fork2])).toEqual(
+      new Map([
+        ["main", "Main line"],
+        ["fork1", "Short answer"],
+        ["fork2", "Fork 2"],
+      ]),
+    );
+  });
 });
 
 describe("firstShownBranch", () => {

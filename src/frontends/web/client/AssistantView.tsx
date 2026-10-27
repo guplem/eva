@@ -7,7 +7,7 @@ import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { seenPart } from "./branch-path.ts";
-import { BranchesButton, useBranchStates, useShownBranch } from "./Branches.tsx";
+import { BranchesButton, useBranchStates, useForkMenu, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf, type SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
@@ -270,7 +270,7 @@ export function AssistantView({
                   forks={chatForks(chatTree(chat, sessions)).map(({ session, name }) => {
                     const state = chatState([session], isRunning, approvalSessionIds);
                     return {
-                      id: session.id,
+                      session,
                       name,
                       preview: chatPreview(session, state),
                       state,
@@ -357,7 +357,7 @@ function timeOf(chat: SessionRecord): Date {
 
 /** One branch of a chat in the list. */
 interface ForkItem {
-  readonly id: string;
+  readonly session: SessionRecord;
   readonly name: string;
   readonly preview: string;
   readonly state: ChatState;
@@ -417,21 +417,31 @@ function ChatItem({
       {forksOpen && forks.length > 0 && (
         <ul className="chat-forks" aria-label={`Branches of “${chat.title}”`}>
           {forks.map((fork) => (
-            <li key={fork.id}>
-              <button
-                className={`list-item chat-item chat-fork${fork.state === "unread" ? " unread" : ""}`}
-                aria-current={fork.isShown}
-                onClick={() => onSelectFork(fork.id)}
-              >
-                <span className="chat-item-title">{fork.name}</span>
-                <span className="chat-item-preview">{fork.preview}</span>
-                <ChatStatePill state={fork.state} />
-              </button>
-            </li>
+            <ForkRow key={fork.session.id} fork={fork} onSelect={() => onSelectFork(fork.session.id)} />
           ))}
         </ul>
       )}
       {menu}
     </>
+  );
+}
+
+/** One branch under a chat in the list. A fork has a context menu. The main line is the chat, whose row has it. */
+function ForkRow({ fork, onSelect }: { readonly fork: ForkItem; readonly onSelect: () => void }): ReactElement {
+  const { props, parts } = useForkMenu(fork.session.parentId === null ? undefined : fork.session, fork.name, onSelect);
+  return (
+    <li>
+      <button
+        className={`list-item chat-item chat-fork${fork.state === "unread" ? " unread" : ""}`}
+        aria-current={fork.isShown}
+        onClick={onSelect}
+        {...props}
+      >
+        <span className="chat-item-title">{fork.name}</span>
+        <span className="chat-item-preview">{fork.preview}</span>
+        <ChatStatePill state={fork.state} />
+      </button>
+      {parts}
+    </li>
   );
 }

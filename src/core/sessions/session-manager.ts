@@ -331,6 +331,7 @@ export class SessionManager {
       pendingRestore: null,
       forkedFrom: null,
       reportsTo: input.reportsTo ?? null,
+      forkName: null,
     };
     this.options.store.save(record);
     return record;
@@ -397,6 +398,21 @@ export class SessionManager {
    */
   rename(sessionId: string, title: string): SessionRecord {
     return this.retitle(this.get(sessionId), title, false);
+  }
+
+  /**
+   * Gives a fork the person's name (issue 637). It is apart from the title, which the fork copies
+   * from its chat, so a rename of the chat leaves the fork name.
+   */
+  nameFork(sessionId: string, name: string): SessionRecord {
+    const session = this.get(sessionId);
+    if (session.parentId === null) throw new EvaError("title_invalid", "Only a fork takes a fork name.");
+    const cleaned = cutTitle(this.options.redactor.redact(name).replace(/\s+/g, " ").trim());
+    if (cleaned.length === 0) throw new EvaError("title_invalid", "A fork name needs at least one character.");
+    const updated = { ...session, forkName: cleaned };
+    this.options.store.save(updated);
+    this.emit(sessionId, { kind: "fork_named", name: cleaned });
+    return updated;
   }
 
   /**
@@ -1657,6 +1673,8 @@ function redactPayload(
       return { ...payload, description: redactor.redact(payload.description) };
     case "session_renamed":
       return { ...payload, title: redactor.redact(payload.title) };
+    case "fork_named":
+      return { ...payload, name: redactor.redact(payload.name) };
     case "tool_finished": {
       const { output } = payload;
       return output === undefined

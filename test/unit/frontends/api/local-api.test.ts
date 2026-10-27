@@ -922,6 +922,21 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("names a fork, and refuses an empty name or an unknown chat (issue 637)", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "one");
+    const fork = eva.sessions.fork(session.id, eva.sessions.get(session.id).turns[0]?.lastMessageId ?? "");
+    const named = await call(`/api/sessions/${fork.id}/fork-name`, { method: "POST", body: { name: "Short answer" } });
+    expect(named.status).toBe(200);
+    expect((await json<{ forkName: string }>(named)).forkName).toBe("Short answer");
+    const empty = await call(`/api/sessions/${fork.id}/fork-name`, { method: "POST", body: { name: "  " } });
+    expect(empty.status).toBe(400);
+    const missing = await call("/api/sessions/missing/fork-name", { method: "POST", body: { name: "Short" } });
+    expect(missing.status).toBe(404);
+  });
+
   test("marks the turns of a chat as seen, and refuses a bad count or an unknown chat (issue 381)", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),

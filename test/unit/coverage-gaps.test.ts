@@ -91,6 +91,7 @@ describe("describeEvent", () => {
       { ...base, kind: "project_work_started", projectId: "p", projectSessionId: "q", request: "r" },
       { ...base, kind: "session_seen", seenTurns: 1 },
       { ...base, kind: "session_archived", archived: true },
+      { ...base, kind: "fork_named", name: "Short answer" },
     ];
     expect(events.map(describeEvent)).toEqual([
       "Hi\n",
@@ -107,6 +108,7 @@ describe("describeEvent", () => {
       null,
       null,
       "  (This chat was deleted elsewhere.)\n",
+      null,
       null,
       null,
       null,

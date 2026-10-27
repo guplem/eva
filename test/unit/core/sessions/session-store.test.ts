@@ -47,6 +47,7 @@ function session(id: string): SessionRecord {
     pendingRestore: null,
     forkedFrom: null,
     reportsTo: null,
+    forkName: null,
   };
 }
 
@@ -150,6 +151,14 @@ describe("SessionStore", () => {
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), reportsTo: 7 }] }));
     expect(openStore().get("one")?.reportsTo).toBeNull();
     expect(openStore().get("two")?.reportsTo).toBeNull();
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a session from before fork names, or with a bad one, has no fork name (issue 637)", () => {
+    const { forkName: _left, ...old } = session("one");
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), forkName: 7 }] }));
+    expect(openStore().get("one")?.forkName).toBeNull();
+    expect(openStore().get("two")?.forkName).toBeNull();
     expect(corruptCopies()).toEqual([]);
   });
 

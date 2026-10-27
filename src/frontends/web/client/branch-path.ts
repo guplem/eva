@@ -14,6 +14,8 @@ export interface BranchSession {
   readonly turns: readonly (TurnWords & { readonly lastMessageId: string | null })[];
   readonly createdAt: string;
   readonly lastTurnAt: string | null;
+  /** The name that the person gave a fork, or null. */
+  readonly forkName?: string | null;
 }
 
 /** One turn of a path, with the session that owns it, so Retry and Fork act on that session. */
@@ -115,7 +117,12 @@ function byAge<S extends BranchSession>(sessions: readonly S[]): S[] {
 
 /** "Main line" for the chat, then "Fork 1", "Fork 2" in the order of the tree. */
 export function branchNames(tree: readonly BranchSession[]): Map<string, string> {
-  return new Map(tree.map((session, index) => [session.id, index === 0 ? "Main line" : `Fork ${String(index)}`]));
+  return new Map(
+    tree.map((session, index) => [
+      session.id,
+      index === 0 ? "Main line" : (session.forkName ?? `Fork ${String(index)}`),
+    ]),
+  );
 }
 
 /** The branch that a chat shows when it opens: the one with the newest activity. */

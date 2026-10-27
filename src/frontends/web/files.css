@@ -4,13 +4,32 @@
  */
 
 .files-page {
+  --files-gap: var(--space-3);
+  --files-gutter: var(--space-6);
   flex: 1;
   min-height: 0;
   overflow-wrap: anywhere;
-  padding: var(--space-5) var(--space-6) var(--space-6);
+  padding: var(--space-5) var(--files-gutter) var(--files-gutter);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--files-gap);
+}
+
+/*
+ * A box that scrolls cuts the shadows of its cards at its padding (issue 625). So each such box
+ * takes the gap above it and the margin of the page at its sides as padding, and keeps the room
+ * of --shadow below its cards. The negative margin keeps the cards where they were.
+ */
+.files-favorites ul,
+.files-columns,
+.files-search-results {
+  padding: var(--files-gap) var(--files-gutter) var(--shadow-room);
+  margin: calc(-1 * var(--files-gap)) calc(-1 * var(--files-gutter)) calc(-1 * var(--files-gutter));
+}
+
+/* The columns come next, and they hide the rest of the room under the favorites. */
+.files-favorites ul {
+  margin-bottom: calc(-1 * var(--shadow-room));
 }
 
 .files-header {
@@ -84,8 +103,6 @@
 /* One row of chips that scrolls sideways, so the favorites never push the folders off a phone screen. */
 .files-favorites ul {
   list-style: none;
-  margin: 0;
-  padding: var(--space-1);
   display: flex;
   gap: var(--space-2);
   overflow-x: auto;
@@ -140,9 +157,9 @@ a.files-favorite[aria-current="page"] {
 
 /*
  * Each column scrolls on its own, and the row of columns scrolls sideways, as in a Finder.
- * The padding keeps room for the shadow of the cards. A column takes at least a quarter of the
- * row, so four columns fit a wide screen and a deeper path scrolls. A file is what the person
- * came to read, so it takes at least two fifths, and the row scrolls to it.
+ * A column takes at least a quarter of the row, so four columns fit a wide screen and a deeper
+ * path scrolls. A file is what the person came to read, so it takes at least two fifths, and
+ * the row scrolls to it.
  */
 .files-columns {
   flex: 1;
@@ -152,7 +169,6 @@ a.files-favorite[aria-current="page"] {
   --files-quarter: calc((100% - 3 * var(--space-3)) / 4);
   --files-two-fifths: calc((100% - 3 * var(--space-3)) * 2 / 5);
   overflow-x: auto;
-  padding: var(--space-1) var(--space-1) var(--space-5);
 }
 
 .files-pane {
@@ -485,7 +501,8 @@ a.files-entry[aria-current="true"] {
 
 @media (max-width: 760px) {
   .files-page {
-    padding: var(--space-3) var(--space-3) var(--space-4);
+    --files-gutter: var(--space-3);
+    padding: var(--space-3) var(--files-gutter) var(--space-4);
   }
 
   /* A phone has no room for columns: it shows the last one, and the page scrolls. */
@@ -498,6 +515,7 @@ a.files-entry[aria-current="true"] {
     display: block;
     overflow: visible;
     padding: 0;
+    margin: 0;
   }
 
   .files-pane,

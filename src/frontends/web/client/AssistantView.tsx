@@ -228,7 +228,9 @@ export function AssistantView({
             {showArchived ? (
               <>
                 <BackButton label="Back to the chats" onClick={() => showList(false)} />
-                <h2>Archived</h2>
+                <h2>
+                  <Icon name="archive" /> Archived
+                </h2>
               </>
             ) : (
               <>

@@ -3435,6 +3435,7 @@ test("a pasted image and a dropped file attach like a picked file", async ({ pag
   const message = page.locator(".message.user").last();
   await expect(message).toContainText(/saved as Scratch\/received\/image-[0-9a-f]{12}\.png/);
   await expect(message).toContainText(/saved as Scratch\/received\/notes-[0-9a-f]{12}\.txt/);
+  await waitUntilNewestChatSeen(page);
 });
 
 test("a refused file leaves the box and says why (issue 409)", async ({ page }) => {

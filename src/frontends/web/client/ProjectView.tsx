@@ -548,7 +548,7 @@ export function ProjectView({
             )}
           </div>
         )}
-        {projects === null && <ListSkeleton label="Loading the projects…" rows={4} />}
+        {projects === null && <ListSkeleton label="Loading the projects…" rows={3} shape="projects" />}
         {projects === "failed" && (
           <div className="muted" role="status">
             Eva could not read the projects.{" "}

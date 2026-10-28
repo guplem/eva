@@ -45,6 +45,7 @@ import {
   destinationOf,
   linkedChatIdOf,
   notificationCenter,
+  projectRouteOf,
   type Destination,
 } from "./navigation.ts";
 import { NotificationCenter } from "./NotificationCenter.tsx";
@@ -64,6 +65,7 @@ import { SettingsView } from "./SettingsView.tsx";
 import { TooltipLayer } from "./Tooltip.tsx";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog.tsx";
 import { AppSkeleton } from "./Loading.tsx";
+import { chatPanelKeptShown } from "./ChatPanel.tsx";
 import { SpecialDayProvider } from "./FestiveDay.tsx";
 import { useLocationSharing } from "./LocationCard.tsx";
 import { goTo, layersOfEntry, replaceAddress } from "./back-layers.ts";
@@ -509,12 +511,16 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   }, [allowedDevice]);
 
   if (refusal !== null) return <AccountRefusedView reason={refusal} />;
-  if (authenticated === null)
+  if (authenticated === null) {
+    const projectPage = projectRouteOf(window.location.hash).kind;
     return (
       <AppSkeleton
-        page={screen === "chats" ? "chat" : screen === "projects" ? "list" : screen === "files" ? "files" : "cards"}
+        page={screen}
+        chatPanel={chatPanelKeptShown()}
+        project={projectPage === "list" ? "list" : projectPage === "chat" ? "chat" : "page"}
       />
     );
+  }
   if (!authenticated) return <LoginView notice={loginNotice} onLoggedIn={() => void refreshSessions()} />;
 
   const answerApproval = async (

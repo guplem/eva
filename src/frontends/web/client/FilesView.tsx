@@ -430,7 +430,7 @@ function Column({
   if (answer === undefined)
     return (
       <div className={place} style={sized}>
-        <ListSkeleton label="Loading the folder…" rows={8} />
+        <ListSkeleton label="Loading the folder…" rows={5} shape="files" />
       </div>
     );
   if (answer.state === "failed")

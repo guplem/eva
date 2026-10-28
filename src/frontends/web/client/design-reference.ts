@@ -228,8 +228,8 @@ export const componentSamples: readonly ComponentSample[] = [
   {
     id: "skeletons",
     title: "Skeletons",
-    classes: ["skeleton", "skeleton-line", "skeleton-block"],
-    part: "FactsSkeleton, ListSkeleton, ConversationSkeleton, CardsSkeleton",
+    classes: ["skeleton", "skeleton-line", "skeleton-text", "skeleton-ghost"],
+    part: "FactsSkeleton, ListSkeleton, CardsSkeleton, SettingsSkeleton, AppSkeleton",
     use: "A wait for content that fills a large area, such as a chat or a list. The grey shapes copy the content to come.",
   },
   {

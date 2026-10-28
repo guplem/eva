@@ -1452,7 +1452,8 @@ ${prompt}`,
 
   /**
    * Lets the mode delete the snapshots of a chat's own turns. A branch's pending restore names a turn
-   * of another chat, which may stay, so it is not among them. `keep` holds the snapshots that another branch still uses.
+   * of another chat, which may stay, so it is not among them. `keep` names the snapshots that another
+   * branch still uses.
    */
   private forgetSnapshots(session: SessionRecord, keep: ReadonlySet<string> = new Set()): void {
     const preparer = this.options.preparers[session.mode];
@@ -1728,7 +1729,10 @@ function pointAt(session: SessionRecord, messageId: string): HistoryPoint {
   };
 }
 
-/** The index of the branch's turn with the message. A message that the branch no longer has: the fork continues the whole branch, as the web app shows it. */
+/**
+ * The index of the branch's turn with the message. Only a damaged file has a fork at a message that
+ * the branch does not hold. The web app then shows the fork after the whole branch, so the fork takes it all.
+ */
 function sharedEnd(branch: SessionRecord, messageId: string): number {
   const index = branch.turns.findIndex((turn) => turn.lastMessageId === messageId);
   return index === -1 ? branch.turns.length - 1 : index;

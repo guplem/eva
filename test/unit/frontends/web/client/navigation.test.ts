@@ -8,6 +8,7 @@ import {
   destinationOf,
   linkedChatIdOf,
   navBadges,
+  newChatPageId,
   projectAddressOf,
   projectRouteOf,
   type ProjectRoute,
@@ -86,6 +87,12 @@ describe("assistantChatIdOf and assistantChatAddressOf", () => {
     expect(assistantChatAddressOf(null)).toBe("#/chats");
     expect(assistantChatIdOf("#/chats")).toBeNull();
     expect(assistantChatIdOf("#/chat/abc")).toBeNull();
+  });
+
+  test("the New chat page has an address of Chats, so Back and a reload keep it", () => {
+    expect(assistantChatAddressOf(newChatPageId)).toBe("#/chats/new");
+    expect(assistantChatIdOf("#/chats/new")).toBe(newChatPageId);
+    expect(destinationOf("#/chats/new")).toBe("chats");
   });
 
   test("a chat address opens Chats", () => {

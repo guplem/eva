@@ -80,6 +80,9 @@ export function chatsTapAgain(isPhone: boolean): "show-list" | "new-chat" {
   return isPhone ? "show-list" : "new-chat";
 }
 
+/** The New chat page of Chats, as `#/chats/new`. A chat id is a UUID, so it is never "new". */
+export const newChatPageId = "new";
+
 /** The open chat of Chats, as `#/chats/<id>`. Null for `#/chats`: the newest chat opens. */
 export function assistantChatIdOf(hash: string): string | null {
   const match = /^#\/chats\/([^/]+)$/.exec(hash);

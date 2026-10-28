@@ -273,7 +273,7 @@ export function ChatPanel({ shown, ...props }: ChatProps & { readonly shown: boo
 /** A phone hides the inspector, so the chat header opens the same details in a bottom sheet. */
 export function ChatInfoSheet({ onClose, ...props }: ChatProps & { readonly onClose: () => void }): ReactElement {
   return (
-    <Dialog label="This chat" onClose={onClose} sheet>
+    <Dialog label="This chat" onClose={onClose} scrimCloses>
       <div className="chat-panel in-sheet">
         <h2>This chat</h2>
         <ChatDetails {...props} />

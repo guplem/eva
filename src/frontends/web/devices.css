@@ -239,29 +239,10 @@ button.device-log-out {
 }
 
 @media (max-width: 760px) {
-  .device-backdrop {
-    align-items: flex-end;
-    padding: 0;
-  }
-
   .device-sheet {
-    max-width: none;
-    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-    padding: 10px 20px max(24px, env(safe-area-inset-bottom));
-    box-shadow: var(--sheet-shadow);
     align-items: center;
     text-align: center;
     gap: 12px;
-  }
-
-  /* The handle of a bottom sheet. */
-  .device-sheet::before {
-    content: "";
-    flex: none;
-    width: 40px;
-    height: 5px;
-    border-radius: 9px;
-    background: var(--line);
   }
 
   .device-sheet h2 {

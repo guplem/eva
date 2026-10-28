@@ -260,47 +260,6 @@
   height: 16px;
 }
 
-/* The bottom sheet: the same details, on the panel colour, from the bottom of a phone screen. */
-.sheet-backdrop {
-  align-items: flex-end;
-  padding: 0;
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-}
-
-.dialog.sheet {
-  max-width: none;
-  max-height: calc(100dvh - 48px);
-  overflow-y: auto;
-  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  padding: 10px 20px max(20px, env(safe-area-inset-bottom));
-  box-shadow: var(--sheet-shadow);
-  animation: sheet-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-@keyframes sheet-in {
-  from {
-    transform: translateY(100%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dialog.sheet {
-    animation: none;
-  }
-}
-
-/* The grab handle says that the sheet came up from the bottom. */
-.dialog.sheet::before {
-  content: "";
-  width: 40px;
-  height: 5px;
-  flex: none;
-  border-radius: 9px;
-  background: var(--line);
-  align-self: center;
-}
-
 .chat-panel.in-sheet {
   --ring-hole: var(--panel);
   width: auto;
@@ -325,17 +284,12 @@
   font-size: 17px;
 }
 
-/* On a phone, the buttons of a sheet stack at full width. */
-.dialog.sheet .fork-chat,
-.dialog.sheet .message-actions button {
-  width: 100%;
-}
-
-.dialog.sheet .message-actions {
-  margin-top: 0;
-}
-
 @media (max-width: 760px) {
+  /* In a sheet, the fork button is as wide as the Close button below it. */
+  .phone-sheet .fork-chat {
+    width: 100%;
+  }
+
   .layout > .chat-panel-frame {
     display: none;
   }

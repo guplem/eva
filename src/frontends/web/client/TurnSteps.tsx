@@ -175,7 +175,7 @@ function StepDialog({
   const tool = origin?.tool ?? null;
   const description = fields?.description ?? null;
   return (
-    <Dialog label={`Step: ${action}`} onClose={onClose} sheet>
+    <Dialog label={`Step: ${action}`} onClose={onClose} scrimCloses>
       <div className="step-dialog-title">
         <span className={`pill step-pill${step.isError ? " failed" : ""}`}>{action}</span>
         <span

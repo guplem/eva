@@ -9,6 +9,7 @@ import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { countOf } from "./project-format.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { useBackLayer } from "./back-layer-hook.ts";
+import { dialogBackdropClass } from "./Dialog.tsx";
 
 interface PushCloneDialogProps {
   readonly cloneName: string;
@@ -52,7 +53,7 @@ export function PushCloneDialog({ cloneName, repository, onClose, onPush }: Push
 
   return (
     // A tap beside the sheet does not close it, so a slip never loses a half-written note.
-    <div className="dialog-backdrop schedule-backdrop">
+    <div className={dialogBackdropClass("schedule-backdrop")}>
       <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={`Push ${name}`}>
         <h2>Push {name}</h2>
         <p className="muted">

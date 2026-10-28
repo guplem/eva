@@ -175,29 +175,6 @@ label.version-row {
 }
 
 @media (max-width: 760px) {
-  .update-backdrop {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  .dialog.update-version {
-    max-width: none;
-    max-height: calc(100dvh - 24px);
-    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-    padding: var(--space-3) var(--space-5) max(var(--space-6), env(safe-area-inset-bottom));
-  }
-
-  /* The grab handle says that the sheet came up from the bottom. */
-  .dialog.update-version::before {
-    content: "";
-    flex: none;
-    width: 40px;
-    height: 5px;
-    border-radius: 9px;
-    background: var(--line);
-    align-self: center;
-  }
-
   .update-version-title h2 {
     font-size: var(--text-lg);
   }

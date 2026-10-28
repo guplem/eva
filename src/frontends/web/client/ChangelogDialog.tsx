@@ -11,6 +11,7 @@ import { VersionRowText } from "./UpdateVersionDialog.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
+import { dialogBackdropClass } from "./Dialog.tsx";
 
 export function ChangelogDialog({ onClose }: { readonly onClose: () => void }): ReactElement {
   const [entries, setEntries] = useState<readonly ChangelogEntry[] | "loading" | { failed: string }>("loading");
@@ -43,7 +44,7 @@ export function ChangelogDialog({ onClose }: { readonly onClose: () => void }): 
   const now = new Date();
   return (
     <div
-      className="dialog-backdrop update-backdrop"
+      className={dialogBackdropClass("update-backdrop")}
       // A click inside the dialog also reaches the scrim, so only a click on the scrim itself closes it.
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >

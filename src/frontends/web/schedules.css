@@ -478,30 +478,6 @@
     padding: 14px;
   }
 
-  .schedule-backdrop {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  .schedule-sheet {
-    max-width: none;
-    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-    padding: 10px 20px max(24px, env(safe-area-inset-bottom));
-    max-height: calc(100dvh - 24px);
-    box-shadow: 0 -10px 40px oklch(0.1 0.03 var(--h) / 0.25);
-  }
-
-  /* The handle of a bottom sheet. */
-  .schedule-sheet::before {
-    content: "";
-    flex: none;
-    width: 40px;
-    height: 5px;
-    border-radius: 9px;
-    background: var(--line);
-    align-self: center;
-  }
-
   .schedule-sheet h2 {
     font-size: 18px;
   }

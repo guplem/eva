@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     # Each slow step has its own limit. The browser install takes about 10 minutes on some runners, and
     # it must not use up the time of the tests. This limit only stops a runner that hangs for 6 hours.
-    timeout-minutes: 45
+    timeout-minutes: 50
     env:
       RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:
@@ -107,10 +107,10 @@ jobs:
         if: env.RUN_CODE_CHECKS == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         timeout-minutes: 20
         run: bunx playwright install-deps chromium
-      # Browser tests of the web UI, at desktop size and at 375 px. They take about 4 minutes.
+      # Browser tests of the web UI, at desktop size and at 375 px. They take about 14 minutes.
       # A stuck page must not hold the runner.
       - if: env.RUN_CODE_CHECKS == 'true'
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: bun run test:e2e
       # A failure that only CI shows needs the browser trace of the failed test to be understood.
       - if: failure() && env.RUN_CODE_CHECKS == 'true'

@@ -86,23 +86,17 @@ async function openProjects(page: Page): Promise<void> {
   await page.getByRole("navigation", { name: "Projects" }).waitFor();
 }
 
-/** A phone hides the chat list behind a button. */
-async function openList(page: Page): Promise<void> {
-  const menu = page.getByRole("button", { name: "Show the list" });
-  if (await menu.isVisible()) await menu.click();
-}
-
-/** Starts a new Assistant chat, and gives its id once the page shows it. */
+/**
+ * Makes an empty Assistant chat, opens it, and gives its id once the page shows it. The New chat
+ * button makes no chat until the first message, so the request goes to the API.
+ */
 async function newChat(page: Page): Promise<string> {
-  await page.evaluate(() => {
-    window.location.hash = "#/chats";
-  });
-  await openList(page);
-  const created = page.waitForResponse(
-    (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
-  );
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  const id = ((await (await created).json()) as { id: string }).id;
+  const created = await page.request.post(`${demoUrl}api/sessions`, { data: { mode: "assistant" } });
+  const { id } = (await created.json()) as { id: string };
+  await page.evaluate((chatId) => {
+    window.location.hash = `#/chat/${chatId}`;
+  }, id);
+  await page.waitForURL(new RegExp(`#/chats/${id}$`));
   await page.getByRole("heading", { level: 1, name: "New chat" }).waitFor();
   return id;
 }

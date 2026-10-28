@@ -25,6 +25,8 @@ interface NewChatDraftProps {
   readonly blocker: ChatBlocker | null;
   readonly voiceNotes: boolean;
   readonly onShowList: () => void;
+  /** True when a chat in the list has an answer that the person has not read. */
+  readonly listHasUnread: boolean;
   /** Gets the first message before it goes, or null when it failed to go. */
   readonly onSending: (message: SentMessage | null) => void;
   /** Opens the chat that the first message made. */
@@ -35,6 +37,7 @@ export function NewChatDraft({
   blocker,
   voiceNotes,
   onShowList,
+  listHasUnread,
   onSending,
   onStarted,
 }: NewChatDraftProps): ReactElement {
@@ -126,7 +129,7 @@ export function NewChatDraft({
   return (
     <>
       <div className="main-header chat-header">
-        <ShowListButton onClick={onShowList} />
+        <ShowListButton onClick={onShowList} unread={listHasUnread} />
         <div className="header-text">
           <h1>New chat</h1>
           {draft !== null && <div className="sub">{chatSubtitle(draft, false)}</div>}

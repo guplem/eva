@@ -36,7 +36,7 @@ import { Toast } from "./Toast.tsx";
 import { TrustSection } from "./TrustSection.tsx";
 import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
-import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
+import { ProgressBar, SettingsSkeleton } from "./Loading.tsx";
 import { noteActionLabels, noteParts, restartNote, type Note } from "./notes.ts";
 import { goTo, goUp } from "./back-layers.ts";
 
@@ -130,11 +130,7 @@ export function SettingsView({
 
   if (settings === null)
     return loadError === null ? (
-      <div className="main settings-main">
-        <div className="page-skeleton">
-          <CardsSkeleton label="Loading the settings…" />
-        </div>
-      </div>
+      <SettingsSkeleton label="Loading the settings…" />
     ) : (
       <div className="empty" role="status">
         The settings did not load: {loadError} <button onClick={loadSettings}>Try again</button>

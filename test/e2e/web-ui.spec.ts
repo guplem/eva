@@ -1484,7 +1484,7 @@ test("the project list shows its shape while it reads, not that no project match
   await openProjects(page);
   const list = page.getByRole("navigation", { name: "Projects" });
   await expect(list.getByText("Loading the projects…")).toBeAttached();
-  await expect(list.locator(".skeleton-item").first()).toBeVisible();
+  await expect(list.locator(".skeleton .project-card").first()).toBeVisible();
   await expect(list.getByText("No project matches.")).toHaveCount(0);
   answer();
   await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();

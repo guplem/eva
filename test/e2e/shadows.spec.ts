@@ -103,7 +103,7 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
     ["#/chats", [page.locator(".composer-box")]],
     ["#/files/Notes", [page.getByRole("list", { name: "Contents of Notes" })]],
     [`#/files/${file}`, [page.getByRole("region", { name: "File text" })]],
-    ["#/projects", [page.locator(".project-card").first()]],
+    ["#/projects", [page.locator("button.project-card").first()]],
     ["#/schedules", [page.locator(".schedule-panel").first()]],
     ["#/settings", [page.locator(".section-card").first()]],
   ];

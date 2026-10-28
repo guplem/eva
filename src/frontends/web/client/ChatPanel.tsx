@@ -214,18 +214,21 @@ const panelStorageKey = "eva.chat-panel";
 /** The header's hide and show button controls the column with this id. */
 export const chatPanelId = "chat-panel";
 
+/** The choice of this browser, so the first load of a chat shows the column too. */
+export function chatPanelKeptShown(): boolean {
+  try {
+    return localStorage.getItem(panelStorageKey) !== "hidden";
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Whether a computer shows the inspector column. A person can hide it for a wider chat.
  * Each browser keeps its own choice, as with the appearance. Blocked storage gives the default: shown.
  */
 export function useChatPanelShown(): readonly [boolean, () => void] {
-  const [shown, setShown] = useState(() => {
-    try {
-      return localStorage.getItem(panelStorageKey) !== "hidden";
-    } catch {
-      return true;
-    }
-  });
+  const [shown, setShown] = useState(chatPanelKeptShown);
   const toggle = useCallback(() => {
     setShown((current) => {
       try {

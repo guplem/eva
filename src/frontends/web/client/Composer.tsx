@@ -1,5 +1,5 @@
 /**
- * The message box of a chat: the text, the engine and model chip, the mode chip, and the round
+ * The message box of a chat: the text, the engine and model chip, and the round
  * Send button. While a turn runs and the box is empty, Send becomes Stop at the same place.
  * Eva queues a message sent during a turn, so typed text brings Send back.
  * The microphone records a voice note. Eva turns it into text on her machine and sends the text.
@@ -297,7 +297,6 @@ export function Composer({
             </button>
           )}
           <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
-          <span className="chip soft">{session.mode === "project" ? "Project" : "Assistant"}</span>
           <span className="grow" />
           {showMic && (
             <button

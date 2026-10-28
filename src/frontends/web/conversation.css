@@ -738,11 +738,6 @@ button.ghost .icon {
   height: 14px;
 }
 
-.composer .chip.soft {
-  background: var(--soft);
-  color: var(--soft-ink);
-}
-
 .chip-menu .chip.on,
 .center-filters .chip.on {
   background: var(--accent);

@@ -5,10 +5,10 @@ import {
   AppSkeleton,
   ButtonSpinner,
   CardsSkeleton,
-  ConversationSkeleton,
   FactsSkeleton,
   ListSkeleton,
   ProgressBar,
+  SettingsSkeleton,
 } from "../../../../../src/frontends/web/client/Loading.tsx";
 
 function spinner(share?: number | null): string {
@@ -54,7 +54,7 @@ describe("skeletons", () => {
     const samples = [
       createElement(FactsSkeleton, { label: "Reading", rows: 3 }),
       createElement(ListSkeleton, {}),
-      createElement(ConversationSkeleton, {}),
+      createElement(SettingsSkeleton, {}),
       createElement(CardsSkeleton, {}),
     ];
     const markups = samples.map((sample) => renderToStaticMarkup(sample));
@@ -62,12 +62,53 @@ describe("skeletons", () => {
     expect(markups.map((markup) => markup.includes('role="status"'))).toEqual([true, false, false, false]);
   });
 
-  test("the first load copies the page that opens", () => {
-    for (const page of ["chat", "list", "files", "cards"] as const) {
-      const markup = renderToStaticMarkup(createElement(AppSkeleton, { page }));
-      expect(markup).toContain("Loading Eva…");
+  test("each list shape uses the classes of its real list", () => {
+    const shapes = {
+      chats: "chat-item",
+      projects: "project-card",
+      files: "files-list",
+      plain: "skeleton-item",
+    } as const;
+    for (const [shape, part] of Object.entries(shapes)) {
+      expect(renderToStaticMarkup(createElement(ListSkeleton, { shape: shape as keyof typeof shapes }))).toContain(
+        part,
+      );
     }
-    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "chat" }))).toContain("conversation-skeleton");
-    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "files" }))).toContain("list-skeleton");
+  });
+
+  test("the first load copies the page that opens", () => {
+    const pages = {
+      chats: "composer-box",
+      projects: "list-title-row",
+      files: "files-search",
+      schedules: "schedules-header",
+      settings: "settings-nav",
+      notifications: "cards-skeleton",
+    } as const;
+    for (const [page, part] of Object.entries(pages)) {
+      const markup = renderToStaticMarkup(createElement(AppSkeleton, { page: page as keyof typeof pages }));
+      expect(markup).toContain("Loading Eva…");
+      expect(markup).toContain(part);
+    }
+  });
+
+  test("Eva's visor is in the row of her answer, so the chat CSS puts it at the bottom", () => {
+    const markup = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats" }));
+    expect(markup).toMatch(
+      /<div class="msg"><span class="mk s skeleton-visor"[^>]*><\/span><div class="message answer"/,
+    );
+  });
+
+  test("the chat details show only when the person keeps them shown", () => {
+    const shown = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats", chatPanel: true }));
+    const hidden = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats" }));
+    expect(shown).toContain("chat-panel-frame");
+    expect(hidden).not.toContain("chat-panel-frame");
+  });
+
+  test("a skeleton takes no focus", () => {
+    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "settings" }))).toContain(
+      'aria-hidden="true" inert=""',
+    );
   });
 });

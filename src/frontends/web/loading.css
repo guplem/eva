@@ -126,21 +126,29 @@ button[aria-busy="true"]:disabled {
   opacity: 1;
 }
 
-/* Skeletons */
+/*
+ * Skeletons. A skeleton uses the elements and classes of its page, so most of its layout comes
+ * from the page CSS. The rules here only make the content grey, and size the parts that stand
+ * for data, such as a line of text.
+ */
 .skeleton-shapes {
   display: contents;
 }
 
 .skeleton-line,
 .skeleton-block,
-.skeleton-visor,
-.skeleton-nav-button {
-  display: block;
-  height: 10px;
-  border-radius: var(--radius-pill);
+.skeleton .skeleton-visor,
+.skeleton .skeleton-ghost,
+.skeleton .skeleton-ghost:disabled {
   /* --line shows on the page, on a card and in dark mode. The light passes in --chip. */
   background: linear-gradient(90deg, var(--line) 30%, var(--chip) 50%, var(--line) 70%) 0 0 / 300% 100%;
   animation: skeleton-shimmer 1.6s linear infinite;
+}
+
+.skeleton-line {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-pill);
 }
 
 .skeleton-line.title {
@@ -155,6 +163,48 @@ button[aria-busy="true"]:disabled {
   to {
     background-position: 0 0;
   }
+}
+
+/* A line of text: as high as a text line in the font around it, with a grey bar in the middle. */
+.skeleton-text {
+  display: flex;
+  align-items: center;
+  height: 1lh;
+}
+
+.skeleton-text .skeleton-line {
+  height: max(6px, 0.6em);
+}
+
+/* A grey control or word keeps its size, and hides its content. A disabled control keeps its full colour. */
+.skeleton .skeleton-ghost {
+  color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  opacity: 1;
+}
+
+/* A grey word is a pill. A grey control keeps the corners of the real one. */
+.skeleton span.skeleton-ghost {
+  border-radius: var(--radius-pill);
+}
+
+.skeleton .skeleton-ghost * {
+  visibility: hidden;
+}
+
+.skeleton .skeleton-ghost::placeholder {
+  color: transparent;
+}
+
+.skeleton button:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+
+.skeleton .skeleton-ghost.icon {
+  display: inline-block;
+  border-radius: 5px;
 }
 
 /* The facts list of a card, such as the Versions card. The grid, gaps and text size copy `.facts`. */
@@ -174,8 +224,8 @@ button[aria-busy="true"]:disabled {
   min-height: 1lh;
 }
 
-/* The side list, as the chat items */
-.list-skeleton .skeleton-shapes {
+/* A plain list, such as the releases */
+.list-skeleton.plain .skeleton-shapes {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -197,64 +247,50 @@ button[aria-busy="true"]:disabled {
   height: 8px;
 }
 
-/* A chat, with the bubbles of the conversation */
-.conversation-skeleton {
-  flex: 1;
-  padding: 20px 28px;
-  background: var(--main-gradient);
-}
-
-.conversation-skeleton .skeleton-shapes {
+/* The project cards and the folder card sit in a column, as the real ones do. */
+.list-skeleton.projects .skeleton-shapes {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 760px;
-  margin: 0 auto;
+  gap: 8px;
 }
 
-.skeleton-turn {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+/* A chat. An answer is as wide as a short answer. */
+.skeleton .message.answer {
+  width: min(100%, 400px);
 }
 
-.skeleton-bubble {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: 15px 16px;
-}
-
-.skeleton-bubble.user {
-  align-self: flex-end;
-  background: var(--soft);
-  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail) var(--radius-bubble);
-}
-
-.skeleton-bubble.user .skeleton-line {
+/* The bubble of the person is blue, so its lines take the light of the panel. */
+.skeleton .message.user .skeleton-line {
   background-image: linear-gradient(90deg, var(--panel) 30%, var(--soft) 50%, var(--panel) 70%);
   opacity: 0.7;
 }
 
-.skeleton-answer {
+.skeleton .who .skeleton-text {
+  justify-content: flex-end;
+}
+
+/* The message box: one line of text, then the row of the engine and the send button. */
+.skeleton-composer-text {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  height: 24px;
 }
 
-.skeleton-visor {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+.skeleton .composer-icon {
+  width: 20px;
+  height: 20px;
+  margin: 0 4px;
 }
 
-.skeleton-bubble.answer {
-  flex: 1;
-  max-width: 86%;
-  background: var(--panel);
-  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail);
-  box-shadow: var(--shadow);
+.skeleton .composer-chip {
+  width: 45%;
+  height: 26px;
+}
+
+.skeleton .chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 /* A column of cards, such as the settings */
@@ -275,22 +311,16 @@ button[aria-busy="true"]:disabled {
 }
 
 .skeleton-card .skeleton-block {
+  display: block;
   height: 44px;
   margin-top: var(--space-2);
   border-radius: var(--radius-input);
 }
 
-/* The first load of the page, before the navigation shows */
-.skeleton-visor.large {
-  width: 36px;
-  height: 36px;
-}
-
-.skeleton-nav-button {
-  display: block;
-  width: 50px;
-  height: 50px;
-  border-radius: var(--radius-rail);
+/* The icon of a destination in the navigation */
+.skeleton .nav-glyph {
+  display: grid;
+  border-radius: 6px;
 }
 
 .page-skeleton {
@@ -301,55 +331,30 @@ button[aria-busy="true"]:disabled {
   background: var(--main-gradient);
 }
 
-.page-skeleton .cards-skeleton,
-.page-skeleton .list-skeleton {
+.page-skeleton .cards-skeleton {
   max-width: 760px;
   margin: 0 auto;
 }
 
 @media (max-width: 760px) {
-  .conversation-skeleton,
   .page-skeleton {
     padding: 14px;
   }
 
-  /* A phone hides the visor beside an answer, as the chat does. */
-  .skeleton-visor {
-    display: none;
+  .skeleton .composer-chip {
+    height: 34px;
   }
 
-  /* The tab bar shows the visor in place of Settings (#566). */
-  .main-nav .skeleton-visor.large {
-    display: block;
+  /* On a phone the name of a chat is a button, as high as a finger needs, in the middle. */
+  .skeleton .chat-header h1 {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: var(--touch-target);
   }
 
-  .main-nav .skeleton-nav-button.nav-settings {
-    display: none;
-  }
-
-  /* The project list is the page on a phone, with one card per project. */
-  .layout.list-home .list-skeleton .skeleton-shapes {
-    gap: var(--space-2);
-  }
-
-  .layout.list-home .skeleton-item {
-    padding: 14px 16px;
-    border-radius: var(--radius-card);
-    background: var(--panel);
-    box-shadow: var(--shadow);
-  }
-
-  /* The tab bar of a phone: the icon pill of each destination. */
-  .skeleton-nav-button {
-    justify-self: center;
-    width: 58px;
-    height: 30px;
-    margin-bottom: 15px;
-    border-radius: var(--radius-pill);
-  }
-
-  .skeleton-bubble.answer {
-    max-width: none;
+  .skeleton .chat-header .sub .skeleton-text {
+    justify-content: center;
   }
 }
 
@@ -382,12 +387,13 @@ button[aria-busy="true"]:disabled {
   .skeleton .skeleton-line,
   .skeleton .skeleton-block,
   .skeleton .skeleton-visor,
-  .skeleton .skeleton-nav-button {
+  .skeleton .skeleton-ghost,
+  .skeleton .skeleton-ghost:disabled {
     animation: none;
     background: var(--line);
   }
 
-  .skeleton .skeleton-bubble.user .skeleton-line {
+  .skeleton .message.user .skeleton-line {
     background: var(--panel);
   }
 }

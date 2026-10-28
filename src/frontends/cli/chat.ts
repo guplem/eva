@@ -91,6 +91,8 @@ export async function runChat(options: ChatOptions): Promise<void> {
       event.kind === "approval_resolved" ? waiting.findIndex((asked) => asked.requestId === event.requestId) : -1;
     if (answered !== -1) waiting.splice(answered, 1);
     if (event.kind === "turn_finished" || event.kind === "turn_failed") turn.over = true;
+    // Only this branch went: the chat goes on in the fork that took its place (issue 647).
+    if (event.kind === "session_deleted" && event.heirId !== undefined) session.id = event.heirId;
     wake?.();
   });
   const nextChange = (): Promise<void> => new Promise<void>((resolve) => (wake = resolve));
@@ -296,7 +298,9 @@ export function describeEvent(event: SessionEvent): string | null {
     case "turn_failed":
       return `  The turn failed: ${event.reason}\n`;
     case "session_deleted":
-      return "  (This chat was deleted elsewhere.)\n";
+      return event.heirId === undefined
+        ? "  (This chat was deleted elsewhere.)\n"
+        : "  (This branch was deleted elsewhere. The chat goes on in the fork that took its place.)\n";
     case "text_delta":
       // The printer writes the pieces, because only it knows which part of the block is out.
       return event.text;

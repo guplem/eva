@@ -80,6 +80,17 @@ describe("createEventPrinter", () => {
     ).toBe("Let me \n  The turn failed: stopped\n");
     expect(printed([{ kind: "text_delta", text: "Half " }, finished])).toBe("Half \n");
   });
+
+  test("a deleted branch with a fork in its place says that the chat goes on (issue 647)", () => {
+    const print = createEventPrinter();
+    const at = "2026-10-20T10:00:00.000Z";
+    expect(print({ kind: "session_deleted", sessionId: "s1", seq: 1, at })).toBe(
+      "  (This chat was deleted elsewhere.)\n",
+    );
+    expect(print({ kind: "session_deleted", heirId: "s2", sessionId: "s1", seq: 2, at })).toBe(
+      "  (This branch was deleted elsewhere. The chat goes on in the fork that took its place.)\n",
+    );
+  });
 });
 
 interface FakeSocket {
@@ -107,7 +118,7 @@ function fakeLocalApi(handlers: {
       paths.push(path);
       if (path === "/api/events") return bunServer.upgrade(request) ? undefined : new Response(null, { status: 400 });
       if (path === "/api/sessions") return Response.json({ id: "s1", startFolder: "vault" }, { status: 201 });
-      if (path === "/api/sessions/s1/messages") handlers.onMessage?.(sockets);
+      if (path.endsWith("/messages")) handlers.onMessage?.(sockets);
       if (path.startsWith("/api/approvals/")) handlers.onApproval?.(sockets, await request.json());
       return Response.json({}, { status: 202 });
     },
@@ -153,6 +164,43 @@ function expectClosed(failure: unknown): void {
 }
 
 describe("runChat", () => {
+  test("after the delete of its branch, the next message goes to the fork that took its place (issue 647)", async () => {
+    const api = fakeLocalApi({
+      onOpen: (socket) =>
+        socket.send(
+          JSON.stringify({
+            kind: "session_deleted",
+            heirId: "s2",
+            sessionId: "s1",
+            seq: 1,
+            at: "2026-10-20T10:00:00.000Z",
+          }),
+        ),
+      onMessage: (sockets) => {
+        for (const socket of sockets) socket.close();
+      },
+    });
+    try {
+      const written: string[] = [];
+      const lines = ["Hello"];
+      const done = runChat({
+        baseUrl: api.url,
+        token: "token",
+        mode: "assistant",
+        readLine: async () => {
+          // The line comes after the event, as a person types after the delete.
+          while (!written.some((text) => text.includes("took its place"))) await Bun.sleep(5);
+          return lines.shift() ?? new Promise<string | null>(() => undefined);
+        },
+        write: (text) => written.push(text),
+      }).catch((error: unknown) => error);
+      expectClosed(await done);
+      expect(api.paths).toContain("/api/sessions/s2/messages");
+    } finally {
+      await api.stop();
+    }
+  });
+
   test("fails, and never hangs, when the event stream drops during a turn", async () => {
     const api = fakeLocalApi({
       onMessage: (sockets) => {

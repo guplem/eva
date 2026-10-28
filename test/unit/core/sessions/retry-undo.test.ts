@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answersToUndo } from "../../../../src/core/sessions/retry-undo.ts";
+import { answersToUndo, refsStillNamed } from "../../../../src/core/sessions/retry-undo.ts";
 import { sessionSchema, type SessionRecord } from "../../../../src/core/sessions/session-store.ts";
 
 function chat(id: string, ends: readonly string[], overrides: Partial<SessionRecord> = {}): SessionRecord {
@@ -50,6 +50,21 @@ describe("answersToUndo", () => {
     ]);
   });
 
+  test("a turn that a delete moved keeps the snapshots of the place where it ran (issue 647)", () => {
+    const heir = chat("heir", ["10:01", "10:02", "10:03"]);
+    const moved: SessionRecord = {
+      ...heir,
+      turns: heir.turns.map((turn, index) => ({
+        ...turn,
+        ranIn:
+          index < 2
+            ? { sessionId: "gone", turnIndex: index, engineSessionId: "engine-gone" }
+            : { sessionId: "heir", turnIndex: 0, engineSessionId: null },
+      })),
+    };
+    expect(named(answersToUndo([moved], "heir", 1))).toEqual(["gone/1", "heir/0"]);
+  });
+
   test("a Project chat, or a turn that does not exist, undoes nothing", () => {
     const project = chat("project", ["10:01"], { mode: "project" });
     expect(answersToUndo([project], "project", 0)).toEqual([]);
@@ -76,5 +91,20 @@ describe("answersToUndo", () => {
     const root = chat("root", ["10:01", "10:01"]);
     expect(named(answersToUndo([root], "root", 0))).toEqual(["root/0", "root/1"]);
     expect(named(answersToUndo([root], "root", 1))).toEqual(["root/1"]);
+  });
+});
+
+describe("refsStillNamed", () => {
+  test("lists the refs of a deleted chat that a moved turn still names (issue 647)", () => {
+    const heir = chat("heir", ["10:01", "10:02"]);
+    const moved: SessionRecord = {
+      ...heir,
+      turns: [{ ...heir.turns[0]!, ranIn: { sessionId: "gone", turnIndex: 3, engineSessionId: "engine-gone" } }],
+    };
+    expect([...refsStillNamed([moved, heir], "gone")]).toEqual([
+      "refs/eva/turns/gone/3/before",
+      "refs/eva/turns/gone/3/after",
+    ]);
+    expect(refsStillNamed([heir], "gone").size).toBe(0);
   });
 });

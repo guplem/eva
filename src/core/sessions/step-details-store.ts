@@ -46,6 +46,18 @@ export class StepDetailsStore {
     return null;
   }
 
+  /**
+   * Puts the details of one chat before those of another, when a delete moves turns (issue 647).
+   * The other chat's own turns are newer, so they stay when the list is full.
+   */
+  copy(fromId: string, toId: string): void {
+    if (!safeId.test(fromId) || !safeId.test(toId)) return;
+    const from = this.turns(fromId);
+    if (from.length === 0) return;
+    const turns = [...from, ...this.turns(toId)].slice(-turnsWithDetails);
+    writeFileAtomic(this.pathOf(toId), JSON.stringify({ version: 1, turns }) + "\n");
+  }
+
   delete(sessionId: string): void {
     if (!safeId.test(sessionId)) return;
     try {

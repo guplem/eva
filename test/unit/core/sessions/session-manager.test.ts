@@ -9,7 +9,7 @@ import {
   type SessionManagerOptions,
   type TurnPreparer,
 } from "../../../../src/core/sessions/session-manager.ts";
-import { SessionStore } from "../../../../src/core/sessions/session-store.ts";
+import { SessionStore, type SessionRecord } from "../../../../src/core/sessions/session-store.ts";
 import { StepDetailsStore } from "../../../../src/core/sessions/step-details-store.ts";
 import type { EngineEventPayload, SessionEvent } from "../../../../src/shared/events.ts";
 import { maxDetailLength, maxTurnDetailLength } from "../../../../src/shared/tool-details.ts";
@@ -724,7 +724,7 @@ describe("renames (issue 46)", () => {
     expect(restarted.get(fork.id).forkName).toBe("Short answer");
   });
 
-  test("a fork name is redacted, and only a fork takes one (issue 637)", async () => {
+  test("a fork name is redacted, and the first branch takes one too (issues 637, 647)", async () => {
     const redactor = new Redactor();
     redactor.addSecret("the-telegram-token-value");
     const manager = createManager(new FakeEngine(), { redactor });
@@ -733,7 +733,8 @@ describe("renames (issue 46)", () => {
     const fork = manager.fork(rootId, manager.get(rootId).turns[0]?.lastMessageId ?? "");
     expect(manager.nameFork(fork.id, "key the-telegram-token-value").forkName).toBe("key [redacted]");
     expect(() => manager.nameFork(fork.id, "   ")).toThrow(expect.objectContaining({ code: "title_invalid" }));
-    expect(() => manager.nameFork(rootId, "Main")).toThrow(expect.objectContaining({ code: "title_invalid" }));
+    expect(manager.nameFork(rootId, "Main").forkName).toBe("Main");
+    expect(manager.get(rootId).title).not.toBe("Main");
   });
 
   test("a title is one line, cut to the title length, and redacted", () => {
@@ -1747,6 +1748,239 @@ describe("delete", () => {
   test("a delete of an unknown chat is an EvaError", () => {
     const manager = createManager(new FakeEngine());
     expect(() => manager.delete("nothing")).toThrow("No session nothing.");
+  });
+});
+
+describe("delete one branch (issue 647)", () => {
+  /** A chat with three turns, a fork at the second answer with its own turn, and an empty fork at the third. */
+  async function chatWithForks(
+    manager: SessionManager,
+  ): Promise<{ root: SessionRecord; first: SessionRecord; second: SessionRecord }> {
+    const rootId = newAssistantSession(manager);
+    for (const text of ["one", "two", "three"]) await manager.send(rootId, text);
+    const root = manager.get(rootId);
+    const first = manager.fork(rootId, root.turns[1]!.lastMessageId!);
+    await manager.send(first.id, "first fork");
+    const second = manager.fork(rootId, root.turns[2]!.lastMessageId!);
+    return { root, first: manager.get(first.id), second };
+  }
+
+  test("the oldest fork takes the place of the main line, with the turns that it shared", async () => {
+    const manager = createManager(new FakeEngine());
+    const { root, first, second } = await chatWithForks(manager);
+    manager.rename(root.id, "Trip plans");
+    manager.setArchived(root.id, true);
+    events = [];
+
+    expect(manager.deleteBranch(root.id)).toEqual({ deleted: [root.id], heirId: first.id });
+    const heir = manager.get(first.id);
+    expect(heir).toMatchObject({ parentId: null, forkAtMessageId: null, title: "Trip plans", archived: true });
+    expect(heir.turns.map((turn) => turn.userText)).toEqual(["one", "two", "first fork"]);
+    expect(heir.turns.map((turn) => turn.ranIn)).toEqual([
+      { sessionId: root.id, turnIndex: 0, engineSessionId: root.engineSessionId },
+      { sessionId: root.id, turnIndex: 1, engineSessionId: root.engineSessionId },
+      { sessionId: first.id, turnIndex: 0, engineSessionId: null },
+    ]);
+    // The later fork takes the turn after the heir's fork point, and forks from the heir there.
+    expect(manager.get(second.id)).toMatchObject({ parentId: first.id, forkAtMessageId: first.forkAtMessageId });
+    expect(manager.get(second.id).turns.map((turn) => turn.userText)).toEqual(["three"]);
+    expect(manager.branchTurns(second.id).map((turn) => turn.userText)).toEqual(["one", "two", "three"]);
+    expect(events.map((event) => event.kind)).toEqual(["session_deleted"]);
+    expect(events[0]).toMatchObject({ sessionId: root.id, heirId: first.id });
+    expect(createManager(new FakeEngine(), { firstId: 100 }).list()).toHaveLength(2);
+  });
+
+  test("a fork keeps its fork point when the heir took that turn", async () => {
+    const manager = createManager(new FakeEngine());
+    const { root, first } = await chatWithForks(manager);
+    const early = manager.fork(root.id, root.turns[0]!.lastMessageId!);
+    manager.deleteBranch(root.id);
+    expect(manager.get(early.id)).toMatchObject({ parentId: first.id, forkAtMessageId: root.turns[0]!.lastMessageId });
+    expect(manager.get(early.id).turns).toEqual([]);
+  });
+
+  test("a fork with no history of its branch takes its place only when no other fork shares the history", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "one");
+    const fresh = await manager.retry(rootId, 0);
+    await waitUntil(() => !manager.isActive(fresh.id));
+    const sharing = manager.fork(rootId, manager.get(rootId).turns[0]!.lastMessageId!);
+
+    expect(manager.deleteBranch(rootId).heirId).toBe(sharing.id);
+    expect(manager.get(fresh.id)).toMatchObject({ parentId: sharing.id, forkAtMessageId: null });
+
+    expect(manager.deleteBranch(sharing.id).heirId).toBe(fresh.id);
+    expect(manager.get(fresh.id)).toMatchObject({ parentId: null, forkAtMessageId: null });
+    expect(manager.get(fresh.id).turns.map((turn) => turn.userText)).toEqual(["one"]);
+  });
+
+  test("a fork of a fork takes the middle fork's place under its parent", async () => {
+    const manager = createManager(new FakeEngine());
+    const { root, first } = await chatWithForks(manager);
+    const last = manager.fork(first.id, first.turns[0]!.lastMessageId!);
+    await manager.send(last.id, "last fork");
+
+    expect(manager.deleteBranch(first.id).heirId).toBe(last.id);
+    expect(manager.get(last.id)).toMatchObject({ parentId: root.id, forkAtMessageId: first.forkAtMessageId });
+    expect(manager.branchTurns(last.id).map((turn) => turn.userText)).toEqual([
+      "one",
+      "two",
+      "first fork",
+      "last fork",
+    ]);
+  });
+
+  test("a fork with no turn yet goes on from the engine session where its last moved turn ran", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const { root, second } = await chatWithForks(manager);
+    manager.deleteBranch(root.id);
+
+    await manager.send(second.id, "second fork");
+    expect(engine.requests.at(-1)?.history).toEqual({
+      kind: "fork",
+      fromEngineSessionId: root.engineSessionId,
+      atMessageId: root.turns[2]!.lastMessageId!,
+    });
+    await manager.send(second.id, "and on");
+    expect(engine.requests.at(-1)?.history).toEqual({
+      kind: "continue",
+      engineSessionId: manager.get(second.id).engineSessionId,
+    });
+  });
+
+  test("the heir goes on in its own engine session, and a fork or a retry at a moved turn uses the session where it ran", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const { root, first } = await chatWithForks(manager);
+    manager.deleteBranch(root.id);
+
+    await manager.send(first.id, "more");
+    expect(engine.requests.at(-1)?.history).toEqual({ kind: "continue", engineSessionId: first.engineSessionId });
+    const fork = manager.fork(first.id, root.turns[0]!.lastMessageId!);
+    expect(fork.forkFromEngineSessionId).toBe(root.engineSessionId);
+    await manager.send(fork.id, "from the start");
+    expect(manager.retryPoint(first.id, 1)).toEqual({
+      engineSessionId: root.engineSessionId,
+      atMessageId: root.turns[0]!.lastMessageId!,
+    });
+    expect(manager.retryPoint(fork.id, 0)).toEqual({
+      engineSessionId: root.engineSessionId,
+      atMessageId: root.turns[0]!.lastMessageId!,
+    });
+  });
+
+  test("the heir keeps the chat's references, and the moved turns keep their seen state", async () => {
+    const manager = createManager(new FakeEngine());
+    const { root, first, second } = await chatWithForks(manager);
+    manager.markSeen(root.id, 3);
+    manager.markSeen(first.id, 1);
+    const reporter = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/vault/Projects/p/repos/clone-0",
+      source: "web",
+      reportsTo: root.id,
+    });
+    const successor = newAssistantSession(manager);
+    manager.continueFrom(successor, root.id, "Goal: go on.");
+
+    manager.deleteBranch(root.id);
+    expect(manager.get(reporter.id).reportsTo).toBe(first.id);
+    expect(manager.get(successor).continuedFrom).toBe(first.id);
+    expect(manager.get(first.id).seenTurns).toBe(3);
+    // The empty fork had no turn to see; the moved turn was seen in its old branch.
+    expect(manager.get(second.id).seenTurns).toBe(1);
+  });
+
+  test("a fork name stays with its fork, and the first branch takes a name too", async () => {
+    const manager = createManager(new FakeEngine());
+    const { root, first } = await chatWithForks(manager);
+    manager.nameFork(first.id, "Plan B");
+    manager.deleteBranch(root.id);
+    expect(manager.get(first.id).forkName).toBe("Plan B");
+    expect(manager.nameFork(first.id, "Plan A").forkName).toBe("Plan A");
+  });
+
+  test("a branch with no fork goes as a whole chat", () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    expect(manager.deleteBranch(rootId)).toEqual({ deleted: [rootId], heirId: null });
+    expect(manager.list()).toEqual([]);
+  });
+
+  test("a branch is not deleted while a turn runs in it or in one of its forks", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const manager = createManager(engine);
+    const rootId = newAssistantSession(manager);
+    const fork = manager.fork(rootId, "message-1");
+    const turn = manager.send(fork.id, "long work");
+
+    expect(() => manager.deleteBranch(rootId)).toThrow("Eva is still working");
+    expect(manager.list()).toHaveLength(2);
+    for (let attempt = 0; attempt < 200 && !manager.stop(fork.id); attempt += 1) await Bun.sleep(5);
+    await turn;
+  });
+
+  test("the step details of the moved turns go with them", async () => {
+    const engine = new FakeEngine((request, turnNumber) => [
+      {
+        kind: "tool_started",
+        toolUseId: `tool-${String(turnNumber)}`,
+        name: "Read",
+        category: "tool",
+        summary: "Read x",
+        input: "x",
+      },
+      { kind: "tool_finished", toolUseId: `tool-${String(turnNumber)}`, output: "a.txt", isError: false },
+      ...FakeEngine.answer(request, `answer ${String(turnNumber)}`),
+    ]);
+    const manager = createManager(engine);
+    const { root, first } = await chatWithForks(manager);
+    manager.deleteBranch(root.id);
+    const details = new StepDetailsStore(join(folder, "step-details"));
+    expect(details.get(first.id, "tool-1")?.output).toBe("a.txt");
+    expect(details.get(root.id, "tool-1")).toBeNull();
+  });
+
+  test("a Project branch forgets only the snapshots that no branch still uses", async () => {
+    const forgotten: string[] = [];
+    const projectPreparer: TurnPreparer = {
+      ...preparer,
+      snapshot: () => Promise.resolve(true),
+      // A failed restore keeps the retry's pending restore, which names a snapshot of the deleted branch.
+      restore: () => Promise.reject(new Error("git broke")),
+      forget: (_session, ids) => forgotten.push(...ids),
+    };
+    const manager = createManager(new FakeEngine(), { projectPreparer });
+    const rootId = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/vault/Projects/p/repos/clone-0",
+      source: "web",
+      projectId: "p",
+      clone: "clone-0",
+    }).id;
+    for (const text of ["one", "two", "three"]) await manager.send(rootId, text);
+    const root = manager.get(rootId);
+    // An undo retry of the third turn forks at the second answer, and waits to bring back the files.
+    const retry = await manager.retry(rootId, 2, "undo");
+    await waitUntil(() => !manager.isActive(retry.id));
+    expect(manager.get(retry.id).pendingRestore).toBe(root.turns[2]!.startSnapshot);
+    const fork = manager.fork(rootId, root.turns[0]!.lastMessageId!);
+
+    expect(manager.deleteBranch(rootId).heirId).toBe(retry.id);
+    const kept = [root.turns[0]!, root.turns[1]!].flatMap((turn) => [turn.startSnapshot, turn.endSnapshot]);
+    expect(forgotten.some((id) => kept.includes(id))).toBe(false);
+    expect(forgotten).toContain(root.turns[2]!.endSnapshot!);
+    expect(forgotten).not.toContain(root.turns[2]!.startSnapshot);
+    expect(manager.get(fork.id).parentId).toBe(retry.id);
   });
 });
 

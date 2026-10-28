@@ -155,8 +155,11 @@ export type CoreEventPayload =
       /** A project work result, so a front end can show a summary instead of the raw text. Already redacted. */
       readonly projectReport?: ProjectReport;
     }
-  /** The chat is gone from the list; each front end drops its own view of it. */
-  | { readonly kind: "session_deleted" }
+  /**
+   * The chat is gone from the list; each front end drops its own view of it. After the delete of one
+   * branch, `heirId` names the fork that took its place (issue 647), so a front end shows that one.
+   */
+  | { readonly kind: "session_deleted"; readonly heirId?: string }
   /** The chat gave work to a project: the Project chat that runs it. */
   | {
       readonly kind: "project_work_started";

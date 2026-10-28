@@ -56,4 +56,18 @@ describe("StepDetailsStore", () => {
     expect(existsSync(join(folder, "step-details", "s1.json"))).toBe(false);
     expect(() => store.delete("s1")).not.toThrow();
   });
+
+  test("copy puts the details of one chat before those of another, and keeps only the last turns (issue 647)", () => {
+    store.addTurn("old", [{ id: "t1", output: "x" }]);
+    store.addTurn("new", [{ id: "t2", output: "y" }]);
+    store.copy("old", "new");
+    store.copy("none", "new");
+    store.copy("../old", "new");
+    expect(store.get("new", "t1")).toEqual({ output: "x" });
+    expect(store.get("new", "t2")).toEqual({ output: "y" });
+    for (let turn = 0; turn < turnsWithDetails; turn += 1)
+      store.addTurn("old", [{ id: `o${String(turn)}`, output: "z" }]);
+    store.copy("old", "new");
+    expect(store.get("new", "t2")).toEqual({ output: "y" });
+  });
 });

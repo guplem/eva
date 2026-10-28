@@ -336,14 +336,14 @@ export class VaultSync {
     });
   }
 
-  /** Deletes the snapshots of a deleted chat. */
-  deleteSnapshots(sessionId: string): Promise<void> {
+  /** Deletes the snapshots of a deleted chat, but those in `keep`, which a moved turn still names (issue 647). */
+  deleteSnapshots(sessionId: string, keep: ReadonlySet<string> = new Set()): Promise<void> {
     return this.serialize(async () => {
       const listed = await this.git(
         ["for-each-ref", "--format=%(refname)", sessionRefPrefix(sessionId)],
         localTimeoutMs,
       );
-      const refs = listed.stdout.split("\n").filter((line) => line.trim().length > 0);
+      const refs = listed.stdout.split("\n").filter((line) => line.trim().length > 0 && !keep.has(line.trim()));
       if (listed.exitCode !== 0 || refs.length === 0) return;
       await this.snapshotStep(["update-ref", "--stdin"], {}, refs.map((ref) => `delete ${ref}\n`).join(""));
     });

@@ -401,12 +401,11 @@ export class SessionManager {
   }
 
   /**
-   * Gives a fork the person's name (issue 637). It is apart from the title, which the fork copies
-   * from its chat, so a rename of the chat leaves the fork name.
+   * Gives a branch the person's name (issue 637). It is apart from the title, which a fork copies
+   * from its chat, so a rename of the chat leaves the branch name. The first branch takes one too (issue 647).
    */
   nameFork(sessionId: string, name: string): SessionRecord {
     const session = this.get(sessionId);
-    if (session.parentId === null) throw new EvaError("title_invalid", "Only a fork takes a fork name.");
     const cleaned = cutTitle(this.options.redactor.redact(name).replace(/\s+/g, " ").trim());
     if (cleaned.length === 0) throw new EvaError("title_invalid", "A fork name needs at least one character.");
     const updated = { ...session, forkName: cleaned };
@@ -626,16 +625,96 @@ export class SessionManager {
     if (ids.some((id) => this.isActive(id)))
       throw new EvaError("session_busy", "Eva is still working in this chat. Try again when she finishes.");
     for (const id of options.forgetSnapshots === false ? [] : ids) this.forgetSnapshots(this.get(id));
-    for (const id of ids) {
-      this.options.store.delete(id);
-      this.options.stepDetails?.delete(id);
-      this.runtimes.delete(id);
-      this.lastFailure.delete(id);
-      this.lastActivity.delete(id);
-    }
+    for (const id of ids) this.dropRecord(id);
     // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
     for (const id of ids) this.emit(id, { kind: "session_deleted" });
     return ids;
+  }
+
+  /**
+   * Deletes one branch of a chat, and keeps its forks (issue 647). The oldest fork that shares its
+   * history takes its place, with the turns that it shared. A later fork takes the turns that only it
+   * shared, and forks from the heir. A branch with no fork goes as a whole chat.
+   */
+  deleteBranch(sessionId: string): { deleted: string[]; heirId: string | null } {
+    const branch = this.get(sessionId);
+    // A stable sort: forks made in the same millisecond keep the order of the list.
+    const forks = this.list()
+      .filter((session) => session.parentId === branch.id)
+      .sort((first, second) => first.createdAt.localeCompare(second.createdAt));
+    const [oldest] = forks;
+    if (oldest === undefined) return { deleted: this.delete(sessionId), heirId: null };
+    // A running turn would end on a record whose turns moved.
+    if ([branch, ...forks].some((session) => this.isActive(session.id)))
+      throw new EvaError("session_busy", "Eva is still working in this chat. Try again when she finishes.");
+    const heir = forks.find((fork) => fork.forkAtMessageId !== null) ?? oldest;
+    // The heir shares the turns up to this index; -1 when it shares none.
+    const shared = heir.forkAtMessageId === null ? -1 : sharedEnd(branch, heir.forkAtMessageId);
+    const isRoot = branch.parentId === null;
+    const updates: SessionRecord[] = [
+      {
+        ...movedTo(heir, branch, 0, shared),
+        ...(isRoot ? chatFields(branch, heir) : {}),
+        parentId: branch.parentId,
+        forkAtMessageId: shared === -1 ? null : branch.forkAtMessageId,
+        createdAt: branch.createdAt,
+      },
+    ];
+    // The branches that took turns, and the last turn that any of them took.
+    const receivers = shared === -1 ? [] : [heir.id];
+    let kept = shared;
+    for (const fork of forks) {
+      if (fork === heir) continue;
+      const end = fork.forkAtMessageId === null ? -1 : sharedEnd(branch, fork.forkAtMessageId);
+      if (end <= shared) {
+        updates.push({ ...fork, parentId: heir.id });
+        continue;
+      }
+      kept = Math.max(kept, end);
+      receivers.push(fork.id);
+      updates.push({
+        ...movedTo(fork, branch, shared + 1, end),
+        parentId: heir.id,
+        forkAtMessageId: heir.forkAtMessageId,
+      });
+    }
+    for (const update of updates) this.options.store.save(update);
+    // Other chats that name the branch, such as a Project chat that reports to it, now name the heir.
+    for (const session of this.list()) {
+      const moved = {
+        ...session,
+        reportsTo: session.reportsTo === branch.id ? heir.id : session.reportsTo,
+        continuedFrom: session.continuedFrom === branch.id ? heir.id : session.continuedFrom,
+        forkedFrom:
+          session.forkedFrom?.sessionId === branch.id
+            ? { ...session.forkedFrom, sessionId: heir.id }
+            : session.forkedFrom,
+      };
+      if (
+        moved.reportsTo !== session.reportsTo ||
+        moved.continuedFrom !== session.continuedFrom ||
+        moved.forkedFrom !== session.forkedFrom
+      )
+        this.options.store.save(moved);
+    }
+    for (const id of receivers) this.options.stepDetails?.copy(branch.id, id);
+    this.forgetSnapshots({ ...branch, turns: branch.turns.slice(kept + 1) }, this.pendingRestores());
+    this.dropRecord(branch.id);
+    this.emit(branch.id, { kind: "session_deleted", heirId: heir.id });
+    return { deleted: [branch.id], heirId: heir.id };
+  }
+
+  /** The snapshots that a branch still waits to bring back. */
+  private pendingRestores(): Set<string> {
+    return new Set(this.list().flatMap((session) => (session.pendingRestore === null ? [] : [session.pendingRestore])));
+  }
+
+  private dropRecord(id: string): void {
+    this.options.store.delete(id);
+    this.options.stepDetails?.delete(id);
+    this.runtimes.delete(id);
+    this.lastFailure.delete(id);
+    this.lastActivity.delete(id);
   }
 
   /**
@@ -734,7 +813,7 @@ export class SessionManager {
       }),
       parentId: parent.id,
       forkAtMessageId: atMessageId,
-      forkFromEngineSessionId: parent.engineSessionId,
+      forkFromEngineSessionId: pointAt(parent, atMessageId).engineSessionId,
       title: parent.title,
     };
     this.options.store.save(record);
@@ -793,11 +872,9 @@ export class SessionManager {
     const session = this.get(sessionId);
     this.turnOf(session, turnIndex);
     const earlier = session.turns.slice(0, turnIndex).findLast((turn) => turn.lastMessageId !== null)?.lastMessageId;
-    if (earlier !== undefined && earlier !== null)
-      return { engineSessionId: session.engineSessionId, atMessageId: earlier };
+    if (earlier !== undefined && earlier !== null) return pointAt(session, earlier);
     const parent = session.parentId === null ? undefined : this.options.store.get(session.parentId);
-    if (parent !== undefined && session.forkAtMessageId !== null)
-      return { engineSessionId: parent.engineSessionId, atMessageId: session.forkAtMessageId };
+    if (parent !== undefined && session.forkAtMessageId !== null) return pointAt(parent, session.forkAtMessageId);
     return this.movedPoint(session);
   }
 
@@ -1340,11 +1417,13 @@ ${prompt}`,
 
   /**
    * Lets the mode delete the snapshots of a chat's own turns. A branch's pending restore names a turn
-   * of another chat, which may stay, so it is not among them.
+   * of another chat, which may stay, so it is not among them. `keep` holds the snapshots that another branch still uses.
    */
-  private forgetSnapshots(session: SessionRecord): void {
+  private forgetSnapshots(session: SessionRecord, keep: ReadonlySet<string> = new Set()): void {
     const preparer = this.options.preparers[session.mode];
-    const ids = session.turns.flatMap((turn) => [turn.startSnapshot, turn.endSnapshot]).filter((id) => id !== null);
+    const ids = session.turns
+      .flatMap((turn) => [turn.startSnapshot, turn.endSnapshot])
+      .filter((id): id is string => id !== null && !keep.has(id));
     if (preparer.forget === undefined || ids.length === 0) return;
     try {
       preparer.forget(session, ids);
@@ -1370,9 +1449,14 @@ ${prompt}`,
 
   private historyOf(session: SessionRecord): TurnHistory {
     if (session.historyLost) return { kind: "new", engineSessionId: session.engineSessionId };
-    if (session.turns.some((turn) => turn.failure === null)) {
+    const own = session.turns.filter(ranHere);
+    if (own.some((turn) => turn.failure === null)) {
       return { kind: "continue", engineSessionId: session.engineSessionId };
     }
+    // A fork that took turns from a deleted branch, and ran none yet, goes on from the last one.
+    const moved = session.turns.findLast((turn) => !ranHere(turn) && turn.lastMessageId !== null);
+    if (moved !== undefined && moved.lastMessageId !== null)
+      return { kind: "fork", fromEngineSessionId: engineOf(session, moved), atMessageId: moved.lastMessageId };
     // A fork learns its engine id only from a finished turn, so after a failed fork turn it forks again.
     // A chat from another clone keeps its point in `forkedFrom`: it is no branch of a chat here.
     const forkAt = session.forkAtMessageId ?? session.forkedFrom?.atMessageId ?? null;
@@ -1381,7 +1465,7 @@ ${prompt}`,
     }
     // A failed or stopped turn may have created the engine session already. A second "new"
     // with the same id would then fail on every later message.
-    if (session.turns.length > 0) return { kind: "continue", engineSessionId: session.engineSessionId };
+    if (own.length > 0) return { kind: "continue", engineSessionId: session.engineSessionId };
     return { kind: "new", engineSessionId: session.engineSessionId };
   }
 
@@ -1585,6 +1669,75 @@ function redactReport(report: ProjectReport, redactor: Redactor): ProjectReport 
       branch: repository.branch === null ? null : redact(repository.branch),
     })),
     result: redact(report.result),
+  };
+}
+
+type Turn = SessionRecord["turns"][number];
+
+/** False for a turn that a delete moved here from another engine session (issue 647). */
+function ranHere(turn: Turn): boolean {
+  return (turn.ranIn?.engineSessionId ?? null) === null;
+}
+
+/** The engine session that holds a turn: where a moved turn ran, or the branch's own. */
+function engineOf(session: SessionRecord, turn: Turn): string {
+  return turn.ranIn?.engineSessionId ?? session.engineSessionId;
+}
+
+/** The history point at a message of a branch, in the engine session that holds it. */
+function pointAt(session: SessionRecord, messageId: string): HistoryPoint {
+  const turn = session.turns.find((candidate) => candidate.lastMessageId === messageId);
+  return {
+    engineSessionId: turn === undefined ? session.engineSessionId : engineOf(session, turn),
+    atMessageId: messageId,
+  };
+}
+
+/** The index of the branch's turn with the message. A message that the branch no longer has: the fork continues the whole branch, as the web app shows it. */
+function sharedEnd(branch: SessionRecord, messageId: string): number {
+  const index = branch.turns.findIndex((turn) => turn.lastMessageId === messageId);
+  return index === -1 ? branch.turns.length - 1 : index;
+}
+
+/**
+ * The fork with the branch's turns `from` to `to` before its own. Every moved turn keeps where it
+ * ran, so its vault snapshots and its engine session stay found.
+ */
+function movedTo(fork: SessionRecord, branch: SessionRecord, from: number, to: number): SessionRecord {
+  const taken = branch.turns.slice(from, to + 1).map((turn, offset) => ({
+    ...turn,
+    ranIn: {
+      sessionId: turn.ranIn?.sessionId ?? branch.id,
+      turnIndex: turn.ranIn?.turnIndex ?? from + offset,
+      engineSessionId: turn.ranIn?.engineSessionId ?? branch.engineSessionId,
+    },
+  }));
+  if (taken.length === 0) return fork;
+  const own = fork.turns.map((turn, index): Turn => ({
+    ...turn,
+    ranIn: turn.ranIn ?? { sessionId: fork.id, turnIndex: index, engineSessionId: null },
+  }));
+  // The seen count is a count of first turns: an unseen moved turn makes the turns after it unseen too.
+  const seenTaken = Math.max(0, Math.min(branch.seenTurns - from, taken.length));
+  return {
+    ...fork,
+    turns: [...taken, ...own],
+    seenTurns: seenTaken < taken.length ? seenTaken : taken.length + fork.seenTurns,
+  };
+}
+
+/** The fields of a whole chat, which the heir of its first branch takes. */
+function chatFields(branch: SessionRecord, heir: SessionRecord): Partial<SessionRecord> {
+  return {
+    title: branch.title,
+    source: branch.source,
+    telegramTopicId: branch.telegramTopicId,
+    archived: branch.archived,
+    continuedFrom: branch.continuedFrom,
+    firstMessageDraft: branch.firstMessageDraft,
+    reportsTo: branch.reportsTo,
+    // An heir that shares no turn shares no history point either.
+    forkedFrom: heir.forkAtMessageId === null ? heir.forkedFrom : branch.forkedFrom,
   };
 }
 

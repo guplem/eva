@@ -176,9 +176,9 @@ export class VaultUpkeep {
     return result;
   }
 
-  /** Deletes the snapshots of a deleted chat. */
-  async deleteSnapshots(sessionId: string): Promise<void> {
-    await this.options.vaultSync?.deleteSnapshots(sessionId);
+  /** Deletes the snapshots of a deleted chat, but those in `keep`. */
+  async deleteSnapshots(sessionId: string, keep?: ReadonlySet<string>): Promise<void> {
+    await this.options.vaultSync?.deleteSnapshots(sessionId, keep);
   }
 
   /** Saves changes made outside a turn. It never runs during an Assistant turn (lessons 22, 30). */

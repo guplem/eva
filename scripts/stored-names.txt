@@ -204,6 +204,10 @@ machine state/sessions.json sessions[].turns[].projectReports[].repositories[].p
 machine state/sessions.json sessions[].turns[].projectReports[].request
 machine state/sessions.json sessions[].turns[].projectReports[].result
 machine state/sessions.json sessions[].turns[].projectReports[].resultCut
+machine state/sessions.json sessions[].turns[].ranIn
+machine state/sessions.json sessions[].turns[].ranIn.engineSessionId
+machine state/sessions.json sessions[].turns[].ranIn.sessionId
+machine state/sessions.json sessions[].turns[].ranIn.turnIndex
 machine state/sessions.json sessions[].turns[].startSnapshot
 machine state/sessions.json sessions[].turns[].steps
 machine state/sessions.json sessions[].turns[].steps[].chatId

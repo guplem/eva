@@ -3346,12 +3346,14 @@ test("the message box shows no mode chip", async ({ page }) => {
   await newChat(page);
   const box = page.locator(".composer-box");
   await expect(box.getByRole("textbox", { name: "Message" })).toBeVisible();
-  await expect(box.locator(".chip.soft")).toHaveCount(0);
+  await expect(box.getByText(/^(Assistant|Project)$/)).toHaveCount(0);
 
   await openExampleApp(page);
   await newProjectChat(page);
-  await expect(page.locator(".composer-box").getByRole("textbox", { name: "Message" })).toBeVisible();
-  await expect(page.locator(".composer-box .chip.soft")).toHaveCount(0);
+  // The header still says which mode runs.
+  await expect(page.getByText("Project mode")).toBeVisible();
+  await expect(box.getByRole("textbox", { name: "Message" })).toBeVisible();
+  await expect(box.getByText(/^(Assistant|Project)$/)).toHaveCount(0);
 });
 
 test("a pasted image and a dropped file attach like a picked file", async ({ page }) => {

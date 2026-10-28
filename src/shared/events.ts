@@ -159,7 +159,12 @@ export type CoreEventPayload =
    * The chat is gone from the list; each front end drops its own view of it. After the delete of one
    * branch, `heirId` names the fork that took its place (issue 647), so a front end shows that one.
    */
-  | { readonly kind: "session_deleted"; readonly heirId?: string }
+  | {
+      readonly kind: "session_deleted";
+      readonly heirId?: string;
+      /** Gone branches whose vault snapshots the deleted turns still named, so the core deletes them too. */
+      readonly snapshotsOf?: readonly string[];
+    }
   /** The chat gave work to a project: the Project chat that runs it. */
   | {
       readonly kind: "project_work_started";

@@ -229,6 +229,23 @@ describe("SessionStore", () => {
     expect(openStore().get("one")?.turns[0]).toMatchObject({ fromEva: false, projectReports: [], personText: null });
   });
 
+  test("a moved turn keeps where it ran after a reload, and a bad place costs only that field (issue 647)", () => {
+    const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
+    const ranIn = { sessionId: "gone", turnIndex: 2, engineSessionId: "engine-gone" };
+    const sessions = [
+      { ...session("one"), turns: [{ ...turn, ranIn }, turn] },
+      { ...session("two"), turns: [{ ...turn, ranIn: { sessionId: 3 } }] },
+    ];
+    writeFileSync(path, JSON.stringify({ version: 1, sessions }));
+    expect(
+      openStore()
+        .get("one")
+        ?.turns.map((stored) => stored.ranIn),
+    ).toEqual([ranIn, undefined]);
+    expect(openStore().get("two")?.turns[0]?.ranIn).toBeUndefined();
+    expect(corruptCopies()).toEqual([]);
+  });
+
   test("a turn from before the notes, or with bad notes, has none and keeps its session (issue 157)", () => {
     const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
     const sessions = [

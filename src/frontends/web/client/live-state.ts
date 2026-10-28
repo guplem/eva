@@ -30,6 +30,11 @@ export interface LiveState {
    * came since it started. Null when no read is open.
    */
   readonly recovery: { readonly id: number; readonly events: readonly SessionEvent[] } | null;
+  /**
+   * The fork that took the place of each deleted branch, by the deleted id (issue 647). A page that
+   * showed the branch shows the fork instead.
+   */
+  readonly heirs: Readonly<Record<string, string>>;
 }
 
 export const emptyLiveState: LiveState = {
@@ -40,6 +45,7 @@ export const emptyLiveState: LiveState = {
   notes: {},
   drafts: {},
   recovery: null,
+  heirs: {},
 };
 
 /**
@@ -126,7 +132,11 @@ export function afterFailedTurnsRead(state: LiveState, id: number, failure: Turn
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
   const drafts = draftsAfter(state.drafts, event);
-  const withDraft = drafts === state.drafts ? state : { ...state, drafts };
+  const withHeir =
+    event.kind === "session_deleted" && event.heirId !== undefined
+      ? { ...state, heirs: { ...state.heirs, [event.sessionId]: event.heirId } }
+      : state;
+  const withDraft = drafts === state.drafts ? withHeir : { ...withHeir, drafts };
   const next = applyToTurn(applyToNotes(withDraft, event), event);
   if (next.recovery === null) return next;
   return { ...next, recovery: { ...next.recovery, events: [...next.recovery.events, event] } };
@@ -232,4 +242,16 @@ function applyToTurn(state: LiveState, event: SessionEvent): LiveState {
 export function stepsWithDraft(steps: readonly TurnStep[], draft: string | undefined): readonly TurnStep[] {
   if (draft === undefined || draft.trim() === "") return steps;
   return [...steps, { kind: "message", text: draft, isError: false, id: null }];
+}
+
+/** The id that a branch has now: the fork that took its place, through every later delete (issue 647). */
+export function latestId(sessionId: string, heirs: LiveState["heirs"]): string {
+  let id = sessionId;
+  // The bound stops a loop, which only a damaged list of events could hold.
+  for (let step = 0; step < 100; step += 1) {
+    const heir = heirs[id];
+    if (heir === undefined) return id;
+    id = heir;
+  }
+  return id;
 }

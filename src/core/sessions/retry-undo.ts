@@ -12,14 +12,21 @@ export function answersToUndo(sessions: readonly SessionRecord[], sessionId: str
   const retried = session?.turns[turnIndex];
   if (session === undefined || retried === undefined || session.mode !== "assistant") return [];
   const root = rootId(byId, session);
-  const later: { sessionId: string; turnIndex: number; at: string; chatCreatedAt: string }[] = [];
+  const later: { sessionId: string; turnIndex: number; order: number; at: string; chatCreatedAt: string }[] = [];
   for (const candidate of sessions) {
     if (candidate.mode !== "assistant" || rootId(byId, candidate) !== root) continue;
     for (const [index, turn] of candidate.turns.entries()) {
       // In the chat itself, the order of its turns decides: two turns can end in the same second.
       const isLater = candidate.id === sessionId ? index >= turnIndex : turn.at >= retried.at;
+      // A turn that a delete moved keeps the snapshot names of the place where it ran (issue 647).
       if (isLater)
-        later.push({ sessionId: candidate.id, turnIndex: index, at: turn.at, chatCreatedAt: candidate.createdAt });
+        later.push({
+          sessionId: turn.ranIn?.sessionId ?? candidate.id,
+          turnIndex: turn.ranIn?.turnIndex ?? index,
+          order: index,
+          at: turn.at,
+          chatCreatedAt: candidate.createdAt,
+        });
     }
   }
   // The end time has whole seconds at best. On a tie, a fork made later ran later.
@@ -27,7 +34,7 @@ export function answersToUndo(sessions: readonly SessionRecord[], sessionId: str
     (left, right) =>
       left.at.localeCompare(right.at) ||
       left.chatCreatedAt.localeCompare(right.chatCreatedAt) ||
-      left.turnIndex - right.turnIndex,
+      left.order - right.order,
   );
   return later.map((turn) => ({
     before: turnSnapshotRef(turn.sessionId, turn.turnIndex, "before"),
@@ -44,4 +51,15 @@ function rootId(byId: ReadonlyMap<string, SessionRecord>, session: SessionRecord
     root = parent;
   }
   return root.id;
+}
+
+/** The snapshot refs of a deleted chat that a moved turn of another chat still names (issue 647). */
+export function refsStillNamed(sessions: readonly SessionRecord[], deletedId: string): Set<string> {
+  const refs = new Set<string>();
+  for (const session of sessions)
+    for (const turn of session.turns)
+      if (turn.ranIn?.sessionId === deletedId)
+        for (const moment of ["before", "after"] as const)
+          refs.add(turnSnapshotRef(deletedId, turn.ranIn.turnIndex, moment));
+  return refs;
 }

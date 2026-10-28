@@ -268,6 +268,15 @@ describe("VaultSync undo of an answer", () => {
     // Nothing to delete is no failure.
     await sync.deleteSnapshots("gone");
   });
+
+  test("deleteSnapshots keeps the refs that a moved turn still names (issue 647)", async () => {
+    const sync = createSync();
+    await sync.snapshot(turnSnapshotRef("gone", 0, "before"));
+    await sync.snapshot(turnSnapshotRef("gone", 1, "before"));
+    await sync.deleteSnapshots("gone", new Set([turnSnapshotRef("gone", 0, "before")]));
+    const refs = sandbox.git(vault, "for-each-ref", "--format=%(refname)", "refs/eva");
+    expect(refs).toBe(turnSnapshotRef("gone", 0, "before"));
+  });
 });
 
 describe("snapshot helpers", () => {

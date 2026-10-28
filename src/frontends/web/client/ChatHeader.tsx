@@ -349,7 +349,10 @@ export function RenameDialog({
   );
 }
 
-/** Deletes a chat or a fork, with its forks, in every front end, after the person says yes in a dialog. */
+/**
+ * Deletes a chat with every branch, or one branch, in every front end, after the person says yes in a
+ * dialog. The forks of a deleted branch stay (issue 647).
+ */
 export function DeleteQuestion({
   chat,
   fork = false,
@@ -357,7 +360,7 @@ export function DeleteQuestion({
   onChanged,
 }: {
   readonly chat: SessionRecord;
-  /** The question names a fork, such as "Fork 1", and not the whole chat. */
+  /** The question names a branch, such as "Fork 1", and not the whole chat. */
   readonly fork?: string | false;
   readonly onKeep: () => void;
   readonly onChanged: () => Promise<void>;
@@ -369,7 +372,8 @@ export function DeleteQuestion({
     if (deleting) return;
     setDeleting(true);
     try {
-      await api.deleteChat(chat.id);
+      if (fork === false) await api.deleteChat(chat.id);
+      else await api.deleteBranch(chat.id);
       await onChanged();
     } catch (caught) {
       showError(caught);
@@ -392,7 +396,7 @@ export function DeleteQuestion({
         <p>
           {fork === false
             ? "Eva deletes the chat and its forks everywhere."
-            : "Eva deletes this fork and its forks everywhere."}
+            : "Eva deletes this branch everywhere. Its forks stay."}
         </p>
         <div className="schedule-sheet-actions">
           {/* Not disabled: a disabled button drops the focus, and a failed delete must leave it here. */}

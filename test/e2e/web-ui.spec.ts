@@ -313,8 +313,10 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   // Other chats of the demo can have forks too, so the toggle and the list are the open chat's.
   await list.locator('.chat-item[aria-current="true"] + .chat-forks-toggle').click();
   const branches = list.locator('.chat-item[aria-current="true"] + .chat-forks-toggle + .chat-forks');
-  // The main line is the chat, whose own row has the menu.
+  // The main line is a branch too, with the same menu (issue 647).
   await branches.getByRole("button", { name: /^Main line/ }).click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Delete fork" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
   await branches.getByRole("button", { name: /^Fork 1/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Rename" }).click();
@@ -326,15 +328,23 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await expect(start).toContainText("Second try · 2 of 2");
 
   if (test.info().project.name !== "phone") {
-    // A right click on the head of a fork deletes it. The chat then has no fork, so the switcher goes.
+    // A right click on the head of the main line deletes it, and the fork takes its place (issue 647).
+    // The chat then has no fork, so the switcher goes.
+    const oldAddress = new URL(page.url()).hash;
     await page
       .getByRole("navigation", { name: "Branch map" })
-      .getByRole("button", { name: /Second try · answer 1/ })
+      .getByRole("button", { name: /Main line · answer 1/ })
       .click({ button: "right" });
     await page.getByRole("menuitem", { name: "Delete fork" }).click();
-    await page.getByRole("dialog", { name: "Delete Second try?" }).getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("dialog", { name: "Delete Main line?" }).getByRole("button", { name: "Delete" }).click();
     await expect(start).toBeHidden();
     await expect(page.getByRole("navigation", { name: "Branch map" })).toHaveCount(0);
+    await expect(page.locator(".message.answer")).toHaveCount(1);
+    await expect(list.locator('.chat-item[aria-current="true"]')).toHaveCount(1);
+    // The address names the fork that took the place of the main line, so a reload opens it.
+    await expect.poll(() => new URL(page.url()).hash).not.toBe(oldAddress);
+    await page.reload();
+    await expect(page.locator(".message.answer")).toHaveCount(1);
   }
 });
 

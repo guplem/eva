@@ -19,7 +19,7 @@ import {
 import { DeleteQuestion, RenameDialog, useIsPhone } from "./ChatHeader.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
-import type { LiveState } from "./live-state.ts";
+import { latestId, type LiveState } from "./live-state.ts";
 import { useContextMenu, type ContextMenuProps, type MenuItem } from "./Menu.tsx";
 
 /** The branch that the page shows, and the turn to bring into view after a pick. */
@@ -35,8 +35,13 @@ export interface ShownBranch {
  * Holds the shown branch of a chat. A chat opens on the branch that a link names, else on its
  * branch with the newest activity. The choice then stays, so an answer in another branch does not
  * move the page. A branch that appears after the chat opened, such as a new fork or a retry, shows at once.
+ * A deleted branch gives its place to the fork in `heirs` (issue 647), also when it was the first branch.
  */
-export function useShownBranch(tree: readonly SessionRecord[], linkedId: string | null = null): ShownBranch {
+export function useShownBranch(
+  tree: readonly SessionRecord[],
+  linkedId: string | null = null,
+  heirs: LiveState["heirs"] = {},
+): ShownBranch {
   const rootId = tree[0]?.id ?? null;
   const [choice, setChoice] = useState<{ rootId: string; id: string } | null>(null);
   const [focus, setFocus] = useState<ShownBranch["focus"]>(null);
@@ -55,7 +60,7 @@ export function useShownBranch(tree: readonly SessionRecord[], linkedId: string 
     if (linked !== null) {
       link.current = null;
       setChoice({ rootId: root.id, id: linked });
-    } else if (known.current.rootId === root.id) {
+    } else if (known.current.rootId !== null && latestId(known.current.rootId, heirs) === root.id) {
       const [first, ...others] = tree.filter((session) => !known.current.ids.has(session.id));
       if (first !== undefined) setChoice({ rootId: root.id, id: firstShownBranch([first, ...others]).id });
     } else {
@@ -78,8 +83,10 @@ export function useShownBranch(tree: readonly SessionRecord[], linkedId: string 
   );
 
   const [root, ...rest] = tree;
-  const chosen = choice !== null && choice.rootId === rootId && tree.some((session) => session.id === choice.id);
-  const id = chosen ? choice.id : root === undefined ? null : firstShownBranch([root, ...rest]).id;
+  const choiceId = choice === null ? null : latestId(choice.id, heirs);
+  const chosen =
+    choice !== null && latestId(choice.rootId, heirs) === rootId && tree.some((session) => session.id === choiceId);
+  const id = chosen ? choiceId : root === undefined ? null : firstShownBranch([root, ...rest]).id;
   return { id, show, focus };
 }
 
@@ -189,7 +196,7 @@ export function BranchMap({
           key={row.key}
           row={row}
           width={width}
-          fork={row.forkHead ? tree.find((session) => session.id === row.sessionId) : undefined}
+          fork={row.branchHead ? tree.find((session) => session.id === row.sessionId) : undefined}
           forkName={names.get(row.sessionId) ?? "the fork"}
           state={lastRows.get(row.sessionId) === row.key ? states.get(row.sessionId) : undefined}
           onPick={onPick}
@@ -200,7 +207,7 @@ export function BranchMap({
 }
 
 /**
- * The context menu of a fork: Open when the place gives it, then Rename and Delete fork (issue 637).
+ * The context menu of a branch: Open when the place gives it, then Rename and Delete fork (issues 637, 647).
  * Spread `props` on the fork's element, and draw `parts` next to it. With no fork, the element keeps
  * the browser's menu, as it has no Eva action.
  */
@@ -263,7 +270,7 @@ export function useForkMenu(
   return { props: fork === undefined ? {} : menuProps, parts };
 }
 
-/** One row of the map. The first row of a fork has the fork's menu. */
+/** One row of the map. The first row of a branch has the branch menu. */
 function BranchRow({
   row,
   width,

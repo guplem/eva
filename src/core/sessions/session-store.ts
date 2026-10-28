@@ -91,6 +91,18 @@ const turnSchema = z.object({
    */
   startSnapshot: z.string().nullable().default(null).catch(null),
   endSnapshot: z.string().nullable().default(null).catch(null),
+  /**
+   * Where the turn ran, when the delete of a branch moved it (issue 647). Its vault snapshots keep
+   * the names of that place. A null engine session is the branch's own. A turn that never moved has none.
+   */
+  ranIn: z
+    .object({
+      sessionId: z.string(),
+      turnIndex: z.number().int().min(0),
+      engineSessionId: z.string().nullable(),
+    })
+    .optional()
+    .catch(undefined),
 });
 
 /** The chat that a chat in another clone branched from (issue 523), with the point of its history. */

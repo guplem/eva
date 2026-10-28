@@ -955,6 +955,24 @@ describe("topics", () => {
     expect(eva.sessions.list()).toHaveLength(1);
     expect(telegram.callsTo("deleteForumTopic")).toHaveLength(1);
   });
+
+  test("a topic whose first branch goes moves to the fork that takes its place (issue 647)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.sendText(owner, "hello in the topic", 500);
+    await settle(bot, () => engine.requests.length === 1);
+    await eva.idle();
+    const topicChat = eva.sessions.list()[0]!;
+    const fork = eva.sessions.fork(topicChat.id, topicChat.turns[0]!.lastMessageId!);
+
+    eva.sessions.deleteBranch(topicChat.id);
+    telegram.sendText(owner, "and on", 500);
+    await settle(bot, () => engine.requests.length === 2);
+    await eva.idle();
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
+    expect(eva.sessions.get(fork.id).turns.map((turn) => turn.userText)).toEqual(["hello in the topic", "and on"]);
+  });
 });
 
 describe("/chats: every chat of the instance (#9)", () => {
@@ -1023,6 +1041,22 @@ describe("/chats: every chat of the instance (#9)", () => {
     expect(eva.sessions.list()).toHaveLength(1);
     // Eva named the topic after the chat, so the first message keeps that name (lesson 125).
     expect(telegram.callsTo("editForumTopic")).toEqual([]);
+  });
+
+  test("a deleted first branch whose heir has its own topic loses its topic, and the heir keeps its own (issue 647)", async () => {
+    const sessionId = await webChat("one");
+    const fork = eva.sessions.fork(sessionId, eva.sessions.get(sessionId).turns[0]!.lastMessageId!);
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    telegram.pressButton(owner, `o:${fork.id}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 2);
+
+    eva.sessions.deleteBranch(sessionId);
+    await settle(bot, () => telegram.callsTo("deleteForumTopic").length === 1);
+    expect(telegram.callsTo("deleteForumTopic")[0]?.params["message_thread_id"]).toBe(500);
+    telegram.sendText(owner, "and on", 501);
+    await settle(bot, () => eva.sessions.get(fork.id).turns.length === 2);
   });
 
   test("a message from another front end shows in the topic, and a Telegram message shows once", async () => {

@@ -128,7 +128,7 @@ import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
-import { answersToUndo } from "./sessions/retry-undo.ts";
+import { answersToUndo, refsStillNamed } from "./sessions/retry-undo.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { StepDetailsStore } from "./sessions/step-details-store.ts";
@@ -734,8 +734,14 @@ export class Eva {
       if (event.kind === "turn_failed")
         options.logger?.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
       if (event.kind === "turn_failed" || event.kind === "turn_finished") this.reportEngineLogin(event);
-      if (event.kind === "session_deleted")
-        this.inBackground("The delete of the snapshots of a chat", () => this.vault.deleteSnapshots(event.sessionId));
+      if (event.kind === "session_deleted") {
+        // After the delete of one branch, its forks still name the snapshots of the turns that they took.
+        // The deleted turns can also be the last that named the snapshots of a branch that went before.
+        for (const id of [event.sessionId, ...(event.snapshotsOf ?? [])]) {
+          const keep = refsStillNamed(this.sessions.list(), id);
+          this.inBackground("The delete of the snapshots of a chat", () => this.vault.deleteSnapshots(id, keep));
+        }
+      }
       if (event.kind !== "turn_finished") return;
       this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
       // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).

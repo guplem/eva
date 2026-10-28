@@ -135,6 +135,11 @@ describe("branchNames", () => {
       ]),
     );
   });
+
+  test('the first branch shows its name too, and "Main line" without one (issue 647)', () => {
+    expect(branchNames([{ ...main, forkName: "Plan A" }, fork1]).get("main")).toBe("Plan A");
+    expect(branchNames([main, fork1]).get("main")).toBe("Main line");
+  });
 });
 
 describe("firstShownBranch", () => {
@@ -193,9 +198,9 @@ describe("branchMap", () => {
     expect(map.rows[4]?.lines).toContainEqual({ lane: 1, up: "hot", down: "none" });
   });
 
-  test("only the first row of each fork is its head, so its menu can delete it", () => {
+  test("only the first row of each branch is its head, so its menu can delete it (issue 647)", () => {
     const map = branchMap(tree, "fork1");
-    expect(map.rows.map((row) => row.forkHead)).toEqual([false, false, false, true, false, true]);
+    expect(map.rows.map((row) => row.branchHead)).toEqual([true, false, false, true, false, true]);
   });
 
   test("a fork from the start bends from the first row", () => {

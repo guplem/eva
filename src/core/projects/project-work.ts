@@ -230,12 +230,12 @@ export class ProjectWork {
       return { session: sessions.fork(sessionId, atMessageId), notice: null };
     const turns = sessions.branchTurns(sessionId);
     const end = turns.findIndex((turn) => turn.lastMessageId === atMessageId);
-    // The fork goes on from this chat's own engine session, which holds only the messages of its branch.
+    // The fork goes on from the engine session that holds the answer: this chat's own, or where a moved turn ran.
     if (end === -1 || !from.turns.some((turn) => turn.lastMessageId === atMessageId))
       throw new EvaError("session_not_found", `Session ${sessionId} has no answer ${atMessageId}.`);
     return this.branchInNewClone({
       from,
-      point: { engineSessionId: from.engineSessionId, atMessageId },
+      point: sessions.historyPointAt(sessionId, atMessageId),
       snapshot: files === "snapshot-clone" ? sessions.endSnapshotAt(sessionId, atMessageId) : null,
       history: turns.slice(0, end + 1),
       retryTurn: null,
@@ -382,9 +382,10 @@ export class ProjectWork {
         this.reservedClones.delete(clone.path);
       }
       if (input.reportToSessionId === null) return;
-      const reportTo = input.reportToSessionId;
       // The person may delete either chat while the work runs: the Project chat then keeps the result.
       const exists = (id: string): boolean => sessions.list().some((candidate) => candidate.id === id);
+      // A delete of the asking branch moves the report to the fork that took its place (issue 647).
+      const reportTo = (exists(session.id) ? sessions.get(session.id).reportsTo : null) ?? input.reportToSessionId;
       const last = exists(session.id) ? sessions.get(session.id).turns.at(-1) : undefined;
       const failed = last?.failure !== null;
       const result = failed ? `It failed: ${last?.failure ?? "no answer"}` : last.answerText;

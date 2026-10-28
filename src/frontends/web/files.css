@@ -564,6 +564,11 @@ a.files-entry[aria-current="true"] {
 }
 
 @media (max-width: 760px) {
+  /* The download button comes when the folder loads. The header keeps its height, so the list does not jump. */
+  .files-header {
+    min-height: var(--touch-target);
+  }
+
   .files-page {
     --files-gutter: var(--space-3);
     padding: var(--space-3) var(--files-gutter) var(--space-4);

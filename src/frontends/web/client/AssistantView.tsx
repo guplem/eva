@@ -207,6 +207,8 @@ export function AssistantView({
   const newChat = (): void => {
     goTo(assistantChatAddressOf(newChatPageId), () => setSelectedId(newChatPageId));
     clearAction();
+    // The new chat goes first in the list. A phone hides the list now, and a hidden list does not scroll.
+    listRef.current?.scrollTo({ top: 0 });
     onNavigate();
   };
 

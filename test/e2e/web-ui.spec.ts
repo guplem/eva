@@ -912,8 +912,7 @@ test("a chat that answers while another chat is open shows as unread until the p
   await expect(page.locator(".message.answer").first()).toContainText(message);
   await marked;
   // The open chat hides its own mark at once. Another open chat shows what the core stored.
-  await openList(page);
-  await page.locator(".sidebar .list-item", { hasNotText: message }).first().click();
+  await newChat(page);
   await openList(page);
   await expect(slow).toBeVisible();
   await expect(slow.locator(".status-pill")).toHaveCount(0);
@@ -2917,7 +2916,6 @@ test("the New chat button opens the New chat page, and only the first message ma
     await route.continue();
   });
   const chats = page.locator(".sidebar .list-item");
-  await openList(page);
   const before = await chats.count();
   await clickNewChat(page);
   await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
@@ -3696,7 +3694,6 @@ test("a note conflict opens from the center, and the last pick closes it", async
 
 test("a failure that Settings fixes offers the way there", async ({ page }) => {
   await logIn(page);
-  await openList(page);
   await page.route("**/api/sessions", (route) =>
     route.request().method() === "POST"
       ? route.fulfill({
@@ -3714,7 +3711,6 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
 
 test("a chat without a vault offers the vault step, not a terminal command", async ({ page }) => {
   await logIn(page);
-  await openList(page);
   await page.route("**/api/sessions", (route) =>
     route.request().method() === "POST"
       ? route.fulfill({
@@ -4778,7 +4774,6 @@ test("Settings: a page opened during the engine update follows it, past a failed
 
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {
   await logIn(page);
-  await openList(page);
   await page.route("**/api/sessions", (route) =>
     route.request().method() === "POST" ? route.abort() : route.continue(),
   );

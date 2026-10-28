@@ -210,14 +210,14 @@ export class TelegramChats {
 
   /**
    * A chat deleted in another front end. Eva deletes a topic that she opened for it. Any other
-   * topic keeps its messages, and its next message starts a new chat.
+   * topic keeps its messages, and its next message starts a new chat. When only one branch went, the
+   * fork that took its place goes on in its topic, unless that fork has a topic of its own (issue 647).
    */
   async forgetDeletedChat(sessionId: string, heirId?: string): Promise<void> {
     this.options.forgetLive(sessionId);
     for (const [key, entry] of Object.entries(this.options.state.topics)) {
       if (entry.sessionId !== sessionId) continue;
-      // Only one branch went: the fork that took its place goes on in the same topic (issue 647).
-      if (heirId !== undefined) {
+      if (heirId !== undefined && targetOf(this.options.state, heirId) === null) {
         this.options.state.topics[key] = { ...entry, sessionId: heirId };
         this.options.saveState();
         continue;

@@ -1043,6 +1043,22 @@ describe("/chats: every chat of the instance (#9)", () => {
     expect(telegram.callsTo("editForumTopic")).toEqual([]);
   });
 
+  test("a deleted first branch whose heir has its own topic loses its topic, and the heir keeps its own (issue 647)", async () => {
+    const sessionId = await webChat("one");
+    const fork = eva.sessions.fork(sessionId, eva.sessions.get(sessionId).turns[0]!.lastMessageId!);
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    telegram.pressButton(owner, `o:${fork.id}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 2);
+
+    eva.sessions.deleteBranch(sessionId);
+    await settle(bot, () => telegram.callsTo("deleteForumTopic").length === 1);
+    expect(telegram.callsTo("deleteForumTopic")[0]?.params["message_thread_id"]).toBe(500);
+    telegram.sendText(owner, "and on", 501);
+    await settle(bot, () => eva.sessions.get(fork.id).turns.length === 2);
+  });
+
   test("a message from another front end shows in the topic, and a Telegram message shows once", async () => {
     const sessionId = await webChat("one");
     const bot = createBot();

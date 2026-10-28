@@ -1362,6 +1362,11 @@ textarea {
   .phone-sheet .message-actions button {
     width: 100%;
   }
+
+  .phone-sheet .button-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 @keyframes sheet-in {

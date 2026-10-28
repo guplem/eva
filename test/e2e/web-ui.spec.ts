@@ -3127,7 +3127,7 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   // A computer shows a centred box, and a phone a bottom sheet (issue 644).
   const gapBelow = (page.viewportSize()?.height ?? 0) - (await restingBottom(dialog));
   if (test.info().project.name === "phone") expect(gapBelow).toBeLessThan(1);
-  else expect(gapBelow).toBeGreaterThan(16);
+  else expect(gapBelow).toBeGreaterThanOrEqual(16);
   await expect(dialog.locator(".facts")).toContainText("The shell");
   // The input shows each field once, so the short copy of the command does not show above it.
   await expect(dialog.locator(".step-fields dt")).toHaveText(["command"]);

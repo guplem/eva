@@ -141,7 +141,7 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
   - While a turn runs and the box is empty, the pearl shows a Stop square in `--ink`, at the same place. The microphone sits beside it with no fill, in `--muted`.
 - **Visor:** `radial-gradient(ellipse at 50% 22%, var(--visor), var(--visor2) 72%)`.
 - **Eyes:** `filter: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow))` on the wrapper of the two eyes, so that every eye shape glows the same way.
-- **Scrim behind a dialog:** `oklch(0.25 0.03 h / 0.32)`. Dark: `oklch(0.05 0.01 h / 0.55)`. The chat details sheet and the new-device, schedule and update dialogs add a 3 px backdrop blur.
+- **Scrim behind a dialog:** `oklch(0.25 0.03 h / 0.32)`. Dark: `oklch(0.05 0.01 h / 0.55)`. On a phone, the scrim of a bottom sheet adds a 3 px backdrop blur. On a computer, the new-device, schedule and update dialogs add it too.
 
 ## Layout
 
@@ -158,7 +158,7 @@ A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) an
 
 From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with Chats, Projects, Files, Schedules and Eva. The Eva tab is the nav visor, with the label "Eva". It opens the notification center, which has a button to Settings. List pages use a large 30 px title.
 
-Dialogs become bottom sheets on a phone. Their buttons stack at full width.
+Dialogs are centred boxes on a computer and bottom sheets on a phone. Their buttons stack at full width in a sheet. `phoneDialogForm` in `client/Dialog.tsx` picks the phone form of every dialog.
 
 ## Components
 

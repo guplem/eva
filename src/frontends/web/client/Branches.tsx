@@ -379,7 +379,7 @@ export function BranchesButton({
         {waiting && <span className="unread-dot warn" />}
       </button>
       {open && (
-        <Dialog label="Branches" onClose={close} sheet>
+        <Dialog label="Branches" onClose={close} scrimCloses>
           <div className="branches-sheet">
             <h2>Branches</h2>
             <p className="branches-sheet-hint">Tap a branch to show it. Each one keeps its own answers.</p>

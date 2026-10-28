@@ -1284,6 +1284,9 @@ textarea {
   padding: 20px;
   max-width: 480px;
   width: 100%;
+  /* Long content, such as the output of a step, scrolls and never pushes the buttons off the screen. */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1314,6 +1317,66 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .dialog-backdrop,
   .dialog {
+    animation: none;
+  }
+}
+
+/*
+ * The bottom sheet: the form of every dialog on a phone, when `phoneDialogForm` in Dialog.tsx picks it.
+ * The selector wins over the box rules of each dialog, so each dialog only adds its own content rules.
+ */
+@media (max-width: 760px) {
+  .dialog-backdrop.phone-sheet {
+    align-items: flex-end;
+    padding: 0;
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+
+  .dialog-backdrop.phone-sheet > [role="dialog"] {
+    max-width: none;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    padding: var(--space-3) var(--space-5) max(var(--space-6), env(safe-area-inset-bottom));
+    box-shadow: var(--sheet-shadow);
+    animation: sheet-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* The grab handle says that the sheet came up from the bottom. */
+  .dialog-backdrop.phone-sheet > [role="dialog"]::before {
+    content: "";
+    flex: none;
+    width: 40px;
+    height: 5px;
+    border-radius: 9px;
+    background: var(--line);
+    align-self: center;
+  }
+
+  /* The buttons of a sheet stack at full width. */
+  .phone-sheet .message-actions {
+    margin-top: 0;
+  }
+
+  .phone-sheet .message-actions button {
+    width: 100%;
+  }
+
+  .phone-sheet .button-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-backdrop.phone-sheet > [role="dialog"] {
     animation: none;
   }
 }

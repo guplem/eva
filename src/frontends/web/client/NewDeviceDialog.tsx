@@ -7,6 +7,7 @@ import type { DeviceLoginRequest } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
+import { dialogBackdropClass } from "./Dialog.tsx";
 
 export function NewDeviceDialog(props: {
   readonly request: DeviceLoginRequest;
@@ -18,7 +19,7 @@ export function NewDeviceDialog(props: {
 }): ReactElement {
   const { request, allowed } = props;
   return (
-    <div className="dialog-backdrop device-backdrop">
+    <div className={dialogBackdropClass("device-backdrop")}>
       <div className="device-sheet" role="dialog" aria-modal="true" aria-label="New device">
         <Visor size={28} face={allowed ? stateFaces.thanked : stateFaces.searching} />
         <h2>{allowed ? "Allowed. The new device opens Eva now." : "A new device wants to get in. Allow it?"}</h2>

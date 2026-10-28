@@ -9,6 +9,7 @@ import { stepProblems, unavailableSteps } from "./new-project-form.ts";
 import { splitWords, statusChoices, statusOf } from "./ProjectDetailsEditor.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { useBackLayer } from "./back-layer-hook.ts";
+import { dialogBackdropClass } from "./Dialog.tsx";
 
 interface NewProjectDialogProps {
   readonly onClose: () => void;
@@ -101,7 +102,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
 
   return (
     // A tap beside the sheet does not close it, so a slip never loses a half-written form.
-    <div className="dialog-backdrop schedule-backdrop">
+    <div className={dialogBackdropClass("schedule-backdrop")}>
       <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label="New project">
         <h2>New project</h2>
         {created !== null ? (

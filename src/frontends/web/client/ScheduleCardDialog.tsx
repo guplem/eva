@@ -9,6 +9,7 @@ import { Icon } from "./icons.tsx";
 import { dayNumbersOf, repeatWords, slotWords } from "./schedule-words.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
+import { dialogBackdropClass } from "./Dialog.tsx";
 
 /** The name is in the heading, and "When" says the time, the days and the interval together. */
 const labels: Record<string, string> = { text: "Text", file: "File", prompt: "Prompt", model: "Model", id: "Id" };
@@ -46,7 +47,7 @@ export function ScheduleCardDialog(props: {
     </div>
   );
   return (
-    <div className="dialog-backdrop schedule-backdrop">
+    <div className={dialogBackdropClass("schedule-backdrop")}>
       <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label="Setup card">
         <Visor size={28} face={stateFaces.conflict} />
         <h2>{heading}</h2>

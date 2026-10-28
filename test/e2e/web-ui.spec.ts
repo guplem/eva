@@ -119,6 +119,15 @@ async function rightClickInView(locator: Locator): Promise<void> {
   await locator.click({ button: "right" });
 }
 
+/** The bottom edge of a dialog after it slides or grows in, so a test measures where it rests. */
+async function restingBottom(dialog: Locator): Promise<number> {
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)).then(() => undefined),
+  );
+  const box = await dialog.boundingBox();
+  return (box?.y ?? 0) + (box?.height ?? 0);
+}
+
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
 async function openSettings(page: Page, section?: string): Promise<void> {
   // Only the main navigation: a chat or a project in the list may also have "Settings" in its name.
@@ -3125,6 +3134,10 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   // A stored answer keeps no details in the session list, so the dialog fetches them.
   const dialog = page.getByRole("dialog", { name: "Step: Command" });
   await expect(dialog.locator(".status-pill")).toHaveText("Done");
+  // A computer shows a centred box, and a phone a bottom sheet (issue 644).
+  const gapBelow = (page.viewportSize()?.height ?? 0) - (await restingBottom(dialog));
+  if (test.info().project.name === "phone") expect(gapBelow).toBeLessThan(1);
+  else expect(gapBelow).toBeGreaterThanOrEqual(16);
   await expect(dialog.locator(".facts")).toContainText("The shell");
   // The input shows each field once, so the short copy of the command does not show above it.
   await expect(dialog.locator(".step-fields dt")).toHaveText(["command"]);
@@ -5371,9 +5384,7 @@ test("device login: Deny answers the new device, and the notice closes at once",
   await expect(dialog).toContainText("T7KM");
   if (test.info().project.name === "phone") {
     // A phone shows the notice as a bottom sheet, with buttons a finger can hit.
-    const box = await dialog.boundingBox();
-    const viewport = page.viewportSize();
-    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeCloseTo(viewport?.height ?? 0, 0);
+    expect(await restingBottom(dialog)).toBeCloseTo(page.viewportSize()?.height ?? 0, 0);
     const deny = await dialog.getByRole("button", { name: "Deny" }).boundingBox();
     expect(deny?.height ?? 0).toBeGreaterThanOrEqual(44);
   }

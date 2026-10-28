@@ -1,14 +1,27 @@
 /**
- * The shared dialog: a modal box with a close button, or a bottom sheet on a phone. Escape and
- * the Back button close only the top dialog.
+ * The shared dialog: a modal box with a close button. A computer always shows a box, and a phone
+ * shows the form that `phoneDialogForm` picks. Escape and the Back button close only the top dialog.
  */
 import { useEffect, useRef, type ReactElement, type ReactNode } from "react";
 import { useBackLayer } from "./back-layer-hook.ts";
 
+/**
+ * The form of every dialog on a phone: a bottom sheet that slides up from the bottom, or the
+ * same centred box as on a computer. Change this one value to change all of them.
+ */
+export const phoneDialogForm: "sheet" | "box" = "sheet";
+
+/** The classes of the scrim of every dialog, also of each dialog that builds its own box. */
+export function dialogBackdropClass(extra?: string): string {
+  return ["dialog-backdrop", phoneDialogForm === "sheet" ? "phone-sheet" : "", extra ?? ""]
+    .filter((name) => name !== "")
+    .join(" ");
+}
+
 export function Dialog({
   label,
   onClose,
-  sheet = false,
+  scrimCloses = false,
   closeLabel = "Close",
   closeDisabled = false,
   back = true,
@@ -20,8 +33,8 @@ export function Dialog({
   readonly closeLabel?: string;
   /** True while the dialog waits for work that it cannot stop, so the close button is off. */
   readonly closeDisabled?: boolean;
-  /** A bottom sheet, which slides up from the bottom of a phone screen. */
-  readonly sheet?: boolean;
+  /** True for a dialog that only shows information, so a tap beside it loses nothing. */
+  readonly scrimCloses?: boolean;
   /** False for a dialog that the Back button itself opens, such as the unsaved changes question. */
   readonly back?: boolean;
   readonly children: ReactNode;
@@ -40,7 +53,7 @@ export function Dialog({
       // One Escape closes only the top dialog, such as the unsaved changes question over a form.
       const dialogs = document.querySelectorAll('[role="dialog"]');
       if (dialogs[dialogs.length - 1] !== box.current) return;
-      // The sheets listen on the window, after the document: they must not close too.
+      // The schedule forms listen on the window, after the document: they must not close too.
       event.stopPropagation();
       onClose();
     };
@@ -49,11 +62,11 @@ export function Dialog({
   }, [onClose]);
   return (
     <div
-      className={sheet ? "dialog-backdrop sheet-backdrop" : "dialog-backdrop"}
-      // A tap on the scrim closes the sheet; a tap inside it does not.
-      onClick={sheet ? (event) => event.target === event.currentTarget && onClose() : undefined}
+      className={dialogBackdropClass()}
+      // A tap on the scrim closes the dialog; a tap inside it does not.
+      onClick={scrimCloses ? (event) => event.target === event.currentTarget && onClose() : undefined}
     >
-      <div ref={box} className={sheet ? "dialog sheet" : "dialog"} role="dialog" aria-modal="true" aria-label={label}>
+      <div ref={box} className="dialog" role="dialog" aria-modal="true" aria-label={label}>
         {children}
         <div className="message-actions">
           <button ref={close} onClick={onClose} disabled={closeDisabled}>

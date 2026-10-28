@@ -16,6 +16,7 @@ import { MoreMenu, type MenuItem } from "./Menu.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { goTo } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
+import { dialogBackdropClass } from "./Dialog.tsx";
 
 /** A header action that a list asks for, such as Rename from the context menu of a chat in the list. */
 export type ChatAction = "rename" | "delete";
@@ -313,7 +314,7 @@ export function RenameDialog({
 
   return (
     // A tap beside the dialog does not close it, so a slip never loses a half-written title.
-    <div className="dialog-backdrop schedule-backdrop">
+    <div className={dialogBackdropClass("schedule-backdrop")}>
       <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={heading}>
         <h2>{heading}</h2>
         <form
@@ -381,7 +382,7 @@ export function DeleteQuestion({
   };
   return (
     <div
-      className="dialog-backdrop schedule-backdrop"
+      className={dialogBackdropClass("schedule-backdrop")}
       // A click inside the dialog also reaches the scrim, so only a click on the scrim itself keeps the chat.
       onClick={(event) => event.target === event.currentTarget && !deleting && onKeep()}
     >
@@ -448,7 +449,7 @@ function SummaryChatQuestion({
   };
   return (
     <div
-      className="dialog-backdrop schedule-backdrop"
+      className={dialogBackdropClass("schedule-backdrop")}
       onClick={(event) => event.target === event.currentTarget && !working && onKeep()}
     >
       <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label="Start a new chat from a summary?">

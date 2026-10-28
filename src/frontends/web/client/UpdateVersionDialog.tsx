@@ -10,6 +10,7 @@ import { installLabel, restartNote, versionRows } from "./update-words.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
+import { dialogBackdropClass } from "./Dialog.tsx";
 
 export function UpdateVersionDialog(props: {
   update: UpdateStatus;
@@ -47,7 +48,7 @@ export function UpdateVersionDialog(props: {
 
   return (
     <div
-      className="dialog-backdrop update-backdrop"
+      className={dialogBackdropClass("update-backdrop")}
       // A click inside the dialog also reaches the scrim, so only a click on the scrim itself closes it.
       onClick={(event) => event.target === event.currentTarget && props.onClose()}
     >

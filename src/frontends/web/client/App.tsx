@@ -74,6 +74,7 @@ import { settingsHash } from "./settings-routes.ts";
 import { startPushPresence } from "./push-presence.ts";
 import { unreadChats } from "./chat-list.ts";
 import { announceShownChats, browserPresencePage } from "./PushCard.tsx";
+import { dialogBackdropClass } from "./Dialog.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -749,7 +750,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       </div>
       {/* Before the other dialogs: a device request that comes meanwhile shows on top. */}
       {conflictsOpen && syncState !== null && (
-        <div className="dialog-backdrop">
+        <div className={dialogBackdropClass()}>
           <div className="dialog wide" role="dialog" aria-modal="true" aria-label="Note conflicts">
             <NoteConflicts state={syncState} onState={onConflictState} />
             <div className="message-actions">

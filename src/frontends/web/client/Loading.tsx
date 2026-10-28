@@ -581,8 +581,11 @@ function MainNavSkeleton({ current }: { readonly current: Destination }): ReactE
 export function AppSkeleton({
   page,
   chatPanel = false,
+  project = "list",
 }: {
   readonly page: Destination;
+  /** The page of Projects that opens: the list, a project, or one of its chats. */
+  readonly project?: "list" | "page" | "chat";
   /** The person keeps the details of a chat shown. */
   readonly chatPanel?: boolean;
 }): ReactElement {
@@ -600,12 +603,30 @@ export function AppSkeleton({
             {chatPanel && <ChatPanelSkeleton />}
           </div>
         )}
-        {page === "projects" && (
-          <div className="layout list-home">
-            <ProjectListSkeleton />
-            <div className="main" />
-          </div>
-        )}
+        {page === "projects" &&
+          (project === "list" ? (
+            <div className="layout list-home">
+              <ProjectListSkeleton />
+              <div className="main" />
+            </div>
+          ) : (
+            <div className="layout">
+              <ProjectListSkeleton />
+              <div className="main">
+                {project === "chat" ? (
+                  <>
+                    <ChatHeaderSkeleton />
+                    <ConversationSkeleton />
+                  </>
+                ) : (
+                  <div className="page-skeleton">
+                    <CardsSkeleton cards={2} />
+                  </div>
+                )}
+              </div>
+              {project === "chat" && chatPanel && <ChatPanelSkeleton />}
+            </div>
+          ))}
         {page === "files" && <FilesSkeleton />}
         {page === "schedules" && <SchedulesSkeleton />}
         {page === "settings" && <SettingsSkeleton />}

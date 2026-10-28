@@ -106,6 +106,16 @@ describe("skeletons", () => {
     expect(hidden).not.toContain("chat-panel-frame");
   });
 
+  test("an open project shows its page, and a project chat shows a chat", () => {
+    const list = renderToStaticMarkup(createElement(AppSkeleton, { page: "projects" }));
+    const project = renderToStaticMarkup(createElement(AppSkeleton, { page: "projects", project: "page" }));
+    const chat = renderToStaticMarkup(createElement(AppSkeleton, { page: "projects", project: "chat" }));
+    expect(list).toContain("layout list-home");
+    expect(project).not.toContain("list-home");
+    expect(project).toContain("cards-skeleton");
+    expect(chat).toContain("composer-box");
+  });
+
   test("a skeleton takes no focus", () => {
     expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "settings" }))).toContain(
       'aria-hidden="true" inert=""',

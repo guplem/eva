@@ -58,11 +58,31 @@ function realBox(page: Page, selector: string, index: number): Promise<Record<Ed
   );
 }
 
+/** Each edge of a skeleton part that does not match its real part, such as `.chat-search #0: top is 9 px off`. */
+async function mismatches(page: Page, parts: readonly Part[]): Promise<string[]> {
+  const seen = new Map<string, number>();
+  const wrong: string[] = [];
+  for (const part of parts) {
+    const index = seen.get(part.copies) ?? 0;
+    seen.set(part.copies, index + 1);
+    const real = await realBox(page, part.copies, index);
+    if (real === null) {
+      wrong.push(`${part.copies} #${String(index)}: no such part on the page`);
+      continue;
+    }
+    for (const edge of part.edges) {
+      const off = Math.round(part.box[edge] - real[edge]);
+      if (Math.abs(off) > tolerance) wrong.push(`${part.copies} #${String(index)}: ${edge} is ${String(off)} px off`);
+    }
+  }
+  return wrong;
+}
+
 /**
- * Holds each request that matches `hold`, opens the address, and compares the skeleton with
- * the page once the requests go on. Returns each edge that does not match.
+ * Holds each request that matches `hold`, opens the address, and checks that each named part
+ * of the skeleton has the place of its real part once the requests go on.
  */
-async function compare(page: Page, address: string, hold: string): Promise<string[]> {
+async function expectSameShape(page: Page, address: string, hold: string): Promise<void> {
   let release = (): void => undefined;
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -82,24 +102,7 @@ async function compare(page: Page, address: string, hold: string): Promise<strin
   await expect(page.locator(".skeleton")).toHaveCount(0);
   await page.unroute(hold);
   // The page draws its content in more than one step, such as the list, then the open chat.
-  await page.waitForTimeout(500);
-
-  const seen = new Map<string, number>();
-  const wrong: string[] = [];
-  for (const part of parts) {
-    const index = seen.get(part.copies) ?? 0;
-    seen.set(part.copies, index + 1);
-    const real = await realBox(page, part.copies, index);
-    if (real === null) {
-      wrong.push(`${part.copies} #${String(index)}: no such part on the page`);
-      continue;
-    }
-    for (const edge of part.edges) {
-      const off = Math.round(part.box[edge] - real[edge]);
-      if (Math.abs(off) > tolerance) wrong.push(`${part.copies} #${String(index)}: ${edge} is ${String(off)} px off`);
-    }
-  }
-  return wrong;
+  await expect.poll(() => mismatches(page, parts)).toEqual([]);
 }
 
 /** A chat of its own, so the first answer of the page is a short answer of the scripted engine. */
@@ -122,17 +125,18 @@ test.beforeEach(async ({ page }) => {
 
 test("the first load of a chat has the shape of the chat", async ({ page }) => {
   const chat = await openNewChat(page, "Skeleton shapes chat sample");
-  expect(await compare(page, chat, firstLoad)).toEqual([]);
+  await expectSameShape(page, chat, firstLoad);
 });
 
 for (const [name, address] of [
   ["Projects", "#/projects"],
+  ["a project", "#/projects/2025-03-02-1015-example-app"],
   ["Files", "#/files"],
   ["Schedules", "#/schedules"],
   ["Settings", "#/settings"],
 ] as const) {
   test(`the first load of ${name} has the shape of the page`, async ({ page }) => {
-    expect(await compare(page, address, firstLoad)).toEqual([]);
+    await expectSameShape(page, address, firstLoad);
   });
 }
 
@@ -142,6 +146,6 @@ for (const [name, address, hold] of [
   ["the settings", "#/settings", "**/api/settings"],
 ] as const) {
   test(`the skeleton of ${name} has the shape of the list`, async ({ page }) => {
-    expect(await compare(page, address, hold)).toEqual([]);
+    await expectSameShape(page, address, hold);
   });
 }

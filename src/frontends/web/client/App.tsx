@@ -45,6 +45,7 @@ import {
   destinationOf,
   linkedChatIdOf,
   notificationCenter,
+  projectRouteOf,
   type Destination,
 } from "./navigation.ts";
 import { NotificationCenter } from "./NotificationCenter.tsx";
@@ -510,7 +511,16 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   }, [allowedDevice]);
 
   if (refusal !== null) return <AccountRefusedView reason={refusal} />;
-  if (authenticated === null) return <AppSkeleton page={screen} chatPanel={chatPanelKeptShown()} />;
+  if (authenticated === null) {
+    const projectPage = projectRouteOf(window.location.hash).kind;
+    return (
+      <AppSkeleton
+        page={screen}
+        chatPanel={chatPanelKeptShown()}
+        project={projectPage === "list" ? "list" : projectPage === "chat" ? "chat" : "page"}
+      />
+    );
+  }
   if (!authenticated) return <LoginView notice={loginNotice} onLoggedIn={() => void refreshSessions()} />;
 
   const answerApproval = async (

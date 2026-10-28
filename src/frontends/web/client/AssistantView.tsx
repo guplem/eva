@@ -1,6 +1,6 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import { api, type ChatBlocker, type ListedSession, type SessionRecord } from "./api.ts";
+import type { ChatBlocker, ListedSession, SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatForks, chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
@@ -9,7 +9,6 @@ import { chatSubtitle } from "./chat-details.ts";
 import { seenPart } from "./branch-path.ts";
 import { BranchesButton, useBranchStates, useForkMenu, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf, type SentMessage } from "./Conversation.tsx";
-import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import {
   ChatHeader,
@@ -23,7 +22,7 @@ import { BackButton } from "./MainNav.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
-import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf } from "./navigation.ts";
+import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf, newChatPageId } from "./navigation.ts";
 import { goTo, replaceAddress } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
@@ -80,8 +79,6 @@ export function AssistantView({
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
-  // True while the page shows a new chat before its first message. The chat exists only once it is sent.
-  const [drafting, setDrafting] = useState(false);
   const [query, setQuery] = useState("");
   /** An archived chat leaves the page, so the list opens another one. */
   const afterArchive = async (chat: SessionRecord): Promise<void> => {
@@ -113,8 +110,9 @@ export function AssistantView({
   const isRunning = (sessionId: string): boolean =>
     sessionId in live.steps || sessions.some((session) => session.id === sessionId && session.running);
   // Any root chat, and the chats list first, so a switch between the lists keeps the open chat.
+  // True while the page shows a new chat before its first message. The chat exists only once it is sent.
+  const drafting = selectedId === newChatPageId;
   const selected = drafting ? undefined : (roots.find((chat) => chat.id === selectedId) ?? active[0] ?? chats[0]);
-  const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
   // A fork that the person picks in the list opens like a link to it.
   const [pickedBranchId, setPickedBranchId] = useState<string | null>(null);
@@ -156,13 +154,13 @@ export function AssistantView({
   const linkedId = linkedChat?.mode === "assistant" ? rootIdOf(linkedChat, sessions) : null;
   // A link can come before the list, so the linked record itself answers until then.
   const linkedArchived = (sessions.find((chat) => chat.id === linkedId) ?? linkedChat)?.archived === true;
+  const listHasUnread = active.some((candidate) => stateOf(candidate) === "unread");
   const actionRequest = useChatActionRequest();
   const clearAction = actionRequest.clear;
 
   /** Opens a chat, and starts a header action when the chat's context menu asks for one. */
   const select = (chatId: string, action?: ChatAction): void => {
     goTo(assistantChatAddressOf(chatId), () => setSelectedId(chatId));
-    setDrafting(false);
     if (action === undefined) clearAction();
     else actionRequest.ask(chatId, action);
     onNavigate();
@@ -178,7 +176,6 @@ export function AssistantView({
   useEffect(() => {
     if (linkedId === null) return;
     setSelectedId(linkedId);
-    setDrafting(false);
     // The list shows where the linked chat lives.
     setShowArchived(linkedArchived);
     setQuery("");
@@ -191,33 +188,28 @@ export function AssistantView({
   useEffect(() => {
     if (newChatRequest === handledRequest.current) return;
     handledRequest.current = newChatRequest;
-    setDrafting(true);
+    goTo(assistantChatAddressOf(newChatPageId), () => setSelectedId(newChatPageId));
     clearAction();
   }, [newChatRequest, clearAction]);
 
   const openNewChat = async (chat: SessionRecord): Promise<void> => {
     await onChanged();
-    goTo(assistantChatAddressOf(chat.id), () => setSelectedId(chat.id));
-    setDrafting(false);
+    // The chat takes the place of the New chat page, so Back does not open the page again.
+    setSelectedId(chat.id);
+    replaceAddress(assistantChatAddressOf(chat.id));
     clearAction();
     // A new chat goes first in the list. Show it, because the list can be scrolled down.
     listRef.current?.scrollTo({ top: 0 });
     onNavigate();
   };
 
-  // A second tap before the first chat opens would make a second empty chat.
-  const creating = useRef(false);
-  const newChat = async (): Promise<void> => {
-    if (creating.current) return;
-    creating.current = true;
-    try {
-      // The composer chip picks another model, best before the first message (lesson 41).
-      await openNewChat(await api.newAssistantChat());
-    } catch (caught) {
-      showError(caught);
-    } finally {
-      creating.current = false;
-    }
+  /** Shows the New chat page. Its first message makes the chat, so a tap leaves no empty chat behind. */
+  const newChat = (): void => {
+    goTo(assistantChatAddressOf(newChatPageId), () => setSelectedId(newChatPageId));
+    clearAction();
+    // The new chat goes first in the list. A phone hides the list now, and a hidden list does not scroll.
+    listRef.current?.scrollTo({ top: 0 });
+    onNavigate();
   };
 
   return (
@@ -236,7 +228,7 @@ export function AssistantView({
               <>
                 <h2>Chats</h2>
                 {/* "New" is short for the header; the name says what it makes. */}
-                <button className="primary wide-only" aria-label="New chat" onClick={() => void newChat()}>
+                <button className="primary wide-only" aria-label="New chat" onClick={newChat}>
                   <Icon name="plus" /> New
                 </button>
               </>
@@ -294,7 +286,7 @@ export function AssistantView({
         {/* A phone keeps the button at the foot of the list, in reach of the thumb. */}
         {!showArchived && (
           <div className="chat-list-footer phone-only">
-            <button className="primary large" onClick={() => void newChat()}>
+            <button className="primary large" onClick={newChat}>
               <Icon name="plus" /> New chat
             </button>
           </div>
@@ -308,6 +300,7 @@ export function AssistantView({
             blocker={blocker}
             voiceNotes={voiceNotes}
             onShowList={onShowList}
+            listHasUnread={listHasUnread}
             onSending={setFirstMessage}
             onStarted={openNewChat}
           />
@@ -323,7 +316,7 @@ export function AssistantView({
                 tree.some((session) => isRunning(session.id)),
               )}
               onShowList={onShowList}
-              listHasUnread={active.some((candidate) => stateOf(candidate) === "unread")}
+              listHasUnread={listHasUnread}
               onArchived={afterArchive}
               panelShown={panelShown}
               extra={<BranchesButton tree={tree} shown={branch} states={states} />}

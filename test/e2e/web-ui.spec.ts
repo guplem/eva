@@ -22,25 +22,22 @@ async function openList(page: Page): Promise<void> {
   if (await menu.isVisible()) await menu.click();
 }
 
-/**
- * Starts a new Assistant chat, and returns its id once the page shows it. Until then the page
- * shows the chat before it, which can be an empty chat also named "New chat". Text typed then
- * goes into that chat, and is lost when the new one opens.
- */
-async function clickNewChat(page: Page): Promise<string> {
+/** Opens the New chat page with the New chat button. The first message makes the chat. */
+async function clickNewChat(page: Page): Promise<void> {
   await openList(page);
-  const items = page.locator(".sidebar .list-item");
-  const before = await items.count();
-  const created = page.waitForResponse(
-    (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
-  );
   await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  const id = ((await (await created).json()) as { id: string }).id;
-  // A new chat goes first in the list, and the page selects it.
-  await expect(items).toHaveCount(before + 1);
-  await expect(items.first()).toHaveAttribute("aria-current", "true");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
-  return id;
+  // The page has an address, so Back from another page and a reload keep it.
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  await expect(page.getByRole("region", { name: "New chat", exact: true })).toBeVisible();
+  await expect(page.locator(".sidebar .list-item[aria-current='true']")).toHaveCount(0);
+}
+
+/** Opens the New chat page and sends its first message, which makes the chat. */
+async function sendFirstMessage(page: Page, text: string): Promise<void> {
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
 }
 
 /**
@@ -670,6 +667,24 @@ async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
     .not.toContain(chatId);
 }
 
+/**
+ * Waits until the core stores each answer of the newest chat as seen. A chat that ends unread
+ * renames the Chats button of every later test on the shared demo server.
+ */
+async function waitUntilNewestChatSeen(page: Page): Promise<void> {
+  await expect
+    .poll(async () => {
+      const sessions = (await (await page.request.get("/api/sessions")).json()) as {
+        createdAt: string;
+        turns: unknown[];
+        seenTurns: number;
+      }[];
+      const newest = sessions.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
+      return newest.turns.length > 0 && newest.turns.length === newest.seenTurns;
+    })
+    .toBe(true);
+}
+
 /** Waits until no chat runs a turn or a vault sync, so the work of a test does not run on into the next one. */
 async function waitUntilNoChatWorks(page: Page): Promise<void> {
   await expect
@@ -851,7 +866,7 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
   page,
 }) => {
   await logIn(page);
-  await clickNewChat(page);
+  await newChat(page);
 
   // The new title goes in a dialog, so the header keeps the old title meanwhile.
   const rename = page.getByRole("dialog", { name: "Rename chat" });
@@ -924,8 +939,7 @@ test("a chat that answers while another chat is open shows as unread until the p
   await expect(page.locator(".message.answer").first()).toContainText(message);
   await marked;
   // The open chat hides its own mark at once. Another open chat shows what the core stored.
-  await openList(page);
-  await page.locator(".sidebar .list-item", { hasNotText: message }).first().click();
+  await newChat(page);
   await openList(page);
   await expect(slow).toBeVisible();
   await expect(slow.locator(".status-pill")).toHaveCount(0);
@@ -1838,8 +1852,8 @@ test("on a phone, Back closes the chat list, and Back from a chat that the list 
 }) => {
   test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
   await logIn(page);
-  const first = await clickNewChat(page);
-  await clickNewChat(page);
+  const first = await newChat(page);
+  await newChat(page);
   const list = page.getByRole("navigation", { name: "Chats" });
   await page.getByRole("button", { name: /^Show the list/ }).click();
   await expect(list).toBeVisible();
@@ -1859,7 +1873,7 @@ test("on a phone, Back closes the chat list, and Back from a chat that the list 
 
 test("Back closes a menu or a dialog first, and the page stays", async ({ page }) => {
   await logIn(page);
-  await clickNewChat(page);
+  await newChat(page);
   const address = page.url();
   await page.getByRole("button", { name: "More actions" }).click();
   const menu = page.getByRole("menu", { name: "Chat actions" });
@@ -1888,7 +1902,7 @@ test("Back with a rename that is not saved asks first, and Stay keeps the dialog
   page,
 }) => {
   await logIn(page);
-  await clickNewChat(page);
+  await newChat(page);
   await chooseFromMore(page, "Rename");
   const rename = page.getByRole("dialog", { name: "Rename chat" });
   await rename.getByLabel("Chat title").fill("A new title");
@@ -2920,6 +2934,34 @@ test("a tap on Chats while a chat is open shows the list on a phone and a new ch
   await expect(page.locator(".sidebar .list-item[aria-current='true']")).toHaveCount(1);
 });
 
+test("the New chat button opens the New chat page, and only the first message makes the chat", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  let made = 0;
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() === "POST") made += 1;
+    await route.continue();
+  });
+  const chats = page.locator(".sidebar .list-item");
+  const before = await chats.count();
+  await clickNewChat(page);
+  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  // A second tap leaves no empty chat either.
+  await clickNewChat(page);
+  await page.reload();
+  await expect(page.getByRole("region", { name: "New chat", exact: true })).toBeVisible();
+  expect(made).toBe(0);
+  await expect(chats).toHaveCount(before);
+
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(`The first message of a new chat (${test.info().project.name})`);
+  await composer.press("Enter");
+  await expect(chats).toHaveCount(before + 1);
+  await expect(chats.first()).toHaveAttribute("aria-current", "true");
+  expect(made).toBe(1);
+  await waitUntilNewestChatSeen(page);
+});
+
 test("the chat list header does not cover the search field", async ({ page }) => {
   await logIn(page);
   await openList(page);
@@ -2997,10 +3039,14 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   const chats = page.locator(".sidebar .list-item");
   const before = await chats.count();
   await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  // Every chat is called "New chat", so the heading shows before the new chat exists.
+  // The first message makes the chat. Each size names its own chat, on the shared demo server.
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(`A chat at the top (${test.info().project.name})`);
+  await composer.press("Enter");
   // Wait until the new chat is first and selected: the list scrolls and the phone drawer closes then.
   await expect(chats).toHaveCount(before + 1);
   await expect(chats.first()).toHaveAttribute("aria-current", "true");
+  await waitUntilNewestChatSeen(page);
   await openList(page);
   // The list clips its items, so the check compares with the list, not with the window.
   // A short list can cut the bottom of the chat. Its top shows that the list is not scrolled away.
@@ -3014,9 +3060,18 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   expect(shown).toBe(true);
 });
 
-/** Starts a new Assistant chat and returns its session id. */
+/**
+ * Makes an empty Assistant chat, opens it, and returns its session id. The New chat button makes
+ * no chat until the first message, so the request goes to the API.
+ */
 async function newChat(page: Page): Promise<string> {
-  return clickNewChat(page);
+  const created = await page.request.post("/api/sessions", { data: { mode: "assistant" } });
+  const { id } = (await created.json()) as { id: string };
+  await page.goto(`/#/chat/${id}`);
+  await expect(page).toHaveURL(new RegExp(`#/chats/${id}$`));
+  await expect(page.locator(".sidebar .list-item").first()).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  return id;
 }
 
 function textEvent(sessionId: string, text: string): string {
@@ -3393,6 +3448,7 @@ test("a pasted image and a dropped file attach like a picked file", async ({ pag
   const message = page.locator(".message.user").last();
   await expect(message).toContainText(/saved as Scratch\/received\/image-[0-9a-f]{12}\.png/);
   await expect(message).toContainText(/saved as Scratch\/received\/notes-[0-9a-f]{12}\.txt/);
+  await waitUntilNewestChatSeen(page);
 });
 
 test("a refused file leaves the box and says why (issue 409)", async ({ page }) => {
@@ -3672,7 +3728,6 @@ test("a note conflict opens from the center, and the last pick closes it", async
 
 test("a failure that Settings fixes offers the way there", async ({ page }) => {
   await logIn(page);
-  await openList(page);
   await page.route("**/api/sessions", (route) =>
     route.request().method() === "POST"
       ? route.fulfill({
@@ -3681,7 +3736,7 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
         })
       : route.continue(),
   );
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
+  await sendFirstMessage(page, "A chat that fails to start");
   await expect(page.getByRole("alert")).toContainText("The engine claude-code is not available.");
   await page.getByRole("alert").getByRole("button", { name: "Open Settings" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -3690,7 +3745,6 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
 
 test("a chat without a vault offers the vault step, not a terminal command", async ({ page }) => {
   await logIn(page);
-  await openList(page);
   await page.route("**/api/sessions", (route) =>
     route.request().method() === "POST"
       ? route.fulfill({
@@ -3702,7 +3756,7 @@ test("a chat without a vault offers the vault step, not a terminal command", asy
         })
       : route.continue(),
   );
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
+  await sendFirstMessage(page, "A chat that fails to start");
   await page.getByRole("alert").getByRole("button", { name: "Set up your vault" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page).toHaveURL(/#\/settings\/setup\/vault$/);
@@ -4754,11 +4808,10 @@ test("Settings: a page opened during the engine update follows it, past a failed
 
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {
   await logIn(page);
-  await openList(page);
   await page.route("**/api/sessions", (route) =>
     route.request().method() === "POST" ? route.abort() : route.continue(),
   );
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
+  await sendFirstMessage(page, "A chat that fails to start");
   await expect(page.getByRole("alert")).toContainText("Eva cannot be reached");
   await page.getByRole("button", { name: "Close the message" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);

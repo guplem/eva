@@ -138,6 +138,7 @@ describe("branchNames", () => {
 
   test('the first branch shows its name too, and "Main line" without one (issue 647)', () => {
     expect(branchNames([{ ...main, forkName: "Plan A" }, fork1]).get("main")).toBe("Plan A");
+    expect(branchNames([main, fork1]).get("main")).toBe("Main line");
   });
 });
 

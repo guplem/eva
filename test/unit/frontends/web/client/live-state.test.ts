@@ -53,7 +53,8 @@ describe("applyEvent", () => {
     expect(state.heirs).toEqual({ main: "fork1", fork1: "fork2" });
     expect(latestId("main", state.heirs)).toBe("fork2");
     expect(latestId("other", state.heirs)).toBe("other");
-    expect(latestId("a", { a: "b", b: "a" })).not.toBeUndefined();
+    // Only a damaged list holds a loop: the walk still ends, on one of its ids.
+    expect(["a", "b"]).toContain(latestId("a", { a: "b", b: "a" }));
   });
 
   test("project work of a running turn shows as a task step of that turn", () => {

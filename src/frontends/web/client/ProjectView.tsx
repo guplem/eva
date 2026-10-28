@@ -461,6 +461,15 @@ export function ProjectView({
       ? (roots.find((candidate) => candidate.id === latestId(page.chatId, live.heirs)) ??
         roots.find((candidate) => candidate.id === page.chatId))
       : undefined;
+  const heirChatId = page?.kind === "chat" && chat !== undefined && chat.id !== page.chatId ? chat.id : null;
+  useEffect(() => {
+    // The address names the fork that took the place, so a reload opens it. The page itself stays.
+    if (heirChatId === null || page?.kind !== "chat") return;
+    const next: Page = { ...page, chatId: heirChatId };
+    opening.current = next;
+    replaceAddress(projectAddressOf(routeOfPage(next)));
+    setRoute(routeOfPage(next));
+  }, [heirChatId, page]);
   // The open chat is gone, for example deleted: its project page shows again. Only a chat that was
   // on the page counts: a new chat can be missing from a session list that is late or failed.
   const [shownChatId, setShownChatId] = useState<string | null>(null);

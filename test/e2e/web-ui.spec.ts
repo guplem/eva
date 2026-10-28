@@ -324,6 +324,7 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   if (test.info().project.name !== "phone") {
     // A right click on the head of the main line deletes it, and the fork takes its place (issue 647).
     // The chat then has no fork, so the switcher goes.
+    const oldAddress = new URL(page.url()).hash;
     await page
       .getByRole("navigation", { name: "Branch map" })
       .getByRole("button", { name: /Main line · answer 1/ })
@@ -334,6 +335,10 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
     await expect(page.getByRole("navigation", { name: "Branch map" })).toHaveCount(0);
     await expect(page.locator(".message.answer")).toHaveCount(1);
     await expect(list.locator('.chat-item[aria-current="true"]')).toHaveCount(1);
+    // The address names the fork that took the place of the main line, so a reload opens it.
+    await expect.poll(() => new URL(page.url()).hash).not.toBe(oldAddress);
+    await page.reload();
+    await expect(page.locator(".message.answer")).toHaveCount(1);
   }
 });
 

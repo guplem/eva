@@ -955,6 +955,24 @@ describe("topics", () => {
     expect(eva.sessions.list()).toHaveLength(1);
     expect(telegram.callsTo("deleteForumTopic")).toHaveLength(1);
   });
+
+  test("a topic whose first branch goes moves to the fork that takes its place (issue 647)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.sendText(owner, "hello in the topic", 500);
+    await settle(bot, () => engine.requests.length === 1);
+    await eva.idle();
+    const topicChat = eva.sessions.list()[0]!;
+    const fork = eva.sessions.fork(topicChat.id, topicChat.turns[0]!.lastMessageId!);
+
+    eva.sessions.deleteBranch(topicChat.id);
+    telegram.sendText(owner, "and on", 500);
+    await settle(bot, () => engine.requests.length === 2);
+    await eva.idle();
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
+    expect(eva.sessions.get(fork.id).turns.map((turn) => turn.userText)).toEqual(["hello in the topic", "and on"]);
+  });
 });
 
 describe("/chats: every chat of the instance (#9)", () => {

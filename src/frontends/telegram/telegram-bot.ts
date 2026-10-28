@@ -847,7 +847,7 @@ export class TelegramBot {
       return;
     }
     if (event.kind === "session_deleted") {
-      await this.chats.forgetDeletedChat(event.sessionId);
+      await this.chats.forgetDeletedChat(event.sessionId, event.heirId);
       return;
     }
     if (event.kind === "project_work_started") {

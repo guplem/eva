@@ -658,6 +658,24 @@ async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
     .not.toContain(chatId);
 }
 
+/**
+ * Waits until the core stores each answer of the newest chat as seen. A chat that ends unread
+ * renames the Chats button of every later test on the shared demo server.
+ */
+async function waitUntilNewestChatSeen(page: Page): Promise<void> {
+  await expect
+    .poll(async () => {
+      const sessions = (await (await page.request.get("/api/sessions")).json()) as {
+        createdAt: string;
+        turns: unknown[];
+        seenTurns: number;
+      }[];
+      const newest = sessions.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
+      return newest.turns.length > 0 && newest.turns.length === newest.seenTurns;
+    })
+    .toBe(true);
+}
+
 /** Waits until no chat runs a turn or a vault sync, so the work of a test does not run on into the next one. */
 async function waitUntilNoChatWorks(page: Page): Promise<void> {
   await expect
@@ -2932,6 +2950,7 @@ test("the New chat button opens the New chat page, and only the first message ma
   await expect(chats).toHaveCount(before + 1);
   await expect(chats.first()).toHaveAttribute("aria-current", "true");
   expect(made).toBe(1);
+  await waitUntilNewestChatSeen(page);
 });
 
 test("the chat list header does not cover the search field", async ({ page }) => {
@@ -3018,6 +3037,7 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   // Wait until the new chat is first and selected: the list scrolls and the phone drawer closes then.
   await expect(chats).toHaveCount(before + 1);
   await expect(chats.first()).toHaveAttribute("aria-current", "true");
+  await waitUntilNewestChatSeen(page);
   await openList(page);
   // The list clips its items, so the check compares with the list, not with the window.
   // A short list can cut the bottom of the chat. Its top shows that the list is not scrolled away.

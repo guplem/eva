@@ -432,6 +432,37 @@ describe("Eva", () => {
     expect(instance.sessions.list().map((session) => session.id)).toEqual([work.id]);
   });
 
+  test("a project work whose asking branch was deleted reports to the fork that took its place (issue 647)", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    let finishWork: () => void = () => undefined;
+    const workMayEnd = new Promise<void>((resolve) => (finishWork = resolve));
+    const engine = new FakeEngine(async function* (request) {
+      if (request.mode === "project") await workMayEnd;
+      yield* FakeEngine.answer(request, "Fixed it.");
+    });
+    const instance = start(engine);
+    instance.sessions.subscribe((event) => {
+      if (event.kind === "approval_needed") instance.sessions.answerApproval(event.requestId, "deny");
+    });
+    const asking = instance.createAssistantSession({ source: "web" });
+    await instance.sessions.send(asking.id, "Hello.");
+    const fork = instance.sessions.fork(asking.id, instance.sessions.get(asking.id).turns[0]!.lastMessageId!);
+    await instance.startProjectWork({
+      projectId: "2025-03-02-1015-example-app",
+      request: "Fix it.",
+      reportToSessionId: asking.id,
+    });
+    instance.sessions.deleteBranch(asking.id);
+    finishWork();
+    await waitFor(() => instance.sessions.get(fork.id).turns.length === 2, 20_000);
+    await instance.idle();
+    expect(instance.sessions.get(fork.id).turns[1]?.fromEva).toBe(true);
+  });
+
   test("two project works at once get two different clones", async () => {
     sandbox.write(
       vault,

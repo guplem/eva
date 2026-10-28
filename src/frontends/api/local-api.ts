@@ -639,6 +639,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       const { name } = forkNameSchema.parse(await request.json());
       return json(eva.sessions.nameFork(sessionId, name));
     }
+    if (action === "delete-branch") return json(eva.sessions.deleteBranch(sessionId));
     if (action === "seen") {
       const { turnCount } = seenSchema.parse(await request.json());
       return json(eva.sessions.markSeen(sessionId, turnCount));

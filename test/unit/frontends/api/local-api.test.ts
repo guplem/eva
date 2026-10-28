@@ -937,6 +937,20 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("deletes one branch and keeps its forks, or refuses an unknown chat (issue 647)", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "one");
+    const fork = eva.sessions.fork(session.id, eva.sessions.get(session.id).turns[0]?.lastMessageId ?? "");
+    const deleted = await call(`/api/sessions/${session.id}/delete-branch`, { method: "POST" });
+    expect(deleted.status).toBe(200);
+    expect(await json<unknown>(deleted)).toEqual({ deleted: [session.id], heirId: fork.id });
+    expect(eva.sessions.get(fork.id).parentId).toBeNull();
+    const missing = await call("/api/sessions/missing/delete-branch", { method: "POST" });
+    expect(missing.status).toBe(404);
+  });
+
   test("marks the turns of a chat as seen, and refuses a bad count or an unknown chat (issue 381)", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),

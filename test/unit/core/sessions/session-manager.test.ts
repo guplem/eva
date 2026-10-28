@@ -1814,13 +1814,18 @@ describe("delete one branch (issue 647)", () => {
     expect(manager.branchTurns(last.id).map((turn) => turn.userText)).toEqual(["one", "two", "three", "four"]);
   });
 
-  test("a fork at the same answer as a later fork forks from it, and takes no turn", async () => {
+  test("a fork at the same answer as a later fork forks from it, takes no turn, and is no parent of a later fork", async () => {
     const manager = createManager(new FakeEngine());
     const { root, second } = await chatWithForks(manager);
     const twin = manager.fork(root.id, root.turns[2]!.lastMessageId!);
+    await manager.send(twin.id, "twin");
+    await manager.send(root.id, "four");
+    const last = manager.fork(root.id, manager.get(root.id).turns[3]!.lastMessageId!);
     manager.deleteBranch(root.id);
     expect(manager.get(twin.id)).toMatchObject({ parentId: second.id, forkAtMessageId: root.turns[2]!.lastMessageId });
-    expect(manager.get(twin.id).turns).toEqual([]);
+    expect(manager.get(twin.id).turns.map((turn) => turn.userText)).toEqual(["twin"]);
+    expect(manager.get(last.id)).toMatchObject({ parentId: second.id, forkAtMessageId: root.turns[2]!.lastMessageId });
+    expect(manager.branchTurns(last.id).map((turn) => turn.userText)).toEqual(["one", "two", "three", "four"]);
   });
 
   test("a later delete names the gone branches whose snapshots its dropped turns kept", async () => {

@@ -674,16 +674,17 @@ export class SessionManager {
         continue;
       }
       const parent = receivers.at(-1) ?? { id: heir.id, end: shared };
+      // A fork at the same answer as the one before it takes no turn, so it holds no fork point of a later fork.
+      if (end === parent.end) {
+        updates.push({ ...fork, parentId: parent.id });
+        continue;
+      }
       receivers.push({ id: fork.id, end });
-      updates.push(
-        end === parent.end
-          ? { ...fork, parentId: parent.id }
-          : {
-              ...movedTo(fork, branch, parent.end + 1, end),
-              parentId: parent.id,
-              forkAtMessageId: branch.turns[parent.end]?.lastMessageId ?? heir.forkAtMessageId,
-            },
-      );
+      updates.push({
+        ...movedTo(fork, branch, parent.end + 1, end),
+        parentId: parent.id,
+        forkAtMessageId: branch.turns[parent.end]?.lastMessageId ?? heir.forkAtMessageId,
+      });
     }
     const kept = Math.max(...receivers.map((receiver) => receiver.end));
     for (const update of updates) this.options.store.save(update);

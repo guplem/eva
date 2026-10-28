@@ -18,7 +18,7 @@ import { Toast } from "./Toast.tsx";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatState, unreadChats, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
-import type { LiveState } from "./live-state.ts";
+import { latestId, type LiveState } from "./live-state.ts";
 import { seenPart } from "./branch-path.ts";
 import { BranchesButton, useBranchStates, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf } from "./Conversation.tsx";
@@ -455,7 +455,12 @@ export function ProjectView({
     }
   };
 
-  const chat = page?.kind === "chat" ? roots.find((candidate) => candidate.id === page.chatId) : undefined;
+  // A deleted first branch gives its place to a fork (issue 647). Until the list knows it, the old record answers.
+  const chat =
+    page?.kind === "chat"
+      ? (roots.find((candidate) => candidate.id === latestId(page.chatId, live.heirs)) ??
+        roots.find((candidate) => candidate.id === page.chatId))
+      : undefined;
   // The open chat is gone, for example deleted: its project page shows again. Only a chat that was
   // on the page counts: a new chat can be missing from a session list that is late or failed.
   const [shownChatId, setShownChatId] = useState<string | null>(null);
@@ -463,7 +468,11 @@ export function ProjectView({
   useEffect(() => {
     if (shownId !== null) setShownChatId(shownId);
   }, [shownId]);
-  const chatIsGone = page?.kind === "chat" && chat === undefined && shownChatId === page.chatId;
+  const chatIsGone =
+    page?.kind === "chat" &&
+    chat === undefined &&
+    shownChatId !== null &&
+    [page.chatId, latestId(page.chatId, live.heirs)].includes(shownChatId);
   const goneProject = chatIsGone ? page.project : null;
   useEffect(() => {
     if (goneProject === null) return;
@@ -473,7 +482,7 @@ export function ProjectView({
   }, [goneProject]);
 
   const tree = chat === undefined ? [] : chatTree(chat, sessions);
-  const branch = useShownBranch(tree, linkedChat?.id ?? null);
+  const branch = useShownBranch(tree, linkedChat?.id ?? null, live.heirs);
   const branchStates = useBranchStates(tree, branch.id, approvals.pending, live);
   // Only the chat page shows a conversation: on the other pages the tree is empty, so no chat is on screen.
   // Only the shown branch shows its requests as cards, so a hidden branch gets the notice.

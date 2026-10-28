@@ -3,6 +3,7 @@ import {
   applyEvent,
   emptyLiveState,
   forgetTaskEvents,
+  latestId,
   stepsWithDraft,
   startRecovery,
   afterFailedTurnsRead,
@@ -41,6 +42,18 @@ describe("applyEvent", () => {
       { ...stamp, kind: "session_deleted" },
     ];
     expect(core.reduce(applyEvent, emptyLiveState)).toBe(emptyLiveState);
+  });
+
+  test("a deleted branch names the fork that took its place, through every later delete (issue 647)", () => {
+    const stamp = { seq: 1, at: "2026-10-18T10:00:00.000Z" };
+    const state = [
+      { ...stamp, sessionId: "main", kind: "session_deleted", heirId: "fork1" },
+      { ...stamp, sessionId: "fork1", kind: "session_deleted", heirId: "fork2" },
+    ].reduce<LiveState>((current, next) => applyEvent(current, next as SessionEvent), emptyLiveState);
+    expect(state.heirs).toEqual({ main: "fork1", fork1: "fork2" });
+    expect(latestId("main", state.heirs)).toBe("fork2");
+    expect(latestId("other", state.heirs)).toBe("other");
+    expect(latestId("a", { a: "b", b: "a" })).not.toBeUndefined();
   });
 
   test("project work of a running turn shows as a task step of that turn", () => {

@@ -4,7 +4,7 @@ import { api, type ChatBlocker, type ListedSession, type SessionRecord } from ".
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatForks, chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
-import type { LiveState } from "./live-state.ts";
+import { latestId, type LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { seenPart } from "./branch-path.ts";
 import { BranchesButton, useBranchStates, useForkMenu, useShownBranch } from "./Branches.tsx";
@@ -113,12 +113,25 @@ export function AssistantView({
   const isRunning = (sessionId: string): boolean =>
     sessionId in live.steps || sessions.some((session) => session.id === sessionId && session.running);
   // Any root chat, and the chats list first, so a switch between the lists keeps the open chat.
-  const selected = drafting ? undefined : (roots.find((chat) => chat.id === selectedId) ?? active[0] ?? chats[0]);
+  // A deleted first branch gives its place to a fork (issue 647). Until the list knows it, the old record answers.
+  const selectedNow = selectedId === null ? null : latestId(selectedId, live.heirs);
+  const selected = drafting
+    ? undefined
+    : (roots.find((chat) => chat.id === selectedNow) ??
+      roots.find((chat) => chat.id === selectedId) ??
+      active[0] ??
+      chats[0]);
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
   // A fork that the person picks in the list opens like a link to it.
   const [pickedBranchId, setPickedBranchId] = useState<string | null>(null);
-  const branch = useShownBranch(tree, linkedChat?.id ?? pickedBranchId);
+  const branch = useShownBranch(tree, linkedChat?.id ?? pickedBranchId, live.heirs);
+  useEffect(() => {
+    // The address names the fork that took the place of the deleted first branch, so a reload opens it.
+    if (selectedNow === null || selectedNow === selectedId || selected?.id !== selectedNow) return;
+    if (assistantChatIdOf(window.location.hash) === selectedId) replaceAddress(assistantChatAddressOf(selectedNow));
+    setSelectedId(selectedNow);
+  }, [selectedNow, selectedId, selected?.id]);
   useEffect(() => {
     // Cleared once shown, so the same fork can be picked again later.
     if (pickedBranchId !== null && branch.id === pickedBranchId) setPickedBranchId(null);
@@ -426,9 +439,9 @@ function ChatItem({
   );
 }
 
-/** One branch under a chat in the list. A fork has a context menu. The main line is the chat, whose row has it. */
+/** One branch under a chat in the list, with the branch menu. The main line has it too (issue 647). */
 function ForkRow({ fork, onSelect }: { readonly fork: ForkItem; readonly onSelect: () => void }): ReactElement {
-  const { props, parts } = useForkMenu(fork.session.parentId === null ? undefined : fork.session, fork.name, onSelect);
+  const { props, parts } = useForkMenu(fork.session, fork.name, onSelect);
   return (
     <li>
       <button

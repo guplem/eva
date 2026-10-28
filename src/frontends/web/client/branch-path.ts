@@ -115,12 +115,12 @@ function byAge<S extends BranchSession>(sessions: readonly S[]): S[] {
   return [...sessions].sort((first, second) => first.createdAt.localeCompare(second.createdAt));
 }
 
-/** "Main line" for the chat, then "Fork 1", "Fork 2" in the order of the tree. */
+/** "Main line" for the first branch, then "Fork 1", "Fork 2" in the order of the tree. A name that the person gave wins. */
 export function branchNames(tree: readonly BranchSession[]): Map<string, string> {
   return new Map(
     tree.map((session, index) => [
       session.id,
-      index === 0 ? "Main line" : (session.forkName ?? `Fork ${String(index)}`),
+      session.forkName ?? (index === 0 ? "Main line" : `Fork ${String(index)}`),
     ]),
   );
 }
@@ -145,8 +145,8 @@ export interface MapRow {
   /** The lane of the row's own dot. */
   readonly lane: number;
   readonly onPath: boolean;
-  /** The first row of a fork. Its menu deletes the fork. */
-  readonly forkHead: boolean;
+  /** The first row of a branch. Its menu renames and deletes the branch. */
+  readonly branchHead: boolean;
   /** The last row of the shown branch. */
   readonly current: boolean;
   /** The line of each lane above and below the middle of the row. */
@@ -236,7 +236,7 @@ export function branchMap(tree: readonly BranchSession[], shownId: string): Bran
       label: row.label,
       lane: row.lane,
       onPath: row.onPath,
-      forkHead: row.session.parentId !== null && position === rowsOf(row.session.id)[0],
+      branchHead: position === rowsOf(row.session.id)[0],
       current: row.session.id === shown.id && position === rowsOf(shown.id).at(-1),
       lines,
       bends,

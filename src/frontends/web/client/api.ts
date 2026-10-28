@@ -223,6 +223,9 @@ export const api = {
     request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/retry-undo?turnIndex=${String(turnIndex)}`),
   deleteChat: (sessionId: string): Promise<{ deleted: string[] }> =>
     request("DELETE", `/api/sessions/${encodeURIComponent(sessionId)}`),
+  /** Deletes one branch of a chat. Its forks stay, and `heirId` names the fork that took its place (issue 647). */
+  deleteBranch: (sessionId: string): Promise<{ deleted: string[]; heirId: string | null }> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/delete-branch`),
   rename: (sessionId: string, title: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
   nameFork: (sessionId: string, name: string): Promise<SessionRecord> =>

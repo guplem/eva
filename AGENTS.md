@@ -12,7 +12,7 @@ A change to one of these goals needs the owner.
 - **Eva works from a phone.** Every problem must reach the phone. A fix that needs a terminal is a gap to close.
 - **Plug and play.** Keep settings and setup questions few. Each machine setting has a default that Eva finds on the machine.
 - **Each setting has one home.** The person's settings live in the vault. The machine's settings and every security setting stay on the machine. Secrets never go in the vault or this repository.
-- **Project mode is a transparent wrapper.** Eva opening a clone equals the person opening it by hand in the harness of that instance: Eva adds no prompt and no skills. Each instance has its own harness config folder. Assistant mode is Eva's prompt plus the vault's `.eva/` skills.
+- **Project mode is a clean wrapper.** A Project chat runs the harness of that instance in the project folder or in a clone. Eva adds no prompt of her own and no skills, and hides every instruction file above the project folder. Each instance has its own harness config folder. Assistant mode is Eva's prompt plus the vault's `.eva/` skills.
 - **Eva runs existing harnesses** and depends on no single AI vendor. Each person uses their own engine login: a subscription token, never an API key. Never a Claude login through pi.
 - **Remote access only through Tailscale.** Never a public tunnel.
 - **One core process per instance,** and any number of instances.

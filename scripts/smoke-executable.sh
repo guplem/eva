@@ -25,7 +25,7 @@ EVA_TIME_ZONE="Europe/Madrid" \
   "$executable" --instance smoke setup --non-interactive
 
 grep -q '"port": 7533' "$work/eva-smoke/config.json"
-grep -q '"timeZone": "Europe/Madrid"' "$work/vault/.eva/settings.json"
+grep -q '"timeZone": "Europe/Madrid"' "$work/vault/.eva/settings/settings.json"
 grep -q 'Test Person' "$work/vault/Life/About me.md"
 test -s "$work/vault/.eva/assistant.md"
 git -C "$work/vault" log --oneline | grep -q "Start the vault"

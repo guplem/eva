@@ -59,7 +59,7 @@ describe("applyProjectDetails", () => {
       [
         "---",
         "created: 2026-01-31T09:15",
-        "status: paused # idea, active, paused or closed",
+        "status: paused # idea, active, in-use, paused or closed",
         "repos:",
         "  - https://github.com/example/example-app",
         "  - https://github.com/example/example-api",
@@ -72,6 +72,19 @@ describe("applyProjectDetails", () => {
         "Notes about the app.",
         "",
       ].join("\n"),
+    );
+  });
+
+  test("a saved status updates only Eva's old list of statuses in the comment (#690)", () => {
+    const withComment = (comment: string): string => file.replace("# idea, active, paused or closed", comment);
+    const used = { ...unchanged, status: "in-use" as const };
+    expect(applyProjectDetails(withComment("#idea, active, paused or closed"), used)).toContain(
+      "status: in-use # idea, active, in-use, paused or closed\n",
+    );
+    expect(applyProjectDetails(withComment("# my own note"), used)).toContain("status: in-use # my own note\n");
+    // A field that the person did not change keeps its comment as it is.
+    expect(applyProjectDetails(file, { ...unchanged, title: "Other" })).toContain(
+      "status: active # idea, active, paused or closed\n",
     );
   });
 
@@ -102,7 +115,7 @@ describe("applyProjectDetails", () => {
   test("keeps Windows line endings and a byte order mark", () => {
     const windows = "\uFEFF" + file.replaceAll("\n", "\r\n");
     const result = applyProjectDetails(windows, { ...unchanged, status: "closed" });
-    expect(result).toBe(windows.replace("status: active", "status: closed"));
+    expect(result).toBe(windows.replace("status: active # idea, active,", "status: closed # idea, active, in-use,"));
   });
 
   test("cleans the lists: trims, drops empty entries, duplicates and a leading #", () => {

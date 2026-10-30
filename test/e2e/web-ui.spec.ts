@@ -5311,7 +5311,8 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(saveDetails.getByText("Saved", { exact: true })).toBeVisible();
   await expect(saveDetails).not.toHaveClass(/\bdone\b/, { timeout: 5000 });
   const file = page.getByLabel("AGENTS.md");
-  await expect(file).toHaveValue(/status: in-use # idea, active, paused or closed/);
+  // The demo file has the old list of statuses, and a save of the status writes the new list (#690).
+  await expect(file).toHaveValue(/status: in-use # idea, active, in-use, paused or closed/);
   await expect(file).toHaveValue(/# Renamed/);
 
   if (run === "phone") {

@@ -46,16 +46,32 @@ type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mo
   Partial<Pick<SessionRecord, "firstMessageDraft">>;
 
 /**
- * The id of this page, so it skips its own changes when Eva sends them back. A page on a plain
- * http address has no `crypto.randomUUID`, and the id needs no strength.
+ * The id of this tab, so it skips its own changes when Eva sends them back. The tab keeps it across
+ * a reload: Eva lets a tab write over its own newest text. A page on a plain http address has no
+ * `crypto.randomUUID`, and the id needs no strength.
  */
-const pageWriter = `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const pageWriter = ((): string => {
+  const key = "eva-unsent-writer";
+  try {
+    const kept = window.sessionStorage.getItem(key);
+    if (kept !== null) return kept;
+  } catch {
+    // A blocked storage gives each load a new id.
+  }
+  const made = `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  try {
+    window.sessionStorage.setItem(key, made);
+  } catch {
+    // The id still serves this load.
+  }
+  return made;
+})();
 
 /** The unsent text of each chat, by its draft key. Eva keeps it too, so every device shows it (issue 652). */
 export const unsentTexts = new UnsentTexts(() => window.sessionStorage, {
   remote: {
     list: () => api.unsentTexts(),
-    save: async (key, text, keepEmpty) => (await api.saveUnsentText(key, text, keepEmpty, pageWriter)).revision,
+    save: (key, text, keepEmpty, base) => api.saveUnsentText(key, text, keepEmpty, pageWriter, base),
   },
   timers: {
     set: (run, ms) => setTimeout(run, ms),

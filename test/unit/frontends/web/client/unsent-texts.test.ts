@@ -5,6 +5,7 @@ import {
   type TextRemote,
   type TextStorage,
 } from "../../../../../src/frontends/web/client/unsent-texts.ts";
+import type { UnsentTextAnswer } from "../../../../../src/core/sessions/unsent-texts.ts";
 
 function memoryStorage(): TextStorage & { readonly items: Map<string, string> } {
   const items = new Map<string, string>();
@@ -131,23 +132,30 @@ describe("UnsentTexts", () => {
 function fakeEva(): TextRemote & {
   revision: number;
   texts: Record<string, { text: string; revision: number }>;
+  removed: Record<string, number>;
   saves: { key: string; text: string; keepEmpty: boolean }[];
   fail: boolean;
 } {
   const eva = {
     revision: 0,
     texts: {} as Record<string, { text: string; revision: number }>,
+    removed: {} as Record<string, number>,
     saves: [] as { key: string; text: string; keepEmpty: boolean }[],
     fail: false,
-    list: () => Promise.resolve({ revision: eva.revision, texts: { ...eva.texts } }),
-    save: (key: string, text: string, keepEmpty: boolean) => {
+    list: () => Promise.resolve({ revision: eva.revision, texts: { ...eva.texts }, removed: { ...eva.removed } }),
+    save: (key: string, text: string, keepEmpty: boolean, base: number | null): Promise<UnsentTextAnswer> => {
       if (eva.fail) return Promise.reject(new Error("Eva does not answer."));
+      const current = eva.texts[key]?.revision ?? eva.removed[key];
+      if (base !== null && current !== undefined && current > base)
+        return Promise.resolve({ accepted: false, text: eva.texts[key]?.text ?? null, revision: current });
       eva.saves.push({ key, text, keepEmpty });
       eva.revision += 1;
+      eva.removed = Object.fromEntries(Object.entries(eva.removed).filter(([kept]) => kept !== key));
+      if (text === "" && !keepEmpty) eva.removed[key] = eva.revision;
       if (text === "" && !keepEmpty)
         eva.texts = Object.fromEntries(Object.entries(eva.texts).filter(([kept]) => kept !== key));
       else eva.texts[key] = { text, revision: eva.revision };
-      return Promise.resolve(eva.revision);
+      return Promise.resolve({ accepted: true, revision: eva.revision });
     },
   };
   return eva;
@@ -250,7 +258,7 @@ describe("UnsentTexts with Eva (issue 652)", () => {
     timers.runAll();
     await settle();
     // The phone sends the message, while the computer sleeps.
-    await eva.save("chat-1", "", false);
+    await eva.save("chat-1", "", false, null);
     const afterReload = new UnsentTexts(() => storage, { remote: eva, timers, writer: "computer-2" });
     await afterReload.sync();
     expect(afterReload.find("chat-1")).toBeUndefined();
@@ -264,7 +272,7 @@ describe("UnsentTexts with Eva (issue 652)", () => {
     page.get("chat-1");
     const read = page.sync();
     page.receive({ kind: "unsent_text", key: "chat-1", text: "Live", revision: 6, writer: "phone" });
-    answer({ revision: 5, texts: {} });
+    answer({ revision: 5, texts: {}, removed: {} });
     await read;
     expect(page.get("chat-1")).toBe("Live");
   });
@@ -274,8 +282,8 @@ describe("UnsentTexts with Eva (issue 652)", () => {
     const answers: (() => void)[] = [];
     const slow: TextRemote = {
       ...eva,
-      save: (key, text, keepEmpty) =>
-        new Promise((resolve) => answers.push(() => void eva.save(key, text, keepEmpty).then(resolve))),
+      save: (key, text, keepEmpty, base) =>
+        new Promise((resolve) => answers.push(() => void eva.save(key, text, keepEmpty, base).then(resolve))),
     };
     const timers = manualTimers();
     const page = new UnsentTexts(memoryStorage, { remote: slow, timers, writer: "page" });
@@ -328,8 +336,8 @@ describe("UnsentTexts with Eva, edge cases (issue 652)", () => {
     const answers: (() => void)[] = [];
     const slow: TextRemote = {
       ...eva,
-      save: (key, text, keepEmpty) =>
-        new Promise((resolve) => answers.push(() => void eva.save(key, text, keepEmpty).then(resolve))),
+      save: (key, text, keepEmpty, base) =>
+        new Promise((resolve) => answers.push(() => void eva.save(key, text, keepEmpty, base).then(resolve))),
     };
     const timers = manualTimers();
     const page = new UnsentTexts(memoryStorage, { remote: slow, timers, writer: "page" });
@@ -348,8 +356,8 @@ describe("UnsentTexts with Eva, edge cases (issue 652)", () => {
     const answers: (() => void)[] = [];
     const slow: TextRemote = {
       ...eva,
-      save: (key, text, keepEmpty) =>
-        new Promise((resolve) => answers.push(() => void eva.save(key, text, keepEmpty).then(resolve))),
+      save: (key, text, keepEmpty, base) =>
+        new Promise((resolve) => answers.push(() => void eva.save(key, text, keepEmpty, base).then(resolve))),
     };
     const timers = manualTimers();
     const page = new UnsentTexts(memoryStorage, { remote: slow, timers, writer: "page" });
@@ -360,5 +368,48 @@ describe("UnsentTexts with Eva, edge cases (issue 652)", () => {
     answers.shift()?.();
     await settle();
     expect(page.get("chat-1")).toBe("Mine, longer");
+  });
+});
+
+describe("UnsentTexts with Eva, a page that wakes up (issue 652)", () => {
+  test("a write whose answer never came does not bring back a text that another device sent", async () => {
+    const storage = memoryStorage();
+    const eva = fakeEva();
+    const timers = manualTimers();
+    // The phone knew revision 1 of the chat, then typed, and its hide write reached Eva with no answer.
+    await eva.save("chat-1", "First", false, null);
+    const phone = new UnsentTexts(() => storage, { remote: eva, timers, writer: "phone" });
+    await phone.sync();
+    phone.get("chat-1");
+    phone.set("chat-1", "Typed on the phone");
+    await eva.save("chat-1", "Typed on the phone", false, 1);
+    // The computer showed it, and sent it.
+    await eva.save("chat-1", "", false, 2);
+    const afterWake = new UnsentTexts(() => storage, { remote: eva, timers, writer: "phone-2" });
+    await afterWake.sync();
+    afterWake.get("chat-1");
+    timers.runAll();
+    await settle();
+    expect(eva.texts["chat-1"]).toBeUndefined();
+    expect(afterWake.find("chat-1")).toBeUndefined();
+  });
+
+  test("a copy that Eva lost goes to her again, instead of being erased", async () => {
+    const storage = memoryStorage();
+    const eva = fakeEva();
+    const timers = manualTimers();
+    const page = new UnsentTexts(() => storage, { remote: eva, timers, writer: "page" });
+    page.set("chat-1", "Kept in the tab");
+    timers.runAll();
+    await settle();
+    // Eva lost her file, and another text moved her revision past the copy of the tab.
+    eva.texts = {};
+    await eva.save("chat-2", "Other", false, null);
+    await eva.save("chat-2", "Other again", false, null);
+    await page.sync();
+    expect(page.get("chat-1")).toBe("Kept in the tab");
+    timers.runAll();
+    await settle();
+    expect(eva.texts["chat-1"]?.text).toBe("Kept in the tab");
   });
 });

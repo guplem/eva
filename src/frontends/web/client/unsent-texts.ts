@@ -4,10 +4,16 @@
  * has a fallback in memory.
  *
  * With a remote, Eva keeps each text too, so another device shows it (issue 652). A copy that Eva
- * does not have yet wins over a text from Eva: the newest change wins, and a reload loses nothing.
+ * does not have yet wins over a text from Eva, so a reload loses nothing. Each write names the
+ * revision that it built on, and Eva refuses a write on an older text: a page that wakes up never
+ * writes over a newer text, or brings back a sent one.
  */
 
-import type { UnsentTextEvent, UnsentTexts as EvaTexts } from "../../../core/sessions/unsent-texts.ts";
+import type {
+  UnsentTextAnswer,
+  UnsentTextEvent,
+  UnsentTexts as EvaTexts,
+} from "../../../core/sessions/unsent-texts.ts";
 import { restoredText } from "./conversation-parts.ts";
 
 /** The part of the browser's `Storage` that the texts use. */
@@ -16,8 +22,8 @@ export type TextStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 /** Eva's store of texts, through the local API. */
 export interface TextRemote {
   list(): Promise<EvaTexts>;
-  /** Gives the revision of the write. */
-  save(key: string, text: string, keepEmpty: boolean): Promise<number>;
+  /** `base` is the revision that the page built on, or null when it knew none. */
+  save(key: string, text: string, keepEmpty: boolean, base: number | null): Promise<UnsentTextAnswer>;
 }
 
 export interface SyncTimers {
@@ -33,9 +39,18 @@ export interface TextSync {
 }
 
 const keyPrefix = "eva-unsent:";
-/** The revision of the copy that Eva has, or `dirty` for a change that Eva does not have yet. */
+/**
+ * The revision of the copy that Eva has, such as `12`. A change that Eva does not have yet is
+ * `dirty:12`, with the revision that it built on, or `dirty:` when the page knew none.
+ */
 const revisionPrefix = "eva-unsent-revision:";
-const dirty = "dirty";
+const dirtyPrefix = "dirty";
+
+/** What the page knows of a key: the revision of its copy, and whether Eva lacks a change of it. */
+interface KeyState {
+  readonly dirty: boolean;
+  readonly base: number | null;
+}
 /** A write per key stroke would flood Eva, and a long pause would lose the text at a page switch. */
 const savePauseMs = 600;
 
@@ -121,7 +136,7 @@ export class UnsentTexts {
     // The person's own newer change wins over a change that another page made before it.
     this.missed.delete(draftKey);
     if (this.sync_ !== null) {
-      this.setRevision(draftKey, dirty);
+      this.markDirty(draftKey);
       this.schedule(draftKey);
     }
     this.tell(draftKey);
@@ -159,25 +174,45 @@ export class UnsentTexts {
 
   private takeRead(key: string, read: EvaTexts, tell: boolean): void {
     const entry = read.texts[key];
-    this.take(key, entry?.text ?? null, entry?.revision ?? read.revision, tell);
+    if (entry !== undefined) {
+      this.take(key, entry.text, entry.revision, tell);
+      return;
+    }
+    const removed = read.removed[key];
+    if (removed !== undefined) {
+      this.take(key, null, removed, tell);
+      return;
+    }
+    // Eva does not know the key, such as after a lost file. The copy of this page goes to her again.
+    if (this.local(key) === undefined) return;
+    this.markDirty(key);
+    this.sendLater(key);
   }
 
   /** Takes Eva's text of a key, unless this page knows a newer one. */
   private take(key: string, text: string | null, revision: number, tell: boolean): void {
-    const known = this.revision(key);
+    const known = this.state(key);
     // A text with no revision comes from a version before Eva kept the texts. Eva must get it.
-    if (known === dirty || (known === undefined && this.local(key) !== undefined)) {
-      if (known === undefined) this.setRevision(key, dirty);
+    if (known?.dirty === true || (known === undefined && this.local(key) !== undefined)) {
+      this.markDirty(key);
       if (this.saving.has(key) && revision > (this.missed.get(key)?.revision ?? 0))
         this.missed.set(key, { text, revision });
-      // Eva must get the change that this page has, also after a reload.
-      if (!this.timers.has(key) && !this.saving.has(key)) this.schedule(key);
+      this.sendLater(key);
       return;
     }
-    if (known !== undefined && Number(known) >= revision) return;
+    if (known !== undefined && (known.base ?? 0) >= revision) return;
+    this.takeText(key, text, revision, tell);
+  }
+
+  private takeText(key: string, text: string | null, revision: number, tell: boolean): void {
     this.keep(key, text, true);
     this.setRevision(key, String(revision));
     if (tell) this.tell(key);
+  }
+
+  /** Eva must get the change that this page has, also after a reload. */
+  private sendLater(key: string): void {
+    if (!this.timers.has(key) && !this.saving.has(key)) this.schedule(key);
   }
 
   /** Writes the text in memory and in the tab. Null and an empty text that is not kept remove it. */
@@ -193,14 +228,24 @@ export class UnsentTexts {
     }
   }
 
-  private revision(key: string): string | undefined {
-    const kept = this.revisions.get(key);
-    if (kept !== undefined) return kept;
-    try {
-      return this.storage().getItem(revisionPrefix + key) ?? undefined;
-    } catch {
-      return undefined;
+  private state(key: string): KeyState | undefined {
+    let kept = this.revisions.get(key);
+    if (kept === undefined) {
+      try {
+        kept = this.storage().getItem(revisionPrefix + key) ?? undefined;
+      } catch {
+        kept = undefined;
+      }
     }
+    if (kept === undefined) return undefined;
+    const isDirty = kept.startsWith(dirtyPrefix);
+    const revision = Number(isDirty ? kept.slice(dirtyPrefix.length + 1) : kept);
+    return { dirty: isDirty, base: Number.isSafeInteger(revision) && revision > 0 ? revision : null };
+  }
+
+  /** Marks a change that Eva does not have yet. It keeps the revision that the change built on. */
+  private markDirty(key: string, base: number | null = this.state(key)?.base ?? null): void {
+    this.setRevision(key, `${dirtyPrefix}:${base === null ? "" : String(base)}`);
   }
 
   private setRevision(key: string, revision: string): void {
@@ -237,13 +282,21 @@ export class UnsentTexts {
     const change = this.changes.get(key);
     this.saving.add(key);
     sync.remote
-      .save(key, local ?? "", keepEmpty)
-      .then((revision) => {
-        // A change during the write goes to Eva later, so it stays dirty.
-        if (this.changes.get(key) !== change) return;
-        this.setRevision(key, String(revision));
+      .save(key, local ?? "", keepEmpty, this.state(key)?.base ?? null)
+      .then((answer) => {
         const missed = this.missed.get(key);
         this.missed.delete(key);
+        // A change during the write goes to Eva later, on the text that Eva has now.
+        if (this.changes.get(key) !== change) {
+          this.markDirty(key, answer.revision);
+          return;
+        }
+        // Eva has a newer text than the one that this page built on, so the page shows it.
+        if (!answer.accepted) {
+          this.takeText(key, answer.text, answer.revision, true);
+          return;
+        }
+        this.setRevision(key, String(answer.revision));
         if (missed !== undefined) this.take(key, missed.text, missed.revision, true);
       })
       .catch(() => {

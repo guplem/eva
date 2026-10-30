@@ -40,7 +40,7 @@ import type { SetupItem, SetupReport, SetupSection } from "../../../core/project
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
-import type { UnsentTextEvent, UnsentTexts } from "../../../core/sessions/unsent-texts.ts";
+import type { UnsentTextAnswer, UnsentTextEvent, UnsentTexts } from "../../../core/sessions/unsent-texts.ts";
 import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { ChangelogEntry } from "../../../core/updates/release-policy.ts";
@@ -238,11 +238,17 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/archive`, { archived }),
   unsentTexts: (): Promise<UnsentTexts> => request("GET", "/api/unsent-texts", undefined, { limit: quickRead }),
   /** A short text goes out also while the page hides. The browser refuses a long body with keepalive. */
-  saveUnsentText: (key: string, text: string, keepEmpty: boolean, writer: string): Promise<{ revision: number }> =>
+  saveUnsentText: (
+    key: string,
+    text: string,
+    keepEmpty: boolean,
+    writer: string,
+    base: number | null,
+  ): Promise<UnsentTextAnswer> =>
     request(
       "PUT",
       `/api/unsent-texts/${encodeURIComponent(key)}`,
-      { text, keepEmpty, writer },
+      { text, keepEmpty, writer, base },
       { keepalive: text.length <= keepaliveTextLength },
     ),
   markSeen: (sessionId: string, turnCount: number): Promise<SessionRecord> =>

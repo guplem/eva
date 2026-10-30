@@ -974,14 +974,21 @@ describe("routes", () => {
     socket.addEventListener("message", (message) => events.push(JSON.parse(String(message.data)) as { kind: string }));
     const saved = await call("/api/unsent-texts/new-chat", {
       method: "PUT",
-      body: { text: "Half a thought", keepEmpty: false, writer: "page-1" },
+      body: { text: "Half a thought", keepEmpty: false, writer: "page-1", base: null },
     });
     expect(saved.status).toBe(200);
     const { revision } = await json<{ revision: number }>(saved);
     expect(await json(await call("/api/unsent-texts"))).toEqual({
       revision,
       texts: { "new-chat": { text: "Half a thought", revision } },
+      removed: {},
     });
+    // Another page that built on an older text gets Eva's text instead of writing over it.
+    const stale = await call("/api/unsent-texts/new-chat", {
+      method: "PUT",
+      body: { text: "Older", keepEmpty: false, writer: "page-2", base: revision - 1 },
+    });
+    expect(await json(stale)).toEqual({ accepted: false, text: "Half a thought", revision });
     while (!events.some((event) => event.kind === "unsent_text")) await Bun.sleep(10);
     socket.close();
     expect(events.find((event) => event.kind === "unsent_text")).toEqual({
@@ -991,11 +998,14 @@ describe("routes", () => {
       revision,
       writer: "page-1",
     });
-    const bad = await call("/api/unsent-texts/new-chat", { method: "PUT", body: { text: 3, writer: "page-1" } });
+    const bad = await call("/api/unsent-texts/new-chat", {
+      method: "PUT",
+      body: { text: 3, writer: "page-1", base: null },
+    });
     expect(bad.status).toBe(400);
     const badKey = await call("/api/unsent-texts/a%2Fb", {
       method: "PUT",
-      body: { text: "Hi", keepEmpty: false, writer: "page-1" },
+      body: { text: "Hi", keepEmpty: false, writer: "page-1", base: null },
     });
     expect(badKey.status).toBe(400);
   });
@@ -1006,14 +1016,14 @@ describe("routes", () => {
     );
     await call(`/api/unsent-texts/${session.id}`, {
       method: "PUT",
-      body: { text: "Never sent", keepEmpty: false, writer: "page-1" },
+      body: { text: "Never sent", keepEmpty: false, writer: "page-1", base: null },
     });
     eva.sessions.delete(session.id);
     expect((await json<{ texts: Record<string, unknown> }>(await call("/api/unsent-texts"))).texts).toEqual({});
     // A late write of the deleted chat, such as at a page hide, leaves no text behind.
     const late = await call(`/api/unsent-texts/${session.id}`, {
       method: "PUT",
-      body: { text: "Too late", keepEmpty: false, writer: "page-1" },
+      body: { text: "Too late", keepEmpty: false, writer: "page-1", base: null },
     });
     expect(late.status).toBe(404);
     expect((await json<{ texts: Record<string, unknown> }>(await call("/api/unsent-texts"))).texts).toEqual({});

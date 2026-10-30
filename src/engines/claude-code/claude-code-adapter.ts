@@ -10,7 +10,8 @@ import {
   type SDKMessage,
   type SDKRateLimitInfo,
 } from "@anthropic-ai/claude-agent-sdk";
-import { dirname, join, resolve } from "node:path";
+import { realpathSync } from "node:fs";
+import defaultPath, { dirname, join, resolve } from "node:path";
 import type { ApprovalAnswer, CarryHistoryInput, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
 import { readTextTolerant } from "../../shared/files.ts";
 import { carryClaudeHistory } from "./claude-code-history.ts";
@@ -157,7 +158,7 @@ export function buildQueryOptions(
   }
   options.model = request.model;
   if (request.effort !== null) options.effort = request.effort;
-  // The pieces only change what the SDK reports to Eva, so Project mode stays a transparent wrapper.
+  // The pieces only change what the SDK reports to Eva, so Project mode adds nothing that the model sees.
   if (request.mode !== "model-call") options.includePartialMessages = true;
 
   switch (request.history.kind) {
@@ -198,14 +199,18 @@ export function buildQueryOptions(
     options.settings = { disableAllHooks: true, autoMemoryEnabled: false, permissions: { ask } };
     setPermissionMode(options, permissionMode);
   } else {
-    // Project mode is a transparent wrapper: the same prompt and setting sources as a manual session.
+    // Project mode is a clean wrapper: the prompt and setting sources of a manual session, with the
+    // vault's instructions hidden, so the chat does not know that it runs inside Eva (#702).
     options.systemPrompt = { type: "preset", preset: "claude_code" };
     options.settingSources = ["user", "project", "local"];
+    if (request.projectFolder !== null) {
+      options.settings = { claudeMdExcludes: hiddenInstructionPatterns(request.projectFolder) };
+    }
     if (!request.trusted) {
       // An untrusted clone's own settings could allow every tool and skip the person's approval.
       options.settingSources = ["user"];
       // Without the `project` source, Claude Code reads no instruction file, so Eva gives it the same files (issue #535).
-      const instructions = instructionFilesText(request.startFolder);
+      const instructions = instructionFilesText(request.startFolder, request.projectFolder);
       if (instructions !== null) options.systemPrompt = { type: "preset", preset: "claude_code", append: instructions };
       options.settings = { disableAllHooks: true };
       options.strictMcpConfig = true;
@@ -221,12 +226,14 @@ export function buildQueryOptions(
  * the nearest file comes last and wins. Claude Code reads each `CLAUDE.md` from the start folder
  * up to the root, and each `AGENTS.md` only when none of those folders has a `CLAUDE.md`.
  * Eva does not follow `@` imports: an untrusted file could import a secret from outside the clone.
+ * The walk stops at the project folder, whose upper files Claude Code hides too (#702).
  */
-function instructionFilesText(startFolder: string): string | null {
+function instructionFilesText(startFolder: string, projectFolder: string | null): string | null {
+  const stop = projectFolder === null ? null : resolve(projectFolder);
   const folders: string[] = [];
   for (let folder = resolve(startFolder); ; folder = dirname(folder)) {
     folders.unshift(folder);
-    if (dirname(folder) === folder) break;
+    if (folder === stop || dirname(folder) === folder) break;
   }
   const read = (names: readonly string[]): { path: string; text: string }[] =>
     folders.flatMap((folder) =>
@@ -242,6 +249,48 @@ function instructionFilesText(startFolder: string): string | null {
   return files
     .map(({ path, text }) => `Contents of ${path} (project instructions, checked into the codebase):\n\n${text}`)
     .join("\n\n");
+}
+
+/** The instruction files that Claude Code reads in one folder, as paths below it. */
+const instructionFileNames = [
+  "CLAUDE.md",
+  "CLAUDE.local.md",
+  ".claude/CLAUDE.md",
+  "AGENTS.md",
+  ".claude/AGENTS.md",
+  ".claude/rules/**",
+];
+
+/**
+ * The `claudeMdExcludes` patterns that hide each instruction file of a folder above the project
+ * folder (#702). Claude Code matches them with picomatch, after it turns every backslash into a
+ * slash in the patterns too, so no escape can work. Each glob character of a path becomes `?`,
+ * which matches one character but never a slash. picomatch matches case, so a drive letter
+ * becomes `?` too. The real path gets its own patterns, since Claude Code may read either one.
+ */
+export function hiddenInstructionPatterns(projectFolder: string, path: typeof defaultPath = defaultPath): string[] {
+  const roots = [path.resolve(projectFolder)];
+  try {
+    roots.push(realpathSync(projectFolder));
+  } catch {
+    // A folder that does not exist yet has no other real path.
+  }
+  const patterns = roots.flatMap((root) => {
+    const folders: string[] = [];
+    for (let folder = path.dirname(root); ; folder = path.dirname(folder)) {
+      folders.push(folder);
+      if (path.dirname(folder) === folder) break;
+    }
+    return folders.flatMap((folder) => {
+      const base = folder
+        .replaceAll("\\", "/")
+        .replace(/[()[\]{}*?!+@]/g, "?")
+        .replace(/^[A-Za-z]:/, "?:")
+        .replace(/\/$/, "");
+      return instructionFileNames.map((name) => `${base}/${name}`);
+    });
+  });
+  return [...new Set(patterns)];
 }
 
 function setPermissionMode(options: Options, mode: ClaudePermissionMode): void {

@@ -2502,6 +2502,33 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(existsSync(join(vault(), saved))).toBe(true);
   });
 
+  test("a file in the topic of a chat in a clone lands in the clone, and a gone mention gets an answer (#706)", async () => {
+    const cloneFolder = join(vault(), "Projects", "2026-01-01-0000-example-app", "repos", "clone-0");
+    mkdirSync(cloneFolder, { recursive: true });
+    const chat = eva.sessions.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: cloneFolder,
+      source: "web",
+      projectId: "2026-01-01-0000-example-app",
+      clone: "clone-0",
+    });
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${chat.id}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
+
+    telegram.sendFile(owner, "document", new Uint8Array([4, 5]), { fileName: "plan.pdf", topicId: 500 });
+    await settle(bot, () => engine.requests.length === 1);
+    const saved = /saved as (\.mentions\/plan-[0-9a-f]{12}\.pdf)/.exec(engine.requests[0]?.prompt ?? "")?.[1];
+    expect(saved).toBeDefined();
+    expect(existsSync(join(cloneFolder, saved ?? "missing"))).toBe(true);
+
+    telegram.sendText(owner, "Read @file:Notes/Gone.md", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Gone.md was not found")));
+    expect(engine.requests).toHaveLength(1);
+  });
+
   test("an audio file is saved like a document", async () => {
     const bot = createBot();
     telegram.sendFile(owner, "audio", new Uint8Array([4, 5]), { fileName: "memo.mp3" });

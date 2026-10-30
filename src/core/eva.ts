@@ -89,6 +89,7 @@ import {
   type CloneDetails,
   type TrustAnswer,
 } from "./projects/clones.ts";
+import { checkMentions, saveInClone } from "./projects/clone-files.ts";
 import {
   ProjectWork,
   type BranchResult,
@@ -1695,10 +1696,26 @@ export class Eva {
     return saveVaultFile(this.browsedVault(), path, version, text, (shown) => this.redactor.redact(shown));
   }
 
-  /** Keeps a file that the person attached in the web chat, as Telegram does, and answers the note for the agent. */
-  receiveFile(name: string, bytes: Uint8Array): { path: string; note: string } {
-    const path = saveReceivedFile(this.browsedVault(), name, bytes);
+  /**
+   * Keeps a file that the person attached, and answers the note for the agent. A chat in a clone
+   * gets it in the clone, with a path from the clone folder, so it sees no vault path (#706).
+   */
+  receiveFile(name: string, bytes: Uint8Array, sessionId: string | null = null): { path: string; note: string } {
+    const chat = sessionId === null ? null : this.sessions.get(sessionId);
+    const path =
+      chat?.mode === "project" && chat.clone !== null
+        ? saveInClone(chat.startFolder, name, bytes)
+        : saveReceivedFile(this.browsedVault(), name, bytes);
     return { path, note: receivedFileNote(path) };
+  }
+
+  /**
+   * Throws the first problem of a file that a message to a chat in a clone mentions, such as a gone
+   * file, so the message is not sent and the person hears why (#706).
+   */
+  checkMessage(sessionId: string, text: string): void {
+    const chat = this.sessions.get(sessionId);
+    if (chat.mode === "project" && chat.clone !== null) checkMentions(this.browsedVault(), text);
   }
 
   /** The favorite files and folders, which the file explorer shows first. */

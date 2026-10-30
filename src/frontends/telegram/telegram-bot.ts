@@ -13,7 +13,6 @@ import {
   describeToolVersions,
   describeUpdate,
 } from "../cli/client.ts";
-import { receivedFileNote, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { extractFileMarkers } from "../../shared/file-markers.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
@@ -463,22 +462,26 @@ export class TelegramBot {
     await this.forward(chatId, topicId, text);
   }
 
-  /** Saves a received file in Scratch/, so the agent can read it, and tells the chat where it is. */
+  /**
+   * Saves a received file where the chat can read it, and tells the chat where it is: in Scratch/,
+   * or in the clone of a chat in a clone (#706). The core decides, as for the web app.
+   */
   private async forwardFile(
     chatId: number,
     topicId: number | null,
     file: TelegramFile,
     caption: string,
   ): Promise<void> {
-    const vaultPath = this.options.eva.status().vaultPath;
-    if (vaultPath === null) {
-      await this.send(chatId, topicId, "No vault is configured, so Eva cannot keep the file.");
-      return;
-    }
     const bytes = await this.files.download(chatId, topicId, file);
     if (bytes === null) return;
-    const saved = saveReceivedFile(vaultPath, file.file_name ?? "file", bytes);
-    await this.forward(chatId, topicId, `${caption}\n\n${receivedFileNote(saved)}`.trim());
+    let note: string;
+    try {
+      note = this.options.eva.receiveFile(file.file_name ?? "file", bytes, this.chatOf(chatId, topicId)).note;
+    } catch (error) {
+      await this.send(chatId, topicId, `Eva cannot keep the file: ${this.describeError(error)}`);
+      return;
+    }
+    await this.forward(chatId, topicId, `${caption}\n\n${note}`.trim());
   }
 
   /** Transcribes a voice note on this machine, echoes it, then sends it as the message (lesson 123). */
@@ -736,18 +739,23 @@ export class TelegramBot {
     }
   }
 
-  private async forward(chatId: number, topicId: number | null, text: string): Promise<void> {
+  /** The chat of a topic. A topic with no chat yet gets a new Assistant chat. */
+  private chatOf(chatId: number, topicId: number | null): string {
     const key = keyOf(chatId, topicId);
-    let entry = this.state.topics[key];
-    if (entry === undefined || !this.sessionExists(entry.sessionId)) {
-      const session = this.options.eva.createAssistantSession({
-        source: "telegram",
-        ...(topicId === null ? {} : { telegramTopicId: topicId }),
-      });
-      entry = { sessionId: session.id, openedByEva: false, renamed: true };
-      this.state.topics[key] = entry;
-      this.saveState();
-    }
+    const entry = this.state.topics[key];
+    if (entry !== undefined && this.sessionExists(entry.sessionId)) return entry.sessionId;
+    const session = this.options.eva.createAssistantSession({
+      source: "telegram",
+      ...(topicId === null ? {} : { telegramTopicId: topicId }),
+    });
+    this.state.topics[key] = { sessionId: session.id, openedByEva: false, renamed: true };
+    this.saveState();
+    return session.id;
+  }
+
+  private async forward(chatId: number, topicId: number | null, text: string): Promise<void> {
+    const sessionId = this.chatOf(chatId, topicId);
+    const entry = this.state.topics[keyOf(chatId, topicId)] ?? { sessionId, openedByEva: false, renamed: true };
     if (topicId !== null && entry.openedByEva && !entry.renamed) {
       entry.renamed = true;
       this.saveState();
@@ -760,6 +768,13 @@ export class TelegramBot {
     // Eva reused the clone of a closed chat (issue 521): the core refuses the message, so the phone hears why.
     if (this.options.eva.sessions.get(entry.sessionId).closed) {
       await this.send(chatId, topicId, closedChatText);
+      return;
+    }
+    // A gone or refused file stops the message, and the phone hears why (#706).
+    try {
+      this.options.eva.checkMessage(entry.sessionId, text);
+    } catch (error) {
+      await this.send(chatId, topicId, `The message was not sent: ${this.describeError(error)}`);
       return;
     }
     this.startTyping(chatId, topicId, entry.sessionId);

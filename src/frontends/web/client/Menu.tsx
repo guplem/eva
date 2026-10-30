@@ -13,6 +13,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
@@ -114,6 +115,42 @@ export function MoreMenu({
   /** Pass a ref when the caller must move the focus back to the button, for example after a dialog closes. */
   readonly toggle?: RefObject<HTMLButtonElement | null>;
 }): ReactElement {
+  return (
+    <MenuButton
+      items={items}
+      label={label}
+      className="icon-button"
+      name="More actions"
+      {...(toggle === undefined ? {} : { toggle })}
+    >
+      <Icon name="more" />
+    </MenuButton>
+  );
+}
+
+/** A button that opens a menu below it, such as "More actions", or the two kinds of a new project chat. */
+export function MenuButton({
+  items,
+  label,
+  toggle,
+  className,
+  name,
+  disabled = false,
+  busy = false,
+  children,
+}: {
+  readonly items: readonly MenuItem[];
+  /** The name that a screen reader reads for the open menu, such as "Chat actions". */
+  readonly label: string;
+  /** Pass a ref when the caller must move the focus back to the button, for example after a dialog closes. */
+  readonly toggle?: RefObject<HTMLButtonElement | null>;
+  readonly className: string;
+  /** The name and the tooltip of a button that shows only an icon. A button with words needs none. */
+  readonly name?: string;
+  readonly disabled?: boolean;
+  readonly busy?: boolean;
+  readonly children: ReactNode;
+}): ReactElement {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const own = useRef<HTMLButtonElement>(null);
@@ -137,14 +174,16 @@ export function MoreMenu({
     <div className="more-picker" ref={root}>
       <button
         ref={button}
-        className="icon-button"
-        aria-label="More actions"
-        data-tooltip="More actions"
+        className={className}
+        aria-label={name}
+        data-tooltip={name}
         aria-haspopup="menu"
         aria-expanded={open}
+        disabled={disabled}
+        aria-busy={busy}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
-        <Icon name="more" />
+        {children}
       </button>
       {open && <MenuList items={items} label={label} className="more-menu" onClose={closeList} />}
     </div>

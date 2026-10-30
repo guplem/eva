@@ -98,11 +98,11 @@ export class OfferStore {
 }
 
 /**
- * Saves a file that the person sent into `Scratch/received/`, named by its content, so two
- * chats that receive files at once never overwrite each other (lesson 74). Returns the path
- * from the vault root.
+ * A safe file name that ends with a hash of the bytes: the same bytes get the same name, and two
+ * writers of different files never meet (lesson 74). The hash also means that no copy keeps the
+ * name of an instruction file, such as `AGENTS.md`.
  */
-export function saveReceivedFile(vaultPath: string, originalName: string, bytes: Uint8Array): string {
+export function contentName(originalName: string, bytes: Uint8Array): string {
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
   // Cut by letters, not UTF-16 units, so no letter splits in two. 60 letters of 4 bytes each,
   // with the hash, stay under the 255-byte limit of a file name.
@@ -111,7 +111,16 @@ export function saveReceivedFile(vaultPath: string, originalName: string, bytes:
       .slice(-60)
       .join("") || "file";
   const extension = extname(safeName);
-  const name = `${safeName.slice(0, safeName.length - extension.length)}-${hash}${extension}`;
+  return `${safeName.slice(0, safeName.length - extension.length)}-${hash}${extension}`;
+}
+
+/**
+ * Saves a file that the person sent into `Scratch/received/`, named by its content, so two
+ * chats that receive files at once never overwrite each other (lesson 74). Returns the path
+ * from the vault root.
+ */
+export function saveReceivedFile(vaultPath: string, originalName: string, bytes: Uint8Array): string {
+  const name = contentName(originalName, bytes);
   const folder = join(vaultPath, scratchFolderName, "received");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, name), bytes);

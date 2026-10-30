@@ -149,7 +149,9 @@ describe("Eva", () => {
     await instance.sessions.send(session.id, "What should I cook?");
     const prompt = engine.requests[0]?.appendSystemPrompt ?? "";
     expect(prompt).toContain("- Recipes (`2025-03-02-1015-recipes`): The menus of each week.");
-    expect(prompt).toContain("- Website (`2025-04-01-0900-website`)");
+    expect(prompt).toContain(
+      `- Website (\`2025-04-01-0900-website\`, in \`${join(extraRoot, "2025-04-01-0900-website")}\`)`,
+    );
   });
 
   test("a retry with undo restores the files of the retried answers and pushes the undo (#525)", async () => {

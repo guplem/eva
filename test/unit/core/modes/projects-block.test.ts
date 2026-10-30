@@ -29,20 +29,20 @@ describe("projectsBlock", () => {
     const vaultProjects = join(root, "vault", "Projects");
     addProject(vaultProjects, "2025-01-01-0900-website", "active", "# Website\n\nThe person's own website.\n");
     addProject(vaultProjects, "2025-02-01-0900-recipes", "in-use", "# Recipes\n\nThe recipes and the menus.\n");
-    // A project with no description shows its title and id only.
+    // A project with no description shows its title and id only. One outside the vault also shows its folder.
     addProject(join(root, "extra"), "2025-03-01-0900-tool", "active", "# Tool\n");
 
     expect(projectsBlock(projects())).toBe(
       [
         "# The person's projects",
         "",
-        "Eva lists these projects of the person at the start of this chat, from the `status` in the front matter of each project's `AGENTS.md`. A change shows in the next chat. Each line gives the title, the project id and the description.",
+        "Eva lists these projects of the person at the start of this chat, from the `status` in the front matter of each project's `AGENTS.md`. A change shows in the next chat. Each line gives the title, the project id and the description. A project outside `Projects/` also gives its folder.",
         "",
         "## Projects that the person develops",
         "",
         "Their status is `active`.",
         "",
-        "- Tool (`2025-03-01-0900-tool`)",
+        `- Tool (\`2025-03-01-0900-tool\`, in \`${join(root, "extra", "2025-03-01-0900-tool")}\`)`,
         "- Website (`2025-01-01-0900-website`): The person's own website.",
         "",
         "## Projects that the person uses",

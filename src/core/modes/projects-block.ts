@@ -11,7 +11,7 @@ interface BlockPart {
 }
 
 const blockIntro =
-  "Eva lists these projects of the person at the start of this chat, from the `status` in the front matter of each project's `AGENTS.md`. A change shows in the next chat. Each line gives the title, the project id and the description.";
+  "Eva lists these projects of the person at the start of this chat, from the `status` in the front matter of each project's `AGENTS.md`. A change shows in the next chat. Each line gives the title, the project id and the description. A project outside `Projects/` also gives its folder.";
 
 /** The block, or null when no project is active or in use. Each empty part is left out. */
 export function projectsBlock(projects: readonly Project[]): string | null {
@@ -38,7 +38,9 @@ function lines(projects: readonly Project[], status: ProjectStatus): string[] {
     .filter((project) => project.frontMatter.status === status)
     .sort((first, second) => second.id.localeCompare(first.id))
     .map((project) => {
-      const name = `- ${project.title} (\`${project.id}\`)`;
+      // The agent finds a project of an extra root only by its folder: it is not in `Projects/`.
+      const folder = project.vaultFolder === null ? `, in \`${project.path}\`` : "";
+      const name = `- ${project.title} (\`${project.id}\`${folder})`;
       return project.description === null ? name : `${name}: ${project.description}`;
     });
 }

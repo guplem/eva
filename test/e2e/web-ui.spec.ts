@@ -2745,6 +2745,51 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
 
+test("Settings: a search result stays at its card while a card above it loads (issue 720)", async ({ page }) => {
+  await logIn(page);
+  // Eva's rules fill their card after the page opens, above the message box menu.
+  let releaseRules = (): void => undefined;
+  const rulesWait = new Promise<void>((resolve) => (releaseRules = resolve));
+  await page.route("**/api/assistant-rules", async (route) => {
+    const response = await route.fetch();
+    await rulesWait;
+    await route.fulfill({ response });
+  });
+  await openSettings(page);
+  await page.getByLabel("Search settings").fill("message box menu");
+  await page
+    .getByRole("list", { name: "Search results" })
+    .getByRole("button", { name: /Message box menu/ })
+    .click();
+  /** The distance from the top of the scroll box to the top of the card. */
+  const cardOffset = (): Promise<number> =>
+    page.evaluate(() => {
+      const box = document.querySelector(".settings-content");
+      const card = document.getElementById("setting-composer-menu");
+      if (box === null || card === null) return Number.NaN;
+      return card.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    });
+  await expect.poll(cardOffset).toBeLessThan(60);
+  releaseRules();
+  await expect(page.getByRole("region", { name: "Eva's rules" })).not.toContainText("Reading your rules");
+  await expect.poll(cardOffset).toBeLessThan(60);
+  // The person's own scroll wins over the hold.
+  await page.locator(".settings-content").hover();
+  await page.mouse.wheel(0, -400);
+  await expect.poll(cardOffset).toBeGreaterThan(300);
+  // A save reloads the settings. The view stays where the person left it, and does not go back to the card.
+  const save = page.locator(".save-bar").getByRole("button", { name: "Save" });
+  await save.scrollIntoViewIfNeeded();
+  const left = await cardOffset();
+  const reload = page.waitForResponse(
+    (response) => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/settings",
+  );
+  await save.click();
+  await reload;
+  await page.waitForTimeout(300);
+  expect(Math.abs((await cardOffset()) - left)).toBeLessThan(2);
+});
+
 test("Settings: the guide shows the docs, and the search opens a doc at its heading (issue 708)", async ({ page }) => {
   // The test reads the real docs: it needs the headings "Chats" and "Vault conflicts" in reference.md,
   // "More than one Eva on a computer" in setup.md, and the link to it in reference.md.

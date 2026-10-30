@@ -1659,6 +1659,51 @@ describe("Eva", () => {
     }
   });
 
+  test("Eva's own update waits for a running tool install, then restarts (#565)", async () => {
+    const release = serveGhRelease();
+    const ghRunner = ghInstallRunner(systemProcessRunner, { version: null });
+    const unpackGate: { open: (() => void) | null } = { open: null };
+    const runner: ProcessRunner = {
+      run: async (command, options) => {
+        if (command[0] === "tar") await new Promise<void>((resolve) => (unpackGate.open = resolve));
+        return ghRunner.run(command, options);
+      },
+    };
+    const restarts: string[] = [];
+    try {
+      const instance = new Eva({
+        paths: homePaths(home),
+        config: config(),
+        secrets: {},
+        engines: [new FakeEngine()],
+        runner,
+        processEnvironment: gitEnvironment,
+        now: () => clock,
+        basePrompt: "Base.",
+        toolPlaces: { platform: "linux", userHome: home, standalone: false },
+        toolInstall: { arch: "x64", ghReleaseUrl: release.url },
+        updateChannel: {
+          kind: "executable",
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
+        },
+        restartForUpdate: () => restarts.push("restart"),
+      });
+      eva = instance;
+      const installing = instance.installTool("gh");
+      await waitFor(() => unpackGate.open !== null);
+      expect((await instance.updateNow())?.phase).toBe("waiting_for_idle");
+      await instance.backgroundTick();
+      expect(restarts).toEqual([]);
+      unpackGate.open?.();
+      expect((await installing).ok).toBe(true);
+      await instance.backgroundTick();
+      expect(restarts).toEqual(["restart"]);
+    } finally {
+      await release.stop();
+    }
+  });
+
   test("the Updates page lists what voice notes lack, and one install adds each part", async () => {
     const archive = new TextEncoder().encode("a pretend archive");
     const archiveHash = createHash("sha256").update(archive).digest("hex");

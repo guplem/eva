@@ -69,7 +69,7 @@ export interface UpdaterOptions {
   readonly policy: () => UpdatePolicy;
   /** The version that a vault from a newer Eva needs, or "newest". Eva installs at least that. */
   readonly requiredVersion?: () => string | undefined;
-  /** True when no chat runs a turn. */
+  /** True when no work runs that a restart would cut off, such as a turn or a tool install. */
   readonly isIdle: () => boolean;
   /** Stops Eva so that the new version starts. */
   readonly restart: () => void;

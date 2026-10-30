@@ -176,7 +176,8 @@ const contextGroupLabels: Readonly<Record<ContextGroup, string>> = {
   prompt: "System prompt",
   instructions: "Instruction files",
   skills: "Skills",
-  message: "Each message",
+  // Not "message": a label with that word would match the composer's "Message" label in the browser tests.
+  message: "Each turn",
 };
 
 /** The parts of a chat's context by group, in the order of the groups. An empty group is left out. */

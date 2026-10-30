@@ -3,7 +3,7 @@
  * list on a wide screen, a search, and a page per section and per setup step. The address names
  * the page (`#/settings/<section>/<item>`), so Back works and a reload stays on the page.
  */
-import { Fragment, useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { AccessSection } from "./AccessSection.tsx";
 import { api, type EvaSetupState, type EvaStatus, type ProgressStep, type PublicSettings } from "./api.ts";
 import { Dialog } from "./Dialog.tsx";
@@ -76,7 +76,17 @@ export function SettingsView({
   }, []);
 
   // A search result or a link can name a card or a heading of the guide. Scroll to it, and mark it for a moment.
+  // Each route scrolls once. A settings reload, such as after a save, must not pull the person back to the card.
+  const shownRoute = useRef<SettingsRoute | null>(null);
+  const stopHold = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopHold.current?.(), []);
   useEffect(() => {
+    if (route === shownRoute.current) return;
+    const show = (): void => {
+      shownRoute.current = route;
+      stopHold.current?.();
+      stopHold.current = null;
+    };
     const heading =
       route.section === "guide" && route.item !== null ? (parseGuideItem(route.item)?.slug ?? null) : null;
     // A setup step, the design reference and the top of a doc are pages of their own, not cards to scroll to.
@@ -86,18 +96,24 @@ export function SettingsView({
       (route.section === "developer" && route.item === designReferenceItem) ||
       (route.section === "guide" && heading === null)
     ) {
+      show();
       document.querySelector(".settings-content")?.scrollTo({ top: 0 });
       return;
     }
     const card = document.getElementById(heading === null ? cardId(route.item) : guideHeadingId(heading));
     if (card === null) {
       // An old link to a heading that a doc renamed still opens the doc, at its top.
-      if (heading !== null) document.querySelector(".settings-content")?.scrollTo({ top: 0 });
+      if (heading !== null) {
+        show();
+        document.querySelector(".settings-content")?.scrollTo({ top: 0 });
+      }
+      // Otherwise the card comes with the settings: the next run scrolls to it.
       return;
     }
+    show();
     // A card above the target can fill later and push it down, so the scroll holds it in place.
     const box = document.querySelector(".settings-content");
-    const stopHold = box === null ? undefined : holdInView(box, card);
+    const stopScroll = box === null ? undefined : holdInView(box, card);
     if (heading !== null) {
       // React does not make the doc's HTML, so the heading has no tabIndex. Give it one, so it can take the focus.
       // A keyboard then continues from the heading, and a screen reader reads it.
@@ -106,9 +122,10 @@ export function SettingsView({
     }
     card.classList.add("flash");
     const timer = setTimeout(() => card.classList.remove("flash"), 1_600);
-    return () => {
+    stopHold.current = () => {
       clearTimeout(timer);
-      stopHold?.();
+      card.classList.remove("flash");
+      stopScroll?.();
     };
   }, [route, settings]);
 

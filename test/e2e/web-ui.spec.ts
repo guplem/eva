@@ -2777,6 +2777,17 @@ test("Settings: a search result stays at its card while a card above it loads (i
   await page.locator(".settings-content").hover();
   await page.mouse.wheel(0, -400);
   await expect.poll(cardOffset).toBeGreaterThan(300);
+  // A save reloads the settings. The view stays where the person left it, and does not go back to the card.
+  const save = page.locator(".save-bar").getByRole("button", { name: "Save" });
+  await save.scrollIntoViewIfNeeded();
+  const left = await cardOffset();
+  const reload = page.waitForResponse(
+    (response) => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/settings",
+  );
+  await save.click();
+  await reload;
+  await page.waitForTimeout(300);
+  expect(Math.abs((await cardOffset()) - left)).toBeLessThan(2);
 });
 
 test("Settings: the guide shows the docs, and the search opens a doc at its heading (issue 708)", async ({ page }) => {

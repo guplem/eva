@@ -6525,7 +6525,7 @@ test("the message box menu polishes the typed text, puts a saved prompt at the c
   await page.getByRole("menuitem", { name: "Polish" }).click();
   // The demo engine marks the rewritten text, and Eva sends nothing.
   await expect(composer).toHaveValue("Helo wrld. (polished)");
-  await page.getByRole("button", { name: "Undo" }).click();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(composer).toHaveValue("helo wrld");
 
   await composer.click();

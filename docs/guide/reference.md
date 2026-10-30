@@ -19,11 +19,11 @@ Run these on the computer where Eva runs. Seven commands need Eva to run: `statu
 | `eva open`                        | Opens Eva in this computer's browser, already logged in, with no code or token.                                                                                                     |
 | `eva devices allow <code>`        | Allows the device whose page shows this code.                                                                                                                                       |
 | `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.                                                                                           |
-| `eva chat --project <id>`         | Talks to a project's coding agent. `--clone <name>` picks the copy of the code, such as `clone-0`, when it has no open chat.                                                        |
+| `eva chat --project <id>`         | Talks to a project's coding agent, or to a specialist. `--clone <name>` picks the copy of the code, such as `clone-0`, when it has no open chat.                                    |
 | `eva chat --model <model>`        | Picks the model: `smart`, `balanced` or `fast`. Without it, the model from the settings.                                                                                            |
 | `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                                                                                                            |
 | `eva projects [words]`            | Searches your projects. `status:active` and `tag:work` filter them.                                                                                                                 |
-| `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code.                                                                                                         |
+| `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code, or the specialist does it.                                                                              |
 | `eva sync`                        | Gets other computers' notes, then saves and pushes this computer's notes.                                                                                                           |
 | `eva update [version] [--check]`  | Installs what the policy allows, or the version given. `--check` only looks.                                                                                                        |
 | `eva hub`                         | Makes this computer the hub, which runs Telegram and the reminders.                                                                                                                 |
@@ -227,7 +227,7 @@ A request from Eva's own computer can come from any program there, so only the t
 
 ## Projects
 
-- **Create a project:** open **Projects** in the web app and tap **New project**. Give a name, a short description, a status and tags. Eva makes the folder `Projects/<date>-<time>-<name>/` in the vault, with its `AGENTS.md`.
+- **Create a project:** open **Projects** in the web app and tap **New project**. Pick the project type: **Software** or **Specialist** (see _Specialists_ below). Give a name, a short description, a status and tags. Eva makes the folder `Projects/<date>-<time>-<name>/` in the vault, with its `AGENTS.md`. The steps below are for a software project only.
   - Tick **Create a GitHub repository** to get a repository in your GitHub account. It takes the folder name without the date and time.
   - Pick its type. **Standard** gets a first commit and the security items that GitHub offers. **Vibe-coded** follows the [vibe-coded standard](../vibe-coded-standard.md): Eva sets up what she can, then opens a project chat for the rest. That chat merges its own pull request. **Widget** makes a widget for Eva's home page from Eva's template, as the [widget contract](../widgets.md) says: Eva pushes the template, turns on GitHub Pages for its demo, and opens a project chat where you say what the widget does.
   - Pick **Private** or **Public**. A widget is public by default. A private vibe-coded repository uses the CI minutes of your GitHub account, and some guards of the standard need a paid plan. A private widget has no GitHub Pages demo on a free plan.
@@ -236,6 +236,12 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Repository setup:** open it from the project page. It checks each repository by its type. A repository with no type, such as one that you added by hand, shows no report: pick its type first.
   - **Fix** on an item that a command can fix runs it on GitHub at once. Press **Refresh** to see the item turn green. Any other **Fix** opens a chat with the request.
   - **Fix all** runs every fix that a command can do. Then it opens one chat for the rest, when something is left.
+- **Specialists:** a specialist is a project that you chat with directly, such as a gym coach. It has its own rules and memory. Its `AGENTS.md` has `type: specialist` in the front matter.
+  - The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. A new specialist asks you what it does at your first message, then writes its rules there.
+  - A chat with a specialist starts in its project folder. It reads only the project's `AGENTS.md`, not the vault's, and gets no prompt or skill of Eva's. So it does not know that it runs inside your vault.
+  - Eva syncs the vault around each of its turns, so a file that it writes reaches your other computers. Its hooks and Claude Code's own memory are off: it keeps its memory in its folder.
+  - It has no clones and no repository. A fork or a retry stays in its folder. A retry can undo the files that the chat changed, as in a chat with Eva. It takes no files and no `@` mentions.
+  - A specialist must be in the vault's `Projects/` folder. The type changes in **Details**, only while the project has no chats and no clones.
 - **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, but no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
 - **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
   - All its work is on GitHub.

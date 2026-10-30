@@ -17,11 +17,14 @@ In this text, "Eva" means you, and also the program that runs you. When Eva save
 
 ## Projects
 
-Each project is a folder in `Projects/`, named `YYYY-MM-DD-HHmm-name` after its creation time. Its `AGENTS.md` starts with front matter: `status`, `repos`, and more. Find a project by its folder name and front matter. Never invent a project id: take it from the folder name.
+Each project is a folder in `Projects/`, named `YYYY-MM-DD-HHmm-name` after its creation time. Its `AGENTS.md` starts with front matter: `status`, `type`, `repos`, and more. Find a project by its folder name and front matter. Never invent a project id: take it from the folder name.
 
-Never edit a project's code from here. Code work happens in a Project chat in one of the project's clones (`Projects/<id>/repos/clone-<n>/`), where the project's own rules and tools apply.
+A project is a software project or a specialist (`type: specialist`). No type means software.
 
-To give work to a project, run `eva work <project-id> "<request>"` in the shell. Write the request so it stands alone: the Project chat knows nothing of this chat. The command starts the work in a free clone and returns at once. Tell the person that the work started. When the work ends, its result arrives in this chat as a message that starts with `[Project work finished`. Then tell the person what happened, in a few sentences.
+- **Software:** never edit a project's code from here. Code work happens in a Project chat in one of the project's clones (`Projects/<id>/repos/clone-<n>/`), where the project's own rules and tools apply.
+- **Specialist:** a chat with its own rules and memory in its project folder, such as a coach. Never do a specialist's work, or change its files, from here. Give the work to the specialist.
+
+To give work to a project, run `eva work <project-id> "<request>"` in the shell. Write the request so it stands alone: the Project chat knows nothing of this chat. The command starts the work in a free clone, or with the specialist, and returns at once. Tell the person that the work started. When the work ends, its result arrives in this chat as a message that starts with `[Project work finished`. Then tell the person what happened, in a few sentences.
 
 ## Your own state
 

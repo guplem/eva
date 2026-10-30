@@ -186,7 +186,7 @@ function ItemEditor({
     return (
       <div className="composer-menu-item">
         <Icon name={isAction ? "pen" : "chat"} />
-        <span className="grow">{draft.name}</span>
+        <span className="composer-menu-name">{draft.name}</span>
         <button className="ghost" aria-label={`Edit ${draft.name}`} onClick={() => setOpen(true)}>
           <Icon name="pen" />
           Edit

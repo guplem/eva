@@ -59,6 +59,8 @@ describe("currentNames", () => {
     "vault .eva/schedules.json schedules[].at",
     "vault .eva/schedules.json schedules[].days=thu",
     "vault .eva/hub.json machine",
+    "vault Projects/*/AGENTS.md status=in-use",
+    "vault Projects/*/AGENTS.md repo_types",
     "typed cli settings set",
     "typed cli --check",
     "typed telegram /new",
@@ -110,6 +112,8 @@ describe("judgeNames", () => {
   const before = [
     "machine config.json port",
     "vault .eva/hub.json machine",
+    "vault Projects/*/AGENTS.md status=in-use",
+    "vault Projects/*/AGENTS.md repo_types",
     "typed telegram /new",
     "migration machine 2026-10-18-a",
   ];

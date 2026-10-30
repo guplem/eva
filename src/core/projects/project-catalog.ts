@@ -56,7 +56,9 @@ const statuses: readonly string[] = projectStatuses;
 /** "idea, active, in-use, paused or closed", for a warning and for the comment after `status:`. */
 export const statusListText = `${projectStatuses.slice(0, -1).join(", ")} or ${projectStatuses.at(-1) ?? ""}`;
 const statusFilters: readonly string[] = projectStatusFilters;
-const knownKeys = new Set(["created", "status", "repos", "tags", "legacy_id", "repo_types"]);
+/** The front matter keys that Eva reads. Every other key stays in `extra`. */
+export const projectFrontMatterKeys = ["created", "status", "repos", "tags", "legacy_id", "repo_types"] as const;
+const knownKeys: ReadonlySet<string> = new Set(projectFrontMatterKeys);
 /** The warning of a `repo_types` value that is not a map of text values. */
 export const repoTypesWarning = "repo_types must map each repository to its type";
 export const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;

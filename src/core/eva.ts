@@ -825,7 +825,9 @@ export class Eva {
             policy: () => this.settings.config.updates.install,
             requiredVersion: () => this.vaultNeeds(),
             // A waiting engine update runs first: the restart would lose it, as it lives in memory.
-            isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
+            // A restart during a tool install leaves the tool half installed (#565).
+            isIdle: () =>
+              !this.workRuns() && !this.toolInstallRuns && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),

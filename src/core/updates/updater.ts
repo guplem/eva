@@ -1,6 +1,6 @@
 /**
  * Eva's automatic updates: a check at the frequency in the settings, and an install
- * only when no chat runs a turn, so a restart never cuts a turn off. A manual update waits for
+ * only when no work runs, so a restart never cuts a turn or a tool install off. A manual update waits for
  * the same moment. The person's policy decides which releases she installs by herself.
  */
 import { EvaError } from "../../shared/errors.ts";
@@ -69,7 +69,7 @@ export interface UpdaterOptions {
   readonly policy: () => UpdatePolicy;
   /** The version that a vault from a newer Eva needs, or "newest". Eva installs at least that. */
   readonly requiredVersion?: () => string | undefined;
-  /** True when no chat runs a turn. */
+  /** True when no work runs that a restart would cut off, such as a turn or a tool install. */
   readonly isIdle: () => boolean;
   /** Stops Eva so that the new version starts. */
   readonly restart: () => void;

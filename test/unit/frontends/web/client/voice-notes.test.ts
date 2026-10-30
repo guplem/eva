@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { RecordingShelf, recordingTime, recordingType } from "../../../../../src/frontends/web/client/voice-notes.ts";
+import { recordingTime, recordingType, withHeardText } from "../../../../../src/frontends/web/client/voice-notes.ts";
 
 describe("recordingType", () => {
   test("picks Opus where the browser records it", () => {
@@ -23,24 +23,14 @@ describe("recordingTime", () => {
   });
 });
 
-describe("RecordingShelf", () => {
-  test("finds a recording by its chat and the text that Eva heard", () => {
-    const shelf = new RecordingShelf(() => undefined);
-    shelf.keep("s1", "Hello Eva", "blob:one");
-    expect(shelf.find("s1", "Hello Eva")).toBe("blob:one");
-    expect(shelf.find("s2", "Hello Eva")).toBeNull();
-    expect(shelf.find("s1", "Typed text")).toBeNull();
+describe("withHeardText", () => {
+  test("fills an empty box with what Eva heard", () => {
+    expect(withHeardText("", "Hello Eva")).toBe("Hello Eva");
+    expect(withHeardText("  \n", "Hello Eva")).toBe("Hello Eva");
   });
 
-  test("gives back the memory of a replaced recording and of the oldest ones", () => {
-    const released: string[] = [];
-    const shelf = new RecordingShelf((url) => released.push(url));
-    shelf.keep("s1", "same", "blob:first");
-    shelf.keep("s1", "same", "blob:second");
-    expect(released).toEqual(["blob:first"]);
-    for (let index = 0; index < 20; index += 1) shelf.keep("s1", `note ${String(index)}`, `blob:${String(index)}`);
-    expect(released).toEqual(["blob:first", "blob:second"]);
-    expect(shelf.find("s1", "same")).toBeNull();
-    expect(shelf.find("s1", "note 19")).toBe("blob:19");
+  test("adds what Eva heard after the text in the box, and never replaces it", () => {
+    expect(withHeardText("Read this:", "Hello Eva")).toBe("Read this: Hello Eva");
+    expect(withHeardText("Read this:\n", "Hello Eva")).toBe("Read this:\nHello Eva");
   });
 });

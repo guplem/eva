@@ -2,7 +2,8 @@
  * The message box of a chat: the text, the engine and model chip, and the round
  * Send button. While a turn runs and the box is empty, Send becomes Stop at the same place.
  * Eva queues a message sent during a turn, so typed text brings Send back.
- * The microphone records a voice note. Eva turns it into text on her machine and sends the text.
+ * The microphone records a voice note. Eva turns it into text on her machine and puts the text in
+ * the box, so the person can fix it before they send it.
  * Without voice notes on her machine, the microphone leads to the button that installs them.
  * The clip attaches files in an Assistant chat. A pasted or dropped file attaches the same way.
  * Each file uploads when the person picks it, so Send waits for no upload.
@@ -37,7 +38,7 @@ import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { setupBlock } from "./new-chat.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
-import { recordingTime, recordingType } from "./voice-notes.ts";
+import { recordingTime, recordingType, withHeardText } from "./voice-notes.ts";
 import { goTo } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
@@ -100,11 +101,8 @@ interface ComposerProps {
   readonly session: ComposerChat;
   readonly choices: ChatChoices;
   readonly running: boolean;
-  /**
-   * Resolves false when the send failed, so the box gets its text back. A voice note also
-   * gives the address of its recording in this tab.
-   */
-  readonly onSend: (text: string, recording?: string) => Promise<boolean>;
+  /** Resolves false when the send failed, so the box gets its text back. */
+  readonly onSend: (text: string) => Promise<boolean>;
   readonly onStop: () => void;
   readonly onChanged: () => Promise<void>;
   /** The missing setup step that stops the chat. It locks the box, because a send would fail. */
@@ -163,10 +161,14 @@ export function Composer({
   const [dropping, setDropping] = useState(false);
   const files = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
-  const voice = useVoiceNote(async (heard, recording) => {
-    // The person must not lose what they said.
-    if (!(await onSend(heard, recording))) restore(heard);
-  });
+  const heardText = useRef(false);
+  // The box can show another chat when Eva hears the note, so the text goes to the chat of the newest render.
+  const hear = useRef((_heard: string): void => undefined);
+  hear.current = (heard) => {
+    setText(withHeardText(typed.current, heard));
+    heardText.current = true;
+  };
+  const voice = useVoiceNote((heard) => hear.current(heard));
 
   const uploading = files.attachments.some((attachment) => attachment.note === null);
   const notes = files.attachments.flatMap((attachment) => (attachment.note === null ? [] : [attachment.note]));
@@ -199,6 +201,12 @@ export function Composer({
     if (locked || isTouchScreen() || isTextField(document.activeElement)) return;
     box.current?.focus({ preventScroll: true });
   }, [draftKey, locked]);
+  // The box is gone while Eva turns a voice note into text, so it takes the focus when it comes back.
+  useEffect(() => {
+    if (voice.state.phase !== "idle" || !heardText.current) return;
+    heardText.current = false;
+    if (!isTouchScreen() && !isTextField(document.activeElement)) box.current?.focus({ preventScroll: true });
+  }, [voice.state.phase]);
   const canRecord = block === null && voice.isSupported;
   const showMic = canRecord && isEmpty;
   // A received file lands in the vault. A Project chat's agent works in its clone and does not reach it.
@@ -219,13 +227,12 @@ export function Composer({
                 Cancel
               </button>
               <button
-                className="send"
-                aria-label="Send the voice note"
-                data-tooltip="Send the voice note"
-                data-cue="send"
+                className="send stop"
+                aria-label="Stop the recording"
+                data-tooltip="Stop the recording"
                 onClick={voice.finish}
               >
-                <Icon name="send" />
+                <Icon name="stop" />
               </button>
             </div>
           ) : (
@@ -656,13 +663,13 @@ interface VoiceNote {
   /** False on a page that cannot reach the microphone, such as one over plain HTTP. */
   readonly isSupported: boolean;
   readonly start: () => Promise<void>;
-  /** Stops the recording and sends what Eva heard. */
+  /** Stops the recording and hands what Eva heard to the box. */
   readonly finish: () => void;
   readonly cancel: () => void;
 }
 
-/** Records a voice note in the browser, and hands Eva's text and the recording's address to `deliver`. */
-function useVoiceNote(deliver: (heard: string, recording: string) => Promise<void>): VoiceNote {
+/** Records a voice note in the browser, and hands Eva's text to `deliver`. */
+function useVoiceNote(deliver: (heard: string) => void): VoiceNote {
   const [state, setState] = useState<VoiceState>({ phase: "idle" });
   const recorder = useRef<MediaRecorder | null>(null);
   const keep = useRef(false);
@@ -691,7 +698,7 @@ function useVoiceNote(deliver: (heard: string, recording: string) => Promise<voi
     try {
       const { text } = await api.transcribe(audio);
       if (text === "") throw new Error("Eva heard no speech in the voice note.");
-      await deliver(text, URL.createObjectURL(audio));
+      deliver(text);
     } catch (caught) {
       showError(caught);
     } finally {

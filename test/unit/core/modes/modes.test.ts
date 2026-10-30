@@ -6,6 +6,7 @@ import { moveAssistantPersonality } from "../../../../src/core/migrations/assist
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
 import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
 import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
+import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
 import { CloneOriginStore, TrustStore } from "../../../../src/core/projects/clones.ts";
 import type { PrepareAnswer } from "../../../../src/core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../../src/core/sessions/session-store.ts";
@@ -293,6 +294,65 @@ describe("Assistant mode", () => {
     const runner = new FakeRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
     await assistant(runner).afterTurn(session(), { finished: true });
     expect(runner.runs).toEqual([]);
+  });
+});
+
+describe("Specialist mode (#703)", () => {
+  const coachId = "2025-03-02-1015-coach";
+
+  function specialist(sync = new FakeSync()): SpecialistPreparer {
+    return new SpecialistPreparer({ vaultSync: sync, environment: { PATH: "/bin" } });
+  }
+
+  function coachSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
+    const folder = join(vault, "Projects", coachId);
+    return session({ mode: "project", startFolder: folder, projectId: coachId, clone: null, ...overrides });
+  }
+
+  test("the project folder as start folder, with no Eva prompt, no hooks and no harness memory", async () => {
+    const sync = new FakeSync();
+    const folder = join(vault, "Projects", coachId);
+    const prepared = await specialist(sync).prepare(coachSession());
+    expect(prepared).toEqual({
+      startFolder: folder,
+      // The engine hides each instruction file above the specialist, such as the vault's map (#702).
+      projectFolder: folder,
+      appendSystemPrompt: null,
+      messagePrefix: null,
+      pluginFolders: [],
+      mcpServers: {},
+      trusted: true,
+      harnessMemory: false,
+      folderHooks: false,
+      // Git stops above the specialist, so a git command there never finds the vault's repository.
+      environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: join(vault, "Projects") },
+    });
+  });
+
+  test("syncs the vault around each turn, as Assistant mode does", async () => {
+    const sync = new FakeSync();
+    const preparer = specialist(sync);
+    await preparer.prepare(coachSession());
+    expect(sync.calls).toEqual(["pull", "snapshot refs/eva/turns/s1/0/before"]);
+    expect(await preparer.afterTurn(coachSession(), { finished: true })).toBeNull();
+    expect(sync.calls.slice(2)).toEqual(["snapshot refs/eva/turns/s1/0/after", "save"]);
+  });
+
+  test("describes no part of Eva's, and changes nothing", async () => {
+    const sync = new FakeSync();
+    const folder = join(vault, "Projects", coachId);
+    expect(await specialist(sync).describe(coachSession())).toEqual({
+      parts: [],
+      engine: {
+        mode: "project",
+        startFolder: folder,
+        projectFolder: folder,
+        trusted: true,
+        pluginFolders: [],
+        environment: { PATH: "/bin" },
+      },
+    });
+    expect(sync.calls).toEqual([]);
   });
 });
 

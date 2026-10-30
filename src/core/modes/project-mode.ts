@@ -216,7 +216,7 @@ async function askTrust(
  * Git stops its search for a repository at the folder of the clones. The clone folder itself is no
  * repository, so without this a git command there would read the vault's repository above it.
  */
-function withGitCeiling(
+export function withGitCeiling(
   environment: Readonly<Record<string, string>>,
   clonesFolder: string,
 ): Readonly<Record<string, string>> {

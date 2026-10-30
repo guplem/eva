@@ -3182,8 +3182,17 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   await answer.getByRole("button", { name: "Show 3 steps" }).click();
   const step = answer.getByRole("list", { name: "Steps" }).getByRole("button", { name: /Command\s+ls/ });
   if (test.info().project.name === "phone") {
-    const box = await step.boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    // The list stays compact like on a computer. The rows touch, so each tap in the list lands on a step.
+    const rows = await answer
+      .locator(".step-row")
+      .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect()));
+    for (const row of rows) {
+      expect(row.height).toBeGreaterThanOrEqual(32);
+      expect(row.height).toBeLessThan(44);
+    }
+    for (let index = 1; index < rows.length; index++) {
+      expect(Math.abs((rows[index]?.top ?? 0) - (rows[index - 1]?.bottom ?? 0))).toBeLessThan(1);
+    }
   }
   await step.click();
   // A stored answer keeps no details in the session list, so the dialog fetches them.

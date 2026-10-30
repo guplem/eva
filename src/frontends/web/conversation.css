@@ -1078,9 +1078,16 @@ button.ghost .icon {
     height: 44px;
   }
 
-  /* Each step opens its dialog, so a finger needs a full target. */
+  /*
+   * Each step opens its dialog. A full 44 px row spreads the list far apart, so the rows stay compact,
+   * but they touch: each tap in the list lands on a step.
+   */
+  .step-list {
+    gap: 0;
+  }
+
   .step-row {
-    min-height: var(--touch-target);
+    min-height: 32px;
   }
 }
 

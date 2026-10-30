@@ -124,13 +124,18 @@ describe("the widget report", () => {
     expect(schemas?.fixRequest).toContain("docs/widgets.md");
   });
 
-  test("a manifest that fails names the problem, and leaves the schemas unchecked", async () => {
+  test("a manifest of a newer contract is grey and asks for an update of Eva; a broken one is red", async () => {
     const report = await widgetReport({ files: { ...setUpWidget(), "eva-widget.json": '{"contract": 9}' }, labels });
     expect(item(report, "Widget manifest")).toMatchObject({
-      light: "red",
+      light: "grey",
       detail: "This widget follows contract 9. Update Eva to use this widget.",
+      fixRequest: null,
     });
     expect(item(report, "Data schemas")?.light).toBe("grey");
+    const broken = await widgetReport({ files: { ...setUpWidget(), "eva-widget.json": '{"contract": 1}' }, labels });
+    expect(item(broken, "Widget manifest")?.light).toBe("red");
+    expect(item(broken, "Widget manifest")?.fixRequest).toContain("docs/widgets.md");
+    expect(item(broken, "Data schemas")?.light).toBe("grey");
   });
 
   test("a repository with no widget files has red widget items, each with a request for a chat", async () => {

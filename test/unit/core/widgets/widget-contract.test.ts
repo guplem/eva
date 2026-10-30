@@ -53,6 +53,8 @@ describe("checkManifest", () => {
     const result = checkManifest(JSON.stringify({ ...manifest, contract: 2 }));
     expect(result.manifest).toBeNull();
     expect(result.problems).toEqual(["This widget follows contract 2. Update Eva to use this widget."]);
+    expect(result.newerContract).toBe(true);
+    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 2 })).newerContract).toBe(true);
   });
 
   test("refuses a manifest with no contract", () => {

@@ -45,9 +45,12 @@ export interface ManifestCheck {
   readonly manifest: WidgetManifest | null;
   /** One sentence for each problem, with the key that fails. */
   readonly problems: readonly string[];
+  /** True when the widget follows a contract that this Eva does not know yet: Eva, not the widget, needs a change. */
+  readonly newerContract?: boolean;
 }
 
 export interface WidgetCheck {
+  readonly newerContract?: boolean;
   readonly manifest: readonly string[];
   readonly schemas: readonly string[];
 }
@@ -80,7 +83,10 @@ export function checkManifest(text: string): ManifestCheck {
   if (typeof contract !== "number" || !Number.isInteger(contract))
     return failed(`${manifestPath} has no contract number.`);
   if (!knownContracts.has(contract)) {
-    return failed(`This widget follows contract ${String(contract)}. Update Eva to use this widget.`);
+    return {
+      ...failed(`This widget follows contract ${String(contract)}. Update Eva to use this widget.`),
+      newerContract: true,
+    };
   }
   const validate = contractValidators().manifest;
   if (validate(value)) {
@@ -119,8 +125,9 @@ export function checkDataSchema(path: string, text: string): string[] {
 export function checkWidget(read: (path: string) => string | null): WidgetCheck {
   const text = read(manifestPath);
   if (text === null) return { manifest: [`${manifestPath} is missing.`], schemas: [] };
-  const { manifest, problems } = checkManifest(text);
-  if (manifest === null) return { manifest: problems, schemas: [] };
+  const { manifest, problems, newerContract } = checkManifest(text);
+  if (manifest === null)
+    return { manifest: problems, schemas: [], ...(newerContract === true ? { newerContract } : {}) };
   const schemas = manifest.inputs.flatMap((input) => {
     if (input.schema === undefined) return [];
     const schemaText = read(input.schema);

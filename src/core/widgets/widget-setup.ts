@@ -73,6 +73,13 @@ function contractItems(target: RepositoryFacts): SetupItem[] {
     ];
   }
   const check = checkWidget((path) => files[path] ?? null);
+  // The widget is newer than this Eva: no agent can fix that in the repository.
+  if (check.newerContract === true) {
+    return [
+      grey(manifestLabel, check.manifest.join(" ")),
+      grey(schemaLabel, `Eva checks them once she knows the contract of ${manifestPath}.`),
+    ];
+  }
   const manifest: SetupItem =
     check.manifest.length === 0
       ? green(manifestLabel, `${manifestPath} follows the widget contract.`)

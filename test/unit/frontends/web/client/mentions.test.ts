@@ -57,14 +57,16 @@ describe("pickedProjects", () => {
     project("2026-01-01-0000-idea-one", "Idea one", "idea"),
     project("2026-01-01-0000-paused-one", "Paused one", "paused"),
     project("2026-01-01-0000-active-one", "Active one"),
+    project("2026-01-01-0000-used-one", "Used one", "in-use"),
     project("2026-01-01-0000-busy-one", "Busy one", "closed"),
     project("2026-01-01-0000-no-status", "No status", null),
   ];
 
-  test("a busy project comes first, then by status: active, idea, paused, closed", () => {
+  test("a busy project comes first, then by status: active, in-use, idea, paused, closed", () => {
     expect(pickedProjects(projects, ["2026-01-01-0000-busy-one"], "", 10).map((each) => each.title)).toEqual([
       "Busy one",
       "Active one",
+      "Used one",
       "Idea one",
       "Paused one",
       "Closed one",

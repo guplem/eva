@@ -8,7 +8,14 @@ import { parse as parseYaml } from "yaml";
 import { listClones } from "./clones.ts";
 import { parseProjectId, type ParsedProjectId } from "./project-id.ts";
 
-export type ProjectStatus = "idea" | "active" | "paused" | "closed";
+/** `active`: the person develops the project. `in-use`: the person uses it now, such as for the week's menus. */
+export const projectStatuses = ["idea", "active", "in-use", "paused", "closed"] as const;
+export type ProjectStatus = (typeof projectStatuses)[number];
+/** The statuses of the projects that the person works with now: the "Current" filter and the assistant prompt. */
+export const currentStatuses: readonly ProjectStatus[] = ["active", "in-use"];
+/** A status filter: one status, or `current` for every status of `currentStatuses`. */
+export const projectStatusFilters = [...projectStatuses, "current"] as const;
+export type ProjectStatusFilter = (typeof projectStatusFilters)[number];
 
 export interface ProjectFrontMatter {
   readonly created: string | null;
@@ -45,7 +52,10 @@ export interface Project {
   readonly warnings: readonly string[];
 }
 
-const statuses: readonly ProjectStatus[] = ["idea", "active", "paused", "closed"];
+const statuses: readonly string[] = projectStatuses;
+/** "idea, active, in-use, paused or closed", for a warning and for the comment after `status:`. */
+export const statusListText = `${projectStatuses.slice(0, -1).join(", ")} or ${projectStatuses.at(-1) ?? ""}`;
+const statusFilters: readonly string[] = projectStatusFilters;
 const knownKeys = new Set(["created", "status", "repos", "tags", "legacy_id", "repo_types"]);
 /** The warning of a `repo_types` value that is not a map of text values. */
 export const repoTypesWarning = "repo_types must map each repository to its type";
@@ -72,8 +82,8 @@ export function parseFrontMatter(text: string): FrontMatterResult {
   if (created === null) warnings.push("created is missing");
 
   let status: ProjectStatus | null = null;
-  if (statuses.includes(fields["status"] as ProjectStatus)) status = fields["status"] as ProjectStatus;
-  else warnings.push("status must be idea, active, paused or closed");
+  if (statuses.includes(fields["status"] as string)) status = fields["status"] as ProjectStatus;
+  else warnings.push(`status must be ${statusListText}`);
 
   const repos = readTextList(fields["repos"]);
   if (repos === null) warnings.push("repos must be a list of URLs");
@@ -121,24 +131,24 @@ function readNames(root: string): string[] {
 
 export interface ProjectQuery {
   readonly text?: string;
-  readonly status?: ProjectStatus;
+  readonly status?: ProjectStatusFilter;
   readonly tag?: string;
 }
 
 /**
- * Reads the filter words of a free text search: `status:active`, `tag:work` and `#work`.
+ * Reads the filter words of a free text search: `status:active`, `status:current`, `tag:work` and `#work`.
  * Telegram and the CLI send free text only, so the filters live in the text.
  */
 export function parseProjectQuery(input: string): ProjectQuery {
   const words: string[] = [];
-  let status: ProjectStatus | undefined;
+  let status: ProjectStatusFilter | undefined;
   let tag: string | undefined;
   for (const word of input.split(/\s+/).filter((candidate) => candidate.length > 0)) {
     const lower = word.toLowerCase();
     const tagWord = tagOf(word);
     if (lower === "status:any") status = undefined;
-    else if (lower.startsWith("status:") && statuses.includes(lower.slice(7) as ProjectStatus)) {
-      status = lower.slice(7) as ProjectStatus;
+    else if (lower.startsWith("status:") && statusFilters.includes(lower.slice(7))) {
+      status = lower.slice(7) as ProjectStatusFilter;
     } else if (tagWord !== null && tag === undefined) tag = tagWord;
     // A second tag word still searches: the words also match the tags.
     else words.push(tagWord ?? word);
@@ -165,11 +175,16 @@ export function searchProjects(projects: readonly Project[], query: ProjectQuery
       const tags = project.frontMatter.tags.map((candidate) => candidate.toLowerCase());
       const haystack = `${project.id} ${project.title} ${tags.join(" ")}`.toLowerCase();
       if (!words.every((word) => haystack.includes(word))) return false;
-      if (query.status !== undefined && project.frontMatter.status !== query.status) return false;
+      if (query.status !== undefined && !matchesStatus(project.frontMatter.status, query.status)) return false;
       if (tag !== undefined && !tags.includes(tag)) return false;
       return true;
     })
     .sort((first, second) => second.id.localeCompare(first.id));
+}
+
+function matchesStatus(status: ProjectStatus | null, filter: ProjectStatusFilter): boolean {
+  if (filter === "current") return status !== null && currentStatuses.includes(status);
+  return status === filter;
 }
 
 function readProject(path: string, name: string, vaultFolder: string | null): Project | null {

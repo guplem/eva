@@ -3159,6 +3159,17 @@ button.small {
   color: var(--muted);
 }
 
+/* The `.st.live` of the reference: "In use" differs from the green "Active" by colour and by its glowing dot. */
+.pill.live {
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.pill.live.dot::before {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--glow);
+}
+
 .mode-chip {
   display: inline-flex;
   align-items: center;

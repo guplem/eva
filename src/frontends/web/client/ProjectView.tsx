@@ -60,11 +60,14 @@ interface ProjectViewProps {
  * The filter words that parseProjectQuery reads in the search text. A typed word wins over its
  * chip. Keep these patterns in step with the parser in `core/projects/project-catalog.ts`.
  */
-const statusWordPattern = /(^|\s)status:(idea|active|paused|closed|any)(\s|$)/i;
+const statusWordPattern = /(^|\s)status:(idea|active|in-use|paused|closed|current|any)(\s|$)/i;
 const tagWordPattern = /(^|\s)(tag:|#)\S/i;
 
+/** "Current" is the projects that the person develops or uses now: `active` or `in-use` (#690). */
 const statusChips = [
+  { value: "current", text: "Current" },
   { value: "active", text: "Active" },
+  { value: "in-use", text: "In use" },
   { value: "idea", text: "Idea" },
   { value: "paused", text: "Paused" },
   { value: "closed", text: "Closed" },
@@ -98,7 +101,7 @@ export function ProjectView({
   voiceNotes,
 }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("active");
+  const [status, setStatus] = useState("current");
   const [tag, setTag] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagsOpen, setTagsOpen] = useState(false);

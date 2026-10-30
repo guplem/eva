@@ -134,7 +134,7 @@ export const componentSamples: readonly ComponentSample[] = [
   {
     id: "pills",
     title: "Status pills",
-    classes: ["pill", "dot", "done", "ok", "warn", "failed", "idle"],
+    classes: ["pill", "dot", "done", "ok", "warn", "failed", "live", "idle"],
     part: "StatusPill",
     use: "A short word for a state. The dot gives the state a shape.",
   },

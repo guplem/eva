@@ -1,8 +1,8 @@
 /** The words and colours of the project pages. */
 import type { Project } from "./api.ts";
 
-/** The colour of a status pill: `--ok`, `--warn` or the muted chip. */
-export type PillTone = "ok" | "warn" | "idle";
+/** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */
+export type PillTone = "ok" | "warn" | "live" | "idle";
 
 export interface Pill {
   readonly text: string;
@@ -14,11 +14,13 @@ export function countOf(count: number, word: string): string {
   return `${String(count)} ${word}${count === 1 ? "" : "s"}`;
 }
 
-/** Active is green, paused is amber, and an idea or a closed project is grey. */
+/** Active is green, in use has the accent colour, paused is amber, and an idea or a closed project is grey. */
 export function statusPill(status: Project["frontMatter"]["status"]): Pill | null {
   switch (status) {
     case "active":
       return { text: "Active", tone: "ok" };
+    case "in-use":
+      return { text: "In use", tone: "live" };
     case "idea":
       return { text: "Idea", tone: "idle" };
     case "paused":

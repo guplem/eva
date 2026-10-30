@@ -16,6 +16,7 @@ export const statusChoices = [
   { value: "", label: "None" },
   { value: "idea", label: "Idea" },
   { value: "active", label: "Active" },
+  { value: "in-use", label: "In use" },
   { value: "paused", label: "Paused" },
   { value: "closed", label: "Closed" },
 ] as const;
@@ -311,8 +312,10 @@ export function splitWords(text: string): string[] {
   return text.split(/[\s,]+/).filter((word) => word.length > 0);
 }
 
+/** The status of a choice of `statusChoices`, or null for None and for any other value. */
 export function statusOf(value: string): ProjectDetails["status"] {
-  return value === "idea" || value === "active" || value === "paused" || value === "closed" ? value : null;
+  const choice = statusChoices.find((candidate) => candidate.value === value);
+  return choice === undefined || choice.value === "" ? null : choice.value;
 }
 
 function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {

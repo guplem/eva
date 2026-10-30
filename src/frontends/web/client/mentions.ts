@@ -64,7 +64,7 @@ export function insertMention(
   return { text: text.slice(0, start) + spaced + after, caret: start + token.length + skip };
 }
 
-const statusOrder: readonly MentionProject["status"][] = ["active", "idea", "paused", "closed", null];
+const statusOrder: readonly MentionProject["status"][] = ["active", "in-use", "idea", "paused", "closed", null];
 
 /**
  * The projects that match `query` in the title or the id. A project with a chat that runs now comes

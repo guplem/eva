@@ -14,7 +14,7 @@ import { menuTextLength } from "../../core/composer-menu/composer-menu.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
-import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
+import { parseProjectQuery, projectStatuses, projectStatusFilters } from "../../core/projects/project-catalog.ts";
 import { repositoryCatalog, type RepositoryTypeName } from "../../core/projects/repository-catalog.ts";
 import type {
   DeviceLoginApprover,
@@ -132,7 +132,7 @@ const notificationsReadSchema = z.union([
   z.object({ seqs: z.array(z.number().int()).max(1000) }),
   z.object({ all: z.literal(true) }),
 ]);
-const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
+const statusSchema = z.enum(projectStatusFilters).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const pushSchema = z.object({ note: z.string().max(10_000).optional() });
 const updateSchema = z.object({
@@ -153,7 +153,7 @@ const vaultRenameSchema = z.object({ path: z.string(), name: z.string().max(1_00
 const projectDetailsSchema = z.object({
   version: z.string().min(1),
   title: z.string().max(500),
-  status: z.enum(["idea", "active", "paused", "closed"]).nullable(),
+  status: z.enum(projectStatuses).nullable(),
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
 });
@@ -171,7 +171,7 @@ const newProjectSchema = z
   .object({
     name: z.string().min(1).max(500),
     description: z.string().max(10_000),
-    status: z.enum(["idea", "active", "paused", "closed"]),
+    status: z.enum(projectStatuses),
     tags: z.array(z.string().max(200)).max(100),
     github: z.boolean().optional(),
     repository: z.object({ type: z.enum(repositoryTypeNames), visibility: z.enum(["private", "public"]) }).nullish(),

@@ -4,7 +4,7 @@
  * every repository, so git never sees it. The chat gets the copy's name and never a vault path,
  * so it does not learn that it runs inside a vault (#702).
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { mentionsIn, mentionToken } from "../../shared/mentions.ts";
@@ -38,6 +38,30 @@ function readMentioned(vaultPath: string, vaultRelative: string): { name: string
     );
   }
   return readVaultFile(vaultPath, vaultRelative);
+}
+
+/**
+ * Copies the files that a chat was given into another clone, so a fork there can still read them.
+ * The names come from the content, so a file that is there already stays the same.
+ */
+export function copyGivenFiles(fromClone: string, toClone: string): void {
+  const from = join(fromClone, mentionsFolderName);
+  if (existsSync(from)) cpSync(from, join(toClone, mentionsFolderName), { recursive: true });
+}
+
+/**
+ * A text with the base name in each file mention, for text that leaves the turn, such as a
+ * summary that a new chat starts from. The new chat must not learn a vault folder either.
+ */
+export function withBaseNames(text: string): string {
+  let result = "";
+  let from = 0;
+  for (const mention of mentionsIn(text)) {
+    if (mention.kind !== "file") continue;
+    result += text.slice(from, mention.start) + mentionToken("file", basename(mention.name));
+    from = mention.start + mention.token.length;
+  }
+  return result + text.slice(from);
 }
 
 /** Copies a vault file into the clone, and gives the copy's path from the clone folder. */

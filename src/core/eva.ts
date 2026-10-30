@@ -89,7 +89,7 @@ import {
   type CloneDetails,
   type TrustAnswer,
 } from "./projects/clones.ts";
-import { checkMentions, saveInClone } from "./projects/clone-files.ts";
+import { checkMentions, saveInClone, withBaseNames } from "./projects/clone-files.ts";
 import {
   ProjectWork,
   type BranchResult,
@@ -1584,7 +1584,10 @@ export class Eva {
     const summary = await this.chatSummaries.summarize({
       engine: old.engine,
       model: old.modelAlias,
-      turns: this.sessions.branchTurns(old.id),
+      // A chat in a clone must never learn a vault folder from its own summary (#706).
+      turns: this.sessions
+        .branchTurns(old.id)
+        .map((turn) => (old.clone === null ? turn : { ...turn, userText: withBaseNames(turn.userText) })),
       gitState,
     });
     // The summary takes long, and the person may delete the old chat meanwhile: then no new chat opens.

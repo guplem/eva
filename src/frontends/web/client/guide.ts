@@ -83,9 +83,10 @@ const repositoryFiles = `https://github.com/${evaRepository}/blob/main/`;
 const codeOrRelativeLinkPattern = /(`+).+?\1|\[([^\]\n]+)\]\((?!https?:|mailto:)([^()\s]+)\)/g;
 /** Only the block tags that a doc uses for a picture: a line such as `<code> must` is text. */
 const rawHtmlPattern = /^\s*<\/?(p|div|img|picture|source|br)\b[^>]*>/i;
+const listMarkerPattern = /^\s*([-*+]|\d{1,9}[.)])\s+/;
 const titlePattern = /^#\s+(.*)$/;
 const headingTagPattern = /<h([1-6])>(.*?)<\/h\1>/g;
-const sectionHeadingPattern = /<h([23]) id="guide-([^"]+)">(.*?)<\/h\1>/g;
+const sectionHeadingPattern = /<h([23]) id="guide-([^"]*)">(.*?)<\/h\1>/g;
 /** Tags inside a line of text: removing them must not split a word. */
 const inlineTagPattern = /<\/?(a|b|i|s|code)\b[^>]*>/g;
 const snippetLength = 160;
@@ -175,7 +176,8 @@ function prepared(page: GuideSource): { markdown: string; title: string | null }
       lines.push(line);
       continue;
     }
-    const fence = openingFencePattern.exec(line);
+    // A fence can open on a list item's own line.
+    const fence = openingFencePattern.exec(line.replace(listMarkerPattern, ""));
     if (fence) {
       openFence = fence[2] ?? "```";
       lines.push(line);
@@ -205,22 +207,43 @@ function fileUrl(from: string, target: string): string {
 function appLinks(html: string): string {
   return html.replace(/<a target="_blank" rel="noreferrer" href="([^"]*)">/g, (tag, url: string) => {
     if (!url.startsWith(repositoryFiles)) return tag;
-    const [path = "", hash = ""] = url.slice(repositoryFiles.length).split("#");
+    const [path = "", encoded = ""] = url.slice(repositoryFiles.length).split("#");
+    // The URL encodes a heading with an accent, and settingsHash encodes it again.
+    const hash = decodedOrSame(encoded);
     const page = guidePages.find((each) => each.path === path);
     if (page === undefined) return tag;
     return `<a href="${settingsHash({ section: "guide", item: guideItem(page.id, hash === "" ? null : hash) })}">`;
   });
 }
 
+/** A bad escape, such as a lone "%", stays as it is written. */
+function decodedOrSame(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 /** GitHub counts the title too, so a later heading with the same text gets a number. */
 function withHeadingIds(html: string, title: string | null): string {
-  const seen = new Map<string, number>();
-  if (title !== null) seen.set(headingSlug(inlineText(inlineHtml(title))), 1);
+  const used = new Set<string>();
+  const counts = new Map<string, number>();
+  // As GitHub does: a number after a repeated slug, and a higher one while that slug is taken too.
+  const unique = (base: string): string => {
+    let count = counts.get(base) ?? 0;
+    let slug = count === 0 ? base : `${base}-${String(count)}`;
+    while (used.has(slug)) {
+      count += 1;
+      slug = `${base}-${String(count)}`;
+    }
+    counts.set(base, count + 1);
+    used.add(slug);
+    return slug;
+  };
+  if (title !== null) unique(headingSlug(inlineText(inlineHtml(title))));
   return html.replace(headingTagPattern, (_tag, level: string, inner: string) => {
-    const base = headingSlug(inlineText(inner));
-    const count = seen.get(base) ?? 0;
-    seen.set(base, count + 1);
-    const slug = count === 0 ? base : `${base}-${String(count)}`;
+    const slug = unique(headingSlug(inlineText(inner)));
     return `<h${level} id="${guideHeadingId(slug)}">${inner}</h${level}>`;
   });
 }
@@ -308,8 +331,8 @@ function snippet(text: string, folded: string, words: readonly string[]): Snippe
   let start = Math.max(0, first - snippetLead);
   // Start at a word, but never after the match: a long URL can have no space before it.
   if (start > 0) {
-    const space = text.lastIndexOf(" ", first);
-    start = space >= start ? space + 1 : start;
+    const space = text.indexOf(" ", start);
+    start = space !== -1 && space < first ? space + 1 : start;
   }
   let end = Math.min(text.length, start + snippetLength);
   if (end < text.length) {

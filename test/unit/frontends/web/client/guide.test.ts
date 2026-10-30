@@ -60,6 +60,15 @@ describe("renderGuide", () => {
     );
   });
 
+  test("gives a repeated slug the next free number, as GitHub does", () => {
+    const html = renderGuide(source("## A\n\n### A\n\n## A-1")).html;
+    expect([...html.matchAll(/id="([^"]+)"/g)].map((match) => match[1])).toEqual([
+      guideHeadingId("a"),
+      guideHeadingId("a-1"),
+      guideHeadingId("a-1-1"),
+    ]);
+  });
+
   test("counts the title, as GitHub does, so a heading with the same text gets a number", () => {
     expect(renderGuide(source("# Eva\n\n## Eva")).html).toBe(`<h2 id="${guideHeadingId("eva-1")}">Eva</h2>`);
   });
@@ -84,6 +93,12 @@ describe("renderGuide", () => {
     expect(html).toContain('<a href="#/settings/guide/overview">B</a>');
   });
 
+  test("a link to a heading with an accent keeps the heading's id", () => {
+    expect(renderGuide(source("[w](reference.md#caf%C3%A9) [x](#100%)")).html).toBe(
+      '<p><a href="#/settings/guide/reference/caf%C3%A9">w</a> <a href="#/settings/guide/setup/100%25">x</a></p>',
+    );
+  });
+
   test("a link from the README into the guide folder opens the guide page", () => {
     const html = renderGuide(source("[Setup](docs/guide/setup.md#remove-eva)", "README.md")).html;
     expect(html).toContain('<a href="#/settings/guide/setup/remove-eva">Setup</a>');
@@ -106,6 +121,10 @@ describe("renderGuide", () => {
     expect(renderGuide(source("Type `[y](setup.md)` and [z](#z).")).html).toBe(
       '<p>Type <code>[y](setup.md)</code> and <a href="#/settings/guide/setup/z">z</a>.</p>',
     );
+  });
+
+  test("a code block that opens on a list item stays code", () => {
+    expect(renderGuide(source("- ```\n  [x](#y)\n  ```")).html).toContain("[x](#y)");
   });
 
   test("cuts the doc into sections at each heading, with plain text", () => {
@@ -216,6 +235,8 @@ describe("searchGuide", () => {
     expect(parts[0]).toEqual({ text: "…", marked: false });
     expect(parts[parts.length - 1]).toEqual({ text: "…", marked: false });
     expect(parts.filter((part) => part.marked).map((part) => part.text)).toEqual(["needle"]);
+    // Some words come before the match, so the person sees where it is.
+    expect(parts[1]?.text.trim().split(" ").length).toBeGreaterThan(3);
     expect(parts.map((part) => part.text).join("").length).toBeLessThanOrEqual(170);
   });
 

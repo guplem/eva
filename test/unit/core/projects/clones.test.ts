@@ -12,6 +12,7 @@ import {
   githubSlug,
   isTrustedByDefault,
   listClones,
+  projectFolderOf,
   repositoryName,
   TrustStore,
 } from "../../../../src/core/projects/clones.ts";
@@ -37,6 +38,18 @@ describe("repositoryName", () => {
     expect(repositoryName("https://github.com/owner/example-app.git/")).toBe("example-app");
     expect(repositoryName("git@github.com:owner/Tool.git")).toBe("Tool");
     expect(repositoryName("C:\\repos\\local.git")).toBe("local");
+  });
+});
+
+describe("projectFolderOf", () => {
+  const projectFolder = join("vault", "Projects", "2026-01-01-0000-example-app");
+
+  test("a chat in a clone belongs to the folder above the clone's repos folder", () => {
+    expect(projectFolderOf(join(projectFolder, "repos", "clone-0"), "clone-0")).toBe(projectFolder);
+  });
+
+  test("a chat with no clone starts in its project folder, as a specialist chat does (#703)", () => {
+    expect(projectFolderOf(projectFolder, null)).toBe(projectFolder);
   });
 });
 

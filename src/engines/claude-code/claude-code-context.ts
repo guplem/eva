@@ -8,12 +8,16 @@ import { dirname, join, resolve } from "node:path";
 import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
 import { instructionPart, instructionPartsIn, skillParts } from "../../shared/context-files.ts";
 
-/** The folders from the start folder up to the root, outermost first. */
-function foldersUpTo(startFolder: string): string[] {
+/**
+ * The folders from the start folder up to the root, outermost first. A Project chat stops at its
+ * project folder: Eva hides each instruction file above it (#702).
+ */
+function foldersUpTo(startFolder: string, projectFolder: string | null): string[] {
+  const stop = projectFolder === null ? null : resolve(projectFolder);
   const folders: string[] = [];
   for (let folder = resolve(startFolder); ; folder = dirname(folder)) {
     folders.unshift(folder);
-    if (dirname(folder) === folder) break;
+    if (folder === stop || dirname(folder) === folder) break;
   }
   return folders;
 }
@@ -21,10 +25,11 @@ function foldersUpTo(startFolder: string): string[] {
 /**
  * The instruction files that Claude Code reads with the `project` source, outermost first, so
  * the nearest file comes last and wins. Claude Code reads each `CLAUDE.md` from the start folder
- * up to the root, and each `AGENTS.md` only when none of those folders has a `CLAUDE.md`.
+ * up to the root, and each `AGENTS.md` only when none of those folders has a `CLAUDE.md`. Above a
+ * project folder, Eva hides every file, so a hidden `CLAUDE.md` no longer hides an `AGENTS.md`.
  */
-export function projectInstructionFiles(startFolder: string): string[] {
-  const folders = foldersUpTo(startFolder);
+export function projectInstructionFiles(startFolder: string, projectFolder: string | null): string[] {
+  const folders = foldersUpTo(startFolder, projectFolder);
   const existing = (names: readonly string[]): string[] =>
     folders.flatMap((folder) =>
       names.map((name) => join(folder, name)).filter((path) => instructionPart(path, startFolder) !== null),
@@ -90,10 +95,10 @@ export function describeClaudeContext(input: EngineContextInput): ContextPart[] 
   const projectSource = input.mode === "assistant" || input.trusted;
   // Only a trusted Project chat has the `local` source, which reads each `CLAUDE.local.md`.
   const localSource = input.mode === "project" && input.trusted;
-  const folders = foldersUpTo(input.startFolder);
+  const folders = foldersUpTo(input.startFolder, input.projectFolder);
   const files = [
     join(configFolder, "CLAUDE.md"),
-    ...projectInstructionFiles(input.startFolder),
+    ...projectInstructionFiles(input.startFolder, input.projectFolder),
     ...(localSource ? folders.map((folder) => join(folder, "CLAUDE.local.md")) : []),
   ];
   const instructions = [
@@ -105,8 +110,12 @@ export function describeClaudeContext(input: EngineContextInput): ContextPart[] 
   const skillFolders = [
     ...input.pluginFolders.map((folder) => join(folder, "skills")),
     join(configFolder, "skills"),
-    // Claude Code finds skills from the start folder up to the root (lesson 5).
-    ...(projectSource ? [...folders].reverse().map((folder) => join(folder, ".claude", "skills")) : []),
+    // Claude Code finds skills from the start folder up to the root (lesson 5). Eva hides none of them.
+    ...(projectSource
+      ? foldersUpTo(input.startFolder, null)
+          .reverse()
+          .map((folder) => join(folder, ".claude", "skills"))
+      : []),
   ];
   const nested = input.mode === "project" && projectSource ? repositoryParts(input.startFolder, localSource) : [];
   return [ownPrompt, ...instructions, ...skillFolders.flatMap(skillParts), ...nested];

@@ -24,6 +24,7 @@ function input(overrides: Partial<EngineContextInput> = {}): EngineContextInput 
   return {
     mode: "project",
     startFolder: clone,
+    projectFolder: null,
     trusted: true,
     pluginFolders: [],
     environment: { PI_CODING_AGENT_DIR: agent, HOME: home },
@@ -57,6 +58,14 @@ describe("describePiContext", () => {
     write(join(clone, "CLAUDE.md"), "Not read: AGENTS.md comes first.");
     const instructions = context(input()).filter((part) => part.group === "instructions");
     expect(instructions.map((part) => part.text)).toEqual(["Global rules.", "Outer rules.", "Clone rules."]);
+  });
+
+  test("a Project chat lists no context file above its project folder, which Eva's filter hides (#702)", () => {
+    write(join(agent, "AGENTS.md"), "Global rules.");
+    write(join(folder, "AGENTS.md"), "Vault map.");
+    write(join(clone, "AGENTS.md"), "Clone rules.");
+    const instructions = context(input({ projectFolder: clone })).filter((part) => part.group === "instructions");
+    expect(instructions.map((part) => part.text)).toEqual(["Global rules.", "Clone rules."]);
   });
 
   test("lists the skills of each folder that pi reads", () => {

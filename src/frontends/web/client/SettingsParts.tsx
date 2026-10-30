@@ -16,6 +16,8 @@ import { CopyButton } from "./CopyButton.tsx";
 import { Icon, type IconName } from "./icons.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
+import { helpOfCard } from "./help-links.ts";
+import { HelpLink } from "./HelpLink.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { restartNote, type Note } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
@@ -45,7 +47,10 @@ export interface SettingsContext {
   readonly onLoggedOut: () => void;
 }
 
-/** A titled block of settings. `item` gives it the id that search results and links scroll to. */
+/**
+ * A titled block of settings. `item` is the id that search results and links scroll to.
+ * `cardHelp` in help-links.ts uses the same id to add the "?".
+ */
 export function Card({
   item,
   title,
@@ -63,6 +68,7 @@ export function Card({
   readonly aside?: ReactNode;
   readonly children?: ReactNode;
 }): ReactElement {
+  const help = helpOfCard(item);
   return (
     <section className="card" id={item === undefined ? undefined : cardId(item)} aria-label={title}>
       <header className="card-header">
@@ -72,7 +78,15 @@ export function Card({
           </span>
         )}
         <div className="card-heading">
-          <h2>{title}</h2>
+          {help === null ? (
+            <h2>{title}</h2>
+          ) : (
+            // The "?" sits by the title, so a wide aside, such as a button, keeps its room on a phone.
+            <div className="card-title-row">
+              <h2>{title}</h2>
+              <HelpLink topic={help} place={title} />
+            </div>
+          )}
           {description !== undefined && <p className="card-description">{description}</p>}
         </div>
         {aside}

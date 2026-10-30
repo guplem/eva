@@ -173,6 +173,13 @@ const drawings = {
       <path d="M12 11v5M12 8v.01" />
     </>
   ),
+  /** A question mark in a ring: open the guide at the part that explains this place. */
+  help: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.01" />
+    </>
+  ),
   /** An open book: the guide. */
   book: <path d="M12 6.5C10 5 7 4.5 3.5 5v13.5C7 18 10 18.5 12 20c2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5zM12 6.5V20" />,
   lock: (

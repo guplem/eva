@@ -86,6 +86,7 @@ export class ModelCalls {
         mode: "model-call",
         history: { kind: "new", engineSessionId: randomUUID() },
         startFolder: folder,
+        projectFolder: null,
         prompt: withContext(request.prompt, request.context ?? {}),
         model: request.model,
         effort: null,

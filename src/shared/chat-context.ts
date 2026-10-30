@@ -23,6 +23,8 @@ export interface ContextPart {
 export interface EngineContextInput {
   readonly mode: "assistant" | "project";
   readonly startFolder: string;
+  /** Project mode: the project folder. No instruction file above it reaches the chat (#702). */
+  readonly projectFolder: string | null;
   /** False: an untrusted clone, whose own settings stay off. */
   readonly trusted: boolean;
   /** The plugin folders that Eva gives the engine, such as the vault's `.eva/`. */

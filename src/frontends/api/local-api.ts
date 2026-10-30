@@ -10,6 +10,7 @@ import { z } from "zod";
 import { effortLevels, modelAliases } from "../../shared/engine-port.ts";
 import { notificationKinds } from "../../core/alerts/chat-notifications.ts";
 import { checkNames } from "../../core/checks.ts";
+import { menuTextLength } from "../../core/composer-menu/composer-menu.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
@@ -27,7 +28,7 @@ import icon512 from "../web/icons/icon-512.png" with { type: "file" };
 import iconSvg from "../web/icons/icon.svg" with { type: "file" };
 import { serviceWorkerScript } from "../web/service-worker-script.ts";
 import type { SessionEvent } from "../../shared/events.ts";
-import { isEvaError } from "../../shared/errors.ts";
+import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
 
@@ -191,6 +192,22 @@ const chatNameRulesSchema = z.object({ rules: z.string().max(4_000) });
 /** Eva sends the rules with every Assistant turn, so a huge text would make each turn slow and costly. */
 const assistantRulesSchema = z.object({ version: z.string().min(1).max(100), text: z.string().max(50_000) });
 const restoreRulesSchema = z.object({ version: z.string().min(1).max(100), backup: z.boolean() });
+/** A menu item name: the core checks that it is a file name. */
+const menuNameSchema = z.string().max(200);
+const textActionSchema = z.object({
+  name: menuNameSchema,
+  previousName: menuNameSchema.optional(),
+  model: z.enum(modelAliases),
+  prompt: z.string().max(menuTextLength),
+});
+const savedPromptSchema = z.object({
+  name: menuNameSchema,
+  previousName: menuNameSchema.optional(),
+  text: z.string().max(menuTextLength),
+});
+const menuItemNameSchema = z.object({ name: menuNameSchema });
+/** The typed text of a message box, which can hold a long paste. */
+const textActionRunSchema = z.object({ name: menuNameSchema, engine: engineSchema, text: z.string().max(200_000) });
 /** A template part is a path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
 const templateChoiceSchema = z.object({ path: z.string().min(1).max(500), choice: z.enum(["new", "mine"]) });
 /** A point from the web app's location, with the radius of its error in meters. */
@@ -910,6 +927,9 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     return json({ alerts: eva.recentNotifications(endpoint) });
   }
   if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
+  if (parts[0] === "api" && parts[1] === "composer-menu" && parts.length <= 4) {
+    return composerMenuRoute(request, method, parts.slice(2).join("/"), eva);
+  }
   if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {
     return assistantRulesRoute(request, method, parts[2], eva);
   }
@@ -980,6 +1000,39 @@ async function chatNamesRoute(request: Request, method: string, eva: Eva): Promi
     const { rules } = chatNameRulesSchema.parse(await request.json());
     chatNames.saveRules(rules);
     return json({ rules: chatNames.rules() });
+  }
+  return json({ error: "Not found." }, 404);
+}
+
+/** The text actions and saved prompts of the message box: list, save, remove, or run an action (issue 661). */
+async function composerMenuRoute(request: Request, method: string, action: string, eva: Eva): Promise<Response> {
+  const menu = eva.composerMenu;
+  if (menu === null) return json({ error: "No vault is configured." }, 409);
+  if (method === "GET" && action === "") return json(menu.list());
+  if (method === "PUT" && action === "text-actions") {
+    const { previousName, ...item } = textActionSchema.parse(await request.json());
+    menu.saveTextAction(previousName === undefined ? item : { ...item, previousName });
+    return json(menu.list());
+  }
+  if (method === "DELETE" && action === "text-actions") {
+    menu.removeTextAction(menuItemNameSchema.parse(await request.json()).name);
+    return json(menu.list());
+  }
+  if (method === "PUT" && action === "saved-prompts") {
+    const { previousName, ...item } = savedPromptSchema.parse(await request.json());
+    menu.savePrompt(previousName === undefined ? item : { ...item, previousName });
+    return json(menu.list());
+  }
+  if (method === "DELETE" && action === "saved-prompts") {
+    menu.removePrompt(menuItemNameSchema.parse(await request.json()).name);
+    return json(menu.list());
+  }
+  if (method === "POST" && action === "text-actions/run") {
+    const run = textActionRunSchema.parse(await request.json());
+    // A closed page stops the call, so a person who left does not pay for it.
+    const result = await menu.runTextAction({ ...run, signal: request.signal });
+    if (!result.ok) throw new EvaError("engine_failed", result.reason);
+    return json({ text: result.text });
   }
   return json({ error: "Not found." }, 404);
 }
@@ -1101,6 +1154,7 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
     isEvaError(error, "schedule_invalid") ||
     isEvaError(error, "project_invalid") ||
     isEvaError(error, "title_invalid") ||
+    isEvaError(error, "menu_item_invalid") ||
     isEvaError(error, "approval_invalid")
   )
     return json(body, 400);

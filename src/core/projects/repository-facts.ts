@@ -99,7 +99,7 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
   const encodedBranch = encodeURIComponent(branch);
 
   const [owner = "", name = ""] = slug.split("/");
-  const [files, labels, rules, branchInfo, reporting, security, fixes, codeScanning, workflowToken, languages] =
+  const [files, labels, rules, branchInfo, reporting, security, fixes, codeScanning, workflowToken, languages, pages] =
     await Promise.all([
       readFiles(request, `${address}/git/trees/${encodedBranch}?recursive=1`),
       readLabels(request, `${address}/labels`),
@@ -111,18 +111,19 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
       readJson(request, `${address}/code-scanning/default-setup`),
       readJson(request, `${address}/actions/permissions/workflow`),
       readJson(request, `${address}/languages`),
+      // It needs no file, so it runs with the first reads.
+      readPages(request, `${address}/pages`),
     ]);
   const readFile = (path: string): Promise<FileRead> =>
     request(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
       (answer) => (answer.status === 200 ? { text: answer.body } : answer.status === 404 ? "absent" : null),
     );
-  const [workflows, allowRules, scripts, hooks, widgetFiles, pages] = await Promise.all([
+  const [workflows, allowRules, scripts, hooks, widgetFiles] = await Promise.all([
     files === null ? null : readWorkflows(Object.keys(files), readFile),
     files !== null && !(settingsPath in files) ? ("none" as const) : readFile(settingsPath).then(readAllowRules),
     files === null ? null : packagePath in files ? readFile(packagePath).then(readScripts) : {},
     files === null ? null : readHooks(Object.keys(files), readFile),
     files === null ? null : readWidgetFiles(files, readFile),
-    readPages(request, `${address}/pages`),
   ]);
 
   return {

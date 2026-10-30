@@ -28,6 +28,8 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
   // Standard and private: what Eva made before repository types (#681).
   const [type, setType] = useState<RepositoryTypeName>("standard");
   const [visibility, setVisibility] = useState<RepositoryVisibility>("private");
+  // A type gives its own visibility only until the person picks one.
+  const [visibilityPicked, setVisibilityPicked] = useState(false);
   const [drive, setDrive] = useState(false);
   /** Null while the read runs. */
   const [settings, setSettings] = useState<PublicSettings | "failed" | null>(null);
@@ -196,7 +198,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
                           const chosen = repositoryTypeOf(event.target.value);
                           if (chosen === null) return;
                           setType(chosen.name);
-                          setVisibility(chosen.defaultVisibility);
+                          if (!visibilityPicked) setVisibility(chosen.defaultVisibility);
                         }}
                       >
                         {repositoryTypes.map((choice) => (
@@ -212,7 +214,10 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
                       <select
                         value={visibility}
                         disabled={busy}
-                        onChange={(event) => setVisibility(event.target.value === "public" ? "public" : "private")}
+                        onChange={(event) => {
+                          setVisibilityPicked(true);
+                          setVisibility(event.target.value === "public" ? "public" : "private");
+                        }}
                       >
                         <option value="private">Private</option>
                         <option value="public">Public</option>

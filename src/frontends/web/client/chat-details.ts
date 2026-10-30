@@ -186,3 +186,9 @@ export function contextSections(parts: readonly ContextPart[]): { label: string;
     return inGroup.length === 0 ? [] : [{ label: contextGroupLabels[group], parts: inGroup }];
   });
 }
+
+/** A lock only for a text that the engine keeps inside, such as its own prompt. A missing file has a source. */
+export function partIcon(part: ContextPart): IconName {
+  if (part.group === "skills") return "command";
+  return part.text === null && part.source === null ? "lock" : "file";
+}

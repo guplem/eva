@@ -14,6 +14,7 @@ import { api, type SessionRecord } from "./api.ts";
 import {
   contextFigure,
   contextSections,
+  partIcon,
   contextShare,
   engineLabel,
   branchForkPoint,
@@ -213,7 +214,7 @@ function ChatContext({ sessionId, answers }: { readonly sessionId: string; reado
                 {section.parts.map((part, index) => (
                   <li key={`${part.title}-${String(index)}`}>
                     <button className="context-part" onClick={() => setOpen(part)}>
-                      <Icon name={part.group === "skills" ? "command" : part.text === null ? "lock" : "file"} />
+                      <Icon name={partIcon(part)} />
                       <span className="context-part-title">{part.title}</span>
                     </button>
                   </li>

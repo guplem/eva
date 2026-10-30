@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   chatSubtitle,
   contextSections,
+  partIcon,
   contextShare,
   contextFigure,
   engineLabel,
@@ -286,5 +287,23 @@ describe("contextSections (issue 700)", () => {
       ["Skills", ["write-note"]],
     ]);
     expect(contextSections([])).toEqual([]);
+  });
+});
+
+describe("partIcon (issue 700)", () => {
+  const part = (overrides: Partial<ContextPart>): ContextPart => ({
+    group: "prompt",
+    title: "t",
+    source: null,
+    text: null,
+    note: null,
+    ...overrides,
+  });
+
+  test("shows a lock only for a text that the engine keeps inside", () => {
+    expect(partIcon(part({}))).toBe("lock");
+    expect(partIcon(part({ source: "/vault/.eva/assistant.md" }))).toBe("file");
+    expect(partIcon(part({ text: "Base rules." }))).toBe("file");
+    expect(partIcon(part({ group: "skills", text: "A skill." }))).toBe("command");
   });
 });

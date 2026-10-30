@@ -5,12 +5,13 @@
  * `.eva/settings/text-actions/Polish.md` and `.eva/settings/saved-prompts/Summary.md`.
  * A text action's file can start with a `model:` header that names the model tier.
  */
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { modelAliases, type EngineName, type ModelAlias } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { ModelCallResult, ModelCalls } from "../model-calls/model-calls.ts";
+import { assertVaultWritable } from "../migrations/migrations.ts";
 
 export interface TextAction {
   readonly name: string;
@@ -80,28 +81,35 @@ export class ComposerMenu {
 
   /** Writes the action. With `previousName`, the old file goes, so a rename keeps one file. */
   saveTextAction(action: TextAction & { readonly previousName?: string }): void {
+    assertVaultWritable(this.options.vaultPath);
     const header = `---\nmodel: ${action.model}\n---\n\n`;
     saveItem(this.actions(), action.name, action.previousName, `${header}${checkedText(action.prompt)}\n`);
   }
 
   removeTextAction(name: string): void {
+    assertVaultWritable(this.options.vaultPath);
     removeItem(this.actions(), name);
   }
 
   savePrompt(prompt: SavedPrompt & { readonly previousName?: string }): void {
+    assertVaultWritable(this.options.vaultPath);
     saveItem(this.prompts(), prompt.name, prompt.previousName, `${checkedText(prompt.text)}\n`);
   }
 
   removePrompt(name: string): void {
+    assertVaultWritable(this.options.vaultPath);
     removeItem(this.prompts(), name);
   }
 
-  /** The rewritten text, or a failure with a reason for the person. Never throws. */
+  /**
+   * The rewritten text, or a failure of the model with a reason for the person. A bad request
+   * throws: `file_not_found` for an action that is gone, and `menu_item_invalid` for an empty box.
+   */
   async runTextAction(run: TextActionRun): Promise<ModelCallResult> {
     const action = this.list().textActions.find((each) => each.name === run.name);
-    if (action === undefined)
-      return { ok: false, failure: "failed", reason: `Eva found no text action "${run.name}".` };
-    if (run.text.trim() === "") return { ok: false, failure: "failed", reason: "The message box is empty." };
+    // Another device can rename or remove the action while this page shows the old menu.
+    if (action === undefined) throw new EvaError("file_not_found", `Eva found no text action "${run.name}".`);
+    if (run.text.trim() === "") throw new EvaError("menu_item_invalid", "The message box is empty.");
     // The text goes in as it is, not as a context block: that block escapes each `<`, and the answer would keep it.
     const result = await this.options.modelCalls.ask({
       engine: run.engine,
@@ -145,7 +153,8 @@ function readItems(folder: string): { name: string; text: string }[] {
 
 /** A header that names no known model reads as the fast one, so a typo never hides the action. */
 function parseAction(text: string): { model: ModelAlias; prompt: string } {
-  const normalized = text.replaceAll("\r\n", "\n");
+  // Some Windows editors start a file with a byte order mark, which would hide the header.
+  const normalized = text.replace(/^\uFEFF/, "").replaceAll("\r\n", "\n");
   const header = /^---\n([\s\S]*?)\n---\n?/.exec(normalized);
   if (header === null) return { model: defaultModel, prompt: normalized.trim() };
   const named = /^model:\s*(\S+)\s*$/m.exec(header[1] ?? "")?.[1];
@@ -167,12 +176,21 @@ function checkedText(text: string): string {
   return trimmed;
 }
 
+/** Windows gives these names to devices, with any extension, so `NUL.md` is no file there. */
+const deviceNames = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+
 /** The name is a file name on every system, so it has no folder mark and no character that Windows refuses. */
 function checkedName(name: string): string {
   const trimmed = name.trim();
   // eslint-disable-next-line no-control-regex -- A control character is no part of a file name.
   const refused = /[/\\:*?"<>|\u0000-\u001f]/;
-  if (trimmed === "" || trimmed.length > nameLength || trimmed.startsWith(".") || refused.test(trimmed))
+  if (
+    trimmed === "" ||
+    trimmed.length > nameLength ||
+    trimmed.startsWith(".") ||
+    refused.test(trimmed) ||
+    deviceNames.test(trimmed)
+  )
     throw new EvaError(
       "menu_item_invalid",
       `Give the item a name of up to ${String(nameLength)} characters, with none of / \\ : * ? " < > | and no dot at the start.`,
@@ -180,21 +198,40 @@ function checkedName(name: string): string {
   return trimmed;
 }
 
+/**
+ * The file of an item that exists. A person can make a file by hand with a name that Eva would
+ * refuse, such as one with a space at the end, so the name only has to match a listed item.
+ */
+function existingFile(folder: string, name: string): string {
+  if (!readItems(folder).some((item) => item.name === name))
+    throw new EvaError("file_not_found", `Eva found no item "${name}".`);
+  return join(folder, `${name}.md`);
+}
+
 function saveItem(folder: string, name: string, previousName: string | undefined, content: string): void {
   const target = checkedName(name);
-  const renamed = previousName !== undefined && previousName !== target;
+  const previous = previousName === undefined ? null : existingFile(folder, previousName);
   // Windows and macOS see "summary.md" and "Summary.md" as one file, so the names compare without case.
-  const taken = readItems(folder).some((item) => item.name.toLowerCase() === target.toLowerCase());
   const sameFile = previousName?.toLowerCase() === target.toLowerCase();
-  if ((previousName === undefined || renamed) && taken && !sameFile)
-    throw new EvaError("menu_item_invalid", `An item named "${target}" already exists.`);
+  const taken = readItems(folder).some((item) => item.name.toLowerCase() === target.toLowerCase());
+  if (taken && !sameFile) throw new EvaError("menu_item_invalid", `An item named "${target}" already exists.`);
   mkdirSync(folder, { recursive: true });
-  if (renamed) rmSync(join(folder, `${checkedName(previousName)}.md`), { force: true });
-  writeFileAtomic(join(folder, `${target}.md`), content);
+  const file = join(folder, `${target}.md`);
+  if (previous === null || previousName === target) {
+    writeFileAtomic(file, content);
+    return;
+  }
+  if (sameFile) {
+    // On Windows the new name is the old file, so the old one goes first.
+    rmSync(previous, { force: true });
+    writeFileAtomic(file, content);
+    return;
+  }
+  // The new file comes first, so a failed write loses no item.
+  writeFileAtomic(file, content);
+  rmSync(previous, { force: true });
 }
 
 function removeItem(folder: string, name: string): void {
-  const file = join(folder, `${checkedName(name)}.md`);
-  if (!existsSync(file)) throw new EvaError("file_not_found", `Eva found no item "${name}".`);
-  rmSync(file, { force: true });
+  rmSync(existingFile(folder, name), { force: true });
 }

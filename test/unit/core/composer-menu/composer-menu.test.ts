@@ -9,7 +9,7 @@ import {
 } from "../../../../src/core/composer-menu/composer-menu.ts";
 import { ModelCalls } from "../../../../src/core/model-calls/model-calls.ts";
 import { templateParts } from "../../../../src/core/vault/vault-template.ts";
-import { EvaError } from "../../../../src/shared/errors.ts";
+import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 
 const folders: string[] = [];
@@ -130,18 +130,81 @@ describe("a text action run (#661)", () => {
     });
   });
 
-  test("an empty text, a missing action and an empty answer fail with a reason", async () => {
+  test("an empty answer fails with a reason", async () => {
     const root = vault();
     put(join(textActionsFolder(root), "Polish.md"), "Fix it.");
     const { menu: composer } = menu(root, (request) => FakeEngine.answer(request, "  "));
-    expect(await composer.runTextAction({ name: "Polish", engine: "claude-code", text: " " })).toMatchObject({
-      ok: false,
-    });
-    expect(await composer.runTextAction({ name: "Gone", engine: "claude-code", text: "Hi" })).toMatchObject({
-      ok: false,
-    });
     expect(await composer.runTextAction({ name: "Polish", engine: "claude-code", text: "Hi" })).toMatchObject({
       ok: false,
     });
+  });
+});
+
+describe("the composer menu fixes after review (#661)", () => {
+  test("a case-only rename keeps one file with the new name", () => {
+    const root = vault();
+    const { menu: composer } = menu(root);
+    composer.savePrompt({ name: "summary", text: "One" });
+    composer.savePrompt({ name: "Summary", previousName: "summary", text: "One" });
+    expect(composer.list().savedPrompts).toEqual([{ name: "Summary", text: "One" }]);
+  });
+
+  test("a rename onto a name that differs only in case from another item is refused", () => {
+    const { menu: composer } = menu(vault());
+    composer.savePrompt({ name: "Summary", text: "One" });
+    composer.savePrompt({ name: "Other", text: "Two" });
+    expect(() => composer.savePrompt({ name: "SUMMARY", previousName: "Other", text: "Two" })).toThrow("already");
+  });
+
+  test("a file that a person named by hand can still be renamed and removed", () => {
+    const root = vault();
+    put(join(savedPromptsFolder(root), "Plan .md"), "Plan it.");
+    const { menu: composer } = menu(root);
+    composer.savePrompt({ name: "Plan", previousName: "Plan ", text: "Plan it." });
+    expect(composer.list().savedPrompts).toEqual([{ name: "Plan", text: "Plan it." }]);
+    put(join(savedPromptsFolder(root), "Odd .md"), "x");
+    composer.removePrompt("Odd ");
+    expect(composer.list().savedPrompts.map((prompt) => prompt.name)).toEqual(["Plan"]);
+  });
+
+  test("a Windows device name is refused", () => {
+    const { menu: composer } = menu(vault());
+    for (const name of ["CON", "nul", "Com1", "LPT9"]) {
+      expect(() => composer.savePrompt({ name, text: "Hi" })).toThrow(EvaError);
+    }
+  });
+
+  test("a header after a byte order mark still names the model", () => {
+    const root = vault();
+    put(join(textActionsFolder(root), "Polish.md"), "﻿---\nmodel: opus\n---\nFix it.");
+    expect(menu(root).menu.list().textActions).toEqual([{ name: "Polish", model: "opus", prompt: "Fix it." }]);
+  });
+
+  test("a save into a vault that a newer Eva migrated fails with vault_ahead", () => {
+    const root = vault();
+    put(
+      join(root, ".eva", "migrations.json"),
+      JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] }),
+    );
+    const { menu: composer } = menu(root);
+    expect(() => composer.savePrompt({ name: "Summary", text: "Hi" })).toThrow("9.0.0");
+    expect(() => composer.removePrompt("Summary")).toThrow("9.0.0");
+  });
+
+  test("an empty box and a missing action throw codes that the page tells apart", async () => {
+    const root = vault();
+    put(join(textActionsFolder(root), "Polish.md"), "Fix it.");
+    const { menu: composer } = menu(root);
+    const codeOf = (run: Promise<unknown>): Promise<string> =>
+      run.then(
+        () => "none",
+        (error: unknown) => (isEvaError(error) ? error.code : "other"),
+      );
+    expect(await codeOf(composer.runTextAction({ name: "Polish", engine: "claude-code", text: " " }))).toBe(
+      "menu_item_invalid",
+    );
+    expect(await codeOf(composer.runTextAction({ name: "Gone", engine: "claude-code", text: "Hi" }))).toBe(
+      "file_not_found",
+    );
   });
 });

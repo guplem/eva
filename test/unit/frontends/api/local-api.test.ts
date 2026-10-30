@@ -1661,7 +1661,14 @@ describe("web routes", () => {
       method: "POST",
       body: { name: "Gone", engine: "claude-code", text: "hello" },
     });
-    expect(missing.status).toBe(409);
+    expect(missing.status).toBe(404);
+    await call("/api/composer-menu/text-actions", { method: "PUT", body: action });
+    const emptyBox = await call("/api/composer-menu/text-actions/run", {
+      method: "POST",
+      body: { name: "Shout", engine: "claude-code", text: " " },
+    });
+    expect(emptyBox.status).toBe(400);
+    expect(await json(emptyBox)).toMatchObject({ code: "menu_item_invalid" });
   });
 
   test("push: a device subscribes, gets each alert as a push, reads the newest alert, and leaves", async () => {

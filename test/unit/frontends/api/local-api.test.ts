@@ -1917,6 +1917,11 @@ describe("web routes", () => {
     expect(await json(old)).toEqual({ saved: true });
     expect((await json<Place>(await call("/api/location"))).place).toMatchObject({ latitude: 40.5 });
     expect((await call("/api/location", { method: "POST", body: { lat: 100, lon: 0, takenAt: 1 } })).status).toBe(400);
+    const mixed = await call("/api/location", {
+      method: "POST",
+      body: { lat: 40.6, longitude: -3.7, takenAt: Date.parse("2026-10-14T10:30:00Z") },
+    });
+    expect(mixed.status).toBe(200);
     expect(
       (await call("/api/location", { method: "POST", body: { latitude: 0, longitude: 181, takenAt: 1 } })).status,
     ).toBe(400);

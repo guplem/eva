@@ -347,6 +347,13 @@ describe("withHeaderField", () => {
     );
   });
 
+  test("keeps the line ending of the header, also when the text below has other ones", () => {
+    const text = "---\nname: Alex\n---\r\n# About Alex\r\n";
+    expect(withHeaderField(text, "lastLocation", pointLine)).toBe(
+      `---\nname: Alex\n${pointLine}\n---\r\n# About Alex\r\n`,
+    );
+  });
+
   test("is null when the header is broken, so Eva never writes over it", () => {
     expect(withHeaderField("---\nplaces: [home\n---\n", "lastLocation", pointLine)).toBeNull();
   });

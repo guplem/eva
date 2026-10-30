@@ -255,10 +255,23 @@ export function lastLocationProblem(outcome: LocationWrite): AlertProblem | null
   if (outcome === "waiting") return "keep";
   if (outcome === "written" || outcome === "nothing" || outcome === "not_due") return null;
   const why =
-    outcome === "no_note" ? "Life/About me.md is missing" : "the header of Life/About me.md is not valid YAML";
+    outcome === "no_note"
+      ? "Life/About me.md is missing"
+      : "Eva cannot set lastLocation in the header of Life/About me.md, as the header is broken or has the key twice";
+  return locationProblem(`${why}. Ask the Assistant to fix the note.`);
+}
+
+/** Eva could not write the note, such as when another program locks it. */
+export function lastLocationWriteProblem(reason: string): AlertProblem {
+  return locationProblem(
+    `Eva could not write Life/About me.md: ${withoutFinalPeriod(reason)}. Close a program that keeps the note open.`,
+  );
+}
+
+function locationProblem(what: string): AlertProblem {
   return {
     level: "warn",
-    message: `Eva cannot save your location: ${why}. Ask the Assistant to fix the note. Eva keeps the location until then.`,
+    message: `Eva cannot save your location: ${what} Eva keeps the location until then.`,
     resolvedMessage: "Eva saves your location in Life/About me.md again.",
   };
 }

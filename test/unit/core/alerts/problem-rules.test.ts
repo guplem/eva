@@ -7,6 +7,7 @@ import {
   engineRestartProblem,
   engineUpdateProblem,
   lastLocationProblem,
+  lastLocationWriteProblem,
   relayedProblem,
   updateProblem,
   vaultErrorAlertSteps,
@@ -283,9 +284,12 @@ describe("lastLocationProblem", () => {
   test("says why the location is not saved, and what to do", () => {
     expect(JSON.stringify(lastLocationProblem("no_note"))).toContain("Life/About me.md is missing");
     expect(JSON.stringify(lastLocationProblem("broken_note"))).toContain(
-      "header of Life/About me.md is not valid YAML",
+      "cannot set lastLocation in the header of Life/About me.md",
     );
     expect(lastLocationProblem("no_note")).toMatchObject({ level: "warn" });
+    expect(lastLocationWriteProblem("EPERM: operation not permitted.").message).toBe(
+      "Eva cannot save your location: Eva could not write Life/About me.md: EPERM: operation not permitted. Close a program that keeps the note open. Eva keeps the location until then.",
+    );
   });
 
   test("clears after a write, and keeps the state while Eva waits", () => {

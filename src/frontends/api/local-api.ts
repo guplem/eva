@@ -234,7 +234,7 @@ const templateChoiceSchema = z.object({ path: z.string().min(1).max(500), choice
 const locationSchema = z.preprocess(
   (body) =>
     typeof body === "object" && body !== null && !("latitude" in body) && "lat" in body
-      ? { ...body, latitude: body.lat, longitude: "lon" in body ? body.lon : undefined }
+      ? { latitude: body.lat, ...("lon" in body ? { longitude: body.lon } : {}), ...body }
       : body,
   z.object({
     latitude: z.number().min(-90).max(90),

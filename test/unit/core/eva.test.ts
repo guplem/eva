@@ -3105,6 +3105,17 @@ describe("the person's place (#371)", () => {
     expect(aboutMe()).toContain("lastLocation");
   });
 
+  test("a computer that stops being the hub closes its location alert", async () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    rmSync(join(vault, "Life", "About me.md"), { force: true });
+    const problems = (): string => instance.status().problems.join("\n");
+    instance.saveLocation(madrid, "telegram", clock, true);
+    await waitFor(() => problems().includes("Eva cannot save your location"));
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    await instance.backgroundTick();
+    await waitFor(() => !problems().includes("location"));
+  });
+
   test("never writes during an Assistant turn, and writes before the snapshot after it", async () => {
     let release: () => void = () => undefined;
     const engine = new FakeEngine(async function* (request) {

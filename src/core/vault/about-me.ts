@@ -232,9 +232,12 @@ export function readHomePlace(vaultPath: string): { readonly lat: number; readon
   return lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
 }
 
-/** A decimal number written as text. An empty field must not read as 0, which is a place at sea. */
+/**
+ * A decimal number written as text. An empty field must not read as 0, which is a place at sea.
+ * JavaScript writes a very small number with an exponent, such as `1e-7`.
+ */
 function coordinate(value: unknown): number | null {
-  return typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : null;
+  return typeof value === "string" && /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(value.trim()) ? Number(value) : null;
 }
 
 /** Where a point came from: a live location in Telegram, or the open web app. */
@@ -253,23 +256,18 @@ export interface LastLocation {
 
 export const lastLocationKey = "lastLocation";
 
-const numberPattern = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/;
 const isoTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
-
-function number(value: unknown): number | null {
-  return typeof value === "string" && numberPattern.test(value.trim()) ? Number(value) : null;
-}
 
 /** The point of `lastLocation` in a note's text, or null when the field is empty or bad. */
 export function parseLastLocation(text: string): LastLocation | null {
   const header = headerOf(text);
   const value = isMap(header) ? header[lastLocationKey] : undefined;
   if (!isMap(value)) return null;
-  const [latitude, longitude] = [number(value["latitude"]), number(value["longitude"])];
+  const [latitude, longitude] = [coordinate(value["latitude"]), coordinate(value["longitude"])];
   if (latitude === null || longitude === null || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
   // The failsafe schema reads YAML's null as the text "null".
   const noAccuracy = isEmpty(value["accuracy"]) || value["accuracy"] === "null" || value["accuracy"] === "~";
-  const accuracy = noAccuracy ? null : number(value["accuracy"]);
+  const accuracy = noAccuracy ? null : coordinate(value["accuracy"]);
   if (!noAccuracy && (accuracy === null || accuracy < 0)) return null;
   const at = value["at"];
   if (typeof at !== "string" || !isoTimePattern.test(at) || Number.isNaN(Date.parse(at))) return null;
@@ -291,10 +289,11 @@ export function readLastLocation(vaultPath: string): LastLocation | null {
 export function withHeaderField(text: string, key: string, line: string, comment?: string): string | null {
   const bom = text.startsWith("\uFEFF") ? "\uFEFF" : "";
   const rest = text.slice(bom.length);
-  const newline = rest.includes("\r\n") ? "\r\n" : "\n";
   const before = headerOf(rest);
   if (before === "broken") return null;
   const opening = /^---\r?\n/.exec(rest);
+  // The header's own line ending: a body pasted from elsewhere can have another one.
+  const newline = (opening?.[0] ?? rest).includes("\r\n") ? "\r\n" : "\n";
   const match = frontMatterPattern.exec(rest);
   const added = comment === undefined ? [line] : [comment, line];
   if (opening === null) return `${bom}---${newline}${added.join(newline)}${newline}---${newline}${rest}`;

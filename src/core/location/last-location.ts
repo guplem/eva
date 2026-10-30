@@ -87,16 +87,17 @@ function isDue(stored: LastLocation | null, point: LastLocation, now: number): b
 }
 
 /**
- * The time of a point, but never later than now. A hub with a fast clock, or a hand edit, can
- * store a time in the future, which would block every new point.
+ * The time of a point. A hub with a fast clock, or a hand edit, can store a time in the future.
+ * Such a time says nothing, so it reads as the oldest time: every new point then wins.
  */
 function timeOf(point: LastLocation, now: number): number {
-  return Math.min(Date.parse(point.at), now);
+  const at = Date.parse(point.at);
+  return at > now ? 0 : at;
 }
 
-function newer(first: LastLocation | null, second: LastLocation | null): LastLocation | null {
+function newer(first: LastLocation | null, second: LastLocation | null, now: number): LastLocation | null {
   if (first === null || second === null) return first ?? second;
-  return Date.parse(first.at) >= Date.parse(second.at) ? first : second;
+  return timeOf(first, now) >= timeOf(second, now) ? first : second;
 }
 
 /**
@@ -173,7 +174,7 @@ export class LocationKeeper {
   /** The newest point that Eva knows: the one in memory, or else the note's. */
   newest(): LastLocation | null {
     const vaultPath = this.options.vaultPath;
-    return newer(this.pending, vaultPath === null ? null : readLastLocation(vaultPath));
+    return newer(this.pending, vaultPath === null ? null : readLastLocation(vaultPath), this.options.now().getTime());
   }
 
   /**
@@ -186,7 +187,8 @@ export class LocationKeeper {
     const point = this.pending;
     if (point === null) return "nothing";
     const vaultPath = this.options.vaultPath;
-    if (vaultPath === null) return "waiting";
+    // A vault that is not cloned yet has no note to fix, so this is no problem.
+    if (vaultPath === null || !existsSync(vaultPath)) return "waiting";
     const now = this.options.now().getTime();
     if (this.lastWriteAt !== null && now - this.lastWriteAt < writeEveryMs) return "waiting";
     const path = join(vaultPath, aboutMeFile);
@@ -224,6 +226,6 @@ export class LocationKeeper {
     if (parsed?.success !== true) return;
     const { lat, lon, accuracy, at, source } = parsed.data;
     const old: LastLocation = { latitude: lat, longitude: lon, accuracy, at: new Date(at).toISOString(), source };
-    this.pending = newer(this.pending, old);
+    this.pending = newer(this.pending, old, this.options.now().getTime());
   }
 }

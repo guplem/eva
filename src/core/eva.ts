@@ -42,6 +42,7 @@ import {
   relayedProblem,
   vaultAheadProblem,
   lastLocationProblem,
+  lastLocationWriteProblem,
 } from "./alerts/problem-rules.ts";
 import { machineReportFile, readMachineReports, writeMachineReport } from "./alerts/machine-reports.ts";
 import { runMigrations, type MigrationRun, type MigrationStore } from "./migrations/migration-runner.ts";
@@ -441,6 +442,8 @@ export class Eva {
   private readonly facts: InstanceFacts;
   private readonly vault: VaultUpkeep;
   private readonly locations: LocationKeeper;
+  /** True while a location write waits in the sync queue. */
+  private locationWriteQueued = false;
   /** The day of the vault's first commit, read once. */
   private vaultFirstCommit: Promise<string | null> | null;
   /** The git environment of this instance, for reads of the vault's history. */
@@ -1099,18 +1102,31 @@ export class Eva {
    * whose turn ends now: Eva writes before its snapshot, so an undo of that turn stays whole.
    */
   private async writeLocationIfDue(endingTurn?: string): Promise<void> {
-    if (this.role() !== "hub" || !this.locations.hasWork) return;
+    if (this.role() !== "hub") {
+      // Only the hub writes, so a former hub has no location problem any more.
+      this.alerts.report("last_location", null);
+      return;
+    }
+    if (!this.locations.hasWork) return;
+    // One job in the sync queue is enough. The end of a turn still queues its own, before its snapshot.
+    const queues = endingTurn === undefined;
+    if (queues && this.locationWriteQueued) return;
+    if (queues) this.locationWriteQueued = true;
     try {
       await this.vault.exclusive(() => {
+        // From here on, a new point needs a new job.
+        if (queues) this.locationWriteQueued = false;
         if (this.assistantBusy(endingTurn)) return;
         const problem = lastLocationProblem(this.locations.writeIfDue());
         if (problem !== "keep") this.alerts.report("last_location", problem);
       });
     } catch (error) {
-      // A full disk must not stop the background tick or the end of a turn. The point stays in memory.
-      this.options.logger?.log("warn", "Eva could not save the location in the vault.", {
-        reason: error instanceof Error ? error.message : String(error),
-      });
+      // A locked note or a full disk must not stop the background tick or the end of a turn.
+      const reason = error instanceof Error ? error.message : String(error);
+      this.options.logger?.log("warn", "Eva could not save the location in the vault.", { reason });
+      this.alerts.report("last_location", lastLocationWriteProblem(reason));
+    } finally {
+      if (queues) this.locationWriteQueued = false;
     }
   }
 

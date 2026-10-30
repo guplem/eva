@@ -31,8 +31,7 @@ export interface AssistantPreparerOptions {
   readonly vaultSync: VaultSyncPort;
   /**
    * Writes Eva's own vault edits that waited for the turn, such as the last location, before the
-   * snapshot after it. So an undo of the turn also undoes them, and never finds the note changed.
-   * It never fails the turn.
+   * snapshot after it. So an undo of the turn also undoes them. It never fails the turn.
    */
   readonly beforeEndSnapshot?: (sessionId: string) => Promise<void>;
   /** Eva's base prompt, shipped with the engine. */

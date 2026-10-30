@@ -10,6 +10,7 @@
 - Use the shared classes before you add one: `card`, `pill`, `callout`, `field`, `field-hint`, `inline-form`, `button-row`, `guide-steps`, `command-line`. Buttons take `primary`, `ghost`, `danger` or `large`.
 - A box that scrolls cuts the shadows of its cards at its padding. Give it room for `--shadow`: the Files page shows how. `test/e2e/shadows.spec.ts` finds a cut shadow, so add each new page with cards to it.
 - Take each icon from `client/icons.tsx`.
+- Turn off a control with `aria-disabled`, not `disabled`, when a press must tell the person that the action cannot run. A press on it then plays the problem sound and vibration.
 - Show each wait with a shared component of `client/Loading.tsx`, never with a sentence alone, such as "Loading…".
   - Inside a card, show `ProgressBar`. Give it the share of the work when Eva knows it, so it fills and shows the percentage. With no share, two lines of light move across it again and again.
   - For content that fills a large area, such as a chat or a list, show a skeleton with the shape of that content.

@@ -13,6 +13,7 @@ import { DeveloperSection } from "./DeveloperSection.tsx";
 import { EnginesSection } from "./EnginesSection.tsx";
 import { guideHeadingId, guideItem, guidePageOf, parseGuideItem, searchGuide, type SnippetPart } from "./guide.ts";
 import { GuideDocument, GuideHome } from "./GuideSection.tsx";
+import { holdInView } from "./hold-in-view.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { PersonalizeSection } from "./PersonalizeSection.tsx";
 import {
@@ -94,7 +95,9 @@ export function SettingsView({
       if (heading !== null) document.querySelector(".settings-content")?.scrollTo({ top: 0 });
       return;
     }
-    card.scrollIntoView({ block: "start" });
+    // A card above the target can fill later and push it down, so the scroll holds it in place.
+    const box = document.querySelector(".settings-content");
+    const stopHold = box === null ? undefined : holdInView(box, card);
     if (heading !== null) {
       // React does not make the doc's HTML, so the heading has no tabIndex. Give it one, so it can take the focus.
       // A keyboard then continues from the heading, and a screen reader reads it.
@@ -103,7 +106,10 @@ export function SettingsView({
     }
     card.classList.add("flash");
     const timer = setTimeout(() => card.classList.remove("flash"), 1_600);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      stopHold?.();
+    };
   }, [route, settings]);
 
   const notify = useCallback((note: Note): void => setNotice(note), []);

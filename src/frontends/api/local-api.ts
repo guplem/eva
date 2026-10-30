@@ -105,6 +105,8 @@ const unsentTextSchema = z.object({
   keepEmpty: z.boolean(),
   writer: z.string().regex(/^[\w-]{1,64}$/),
 });
+/** The key of the text of the New chat page, which has no chat yet. The web app uses the same key. */
+const newChatTextKey = "new-chat";
 /** A chat id, or the key of the New chat page. */
 const unsentTextKeySchema = z.string().regex(/^[\w-]{1,128}$/);
 const archiveSchema = z.object({ archived: z.boolean() });
@@ -770,6 +772,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (method === "PUT" && url.pathname.startsWith("/api/unsent-texts/")) {
     const key = unsentTextKeySchema.parse(decodeURIComponent(url.pathname.slice("/api/unsent-texts/".length)));
     const { text, keepEmpty, writer } = unsentTextSchema.parse(await request.json());
+    // A late write of a deleted chat, such as at a page hide, must leave no text behind: an unknown chat answers 404.
+    if (key !== newChatTextKey) eva.sessions.get(key);
     return json({ revision: eva.unsentTexts.set(key, text, keepEmpty, writer) });
   }
   if (method === "GET" && url.pathname === "/api/files/favorites") return json(eva.favoriteFiles());

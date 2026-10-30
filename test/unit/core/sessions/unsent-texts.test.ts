@@ -51,7 +51,7 @@ describe("UnsentTextStore", () => {
   });
 
   test("each write reaches the listeners with the page that wrote it", () => {
-    const store = new UnsentTextStore(path, new Redactor());
+    const store = new UnsentTextStore(path, new Redactor(), { now: () => 0 });
     const events: UnsentTextEvent[] = [];
     const stop = store.subscribe((event) => events.push(event));
     const revision = store.set("chat-1", "Hello", false, "page-1");
@@ -65,7 +65,7 @@ describe("UnsentTextStore", () => {
   });
 
   test("a delete of a chat removes its text and tells the pages", () => {
-    const store = new UnsentTextStore(path, new Redactor());
+    const store = new UnsentTextStore(path, new Redactor(), { now: () => 0 });
     store.set("chat-1", "Hello", false, "page-1");
     const events: UnsentTextEvent[] = [];
     store.subscribe((event) => events.push(event));
@@ -75,8 +75,18 @@ describe("UnsentTextStore", () => {
     expect(events).toEqual([{ kind: "unsent_text", key: "chat-1", text: null, revision: 2, writer: null }]);
   });
 
+  test("a lost file never gives a revision that an open page already knows", () => {
+    let now = 1_000;
+    const first = new UnsentTextStore(path, new Redactor(), { now: () => now }).set("chat-1", "One", false, "page-1");
+    rmSync(path);
+    now = 2_000;
+    expect(
+      new UnsentTextStore(path, new Redactor(), { now: () => now }).set("chat-1", "Two", false, "page-1"),
+    ).toBeGreaterThan(first);
+  });
+
   test("a full store drops the oldest text", () => {
-    const store = new UnsentTextStore(path, new Redactor(), 2);
+    const store = new UnsentTextStore(path, new Redactor(), { maxTexts: 2 });
     store.set("chat-1", "One", false, "page-1");
     store.set("chat-2", "Two", false, "page-1");
     store.set("chat-1", "One again", false, "page-1");

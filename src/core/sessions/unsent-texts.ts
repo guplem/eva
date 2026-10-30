@@ -33,20 +33,28 @@ export interface UnsentTextEvent {
   readonly writer: string | null;
 }
 
+export interface UnsentTextStoreOptions {
+  /** The clock, in milliseconds. */
+  readonly now?: () => number;
+  readonly maxTexts?: number;
+}
+
 const textSchema = z.object({ text: z.string(), revision: z.number().int().min(0) });
 
 export class UnsentTextStore {
   private readonly path: string;
   private readonly redactor: Redactor;
   private readonly maxTexts: number;
+  private readonly now: () => number;
   private readonly listeners: Set<(event: UnsentTextEvent) => void>;
   private revision: number;
   private readonly texts: Map<string, UnsentText>;
 
-  constructor(path: string, redactor: Redactor, maxTexts = defaultMaxTexts) {
+  constructor(path: string, redactor: Redactor, options: UnsentTextStoreOptions = {}) {
     this.path = path;
     this.redactor = redactor;
-    this.maxTexts = maxTexts;
+    this.maxTexts = options.maxTexts ?? defaultMaxTexts;
+    this.now = options.now ?? Date.now;
     this.listeners = new Set();
     this.revision = 0;
     this.texts = new Map();
@@ -77,7 +85,8 @@ export class UnsentTextStore {
   }
 
   private change(key: string, text: string | null, writer: string | null): number {
-    this.revision += 1;
+    // An open page keeps the revisions that it saw. The clock keeps each new one higher, also after a lost file.
+    this.revision = Math.max(this.revision + 1, this.now());
     const revision = this.revision;
     // A delete and a set put the key last, so the oldest text is first to go.
     this.texts.delete(key);

@@ -1010,6 +1010,13 @@ describe("routes", () => {
     });
     eva.sessions.delete(session.id);
     expect((await json<{ texts: Record<string, unknown> }>(await call("/api/unsent-texts"))).texts).toEqual({});
+    // A late write of the deleted chat, such as at a page hide, leaves no text behind.
+    const late = await call(`/api/unsent-texts/${session.id}`, {
+      method: "PUT",
+      body: { text: "Too late", keepEmpty: false, writer: "page-1" },
+    });
+    expect(late.status).toBe(404);
+    expect((await json<{ texts: Record<string, unknown> }>(await call("/api/unsent-texts"))).texts).toEqual({});
   });
 
   test("archives and brings back a chat, and refuses a bad body or an unknown chat (issue 388)", async () => {

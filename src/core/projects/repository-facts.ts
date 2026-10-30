@@ -6,6 +6,7 @@
 import { parse as parseYaml } from "yaml";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { manifestPath } from "../widgets/widget-contract.ts";
 import type { HookFacts, RepositoryFacts, WorkflowFacts } from "./repository-setup.ts";
 
 export interface GithubAnswer {
@@ -33,7 +34,6 @@ const huskyStages: Readonly<Record<string, keyof HookFacts>> = {
   ".husky/pre-push": "push",
 };
 const preCommitPath = ".pre-commit-config.yaml";
-const widgetManifestPath = "eva-widget.json";
 const widgetSchemaPattern = /^schemas\/[A-Za-z0-9._-]+\.json$/;
 const labelsPerPage = 100;
 /** A limit for the label pages, so a broken answer never loops for ever. */
@@ -164,15 +164,15 @@ async function readWidgetFiles(
   files: Readonly<Record<string, string>>,
   readFile: (path: string) => Promise<FileRead>,
 ): Promise<Record<string, string> | null> {
-  if (!(widgetManifestPath in files)) return {};
-  const manifest = await readFile(widgetManifestPath);
+  if (!(manifestPath in files)) return {};
+  const manifest = await readFile(manifestPath);
   if (manifest === null || manifest === "absent") return null;
   const inputs = listOf(asRecord(parseJson(manifest.text))?.["inputs"]);
   const schemas = [...new Set(inputs.flatMap((input) => textField(input, "schema") ?? []))].filter(
     (path) => widgetSchemaPattern.test(path) && path in files,
   );
   const texts = await Promise.all(schemas.map(readFile));
-  const read: Record<string, string> = { [widgetManifestPath]: manifest.text };
+  const read: Record<string, string> = { [manifestPath]: manifest.text };
   for (const [index, text] of texts.entries()) {
     if (text === null || text === "absent") return null;
     read[schemas[index] ?? ""] = text.text;
@@ -235,6 +235,7 @@ async function readWorkflows(
       runsOnPullRequest: runsOnPullRequest(fields),
       usesCodeql: content.includes("github/codeql-action/"),
       commands: stepCommands(fields),
+      jobs: jobNames(fields),
     });
   }
   return withLocalWorkflows(workflows);
@@ -246,6 +247,15 @@ function runsOnPullRequest(fields: Record<string, unknown> | null): boolean {
   if (trigger === "pull_request") return true;
   if (Array.isArray(trigger)) return trigger.includes("pull_request");
   return asRecord(trigger)?.["pull_request"] !== undefined;
+}
+
+/** The name that GitHub gives the check of each job: its `name` when it is plain text, else its key. */
+function jobNames(workflow: Record<string, unknown> | null): string[] {
+  return Object.entries(asRecord(workflow?.["jobs"]) ?? {}).map(([key, job]) => {
+    const name = textField(job, "name");
+    // A name with an expression, such as a matrix value, gives other check names.
+    return name !== null && !name.includes("${{") ? name : key;
+  });
 }
 
 /** The `run` text or the `uses` action of each step, job by job. A job can also `uses` a whole workflow. */

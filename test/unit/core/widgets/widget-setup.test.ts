@@ -111,6 +111,19 @@ describe("the widget report", () => {
     expect(item(report, "Test that the widget fills the screen")?.light).toBe("green");
   });
 
+  test("a repository whose CI has other check names gets no ruleset fix, which would block each pull request", async () => {
+    const files = setUpWidget();
+    files[".github/workflows/ci.yml"] = (files[".github/workflows/ci.yml"] ?? "").replace("  lint:\n", "  build:\n");
+    const report = await widgetReport({
+      files,
+      labels,
+      answers: { "rules/branches/main": [], "branches/main": { protected: false } },
+    });
+    const ruleset = item(report, "Required checks before merge");
+    expect(ruleset?.light).toBe("red");
+    expect(ruleset?.directFix).toBeUndefined();
+  });
+
   test("a schema with a field loc or my_field fails, with the name that fails", async () => {
     const files = setUpWidget();
     const schema = JSON.parse(files["schemas/habits.json"] ?? "") as { properties: Record<string, unknown> };

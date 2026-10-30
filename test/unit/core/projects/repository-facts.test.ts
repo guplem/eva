@@ -114,12 +114,14 @@ describe("readRepositoryFacts", () => {
         runsOnPullRequest: true,
         usesCodeql: false,
         commands: ["actions/checkout@v4", "npm ci\nnpm run check\n"],
+        jobs: ["checks"],
       },
       {
         path: ".github/workflows/codeql.yaml",
         runsOnPullRequest: false,
         usesCodeql: true,
         commands: ["github/codeql-action/analyze@v3"],
+        jobs: ["analyze"],
       },
     ]);
     expect(facts.scripts).toEqual({});
@@ -179,6 +181,16 @@ describe("readRepositoryFacts", () => {
     const facts = await readRepositoryFacts(slug, fakeGet(answers));
     expect(facts.allowRules).toBe("none");
     expect(facts.workflows?.[0]?.runsOnPullRequest).toBe(false);
+  });
+
+  test("a job's check name is its plain name, or its key when the name holds an expression", async () => {
+    const answers = fullAnswers();
+    answers.set(`raw:repos/${slug}/contents/.github/workflows/checks.yml?ref=main`, {
+      status: 200,
+      body: "on: pull_request\njobs:\n  lint:\n    name: Lint the code\n    steps: []\n  test:\n    name: test ${{ matrix.os }}\n    steps: []\n",
+    });
+    const facts = await readRepositoryFacts(slug, fakeGet(answers));
+    expect(facts.workflows?.[0]?.jobs).toEqual(["Lint the code", "test"]);
   });
 
   test("the list form and the string form of `on` both count", async () => {

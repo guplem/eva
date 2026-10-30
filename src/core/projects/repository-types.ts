@@ -8,8 +8,8 @@ import { evaRepository } from "../../shared/version.ts";
 import {
   describeWidgetRequest,
   pushWidgetTemplate,
-  rulesetFix,
   startFirstDeploy,
+  widgetChecks,
   widgetProjectNote,
   widgetSection,
 } from "../widgets/widget-setup.ts";
@@ -22,7 +22,6 @@ import {
   vibeCodedSections,
   type RepositoryFacts,
   type SetupReport,
-  type SetupSection,
 } from "./repository-setup.ts";
 
 export type { RepositoryTypeName } from "./repository-catalog.ts";
@@ -77,25 +76,16 @@ const steps: Readonly<Record<RepositoryTypeName, TypeSteps>> = {
             `Eva could not read her reference repository, ${evaRepository}. Try again later.`,
             "widget",
           )
-        : setupReport("widget", target, [...widgetStandardSections(reference, target), widgetSection(target)]),
+        : setupReport("widget", target, [
+            ...vibeCodedSections(reference, target, { requiredChecks: widgetChecks }),
+            widgetSection(target),
+          ]),
     afterCreate: (slug, write, project) => pushWidgetTemplate(slug, write, project.title),
     afterFixes: startFirstDeploy,
     firstChat: describeWidgetRequest,
     projectNote: widgetProjectNote,
   },
 };
-
-/** The vibe-coded sections. A widget knows the names of its CI checks, so Eva adds its ruleset herself. */
-function widgetStandardSections(reference: RepositoryFacts, target: RepositoryFacts): SetupSection[] {
-  return vibeCodedSections(reference, target).map((section) => ({
-    ...section,
-    items: section.items.map((item) =>
-      item.label === "Required checks before merge" && item.light === "red"
-        ? { ...item, directFix: rulesetFix(target.slug) }
-        : item,
-    ),
-  }));
-}
 
 export const repositoryTypes: readonly RepositoryType[] = repositoryCatalog.map((info) => ({
   ...info,

@@ -33,6 +33,7 @@ const reference: RepositoryFacts = {
       runsOnPullRequest: true,
       usesCodeql: false,
       commands: ["actions/checkout@v4", "bun run check"],
+      jobs: ["checks"],
     },
   ],
   scripts: { check: "bun run lint && bun test", lint: "eslint ." },
@@ -256,7 +257,9 @@ describe("evaluateSetup", () => {
         dependabotAlerts: false,
         readOnlyWorkflowToken: false,
         codeScanningDefaultSetup: false,
-        workflows: [{ path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true, commands: [] }],
+        workflows: [
+          { path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true, commands: [], jobs: [] },
+        ],
       }),
     );
     expect(item(report, "Dependabot alerts").light).toBe("red");
@@ -283,7 +286,9 @@ describe("evaluateSetup, edge cases", () => {
       reference,
       target({
         files: withoutUndefined({ ...reference.files, "lefthook.yml": undefined, "lefthook.json": "hooks" }),
-        workflows: [{ path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true, commands: [] }],
+        workflows: [
+          { path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true, commands: [], jobs: [] },
+        ],
       }),
     );
     expect(item(report, "CI on pull requests").light).toBe("red");
@@ -315,6 +320,7 @@ describe("evaluateSetup, edge cases", () => {
           runsOnPullRequest: true,
           usesCodeql: false,
           commands: ["cargo clippy", "cargo test"],
+          jobs: ["ci"],
         },
       ],
     });

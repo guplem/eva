@@ -74,6 +74,8 @@ export interface WorkflowFacts {
   readonly usesCodeql: boolean;
   /** The `run` text or the `uses` action of each step, in each job. */
   readonly commands: readonly string[];
+  /** The check name of each job: its `name`, or its key. */
+  readonly jobs: readonly string[];
 }
 
 /** The commands that the git hooks run before a commit and before a push. */
@@ -157,9 +159,21 @@ export function setupReport(type: string, target: RepositoryFacts, sections: rea
   };
 }
 
+export interface VibeCodedOptions {
+  /**
+   * The CI checks that a type knows by name, such as those of its template. When the pull-request
+   * CI has them, Eva adds the ruleset that requires them herself.
+   */
+  readonly requiredChecks?: readonly string[];
+}
+
 /** The sections of the full vibe-coded standard, judged against the reference. */
-export function vibeCodedSections(reference: RepositoryFacts, target: RepositoryFacts): SetupSection[] {
-  const context = new Context(reference, target);
+export function vibeCodedSections(
+  reference: RepositoryFacts,
+  target: RepositoryFacts,
+  options: VibeCodedOptions = {},
+): SetupSection[] {
+  const context = new Context(reference, target, options.requiredChecks ?? []);
   const harness = harnessItems(context);
   return [
     { title: "Development", items: developmentItems(context), score: null },
@@ -223,10 +237,12 @@ export function chatRequest(slug: string, items: readonly SetupItem[]): string |
 class Context {
   readonly reference: RepositoryFacts;
   readonly target: RepositoryFacts;
+  readonly requiredChecks: readonly string[];
 
-  constructor(reference: RepositoryFacts, target: RepositoryFacts) {
+  constructor(reference: RepositoryFacts, target: RepositoryFacts, requiredChecks: readonly string[]) {
     this.reference = reference;
     this.target = target;
+    this.requiredChecks = requiredChecks;
   }
 
   /** A link to a path of the reference's default branch. */
@@ -467,11 +483,56 @@ function requiredChecksItem(context: Context): SetupItem {
   if (context.target.isPrivate) {
     return grey(label, "GitHub enforces rulesets on private repositories only on a paid plan.");
   }
+  const checks = context.requiredChecks;
+  const jobs = new Set(
+    (context.target.workflows ?? [])
+      .filter((workflow) => workflow.runsOnPullRequest)
+      .flatMap((workflow) => workflow.jobs),
+  );
+  // A ruleset that names a check that never reports would block every pull request.
+  const known = checks.length > 0 && checks.every((check) => jobs.has(check));
   return {
     label,
     light: "red",
     detail: "Nothing stops a merge while the checks fail.",
     fixRequest: `In ${context.target.slug}, add a branch ruleset for the default branch. It requires each CI job to pass, and blocks force pushes and deletion. Use \`gh api repos/${context.target.slug}/rulesets --method POST\`, which needs admin rights. Or use Settings > Rules > Rulesets.`,
+    ...(known ? { directFix: rulesetFix(context.target.slug, checks) } : {}),
+  };
+}
+
+/** The integration of GitHub Actions, so only its runs pass a required check. */
+const actionsIntegration = 15368;
+
+/**
+ * A ruleset like the reference's: these checks before each merge, no force push and no delete of
+ * the default branch. It runs after the file commit of the fixes, which goes straight to the
+ * branch and which a required check would refuse.
+ */
+function rulesetFix(slug: string, checks: readonly string[]): DirectFix {
+  return {
+    kind: "api",
+    method: "POST",
+    path: `repos/${slug}/rulesets`,
+    body: {
+      name: "Requirements for merge",
+      target: "branch",
+      enforcement: "active",
+      conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } },
+      // An admin can still merge a pull request that waits on a broken check; nobody pushes to the branch.
+      bypass_actors: [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "pull_request" }],
+      rules: [
+        { type: "deletion" },
+        { type: "non_fast_forward" },
+        {
+          type: "required_status_checks",
+          parameters: {
+            strict_required_status_checks_policy: false,
+            required_status_checks: checks.map((context) => ({ context, integration_id: actionsIntegration })),
+          },
+        },
+      ],
+    },
+    last: true,
   };
 }
 

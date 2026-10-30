@@ -13,8 +13,6 @@ import { widgetTemplate } from "./widget-template.ts";
 
 /** The CI jobs of the template, which the ruleset requires by their names. */
 export const widgetChecks = ["lint", "test"] as const;
-/** The integration of GitHub Actions, so only its runs pass a required check. */
-const actionsIntegration = 15368;
 const deployWorkflow = "pages.yml";
 const fillsScreenTest = "tests/fills-screen.spec.js";
 const templateLink = `https://github.com/${evaRepository}/tree/main/templates/widget`;
@@ -29,36 +27,6 @@ export function widgetSection(target: RepositoryFacts): SetupSection {
     title: "Widget",
     items: [...contractItems(target), ciItem(target), fillsScreenItem(target), pagesItem(target)],
     score: null,
-  };
-}
-
-/** The ruleset of a widget: the CI checks before each merge, no force push and no delete of main. */
-export function rulesetFix(slug: string): DirectFix {
-  return {
-    kind: "api",
-    method: "POST",
-    path: `repos/${slug}/rulesets`,
-    body: {
-      name: "Requirements for merge",
-      target: "branch",
-      enforcement: "active",
-      conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } },
-      // An admin merges a pull request that waits on a broken check; nobody pushes to main.
-      bypass_actors: [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "pull_request" }],
-      rules: [
-        { type: "deletion" },
-        { type: "non_fast_forward" },
-        {
-          type: "required_status_checks",
-          parameters: {
-            strict_required_status_checks_policy: false,
-            required_status_checks: widgetChecks.map((context) => ({ context, integration_id: actionsIntegration })),
-          },
-        },
-      ],
-    },
-    // A required check would refuse the commit of the skills, which goes straight to main.
-    last: true,
   };
 }
 

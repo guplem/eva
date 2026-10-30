@@ -162,14 +162,14 @@ describe("buildQueryOptions", () => {
   });
 
   test("a glob character in a folder name becomes `?`, because Claude Code turns a backslash into a slash", () => {
-    const patterns = hiddenInstructionPatterns("/home/a (b)/[c]/{d}*?!+@/vault/Projects/example-app", posix);
-    expect(patterns).toContain("/home/a ?b?/?c?/?d??????/vault/AGENTS.md");
+    const patterns = hiddenInstructionPatterns("/srv/a (b)/[c]/{d}*?!+@/vault/Projects/example-app", posix);
+    expect(patterns).toContain("/srv/a ?b?/?c?/?d??????/vault/AGENTS.md");
     expect(patterns.some((pattern) => pattern.includes("example-app"))).toBe(false);
   });
 
   test("a Windows folder gives slashes and any drive letter, since picomatch matches case", () => {
-    const patterns = hiddenInstructionPatterns("C:\\Users\\Example\\vault\\Projects\\example-app", win32);
-    expect(patterns).toContain("?:/Users/Example/vault/AGENTS.md");
+    const patterns = hiddenInstructionPatterns("D:\\Data\\Example\\vault\\Projects\\example-app", win32);
+    expect(patterns).toContain("?:/Data/Example/vault/AGENTS.md");
     expect(patterns).toContain("?:/AGENTS.md");
     expect(patterns.every((pattern) => !pattern.includes("\\"))).toBe(true);
   });

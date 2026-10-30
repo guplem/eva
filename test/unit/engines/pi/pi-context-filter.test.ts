@@ -92,16 +92,16 @@ describe("hideUpperContext", () => {
   });
 
   test("on Windows, the comparison ignores case and the kind of separator", () => {
-    const winMap = { path: "c:/users/example/vault/AGENTS.md", content: "Vault map." };
+    const winMap = { path: "d:/data/example/vault/AGENTS.md", content: "Vault map." };
     const winProject = {
-      path: "C:\\Users\\Example\\Vault\\Projects\\example-app\\AGENTS.md",
+      path: "D:\\Data\\Example\\Vault\\Projects\\example-app\\AGENTS.md",
       content: "Project rule.",
     };
     const files = [winMap, winProject];
     const { prompt } = hideUpperContext(
       piPrompt(files),
       files,
-      "C:\\Users\\Example\\Vault\\Projects\\example-app",
+      "D:\\Data\\Example\\Vault\\Projects\\example-app",
       win32,
     );
     expect(prompt).toBe(piPrompt([winProject]));

@@ -172,6 +172,27 @@ describe("the widget report", () => {
     expect(item(report, "Required checks before merge")?.light).toBe("grey");
   });
 
+  test("with no reference, there is no report; with unread widget files, the contract items are grey", async () => {
+    const fake = fakeGithub({ [slug]: { files: setUpWidget(), labels } });
+    const facts = await readRepositoryFacts(slug, fake);
+    const type = repositoryTypeOf("widget");
+    expect(type?.report(facts, null).problem).toContain(evaRepository);
+    const reference = await readRepositoryFacts(
+      evaRepository,
+      fakeGithub({ [evaRepository]: { files: evaFiles(), labels } }),
+    );
+    const unread = type?.report({ ...facts, widgetFiles: null, workflows: null, files: null, pages: null }, reference);
+    for (const label of [
+      "Widget manifest",
+      "Data schemas",
+      "Widget check in CI",
+      "Test that the widget fills the screen",
+      "GitHub Pages",
+    ]) {
+      expect(unread === undefined ? undefined : item(unread, label)?.light).toBe("grey");
+    }
+  });
+
   test("Pages from a branch, or with no deploy workflow, is yellow", async () => {
     const fromBranch = await widgetReport({
       files: setUpWidget(),

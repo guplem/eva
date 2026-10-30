@@ -31,6 +31,7 @@ beforeEach(() => {
   paths = homePaths(join(root, "home"));
   vault = join(root, "vault");
   mkdirSync(vault);
+  recordTheMove();
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -38,6 +39,15 @@ afterEach(() => {
 
 function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+}
+
+/** Most vaults have the settings folder: the hub moved the files (#662). */
+function recordTheMove(): void {
+  mkdirSync(join(vault, ".eva", "settings"), { recursive: true });
+  writeFileSync(
+    join(vault, ".eva", "migrations.json"),
+    JSON.stringify({ applied: [{ id: "2026-10-30-settings-folder", at: "", version: "1.40.0" }] }),
+  );
 }
 
 describe("where each setting lives", () => {
@@ -77,14 +87,12 @@ describe("where each setting lives", () => {
 
   test("the vault wins over config.json, and a machine key in the vault file is ignored", () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault, timeZone: "UTC", port: 7421 });
-    mkdirSync(join(vault, ".eva"));
     writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: "Asia/Tokyo", port: 9999 }));
     expect(loadSettings(paths)).toMatchObject({ config: { timeZone: "Asia/Tokyo", port: 7421 }, problem: null });
   });
 
   test("a broken vault file never stops Eva: the config stays, and the problem is named (lesson 54)", () => {
     const config = { ...defaultConfig, vaultPath: vault, timeZone: "UTC" };
-    mkdirSync(join(vault, ".eva"));
     writeFileSync(vaultSettingsPath(vault), "{ not json");
     expect(withVaultSettings(config).config).toEqual(config);
     expect(withVaultSettings(config).problem).toContain("not valid JSON");
@@ -180,7 +188,6 @@ describe("the model and the effort of new chats (#550)", () => {
 
   test("an old vault's Claude Code model applies to new chats, and its Default reads as Smart", () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
-    mkdirSync(join(vault, ".eva"));
     const old = (model: string): string => JSON.stringify({ engines: { claudeCode: { defaultModel: model } } });
     writeFileSync(vaultSettingsPath(vault), old("sonnet"));
     expect(loadSettings(paths).config.engines.defaultModel).toBe("sonnet");
@@ -190,7 +197,6 @@ describe("the model and the effort of new chats (#550)", () => {
 
   test("the old single pi model fills each tier that names no model, and a save writes the new form", () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
-    mkdirSync(join(vault, ".eva"));
     const models = { default: "openai/gpt-5-mini", opus: "openai/gpt-5", sonnet: null };
     writeFileSync(vaultSettingsPath(vault), JSON.stringify({ engines: { pi: { models } } }));
     const config = loadSettings(paths).config;
@@ -320,5 +326,41 @@ describe("a vault that a newer Eva migrated (#119)", () => {
     expect(isEvaError(caught, "vault_ahead")).toBe(true);
     expect(readFileSync(paths.config, "utf-8")).toBe(machineBefore);
     expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toBe(vaultBefore);
+  });
+});
+
+describe("the settings folder of the vault (#662)", () => {
+  const oldFile = (): string => join(vault, ".eva", "settings.json");
+
+  function writeBoth(old: string, current: string): void {
+    mkdirSync(join(vault, ".eva", "settings"), { recursive: true });
+    writeFileSync(oldFile(), JSON.stringify({ timeZone: old }));
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: current }));
+  }
+
+  test("the settings file lives in .eva/settings/", () => {
+    expect(vaultSettingsPath(vault)).toBe(join(vault, ".eva", "settings", "settings.json"));
+  });
+
+  test("before the hub moves the files, Eva reads the old file, which an older Eva still writes", () => {
+    rmSync(join(vault, ".eva", "migrations.json"));
+    writeBoth("Asia/Tokyo", "Europe/Madrid");
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Asia/Tokyo");
+  });
+
+  test("after the move, Eva reads the new file", () => {
+    writeBoth("Asia/Tokyo", "Europe/Madrid");
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Europe/Madrid");
+  });
+
+  test("when the file to read is missing, Eva reads the other place", () => {
+    writeFileSync(oldFile(), JSON.stringify({ timeZone: "Asia/Tokyo" }));
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Asia/Tokyo");
+  });
+
+  test("a save writes both places, so an older satellite reads the new value", () => {
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Europe/Madrid" });
+    expect(readJson(oldFile())).toMatchObject({ timeZone: "Europe/Madrid" });
   });
 });

@@ -23,6 +23,7 @@ import { googleAccessPerService } from "./google-access.ts";
 import { addAboutMeHeader } from "./about-me-header.ts";
 import { deleteOldCloneFolders } from "./clone-folders.ts";
 import { modelTiersInConfig, modelTiersInVault } from "./model-tiers.ts";
+import { moveSettingsToFolder } from "./settings-folder.ts";
 
 /** Add each new migration here. The runner sorts them by id. */
 export const migrations: readonly Migration[] = [
@@ -36,6 +37,7 @@ export const migrations: readonly Migration[] = [
   deleteOldCloneFolders,
   modelTiersInVault,
   modelTiersInConfig,
+  moveSettingsToFolder,
 ];
 
 export interface VaultAhead {

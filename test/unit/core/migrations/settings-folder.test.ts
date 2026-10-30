@@ -1,0 +1,69 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runMigrations } from "../../../../src/core/migrations/migration-runner.ts";
+import { moveSettingsToFolder } from "../../../../src/core/migrations/settings-folder.ts";
+import { homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
+
+let root: string;
+let paths: HomePaths;
+let vault: string;
+
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), "eva-settings-folder-"));
+  paths = homePaths(join(root, "home"));
+  vault = join(root, "vault");
+  mkdirSync(paths.root, { recursive: true });
+  mkdirSync(join(vault, ".eva"), { recursive: true });
+});
+afterEach(() => {
+  rmSync(root, { recursive: true, force: true });
+});
+
+function migrate(): void {
+  const result = runMigrations({
+    store: "vault",
+    migrations: [moveSettingsToFolder],
+    paths,
+    vaultPath: vault,
+    version: "1.40.0",
+    now: () => new Date("2026-10-30T08:00:00.000Z"),
+  });
+  expect(result).toEqual({ kind: "done", applied: [moveSettingsToFolder.id], later: [] });
+}
+
+function read(path: string): string {
+  return readFileSync(join(vault, path), "utf-8");
+}
+
+describe("moveSettingsToFolder (vault)", () => {
+  test("copies the settings and the chat name rules into .eva/settings/, and keeps the old files", () => {
+    writeFileSync(join(vault, ".eva", "settings.json"), '{ "timeZone": "Europe/Madrid" }\n');
+    writeFileSync(join(vault, ".eva", "chat-names.md"), "Lead with an emoji.\n");
+    migrate();
+    expect(read(".eva/settings/settings.json")).toBe('{ "timeZone": "Europe/Madrid" }\n');
+    expect(read(".eva/settings/chat-names.md")).toBe("Lead with an emoji.\n");
+    // An older satellite reads only the old place, until it updates.
+    expect(read(".eva/settings.json")).toBe('{ "timeZone": "Europe/Madrid" }\n');
+    expect(read(".eva/chat-names.md")).toBe("Lead with an emoji.\n");
+  });
+
+  test("the old file wins over a new one, because it holds the newest value before the move", () => {
+    writeFileSync(join(vault, ".eva", "chat-names.md"), "Lead with an emoji.\n");
+    mkdirSync(join(vault, ".eva", "settings"));
+    writeFileSync(join(vault, ".eva", "settings", "chat-names.md"), "Older rules.\n");
+    migrate();
+    expect(read(".eva/settings/chat-names.md")).toBe("Lead with an emoji.\n");
+  });
+
+  test("a vault without the old files gets no new files", () => {
+    migrate();
+    expect(existsSync(join(vault, ".eva", "settings"))).toBe(false);
+  });
+
+  test("an instance without a vault has nothing to move", () => {
+    const context = { paths, vaultPath: null, write: () => expect.unreachable() };
+    expect(moveSettingsToFolder.run(context)).toBe("done");
+  });
+});

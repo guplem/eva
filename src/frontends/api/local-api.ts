@@ -991,7 +991,7 @@ async function pushRoute(
   return json({ error: "Not found." }, 404);
 }
 
-/** The person's rules for chat names, in `.eva/chat-names.md`: read or replace (issue 50). */
+/** The person's rules for chat names, in `.eva/settings/chat-names.md`: read or replace (issue 50). */
 async function chatNamesRoute(request: Request, method: string, eva: Eva): Promise<Response> {
   const chatNames = eva.chatNames;
   if (chatNames === null) return json({ error: "No vault is configured." }, 409);

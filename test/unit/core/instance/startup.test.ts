@@ -69,6 +69,11 @@ describe("prepareStart with a vault", () => {
     sandbox.dispose();
   });
 
+  /** The settings file of a vault from before the settings folder (#662). The hub moves it at start. */
+  function oldSettingsPath(): string {
+    return join(vault, ".eva", "settings.json");
+  }
+
   test("claims the hub when no machine has, and says so", async () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     const prepared = await start();
@@ -152,7 +157,7 @@ describe("prepareStart with a vault", () => {
   test("the hub drops a security setting from the vault (#119)", async () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     mkdirSync(join(vault, ".eva"), { recursive: true });
-    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }));
+    writeFileSync(oldSettingsPath(), JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }));
     await start();
     expect(JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8"))).not.toHaveProperty("trust");
   });
@@ -161,16 +166,16 @@ describe("prepareStart with a vault", () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     mkdirSync(join(vault, ".eva"), { recursive: true });
     writeFileSync(join(vault, ".eva", "hub.json"), JSON.stringify({ machine: "laptop", since: "" }));
-    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }));
+    writeFileSync(oldSettingsPath(), JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }));
     const prepared = await start();
     expect(prepared.migrations.vault).toBeNull();
-    expect(JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8"))).toHaveProperty("trust");
+    expect(JSON.parse(readFileSync(oldSettingsPath(), "utf-8"))).toHaveProperty("trust");
   });
 
   test("names a vault settings file that it could not use", async () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     mkdirSync(join(vault, ".eva"), { recursive: true });
-    writeFileSync(vaultSettingsPath(vault), "not json");
+    writeFileSync(oldSettingsPath(), "not json");
     const prepared = await start();
     expect(prepared.notes).toContainEqual({
       level: "warn",

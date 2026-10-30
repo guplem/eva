@@ -221,7 +221,7 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
               placeholder={"Lead every name with an emoji.\nName an issue chat “Implementing #N”."}
               onChange={(event) => setChatNameRules(event.target.value)}
             />
-            <span className="field-hint">The rules live in your vault, in .eva/chat-names.md.</span>
+            <span className="field-hint">The rules live in your vault, in .eva/settings/chat-names.md.</span>
           </label>
         </Card>
       )}

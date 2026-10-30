@@ -72,6 +72,11 @@ const topics: Readonly<Record<string, NotificationTopic>> = {
     meaning:
       "A newer Eva changed the format of your vault, or Eva cannot read the vault's record of these changes, .eva/migrations.json. Until you update Eva or repair the file, Eva does not change the vault's settings, schedules or hub. Chats and the vault sync go on.",
   },
+  last_location: {
+    title: "Your location",
+    meaning:
+      "Eva keeps your last location from your phone in Life/About me.md, so each computer sees it. This entry says that Eva cannot write the note, because it is missing or its header is broken, or that she can again.",
+  },
   machine_ahead: {
     title: "Files from a newer Eva",
     meaning: "A newer Eva upgraded the files of this computer, so this older Eva leaves them as they are.",

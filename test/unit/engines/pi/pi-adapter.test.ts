@@ -9,6 +9,11 @@ import { join } from "node:path";
 import { approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
 import { buildPiArguments, PiEngine } from "../../../../src/engines/pi/pi-adapter.ts";
 import {
+  contextExtensionSource,
+  contextNoticePrefix,
+  projectFolderVariable,
+} from "../../../../src/engines/pi/pi-context-extension.ts";
+import {
   mcpExtensionSource,
   mcpNoticePrefix,
   mcpServersFileVariable,
@@ -95,6 +100,7 @@ describe("buildPiArguments", () => {
     sessionsFolder: "/eva/pi/sessions",
     extensionFile: "/eva/pi/eva-approval-extension.ts",
     mcpExtensionFile: null,
+    contextExtensionFile: null,
     promptFile: "/eva/pi/prompts/session-1.md",
     model: null,
   };
@@ -128,6 +134,20 @@ describe("buildPiArguments", () => {
       ...base,
       "--no-extensions",
     ]);
+  });
+
+  test("a Project chat also loads Eva's filter of the instruction files above the project (#702)", () => {
+    const project = request({ mode: "project", appendSystemPrompt: null, pluginFolders: [] });
+    const filter = "/eva/pi/eva-context-extension.ts";
+    expect(buildPiArguments(project, { ...inputs, promptFile: null, contextExtensionFile: filter })).toEqual([
+      ...base,
+      "-e",
+      filter,
+    ]);
+    // `--no-extensions` keeps each extension loaded with `-e`, so an untrusted clone keeps the filter.
+    expect(
+      buildPiArguments({ ...project, trusted: false }, { ...inputs, promptFile: null, contextExtensionFile: filter }),
+    ).toEqual([...base, "-e", filter, "--no-extensions"]);
   });
 
   test("a turn with MCP servers also loads Eva's MCP bridge", () => {
@@ -283,6 +303,34 @@ describe("PiEngine", () => {
     expect(existsSync(specs)).toBe(false);
     expect(readFileSync(bridge, "utf8")).toBe(mcpExtensionSource);
     expect(fake.runs[1]?.command).not.toContain(bridge);
+    expect(fake.runs[1]?.environment).toEqual({ PATH: "/bin" });
+  });
+
+  test("a Project chat gives the filter its project folder, and shows the filter's problem in the chat", async () => {
+    const problem = {
+      type: "extension_ui_request",
+      id: "notice-1",
+      method: "notify",
+      message: `${contextNoticePrefix}Eva could not check which instruction files pi loaded.`,
+      notifyType: "error",
+    };
+    const fake = new FakePi([{ records: [problem, ...loadPiFixture("plain")] }, { records: loadPiFixture("plain") }]);
+    const project = request({
+      mode: "project",
+      appendSystemPrompt: null,
+      pluginFolders: [],
+      startFolder: "/vault/Projects/example-app/repos/clone-0",
+      projectFolder: "/vault/Projects/example-app",
+    });
+    const events = await drain(engine(fake).runTurn(project));
+    await drain(engine(fake).runTurn(request()));
+    const filter = join(folder, "pi", "eva-context-extension.ts");
+    expect(fake.runs[0]?.command).toContain(filter);
+    expect(fake.runs[0]?.environment).toEqual({ PATH: "/bin", [projectFolderVariable]: "/vault/Projects/example-app" });
+    expect(readFileSync(filter, "utf8")).toBe(contextExtensionSource);
+    expect(events).toContainEqual({ kind: "notice", text: "Eva could not check which instruction files pi loaded." });
+    // An Assistant chat has no project folder, so it gets no filter.
+    expect(fake.runs[1]?.command).not.toContain(filter);
     expect(fake.runs[1]?.environment).toEqual({ PATH: "/bin" });
   });
 

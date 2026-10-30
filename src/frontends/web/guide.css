@@ -1,0 +1,90 @@
+/* The Guide section of Settings: the docs for people, and their results in the Settings search. */
+
+.guide-contents,
+.guide-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+/* The parts of a doc fill the width in columns, so the home page stays short. */
+.guide-contents {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14em), 1fr));
+}
+
+/* On a phone, each link gets the room of a finger. */
+@media (max-width: 760px) {
+  .guide-contents,
+  .guide-toc ol {
+    gap: var(--space-3);
+  }
+}
+
+.guide-toc summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.guide-toc ol {
+  margin-top: var(--space-3);
+}
+
+.guide-toc-deep {
+  padding-left: var(--space-4);
+}
+
+/* A doc is long text, so it gets more room between lines than a chat answer. */
+.guide-body {
+  line-height: 1.6;
+}
+
+.guide-body h2 {
+  font-size: var(--text-lg);
+  margin-top: var(--space-6);
+}
+
+.guide-body h3 {
+  font-size: var(--text-md);
+}
+
+.guide-body :is(h2, h3) {
+  scroll-margin-top: var(--space-4);
+  margin-inline: calc(-1 * var(--space-2));
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-input);
+  /* Motion exception: it plays only when a link points at one heading. The colour fades instead of blinking. */
+  transition: background-color var(--dur-slow) var(--ease-out);
+}
+
+/* A search result or a link points at this heading for a moment. */
+.guide-body .flash {
+  background: var(--soft);
+}
+
+.guide-body table {
+  font-size: var(--text-sm);
+}
+
+.guide-footer {
+  justify-content: space-between;
+}
+
+.search-group h2 {
+  margin: var(--space-2) 0;
+  font-size: var(--text-md);
+  color: var(--muted);
+}
+
+.guide-results mark {
+  background: var(--soft);
+  color: var(--soft-ink);
+  border-radius: 4px;
+}
+
+/* A setting key in the text is one long word. */
+.guide-results .field-hint {
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/guplem/eva/main/docs/widgets/meta-schema-v1.json",
+  "title": "The rules for the data schemas of a widget, contract 1",
+  "description": "docs/widgets.md explains each rule. A change for contract 1 never makes an old widget fail.",
+  "type": "object",
+  "required": ["$schema", "type"],
+  "properties": {
+    "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+    "type": { "const": "object" }
+  },
+  "$ref": "#/$defs/schema",
+  "$defs": {
+    "schema": {
+      "type": ["object", "boolean"],
+      "properties": {
+        "properties": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/fieldName" },
+          "additionalProperties": { "$ref": "#/$defs/schema" }
+        },
+        "required": { "type": "array", "items": { "$ref": "#/$defs/fieldName" } },
+        "additionalProperties": { "$ref": "#/$defs/open" },
+        "unevaluatedProperties": { "$ref": "#/$defs/open" },
+        "patternProperties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/schema" } },
+        "items": { "$ref": "#/$defs/schema" },
+        "prefixItems": { "type": "array", "items": { "$ref": "#/$defs/schema" } },
+        "contains": { "$ref": "#/$defs/schema" },
+        "$defs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/schema" } },
+        "allOf": { "type": "array", "items": { "$ref": "#/$defs/schema" } },
+        "anyOf": { "type": "array", "items": { "$ref": "#/$defs/schema" } },
+        "oneOf": { "type": "array", "items": { "$ref": "#/$defs/schema" } },
+        "not": { "$ref": "#/$defs/schema" },
+        "if": { "$ref": "#/$defs/schema" },
+        "then": { "$ref": "#/$defs/schema" },
+        "else": { "$ref": "#/$defs/schema" }
+      }
+    },
+    "open": {
+      "description": "A closed object would refuse the fields of another widget in the same folder.",
+      "not": { "const": false },
+      "$ref": "#/$defs/schema"
+    },
+    "fieldName": {
+      "description": "camelCase, with no known abbreviation as a word.",
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9]*$",
+      "not": {
+        "pattern": "(?:^(?:loc|lat|lon|lng|temp|tmp|qty|desc|num|cnt|amt|val|msg|img|pic|btn|cfg|conf|idx|pos|dt|ts|dur|dist|avg|pct|prev|cur|curr|addr|usr|pwd|min|mins|sec|secs|hr|hrs|km|kg|cal|kcal)|(?:Loc|Lat|Lon|Lng|Temp|Tmp|Qty|Desc|Num|Cnt|Amt|Val|Msg|Img|Pic|Btn|Cfg|Conf|Idx|Pos|Dt|Ts|Dur|Dist|Avg|Pct|Prev|Cur|Curr|Addr|Usr|Pwd|Min|Mins|Sec|Secs|Hr|Hrs|Km|Kg|Cal|Kcal))(?:[A-Z0-9]|$)"
+      }
+    }
+  }
+}

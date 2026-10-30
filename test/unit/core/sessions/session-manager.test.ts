@@ -16,6 +16,7 @@ import { maxDetailLength, maxTurnDetailLength } from "../../../../src/shared/too
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { Redactor } from "../../../../src/shared/redaction.ts";
 import { historyLostNote } from "../../../../src/shared/turn-steps.ts";
+import type { ContextPart, EngineContextInput } from "../../../../src/shared/chat-context.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
 
 let folder: string;
@@ -29,6 +30,7 @@ const preparer: TurnPreparer = {
   prepare: (session) =>
     Promise.resolve({
       startFolder: session.startFolder,
+      projectFolder: null,
       appendSystemPrompt: session.mode === "assistant" ? "You are Eva." : null,
       messagePrefix: null,
       pluginFolders: [],
@@ -3323,5 +3325,119 @@ describe("recent activity (issue 356)", () => {
     clock = new Date("2026-10-14T12:40:01Z");
     expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(false);
     expect(manager.hadActivityWithin("missing", tenMinutes)).toBe(false);
+  });
+});
+
+describe("the context of a chat (issue 700)", () => {
+  const part = (group: ContextPart["group"], title: string): ContextPart => ({
+    group,
+    title,
+    source: null,
+    text: title,
+    note: null,
+  });
+
+  test("groups the engine's parts and the mode's parts, with the engine's parts first in each group", async () => {
+    const inputs: EngineContextInput[] = [];
+    const engine = Object.assign(new FakeEngine(), {
+      describeContext: (input: EngineContextInput): ContextPart[] => {
+        inputs.push(input);
+        return [part("skills", "engine skill"), part("prompt", "engine prompt"), part("instructions", "AGENTS.md")];
+      },
+    });
+    const engineInput: EngineContextInput = {
+      mode: "assistant",
+      startFolder: "/vault",
+      projectFolder: null,
+      trusted: true,
+      pluginFolders: [],
+      environment: {},
+    };
+    const describing: TurnPreparer = {
+      ...preparer,
+      describe: () =>
+        Promise.resolve({ parts: [part("message", "note"), part("prompt", "Eva's prompt")], engine: engineInput }),
+    };
+    const manager = createManager(engine, { projectPreparer: describing });
+    const project = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/clone",
+      source: "cli",
+    });
+    expect((await manager.context(project.id)).map((found) => found.title)).toEqual([
+      "engine prompt",
+      "Eva's prompt",
+      "AGENTS.md",
+      "engine skill",
+      "note",
+    ]);
+    expect(inputs).toEqual([engineInput]);
+    // A mode that cannot describe its chats gives no part.
+    expect(await manager.context(newAssistantSession(manager))).toEqual([]);
+  });
+
+  test("redacts each text and cuts a very long one, since a file outside the vault can hold a token", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const describing: TurnPreparer = {
+      ...preparer,
+      describe: () =>
+        Promise.resolve({
+          parts: [
+            { ...part("instructions", "CLAUDE.md"), text: "token the-secret-value-123" },
+            { ...part("skills", "long"), text: "x".repeat(maxDetailLength + 10) },
+            { ...part("prompt", "Claude Code's prompt"), text: null },
+          ],
+          engine: {
+            mode: "assistant",
+            startFolder: "/vault",
+            projectFolder: null,
+            trusted: true,
+            pluginFolders: [],
+            environment: {},
+          },
+        }),
+    };
+    const manager = createManager(new FakeEngine(), { projectPreparer: describing, redactor });
+    const project = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/clone",
+      source: "cli",
+    });
+    const [prompt, instructions, skill] = await manager.context(project.id);
+    expect(prompt?.text).toBeNull();
+    expect(instructions?.text).not.toContain("the-secret-value-123");
+    expect(skill?.text).toEndWith("[Eva cut 10 characters.]");
+  });
+
+  test("gives only the mode's parts when the engine lists none of its own", async () => {
+    const describing: TurnPreparer = {
+      ...preparer,
+      describe: () =>
+        Promise.resolve({
+          parts: [part("prompt", "Eva's prompt")],
+          engine: {
+            mode: "assistant",
+            startFolder: "/vault",
+            projectFolder: null,
+            trusted: true,
+            pluginFolders: [],
+            environment: {},
+          },
+        }),
+    };
+    const manager = createManager(new FakeEngine(), { projectPreparer: describing });
+    const project = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/clone",
+      source: "cli",
+    });
+    expect((await manager.context(project.id)).map((found) => found.title)).toEqual(["Eva's prompt"]);
   });
 });

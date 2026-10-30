@@ -852,6 +852,25 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   await expect(page.getByLabel("Message").first()).toHaveValue("");
 });
 
+test("the chat details list the context, and a tap shows a part's whole text (issue 700)", async ({ page }) => {
+  await logIn(page);
+  await newAnsweredChat(page, "Context of a chat");
+  let details = page.getByRole("complementary", { name: "This chat" });
+  if (test.info().project.name !== "desktop") {
+    await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+    details = page.getByRole("dialog", { name: "This chat" });
+  }
+  const prompt = details.getByRole("region", { name: "System prompt" });
+  await expect(prompt.getByRole("button", { name: "Eva's prompt" })).toBeVisible();
+  // A CLAUDE.md in a folder above the demo vault would hide its AGENTS.md, so the test names no file.
+  await expect(details.getByRole("region", { name: "Instruction files" })).toBeVisible();
+  await prompt.getByRole("button", { name: "Your rules for Eva" }).click();
+  const part = page.getByRole("dialog", { name: "Your rules for Eva" });
+  await expect(part).toContainText("# You are Eva");
+  await part.getByRole("button", { name: "Close" }).click();
+  await expect(part).toHaveCount(0);
+});
+
 test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram does", async ({ page }) => {
   await logIn(page);
   const first = await newAnsweredChat(page, "First linked chat");
@@ -2724,6 +2743,50 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByLabel("Theme")).toBeVisible();
   await page.getByLabel("Search settings").fill("banana");
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
+});
+
+test("Settings: the guide shows the docs, and the search opens a doc at its heading (issue 708)", async ({ page }) => {
+  // The test reads the real docs: it needs the headings "Chats" and "Vault conflicts" in reference.md,
+  // "More than one Eva on a computer" in setup.md, and the link to it in reference.md.
+  await logIn(page);
+  await openSettings(page, "Guide");
+  await page.getByRole("list", { name: "Parts of Eva reference" }).getByRole("link", { name: "Chats" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Eva reference");
+  await expect(page.getByRole("heading", { name: "Chats", level: 2 })).toBeInViewport();
+  // A link between the docs stays in the app.
+  await page.getByRole("link", { name: "More than one Eva on a computer" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install Eva, step by step");
+  await expect(page.getByRole("heading", { name: "More than one Eva on a computer" })).toBeInViewport();
+  await page.getByLabel("Search settings").fill("vault conflicts");
+  const results = page.getByRole("list", { name: "Guide results" });
+  await results.getByRole("button", { name: /^Vault conflicts/ }).click();
+  await expect(page).toHaveURL(/#\/settings\/guide\/reference\/vault-conflicts$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Eva reference");
+  await expect(page.getByRole("heading", { name: "Vault conflicts", level: 3 })).toBeInViewport();
+  await expect(page.getByRole("heading", { name: "Vault conflicts", level: 3 })).toBeFocused();
+  // A link to the heading that the address already names still scrolls to it.
+  await page.locator(".settings-content").evaluate((box) => box.scrollTo({ top: 0 }));
+  await page.locator(".guide-body").getByRole("link", { name: "Vault conflicts" }).click();
+  await expect(page.getByRole("heading", { name: "Vault conflicts", level: 3 })).toBeInViewport();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install Eva, step by step");
+});
+
+test('Settings: a "?" opens the guide at the part that explains the card, and Back returns (issue 709)', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  await page.getByRole("link", { name: /^Help on .+: Vault sync$/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Eva reference");
+  await expect(page.getByRole("heading", { name: "Vault sync", level: 2 })).toBeInViewport();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Vault and sync");
+  // A setup step has its own "?".
+  await page.goto("/#/settings/setup/telegram");
+  await page.getByRole("link", { name: /^Help on .+: Connect Telegram \(optional\)$/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install Eva, step by step");
+  await expect(page.getByRole("heading", { name: "Connect Telegram (optional)", level: 2 })).toBeInViewport();
 });
 
 test("Settings: Development links to a GitHub report and opens the design reference", async ({ page }) => {

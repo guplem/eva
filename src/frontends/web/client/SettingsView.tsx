@@ -3,7 +3,7 @@
  * list on a wide screen, a search, and a page per section and per setup step. The address names
  * the page (`#/settings/<section>/<item>`), so Back works and a reload stays on the page.
  */
-import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
+import { Fragment, useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { AccessSection } from "./AccessSection.tsx";
 import { api, type EvaSetupState, type EvaStatus, type ProgressStep, type PublicSettings } from "./api.ts";
 import { Dialog } from "./Dialog.tsx";
@@ -11,6 +11,8 @@ import { ConnectionsSection } from "./ConnectionsSection.tsx";
 import { DesignReference } from "./DesignReference.tsx";
 import { DeveloperSection } from "./DeveloperSection.tsx";
 import { EnginesSection } from "./EnginesSection.tsx";
+import { guideHeadingId, guideItem, guidePageOf, parseGuideItem, searchGuide, type SnippetPart } from "./guide.ts";
+import { GuideDocument, GuideHome } from "./GuideSection.tsx";
 import { Icon, type IconName } from "./icons.tsx";
 import { PersonalizeSection } from "./PersonalizeSection.tsx";
 import {
@@ -72,20 +74,33 @@ export function SettingsView({
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  // A card that a search result or a link names scrolls into view, and shows for a moment.
+  // A search result or a link can name a card or a heading of the guide. Scroll to it, and mark it for a moment.
   useEffect(() => {
-    // A setup step and the design reference are pages of their own, not cards to scroll to.
+    const heading =
+      route.section === "guide" && route.item !== null ? (parseGuideItem(route.item)?.slug ?? null) : null;
+    // A setup step, the design reference and the top of a doc are pages of their own, not cards to scroll to.
     if (
       route.item === null ||
       route.section === "setup" ||
-      (route.section === "developer" && route.item === designReferenceItem)
+      (route.section === "developer" && route.item === designReferenceItem) ||
+      (route.section === "guide" && heading === null)
     ) {
       document.querySelector(".settings-content")?.scrollTo({ top: 0 });
       return;
     }
-    const card = document.getElementById(cardId(route.item));
-    if (card === null) return;
+    const card = document.getElementById(heading === null ? cardId(route.item) : guideHeadingId(heading));
+    if (card === null) {
+      // An old link to a heading that a doc renamed still opens the doc, at its top.
+      if (heading !== null) document.querySelector(".settings-content")?.scrollTo({ top: 0 });
+      return;
+    }
     card.scrollIntoView({ block: "start" });
+    if (heading !== null) {
+      // React does not make the doc's HTML, so the heading has no tabIndex. Give it one, so it can take the focus.
+      // A keyboard then continues from the heading, and a screen reader reads it.
+      card.tabIndex = -1;
+      card.focus({ preventScroll: true });
+    }
     card.classList.add("flash");
     const timer = setTimeout(() => card.classList.remove("flash"), 1_600);
     return () => clearTimeout(timer);
@@ -343,7 +358,9 @@ export function SettingsView({
 
 function pageTitle(section: SettingsSection | null, item: string | null): string {
   if (section === null) return "Settings";
-  return section.id === "developer" && item === designReferenceItem ? "Design reference" : section.title;
+  if (section.id === "developer" && item === designReferenceItem) return "Design reference";
+  const doc = section.id === "guide" && item !== null ? parseGuideItem(item) : null;
+  return doc === null ? section.title : (guidePageOf(doc.page)?.title ?? section.title);
 }
 
 const sectionIcons: Readonly<Record<SectionId, IconName>> = {
@@ -355,6 +372,7 @@ const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   access: "phone",
   personalize: "palette",
   updates: "download",
+  guide: "book",
   developer: "bolt",
 };
 
@@ -530,7 +548,7 @@ function SettingLink({
   readonly section: SectionId | null;
   readonly title: string;
   /** Absent: the section's title. */
-  readonly hint?: string;
+  readonly hint?: ReactNode;
   readonly onOpen?: () => void;
 }): ReactElement {
   const known = settingsSections.find((each) => each.id === section);
@@ -581,6 +599,15 @@ function SectionPage({
       return <PersonalizeSection context={context} />;
     case "updates":
       return <UpdatesSection context={context} />;
+    case "guide": {
+      const doc = item === null ? null : parseGuideItem(item);
+      const page = doc === null ? undefined : guidePageOf(doc.page);
+      return page === undefined ? (
+        <GuideHome navigate={context.navigate} />
+      ) : (
+        <GuideDocument page={page} navigate={context.navigate} />
+      );
+    }
     case "developer":
       return item === designReferenceItem ? <DesignReference /> : <DeveloperSection context={context} />;
   }
@@ -594,18 +621,50 @@ function SearchResults({
   readonly navigate: (route: SettingsRoute) => void;
 }): ReactElement {
   const results = searchSettings(query);
-  if (results.length === 0) return <div className="empty">No setting matches “{query.trim()}”.</div>;
+  const guide = searchGuide(query);
+  if (results.length === 0 && guide.length === 0)
+    return <div className="empty">No setting matches “{query.trim()}”.</div>;
   return (
-    <ul className="search-results" aria-label="Search results">
-      {results.map((result) => (
-        <li key={`${result.section}/${result.item}`}>
-          <SettingLink
-            section={result.section}
-            title={result.title}
-            onOpen={() => navigate({ section: result.section, item: result.item })}
-          />
-        </li>
-      ))}
-    </ul>
+    <>
+      {results.length > 0 && (
+        <ul className="search-results" aria-label="Search results">
+          {results.map((result) => (
+            <li key={`${result.section}/${result.item}`}>
+              <SettingLink
+                section={result.section}
+                title={result.title}
+                onOpen={() => navigate({ section: result.section, item: result.item })}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      {guide.length > 0 && (
+        <section className="search-group" aria-labelledby="guide-results-heading">
+          <h2 id="guide-results-heading">In the guide</h2>
+          <ul className="search-results guide-results" aria-label="Guide results">
+            {guide.map((match) => (
+              <li key={guideItem(match.page, match.slug)}>
+                <SettingLink
+                  section="guide"
+                  title={match.title}
+                  hint={
+                    <>
+                      {match.pageTitle} · <Snippet parts={match.snippet} />
+                    </>
+                  }
+                  onOpen={() => navigate({ section: "guide", item: guideItem(match.page, match.slug) })}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
+}
+
+/** The text around a match, with each typed word marked. */
+function Snippet({ parts }: { readonly parts: readonly SnippetPart[] }): ReactElement {
+  return <>{parts.map((part, index) => (part.marked ? <mark key={index}>{part.text}</mark> : part.text))}</>;
 }

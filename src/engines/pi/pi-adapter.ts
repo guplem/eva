@@ -17,6 +17,9 @@
  *   that the bridge deletes at start. A shell command can read pi's environment, so never there.
  *   The bridge sends each problem, such as a server that did not start, as a `notify` with a
  *   fixed prefix. pi emits it before it reads the prompt.
+ * - **Project chats:** the extension in pi-context-filter.ts removes from pi's prompt each
+ *   instruction file above the project folder, such as the vault's map (#702). It gets the
+ *   folder in a variable, which it deletes at start, and sends a problem as a `notify` too.
  * - **Stop:** Eva sends pi an RPC abort. If the turn has not ended after a grace time, Eva stops
  *   the process tree. A model call that ends at its deadline relies on this too.
  * - **Exit code:** ignored after the turn end. pi on Windows can crash on exit after a tool
@@ -34,13 +37,16 @@ import {
   type ModelAlias,
   type TurnRequest,
 } from "../../shared/engine-port.ts";
+import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
+import { describePiContext } from "./pi-context.ts";
 import { describePiPermissions } from "./pi-permissions.ts";
+import { contextExtensionSource, contextNoticePrefix, projectFolderVariable } from "./pi-context-extension.ts";
 import { mcpExtensionSource, mcpNoticePrefix, mcpServersFileVariable } from "./pi-mcp-extension.ts";
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
 import { lastAnswerEntryId, writeBranchFile } from "./pi-session-files.ts";
@@ -96,6 +102,10 @@ export class PiEngine implements EnginePort {
     return describePiPermissions();
   }
 
+  describeContext(input: EngineContextInput): ContextPart[] {
+    return describePiContext(input);
+  }
+
   async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {
     const sessionsFolder = join(this.options.workFolder, "sessions");
     mkdirSync(sessionsFolder, { recursive: true });
@@ -146,6 +156,9 @@ export class PiEngine implements EnginePort {
         : this.writeIfChanged(join("prompts", `${promptName}.md`), request.appendSystemPrompt);
     const hasMcpServers = Object.keys(request.mcpServers).length > 0;
     const mcpExtensionFile = hasMcpServers ? this.writeIfChanged("eva-mcp-extension.ts", mcpExtensionSource) : null;
+    // A Project chat hides each instruction file above its project folder, such as the vault's map (#702).
+    const contextExtensionFile =
+      request.projectFolder === null ? null : this.writeIfChanged("eva-context-extension.ts", contextExtensionSource);
     // One file per turn: a stopped turn that still closes must not delete the file of the next one.
     const specsFile = hasMcpServers
       ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
@@ -155,6 +168,7 @@ export class PiEngine implements EnginePort {
       sessionsFolder,
       extensionFile,
       mcpExtensionFile,
+      contextExtensionFile,
       promptFile,
       model,
     });
@@ -176,8 +190,11 @@ export class PiEngine implements EnginePort {
     try {
       pi = (this.options.start ?? systemPiProcessStarter)([...this.options.command, ...args], {
         cwd: request.startFolder,
-        environment:
-          specsFile !== null ? { ...request.environment, [mcpServersFileVariable]: specsFile } : request.environment,
+        environment: {
+          ...request.environment,
+          ...(specsFile === null ? {} : { [mcpServersFileVariable]: specsFile }),
+          ...(request.projectFolder === null ? {} : { [projectFolderVariable]: request.projectFolder }),
+        },
       });
     } catch (error) {
       removeSpecs(specsFile);
@@ -302,7 +319,7 @@ export class PiEngine implements EnginePort {
           output: toolOutputText(result?.content ?? result),
         };
       } else if (type === "extension_ui_request") {
-        const notice = bridgeNotice(record);
+        const notice = extensionNotice(record);
         if (notice !== null) yield { kind: "notice", text: notice };
         else answerDialog(pi, request, record);
       } else if (type === "auto_retry_start") {
@@ -361,6 +378,8 @@ export interface PiArgumentInputs {
   readonly extensionFile: string;
   /** Eva's MCP bridge, when the turn has MCP servers. */
   readonly mcpExtensionFile: string | null;
+  /** Eva's filter of the instruction files above a Project chat's project folder. */
+  readonly contextExtensionFile: string | null;
   readonly promptFile: string | null;
   readonly model: string | null;
 }
@@ -381,6 +400,7 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
     inputs.extensionFile,
   ];
   if (inputs.mcpExtensionFile !== null) args.push("-e", inputs.mcpExtensionFile);
+  if (inputs.contextExtensionFile !== null) args.push("-e", inputs.contextExtensionFile);
   if (inputs.model !== null) args.push("--model", inputs.model);
   // pi has no level above `xhigh`, so Max asks for pi's highest level.
   if (request.effort !== null) args.push("--thinking", request.effort === "max" ? "xhigh" : request.effort);
@@ -410,13 +430,12 @@ function removeSpecs(file: string | null): void {
   }
 }
 
-/** The text of a problem line from Eva's MCP bridge, or null for any other record. */
-function bridgeNotice(record: Record<string, unknown>): string | null {
+/** The text of a problem line from one of Eva's own extensions, or null for any other record. */
+function extensionNotice(record: Record<string, unknown>): string | null {
   const message = record["message"];
-  if (record["method"] !== "notify" || typeof message !== "string" || !message.startsWith(mcpNoticePrefix)) {
-    return null;
-  }
-  return message.slice(mcpNoticePrefix.length);
+  if (record["method"] !== "notify" || typeof message !== "string") return null;
+  const prefix = [mcpNoticePrefix, contextNoticePrefix].find((candidate) => message.startsWith(candidate));
+  return prefix === undefined ? null : message.slice(prefix.length);
 }
 
 /** Answers Eva's approval dialog through the person, and cancels any other dialog. Never blocks the stream. */

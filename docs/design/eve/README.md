@@ -360,6 +360,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 - The inspector on a computer, and a bottom sheet on a phone, show the same content.
 - Background tasks show their state with one word and one colour.
+- The context lists each part that the agent reads before the conversation, by group: the system prompt, the instruction files, the skills and the note before each message. A tap on a part opens a dialog with its whole text.
 
 ## Update the captures
 

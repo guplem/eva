@@ -1,6 +1,8 @@
 /**
- * Project mode: the harness exactly as if the person opened the clone folder, above its repositories.
- * Eva adds no prompt and no plugin. She only decides trust: an untrusted clone runs with
+ * Project mode: the harness as if the person opened the clone folder, above its repositories.
+ * Eva adds no prompt and no plugin. The engine hides each instruction file above the project
+ * folder, such as the vault's map, so the chat does not know that it runs inside Eva (#702).
+ * Eva also decides trust: an untrusted clone runs with
  * its hooks, project settings and project MCP servers off. Trust follows the URL that Eva
  * cloned from, never the clone's live `origin`. The first time a clone of an unknown
  * repository opens, Eva asks the person, as Claude Code itself does. A folder that Eva has
@@ -11,13 +13,20 @@ import { basename, delimiter, dirname } from "node:path";
 import {
   isTrustedByDefault,
   listRepositories,
+  projectFolderOf,
   shownUrl,
   type CloneOriginStore,
   type TrustStore,
 } from "../projects/clones.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
-import type { PrepareContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
+import type {
+  ModeContext,
+  PrepareContext,
+  PreparedTurn,
+  TurnOutcome,
+  TurnPreparer,
+} from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
 export interface ProjectPreparerOptions {
@@ -45,12 +54,29 @@ export class ProjectPreparer implements TurnPreparer {
   async prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn> {
     return {
       startFolder: session.startFolder,
+      projectFolder: projectFolderOf(session.startFolder, session.clone),
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
       mcpServers: {},
       trusted: await this.isCloneTrusted(session.startFolder, context),
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
+    };
+  }
+
+  /** Eva adds no part of her own. A clone with no answer yet counts as untrusted, as its turn would without one. */
+  async describe(session: SessionRecord): Promise<ModeContext> {
+    const noAnswer = { ask: () => Promise.resolve("expired" as const) };
+    return {
+      parts: [],
+      engine: {
+        mode: "project",
+        startFolder: session.startFolder,
+        projectFolder: projectFolderOf(session.startFolder, session.clone),
+        trusted: await this.isCloneTrusted(session.startFolder, noAnswer),
+        pluginFolders: [],
+        environment: this.options.environment,
+      },
     };
   }
 

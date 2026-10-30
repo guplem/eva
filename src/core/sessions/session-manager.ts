@@ -16,6 +16,7 @@ import {
   type SessionMode,
   type TurnHistory,
 } from "../../shared/engine-port.ts";
+import { contextGroups, type ContextPart, type EngineContextInput } from "../../shared/chat-context.ts";
 import { EvaError } from "../../shared/errors.ts";
 import {
   isTurnEnd,
@@ -47,6 +48,8 @@ import type { StepDetailsStore } from "./step-details-store.ts";
 
 export interface PreparedTurn {
   readonly startFolder: string;
+  /** Project mode: the project folder. The engine hides each instruction file above it (#702). */
+  readonly projectFolder: string | null;
   readonly appendSystemPrompt: string | null;
   /** Put before the person's message, such as the local time (lesson 40). */
   readonly messagePrefix: string | null;
@@ -71,9 +74,17 @@ export interface PrepareContext {
   readonly ask: (question: string, detail: string) => Promise<PrepareAnswer>;
 }
 
+/** The parts of a chat's context that a mode adds, and what the engine needs to list its own. */
+export interface ModeContext {
+  readonly parts: readonly ContextPart[];
+  readonly engine: EngineContextInput;
+}
+
 /** What each mode does around a turn (Assistant: pull, prompt, save, skill runs; Project: trust). */
 export interface TurnPreparer {
   prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn>;
+  /** The context of the chat's next turn, for the chat details. It changes nothing and asks nobody. */
+  describe?(session: SessionRecord): Promise<ModeContext>;
   /** Returns a message to send to the same session as its next turn, or null. */
   afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null>;
   /**
@@ -956,6 +967,22 @@ export class SessionManager {
   }
 
   /**
+   * Each part of the chat's context that the agent reads before the conversation, for the chat
+   * details: the engine's parts and the mode's parts, grouped. Each group keeps the engine's parts first.
+   */
+  async context(sessionId: string): Promise<ContextPart[]> {
+    const session = this.get(sessionId);
+    const mode = await this.options.preparers[session.mode].describe?.(session);
+    if (mode === undefined) return [];
+    const engine = this.options.engines.find((candidate) => candidate.name === session.engine);
+    // A file outside the vault, such as the engine's own CLAUDE.md, can hold a token, as any text that leaves the core.
+    const parts = [...(engine?.describeContext?.(mode.engine) ?? []), ...mode.parts].map((part) =>
+      part.text === null ? part : { ...part, text: boundedDetail(this.options.redactor.redact(part.text)) },
+    );
+    return contextGroups.flatMap((group) => parts.filter((part) => part.group === group));
+  }
+
+  /**
    * Makes the history of an engine session readable from another folder, before a chat there goes on
    * from it. False when the engine could not. An engine without the step needs none.
    */
@@ -1242,6 +1269,7 @@ export class SessionManager {
         mode: session.mode,
         history,
         startFolder: prepared.startFolder,
+        projectFolder: prepared.projectFolder,
         prompt:
           prepared.messagePrefix === null
             ? prompt

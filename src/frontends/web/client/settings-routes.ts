@@ -5,7 +5,16 @@
 import type { ProgressStep } from "./api.ts";
 
 export type SectionId =
-  "setup" | "engines" | "vault" | "connections" | "trust" | "access" | "personalize" | "updates" | "developer";
+  | "setup"
+  | "engines"
+  | "vault"
+  | "connections"
+  | "trust"
+  | "access"
+  | "personalize"
+  | "updates"
+  | "guide"
+  | "developer";
 
 export interface SettingsSection {
   readonly id: SectionId;
@@ -61,6 +70,12 @@ export const settingsSections: readonly SettingsSection[] = [
     steps: [],
   },
   {
+    id: "guide",
+    title: "Guide",
+    summary: "How Eva works, how to install her, and every command and setting.",
+    steps: [],
+  },
+  {
     id: "developer",
     title: "Development",
     summary: "Report a problem, and see the design parts.",
@@ -96,10 +111,12 @@ export function isSettingsHash(hash: string): boolean {
 /** An unknown section opens the home page, so an old link never shows an empty page. */
 export function parseSettingsHash(hash: string): SettingsRoute {
   if (!isSettingsHash(hash)) return settingsHome;
-  const [section, item] = hash.slice(prefix.length + 1).split("/");
+  const [section, ...parts] = hash.slice(prefix.length + 1).split("/");
   const known = settingsSections.find((each) => each.id === section);
   if (known === undefined) return settingsHome;
-  return { section: known.id, item: item === undefined || item === "" ? null : decodeURIComponent(item) };
+  // A guide item has two parts, a doc and a heading. Another section reads only the first part, as before.
+  const item = (known.id === "guide" ? parts : parts.slice(0, 1)).map(decodeURIComponent).join("/");
+  return { section: known.id, item: item === "" ? null : item };
 }
 
 /**
@@ -111,6 +128,8 @@ export function sameSettingsPage(from: string, to: string): boolean {
   const second = parseSettingsHash(to);
   if (!isSettingsHash(from) || !isSettingsHash(to) || first.section === null) return false;
   if (first.section !== second.section) return false;
+  // A heading of a doc is on the doc's page.
+  if (first.section === "guide") return first.item !== null && first.item.split("/")[0] === second.item?.split("/")[0];
   // A setup step and the design reference are pages of their own, not cards.
   return first.section === "setup" || first.section === "developer" ? first.item === second.item : true;
 }
@@ -119,7 +138,7 @@ export function settingsHash(route: SettingsRoute): string {
   if (route.section === null) return prefix;
   return route.item === null
     ? `${prefix}/${route.section}`
-    : `${prefix}/${route.section}/${encodeURIComponent(route.item)}`;
+    : `${prefix}/${route.section}/${route.item.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 /** The page one level up: a step or a card goes to its section, and a section goes home. */

@@ -303,6 +303,8 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   palette: "Personalize, colours",
   trash: "Delete for good",
   info: "More information",
+  book: "The guide",
+  help: "Help: the part of the guide that explains this place",
   lock: "Private, locked",
   eye: "Show a secret",
   external: "Opens another site",

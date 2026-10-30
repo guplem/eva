@@ -12,6 +12,7 @@ import { entryState, notificationTopic, sameProblemEntries } from "./notificatio
 import { problemAction, problemActionLabels, shownProblems, type ProblemAction } from "./problem-actions.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
+import { HelpLink } from "./HelpLink.tsx";
 
 interface NotificationCenterProps {
   readonly problems: EvaStatus["problemDetails"];
@@ -64,6 +65,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
               <h1>Notifications</h1>
               <div className="center-subtitle">What Eva needs from you, and what she did by herself.</div>
             </div>
+            <HelpLink topic="problems-and-alerts" />
             {/* A phone has no Settings tab, so this button is its one way to Settings: keep the word (#566). */}
             <button className="ghost center-settings" onClick={props.onOpenSettings}>
               <Icon name="gear" />

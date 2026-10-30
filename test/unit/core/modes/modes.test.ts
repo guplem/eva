@@ -124,6 +124,44 @@ describe("Assistant mode", () => {
     expect((await preparer.prepare(session({ id: "s2" }))).appendSystemPrompt).toContain("Changed rules");
   });
 
+  test("describes Eva's prompt, the person's rules and the note before each message, and changes nothing", async () => {
+    const sync = new FakeSync();
+    const described = await assistant(silentRunner, sync).describe(session());
+    expect(sync.calls).toEqual([]);
+    expect(described.parts.map((part) => [part.group, part.title, part.text])).toEqual([
+      ["prompt", "Eva's prompt", "Base rules."],
+      ["prompt", "Your rules for Eva", "# You are Eva\n"],
+      ["message", "Before each message", "[Local time: 2026-10-14 12:30, Europe/Madrid]"],
+    ]);
+    expect(described.engine).toEqual({
+      mode: "assistant",
+      startFolder: vault,
+      projectFolder: null,
+      trusted: true,
+      pluginFolders: [join(vault, ".eva")],
+      environment: { PATH: "/bin" },
+    });
+  });
+
+  test("describes the rules that a running chat keeps, and a missing rules file", async () => {
+    const preparer = assistant(silentRunner);
+    await preparer.prepare(session());
+    writeFileSync(join(vault, ".eva", "assistant.md"), "# Changed rules\n");
+    const rules = async (id: string): Promise<unknown> =>
+      (await preparer.describe(session({ id }))).parts.find((part) => part.title === "Your rules for Eva");
+    expect(await rules("s1")).toMatchObject({ text: "# You are Eva\n", note: null });
+    expect(await rules("s2")).toMatchObject({ text: "# Changed rules\n" });
+    rmSync(join(vault, ".eva", "assistant.md"));
+    const missing = "The file is missing, so a new message fails.";
+    expect(await rules("s2")).toMatchObject({ text: null, note: missing });
+    // A chat that keeps a copy still fails at its next message, so it gets the note too.
+    expect(await rules("s1")).toMatchObject({ text: "# You are Eva\n", note: missing });
+    // A folder in the file's place cannot be read. The details still show, with a note.
+    mkdirSync(join(vault, ".eva", "assistant.md"));
+    expect(await rules("s2")).toMatchObject({ text: null, note: "Eva cannot read the file." });
+    expect(await rules("s1")).toMatchObject({ text: "# You are Eva\n", note: null });
+  });
+
   test("pulls the vault, then joins the base prompt and the person's rules", async () => {
     const sync = new FakeSync();
     const prepared = await assistant(silentRunner, sync).prepare(session());
@@ -300,9 +338,14 @@ describe("Project mode", () => {
   }
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
-    const prepared = await project(["owner"]).prepare(session({ mode: "project", startFolder: cloneFolder }), deny);
+    const prepared = await project(["owner"]).prepare(
+      session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" }),
+      deny,
+    );
     expect(prepared).toEqual({
       startFolder: cloneFolder,
+      // The engine hides each instruction file above this folder (#702).
+      projectFolder: dirname(sandbox.root),
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
@@ -311,6 +354,25 @@ describe("Project mode", () => {
       // Git stops at the folder of the clones, so a git command in the clone folder never reads the vault.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: sandbox.root },
     });
+  });
+
+  test("describes no part of Eva's, and the trust of the clone without a question", async () => {
+    const store = new TrustStore(join(sandbox.root, "trust.json"));
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
+    expect(await project(["owner"], store).describe(cloneSession)).toEqual({
+      parts: [],
+      engine: {
+        mode: "project",
+        startFolder: cloneFolder,
+        projectFolder: dirname(sandbox.root),
+        trusted: true,
+        pluginFolders: [],
+        environment: { PATH: "/bin" },
+      },
+    });
+    // A stranger's repository with no answer counts as untrusted, and no answer is kept.
+    expect((await project([], store).describe(cloneSession)).engine.trusted).toBe(false);
+    expect(store.decision(originalUrl)).toBe("unknown");
   });
 
   test("the first clone of a stranger's repository asks the person, and the answer is kept", async () => {

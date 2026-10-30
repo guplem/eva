@@ -110,6 +110,11 @@ jobs:
       # The widget template runs its own check, against the contract of this commit (#688). So a change
       # that breaks a new widget fails here first. `--ignore-scripts`: its `prepare` would install its git
       # hooks in place of Eva's.
+      # The Node.js of the template's own CI, whose test runner reads a glob.
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - if: env.RUN_CODE_CHECKS == 'true'
         working-directory: templates/widget
         run: npm ci --ignore-scripts

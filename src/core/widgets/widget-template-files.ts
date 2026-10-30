@@ -6,12 +6,13 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** The folders that a local install or test run makes. Eva's own `.gitignore` lists them. */
-const alwaysSkipped = ["node_modules", "test-results", "playwright-report"];
-
-/** A test gives another folder; the macro call gives none. */
+/**
+ * A test gives other folders; the macro call gives none. `repository` is the root of Eva's
+ * repository, whose `.gitignore` also applies to the template, such as `node_modules/` or `*.log`.
+ */
 export function readWidgetTemplate(
   root: string = join(import.meta.dir, "..", "..", "..", "templates", "widget"),
+  repository: string = join(import.meta.dir, "..", "..", ".."),
 ): Record<string, string> {
   const files: Record<string, string> = {};
   const walk = (folder: string, prefix: string, ignored: readonly RegExp[]): void => {
@@ -24,21 +25,20 @@ export function readWidgetTemplate(
       else if (entry.isFile()) files[`${prefix}${entry.name}`] = readFileSync(path, "utf8");
     }
   };
-  walk(
-    root,
-    "",
-    alwaysSkipped.map((name) => namePattern(name)),
-  );
+  walk(root, "", ignorePatterns(join(repository, ".gitignore")));
   return files;
 }
 
-/** The name patterns of a `.gitignore`: the template's files list names only, such as `.env.*` or `runs/`. */
+/**
+ * The name patterns of a `.gitignore`, such as `.env.*` or `runs/`. A pattern with a path, such as
+ * `.claude/skills/`, names a folder outside the template, so the walk skips it.
+ */
 function ignorePatterns(path: string): RegExp[] {
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8")
     .split(/\r?\n/)
     .map((line) => line.trim().replace(/\/$/, ""))
-    .filter((line) => line !== "" && !line.startsWith("#"))
+    .filter((line) => line !== "" && !line.startsWith("#") && !line.startsWith("!") && !line.includes("/"))
     .map(namePattern);
 }
 

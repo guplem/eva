@@ -58,9 +58,11 @@ describe("widgetTemplate", () => {
 });
 
 describe("readWidgetTemplate", () => {
-  test("leaves out each file that a .gitignore of the template names, at its level and below", () => {
-    const folder = mkdtempSync(join(tmpdir(), "widget-template-"));
+  test("leaves out each file that a .gitignore of the template or of Eva names, at its level and below", () => {
+    const repository = mkdtempSync(join(tmpdir(), "widget-template-"));
+    const folder = join(repository, "templates", "widget");
     try {
+      writeFileSync(join(repository, ".gitignore"), "node_modules/\n*.log\n.claude/skills/\n");
       mkdirSync(join(folder, ".pskill", "runs"), { recursive: true });
       mkdirSync(join(folder, "node_modules", "x"), { recursive: true });
       writeFileSync(join(folder, ".gitignore"), "# local files\n.env\n.env.*\n");
@@ -71,14 +73,15 @@ describe("readWidgetTemplate", () => {
       writeFileSync(join(folder, ".pskill", ".gitignore"), "runs/\n");
       writeFileSync(join(folder, ".pskill", "runs", "run.json"), "{}");
       writeFileSync(join(folder, ".pskill", "config.yaml"), "stub_folders: []\n");
-      expect(Object.keys(readWidgetTemplate(folder)).sort()).toEqual([
+      writeFileSync(join(folder, "npm-debug.log"), "");
+      expect(Object.keys(readWidgetTemplate(folder, repository)).sort()).toEqual([
         ".gitignore",
         ".pskill/.gitignore",
         ".pskill/config.yaml",
         "index.html",
       ]);
     } finally {
-      rmSync(folder, { recursive: true, force: true });
+      rmSync(repository, { recursive: true, force: true });
     }
   });
 });

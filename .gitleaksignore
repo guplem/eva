@@ -1,2 +1,16 @@
 # A test string that starts like a private key; later commits build it from parts.
 72e4dba0eef330040c5463b4b69c35574f381e84:test/unit/shared/shared-basics.test.ts:private-key:86
+# Message IDs in a captured stream, after a field named api_message_id. They are no secret.
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:4
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:5
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:6
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:7
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:8
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:9
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:10
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:11
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:12
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:13
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:15
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:16
+24de6a97b6693282ffc88186d5475d2fe1ed3e71:test/fixtures/claude-code/streamed-answer.jsonl:generic-api-key:17

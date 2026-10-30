@@ -1,7 +1,8 @@
 /**
  * Contract tests for the Claude Code adapter on SDK messages captured from Claude Agent SDK
  * 0.3.300 and claude 2.1.286 against the demo vault (test/fixtures/claude-code/, made by
- * scripts/capture-claude-fixtures.ts). The background-subagent capture comes from claude 2.1.302.
+ * scripts/capture-claude-fixtures.ts). The background-subagent capture comes from claude 2.1.302,
+ * and the streamed-answer capture from claude 2.1.310.
  */
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -522,30 +523,46 @@ describe("mapSdkMessages", () => {
     expect(events[0]).toMatchObject({ kind: "tool_started", name: "Bash", category: "command", summary: "ls" });
   });
 
-  /** A partial message as the SDK sends it with includePartialMessages. No capture holds one yet. */
-  function streamLine(event: unknown, parentToolUseId: string | null = null): SDKMessage {
-    return {
-      type: "stream_event",
-      event,
-      parent_tool_use_id: parentToolUseId,
-      uuid: "00000000-0000-4000-8000-000000000001",
-      session_id: "23f67f49-0cd8-446e-bb55-73d761e7c1a3",
-    } as SDKMessage;
+  test("each streamed piece of the main text becomes a text_delta, before the whole text", async () => {
+    const events = await collect(loadCapture("streamed-answer"));
+    expect(events.slice(8).map((event) => event.kind)).toEqual(["text", "turn_finished"]);
+    expect(events.slice(0, 8)).toEqual([
+      { kind: "text_delta", text: "W", startsBlock: true },
+      { kind: "text_delta", text: "ake" },
+      { kind: "text_delta", text: " up on" },
+      { kind: "text_delta", text: " time, dr" },
+      { kind: "text_delta", text: "ink a gl" },
+      { kind: "text_delta", text: "ass of water, and get" },
+      { kind: "text_delta", text: " some s" },
+      { kind: "text_delta", text: "unlight." },
+    ]);
+  });
+
+  /** The captured stream line of this event type, with its event and parent changed. */
+  function streamLine(type: string, event: object = {}, parentToolUseId: string | null = null): SDKMessage {
+    const line = loadCapture("streamed-answer").find(
+      (captured) => captured.type === "stream_event" && captured.event.type === type,
+    );
+    if (line === undefined) throw new Error(`The capture has no ${type} stream event.`);
+    const captured = line as SDKMessage & { event: object };
+    return { ...captured, event: { ...captured.event, ...event }, parent_tool_use_id: parentToolUseId } as SDKMessage;
   }
 
-  test("each streamed piece of the main text becomes a text_delta; other stream events are ignored", async () => {
+  test("thinking, empty pieces and a subagent's text stay out; a block that starts again is marked", async () => {
+    // The capture has none of these cases: they are its stream lines with another event or parent.
+    const piece = (text: string): object => ({ delta: { type: "text_delta", text } });
     const lines = [
-      streamLine({ type: "message_start", message: {} }),
-      streamLine({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "hmm" } }),
-      streamLine({ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } }),
-      streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "" } }),
-      streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "The first " } }),
-      streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "step" } }),
-      streamLine({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, "toolu_1"),
-      streamLine({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "inner" } }, "toolu_1"),
+      streamLine("message_start"),
+      streamLine("content_block_delta", { delta: { type: "thinking_delta", thinking: "hmm" } }),
+      streamLine("content_block_start", { index: 1 }),
+      streamLine("content_block_delta", { index: 1, ...piece("") }),
+      streamLine("content_block_delta", { index: 1, ...piece("The first ") }),
+      streamLine("content_block_delta", { index: 1, ...piece("step") }),
+      streamLine("content_block_start", {}, "toolu_1"),
+      streamLine("content_block_delta", piece("inner"), "toolu_1"),
       // A model call that runs again starts its text block again.
-      streamLine({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
-      streamLine({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "The first " } }),
+      streamLine("content_block_start"),
+      streamLine("content_block_delta", piece("The first ")),
       resultOf("new-turn-with-tool"),
     ];
     const events = await collect(lines);

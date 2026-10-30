@@ -366,11 +366,7 @@ The redesign of #161 implemented the reference, with the differences below.
 
 ### Open gaps
 
-Each open gap has an issue that closes it.
-
-| Reference                                              | Today                                                                                                                  | Issue |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----- |
-| "Create a project", with its folder and its repository | "Makes its folder in the vault". The New project form can now create a repository, but the suggestion does not say so. | #493  |
+Each open gap has an issue that closes it. No gap is open now.
 
 ### Differences on purpose
 
@@ -391,6 +387,7 @@ The pull requests of #161 and the owner chose these differences, each for the re
 | A time on each message, and a duration on the steps | Only the running turn shows its time. A stored turn keeps only the time when it ended. | The owner closed #211: not a priority now.                                                             | (none)       |
 | Settings in the phone tab bar                       | The visor, with the label "Eva", in its place.                                         | The visor opens the notification center, which links to Settings. The tab bar keeps five entries.      | #567         |
 | Problem notices at the top of each page             | The notification center behind the visor.                                              | The owner found the notices too large. The visor counts the problems, and the center lists them.       | #567         |
+| A "Create a project" suggestion in a new chat       | No project suggestion.                                                                 | The owner chose one way to make a project: the New project form, which can also create its repository. | #682         |
 
 ## Captures
 

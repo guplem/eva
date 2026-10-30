@@ -31,8 +31,6 @@ const calendar: Suggestion = {
   detail: "Checks the calendar and the tasks",
   icon: "calendar",
 };
-// Eva makes the project's folder from the vault's rules. She cannot make a repository yet.
-const project: Suggestion = { title: "Create a project", detail: "Makes its folder in the vault", icon: "briefcase" };
 const reminder: Suggestion = {
   title: "Remind me of something",
   detail: "Sets a schedule that messages you",
@@ -41,7 +39,7 @@ const reminder: Suggestion = {
 
 /** The calendar needs the Google tools, so it shows only when Google is set up. */
 export function suggestions(googleReady: boolean): readonly Suggestion[] {
-  return googleReady ? [notes, calendar, project, reminder] : [notes, project, reminder];
+  return googleReady ? [notes, calendar, reminder] : [notes, reminder];
 }
 
 /** The words and the link of a chat that cannot answer until a setup step is done. */

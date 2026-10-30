@@ -21,7 +21,7 @@ import { chatTime, type ChatState } from "./chat-list.ts";
 import { ButtonSpinner, CardsSkeleton, ProgressBar } from "./Loading.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { ChatStatePill, chatListItems, type ChatAction } from "./ChatHeader.tsx";
-import { useContextMenu } from "./Menu.tsx";
+import { MenuButton, useContextMenu } from "./Menu.tsx";
 import { fileAddressOf } from "./file-paths.ts";
 import { BackButton } from "./MainNav.tsx";
 
@@ -46,6 +46,8 @@ interface ProjectPageProps {
   readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
   /** Eva picks the clone of the new chat: a free one, or a new one. */
   readonly onNewChat: () => void;
+  /** Opens a new Assistant chat that mentions the project (issue 657). */
+  readonly onAskEva: () => void;
   /** True while Eva picks or prepares the clone of a new chat. */
   readonly startingChat: boolean;
   /** Rejects when Eva cannot delete the clone, so the question stays open. */
@@ -74,6 +76,7 @@ export function ProjectPage({
   onNewClone,
   onOpenChat,
   onNewChat,
+  onAskEva,
   startingChat,
   onDeleteClone,
   syncWork,
@@ -98,9 +101,19 @@ export function ProjectPage({
           </div>
           <div className="sub mono">{projectFolder(project.path)}</div>
         </div>
-        <button className="primary" disabled={startingChat} aria-busy={startingChat} onClick={onNewChat}>
-          {startingChat ? <ButtonSpinner /> : <Icon name="plus" />} New chat
-        </button>
+        {/* A clone chat works on the code. A chat with Eva plans with the vault and every project. */}
+        <MenuButton
+          className="primary"
+          label="New chat"
+          disabled={startingChat}
+          busy={startingChat}
+          items={[
+            { label: "In a clone", icon: "branch", onChoose: onNewChat },
+            { label: "With Eva", icon: "chat", onChoose: onAskEva },
+          ]}
+        >
+          {startingChat ? <ButtonSpinner /> : <Icon name="plus" />} New chat <Icon name="down" />
+        </MenuButton>
         <button className="outline" onClick={onDetails}>
           <Icon name="pen" /> Details
         </button>

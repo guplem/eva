@@ -81,8 +81,10 @@ async function newProjectChat(page: Page): Promise<string> {
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
   );
-  // A direct child: the title of an open chat is a "New chat" button inside the heading.
-  await page.locator(".main-header > button").filter({ hasText: "New chat" }).click();
+  // The header's own menu: the title of an open chat is a "New chat" button inside the heading.
+  await page.locator(".main-header > .more-picker > button").filter({ hasText: "New chat" }).click();
+  // "New chat" asks for the kind of chat (issue 657).
+  await page.getByRole("menuitem", { name: "In a clone" }).click();
   const clone = ((await (await created).json()) as { clone: string }).clone;
   await expect(page.getByText("Project mode")).toBeVisible();
   return clone;
@@ -3489,6 +3491,18 @@ test("Escape closes the @ search, and an email address opens none", async ({ pag
   await expect(search).toBeVisible();
   await box.press("Escape");
   await expect(search).toHaveCount(0);
+  await box.fill("");
+});
+
+test("New chat on a project page opens a chat with Eva that mentions the project (issue 657)", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  await page.locator(".main-header > .more-picker > button").filter({ hasText: "New chat" }).click();
+  await page.getByRole("menuitem", { name: "With Eva" }).click();
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  const box = page.getByRole("region", { name: "New chat", exact: true }).getByRole("textbox", { name: "Message" });
+  await expect(box).toHaveValue(/^@project:2025-03-02-1015-example-app /);
+  // Other tests share the New chat page, so its text goes away.
   await box.fill("");
 });
 

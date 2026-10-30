@@ -111,11 +111,11 @@ export function isSettingsHash(hash: string): boolean {
 /** An unknown section opens the home page, so an old link never shows an empty page. */
 export function parseSettingsHash(hash: string): SettingsRoute {
   if (!isSettingsHash(hash)) return settingsHome;
-  // A guide item has two parts, a doc and a heading, so the item is the rest of the path.
   const [section, ...parts] = hash.slice(prefix.length + 1).split("/");
-  const item = parts.map(decodeURIComponent).join("/");
   const known = settingsSections.find((each) => each.id === section);
   if (known === undefined) return settingsHome;
+  // A guide item has two parts, a doc and a heading. Another section reads only the first part, as before.
+  const item = (known.id === "guide" ? parts : parts.slice(0, 1)).map(decodeURIComponent).join("/");
   return { section: known.id, item: item === "" ? null : item };
 }
 

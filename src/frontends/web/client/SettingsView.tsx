@@ -89,8 +89,18 @@ export function SettingsView({
       return;
     }
     const card = document.getElementById(heading === null ? cardId(route.item) : guideHeadingId(heading));
-    if (card === null) return;
+    if (card === null) {
+      // An old link to a heading that a doc renamed still opens the doc, at its top.
+      if (heading !== null) document.querySelector(".settings-content")?.scrollTo({ top: 0 });
+      return;
+    }
     card.scrollIntoView({ block: "start" });
+    if (heading !== null) {
+      // The doc's HTML is not React's, so the effect makes the heading able to take the focus.
+      // A keyboard then goes on from there, and a screen reader reads the new place.
+      card.tabIndex = -1;
+      card.focus({ preventScroll: true });
+    }
     card.classList.add("flash");
     const timer = setTimeout(() => card.classList.remove("flash"), 1_600);
     return () => clearTimeout(timer);
@@ -591,7 +601,12 @@ function SectionPage({
       return <UpdatesSection context={context} />;
     case "guide": {
       const doc = item === null ? null : parseGuideItem(item);
-      return doc === null ? <GuideHome /> : <GuideDocument page={doc.page} />;
+      const page = doc === null ? undefined : guidePageOf(doc.page);
+      return page === undefined ? (
+        <GuideHome navigate={context.navigate} />
+      ) : (
+        <GuideDocument page={page} navigate={context.navigate} />
+      );
     }
     case "developer":
       return item === designReferenceItem ? <DesignReference /> : <DeveloperSection context={context} />;
@@ -625,15 +640,19 @@ function SearchResults({
         </ul>
       )}
       {guide.length > 0 && (
-        <section className="search-group" aria-label="In the guide">
-          <h2>In the guide</h2>
+        <section className="search-group" aria-labelledby="guide-results-heading">
+          <h2 id="guide-results-heading">In the guide</h2>
           <ul className="search-results guide-results" aria-label="Guide results">
             {guide.map((match) => (
               <li key={guideItem(match.page, match.slug)}>
                 <SettingLink
                   section="guide"
                   title={match.title}
-                  hint={<Snippet parts={match.snippet} />}
+                  hint={
+                    <>
+                      {match.pageTitle} · <Snippet parts={match.snippet} />
+                    </>
+                  }
                   onOpen={() => navigate({ section: "guide", item: guideItem(match.page, match.slug) })}
                 />
               </li>

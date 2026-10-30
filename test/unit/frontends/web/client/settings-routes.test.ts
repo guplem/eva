@@ -144,6 +144,10 @@ describe("the guide section", () => {
     expect(parentRoute(route)).toEqual({ section: "guide", item: null });
   });
 
+  test("another section still reads only the first part after its name", () => {
+    expect(parseSettingsHash("#/settings/engines/pi/extra")).toEqual({ section: "engines", item: "pi" });
+  });
+
   test("each part of the address is encoded on its own", () => {
     expect(settingsHash({ section: "guide", item: "setup/a b" })).toBe("#/settings/guide/setup/a%20b");
     expect(parseSettingsHash("#/settings/guide/setup/a%20b")).toEqual({ section: "guide", item: "setup/a b" });

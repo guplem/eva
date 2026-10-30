@@ -1,5 +1,10 @@
 /* The Guide section of Settings: the docs for people, and their results in the Settings search. */
 
+/* The wrapper only catches the taps on links: the cards stay items of the page's column. */
+.guide-page {
+  display: contents;
+}
+
 .guide-contents,
 .guide-toc ol {
   list-style: none;
@@ -15,21 +20,12 @@
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 14em), 1fr));
 }
 
-/* On a phone, each link gets the room of a finger. */
-@media (max-width: 760px) {
-  .guide-contents,
-  .guide-toc ol {
-    gap: var(--space-3);
-  }
-}
-
 .guide-toc summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-target);
   cursor: pointer;
   font-weight: 600;
-}
-
-.guide-toc ol {
-  margin-top: var(--space-3);
 }
 
 .guide-toc-deep {
@@ -50,18 +46,18 @@
   font-size: var(--text-md);
 }
 
+/* The same mark as a card that a link points at: a ring that fades. */
 .guide-body :is(h2, h3) {
   scroll-margin-top: var(--space-4);
   margin-inline: calc(-1 * var(--space-2));
   padding-inline: var(--space-2);
   border-radius: var(--radius-input);
-  /* Motion exception: it plays only when a link points at one heading. The colour fades instead of blinking. */
-  transition: background-color var(--dur-slow) var(--ease-out);
+  /* Motion exception: it plays only when a link points at one heading. The ring fades instead of blinking. */
+  transition: box-shadow var(--dur-slow) var(--ease-out);
 }
 
-/* A search result or a link points at this heading for a moment. */
 .guide-body .flash {
-  background: var(--soft);
+  box-shadow: 0 0 0 3px var(--accent);
 }
 
 .guide-body table {
@@ -72,16 +68,20 @@
   justify-content: space-between;
 }
 
+/* The same label as a group of chats, such as "Today". */
 .search-group h2 {
-  margin: var(--space-2) 0;
-  font-size: var(--text-md);
+  margin: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--muted);
 }
 
 .guide-results mark {
   background: var(--soft);
   color: var(--soft-ink);
-  border-radius: 4px;
+  border-radius: var(--radius-input);
 }
 
 /* A setting key in the text is one long word. */

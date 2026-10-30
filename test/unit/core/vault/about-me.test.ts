@@ -6,11 +6,18 @@ import {
   aboutMeProblemNote,
   firstCommitDay,
   installedOn,
+  parseLastLocation,
   readAboutMe,
   readHomePlace,
+  readLastLocation,
+  withHeaderField,
 } from "../../../../src/core/vault/about-me.ts";
 import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { vaultTemplateFiles } from "../../../../src/core/vault/vault-template.ts";
+
+const point = { latitude: 41.39, longitude: 2.17, accuracy: 30, at: "2026-10-22T08:00:00.000Z", source: "telegram" };
+const pointLine =
+  'lastLocation: { latitude: 41.39, longitude: 2.17, accuracy: 30, at: "2026-10-22T08:00:00.000Z", source: telegram }';
 
 let vault: string;
 
@@ -164,6 +171,20 @@ describe("a new vault's note", () => {
       problems: [],
     });
   });
+
+  test("has an empty lastLocation that Eva fills in place", () => {
+    const text = vaultTemplateFiles({
+      name: "Alex",
+      language: "English",
+      notesLanguage: "English",
+      timeZone: "UTC",
+      topics: [],
+    })["Life/About me.md"];
+    expect(parseLastLocation(text ?? "")).toBeNull();
+    const filled = withHeaderField(text ?? "", "lastLocation", pointLine) ?? "";
+    expect(parseLastLocation(filled)).toEqual(point);
+    expect(filled.split("\n").length).toBe((text ?? "").split("\n").length);
+  });
 });
 
 describe("forms that people write", () => {
@@ -190,7 +211,7 @@ describe("forms that people write", () => {
   });
 
   test("a byte order mark before the header does not hide it", () => {
-    writeFileSync(join(vault, "Life", "About me.md"), "﻿---\nname: Alex\n---\n");
+    writeFileSync(join(vault, "Life", "About me.md"), "\uFEFF---\nname: Alex\n---\n");
     expect(readAboutMe(vault).name).toBe("Alex");
   });
 });
@@ -230,5 +251,96 @@ describe("readHomePlace", () => {
     expect(readHomePlace(vault)).toBeNull();
     writeFileSync(join(vault, "Life", "About me.md"), "# About Alex\n");
     expect(readHomePlace(vault)).toBeNull();
+  });
+});
+
+describe("parseLastLocation", () => {
+  test("reads the point that Eva wrote", () => {
+    expect(parseLastLocation(`---\nname: Alex\n${pointLine}\n---\n`)).toEqual(point);
+  });
+
+  test("reads a point with no accuracy, also in block form", () => {
+    const text = [
+      "---",
+      "lastLocation:",
+      "  latitude: -33.9",
+      "  longitude: 151.2",
+      "  accuracy: null",
+      '  at: "2026-10-22T08:00:00.000Z"',
+      "  source: web",
+      "---",
+      "",
+    ].join("\n");
+    expect(parseLastLocation(text)).toEqual({
+      ...point,
+      latitude: -33.9,
+      longitude: 151.2,
+      accuracy: null,
+      source: "web",
+    });
+  });
+
+  test("is null for an empty field, a bad field, broken YAML or no header", () => {
+    expect(parseLastLocation("---\nlastLocation: # Eva fills this\n---\n")).toBeNull();
+    expect(
+      parseLastLocation("---\nlastLocation: { latitude: 91, longitude: 2, at: x, source: web }\n---\n"),
+    ).toBeNull();
+    expect(parseLastLocation(`---\n${pointLine.replace("telegram", "carrier pigeon")}\n---\n`)).toBeNull();
+    expect(parseLastLocation(`---\n${pointLine.replace("2026-10-22T08:00:00.000Z", "yesterday")}\n---\n`)).toBeNull();
+    expect(parseLastLocation("---\nlastLocation: [1\n---\n")).toBeNull();
+    expect(parseLastLocation("# About Alex\n")).toBeNull();
+  });
+
+  test("leaves a bad field out of the problems: the code fixes it at the next write", () => {
+    note("lastLocation: { latitude: north }");
+    expect(readAboutMe(vault).problems).toEqual([]);
+  });
+
+  test("reads the note of the vault", () => {
+    note(pointLine);
+    expect(readLastLocation(vault)).toEqual(point);
+  });
+});
+
+describe("withHeaderField", () => {
+  const body = "\n# About Alex\n\nlastLocation: in the text, not the header\n";
+
+  test("replaces the field in place and keeps every other byte", () => {
+    const text = `---\nname: Alex # the short name\nlastLocation: # Eva fills this\nplaces:\n  home: { city: Barcelona }\n---\n${body}`;
+    expect(withHeaderField(text, "lastLocation", pointLine)).toBe(
+      `---\nname: Alex # the short name\n${pointLine}\nplaces:\n  home: { city: Barcelona }\n---\n${body}`,
+    );
+  });
+
+  test("replaces a field in block form with all its lines", () => {
+    const text = `---\nlastLocation:\n  latitude: 1\n\n  longitude: 2\nname: Alex\n---\n${body}`;
+    expect(withHeaderField(text, "lastLocation", pointLine)).toBe(`---\n${pointLine}\nname: Alex\n---\n${body}`);
+  });
+
+  test("adds a missing field at the end of the header", () => {
+    expect(withHeaderField(`---\nname: Alex\ndiet: [vegetarian]\n---\n${body}`, "lastLocation", pointLine)).toBe(
+      `---\nname: Alex\ndiet: [vegetarian]\n${pointLine}\n---\n${body}`,
+    );
+  });
+
+  test("adds a header to a note with none", () => {
+    expect(withHeaderField("# About Alex\n", "lastLocation", pointLine)).toBe(`---\n${pointLine}\n---\n# About Alex\n`);
+  });
+
+  test("keeps Windows line endings and a byte order mark", () => {
+    const text = "\uFEFF---\r\nname: Alex\r\n---\r\n\r\n# About Alex\r\n";
+    expect(withHeaderField(text, "lastLocation", pointLine)).toBe(
+      `\uFEFF---\r\nname: Alex\r\n${pointLine}\r\n---\r\n\r\n# About Alex\r\n`,
+    );
+  });
+
+  test("is null when the header is broken, so Eva never writes over it", () => {
+    expect(withHeaderField("---\nplaces: [home\n---\n", "lastLocation", pointLine)).toBeNull();
+  });
+
+  test("is null when the new header would not read as the old one with the new field", () => {
+    // The comment ends the field's lines for the replace, so its last line would stay behind.
+    const text = "---\nlastLocation:\n  latitude: 1\n# a comment\n  longitude: 2\nname: Alex\n---\n";
+    expect(withHeaderField(text, "lastLocation", pointLine)).toBeNull();
   });
 });

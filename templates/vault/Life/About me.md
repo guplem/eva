@@ -18,6 +18,7 @@ people: # each with a name, a relation and a birthDate
 dates: # each with a name and a date
 diet:
 allergies:
+lastLocation: # Eva fills this
 ---
 
 # About {{name}}

@@ -39,6 +39,8 @@ Read the note first. Change only the field that the person gave. Keep every othe
 
 When the person says where they live, fill `region`, `hemisphere` and `places.home` together.
 
+Never edit `lastLocation`. Eva's code fills it with the last location from the person's phone. Keep its line as it is.
+
 Leave a field empty, not invented, when the person did not say it.
 
 ## 3. Example

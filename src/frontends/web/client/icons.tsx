@@ -173,6 +173,8 @@ const drawings = {
       <path d="M12 11v5M12 8v.01" />
     </>
   ),
+  /** An open book: the guide. */
+  book: <path d="M12 6.5C10 5 7 4.5 3.5 5v13.5C7 18 10 18.5 12 20c2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5zM12 6.5V20" />,
   lock: (
     <>
       <rect x="5" y="10.5" width="14" height="10" rx="2.5" />

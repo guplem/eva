@@ -44,6 +44,7 @@ const designIcons: readonly IconName[] = [
   "palette",
   "trash",
   "info",
+  "book",
   "lock",
   "eye",
   "external",

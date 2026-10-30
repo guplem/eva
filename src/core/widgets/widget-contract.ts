@@ -82,6 +82,8 @@ export function checkManifest(text: string): ManifestCheck {
   const contract = (value as Record<string, unknown> | null)?.["contract"];
   if (typeof contract !== "number" || !Number.isInteger(contract))
     return failed(`${manifestPath} has no contract number.`);
+  // Contract 1 is the first: a smaller number is a mistake in the manifest, not a newer widget.
+  if (contract < 1) return failed(`${manifestPath} has the contract ${String(contract)}, which does not exist. Use 1.`);
   if (!knownContracts.has(contract)) {
     return {
       ...failed(`This widget follows contract ${String(contract)}. Update Eva to use this widget.`),

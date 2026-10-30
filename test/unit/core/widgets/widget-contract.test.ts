@@ -57,6 +57,12 @@ describe("checkManifest", () => {
     expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 2 })).newerContract).toBe(true);
   });
 
+  test("a contract below 1 is a mistake of the manifest, not a newer widget", () => {
+    const result = checkManifest(JSON.stringify({ ...manifest, contract: 0 }));
+    expect(result.problems).toEqual(["eva-widget.json has the contract 0, which does not exist. Use 1."]);
+    expect(result.newerContract).toBeUndefined();
+  });
+
   test("refuses a manifest with no contract", () => {
     const { contract: _contract, ...rest } = manifest;
     expect(checkManifest(JSON.stringify(rest)).problems).toEqual(["eva-widget.json has no contract number."]);

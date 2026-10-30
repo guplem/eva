@@ -100,6 +100,8 @@ describe("repository setup", () => {
     const reports = await withGithub.repositorySetup("2025-04-01-0900-other-app");
     withGithub.stop();
     expect(reports.map((report) => report.slug)).toEqual(["owner/other-app", null]);
+    // The report keeps the address of the project file, so a Fix finds the repository again.
+    expect(reports[0]?.repositoryUrl).toBe("https://github.com/owner/other-app.git");
     expect(reports[0]?.sections.map((section) => section.title)).toContain("Security");
     const security = reports[0]?.sections.find((section) => section.title === "Security")?.items ?? [];
     expect(security.find((entry) => entry.label === "Dependabot alerts")?.light).toBe("green");

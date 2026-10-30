@@ -489,7 +489,8 @@ export class ProjectWork {
         if (typeof target === "string") return unreadableReport(url, slug, target, type.name);
         if (target.isArchived)
           return unreadableReport(url, slug, "This repository is archived, so it takes no changes.", type.name);
-        return type.report(target, reference);
+        // The address of the project file, so a Fix or a type change finds the repository again.
+        return { ...type.report(target, reference), repositoryUrl: url };
       }),
     );
   }

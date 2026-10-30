@@ -1871,7 +1871,15 @@ describe("web routes", () => {
 
   test("location: the web app sends a point, and the place falls back to the home of About me", async () => {
     interface Place {
-      place: { lat: number; lon: number; source: string; at: string | null } | null;
+      place: {
+        latitude: number;
+        longitude: number;
+        lat: number;
+        lon: number;
+        accuracy: number | null;
+        source: string;
+        at: string | null;
+      } | null;
     }
     expect((await json<Place>(await call("/api/location"))).place).toBeNull();
     const vaultPath = eva.status().vaultPath ?? "";
@@ -1880,20 +1888,38 @@ describe("web routes", () => {
       join(vaultPath, "Life", "About me.md"),
       "---\nplaces:\n  home: { city: Barcelona, lat: 41.39, lon: 2.17 }\n---\n",
     );
+    // The old names stay for one release, for a web app that loaded before the update (#689).
     expect((await json<Place>(await call("/api/location"))).place).toEqual({
+      latitude: 41.39,
+      longitude: 2.17,
       lat: 41.39,
       lon: 2.17,
+      accuracy: null,
       source: "home",
       at: null,
     });
     expect((await json<{ isHub: boolean }>(await call("/api/location"))).isHub).toBe(true);
     const sent = await call("/api/location", {
       method: "POST",
-      body: { lat: 40.4, lon: -3.7, accuracy: 30, takenAt: Date.parse("2026-10-14T10:29:00Z") },
+      body: { latitude: 40.4, longitude: -3.7, accuracy: 30, takenAt: Date.parse("2026-10-14T10:29:00Z") },
     });
     expect(await json(sent)).toEqual({ saved: true });
-    expect((await json<Place>(await call("/api/location"))).place).toMatchObject({ lat: 40.4, source: "web" });
+    expect((await json<Place>(await call("/api/location"))).place).toMatchObject({
+      latitude: 40.4,
+      lat: 40.4,
+      accuracy: 30,
+      source: "web",
+    });
+    const old = await call("/api/location", {
+      method: "POST",
+      body: { lat: 40.5, lon: -3.7, accuracy: 30, takenAt: Date.parse("2026-10-14T10:30:00Z") },
+    });
+    expect(await json(old)).toEqual({ saved: true });
+    expect((await json<Place>(await call("/api/location"))).place).toMatchObject({ latitude: 40.5 });
     expect((await call("/api/location", { method: "POST", body: { lat: 100, lon: 0, takenAt: 1 } })).status).toBe(400);
+    expect(
+      (await call("/api/location", { method: "POST", body: { latitude: 0, longitude: 181, takenAt: 1 } })).status,
+    ).toBe(400);
   });
 
   test("about me: the person's facts, and the facts that Eva still needs", async () => {

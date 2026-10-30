@@ -6,7 +6,7 @@ const now = new Date("2026-10-22T08:00:00.000Z");
 describe("placeWords", () => {
   test("says where the location came from, and how old it is", () => {
     const at = (minutes: number): string => new Date(now.getTime() - minutes * 60_000).toISOString();
-    const place = { lat: 1, lon: 2, source: "telegram" as const, at: at(0) };
+    const place = { latitude: 1, longitude: 2, accuracy: null, source: "telegram" as const, at: at(0) };
     expect(placeWords(place, now)).toBe("Eva knows your location from Telegram, just now.");
     expect(placeWords({ ...place, at: at(1) }, now)).toBe("Eva knows your location from Telegram, 1 minute ago.");
     expect(placeWords({ ...place, source: "web", at: at(14) }, now)).toBe(
@@ -17,7 +17,9 @@ describe("placeWords", () => {
   });
 
   test("names the home place, and an unknown place", () => {
-    expect(placeWords({ lat: 1, lon: 2, source: "home", at: null }, now)).toContain("home place");
+    expect(placeWords({ latitude: 1, longitude: 2, accuracy: null, source: "home", at: null }, now)).toContain(
+      "home place",
+    );
     expect(placeWords(null, now)).toBe("Eva does not know where you are yet.");
   });
 });

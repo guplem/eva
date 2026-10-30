@@ -15,7 +15,13 @@ import {
 import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { vaultTemplateFiles } from "../../../../src/core/vault/vault-template.ts";
 
-const point = { latitude: 41.39, longitude: 2.17, accuracy: 30, at: "2026-10-22T08:00:00.000Z", source: "telegram" };
+const point = {
+  latitude: 41.39,
+  longitude: 2.17,
+  accuracy: 30,
+  at: "2026-10-22T08:00:00.000Z",
+  source: "telegram",
+} as const;
 const pointLine =
   'lastLocation: { latitude: 41.39, longitude: 2.17, accuracy: 30, at: "2026-10-22T08:00:00.000Z", source: telegram }';
 

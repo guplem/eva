@@ -227,14 +227,23 @@ const menuItemNameSchema = z.object({ name: menuNameSchema });
 const textActionRunSchema = z.object({ name: menuNameSchema, engine: engineSchema, text: z.string().max(200_000) });
 /** A template part is a path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
 const templateChoiceSchema = z.object({ path: z.string().min(1).max(500), choice: z.enum(["new", "mine"]) });
-/** A point from the web app's location, with the radius of its error in meters. */
-const locationSchema = z.object({
-  lat: z.number().min(-90).max(90),
-  lon: z.number().min(-180).max(180),
-  accuracy: z.number().min(0).nullable().default(null),
-  /** When the device took the point, in milliseconds since 1970, as the browser gives it. */
-  takenAt: z.number().int().positive(),
-});
+/**
+ * A point from the web app's location, with the radius of its error in meters. A web app that
+ * loaded before #689 sends `lat` and `lon`, so Eva reads them too. Remove them after one release.
+ */
+const locationSchema = z.preprocess(
+  (body) =>
+    typeof body === "object" && body !== null && !("latitude" in body) && "lat" in body
+      ? { ...body, latitude: body.lat, longitude: "lon" in body ? body.lon : undefined }
+      : body,
+  z.object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    accuracy: z.number().min(0).nullable().default(null),
+    /** When the device took the point, in milliseconds since 1970, as the browser gives it. */
+    takenAt: z.number().int().positive(),
+  }),
+);
 /** A browser's push subscription, as its push manager gives it. */
 const pushDeviceSchema = z.object({
   subscription: z.object({
@@ -965,9 +974,15 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     return json(await eva.runCheck(name));
   }
   if (url.pathname === "/api/location") {
-    if (method === "GET") return json({ place: eva.currentPlace(), isHub: eva.role() === "hub" });
+    if (method === "GET") {
+      const place = eva.currentPlace();
+      // The old names stay for one release, for a web app or a script from before #689.
+      const withOldNames = place === null ? null : { ...place, lat: place.latitude, lon: place.longitude };
+      return json({ place: withOldNames, isHub: eva.role() === "hub" });
+    }
     if (method === "POST") {
-      const { takenAt, ...point } = locationSchema.parse(await request.json());
+      const { takenAt, latitude, longitude, accuracy } = locationSchema.parse(await request.json());
+      const point = { latitude, longitude, accuracy };
       return json({ saved: eva.saveLocation(point, "web", new Date(takenAt), false) });
     }
   }

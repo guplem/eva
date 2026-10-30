@@ -381,8 +381,12 @@ export const api = {
   restoreAssistantRules: (version: string, backup: boolean): Promise<RestoredRules> =>
     request("POST", "/api/assistant-rules/restore", { version, backup }),
   currentPlace: (): Promise<{ place: CurrentPlaceView | null; isHub: boolean }> => request("GET", "/api/location"),
-  sendLocation: (lat: number, lon: number, accuracy: number | null, takenAt: number): Promise<{ saved: boolean }> =>
-    request("POST", "/api/location", { lat, lon, accuracy, takenAt }),
+  sendLocation: (
+    latitude: number,
+    longitude: number,
+    accuracy: number | null,
+    takenAt: number,
+  ): Promise<{ saved: boolean }> => request("POST", "/api/location", { latitude, longitude, accuracy, takenAt }),
   /** Answers 409 when no vault is configured. */
   aboutMe: (): Promise<PersonalFactsView> => request("GET", "/api/about-me"),
   /** Answers 409 when no vault is configured. */

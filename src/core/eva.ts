@@ -41,6 +41,7 @@ import {
   updateProblem,
   relayedProblem,
   vaultAheadProblem,
+  lastLocationProblem,
 } from "./alerts/problem-rules.ts";
 import { machineReportFile, readMachineReports, writeMachineReport } from "./alerts/machine-reports.ts";
 import { runMigrations, type MigrationRun, type MigrationStore } from "./migrations/migration-runner.ts";
@@ -149,7 +150,7 @@ import type { UndoPreview } from "./vault/vault-snapshots.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
 import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
-import { LocationStore, type LastLocation, type LocationInput, type LocationSource } from "./location/last-location.ts";
+import { LocationKeeper, type LocationInput, type LocationSource } from "./location/last-location.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
@@ -186,8 +187,10 @@ export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
 
 /** Where the person is, for scripts such as a weather forecast. */
 export interface CurrentPlace {
-  readonly lat: number;
-  readonly lon: number;
+  readonly latitude: number;
+  readonly longitude: number;
+  /** The radius of the error, in meters; null when the phone does not say, and for the home place. */
+  readonly accuracy: number | null;
   /** A phone's recent location, or the home place of `Life/About me.md`. */
   readonly source: LocationSource | "home";
   /** When the phone sent it; null for the home place. */
@@ -437,7 +440,7 @@ export class Eva {
   private readonly checkResults: Map<CheckName, CheckRecord>;
   private readonly facts: InstanceFacts;
   private readonly vault: VaultUpkeep;
-  private readonly locations: LocationStore;
+  private readonly locations: LocationKeeper;
   /** The day of the vault's first commit, read once. */
   private vaultFirstCommit: Promise<string | null> | null;
   /** The git environment of this instance, for reads of the vault's history. */
@@ -522,7 +525,7 @@ export class Eva {
     });
     this.redactor = redactor;
     this.unsentTexts = new UnsentTextStore(options.paths.unsentTexts, redactor);
-    this.locations = new LocationStore({ path: options.paths.location, now: options.now });
+    this.locations = new LocationKeeper({ vaultPath, oldFilePath: options.paths.location, now: options.now });
     this.webPush = new WebPush({
       paths: options.paths,
       now: options.now,
@@ -674,6 +677,7 @@ export class Eva {
             save: () => this.vault.save(),
             snapshot: (ref) => this.vault.snapshot(ref),
           },
+          beforeEndSnapshot: (sessionId) => this.writeLocationIfDue(sessionId),
           basePrompt: options.basePrompt,
           runner: options.runner,
           environment: agentEnvironment,
@@ -884,6 +888,7 @@ export class Eva {
       await this.vault.pullIfDue({ ...this.settings.config.sync, enabled: this.options.config.sync.enabled });
       this.noticeRoleChange();
       this.cleanUpIfDue();
+      await this.writeLocationIfDue();
       this.noticeDefaultEngine();
       // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
       // its download can take minutes, and the next ticks must still fetch the vault.
@@ -1060,27 +1065,52 @@ export class Eva {
   /**
    * Keeps a location from the phone, with the time when the phone took it. True when Eva kept it:
    * she drops an older point, and keeps a live stream at most once a minute. Only the hub keeps it,
-   * because only the hub runs the schedules and Telegram.
+   * because only the hub runs the schedules and Telegram. The write to the vault follows when it
+   * is due.
    */
   saveLocation(input: LocationInput, source: LocationSource, takenAt: Date, shared: boolean): boolean {
     if (this.role() !== "hub") {
       throw new EvaError("setting_forbidden", "Only the hub computer keeps your location. Open its page to send it.");
     }
-    return this.locations.save(input, source, takenAt, shared);
+    const kept = this.locations.keep(input, source, takenAt, shared);
+    if (kept) this.inBackground("The location write", () => this.writeLocationIfDue());
+    return kept;
   }
 
   /**
    * Where the person is: the phone's location from the last 24 hours, or else the home place of
-   * `Life/About me.md`. Null when Eva knows neither.
+   * `Life/About me.md`. Null when Eva knows neither. The hub can know a newer point than the note.
    */
   currentPlace(): CurrentPlace | null {
-    const last: LastLocation | null = this.locations.read();
+    const last = this.locations.newest();
     if (last !== null && this.options.now().getTime() - Date.parse(last.at) < locationFreshMs) {
-      return { lat: last.lat, lon: last.lon, source: last.source, at: last.at };
+      const { latitude, longitude, accuracy, source, at } = last;
+      return { latitude, longitude, accuracy, source, at };
     }
     const vaultPath = this.options.config.vaultPath;
     const home = vaultPath === null ? null : readHomePlace(vaultPath);
-    return home === null ? null : { ...home, source: "home", at: null };
+    return home === null ? null : { latitude: home.lat, longitude: home.lon, accuracy: null, source: "home", at: null };
+  }
+
+  /**
+   * Writes the hub's newest point into `Life/About me.md` when it is due, between two sync steps
+   * and never during an Assistant turn. The next sync carries the change. `endingTurn` is the chat
+   * whose turn ends now: Eva writes before its snapshot, so an undo of that turn stays whole.
+   */
+  private async writeLocationIfDue(endingTurn?: string): Promise<void> {
+    if (this.role() !== "hub") return;
+    try {
+      await this.vault.exclusive(() => {
+        if (this.assistantBusy(endingTurn)) return;
+        const problem = lastLocationProblem(this.locations.writeIfDue());
+        if (problem !== "keep") this.alerts.report("last_location", problem);
+      });
+    } catch (error) {
+      // A full disk must not stop the background tick or the end of a turn. The point stays in memory.
+      this.options.logger?.log("warn", "Eva could not save the location in the vault.", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** The public key that a device needs to subscribe, and whether this machine sends the alerts. */
@@ -2322,8 +2352,11 @@ export class Eva {
     this.reportNameTaken = taken;
   }
 
-  private assistantBusy(): boolean {
-    return this.sessions.list().some((session) => session.mode === "assistant" && this.sessions.isBusy(session.id));
+  /** `except` is a chat whose turn ends now, so it no longer counts. */
+  private assistantBusy(except?: string): boolean {
+    return this.sessions
+      .list()
+      .some((session) => session.mode === "assistant" && session.id !== except && this.sessions.isBusy(session.id));
   }
 
   /** Runs a task that nobody awaits, and logs its failure instead of losing it (lesson 50). */

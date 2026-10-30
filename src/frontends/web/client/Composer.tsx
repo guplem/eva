@@ -7,7 +7,7 @@
  * The clip attaches files in an Assistant chat. A pasted or dropped file attaches the same way.
  * Each file uploads when the person picks it, so Send waits for no upload.
  */
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement, type RefObject } from "react";
 import {
   effortLevels,
   modelAliases,
@@ -30,6 +30,8 @@ import {
   restoredText,
   sendsOnEnter,
 } from "./conversation-parts.ts";
+import { ColumnDivider } from "./ColumnDivider.tsx";
+import { composerHeightRange, heightShare, readComposerHeight, saveComposerHeight } from "./composer-height.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
@@ -193,6 +195,7 @@ export function Composer({
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
   const box = useRef<HTMLTextAreaElement>(null);
+  const height = useComposerHeight(box, text);
   const locked = block !== null;
   // On a computer the person types into a chat at once. On a touch screen the focus would raise the keyboard over the chat.
   useEffect(() => {
@@ -257,8 +260,25 @@ export function Composer({
           files.add([...event.dataTransfer.files]);
         }}
       >
+        {height.tall && (
+          <ColumnDivider
+            label="Height of the text"
+            side="top"
+            minWidth={shortestText}
+            target={() => box.current}
+            sizeVariable="--composer-height"
+            maxSize={() => window.innerHeight * composerHeightRange.max}
+            onWidth={height.onHeight}
+          />
+        )}
         <textarea
           ref={box}
+          className={height.share === null ? undefined : "resized"}
+          style={
+            height.share === null
+              ? undefined
+              : ({ "--composer-height": `${String(height.share * 100)}dvh` } as CSSProperties)
+          }
           aria-label="Message"
           aria-describedby={block === null ? undefined : lineId}
           placeholder={block === null ? placeholder : "Eva cannot answer yet"}
@@ -743,4 +763,41 @@ function isTextField(element: Element | null): boolean {
     (element instanceof HTMLElement && element.isContentEditable) ||
     (element instanceof HTMLInputElement && !["button", "checkbox", "radio", "submit", "range"].includes(element.type))
   );
+}
+
+/** A box at least this tall shows the handle, even when its text does not scroll. */
+const tallText = 96;
+/** The handle never makes the text shorter than two lines. */
+const shortestText = 48;
+
+/**
+ * The tallest height of the text, as a share of the window, and whether the handle shows (issue 660). A box with a
+ * line or two has nothing to resize, so the handle shows only when the text scrolls or the box is tall.
+ */
+function useComposerHeight(
+  box: RefObject<HTMLTextAreaElement | null>,
+  text: string,
+): {
+  readonly share: number | null;
+  readonly tall: boolean;
+  readonly onHeight: (height: number | null) => void;
+} {
+  const [share, setShare] = useState(readComposerHeight);
+  const [tall, setTall] = useState(false);
+  useEffect(() => {
+    const element = box.current;
+    if (element === null) return;
+    const measure = (): void =>
+      setTall(element.scrollHeight > element.clientHeight + 1 || element.clientHeight >= tallText);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [box, text, share]);
+  const onHeight = (height: number | null): void => {
+    const next = height === null ? null : heightShare(height, window.innerHeight);
+    saveComposerHeight(next);
+    setShare(next);
+  };
+  return { share, tall, onHeight };
 }

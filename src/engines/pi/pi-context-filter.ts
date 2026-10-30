@@ -2,8 +2,8 @@
  * The pi extension that hides from a Project chat each instruction file above its project folder,
  * such as the vault's map, so the chat does not know that it runs inside Eva (#702). pi reads
  * every `AGENTS.md` from its start folder up to the root of the disk. Its `--no-context-files`
- * would also drop pi's global file, and its `--append-system-prompt` would replace the person's
- * own `APPEND_SYSTEM.md`. So this extension takes pi's own list of files and removes only those.
+ * would also drop pi's global file. Its `--append-system-prompt` would replace the person's own
+ * `APPEND_SYSTEM.md`. So this extension takes pi's own list of files and removes only those.
  *
  * pi 1.4 builds its prompt again from the list after this event. pi 0.73.1 does not, so the
  * extension also cuts each file's block out of 0.73.1's text. When neither form fits, or the
@@ -70,13 +70,21 @@ export default function evaContextFilter(pi: FilterPi): void {
   Reflect.deleteProperty(process.env, projectFolderVariable);
   if (projectFolder === undefined || projectFolder === "") return;
   slots[folderSlot] = projectFolder;
+  // Every path hidden so far. pi 0.73.1 keeps an old base prompt after the list changes, so a later
+  // prompt in the same process can still hold a file that the list no longer names.
+  const hiddenPaths = new Set<string>();
   pi.on("before_agent_start", (event, context) => {
-    // Read once: in pi 1.4 this is a getter that renders the prompt again from the list, which
-    // the filter changes. A second read would differ, and would make the old prompt a forced one.
+    // In pi 1.4 this is a getter that renders the prompt again from the list. A changed prompt
+    // must be compared with this first read, or the old prompt would become a forced one.
     const before = event.systemPrompt;
     let result: { readonly prompt: string; readonly problem: string | null };
     try {
-      result = hideUpperContext(before, event.systemPromptOptions, projectFolder);
+      result = hideUpperContext(before, event.systemPromptOptions, projectFolder, nativePath, hiddenPaths);
+      // The prompt that pi will send: pi 1.4 renders it from the changed list, so read it again.
+      const sent = result.prompt === before ? event.systemPrompt : result.prompt;
+      if ([...hiddenPaths].some((path) => showsFile(sent, path))) {
+        result = { prompt: withoutProjectContext(sent), problem: newFormProblem };
+      }
     } catch {
       // pi reports a handler's error only in its log, so the person would never hear of it.
       result = { prompt: withoutProjectContext(before), problem: newFormProblem };
@@ -84,6 +92,11 @@ export default function evaContextFilter(pi: FilterPi): void {
     if (result.problem !== null) context.ui.notify(`${contextNoticePrefix}${result.problem}`, "error");
     return Promise.resolve(result.prompt === before ? undefined : { systemPrompt: result.prompt });
   });
+}
+
+/** True when the prompt still shows the file, in pi 0.73.1's form or in pi 1.4's. */
+function showsFile(prompt: string, path: string): boolean {
+  return prompt.includes(`## ${path}\n`) || prompt.includes(`<project_instructions path="${path}">`);
 }
 
 /**
@@ -96,6 +109,7 @@ export function hideUpperContext(
   options: FilterOptions | undefined,
   projectFolder: string,
   path: typeof posix = nativePath,
+  hiddenPaths = new Set<string>(),
 ): { readonly prompt: string; readonly problem: string | null } {
   const files = options?.contextFiles;
   if (!Array.isArray(files)) return { prompt: withoutProjectContext(systemPrompt), problem: newFormProblem };
@@ -106,6 +120,10 @@ export function hideUpperContext(
     if (typeof filePath !== "string" || typeof content !== "string") return true;
     return isAbove(canonical(path.dirname(filePath), path), project, path);
   });
+  for (const file of hidden) {
+    const filePath = (file as { path?: unknown } | null)?.path;
+    if (typeof filePath === "string") hiddenPaths.add(filePath);
+  }
   if (hidden.length === 0) return { prompt: systemPrompt, problem: null };
   // pi 1.4 builds the prompt again from this list. pi 0.73.1 uses it when it builds a new base prompt.
   for (let index = files.length - 1; index >= 0; index -= 1) {
@@ -127,7 +145,13 @@ export function hideUpperContext(
 
 /** The prompt with no project context at all, in pi 1.4's form or in pi 0.73.1's. */
 function withoutProjectContext(prompt: string): string {
-  const newForm = prompt.replace(/\n*<project_context>[\s\S]*?<\/project_context>/g, "");
+  // From the first opening tag to the last closing tag: a file's own text can hold a closing tag.
+  const open = prompt.indexOf("<project_context>");
+  const close = prompt.lastIndexOf("</project_context>");
+  const newForm =
+    open === -1 || close < open
+      ? prompt
+      : prompt.slice(0, open).trimEnd() + prompt.slice(close + "</project_context>".length);
   const start = newForm.indexOf(oldContextHeader);
   if (start === -1) return newForm;
   const end = newForm.indexOf("\nCurrent date:", start);

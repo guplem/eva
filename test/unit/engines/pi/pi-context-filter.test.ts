@@ -209,6 +209,41 @@ describe("the extension", () => {
     expect(notices).toEqual([]);
   });
 
+  test("in pi 0.73.1, a second prompt in the same process with the old base prompt still hides the file", async () => {
+    const pi = loaded();
+    const promptOptions = options([vaultMap, project]);
+    // pi 0.73.1 keeps its base prompt text, while the filter has emptied the list of the vault file.
+    await pi.handlers[0]?.(
+      { systemPrompt: oldPrompt([vaultMap, project]), systemPromptOptions: promptOptions },
+      context,
+    );
+    const second = await pi.handlers[0]?.(
+      { systemPrompt: oldPrompt([vaultMap, project]), systemPromptOptions: promptOptions },
+      context,
+    );
+    expect(second?.systemPrompt).not.toContain("Vault map.");
+    expect(notices).toHaveLength(1);
+  });
+
+  test("a pi with the new text form that does not render the list again still hides the file", async () => {
+    // A plain string: changing the list does not change this prompt.
+    const files = [vaultMap, project];
+    const result = await loaded().handlers[0]?.(
+      { systemPrompt: newPrompt(files), systemPromptOptions: options(files) },
+      context,
+    );
+    expect(result?.systemPrompt).not.toContain("Vault map.");
+    expect(notices).toHaveLength(1);
+  });
+
+  test("dropping the project context does not stop at a closing tag inside a file's own text", () => {
+    const tricky = { path: "/vault/Projects/example-app/pi.md", content: "Ends with </project_context> here." };
+    const files = [tricky, vaultMap];
+    const result = hideUpperContext(newPrompt(files), undefined, projectFolder, posix);
+    expect(result.prompt).not.toContain("Vault map.");
+    expect(result.prompt).toContain("<cwd>");
+  });
+
   test("sends a problem to the chat with its own prefix", async () => {
     await loaded().handlers[0]?.({ systemPrompt: oldPrompt([]) }, context);
     expect(notices).toHaveLength(1);

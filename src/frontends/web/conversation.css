@@ -634,6 +634,7 @@ button.ghost .icon {
 }
 
 .composer-box {
+  position: relative;
   background: var(--panel);
   border-radius: var(--radius-composer);
   box-shadow: var(--shadow);
@@ -659,6 +660,72 @@ button.ghost .icon {
   max-height: 40vh;
   field-sizing: content;
   outline: none;
+}
+
+/* The person dragged the handle to choose the tallest height of the text (issue 660). */
+.composer-box textarea.resized {
+  max-height: var(--composer-height);
+}
+
+/* The handle sits on the top edge of the box, like the grab bar of a sheet, so it covers no text. */
+.row-divider {
+  position: absolute;
+  top: calc(-1 * var(--space-2));
+  left: calc(50% - var(--touch-target));
+  width: calc(2 * var(--touch-target));
+  /* The handle ends at the top padding of the box, so it covers no text. */
+  height: calc(var(--space-2) + 14px);
+  cursor: row-resize;
+  /* A drag must not scroll the chat or select the text. */
+  user-select: none;
+  touch-action: none;
+}
+
+.row-divider::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--space-2) + 4px);
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.row-divider:hover::after,
+.row-divider:active::after,
+.row-divider:focus-visible::after {
+  background: var(--accent);
+}
+
+.row-divider:focus-visible {
+  outline: none;
+}
+
+/* Forced colours drop the background of the bar, so it needs system colours. */
+@media (forced-colors: active) {
+  .row-divider::after {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+
+  .row-divider:hover::after,
+  .row-divider:active::after,
+  .row-divider:focus-visible::after {
+    background: Highlight;
+  }
+}
+
+/* A finger needs a taller target. It reaches above the box, so it still covers no text. */
+@media (pointer: coarse) {
+  .row-divider {
+    top: calc(14px - var(--touch-target));
+    height: var(--touch-target);
+  }
+
+  .row-divider::after {
+    top: calc(var(--touch-target) - 10px);
+  }
 }
 
 .composer-box textarea::placeholder {

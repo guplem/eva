@@ -379,6 +379,62 @@ test("a fork continues under its answer, in the same column, and the switcher go
   await expect(page.getByLabel("Message").first()).toHaveValue("Half a thought");
 });
 
+/** Waits until the element is the given height, give or take the rounding of a pixel. */
+async function expectHeight(element: Locator, expected: number): Promise<void> {
+  await expect
+    .poll(async () => Math.abs(((await element.boundingBox())?.height ?? 0) - expected))
+    .toBeLessThanOrEqual(1);
+}
+
+/** Drags the handle up by the offset, in steps, as a hand does. A negative offset drags it down. */
+async function dragHandleUp(page: Page, handle: Locator, offset: number): Promise<void> {
+  const box = await handle.boundingBox();
+  if (box === null) throw new Error("The handle has no box.");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - offset, { steps: 5 });
+  await page.mouse.up();
+}
+
+test("a drag of the handle sets the tallest height of the message box (issue 660)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const handle = page.getByRole("separator", { name: "Height of the text" });
+  // A short message has nothing to resize.
+  await box.fill("Hello Eva");
+  await expect(handle).toHaveCount(0);
+
+  const long = Array.from({ length: 40 }, (_, line) => `Line ${String(line + 1)}`).join("\n");
+  await box.fill(long);
+  await expect(handle).toBeVisible();
+  const usual = (await box.boundingBox())?.height ?? 0;
+
+  await dragHandleUp(page, handle, 100);
+  await expectHeight(box, usual + 100);
+  await dragHandleUp(page, handle, -200);
+  await expectHeight(box, usual - 100);
+
+  // Each browser keeps the height after a reload.
+  await page.reload();
+  await page.getByRole("textbox", { name: "Message" }).fill(long);
+  await expectHeight(box, usual - 100);
+
+  // A double click gives the usual height back.
+  await handle.dblclick();
+  await expectHeight(box, usual);
+
+  // A box whose text does not scroll yet keeps its limit: ArrowUp raises the limit, not the height of the text.
+  await box.fill(long.split("\n").slice(0, 6).join("\n"));
+  await expect(handle).toBeVisible();
+  await handle.focus();
+  await page.keyboard.press("ArrowUp");
+  await box.fill(long);
+  await expectHeight(box, usual + 16);
+});
+
 test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
   // The demo engine has a login, so the browser plays a machine without one.
   let blocker: string | null = "engine";

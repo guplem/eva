@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RepositoryFacts, SetupReport } from "../../../../src/core/projects/repository-setup.ts";
+import { repositoryCatalog } from "../../../../src/core/projects/repository-catalog.ts";
 import { repositoryTypeOf, repositoryTypes } from "../../../../src/core/projects/repository-types.ts";
 import { evaRepository } from "../../../../src/shared/version.ts";
 
@@ -29,6 +30,8 @@ const fresh: RepositoryFacts = {
   codeScanningDefaultSetup: true,
   readOnlyWorkflowToken: true,
   hasCode: true,
+  pages: "off",
+  widgetFiles: {},
 };
 
 function report(name: string, target: RepositoryFacts, reference: RepositoryFacts | null = null): SetupReport {
@@ -42,14 +45,20 @@ function labels(setup: SetupReport): string[] {
 }
 
 describe("repository types", () => {
-  test("standard and vibe-coded exist, both private by default; only vibe-coded has a reference", () => {
+  test("standard and vibe-coded are private by default, a widget public; only standard has no reference", () => {
     expect(repositoryTypes.map((type) => [type.name, type.defaultVisibility, type.reference])).toEqual([
       ["standard", "private", null],
       ["vibe-coded", "private", evaRepository],
+      ["widget", "public", evaRepository],
     ]);
     expect(repositoryTypes.every((type) => type.needsGithubLogin)).toBe(true);
     expect(repositoryTypeOf("unknown")).toBeNull();
     expect(repositoryTypeOf(undefined)).toBeNull();
+  });
+
+  test("each type of the catalog, which the web client reads, has its report, in the same order", () => {
+    expect(repositoryTypes.map((type) => type.name)).toEqual(repositoryCatalog.map((type) => type.name));
+    expect(repositoryTypes.every((type, index) => type.label === repositoryCatalog[index]?.label)).toBe(true);
   });
 
   test("standard checks only the basic security items, all green or grey on a new public repository", () => {

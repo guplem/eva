@@ -3,7 +3,10 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   // `.claude/worktrees/` holds other agents' clones: their work in progress must never fail this lint.
-  { ignores: ["node_modules/", "coverage/", "*.config.js", ".dependency-cruiser.cjs", ".claude/"] },
+  // `templates/widget/` is a plain JavaScript project with its own lint, which runs in its own check.
+  {
+    ignores: ["node_modules/", "coverage/", "*.config.js", ".dependency-cruiser.cjs", ".claude/", "templates/widget/"],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,

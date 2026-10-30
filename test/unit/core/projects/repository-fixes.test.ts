@@ -50,6 +50,40 @@ describe("runDirectFixes", () => {
     });
   });
 
+  test("a call marked last runs after the commit of the file fixes", async () => {
+    const { write, calls } = fakeWrite({
+      "GET repos/owner/app/git/ref/heads/main": ok({ object: { sha: "head" } }),
+      "GET repos/owner/app/git/commits/head": ok({ tree: { sha: "base" } }),
+      "POST repos/owner/app/git/trees": ok({ sha: "tree" }),
+      "POST repos/owner/app/git/commits": ok({ sha: "commit" }),
+    });
+    const outcome = await runDirectFixes(
+      "owner/app",
+      [
+        {
+          label: "Required checks before merge",
+          directFix: {
+            kind: "api",
+            method: "POST",
+            path: "repos/owner/app/rulesets",
+            body: { name: "main" },
+            last: true,
+          },
+        },
+        {
+          label: "Skill write-commit",
+          directFix: { kind: "files", source: "guplem/eva", branch: "main", files: { "a/SKILL.md": "s1" }, remove: [] },
+        },
+      ],
+      write,
+    );
+    expect(calls.map((call) => `${call.method} ${call.path}`).slice(-2)).toEqual([
+      "PATCH repos/owner/app/git/refs/heads/main",
+      "POST repos/owner/app/rulesets",
+    ]);
+    expect(outcome.fixed).toEqual(["Skill write-commit", "Required checks before merge"]);
+  });
+
   test("labels copy with their colour and description, and the defaults go", async () => {
     const { write, calls } = fakeWrite({
       "GET repos/guplem/eva/labels?per_page=100": ok([

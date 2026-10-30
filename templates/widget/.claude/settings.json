@@ -1,0 +1,110 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit(//tmp/claude-*/**)",
+      "Agent",
+      "ToolSearch",
+      "ScheduleWakeup",
+      "ReadNotifications",
+      "mcp__github__get_*",
+      "mcp__github__list_*",
+      "mcp__github__search_*",
+      "mcp__github__issue_read",
+      "mcp__github__pull_request_read",
+      "mcp__github__actions_get",
+      "mcp__github__actions_list",
+      "mcp__github__issue_write",
+      "mcp__github__add_issue_comment",
+      "mcp__github__update_issue_comment",
+      "mcp__github__create_pull_request",
+      "mcp__github__update_pull_request",
+      "mcp__github__update_pull_request_branch",
+      "mcp__github__enable_pr_auto_merge",
+      "mcp__github__pull_request_review_write",
+      "mcp__github__add_comment_to_pending_review",
+      "mcp__github__add_reply_to_pull_request_comment",
+      "mcp__github__resolve_review_thread",
+      "mcp__ccd_session__spawn_task",
+      "mcp__ccd_session__dismiss_task",
+      "mcp__claude-code-remote__subscribe_pr_activity",
+      "mcp__claude-code-remote__unsubscribe_pr_activity",
+      "mcp__claude-code-remote__send_later",
+      "mcp__claude-code-remote__delete_trigger",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(grep *)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)",
+      "Bash(git branch --show-current*)",
+      "Bash(git branch --list*)",
+      "Bash(git rev-parse *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git rm *)",
+      "Bash(git checkout -b *)",
+      "Bash(git restore --staged *)",
+      "Bash(git push)",
+      "Bash(git push -q)",
+      "Bash(git push origin *)",
+      "Bash(git push -q origin *)",
+      "Bash(git push -u origin *)",
+      "Bash(git push -q -u origin *)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh pr comment *)",
+      "Bash(gh pr update-branch*)",
+      "Bash(gh pr merge *)",
+      "Bash(gh issue view*)",
+      "Bash(gh issue list*)",
+      "Bash(gh issue edit *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh label list*)",
+      "Bash(npm ci*)",
+      "Bash(npm install*)",
+      "Bash(npm run *)",
+      "Bash(npm test*)",
+      "Bash(npx playwright *)",
+      "Bash(uv run .pskill/pskill.py *)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project python -c \"import os, subprocess, sys; root = os.environ.get('CLAUDE_PROJECT_DIR', ''); runner = root + '/.pskill/pskill.py'; arguments = ['uv', 'run', runner, 'hook', 'stop', '--harness', 'claude-code']; os.path.isfile(runner) and subprocess.call(arguments); sys.exit(0)\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project python -c \"import os, subprocess, sys; root = os.environ.get('CLAUDE_PROJECT_DIR', ''); runner = root + '/.pskill/pskill.py'; arguments = ['uv', 'run', runner, 'hook', 'session-start', '--harness', 'claude-code']; os.path.isfile(runner) and subprocess.call(arguments); sys.exit(0)\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

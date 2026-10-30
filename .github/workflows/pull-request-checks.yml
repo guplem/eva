@@ -107,6 +107,35 @@ jobs:
         if: env.RUN_CODE_CHECKS == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         timeout-minutes: 20
         run: bunx playwright install-deps chromium
+      # The widget template runs its own check, against the contract of this commit (#688). So a change
+      # that breaks a new widget fails here first. `--ignore-scripts`: its `prepare` would install its git
+      # hooks in place of Eva's.
+      # The Node.js of the template's own CI, whose test runner reads a glob.
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - if: env.RUN_CODE_CHECKS == 'true'
+        working-directory: templates/widget
+        run: npm ci --ignore-scripts
+      # The template can pin another Playwright version than Eva. Then it needs its own browser build.
+      - if: env.RUN_CODE_CHECKS == 'true'
+        working-directory: templates/widget
+        timeout-minutes: 20
+        run: npx playwright install chromium
+      - if: env.RUN_CODE_CHECKS == 'true'
+        working-directory: templates/widget
+        timeout-minutes: 10
+        env:
+          EVA_CONTRACT_DIR: ${{ github.workspace }}/docs/widgets
+        run: npm run check
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: astral-sh/setup-uv@v6
+      # The pskill files of the template are written by hand. The runner checks them and their skill files.
+      - if: env.RUN_CODE_CHECKS == 'true'
+        working-directory: templates/widget
+        timeout-minutes: 5
+        run: uv run .pskill/pskill.py validate
       # Browser tests of the web UI, at desktop size and at 375 px. They take about 14 minutes.
       # A stuck page must not hold the runner.
       - if: env.RUN_CODE_CHECKS == 'true'

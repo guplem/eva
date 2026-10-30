@@ -15,7 +15,7 @@ import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
-import { repositoryTypes, type RepositoryTypeName } from "../../core/projects/repository-types.ts";
+import { repositoryCatalog, type RepositoryTypeName } from "../../core/projects/repository-catalog.ts";
 import type {
   DeviceLoginApprover,
   DeviceLoginEvent,
@@ -157,7 +157,7 @@ const projectDetailsSchema = z.object({
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
 });
-const repositoryTypeNames = repositoryTypes.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
+const repositoryTypeNames = repositoryCatalog.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
 const repositoryTypeSchema = z.object({ repository: z.string().min(1).max(2_000), type: z.enum(repositoryTypeNames) });
 const repositoryFixSchema = z.object({
   repository: z.string().min(1).max(2_000),

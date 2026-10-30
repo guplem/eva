@@ -37,7 +37,10 @@ const copiesAtOnce = 4;
 /** One page holds every label of a reference repository. */
 const labelPage = "?per_page=100";
 
-/** Runs the fixes in order. Every file fix lands in one commit, after the other fixes. */
+/**
+ * Runs the fixes in order. Every file fix lands in one commit, after the other fixes, and before the
+ * calls marked `last`.
+ */
 export async function runDirectFixes(slug: string, items: readonly FixItem[], write: GithubWrite): Promise<FixOutcome> {
   const fixed: string[] = [];
   const failed: { label: string; reason: string }[] = [];
@@ -50,11 +53,11 @@ export async function runDirectFixes(slug: string, items: readonly FixItem[], wr
       failed.push(...labels.map((label) => ({ label, reason: error.message })));
     }
   };
+  const runCall = (label: string, fix: Extract<DirectFix, { kind: "api" }>): Promise<void> =>
+    record([label], () => githubCall(write, fix.method, fix.path, fix.body ?? undefined).then(() => undefined));
   for (const { label, directFix } of items) {
     if (directFix.kind === "api") {
-      await record([label], () =>
-        call(write, directFix.method, directFix.path, directFix.body ?? undefined).then(() => undefined),
-      );
+      if (directFix.last !== true) await runCall(label, directFix);
     } else if (directFix.kind === "labels") {
       await record([label], () => copyLabels(slug, directFix, write));
     }
@@ -73,6 +76,9 @@ export async function runDirectFixes(slug: string, items: readonly FixItem[], wr
         ),
     );
   }
+  for (const { label, directFix } of items) {
+    if (directFix.kind === "api" && directFix.last === true) await runCall(label, directFix);
+  }
   return { fixed, failed };
 }
 
@@ -81,16 +87,17 @@ async function copyLabels(
   fix: Extract<DirectFix, { kind: "labels" }>,
   write: GithubWrite,
 ): Promise<void> {
-  const source = fix.add.length === 0 ? [] : listOf(await call(write, "GET", `repos/${fix.source}/labels${labelPage}`));
+  const source =
+    fix.add.length === 0 ? [] : listOf(await githubCall(write, "GET", `repos/${fix.source}/labels${labelPage}`));
   for (const name of fix.add) {
     const found = source.find((label) => textField(label, "name") === name);
-    await call(write, "POST", `repos/${slug}/labels`, {
+    await githubCall(write, "POST", `repos/${slug}/labels`, {
       name,
       color: textField(found, "color") ?? "ededed",
       description: textField(found, "description") ?? "",
     });
   }
-  for (const name of fix.remove) await call(write, "DELETE", `repos/${slug}/labels/${encodeURIComponent(name)}`);
+  for (const name of fix.remove) await githubCall(write, "DELETE", `repos/${slug}/labels/${encodeURIComponent(name)}`);
 }
 
 /**
@@ -103,11 +110,7 @@ async function commitFiles(
   fixes: readonly Extract<DirectFix, { kind: "files" }>[],
   write: GithubWrite,
 ): Promise<void> {
-  const address = `repos/${slug}/git`;
-  const head = textField(asRecord(await call(write, "GET", `${address}/ref/heads/${branch}`))?.["object"], "sha");
-  const base =
-    head === null ? null : textField(asRecord(await call(write, "GET", `${address}/commits/${head}`))?.["tree"], "sha");
-  if (head === null || base === null) throw unreadable();
+  const head = await branchHead(write, slug, branch);
   const copies = fixes.flatMap((fix) =>
     Object.entries(fix.files).map(([path, sha]) => ({ source: fix.source, path, sha })),
   );
@@ -115,33 +118,63 @@ async function commitFiles(
   for (let start = 0; start < copies.length; start += copiesAtOnce) {
     await Promise.all(
       copies.slice(start, start + copiesAtOnce).map(async ({ source, sha }) => {
-        const blob = asRecord(await call(write, "GET", `repos/${source}/git/blobs/${sha}`));
-        await call(write, "POST", `${address}/blobs`, {
+        const blob = asRecord(await githubCall(write, "GET", `repos/${source}/git/blobs/${sha}`));
+        await githubCall(write, "POST", `repos/${slug}/git/blobs`, {
           content: textField(blob, "content") ?? "",
           encoding: textField(blob, "encoding") ?? "base64",
         });
       }),
     );
   }
-  const tree: { path: string; mode: string; type: string; sha: string | null }[] = copies.map(({ path, sha }) => ({
-    path,
-    mode: "100644",
-    type: "blob",
-    sha,
-  }));
+  const tree: TreeEntry[] = copies.map(({ path, sha }) => ({ path, mode: "100644", type: "blob", sha }));
   for (const fix of fixes) for (const path of fix.remove) tree.push({ path, mode: "100644", type: "blob", sha: null });
-  const treeSha = textField(await call(write, "POST", `${address}/trees`, { base_tree: base, tree }), "sha");
+  await commitTree(write, slug, branch, head, tree, commitMessage);
+}
+
+/** One entry of a Git tree: a blob by its SHA, null to delete the path, or its text. */
+export type TreeEntry =
+  | { readonly path: string; readonly mode: "100644"; readonly type: "blob"; readonly sha: string | null }
+  | { readonly path: string; readonly mode: "100644"; readonly type: "blob"; readonly content: string };
+
+/** The SHA of the newest commit of a branch. */
+export async function branchHead(write: GithubWrite, slug: string, branch: string): Promise<string> {
+  const head = textField(
+    asRecord(await githubCall(write, "GET", `repos/${slug}/git/ref/heads/${encodeURIComponent(branch)}`))?.["object"],
+    "sha",
+  );
+  if (head === null) throw unreadable();
+  return head;
+}
+
+/** One commit on top of `head` that changes these entries of its tree; then the branch points at it. */
+export async function commitTree(
+  write: GithubWrite,
+  slug: string,
+  branch: string,
+  head: string,
+  tree: readonly TreeEntry[],
+  message: string,
+): Promise<void> {
+  const address = `repos/${slug}/git`;
+  const base = textField(asRecord(await githubCall(write, "GET", `${address}/commits/${head}`))?.["tree"], "sha");
+  if (base === null) throw unreadable();
+  const treeSha = textField(await githubCall(write, "POST", `${address}/trees`, { base_tree: base, tree }), "sha");
   if (treeSha === null) throw unreadable();
   const commit = textField(
-    await call(write, "POST", `${address}/commits`, { message: commitMessage, tree: treeSha, parents: [head] }),
+    await githubCall(write, "POST", `${address}/commits`, { message, tree: treeSha, parents: [head] }),
     "sha",
   );
   if (commit === null) throw unreadable();
-  await call(write, "PATCH", `${address}/refs/heads/${branch}`, { sha: commit });
+  await githubCall(write, "PATCH", `${address}/refs/heads/${encodeURIComponent(branch)}`, { sha: commit });
 }
 
 /** The parsed body of a 2xx answer. Throws `github_failed` with GitHub's message for any other. */
-async function call(write: GithubWrite, method: GithubMethod, path: string, body?: unknown): Promise<unknown> {
+export async function githubCall(
+  write: GithubWrite,
+  method: GithubMethod,
+  path: string,
+  body?: unknown,
+): Promise<unknown> {
   const answer = await write(method, path, body);
   const parsed = parseJson(answer.body);
   if (answer.status >= 200 && answer.status < 300) return parsed;

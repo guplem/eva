@@ -114,12 +114,14 @@ describe("readRepositoryFacts", () => {
         runsOnPullRequest: true,
         usesCodeql: false,
         commands: ["actions/checkout@v4", "npm ci\nnpm run check\n"],
+        jobs: ["checks"],
       },
       {
         path: ".github/workflows/codeql.yaml",
         runsOnPullRequest: false,
         usesCodeql: true,
         commands: ["github/codeql-action/analyze@v3"],
+        jobs: ["analyze"],
       },
     ]);
     expect(facts.scripts).toEqual({});
@@ -179,6 +181,31 @@ describe("readRepositoryFacts", () => {
     const facts = await readRepositoryFacts(slug, fakeGet(answers));
     expect(facts.allowRules).toBe("none");
     expect(facts.workflows?.[0]?.runsOnPullRequest).toBe(false);
+  });
+
+  test("a job's check name is its plain name or its key; a name with an expression gives none", async () => {
+    const answers = fullAnswers();
+    answers.set(`raw:repos/${slug}/contents/.github/workflows/checks.yml?ref=main`, {
+      status: 200,
+      body: "on: pull_request\njobs:\n  lint:\n    name: Lint the code\n    steps: []\n  test:\n    name: test ${{ matrix.os }}\n    steps: []\n",
+    });
+    const facts = await readRepositoryFacts(slug, fakeGet(answers));
+    expect(facts.workflows?.[0]?.jobs).toEqual(["Lint the code"]);
+  });
+
+  test("a matrix job, a call of a workflow and a path filter give no sure check name", async () => {
+    const answers = fullAnswers();
+    const file = `raw:repos/${slug}/contents/.github/workflows/checks.yml?ref=main`;
+    answers.set(file, {
+      status: 200,
+      body: "on: pull_request\njobs:\n  lint:\n    steps: []\n  test:\n    strategy:\n      matrix:\n        node: [20, 22]\n    steps: []\n  inner:\n    uses: ./.github/workflows/inner.yml\n",
+    });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).workflows?.[0]?.jobs).toEqual(["lint"]);
+    answers.set(file, {
+      status: 200,
+      body: "on:\n  pull_request:\n    paths: [src/**]\njobs:\n  lint:\n    steps: []\n",
+    });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).workflows?.[0]?.jobs).toEqual([]);
   });
 
   test("the list form and the string form of `on` both count", async () => {
@@ -419,5 +446,65 @@ describe("readRepositoryFacts, GraphQL", () => {
       "-f",
       "owner=a",
     ]);
+  });
+});
+
+describe("readRepositoryFacts, widgets", () => {
+  const manifest = JSON.stringify({
+    contract: 1,
+    name: "Habits",
+    size: "medium",
+    inputs: [
+      { id: "habits", schema: "schemas/habits.json" },
+      { id: "outside", schema: "../secret.json" },
+    ],
+  });
+
+  function widgetAnswers(): Map<string, GithubAnswer> {
+    const answers = fullAnswers();
+    const tree = ["eva-widget.json", "schemas/habits.json", "schemas/other.json"].map((path) => ({
+      path,
+      type: "blob",
+      sha: path,
+    }));
+    answers.set(`repos/${slug}/git/trees/main?recursive=1`, ok({ truncated: false, tree }));
+    answers.set(`raw:repos/${slug}/contents/eva-widget.json?ref=main`, { status: 200, body: manifest });
+    answers.set(`raw:repos/${slug}/contents/schemas/habits.json?ref=main`, { status: 200, body: '{"type":"object"}' });
+    answers.set(`repos/${slug}/pages`, ok({ build_type: "workflow" }));
+    return answers;
+  }
+
+  test("reads the manifest and each schema that it names, and how GitHub Pages builds", async () => {
+    const facts = await readRepositoryFacts(slug, fakeGet(widgetAnswers()));
+    expect(facts.widgetFiles).toEqual({ "eva-widget.json": manifest, "schemas/habits.json": '{"type":"object"}' });
+    expect(facts.pages).toBe("workflow");
+  });
+
+  test("a repository with no manifest has no widget files, and Pages off is off", async () => {
+    const facts = await readRepositoryFacts(slug, fakeGet(fullAnswers()));
+    expect(facts.widgetFiles).toEqual({});
+    expect(facts.pages).toBe("off");
+  });
+
+  test("Pages from a branch is a branch build; a refused Pages answer is unknown", async () => {
+    const answers = widgetAnswers();
+    answers.set(`repos/${slug}/pages`, ok({ build_type: "legacy" }));
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).pages).toBe("branch");
+    answers.set(`repos/${slug}/pages`, { status: 403, body: "{}" });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).pages).toBeNull();
+  });
+
+  test("a widget file that GitHub does not serve leaves the widget files unknown", async () => {
+    const answers = widgetAnswers();
+    answers.delete(`raw:repos/${slug}/contents/schemas/habits.json?ref=main`);
+    answers.set(`raw:repos/${slug}/contents/schemas/habits.json?ref=main`, { status: 500, body: "" });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).widgetFiles).toBeNull();
+  });
+
+  test("a schema that the tree does not list stays out, so the report can name it as missing", async () => {
+    const answers = widgetAnswers();
+    const tree = ["eva-widget.json"].map((path) => ({ path, type: "blob", sha: path }));
+    answers.set(`repos/${slug}/git/trees/main?recursive=1`, ok({ truncated: false, tree }));
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).widgetFiles).toEqual({ "eva-widget.json": manifest });
   });
 });

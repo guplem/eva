@@ -20,6 +20,8 @@ export interface FakeRepository {
   /** Each file path and its content. */
   readonly files: Readonly<Record<string, string>>;
   readonly labels: readonly string[];
+  /** More answers, by the path after `repos/{slug}/`, such as `pages`. */
+  readonly answers?: Readonly<Record<string, unknown>>;
   /** The GraphQL security facts; both true when not given. */
   readonly security?: { readonly hasVulnerabilityAlertsEnabled: boolean; readonly isSecurityPolicyEnabled: boolean };
 }
@@ -53,7 +55,9 @@ function answerFor(address: string, fake: FakeRepository, path: string, raw: boo
     return ok({ truncated: false, tree });
   }
   if (path === `${address}/labels?per_page=100&page=1`) return ok(fake.labels.map((name) => ({ name })));
-  const contents = new RegExp(`^${address}/contents/(.+)\\?ref=main$`).exec(path);
+  const extra = path.startsWith(`${address}/`) ? fake.answers?.[path.slice(address.length + 1)] : undefined;
+  if (extra !== undefined) return ok(extra);
+  const contents = new RegExp(`^${address}/contents/(.+?)(?:\\?ref=main)?$`).exec(path);
   const content = contents === null ? undefined : fake.files[decodeURIComponent(contents[1] ?? "")];
   if (raw && content !== undefined) return { status: 200, body: content };
   return null;

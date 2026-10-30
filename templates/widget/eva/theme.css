@@ -1,0 +1,47 @@
+/*
+ * A mock of the theme that Eva gives at eva/theme.css: the default EVE colours. Inside Eva, Eva
+ * answers this path with the person's own colours. docs/widgets.md in Eva's repository names the
+ * variables of the contract.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: oklch(0.972 0.008 245.1);
+  --panel: oklch(1 0 0);
+  --ink: oklch(0.25 0.025 245.1);
+  --muted: oklch(0.55 0.025 245.1);
+  --line: oklch(0.915 0.012 245.1);
+  --chip: oklch(0.95 0.012 245.1);
+  --accent: oklch(0.707 0.164 245.1);
+  --accent-ink: oklch(0.52 0.148 245.1);
+  --on-accent: oklch(1 0.03 245.1);
+  --soft: oklch(0.945 0.041 245.1);
+  --soft-ink: oklch(0.4 0.098 245.1);
+  --ok: oklch(0.56 0.14 150);
+  --ok-bg: oklch(0.95 0.04 150);
+  --warn: oklch(0.6 0.14 65);
+  --warn-bg: oklch(0.96 0.05 85);
+  --bad: oklch(0.56 0.19 25);
+  --bad-bg: oklch(0.95 0.03 25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: oklch(0.16 0.02 245.1);
+    --panel: oklch(0.22 0.022 245.1);
+    --ink: oklch(0.94 0.012 245.1);
+    --muted: oklch(0.7 0.03 245.1);
+    --line: oklch(0.29 0.025 245.1);
+    --chip: oklch(0.26 0.025 245.1);
+    --accent: oklch(0.74 0.164 245.1);
+    --accent-ink: oklch(0.82 0.164 245.1);
+    --on-accent: oklch(0.17 0.03 245.1);
+    --soft: oklch(0.3 0.074 245.1);
+    --soft-ink: oklch(0.92 0.066 245.1);
+    --ok: oklch(0.8 0.15 150);
+    --ok-bg: oklch(0.3 0.06 150);
+    --warn: oklch(0.84 0.13 80);
+    --warn-bg: oklch(0.32 0.06 75);
+    --bad: oklch(0.74 0.16 25);
+    --bad-bg: oklch(0.32 0.07 25);
+  }
+}

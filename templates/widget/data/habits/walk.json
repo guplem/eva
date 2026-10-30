@@ -1,0 +1,6 @@
+{
+  "name": "Walk",
+  "kind": "yesNo",
+  "frequency": { "times": 3, "days": 7 },
+  "checks": []
+}

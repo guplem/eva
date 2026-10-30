@@ -1,6 +1,7 @@
 /** The words and marks of a repository setup report, in the marks that Settings uses. */
 import type { SetupItem, SetupReport } from "./api.ts";
 import type { StepMark } from "./setup-summary.ts";
+import { repositoryTypeInfo, type RepositoryTypeInfo } from "../../../core/projects/repository-catalog.ts";
 
 const marks: Readonly<Record<SetupItem["light"], StepMark | null>> = {
   green: "done",
@@ -33,4 +34,17 @@ export function reportSummary(report: SetupReport): string {
   }
   if (unchecked > 0) words.push(`${String(unchecked)} not checked.`);
   return words.join(" ");
+}
+
+/** The type that Eva proposes for a repository with no type, from its files, or null for none. */
+export function proposedType(report: SetupReport): RepositoryTypeInfo | null {
+  if (report.type !== null || report.proposedType === undefined) return null;
+  return repositoryTypeInfo(report.proposedType);
+}
+
+/** Why Eva proposes the type. */
+export function proposalText(type: RepositoryTypeInfo): string {
+  return type.name === "widget"
+    ? "This repository has an eva-widget.json, so Eva proposes the type Widget."
+    : `Eva proposes the type ${type.label}.`;
 }

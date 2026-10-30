@@ -1,0 +1,10 @@
+{
+  "name": "Meditate",
+  "kind": "number",
+  "unit": "minutes",
+  "frequency": { "times": 1, "days": 1 },
+  "checks": [
+    { "date": "2026-01-01", "value": 10 },
+    { "date": "2026-01-02", "value": 15 }
+  ]
+}

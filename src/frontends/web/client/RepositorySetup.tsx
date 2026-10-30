@@ -4,7 +4,7 @@
  * with no known type shows only the type choice (#681).
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { repositoryTypes } from "../../../core/projects/repository-types.ts";
+import { repositoryCatalog } from "../../../core/projects/repository-catalog.ts";
 import { api, type SetupItem, type SetupReport, type SetupSection } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
@@ -191,7 +191,7 @@ function TypeChoice({
 }): ReactElement {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const current = repositoryTypes.find((type) => type.name === report.type);
+  const current = repositoryCatalog.find((type) => type.name === report.type);
   const choose = async (type: string): Promise<void> => {
     setSaving(true);
     setError(null);
@@ -222,7 +222,7 @@ function TypeChoice({
               Pick a type
             </option>
           )}
-          {repositoryTypes.map((type) => (
+          {repositoryCatalog.map((type) => (
             <option key={type.name} value={type.name}>
               {type.label}
             </option>

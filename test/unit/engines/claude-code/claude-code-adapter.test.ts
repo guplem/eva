@@ -27,6 +27,20 @@ import {
 import type { ApprovalAnswer, QuestionsOutcome, TurnRequest } from "../../../../src/shared/engine-port.ts";
 import { isTurnEnd, type EngineEventPayload } from "../../../../src/shared/events.ts";
 
+/**
+ * A folder of this machine as `hiddenInstructionPatterns` writes it, for paths with no glob
+ * character: slashes, any drive letter, and on Windows both cases of each letter.
+ */
+function asPattern(folder: string): string {
+  const plain = folder
+    .replaceAll("\\", "/")
+    .replace(/^[A-Za-z]:/, "?:")
+    .replace(/\/$/, "");
+  return process.platform === "win32"
+    ? plain.replace(/[A-Za-z]/g, (letter) => `[${letter.toLowerCase()}${letter.toUpperCase()}]`)
+    : plain;
+}
+
 function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
   return {
     mode: "assistant",
@@ -150,15 +164,10 @@ describe("buildQueryOptions", () => {
       "/bin/claude",
     );
     const names = ["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", "AGENTS.md", ".claude/AGENTS.md"];
-    // On Windows, `/vault` resolves to a path on the current drive, which becomes `?:/vault`.
-    const asPattern = (folder: string): string =>
-      resolve(folder)
-        .replaceAll("\\", "/")
-        .replace(/^[A-Za-z]:/, "?:")
-        .replace(/\/$/, "");
+    // On Windows, `/vault` resolves to a path on the current drive.
     const filesOf = (folder: string): string[] => [
-      ...names.map((name) => `${asPattern(folder)}/${name}`),
-      `${asPattern(folder)}/.claude/rules/**`,
+      ...names.map((name) => `${asPattern(resolve(folder))}/${name}`),
+      `${asPattern(resolve(folder))}/.claude/rules/**`,
     ];
     expect(options.settings).toEqual({
       claudeMdExcludes: [...filesOf("/vault/Projects"), ...filesOf("/vault"), ...filesOf("/")],
@@ -181,9 +190,9 @@ describe("buildQueryOptions", () => {
     expect(patterns.some((pattern) => pattern.includes("example-app"))).toBe(false);
   });
 
-  test("a Windows folder gives slashes and any drive letter, since picomatch matches case", () => {
+  test("a Windows folder gives slashes, any drive letter, and both cases of each letter, since picomatch matches case", () => {
     const patterns = hiddenInstructionPatterns("D:\\Data\\Example\\vault\\Projects\\example-app", win32);
-    expect(patterns).toContain("?:/Data/Example/vault/AGENTS.md");
+    expect(patterns).toContain("?:/[dD][aA][tT][aA]/[eE][xX][aA][mM][pP][lL][eE]/[vV][aA][uU][lL][tT]/AGENTS.md");
     expect(patterns).toContain("?:/AGENTS.md");
     expect(patterns.every((pattern) => !pattern.includes("\\"))).toBe(true);
   });
@@ -196,7 +205,6 @@ describe("buildQueryOptions", () => {
       // A junction needs no admin rights on Windows.
       symlinkSync(join(root, "real"), join(root, "link"), process.platform === "win32" ? "junction" : "dir");
       const patterns = hiddenInstructionPatterns(join(root, "link", "Projects", "example-app"));
-      const asPattern = (folder: string): string => folder.replaceAll("\\", "/").replace(/^[A-Za-z]:/, "?:");
       expect(patterns).toContain(`${asPattern(join(root, "link"))}/AGENTS.md`);
       expect(patterns).toContain(`${asPattern(realpathSync(join(root, "real")))}/AGENTS.md`);
     } finally {

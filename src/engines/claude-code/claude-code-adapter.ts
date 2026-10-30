@@ -258,9 +258,9 @@ const instructionFileNames = [
 
 /**
  * The `claudeMdExcludes` patterns that hide each instruction file of a folder above the project
- * folder (#702). Claude Code matches them with picomatch, a library of glob patterns (`*`, `?`
- * and the like), after it turns every backslash into a slash in the patterns too, so no escape
- * can work. Each glob character of a path becomes `?`, which matches one character but never a
+ * folder (#702). Claude Code matches them with picomatch, a library of glob patterns such as `*`
+ * and `?`. It first turns every backslash into a slash, in the patterns too, so no escape can
+ * work. So each glob character of a path becomes `?`, which matches one character but never a
  * slash. picomatch matches case, so a drive letter becomes `?` too. The real path gets its own
  * patterns, since Claude Code may read either one.
  */
@@ -278,11 +278,16 @@ export function hiddenInstructionPatterns(projectFolder: string, path: typeof po
       if (path.dirname(folder) === folder) break;
     }
     return folders.flatMap((folder) => {
-      const base = folder
+      const plain = folder
         .replaceAll("\\", "/")
         .replace(/[()[\]{}*?!+@]/g, "?")
         .replace(/^[A-Za-z]:/, "?:")
         .replace(/\/$/, "");
+      // Windows paths ignore case, but picomatch does not. So each letter matches both cases.
+      const base =
+        path.sep === "\\"
+          ? plain.replace(/[A-Za-z]/g, (letter) => `[${letter.toLowerCase()}${letter.toUpperCase()}]`)
+          : plain;
       return instructionFileNames.map((name) => `${base}/${name}`);
     });
   });

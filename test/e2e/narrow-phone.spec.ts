@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { settingsSections } from "../../src/frontends/web/client/settings-routes.ts";
 
 /**
  * A narrow phone, 320 px wide, with long real names in the demo vault: no page scrolls sideways
@@ -82,21 +83,17 @@ test("no page scrolls sideways on a narrow phone, also with long names", async (
 
   await page.goto("/#/projects");
   await longProject.click();
-  await expectNoSideScroll(page, "the long project", page.getByRole("heading", { level: 1 }));
+  await expectNoSideScroll(
+    page,
+    "the long project",
+    page.getByRole("heading", { level: 1, name: /Northwind Holdings reporting backend/ }),
+  );
 
-  for (const section of [
-    "setup",
-    "engines",
-    "vault",
-    "connections",
-    "trust",
-    "access",
-    "personalize",
-    "developer",
-    "updates",
-  ]) {
-    const address = `#/settings/${section}`;
+  // Each section of Settings. A wait for the title of the section, so the check never reads the page before.
+  for (const section of settingsSections) {
+    const address = `#/settings/${section.id}`;
     await page.goto(`/${address}`);
+    await expect(page.getByRole("heading", { level: 1, name: section.title, exact: true })).toBeVisible();
     await expectNoSideScroll(page, address, page.locator(".settings-page .card").first());
   }
 });

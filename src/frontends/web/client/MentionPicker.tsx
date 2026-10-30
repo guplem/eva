@@ -20,13 +20,12 @@ import {
   mentionNotes,
   mentionProjectOf,
   mentionQueryAt,
-  mentionToken,
   mentionWordEnd,
   pickedProjects,
-  type MentionKind,
   type MentionProject,
   type MentionQuery,
 } from "./mentions.ts";
+import { mentionToken, type MentionKind } from "../../../shared/mentions.ts";
 
 /** The projects with a chat that runs now. The Chats page gives them, so they come first in the search. */
 export const ProjectsInUse = createContext<readonly string[]>([]);

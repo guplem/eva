@@ -4,11 +4,8 @@
  * The text stays as the person typed it. Eva gets one note for each mention after it, as for an
  * attached file, so the agent knows where the project or the file is.
  */
-import { mentionsIn, mentionToken, type MentionKind } from "../../../shared/mentions.ts";
+import { mentionsIn, mentionToken } from "../../../shared/mentions.ts";
 import type { ListedSession, Project } from "./api.ts";
-
-// The picker and the tests take the token rules from here, beside the rest of the mentions.
-export { mentionToken, type MentionKind };
 
 /** The part of a project that the search shows and a note names. */
 export interface MentionProject {
@@ -90,7 +87,6 @@ export function pickedProjects(
     .map(({ project }) => project);
 }
 
-/** A mention in a sent text. Punctuation after a mention without quotes ends the sentence, not the name. */
 /** One note for each mention of the text, in order. A mention that shows twice gets one note. */
 export function mentionNotes(text: string, projects: readonly MentionProject[]): string[] {
   const notes = new Map<string, string>();

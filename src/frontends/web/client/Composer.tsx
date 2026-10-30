@@ -50,8 +50,10 @@ import { recordingTime, recordingType, withHeardText } from "./voice-notes.ts";
 import { goTo } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
-/** What the composer shows of a chat. A new chat has no record until its first message. */
-/** A new chat has no id and no clone yet, so it takes no file of a clone. */
+/**
+ * What the composer shows of a chat. A new chat has no record until its first message, so it has
+ * no id and no clone yet, and takes no file of a clone.
+ */
 type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns"> &
   Partial<Pick<SessionRecord, "firstMessageDraft" | "id" | "clone">>;
 

@@ -11,8 +11,8 @@ import {
   repoTypesWarning,
   statusListText,
   titleHeading,
-  type ProjectStatus,
 } from "./project-catalog.ts";
+import type { ProjectStatus } from "../../shared/project-statuses.ts";
 
 /** The statuses in the comment after `status:` before `in-use` (#690). */
 const oldStatusList = "idea, active, paused or closed";

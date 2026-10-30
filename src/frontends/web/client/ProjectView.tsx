@@ -32,7 +32,8 @@ import { startChatAbout } from "./NewChatDraft.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
-import { countOf, projectSummary, shownTags, statusPill, tagsByUse } from "./project-format.ts";
+import { countOf, projectSummary, shownTags, statusLabels, statusPill, tagsByUse } from "./project-format.ts";
+import { projectStatusFilters, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
@@ -58,20 +59,20 @@ interface ProjectViewProps {
 
 /**
  * The filter words that parseProjectQuery reads in the search text. A typed word wins over its
- * chip. Keep these patterns in step with the parser in `core/projects/project-catalog.ts`.
+ * chip. The status words come from the shared list. Keep the tag pattern in step with the parser
+ * in `core/projects/project-catalog.ts`.
  */
-const statusWordPattern = /(^|\s)status:(idea|active|in-use|paused|closed|current|any)(\s|$)/i;
+const statusWordPattern = new RegExp(`(^|\\s)status:(${[...projectStatusFilters, "any"].join("|")})(\\s|$)`, "i");
 const tagWordPattern = /(^|\s)(tag:|#)\S/i;
 
 /** "Current" is the projects that the person develops or uses now: `active` or `in-use` (#690). */
-const statusChips = [
+const statusChips: readonly { readonly value: ProjectStatusFilter; readonly text: string }[] = [
   { value: "current", text: "Current" },
-  { value: "active", text: "Active" },
-  { value: "in-use", text: "In use" },
-  { value: "idea", text: "Idea" },
-  { value: "paused", text: "Paused" },
-  { value: "closed", text: "Closed" },
-] as const;
+  ...(["active", "in-use", "idea", "paused", "closed"] as const).map((status) => ({
+    value: status,
+    text: statusLabels[status],
+  })),
+];
 
 /** About three rows of tag chips on a phone. */
 const shortTagListLength = 6;

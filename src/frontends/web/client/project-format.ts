@@ -1,4 +1,5 @@
 /** The words and colours of the project pages. */
+import type { ProjectStatus } from "../../../shared/project-statuses.ts";
 import type { Project } from "./api.ts";
 
 /** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */
@@ -14,22 +15,26 @@ export function countOf(count: number, word: string): string {
   return `${String(count)} ${word}${count === 1 ? "" : "s"}`;
 }
 
+/** The word for each status, the same on the pill, the filter chip and the details form. */
+export const statusLabels: Readonly<Record<ProjectStatus, string>> = {
+  idea: "Idea",
+  active: "Active",
+  "in-use": "In use",
+  paused: "Paused",
+  closed: "Closed",
+};
+
+const statusTones: Readonly<Record<ProjectStatus, PillTone>> = {
+  idea: "idle",
+  active: "ok",
+  "in-use": "live",
+  paused: "warn",
+  closed: "idle",
+};
+
 /** Active is green, in use has the accent colour, paused is amber, and an idea or a closed project is grey. */
 export function statusPill(status: Project["frontMatter"]["status"]): Pill | null {
-  switch (status) {
-    case "active":
-      return { text: "Active", tone: "ok" };
-    case "in-use":
-      return { text: "In use", tone: "live" };
-    case "idea":
-      return { text: "Idea", tone: "idle" };
-    case "paused":
-      return { text: "Paused", tone: "warn" };
-    case "closed":
-      return { text: "Closed", tone: "idle" };
-    case null:
-      return null;
-  }
+  return status === null ? null : { text: statusLabels[status], tone: statusTones[status] };
 }
 
 /** "2 clones · 3 chats", for the project card. */

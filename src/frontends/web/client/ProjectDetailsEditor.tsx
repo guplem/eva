@@ -11,15 +11,13 @@ import { BackButton } from "./MainNav.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, SelectField } from "./SettingsParts.tsx";
+import { statusLabels } from "./project-format.ts";
+import { projectStatuses } from "../../../shared/project-statuses.ts";
 
-export const statusChoices = [
+export const statusChoices: readonly { readonly value: string; readonly label: string }[] = [
   { value: "", label: "None" },
-  { value: "idea", label: "Idea" },
-  { value: "active", label: "Active" },
-  { value: "in-use", label: "In use" },
-  { value: "paused", label: "Paused" },
-  { value: "closed", label: "Closed" },
-] as const;
+  ...projectStatuses.map((status) => ({ value: status, label: statusLabels[status] })),
+];
 
 const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
 
@@ -314,8 +312,7 @@ export function splitWords(text: string): string[] {
 
 /** The status of a choice of `statusChoices`, or null for None and for any other value. */
 export function statusOf(value: string): ProjectDetails["status"] {
-  const choice = statusChoices.find((candidate) => candidate.value === value);
-  return choice === undefined || choice.value === "" ? null : choice.value;
+  return projectStatuses.find((status) => status === value) ?? null;
 }
 
 function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {

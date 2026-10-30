@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { projectStatuses } from "../../../../../src/core/projects/project-catalog.ts";
+import { projectStatuses } from "../../../../../src/shared/project-statuses.ts";
 import { statusChoices, statusOf } from "../../../../../src/frontends/web/client/ProjectDetailsEditor.tsx";
 
 describe("the status choices", () => {

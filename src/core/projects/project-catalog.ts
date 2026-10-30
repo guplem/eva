@@ -6,16 +6,16 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { listClones } from "./clones.ts";
+import {
+  projectStatuses,
+  projectStatusFilters,
+  type ProjectStatus,
+  type ProjectStatusFilter,
+} from "../../shared/project-statuses.ts";
 import { parseProjectId, type ParsedProjectId } from "./project-id.ts";
 
-/** `active`: the person develops the project. `in-use`: the person uses it now, such as for the week's menus. */
-export const projectStatuses = ["idea", "active", "in-use", "paused", "closed"] as const;
-export type ProjectStatus = (typeof projectStatuses)[number];
-/** The statuses of the projects that the person works with now: the "Current" filter and the assistant prompt. */
-export const currentStatuses: readonly ProjectStatus[] = ["active", "in-use"];
-/** A status filter: one status, or `current` for every status of `currentStatuses`. */
-export const projectStatusFilters = [...projectStatuses, "current"] as const;
-export type ProjectStatusFilter = (typeof projectStatusFilters)[number];
+/** The statuses of the "Current" filter: the projects that the person develops or uses now. */
+const currentStatuses: readonly ProjectStatus[] = ["active", "in-use"];
 
 export interface ProjectFrontMatter {
   readonly created: string | null;

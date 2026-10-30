@@ -14,7 +14,8 @@ import { menuTextLength } from "../../core/composer-menu/composer-menu.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
-import { parseProjectQuery, projectStatuses, projectStatusFilters } from "../../core/projects/project-catalog.ts";
+import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
+import { projectStatuses, projectStatusFilters } from "../../shared/project-statuses.ts";
 import { repositoryCatalog, type RepositoryTypeName } from "../../core/projects/repository-catalog.ts";
 import type {
   DeviceLoginApprover,

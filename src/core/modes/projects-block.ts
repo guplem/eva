@@ -2,7 +2,8 @@
  * The block of the assistant prompt that lists the projects that the person develops and uses (#690).
  * Eva builds it at the start of each chat, and the chat keeps it, so the prompt cache holds (lesson 40).
  */
-import type { Project, ProjectStatus } from "../projects/project-catalog.ts";
+import type { ProjectStatus } from "../../shared/project-statuses.ts";
+import type { Project } from "../projects/project-catalog.ts";
 
 interface BlockPart {
   readonly heading: string;

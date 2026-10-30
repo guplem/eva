@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { assistantBasePrompt } from "../../../../src/core/modes/assistant-base-prompt.ts";
-import { projectStatuses } from "../../../../src/core/projects/project-catalog.ts";
+import { projectStatuses } from "../../../../src/shared/project-statuses.ts";
 import { defaultAssistantRules } from "../../../../src/core/vault/vault-template.ts";
 import { evaRepository } from "../../../../src/shared/version.ts";
 

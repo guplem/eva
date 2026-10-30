@@ -22,7 +22,13 @@ const types = {
 
 /** The file of a request path, or null for a path outside the folder or a hidden file. */
 function fileOf(urlPath) {
-  const decoded = decodeURIComponent(urlPath.split("?")[0] ?? "/");
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0] ?? "/");
+  } catch {
+    // A broken escape, such as %E0%A4%A, names no file.
+    return null;
+  }
   const relative = normalize(decoded.endsWith("/") ? `${decoded}index.html` : decoded).replace(/^[/\\]+/, "");
   if (relative.startsWith("..") || relative.split(sep).some((part) => part.startsWith("."))) return null;
   return join(root, relative);

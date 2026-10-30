@@ -41,3 +41,9 @@ test("the small size shows the count only", async ({ page }) => {
   await expect(page.locator('[data-role="summary"]')).toHaveText("0 of 3 done today");
   await expect(page.locator(".habit-list")).toBeHidden();
 });
+
+test("the demo server answers a broken address with 404, and keeps running", async ({ request }) => {
+  expect((await request.get("/%E0%A4%A")).status()).toBe(404);
+  expect((await request.get("/%2e%2e/%2e%2e/package.json")).status()).toBe(404);
+  expect((await request.get("/")).status()).toBe(200);
+});

@@ -3376,6 +3376,35 @@ describe("the context of a chat (issue 700)", () => {
     expect(await manager.context(newAssistantSession(manager))).toEqual([]);
   });
 
+  test("redacts each text and cuts a very long one, since a file outside the vault can hold a token", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const describing: TurnPreparer = {
+      ...preparer,
+      describe: () =>
+        Promise.resolve({
+          parts: [
+            { ...part("instructions", "CLAUDE.md"), text: "token the-secret-value-123" },
+            { ...part("skills", "long"), text: "x".repeat(maxDetailLength + 10) },
+            { ...part("prompt", "Claude Code's prompt"), text: null },
+          ],
+          engine: { mode: "assistant", startFolder: "/vault", trusted: true, pluginFolders: [], environment: {} },
+        }),
+    };
+    const manager = createManager(new FakeEngine(), { projectPreparer: describing, redactor });
+    const project = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/clone",
+      source: "cli",
+    });
+    const [prompt, instructions, skill] = await manager.context(project.id);
+    expect(prompt?.text).toBeNull();
+    expect(instructions?.text).not.toContain("the-secret-value-123");
+    expect(skill?.text).toEndWith("[Eva cut 10 characters.]");
+  });
+
   test("gives only the mode's parts when the engine lists none of its own", async () => {
     const describing: TurnPreparer = {
       ...preparer,

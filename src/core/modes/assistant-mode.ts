@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
+import { readTextTolerant } from "../../shared/files.ts";
 import type { McpServerSpec } from "../../shared/engine-port.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -90,13 +91,15 @@ export class AssistantPreparer implements TurnPreparer {
     const rulesPath = join(this.options.vaultPath, ".eva", "assistant.md");
     const kept = this.promptBySession.get(session.id);
     const prefix = `${this.options.basePrompt}\n\n`;
+    // A file that Eva cannot read must not break the whole details, so this read never throws.
+    const onDisk = readTextTolerant(rulesPath);
     // A running chat keeps the rules of its first turn since Eva started, even when the file changed.
     const rules =
       kept?.startsWith(prefix) === true
         ? kept.slice(prefix.length)
-        : existsSync(rulesPath)
-          ? this.personalRules(rulesPath)
-          : null;
+        : onDisk === null
+          ? null
+          : this.withPersonality(onDisk);
     const parts: ContextPart[] = [
       { group: "prompt", title: "Eva's prompt", source: null, text: this.options.basePrompt, note: null },
       {
@@ -104,7 +107,8 @@ export class AssistantPreparer implements TurnPreparer {
         title: "Your rules for Eva",
         source: rulesPath,
         text: rules,
-        note: rules === null ? "The file is missing, so a new message fails." : null,
+        // `prepare` checks the file before each turn, also when the chat keeps a copy.
+        note: onDisk === null ? "Eva cannot read the file, so a new message fails." : null,
       },
       {
         group: "message",
@@ -144,7 +148,10 @@ export class AssistantPreparer implements TurnPreparer {
    * built-in prompt itself, so its rules stay whole. Remove this after one release.
    */
   private personalRules(path: string): string {
-    const text = readFileSync(path, "utf-8");
+    return this.withPersonality(readFileSync(path, "utf-8"));
+  }
+
+  private withPersonality(text: string): string {
     const migrated = migrationApplied(vaultMigrationRecordPath(this.options.vaultPath), moveAssistantPersonality.id);
     return migrated ? text : (withMovedSections(text) ?? text);
   }

@@ -973,7 +973,10 @@ export class SessionManager {
     const mode = await this.options.preparers[session.mode].describe?.(session);
     if (mode === undefined) return [];
     const engine = this.options.engines.find((candidate) => candidate.name === session.engine);
-    const parts = [...(engine?.describeContext?.(mode.engine) ?? []), ...mode.parts];
+    // A file outside the vault, such as the engine's own CLAUDE.md, can hold a token, as any text that leaves the core.
+    const parts = [...(engine?.describeContext?.(mode.engine) ?? []), ...mode.parts].map((part) =>
+      part.text === null ? part : { ...part, text: boundedDetail(this.options.redactor.redact(part.text)) },
+    );
     return contextGroups.flatMap((group) => parts.filter((part) => part.group === group));
   }
 

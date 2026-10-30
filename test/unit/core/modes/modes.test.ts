@@ -151,7 +151,10 @@ describe("Assistant mode", () => {
     expect(await rules("s1")).toMatchObject({ text: "# You are Eva\n", note: null });
     expect(await rules("s2")).toMatchObject({ text: "# Changed rules\n" });
     rmSync(join(vault, ".eva", "assistant.md"));
-    expect(await rules("s2")).toMatchObject({ text: null, note: "The file is missing, so a new message fails." });
+    const missing = "Eva cannot read the file, so a new message fails.";
+    expect(await rules("s2")).toMatchObject({ text: null, note: missing });
+    // A chat that keeps a copy still fails at its next message, so it gets the note too.
+    expect(await rules("s1")).toMatchObject({ text: "# You are Eva\n", note: missing });
   });
 
   test("pulls the vault, then joins the base prompt and the person's rules", async () => {

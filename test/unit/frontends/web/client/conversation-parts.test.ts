@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   answeredModel,
+  commandFailure,
   answerFiles,
   wholeAnswerAddsText,
   engineLock,
@@ -187,6 +188,43 @@ describe("inputFields", () => {
       description: null,
       fields: [{ key: "description", value: "3" }],
     });
+  });
+});
+
+describe("commandFailure", () => {
+  test("reads the exit code and the last line of a Claude Code output", () => {
+    const output =
+      "Exit code 1\n# Notes\n\nSome text\ntail: cannot open 'b.md' for reading: No such file or directory\n";
+    expect(commandFailure(step("command", "tail a.md b.md", true), output)).toEqual({
+      code: 1,
+      lastLine: "tail: cannot open 'b.md' for reading: No such file or directory",
+    });
+  });
+
+  test("reads the exit code at the end of a pi output", () => {
+    const output = "ls: cannot access 'x': No such file or directory\n\nCommand exited with code 2";
+    expect(commandFailure(step("command", "ls x", true), output)).toEqual({
+      code: 2,
+      lastLine: "ls: cannot access 'x': No such file or directory",
+    });
+  });
+
+  test("reads an output with Windows line ends", () => {
+    expect(commandFailure(step("command", "dir x", true), "Exit code 1\r\nFile Not Found\r\n")).toEqual({
+      code: 1,
+      lastLine: "File Not Found",
+    });
+  });
+
+  test("gives no last line for an output with only the exit code", () => {
+    expect(commandFailure(step("command", "false", true), "Exit code 1")).toEqual({ code: 1, lastLine: null });
+  });
+
+  test("gives nothing for a step that did not fail, a tool, or an output with no exit code", () => {
+    expect(commandFailure(step("command", "ls"), "Exit code 1\nx")).toBeNull();
+    expect(commandFailure(step("tool", "Read a.md", true), "Exit code 1\nx")).toBeNull();
+    expect(commandFailure(step("command", "ls", true), "Permission denied")).toBeNull();
+    expect(commandFailure(step("command", "ls", true), undefined)).toBeNull();
   });
 });
 

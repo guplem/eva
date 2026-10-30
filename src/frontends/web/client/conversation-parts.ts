@@ -138,6 +138,25 @@ export function stepState(
   return live && hasToolDetails(step) && step.output === undefined ? "Running" : "Done";
 }
 
+/**
+ * The exit code of a failed command, and the last line of its output. Claude Code starts the
+ * output with "Exit code N" and pi ends it with "Command exited with code N". Both put the error
+ * text after the normal output, so a long output hides the reason below the fold.
+ */
+export function commandFailure(
+  step: TurnStep,
+  output: string | undefined,
+): { code: number; lastLine: string | null } | null {
+  if (!step.isError || step.kind !== "command" || output === undefined) return null;
+  const lines = output.split(/\r?\n/).filter((line) => line.trim() !== "");
+  const first = /^Exit code (\d+)$/.exec(lines[0] ?? "");
+  const last = /^Command exited with code (\d+)$/.exec(lines.at(-1) ?? "");
+  const match = first ?? last;
+  if (match === null) return null;
+  const rest = first === null ? lines.slice(0, -1) : lines.slice(1);
+  return { code: Number(match[1]), lastLine: rest.at(-1)?.trim() ?? null };
+}
+
 export function missingDetail(part: "input" | "output", live: boolean): string {
   return part === "output" && live ? "The tool still runs." : `Eva kept no ${part} for this step.`;
 }

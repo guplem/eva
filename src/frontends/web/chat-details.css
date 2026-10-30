@@ -52,7 +52,7 @@
   flex: none;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   padding: 22px 18px;
   display: flex;
   flex-direction: column;

@@ -272,9 +272,10 @@ samp {
   box-sizing: border-box;
 }
 
-/* Eva is an app, not a document: the page itself never bounces, and a pull never chains to it. */
+/* Eva is an app, not a document: the page never bounces up or down, and a pull never chains to it.
+   Only the vertical axis: a sideways swipe still goes back, as in any page. */
 html {
-  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 /* A phone browser draws a blue box on each tap. The press rule below gives the feedback instead. */
@@ -282,7 +283,7 @@ body {
   margin: 0;
   background: var(--bg);
   -webkit-tap-highlight-color: transparent;
-  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 /* A control never zooms on a double tap, so the browser fires a tap at once instead of waiting for a second one. */
@@ -562,7 +563,7 @@ textarea {
   padding: max(18px, env(safe-area-inset-top)) 0 max(18px, env(safe-area-inset-bottom)) env(safe-area-inset-left);
   box-shadow: inset -1px 0 0 var(--line);
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
 }
 
 .main-nav-visor {
@@ -763,7 +764,7 @@ textarea {
 .sidebar {
   box-shadow: inset -1px 0 0 var(--line);
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -782,7 +783,7 @@ textarea {
 /* The list inside scrolls and holds the padding, so a new chat can scroll the list to its top. */
 .sidebar.has-list {
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   padding: 0;
   gap: 0;
 }
@@ -791,7 +792,7 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -1055,7 +1056,7 @@ textarea {
 .main {
   min-width: 0;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   display: flex;
   flex-direction: column;
   background: var(--main-gradient);
@@ -1334,7 +1335,7 @@ textarea {
   /* Long content, such as the output of a step, scrolls and never pushes the buttons off the screen. */
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1385,7 +1386,7 @@ textarea {
     max-width: none;
     max-height: calc(100dvh - 24px);
     overflow-y: auto;
-    overscroll-behavior: contain;
+    overscroll-behavior-y: contain;
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
     padding: var(--space-3) var(--space-5) max(var(--space-6), env(safe-area-inset-bottom));
     box-shadow: var(--sheet-shadow);
@@ -1673,7 +1674,8 @@ textarea {
   background: var(--chip);
   max-height: 320px;
   overflow: auto;
-  overscroll-behavior: contain;
+  /* It scrolls sideways for long lines. An up or down scroll on it goes on to the page. */
+  overscroll-behavior: auto;
 }
 
 .diff div {
@@ -1715,7 +1717,7 @@ textarea {
   max-width: 760px;
   max-height: calc(100dvh - 32px);
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
 }
 
 .menu-button,
@@ -2551,7 +2553,7 @@ button.link-button {
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
 }
 
 .nav-item {
@@ -2617,7 +2619,7 @@ button.link-button {
 .settings-content {
   min-width: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   display: flex;
   flex-direction: column;
 }
@@ -2767,7 +2769,7 @@ button.link-button {
 .setting-homes {
   max-height: 60dvh;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   padding: var(--space-1);
 }
 

@@ -13,7 +13,7 @@
   /* A long summary must never push the buttons off a phone screen. */
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   overflow-wrap: anywhere;
   padding: var(--space-6);
   gap: var(--space-3);
@@ -147,7 +147,7 @@ label.version-row {
   white-space: pre-wrap;
   max-height: 40dvh;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   margin-top: var(--space-2);
   font-size: var(--text-sm);
 }

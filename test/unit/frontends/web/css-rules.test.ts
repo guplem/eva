@@ -227,12 +227,19 @@ describe("the style sheets of the web app", () => {
     expect(chaining).toEqual([]);
   });
 
-  test("the page itself does not bounce or chain its scroll", () => {
-    const page = [...rules()].filter(
-      ({ sheet, block }) => sheet === "styles.css" && splitList(block.prelude).includes("html"),
-    );
-    const values = page.flatMap(({ block }) => block.declarations).filter((d) => d.property === "overscroll-behavior");
-    expect(values.map((declaration) => declaration.value)).toContain("none");
+  test("the page itself does not bounce or chain its scroll up or down", () => {
+    for (const root of ["html", "body"]) {
+      const page = [...rules()].filter(
+        ({ sheet, block }) => sheet === "styles.css" && splitList(block.prelude).includes(root),
+      );
+      const values = page
+        .flatMap(({ block }) => block.declarations)
+        .filter((d) => d.property === "overscroll-behavior-y" || d.property === "overscroll-behavior");
+      expect(
+        values.map((declaration) => declaration.value),
+        root,
+      ).toContain("none");
+    }
   });
 
   test("a tap on a control fires at once, with no wait for a double tap", () => {

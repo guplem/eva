@@ -258,7 +258,7 @@ a.files-favorite[aria-current="page"] {
 .files-pane > .files-list {
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
 }
 
 .files-preview {
@@ -450,7 +450,7 @@ a.files-entry[aria-current="true"] {
   background: var(--panel);
   box-shadow: var(--shadow);
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
 }
 
 .files-file-bar {
@@ -728,7 +728,7 @@ a.files-entry[aria-current="true"] {
 
 .files-search-results {
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
 }
 
 /* The name, its folder and the line that holds the text, each on its own line. */

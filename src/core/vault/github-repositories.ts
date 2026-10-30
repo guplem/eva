@@ -1,6 +1,6 @@
 /**
  * The person's GitHub repositories, through the GitHub API with the setup login token: setup lists
- * them to pick the vault, and creates a private one for a new vault or a new project, with no GitHub CLI. Eva also
+ * them to pick the vault, and creates one for a new vault or a new project, with no GitHub CLI. Eva also
  * reads the account, for the name and email of her commits.
  */
 import { EvaError } from "../../shared/errors.ts";
@@ -37,9 +37,13 @@ export async function listGitHubRepositories(options: GitHubApiOptions): Promise
   });
 }
 
+export type RepositoryVisibility = "private" | "public";
+
 export interface NewGitHubRepository {
   readonly name: string;
   readonly description?: string;
+  /** Private when not given: a vault is always private. */
+  readonly visibility?: RepositoryVisibility;
   /**
    * True gives the repository a first commit, for a new project: a clone of an empty repository
    * has no branch. A new vault stays empty, so the push of its local main is a fast-forward.
@@ -47,7 +51,7 @@ export interface NewGitHubRepository {
   readonly initialize?: boolean;
 }
 
-/** Creates a private repository: an empty one for a new vault, or one with a first commit for a project. */
+/** Creates a repository: an empty private one for a new vault, or one with a first commit for a project. */
 export async function createGitHubRepository(
   options: GitHubApiOptions & NewGitHubRepository,
 ): Promise<GitHubRepository> {
@@ -60,7 +64,7 @@ export async function createGitHubRepository(
   const body = await request(options, "POST", "/user/repos", {
     name: options.name,
     ...(options.description === undefined ? {} : { description: options.description }),
-    private: true,
+    private: options.visibility !== "public",
     auto_init: options.initialize === true,
   });
   const repository = repositoryOf(body);

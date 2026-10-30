@@ -57,7 +57,13 @@ import {
 } from "./project-file.ts";
 import { ghApiRequest, readRepositoryFacts, type GithubRequest } from "./repository-facts.ts";
 import { ghApiWrite, runDirectFixes, type GithubWrite } from "./repository-fixes.ts";
-import { chatRequest, unreadableReport, type RepositoryFacts, type SetupReport } from "./repository-setup.ts";
+import {
+  chatRequest,
+  missesFacts,
+  unreadableReport,
+  type RepositoryFacts,
+  type SetupReport,
+} from "./repository-setup.ts";
 import { repositoryTypeOf, type RepositoryTypeName } from "./repository-types.ts";
 
 export interface NewChatInput {
@@ -449,22 +455,18 @@ export class ProjectWork {
    */
   async repositorySetup(projectId: string): Promise<SetupReport[]> {
     const project = this.project(projectId);
-    if (project.frontMatter.repos.length === 0) return [];
-    const request = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.options.gitEnvironment);
-    const read = async (slug: string): Promise<RepositoryFacts | string> => {
-      try {
-        return await readRepositoryFacts(slug, request);
-      } catch (error) {
-        if (isEvaError(error, "github_failed")) return error.message;
-        throw error;
-      }
-    };
+    return this.reports(project, project.frontMatter.repos);
+  }
+
+  /** The reports of these repositories of the project. */
+  private async reports(project: Project, urls: readonly string[]): Promise<SetupReport[]> {
+    if (urls.length === 0) return [];
     // Each reference is read once, and only when a repository of its type needs it.
     const references = new Map<string, Promise<RepositoryFacts | string>>();
     const readReference = (slug: string): Promise<RepositoryFacts | string> => {
       const known = references.get(slug);
       if (known !== undefined) return known;
-      const reading = read(slug).then((facts) =>
+      const reading = this.readFacts(slug).then((facts) =>
         // A gap in the reference would turn into false greens, such as "has every standard label".
         typeof facts !== "string" && (facts.files === null || facts.labels === null || !Array.isArray(facts.allowRules))
           ? `Eva could not read all of her reference repository, ${slug}. Try again later.`
@@ -474,13 +476,13 @@ export class ProjectWork {
       return reading;
     };
     return Promise.all(
-      project.frontMatter.repos.map(async (url) => {
+      urls.map(async (url) => {
         const slug = githubSlug(url);
         if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.", null);
         const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
         if (type === null) return unreadableReport(url, slug, null, null);
         const [target, reference] = await Promise.all([
-          read(slug),
+          this.readFacts(slug),
           type.reference === null ? null : readReference(type.reference),
         ]);
         if (typeof reference === "string") return unreadableReport(url, slug, reference, type.name);
@@ -490,6 +492,17 @@ export class ProjectWork {
         return type.report(target, reference);
       }),
     );
+  }
+
+  /** The facts of a repository, or the reason that Eva cannot read them. */
+  private async readFacts(slug: string): Promise<RepositoryFacts | string> {
+    const request = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.options.gitEnvironment);
+    try {
+      return await readRepositoryFacts(slug, request);
+    } catch (error) {
+      if (isEvaError(error, "github_failed")) return error.message;
+      throw error;
+    }
   }
 
   /**
@@ -502,9 +515,18 @@ export class ProjectWork {
     repository: string,
     items: readonly string[] | null,
   ): Promise<RepositoryFixResult> {
-    const report = (await this.repositorySetup(projectId)).find((entry) => entry.repositoryUrl === repository);
-    if (report === undefined)
+    return (await this.runFixes(this.project(projectId), repository, items)).result;
+  }
+
+  private async runFixes(
+    project: Project,
+    repository: string,
+    items: readonly string[] | null,
+  ): Promise<{ result: RepositoryFixResult; needsChanges: boolean; report: SetupReport }> {
+    if (!project.frontMatter.repos.includes(repository))
       throw new EvaError("project_invalid", `The project does not list the repository ${repository}.`);
+    const [report] = await this.reports(project, [repository]);
+    if (report === undefined) throw new EvaError("project_invalid", "Eva could not read the repository's report.");
     if (report.problem !== null) throw new EvaError("github_failed", report.problem);
     const slug = report.slug;
     if (slug === null || report.type === null)
@@ -520,30 +542,47 @@ export class ProjectWork {
     const outcome = await runDirectFixes(slug, direct, this.githubWrite());
     const failed = new Set(outcome.failed.map((entry) => entry.label));
     const forChat = chosen.filter((item) => item.directFix === undefined || failed.has(item.label));
+    const problems = outcome.failed.map((entry) => `${entry.label}: ${entry.reason}`);
+    const request = chatRequest(slug, forChat);
+    // The chat opens instead of the report, so it says why each direct fix failed.
+    const refused =
+      problems.length === 0
+        ? ""
+        : `\n\nEva tried these commands herself, and GitHub refused them:\n\n${problems.map((problem) => `- ${problem}`).join("\n")}`;
     return {
-      fixed: outcome.fixed,
-      problems: outcome.failed.map((entry) => `${entry.label}: ${entry.reason}`),
-      chatRequest: chatRequest(slug, forChat),
+      result: { fixed: outcome.fixed, problems, chatRequest: request === null ? null : request + refused },
+      needsChanges: forChat.some((item) => item.directFix === undefined && item.light !== "grey"),
+      report,
     };
   }
 
   /**
    * The setup of a new repository, by its type: the type's own first step, then every direct
-   * fix of its report, then one Project chat for the rest. The chat merges its own pull request.
+   * fix of its report, then one Project chat for the rest. A chat that changes files merges its
+   * own pull request, as the vibe-coded standard says.
    */
   async setUpRepository(projectId: string, url: string): Promise<NewProjectSetup> {
     const project = this.project(projectId);
     const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
     const slug = githubSlug(url);
     if (type?.afterCreate !== undefined && slug !== null) await type.afterCreate(slug, this.githubWrite());
-    const result = await this.fixRepository(projectId, url, null);
-    if (result.chatRequest === null) return { sessionId: null, problems: result.problems };
+    const { result, needsChanges, report } = await this.runFixes(project, url, null);
+    // GitHub can serve a new repository's files or labels a moment late. Their items are grey then, so
+    // neither a fix nor the chat would cover them.
+    const unread = missesFacts(report);
+    const problems = unread
+      ? [
+          ...result.problems,
+          "GitHub did not show all of the new repository yet. Open Repository setup later, and press Fix all.",
+        ]
+      : result.problems;
+    if (result.chatRequest === null) return { sessionId: null, problems };
     const session = await this.start({
       projectId,
-      request: `${result.chatRequest}\n\n${setupChatEnd}`,
+      request: needsChanges ? `${result.chatRequest}\n\n${setupChatEnd}` : result.chatRequest,
       reportToSessionId: null,
     });
-    return { sessionId: session.id, problems: result.problems };
+    return { sessionId: session.id, problems };
   }
 
   private githubWrite(): GithubWrite {

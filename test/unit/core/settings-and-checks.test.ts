@@ -241,6 +241,7 @@ describe("repository setup", () => {
       const single = await instance.fixRepository(projectId, url, ["Auto-merge"]);
       expect(single.problems).toEqual(["Auto-merge: GitHub refused it (HTTP 403): No"]);
       expect(single.chatRequest).toContain("allow_auto_merge=true");
+      expect(single.chatRequest).toContain("GitHub refused them:\n\n- Auto-merge: GitHub refused it (HTTP 403): No");
       const all = await instance.fixRepository(projectId, url, null);
       expect(all.fixed).toContain("Dependabot alerts");
       expect(all.chatRequest).toContain("AGENTS.md");

@@ -84,6 +84,11 @@ describe("stepProblems", () => {
     ]);
     expect(
       stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: "s", problems: ["Labels: No."] } }),
+    ).toEqual([
+      "Eva could not finish part of the repository setup. The setup chat in the project tries again: Labels: No.",
+    ]);
+    expect(
+      stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: null, problems: ["Labels: No."] } }),
     ).toEqual(["Eva could not finish the repository setup: Labels: No."]);
   });
 });

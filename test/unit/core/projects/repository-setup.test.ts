@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  missesFacts,
   setupReport,
   vibeCodedSections,
   type RepositoryFacts,
@@ -47,6 +48,7 @@ const reference: RepositoryFacts = {
   pushProtection: true,
   codeScanningDefaultSetup: true,
   readOnlyWorkflowToken: true,
+  hasCode: true,
 };
 
 /** The full report of the vibe-coded type. */
@@ -354,6 +356,15 @@ describe("evaluateSetup, edge cases", () => {
     expect(report.allFixes).not.toContain("Then open a pull request.");
     expect(report.allFixes).not.toContain("malware");
     expect(evaluateSetup(reference, target()).allFixes).toBeNull();
+  });
+});
+
+describe("missesFacts", () => {
+  test("is true only when the files or the labels could not be read", () => {
+    expect(missesFacts(evaluateSetup(reference, target()))).toBe(false);
+    expect(missesFacts(evaluateSetup(reference, target({ files: null })))).toBe(true);
+    expect(missesFacts(evaluateSetup(reference, target({ labels: null })))).toBe(true);
+    expect(missesFacts(evaluateSetup(reference, target({ readOnlyWorkflowToken: null })))).toBe(false);
   });
 });
 

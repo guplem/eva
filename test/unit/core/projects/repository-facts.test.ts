@@ -62,6 +62,7 @@ function fullAnswers(): Map<string, GithubAnswer> {
     [`repos/${slug}/automated-security-fixes`, ok({ enabled: false })],
     [`repos/${slug}/code-scanning/default-setup`, ok({ state: "not-configured" })],
     [`repos/${slug}/actions/permissions/workflow`, ok({ default_workflow_permissions: "read" })],
+    [`repos/${slug}/languages`, ok({ TypeScript: 1200 })],
   ]);
 }
 
@@ -99,6 +100,7 @@ describe("readRepositoryFacts", () => {
       pushProtection: false,
       codeScanningDefaultSetup: false,
       readOnlyWorkflowToken: true,
+      hasCode: true,
     });
     expect(facts.files).toEqual({
       "AGENTS.md": "a1",
@@ -130,6 +132,7 @@ describe("readRepositoryFacts", () => {
     answers.set(`repos/${slug}`, ok({ default_branch: "main", private: false, permissions: { admin: false } }));
     answers.set(`repos/${slug}/code-scanning/default-setup`, forbidden);
     answers.set(`repos/${slug}/actions/permissions/workflow`, forbidden);
+    answers.set(`repos/${slug}/languages`, ok({}));
     answers.delete(`repos/${slug}/rules/branches/main`);
     const facts = await readRepositoryFacts(slug, fakeGet(answers));
     expect(facts).toMatchObject({
@@ -140,6 +143,7 @@ describe("readRepositoryFacts", () => {
       readOnlyWorkflowToken: null,
       dependabotAlerts: true,
       requiredChecks: null,
+      hasCode: false,
     });
   });
 

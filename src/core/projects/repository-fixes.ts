@@ -5,7 +5,7 @@
  */
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
-import { ghApi, type GithubAnswer } from "./repository-facts.ts";
+import { asRecord, ghApi, listOf, parseJson, textField, type GithubAnswer } from "./repository-facts.ts";
 import type { DirectFix } from "./repository-setup.ts";
 
 export type GithubMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -107,17 +107,25 @@ async function commitFiles(
   const base =
     head === null ? null : textField(asRecord(await call(write, "GET", `${address}/commits/${head}`))?.["tree"], "sha");
   if (head === null || base === null) throw unreadable();
-  const tree: { path: string; mode: string; type: string; sha: string | null }[] = [];
-  for (const fix of fixes) {
-    for (const [path, sha] of Object.entries(fix.files)) {
-      const blob = asRecord(await call(write, "GET", `repos/${fix.source}/git/blobs/${sha}`));
+  const copies = fixes.flatMap((fix) =>
+    Object.entries(fix.files).map(([path, sha]) => ({ source: fix.source, path, sha })),
+  );
+  // Each copy is two calls of its own, so the copies run side by side.
+  await Promise.all(
+    copies.map(async ({ source, sha }) => {
+      const blob = asRecord(await call(write, "GET", `repos/${source}/git/blobs/${sha}`));
       await call(write, "POST", `${address}/blobs`, {
         content: textField(blob, "content") ?? "",
         encoding: textField(blob, "encoding") ?? "base64",
       });
-      tree.push({ path, mode: "100644", type: "blob", sha });
-    }
-  }
+    }),
+  );
+  const tree: { path: string; mode: string; type: string; sha: string | null }[] = copies.map(({ path, sha }) => ({
+    path,
+    mode: "100644",
+    type: "blob",
+    sha,
+  }));
   for (const fix of fixes) for (const path of fix.remove) tree.push({ path, mode: "100644", type: "blob", sha: null });
   const treeSha = textField(await call(write, "POST", `${address}/trees`, { base_tree: base, tree }), "sha");
   if (treeSha === null) throw unreadable();
@@ -143,27 +151,4 @@ async function call(write: GithubWrite, method: GithubMethod, path: string, body
 
 function unreadable(): EvaError {
   return new EvaError("github_failed", "GitHub sent an answer that Eva cannot read.");
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function listOf(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? (value as unknown[]) : [];
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function textField(value: unknown, key: string): string | null {
-  const field = asRecord(value)?.[key];
-  return typeof field === "string" ? field : null;
 }

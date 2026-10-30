@@ -97,8 +97,8 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
   const encodedBranch = encodeURIComponent(branch);
 
   const [owner = "", name = ""] = slug.split("/");
-  const [files, labels, rules, branchInfo, reporting, security, fixes, codeScanning, workflowToken] = await Promise.all(
-    [
+  const [files, labels, rules, branchInfo, reporting, security, fixes, codeScanning, workflowToken, languages] =
+    await Promise.all([
       readFiles(request, `${address}/git/trees/${encodedBranch}?recursive=1`),
       readLabels(request, `${address}/labels`),
       readJson(request, `${address}/rules/branches/${encodedBranch}`),
@@ -108,8 +108,8 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
       readJson(request, `${address}/automated-security-fixes`),
       readJson(request, `${address}/code-scanning/default-setup`),
       readJson(request, `${address}/actions/permissions/workflow`),
-    ],
-  );
+      readJson(request, `${address}/languages`),
+    ]);
   const readFile = (path: string): Promise<FileRead> =>
     request(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
       (answer) => (answer.status === 200 ? { text: answer.body } : answer.status === 404 ? "absent" : null),
@@ -146,6 +146,7 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
     codeScanningDefaultSetup: codeScanning === null ? null : textField(codeScanning, "state") === "configured",
     readOnlyWorkflowToken:
       workflowToken === null ? null : textField(workflowToken, "default_workflow_permissions") === "read",
+    hasCode: asRecord(languages) === null ? null : Object.keys(asRecord(languages) ?? {}).length > 0,
   };
 }
 
@@ -293,7 +294,7 @@ function addPreCommitHooks(config: Record<string, unknown> | null, hooks: { comm
 }
 
 /** The items of a YAML or JSON list, or none when the value is not a list. */
-function listOf(value: unknown): readonly unknown[] {
+export function listOf(value: unknown): readonly unknown[] {
   return Array.isArray(value) ? (value as unknown[]) : [];
 }
 
@@ -355,7 +356,7 @@ async function readJson(
   return answer.status === 200 ? parseJson(answer.body) : null;
 }
 
-function parseJson(text: string): unknown {
+export function parseJson(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -363,13 +364,13 @@ function parseJson(text: string): unknown {
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
+export function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
 
-function textField(value: unknown, key: string): string | null {
+export function textField(value: unknown, key: string): string | null {
   const field = asRecord(value)?.[key];
   return typeof field === "string" ? field : null;
 }

@@ -107,6 +107,8 @@ export interface RepositoryFacts {
   readonly pushProtection: boolean | null;
   readonly codeScanningDefaultSetup: boolean | null;
   readonly readOnlyWorkflowToken: boolean | null;
+  /** Whether GitHub finds code in a language, so code scanning has something to scan. */
+  readonly hasCode: boolean | null;
 }
 
 const harnessOnlyRuleFiles = [
@@ -639,18 +641,20 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
       adminCommand(target, securityPatch("secret_scanning_push_protection"), "block pushes that contain a secret"),
       securityCall("secret_scanning_push_protection"),
     ),
-    featureItem(
-      target,
-      "Code scanning",
-      codeScanning,
-      true,
-      adminCommand(
-        target,
-        `gh api -X PATCH repos/${slug}/code-scanning/default-setup -f state=configured`,
-        "turn on CodeQL code scanning",
-      ),
-      call("PATCH", `repos/${slug}/code-scanning/default-setup`, { state: "configured" }),
-    ),
+    codeScanning !== true && target.hasCode === false && !target.isPrivate
+      ? grey("Code scanning", "No code to scan yet. Turn it on once the repository has code.")
+      : featureItem(
+          target,
+          "Code scanning",
+          codeScanning,
+          true,
+          adminCommand(
+            target,
+            `gh api -X PATCH repos/${slug}/code-scanning/default-setup -f state=configured`,
+            "turn on CodeQL code scanning",
+          ),
+          call("PATCH", `repos/${slug}/code-scanning/default-setup`, { state: "configured" }),
+        ),
     featureItem(
       target,
       "Read-only workflow token",
@@ -744,4 +748,14 @@ function green(label: string, detail: string): SetupItem {
 
 function grey(label: string, detail: string): SetupItem {
   return { label, light: "grey", detail, fixRequest: null };
+}
+
+/** True when Eva could not read the files or the labels, so their items show grey with no fix. */
+export function missesFacts(report: SetupReport): boolean {
+  return report.sections.some((section) =>
+    section.items.some(
+      (item) =>
+        item.light === "grey" && (item.detail === filesUnknown || (item.label === "Labels" && item.detail === notRead)),
+    ),
+  );
 }

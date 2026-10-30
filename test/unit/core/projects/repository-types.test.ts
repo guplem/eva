@@ -28,6 +28,7 @@ const fresh: RepositoryFacts = {
   pushProtection: true,
   codeScanningDefaultSetup: true,
   readOnlyWorkflowToken: true,
+  hasCode: true,
 };
 
 function report(name: string, target: RepositoryFacts, reference: RepositoryFacts | null = null): SetupReport {
@@ -67,6 +68,16 @@ describe("repository types", () => {
     const lights = setup.sections.flatMap((section) => section.items.map((entry) => entry.light));
     expect(lights.every((light) => light === "green" || light === "grey")).toBe(true);
     expect(setup.allFixes).toBeNull();
+  });
+
+  test("code scanning does not apply to a repository with no code yet", () => {
+    const setup = report("standard", { ...fresh, codeScanningDefaultSetup: false, hasCode: false });
+    const item = setup.sections.flatMap((section) => section.items).find((entry) => entry.label === "Code scanning");
+    expect(item).toMatchObject({
+      light: "grey",
+      detail: "No code to scan yet. Turn it on once the repository has code.",
+    });
+    expect(item?.directFix).toBeUndefined();
   });
 
   test("standard on a private repository shows the paid items grey, with the reason", () => {

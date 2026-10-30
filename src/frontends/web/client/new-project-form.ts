@@ -58,7 +58,12 @@ export function stepProblems(result: NewProjectResult): string[] {
     problems.push(`Eva could not create the GitHub repository: ${result.github.problem}`);
   if (result.drive !== null && "problem" in result.drive)
     problems.push(`Eva could not create the Drive folder: ${result.drive.problem}`);
-  for (const problem of result.setup?.problems ?? [])
-    problems.push(`Eva could not finish the repository setup: ${problem}`);
+  // A setup chat tries again what failed, so the person needs to do nothing yet. An older Eva sends no setup.
+  const setup = result.setup ?? null;
+  const lead =
+    setup?.sessionId === null || setup === null
+      ? "Eva could not finish the repository setup"
+      : "Eva could not finish part of the repository setup. The setup chat in the project tries again";
+  for (const problem of setup?.problems ?? []) problems.push(`${lead}: ${problem}`);
   return problems;
 }

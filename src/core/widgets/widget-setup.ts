@@ -202,8 +202,13 @@ async function defaultBranch(write: GithubWrite, slug: string): Promise<string> 
   return textField(await githubCall(write, "GET", `repos/${slug}`), "default_branch") ?? "main";
 }
 
-/** Starts the first deploy of the demo. Pages must be on first, so this runs after the fixes. */
+/**
+ * Starts the first deploy of the demo. Pages must be on first, so this runs after the fixes. With
+ * Pages off, such as on a private repository, a deploy would only fail, so Eva starts none.
+ */
 export async function startFirstDeploy(slug: string, write: GithubWrite): Promise<void> {
+  const pages = await write("GET", `repos/${slug}/pages`);
+  if (pages.status === 404) return;
   const branch = await defaultBranch(write, slug);
   await githubCall(write, "POST", `repos/${slug}/actions/workflows/${deployWorkflow}/dispatches`, { ref: branch });
 }

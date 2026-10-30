@@ -270,6 +270,12 @@ describe("the widget setup steps", () => {
     });
   });
 
+  test("with Pages off, Eva starts no deploy, which would only fail", async () => {
+    const { write, calls } = recorder({ [`GET repos/${slug}/pages`]: { status: 404, body: "{}" } });
+    await startFirstDeploy(slug, write);
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([`GET repos/${slug}/pages`]);
+  });
+
   test("the first chat asks the person to describe the widget, after the rules of the repository", () => {
     const request = describeWidgetRequest(slug);
     expect(request).toContain("`habits-widget/AGENTS.md`");

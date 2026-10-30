@@ -313,7 +313,7 @@ export class PiEngine implements EnginePort {
           output: toolOutputText(result?.content ?? result),
         };
       } else if (type === "extension_ui_request") {
-        const notice = bridgeNotice(record);
+        const notice = extensionNotice(record);
         if (notice !== null) yield { kind: "notice", text: notice };
         else answerDialog(pi, request, record);
       } else if (type === "auto_retry_start") {
@@ -425,7 +425,7 @@ function removeSpecs(file: string | null): void {
 }
 
 /** The text of a problem line from one of Eva's own extensions, or null for any other record. */
-function bridgeNotice(record: Record<string, unknown>): string | null {
+function extensionNotice(record: Record<string, unknown>): string | null {
   const message = record["message"];
   if (record["method"] !== "notify" || typeof message !== "string") return null;
   const prefix = [mcpNoticePrefix, contextNoticePrefix].find((candidate) => message.startsWith(candidate));

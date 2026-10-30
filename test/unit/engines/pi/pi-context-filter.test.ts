@@ -55,6 +55,8 @@ class FakeExtensionApi implements FilterPi {
 
 afterEach(() => {
   Reflect.deleteProperty(process.env, projectFolderVariable);
+  // The extension keeps the folder for a second load in the same process. Each test starts with none.
+  Reflect.deleteProperty(globalThis, Symbol.for("eva.projectFolder"));
 });
 
 describe("hideUpperContext", () => {
@@ -107,6 +109,14 @@ describe("hideUpperContext", () => {
     expect(prompt).toBe(piPrompt([winProject]));
   });
 
+  test("a folder whose child is named `..notes` is still above a project inside that child", () => {
+    const map = { path: "/data/AGENTS.md", content: "Vault map." };
+    const files = [map];
+    expect(hideUpperContext(piPrompt(files), files, "/data/..notes/Projects/example-app", posix).prompt).toBe(
+      piPrompt([]),
+    );
+  });
+
   test("a folder with nearly the same name as the project's parent is not above it", () => {
     const sibling = { path: "/vault/Projects-old/AGENTS.md", content: "Other rule." };
     const files = [sibling, project];
@@ -142,6 +152,14 @@ describe("the extension", () => {
     await pi.handlers[0]?.({ systemPrompt: piPrompt([]) }, context);
     expect(notices).toHaveLength(1);
     expect(notices[0]?.startsWith(contextNoticePrefix)).toBe(true);
+  });
+
+  test("stays on when pi loads it again in the same process, after the variable is gone", () => {
+    process.env[projectFolderVariable] = projectFolder;
+    evaContextFilter(new FakeExtensionApi());
+    const again = new FakeExtensionApi();
+    evaContextFilter(again);
+    expect(again.handlers).toHaveLength(1);
   });
 
   test("does nothing in a chat with no project folder, such as an Assistant chat", () => {

@@ -10,7 +10,7 @@
  * extension tells the person, since a vault file could then reach the chat.
  */
 import { realpathSync } from "node:fs";
-import nativePath from "node:path";
+import { posix, win32 } from "node:path";
 
 /** The variable that names the project folder. pi-context-extension.ts holds the same name for Eva. */
 export const projectFolderVariable = "EVA_PROJECT_FOLDER";
@@ -20,6 +20,8 @@ export const projectFolderVariable = "EVA_PROJECT_FOLDER";
  * adapter shows it in the chat. pi-context-extension.ts holds the same text.
  */
 export const contextNoticePrefix = "eva-context-notice:";
+
+const nativePath = process.platform === "win32" ? win32 : posix;
 
 const contextHeader = "\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n";
 
@@ -42,11 +44,19 @@ export interface FilterPi {
   on(event: "before_agent_start", handler: (event: FilterEvent, context: FilterContext) => Promise<FilterResult>): void;
 }
 
+/**
+ * Where the folder stays once the variable is gone. pi loads the extension again in the same
+ * process when it reloads its resources or opens another session, and the filter must stay on.
+ */
+const folderSlot = Symbol.for("eva.projectFolder");
+
 export default function evaContextFilter(pi: FilterPi): void {
+  const slots = globalThis as Record<symbol, string | undefined>;
   // Read once and deleted, so pi's shell tool never sees the variable.
-  const projectFolder = process.env[projectFolderVariable];
+  const projectFolder = process.env[projectFolderVariable] ?? slots[folderSlot];
   Reflect.deleteProperty(process.env, projectFolderVariable);
   if (projectFolder === undefined || projectFolder === "") return;
+  slots[folderSlot] = projectFolder;
   pi.on("before_agent_start", (event, context) => {
     const { prompt, problem } = hideUpperContext(
       event.systemPrompt,
@@ -66,7 +76,7 @@ export function hideUpperContext(
   systemPrompt: string,
   contextFiles: unknown,
   projectFolder: string,
-  path: typeof nativePath = nativePath,
+  path: typeof posix = nativePath,
 ): { readonly prompt: string; readonly problem: string | null } {
   if (!Array.isArray(contextFiles)) {
     return { prompt: systemPrompt, problem: "Eva could not check which instruction files pi loaded." };
@@ -100,7 +110,7 @@ export function hideUpperContext(
 }
 
 /** The real path when it exists. Windows paths ignore case, so they compare in lower case. */
-function canonical(folder: string, path: typeof nativePath): string {
+function canonical(folder: string, path: typeof posix): string {
   let real = path.resolve(folder);
   try {
     real = path.resolve(realpathSync(folder));
@@ -110,7 +120,8 @@ function canonical(folder: string, path: typeof nativePath): string {
   return path.sep === "\\" ? real.toLowerCase() : real;
 }
 
-function isAbove(folder: string, project: string, path: typeof nativePath): boolean {
+/** True when the project is inside the folder. A child named `..notes` is still inside. */
+function isAbove(folder: string, project: string, path: typeof posix): boolean {
   const relative = path.relative(folder, project);
-  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }

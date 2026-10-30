@@ -127,7 +127,7 @@ describe("buildPiArguments", () => {
     ]);
   });
 
-  test("Project mode is pi as a manual session; an untrusted clone loses its extensions", () => {
+  test("Project mode with no project folder is pi as a manual session; an untrusted clone loses its extensions", () => {
     const project = request({ mode: "project", appendSystemPrompt: null, pluginFolders: [] });
     expect(buildPiArguments(project, { ...inputs, promptFile: null })).toEqual(base);
     expect(buildPiArguments({ ...project, trusted: false }, { ...inputs, promptFile: null })).toEqual([

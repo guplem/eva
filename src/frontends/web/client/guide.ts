@@ -88,7 +88,7 @@ const titlePattern = /^#\s+(.*)$/;
 const headingTagPattern = /<h([1-6])>(.*?)<\/h\1>/g;
 const sectionHeadingPattern = /<h([23]) id="guide-([^"]*)">(.*?)<\/h\1>/g;
 /** Tags inside a line of text: removing them must not split a word. */
-const inlineTagPattern = /<\/?(a|b|i|s|code)\b[^>]*>/g;
+const inlineTagPattern = /^<\/?(a|b|i|s|code)\b/;
 const snippetLength = 160;
 const snippetLead = 40;
 const resultLimit = 12;
@@ -267,16 +267,26 @@ function sectionsOf(page: GuideSource, html: string): GuideSection[] {
   return sections;
 }
 
+/**
+ * The text between the tags of HTML from `toWebHtml`. It escapes each "<" of the text, so each "<"
+ * starts a tag. An inline tag gives nothing, and another tag gives `blockGap`.
+ */
+function textOf(html: string, blockGap: string): string {
+  const parts = html.split(/(<[^>]*>)/).map((part, index) => {
+    if (index % 2 === 0) return part;
+    return inlineTagPattern.test(part) ? "" : blockGap;
+  });
+  return unescapeHtml(parts.join(""));
+}
+
 /** The text of one line of HTML, such as a heading. */
 function inlineText(html: string): string {
-  return unescapeHtml(html.replace(inlineTagPattern, ""));
+  return textOf(html, "");
 }
 
 /** The text of block HTML: each block, cell or line break becomes a space. */
 function plainText(html: string): string {
-  return unescapeHtml(html.replace(inlineTagPattern, "").replace(/<[^>]*>/g, " "))
-    .replace(/\s+/g, " ")
-    .trim();
+  return textOf(html, " ").replace(/\s+/g, " ").trim();
 }
 
 /**

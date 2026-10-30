@@ -641,6 +641,16 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     parts[0] === "api" &&
     parts[1] === "sessions" &&
     parts[2] !== undefined &&
+    parts[3] === "context" &&
+    parts[4] === undefined
+  ) {
+    return json(await eva.sessions.context(decodeURIComponent(parts[2])));
+  }
+  if (
+    method === "GET" &&
+    parts[0] === "api" &&
+    parts[1] === "sessions" &&
+    parts[2] !== undefined &&
     parts[3] === "retry-undo" &&
     parts[4] === undefined
   ) {

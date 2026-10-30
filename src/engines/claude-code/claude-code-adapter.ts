@@ -10,9 +10,10 @@ import {
   type SDKMessage,
   type SDKRateLimitInfo,
 } from "@anthropic-ai/claude-agent-sdk";
-import { dirname, join, resolve } from "node:path";
+import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
 import type { ApprovalAnswer, CarryHistoryInput, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
 import { readTextTolerant } from "../../shared/files.ts";
+import { describeClaudeContext, projectInstructionFiles } from "./claude-code-context.ts";
 import { carryClaudeHistory } from "./claude-code-history.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { answerText } from "../../shared/questions.ts";
@@ -78,6 +79,10 @@ export class ClaudeCodeEngine implements EnginePort {
 
   describePermissions(context: PermissionContext): EnginePermissions {
     return describeClaudePermissions(this.options.permissionMode ?? "auto", context);
+  }
+
+  describeContext(input: EngineContextInput): ContextPart[] {
+    return describeClaudeContext(input);
   }
 
   carryHistory(input: CarryHistoryInput): boolean {
@@ -217,30 +222,17 @@ export function buildQueryOptions(
 }
 
 /**
- * The instruction files that Claude Code reads with the `project` source, outermost first, so
- * the nearest file comes last and wins. Claude Code reads each `CLAUDE.md` from the start folder
- * up to the root, and each `AGENTS.md` only when none of those folders has a `CLAUDE.md`.
+ * The instruction files that Claude Code reads with the `project` source, as one appended text.
  * Eva does not follow `@` imports: an untrusted file could import a secret from outside the clone.
  */
 function instructionFilesText(startFolder: string): string | null {
-  const folders: string[] = [];
-  for (let folder = resolve(startFolder); ; folder = dirname(folder)) {
-    folders.unshift(folder);
-    if (dirname(folder) === folder) break;
-  }
-  const read = (names: readonly string[]): { path: string; text: string }[] =>
-    folders.flatMap((folder) =>
-      names.flatMap((name) => {
-        const path = join(folder, name);
-        const text = readTextTolerant(path)?.trim() ?? "";
-        return text.length > 0 ? [{ path, text }] : [];
-      }),
-    );
-  const claudeFiles = read(["CLAUDE.md", join(".claude", "CLAUDE.md")]);
-  const files = claudeFiles.length > 0 ? claudeFiles : read(["AGENTS.md"]);
+  const files = projectInstructionFiles(startFolder);
   if (files.length === 0) return null;
   return files
-    .map(({ path, text }) => `Contents of ${path} (project instructions, checked into the codebase):\n\n${text}`)
+    .map(
+      (path) =>
+        `Contents of ${path} (project instructions, checked into the codebase):\n\n${(readTextTolerant(path) ?? "").trim()}`,
+    )
     .join("\n\n");
 }
 

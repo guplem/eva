@@ -895,6 +895,20 @@ describe("routes", () => {
     expect((await call("/api/sessions/unknown/steps/t1")).status).toBe(404);
   });
 
+  test("gives the parts of a chat's context, and a 404 for an unknown chat (issue 700)", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const parts = await json<{ group: string; title: string }[]>(await call(`/api/sessions/${session.id}/context`));
+    // The fake engine lists no part of its own.
+    expect(parts.map((part) => [part.group, part.title])).toEqual([
+      ["prompt", "Eva's prompt"],
+      ["prompt", "Your rules for Eva"],
+      ["message", "Before each message"],
+    ]);
+    expect((await call("/api/sessions/unknown/context")).status).toBe(404);
+  });
+
   test("a delete removes the chat and its forks, and an unknown chat is a 404", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),

@@ -34,12 +34,14 @@ import {
   type ModelAlias,
   type TurnRequest,
 } from "../../shared/engine-port.ts";
+import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
+import { describePiContext } from "./pi-context.ts";
 import { describePiPermissions } from "./pi-permissions.ts";
 import { mcpExtensionSource, mcpNoticePrefix, mcpServersFileVariable } from "./pi-mcp-extension.ts";
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
@@ -94,6 +96,10 @@ export class PiEngine implements EnginePort {
 
   describePermissions(): EnginePermissions {
     return describePiPermissions();
+  }
+
+  describeContext(input: EngineContextInput): ContextPart[] {
+    return describePiContext(input);
   }
 
   async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {

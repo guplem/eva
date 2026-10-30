@@ -26,7 +26,7 @@ The `status` is one of these:
 - `in-use`: the person uses it now, such as a project that makes the week's menus.
 - `paused` or `closed`: the person does not work on it now.
 
-The list of the active and in-use projects comes after the person's rules. Eva makes it at the start of the chat, so it can be older than a status that changed in this chat.
+When the person has active or in-use projects, a list of them comes after the person's rules. Eva makes it at the start of the chat, so it can be older than a status that changed in this chat. With no list, no project is active or in use.
 
 Never edit a project's code from here. Code work happens in a Project chat in one of the project's clones (`Projects/<id>/repos/clone-<n>/`), where the project's own rules and tools apply.
 

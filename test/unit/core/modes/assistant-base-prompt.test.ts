@@ -28,7 +28,7 @@ describe("assistantBasePrompt", () => {
 
   test("names each project status, so the agent of an older vault learns in-use (#690)", () => {
     for (const status of projectStatuses) expect(assistantBasePrompt).toContain(`\`${status}\``);
-    expect(assistantBasePrompt).toContain("comes after the person's rules");
+    expect(assistantBasePrompt).toContain("a list of them comes after the person's rules");
   });
 
   test("sends a Google login to Settings: the login link of the Google tools opens only on Eva's computer", () => {

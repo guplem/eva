@@ -40,6 +40,7 @@ async function turn(prompt: string, history: TurnHistory): Promise<EngineEventPa
     mode: "assistant",
     history,
     startFolder: vault,
+    projectFolder: null,
     prompt,
     model: "haiku",
     effort: null,

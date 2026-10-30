@@ -35,12 +35,16 @@ function contextFileIn(folder: string): string | null {
   return contextFileNames.map((name) => join(folder, name)).find(isFile) ?? null;
 }
 
-/** The folders from the start folder up to the root, outermost first. */
-function foldersUpTo(startFolder: string): string[] {
+/**
+ * The folders from the start folder up to the root, outermost first. A Project chat stops at its
+ * project folder, since Eva's filter (pi-context-filter.ts) hides each context file above it (#702).
+ */
+function foldersUpTo(startFolder: string, projectFolder: string | null = null): string[] {
+  const stop = projectFolder === null ? null : resolve(projectFolder);
   const folders: string[] = [];
   for (let folder = resolve(startFolder); ; folder = dirname(folder)) {
     folders.unshift(folder);
-    if (dirname(folder) === folder) break;
+    if (folder === stop || dirname(folder) === folder) break;
   }
   return folders;
 }
@@ -91,7 +95,9 @@ export function describePiContext(input: EngineContextInput): ContextPart[] {
     ].join(" "),
   };
   const prompts = [...system, ...append];
-  const files = [agentFolder, ...foldersUpTo(input.startFolder)].flatMap((folder) => contextFileIn(folder) ?? []);
+  const files = [agentFolder, ...foldersUpTo(input.startFolder, input.projectFolder)].flatMap(
+    (folder) => contextFileIn(folder) ?? [],
+  );
   const instructions = [...new Set(files)].flatMap((path) => instructionPart(path, input.startFolder) ?? []);
   const userAgentsSkills = join(home, ".agents", "skills");
   const folderSkills = [

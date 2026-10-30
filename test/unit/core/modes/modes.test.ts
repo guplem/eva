@@ -136,6 +136,7 @@ describe("Assistant mode", () => {
     expect(described.engine).toEqual({
       mode: "assistant",
       startFolder: vault,
+      projectFolder: null,
       trusted: true,
       pluginFolders: [join(vault, ".eva")],
       environment: { PATH: "/bin" },
@@ -337,9 +338,14 @@ describe("Project mode", () => {
   }
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
-    const prepared = await project(["owner"]).prepare(session({ mode: "project", startFolder: cloneFolder }), deny);
+    const prepared = await project(["owner"]).prepare(
+      session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" }),
+      deny,
+    );
     expect(prepared).toEqual({
       startFolder: cloneFolder,
+      // The engine hides each instruction file above this folder (#702).
+      projectFolder: dirname(sandbox.root),
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
@@ -352,12 +358,13 @@ describe("Project mode", () => {
 
   test("describes no part of Eva's, and the trust of the clone without a question", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
-    const cloneSession = session({ mode: "project", startFolder: cloneFolder });
+    const cloneSession = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
     expect(await project(["owner"], store).describe(cloneSession)).toEqual({
       parts: [],
       engine: {
         mode: "project",
         startFolder: cloneFolder,
+        projectFolder: dirname(sandbox.root),
         trusted: true,
         pluginFolders: [],
         environment: { PATH: "/bin" },

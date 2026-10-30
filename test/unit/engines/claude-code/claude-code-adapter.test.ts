@@ -5,23 +5,48 @@
  * and the streamed-answer capture from claude 2.1.310.
  */
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix, resolve, win32 } from "node:path";
 import type { McpServerStatus, Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   buildQueryOptions,
   ClaudeCodeEngine,
+  hiddenInstructionPatterns,
   mapSdkMessages,
 } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
 import type { ApprovalAnswer, QuestionsOutcome, TurnRequest } from "../../../../src/shared/engine-port.ts";
 import { isTurnEnd, type EngineEventPayload } from "../../../../src/shared/events.ts";
+
+/**
+ * A folder of this machine as `hiddenInstructionPatterns` writes it, for paths with no glob
+ * character: slashes, any drive letter, and on Windows both cases of each letter.
+ */
+function asPattern(folder: string): string {
+  const plain = folder
+    .replaceAll("\\", "/")
+    .replace(/^[A-Za-z]:/, "?:")
+    .replace(/\/$/, "");
+  return process.platform === "win32"
+    ? plain.replace(/[A-Za-z]/g, (letter) => `[${letter.toLowerCase()}${letter.toUpperCase()}]`)
+    : plain;
+}
 
 function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
   return {
     mode: "assistant",
     history: { kind: "new", engineSessionId: "session-1" },
     startFolder: "/demo-vault",
+    projectFolder: null,
     prompt: "Hello",
     model: "opus",
     effort: null,
@@ -116,7 +141,7 @@ describe("buildQueryOptions", () => {
     expect(options.settings).toMatchObject({ autoMemoryEnabled: false });
   });
 
-  test("Project mode: the harness exactly as a manual session, with no Eva text", () => {
+  test("Project mode: the harness's own prompt and setting sources, with no Eva text", () => {
     const options = buildQueryOptions(
       request({ mode: "project", appendSystemPrompt: null, pluginFolders: [], startFolder: "/clone" }),
       "/bin/claude",
@@ -125,6 +150,66 @@ describe("buildQueryOptions", () => {
     expect(options.settingSources).toEqual(["user", "project", "local"]);
     expect(options.settings).toBeUndefined();
     expect(options.plugins).toEqual([]);
+  });
+
+  test("Project mode hides each instruction file above the project folder, such as the vault's map (#702)", () => {
+    const options = buildQueryOptions(
+      request({
+        mode: "project",
+        appendSystemPrompt: null,
+        pluginFolders: [],
+        startFolder: "/vault/Projects/2026-01-01-0000-example-app/repos/clone-0",
+        projectFolder: "/vault/Projects/2026-01-01-0000-example-app",
+      }),
+      "/bin/claude",
+    );
+    const names = ["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", "AGENTS.md", ".claude/AGENTS.md"];
+    // On Windows, `/vault` resolves to a path on the current drive.
+    const filesOf = (folder: string): string[] => [
+      ...names.map((name) => `${asPattern(resolve(folder))}/${name}`),
+      `${asPattern(resolve(folder))}/.claude/rules/**`,
+    ];
+    expect(options.settings).toEqual({
+      claudeMdExcludes: [...filesOf("/vault/Projects"), ...filesOf("/vault"), ...filesOf("/")],
+    });
+    // The project's own files and the person's user-level CLAUDE.md stay loaded.
+    expect(options.settingSources).toEqual(["user", "project", "local"]);
+  });
+
+  test("the patterns never reach the person's user-level CLAUDE.md, beside the vault in Eva's folder", () => {
+    // Eva's layout: `<home>/vault/` and `<home>/engines/claude/`, the config folder of Claude Code.
+    const patterns = hiddenInstructionPatterns("/eva-home/vault/Projects/example-app", posix);
+    const userFile = "/eva-home/engines/claude/CLAUDE.md";
+    expect(patterns.some((pattern) => userFile.startsWith(pattern.replace(/\*\*$/, "")))).toBe(false);
+    expect(patterns).not.toContain(userFile);
+  });
+
+  test("a glob character in a folder name becomes `?`, because Claude Code turns a backslash into a slash", () => {
+    const patterns = hiddenInstructionPatterns("/srv/a (b)/[c]/{d}*?!+@/vault/Projects/example-app", posix);
+    expect(patterns).toContain("/srv/a ?b?/?c?/?d??????/vault/AGENTS.md");
+    expect(patterns.some((pattern) => pattern.includes("example-app"))).toBe(false);
+  });
+
+  test("a Windows folder gives slashes, any drive letter, and both cases of each letter, since picomatch matches case", () => {
+    const patterns = hiddenInstructionPatterns("D:\\Data\\Example\\vault\\Projects\\example-app", win32);
+    expect(patterns).toContain("?:/[dD][aA][tT][aA]/[eE][xX][aA][mM][pP][lL][eE]/[vV][aA][uU][lL][tT]/AGENTS.md");
+    expect(patterns).toContain("?:/AGENTS.md");
+    expect(patterns.every((pattern) => !pattern.includes("\\"))).toBe(true);
+  });
+
+  test("a project folder behind a link also hides the files above its real path", () => {
+    const root = mkdtempSync(join(tmpdir(), "eva-real-"));
+    try {
+      const real = join(root, "real", "Projects", "example-app");
+      mkdirSync(real, { recursive: true });
+      // A junction needs no admin rights on Windows.
+      symlinkSync(join(root, "real"), join(root, "link"), process.platform === "win32" ? "junction" : "dir");
+      const patterns = hiddenInstructionPatterns(join(root, "link", "Projects", "example-app"));
+      expect(patterns).toContain(`${asPattern(join(root, "link"))}/AGENTS.md`);
+      expect(patterns).toContain(`${asPattern(realpathSync(join(root, "real")))}/AGENTS.md`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("Project mode on an untrusted clone turns off its hooks, its settings and its project MCP servers", () => {
@@ -155,6 +240,29 @@ describe("buildQueryOptions", () => {
       expect(systemPrompt.append.indexOf("Clone rule.")).toBeGreaterThan(systemPrompt.append.indexOf("Project rule."));
       expect(systemPrompt.append).toContain(join(clone, "AGENTS.md"));
       expect(options.settingSources).toEqual(["user"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an untrusted clone reads no instruction file above its project folder (#702)", () => {
+    const root = mkdtempSync(join(tmpdir(), "eva-instructions-"));
+    try {
+      const projectFolder = join(root, "Projects", "2026-01-01-0000-example-app");
+      const clone = join(projectFolder, "repos", "clone-0");
+      mkdirSync(clone, { recursive: true });
+      writeFileSync(join(root, "AGENTS.md"), "Vault map.");
+      writeFileSync(join(root, "CLAUDE.md"), "Vault Claude rule.");
+      writeFileSync(join(projectFolder, "AGENTS.md"), "Project rule.");
+      const options = buildQueryOptions(
+        request({ mode: "project", appendSystemPrompt: null, trusted: false, startFolder: clone, projectFolder }),
+        "/bin/claude",
+      );
+      const { append } = options.systemPrompt as { append: string };
+      expect(append).toContain("Project rule.");
+      // A hidden CLAUDE.md above no longer hides the project's AGENTS.md, as Claude Code's exclusion does.
+      expect(append).not.toContain("Vault map.");
+      expect(append).not.toContain("Vault Claude rule.");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

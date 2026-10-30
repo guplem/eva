@@ -67,6 +67,11 @@ export interface TurnRequest {
   readonly mode: TurnMode;
   readonly history: TurnHistory;
   readonly startFolder: string;
+  /**
+   * Project mode: the project folder, which the core sets. The engine hides each instruction file
+   * of a folder above it, such as the vault's map (#702). Null in every other mode.
+   */
+  readonly projectFolder: string | null;
   readonly prompt: string;
   readonly model: ModelAlias;
   /**

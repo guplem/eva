@@ -23,6 +23,7 @@ function input(overrides: Partial<EngineContextInput> = {}): EngineContextInput 
   return {
     mode: "assistant",
     startFolder: vault,
+    projectFolder: null,
     trusted: true,
     pluginFolders: [],
     environment: { CLAUDE_CONFIG_DIR: config },
@@ -61,6 +62,18 @@ describe("describeClaudeContext", () => {
       [join(vault, "AGENTS.md"), "Vault rules."],
     ]);
     expect(instructions[2]?.title).toBe("AGENTS.md");
+  });
+
+  test("a Project chat lists no instruction file above its project folder, which Claude Code hides (#702)", () => {
+    const project = join(vault, "Projects", "example-app");
+    write(join(folder, "CLAUDE.md"), "Outer Claude rules.");
+    write(join(vault, "AGENTS.md"), "Vault map.");
+    write(join(project, "AGENTS.md"), "Project rules.");
+    const instructions = context(
+      input({ mode: "project", startFolder: join(project, "repos", "clone-0"), projectFolder: project }),
+    ).filter((part) => part.group === "instructions");
+    // A hidden CLAUDE.md above no longer hides the project's AGENTS.md.
+    expect(instructions.map((part) => part.text)).toEqual(["Project rules."]);
   });
 
   test("reads no AGENTS.md when a folder has a CLAUDE.md", () => {

@@ -30,6 +30,7 @@ const preparer: TurnPreparer = {
   prepare: (session) =>
     Promise.resolve({
       startFolder: session.startFolder,
+      projectFolder: null,
       appendSystemPrompt: session.mode === "assistant" ? "You are Eva." : null,
       messagePrefix: null,
       pluginFolders: [],
@@ -3347,6 +3348,7 @@ describe("the context of a chat (issue 700)", () => {
     const engineInput: EngineContextInput = {
       mode: "assistant",
       startFolder: "/vault",
+      projectFolder: null,
       trusted: true,
       pluginFolders: [],
       environment: {},
@@ -3388,7 +3390,14 @@ describe("the context of a chat (issue 700)", () => {
             { ...part("skills", "long"), text: "x".repeat(maxDetailLength + 10) },
             { ...part("prompt", "Claude Code's prompt"), text: null },
           ],
-          engine: { mode: "assistant", startFolder: "/vault", trusted: true, pluginFolders: [], environment: {} },
+          engine: {
+            mode: "assistant",
+            startFolder: "/vault",
+            projectFolder: null,
+            trusted: true,
+            pluginFolders: [],
+            environment: {},
+          },
         }),
     };
     const manager = createManager(new FakeEngine(), { projectPreparer: describing, redactor });
@@ -3411,7 +3420,14 @@ describe("the context of a chat (issue 700)", () => {
       describe: () =>
         Promise.resolve({
           parts: [part("prompt", "Eva's prompt")],
-          engine: { mode: "assistant", startFolder: "/vault", trusted: true, pluginFolders: [], environment: {} },
+          engine: {
+            mode: "assistant",
+            startFolder: "/vault",
+            projectFolder: null,
+            trusted: true,
+            pluginFolders: [],
+            environment: {},
+          },
         }),
     };
     const manager = createManager(new FakeEngine(), { projectPreparer: describing });

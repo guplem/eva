@@ -1,6 +1,8 @@
 /**
- * Project mode: the harness exactly as if the person opened the clone folder, above its repositories.
- * Eva adds no prompt and no plugin. She only decides trust: an untrusted clone runs with
+ * Project mode: the harness as if the person opened the clone folder, above its repositories.
+ * Eva adds no prompt and no plugin. The engine hides each instruction file above the project
+ * folder, such as the vault's map, so the chat does not know that it runs inside Eva (#702).
+ * Eva also decides trust: an untrusted clone runs with
  * its hooks, project settings and project MCP servers off. Trust follows the URL that Eva
  * cloned from, never the clone's live `origin`. The first time a clone of an unknown
  * repository opens, Eva asks the person, as Claude Code itself does. A folder that Eva has
@@ -11,6 +13,7 @@ import { basename, delimiter, dirname } from "node:path";
 import {
   isTrustedByDefault,
   listRepositories,
+  projectFolderOf,
   shownUrl,
   type CloneOriginStore,
   type TrustStore,
@@ -51,6 +54,7 @@ export class ProjectPreparer implements TurnPreparer {
   async prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn> {
     return {
       startFolder: session.startFolder,
+      projectFolder: projectFolderOf(session.startFolder, session.clone),
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
@@ -68,6 +72,7 @@ export class ProjectPreparer implements TurnPreparer {
       engine: {
         mode: "project",
         startFolder: session.startFolder,
+        projectFolder: projectFolderOf(session.startFolder, session.clone),
         trusted: await this.isCloneTrusted(session.startFolder, noAnswer),
         pluginFolders: [],
         environment: this.options.environment,

@@ -7,7 +7,17 @@ import { evaRepository } from "../../shared/version.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import { textField } from "../projects/repository-facts.ts";
 import { branchHead, commitTree, githubCall, type GithubWrite, type TreeEntry } from "../projects/repository-fixes.ts";
-import type { DirectFix, RepositoryFacts, SetupItem, SetupSection } from "../projects/repository-setup.ts";
+import { expandedCommands } from "../projects/repository-checks.ts";
+import {
+  filesUnknown,
+  green,
+  grey,
+  notRead,
+  type DirectFix,
+  type RepositoryFacts,
+  type SetupItem,
+  type SetupSection,
+} from "../projects/repository-setup.ts";
 import { checkWidget, manifestPath } from "./widget-contract.ts";
 import { widgetTemplate } from "./widget-template.ts";
 
@@ -34,10 +44,7 @@ function contractItems(target: RepositoryFacts): SetupItem[] {
   const schemaLabel = "Data schemas";
   const files = target.widgetFiles;
   if (files === null) {
-    return [
-      grey(manifestLabel, "Eva could not read the files from GitHub."),
-      grey(schemaLabel, "Eva could not read the files from GitHub."),
-    ];
+    return [grey(manifestLabel, filesUnknown), grey(schemaLabel, filesUnknown)];
   }
   const check = checkWidget((path) => files[path] ?? null);
   // The widget is newer than this Eva: no agent can fix that in the repository.
@@ -73,11 +80,11 @@ function contractItems(target: RepositoryFacts): SetupItem[] {
 function ciItem(target: RepositoryFacts): SetupItem {
   const label = "Widget check in CI";
   const workflows = target.workflows;
-  if (workflows === null || target.scripts === null) return grey(label, "Eva could not read the files from GitHub.");
+  if (workflows === null || target.scripts === null) return grey(label, filesUnknown);
   const scripts = target.scripts;
   const runs = workflows
     .filter((workflow) => workflow.runsOnPullRequest)
-    .some((workflow) => workflow.commands.some((command) => runsWidgetCheck(command, scripts, 0)));
+    .some((workflow) => runsWidgetCheck(workflow.commands, scripts));
   if (runs) return green(label, "Each pull request checks eva-widget.json and the schemas.");
   return {
     label,
@@ -87,24 +94,14 @@ function ciItem(target: RepositoryFacts): SetupItem {
   };
 }
 
-/** A command that runs the check, by itself or through a package script, a few levels deep. */
-function runsWidgetCheck(command: string, scripts: Readonly<Record<string, string>>, depth: number): boolean {
-  if (/check-widget\.js|check:widget/.test(command)) return true;
-  if (depth >= 3) return false;
-  return Object.entries(scripts).some(
-    ([name, body]) =>
-      new RegExp(`(?:^|\\s)(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?${escapeRegExp(name)}(?:\\s|$)`).test(command) &&
-      runsWidgetCheck(body, scripts, depth + 1),
-  );
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** A command that runs the contract check, by itself or through a package script. */
+function runsWidgetCheck(commands: readonly string[], scripts: Readonly<Record<string, string>>): boolean {
+  return expandedCommands(commands, scripts).some((command) => /check-widget\.js|check:widget/.test(command));
 }
 
 function fillsScreenItem(target: RepositoryFacts): SetupItem {
   const label = "Test that the widget fills the screen";
-  if (target.files === null) return grey(label, "Eva could not read the files from GitHub.");
+  if (target.files === null) return grey(label, filesUnknown);
   if (fillsScreenTest in target.files) return green(label, `Present: ${fillsScreenTest}.`);
   return {
     label,
@@ -125,7 +122,7 @@ function pagesItem(target: RepositoryFacts): SetupItem {
     path: `repos/${target.slug}/pages`,
     body: { build_type: "workflow" },
   });
-  if (target.pages === null) return grey(label, "Eva could not read this from GitHub.");
+  if (target.pages === null) return grey(label, notRead);
   if (target.pages === "off" && target.isPrivate) {
     return grey(label, "GitHub offers Pages on a private repository only on a paid plan.");
   }
@@ -147,7 +144,7 @@ function pagesItem(target: RepositoryFacts): SetupItem {
       directFix: call("PUT"),
     };
   }
-  if (target.workflows === null) return grey(label, "Eva could not read the files from GitHub.");
+  if (target.workflows === null) return grey(label, filesUnknown);
   if (deploys === undefined) {
     return {
       label,
@@ -232,12 +229,4 @@ export function widgetProjectNote(repositoryUrl: string): string {
       .split("/")
       .pop() ?? "the repository";
   return `- This project is a widget for Eva's home page. Before any work, read \`${name}/AGENTS.md\` in the clone.`;
-}
-
-function green(label: string, detail: string): SetupItem {
-  return { label, light: "green", detail, fixRequest: null };
-}
-
-function grey(label: string, detail: string): SetupItem {
-  return { label, light: "grey", detail, fixRequest: null };
 }

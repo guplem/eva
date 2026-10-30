@@ -142,8 +142,8 @@ const hookFilePattern = /^(?:\.?lefthook\.(?:ya?ml|json|jsonc|toml)|\.pre-commit
 const stackNeutralPrograms = new Set(["ls", "cat", "head", "tail", "wc", "grep", "git", "gh"]);
 
 const needsAdmin = "Eva needs admin rights on this repository to read this.";
-const notRead = "Eva could not read this from GitHub.";
-const filesUnknown = "Eva could not read the files from GitHub.";
+export const notRead = "Eva could not read this from GitHub.";
+export const filesUnknown = "Eva could not read the files from GitHub.";
 const packageUnknown = "Eva could not read package.json from GitHub.";
 /** The last step of each fix request. "Fix all" asks for one pull request instead. */
 const pullRequestStep = " Then open a pull request.";
@@ -817,11 +817,11 @@ function scoreOf(items: readonly SetupItem[]): number | null {
   return Math.round((counted.filter((entry) => entry.light === "green").length / counted.length) * 100);
 }
 
-function green(label: string, detail: string): SetupItem {
+export function green(label: string, detail: string): SetupItem {
   return { label, light: "green", detail, fixRequest: null };
 }
 
-function grey(label: string, detail: string): SetupItem {
+export function grey(label: string, detail: string): SetupItem {
   return { label, light: "grey", detail, fixRequest: null };
 }
 

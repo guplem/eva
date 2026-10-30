@@ -15,6 +15,7 @@ import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
+import { repositoryTypes, type RepositoryTypeName } from "../../core/projects/repository-types.ts";
 import type {
   DeviceLoginApprover,
   DeviceLoginEvent,
@@ -156,6 +157,8 @@ const projectDetailsSchema = z.object({
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
 });
+const repositoryTypeNames = repositoryTypes.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
+const repositoryTypeSchema = z.object({ repository: z.string().min(1).max(2_000), type: z.enum(repositoryTypeNames) });
 const newProjectSchema = z.object({
   name: z.string().min(1).max(500),
   description: z.string().max(10_000),
@@ -715,6 +718,18 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     parts[3] === "setup"
   ) {
     return json(await eva.repositorySetup(decodeURIComponent(parts[2])));
+  }
+  if (
+    method === "PUT" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "setup" &&
+    parts[4] === "type" &&
+    parts.length === 5
+  ) {
+    const { repository, type } = repositoryTypeSchema.parse(await request.json());
+    return json(eva.setRepositoryType(decodeURIComponent(parts[2]), repository, type));
   }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "file") {
     const projectId = decodeURIComponent(parts[2]);

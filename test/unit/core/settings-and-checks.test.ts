@@ -76,7 +76,7 @@ describe("repository setup", () => {
     sandbox.write(
       vault,
       "Projects/2025-04-01-0900-other-app/AGENTS.md",
-      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app.git\n  - ${sandbox.remote}\n---\n`,
+      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app.git\n  - ${sandbox.remote}\nrepo_types:\n  https://github.com/owner/other-app.git: vibe-coded\n---\n`,
     );
     const asked: string[] = [];
     const github = fakeGithub({
@@ -114,7 +114,7 @@ describe("repository setup", () => {
     sandbox.write(
       vault,
       "Projects/2025-04-01-0900-other-app/AGENTS.md",
-      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\n---\n",
+      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\nrepo_types:\n  https://github.com/owner/other-app: vibe-coded\n---\n",
     );
     const reportFor = async (github: GithubRequest): Promise<SetupReport | undefined> => {
       const instance = new Eva({
@@ -150,11 +150,54 @@ describe("repository setup", () => {
     expect((await reportFor(archived))?.problem).toBe("This repository is archived, so it takes no changes.");
   });
 
+  test("a repository with no known type has no report until the person picks one; standard needs no reference", async () => {
+    const projectId = "2025-04-01-0900-other-app";
+    const url = "https://github.com/owner/other-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - ${url}\nrepo_types:\n  ${url}: retired-type\n---\n`,
+    );
+    const asked: string[] = [];
+    const github = fakeGithub({ "owner/other-app": { files: {}, labels: [] } });
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: fakeGh(systemProcessRunner),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubRequest: (path, raw, fields) => {
+        asked.push(path);
+        return github(path, raw, fields);
+      },
+    });
+    try {
+      expect(await instance.repositorySetup(projectId)).toEqual([
+        { repositoryUrl: url, slug: "owner/other-app", type: null, sections: [], allFixes: null, problem: null },
+      ]);
+      expect(asked).toEqual([]);
+
+      instance.setRepositoryType(projectId, url, "standard");
+      expect(instance.projects().find((project) => project.id === projectId)?.frontMatter.repoTypes).toEqual({
+        [url]: "standard",
+      });
+      const [report] = await instance.repositorySetup(projectId);
+      expect(report?.type).toBe("standard");
+      expect(report?.sections.map((section) => section.title)).toEqual(["Security"]);
+      expect(asked).not.toContain("repos/guplem/eva");
+    } finally {
+      instance.stop();
+    }
+  });
+
   test("when GitHub cannot be read, each report says why", async () => {
     sandbox.write(
       vault,
       "Projects/2025-04-01-0900-other-app/AGENTS.md",
-      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\n---\n",
+      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\nrepo_types:\n  https://github.com/owner/other-app: standard\n---\n",
     );
     const failing: ProcessRunner = { run: () => Promise.reject(new Error("spawn gh ENOENT")) };
     const withoutGh = new Eva({

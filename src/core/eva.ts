@@ -123,6 +123,7 @@ import { wallClockOf } from "./schedules/schedule-timing.ts";
 import { createDriveFolder } from "./google/google-drive.ts";
 import type { GithubRequest } from "./projects/repository-facts.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
+import type { RepositoryTypeName } from "./projects/repository-types.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
@@ -1616,6 +1617,11 @@ export class Eva {
   /** The setup report of each repository of a project, judged against Eva's own repository. */
   repositorySetup(projectId: string): Promise<SetupReport[]> {
     return this.projectWork.repositorySetup(projectId);
+  }
+
+  /** Sets the type of one repository of a project, so its setup report shows. */
+  setRepositoryType(projectId: string, repository: string, type: RepositoryTypeName): ProjectFile {
+    return this.projectWork.setRepositoryType(projectId, repository, type);
   }
 
   /** The clones of a project, with their branch and pull request. */

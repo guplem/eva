@@ -1809,6 +1809,9 @@ test("Project mode: the repository setup shows each item's light, and Fix opens 
   let report = await openSetup();
   // The local remote is not on GitHub, so its report only says why.
   await expect(page.getByText("Only a repository on GitHub has a setup report.")).toBeVisible();
+  // A repository with no type has no report until the person picks one. The other browser run may
+  // have picked it already, so the choice is made each time.
+  await report.getByLabel("Repository type").selectOption("vibe-coded");
   await expect(
     report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),
   ).toBeVisible();

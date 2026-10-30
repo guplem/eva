@@ -1,7 +1,7 @@
 /**
- * The setup report of a project repository: how ready it is for autonomous agent work,
- * compared with Eva's own repository, the reference. This part is pure: it judges facts
- * that `repository-facts.ts` reads from GitHub.
+ * The setup report of a project repository. Its type (`repository-types.ts`) picks the items:
+ * the basic security items, or the full vibe-coded standard, compared with Eva's own repository,
+ * the reference. This part is pure: it judges facts that `repository-facts.ts` reads from GitHub.
  */
 import { checksOf, type CheckKind } from "./repository-checks.ts";
 
@@ -26,6 +26,8 @@ export interface SetupSection {
 export interface SetupReport {
   readonly repositoryUrl: string;
   readonly slug: string | null;
+  /** The name of the repository's type in `repository-types.ts`, or null: no known type, so no report. */
+  readonly type: string | null;
   readonly sections: readonly SetupSection[];
   /** Every fix request that a coding agent can do, as one request. Null: nothing to fix. */
   readonly allFixes: string | null;
@@ -102,28 +104,58 @@ const packageUnknown = "Eva could not read package.json from GitHub.";
 /** The last step of each fix request. "Fix all" asks for one pull request instead. */
 const pullRequestStep = " Then open a pull request.";
 
-export function evaluateSetup(reference: RepositoryFacts, target: RepositoryFacts): SetupReport {
-  const context = new Context(reference, target);
-  const harness = harnessItems(context);
-  const sections: SetupSection[] = [
-    { title: "Development", items: developmentItems(context), score: null },
-    { title: "Pull requests", items: pullRequestItems(context), score: null },
-    { title: "Harness agnostic", items: harness, score: scoreOf(harness) },
-    { title: "Agent permissions", items: [permissionItem(context)], score: null },
-    { title: "Security", items: securityItems(context), score: null },
-  ];
+export function setupReport(type: string, target: RepositoryFacts, sections: readonly SetupSection[]): SetupReport {
   return {
     repositoryUrl: `https://github.com/${target.slug}`,
     slug: target.slug,
+    type,
     sections,
     allFixes: joinFixes(target.slug, sections),
     problem: null,
   };
 }
 
-/** A report with no sections, for a repository that Eva cannot check. */
-export function unreadableReport(repositoryUrl: string, slug: string | null, problem: string): SetupReport {
-  return { repositoryUrl, slug, sections: [], allFixes: null, problem };
+/** The sections of the full vibe-coded standard, judged against the reference. */
+export function vibeCodedSections(reference: RepositoryFacts, target: RepositoryFacts): SetupSection[] {
+  const context = new Context(reference, target);
+  const harness = harnessItems(context);
+  return [
+    { title: "Development", items: developmentItems(context), score: null },
+    { title: "Pull requests", items: pullRequestItems(context), score: null },
+    { title: "Harness agnostic", items: harness, score: scoreOf(harness) },
+    { title: "Agent permissions", items: [permissionItem(context)], score: null },
+    { title: "Security", items: securityItems(context.target), score: null },
+  ];
+}
+
+/**
+ * The basic items: the security items that GitHub offers on the repository's visibility. On a
+ * private repository, the items that GitHub offers only on a paid plan show grey, with the reason.
+ */
+export function basicSections(target: RepositoryFacts): SetupSection[] {
+  const basic = new Set(basicItems);
+  return [{ title: "Security", items: securityItems(target).filter((entry) => basic.has(entry.label)), score: null }];
+}
+
+const basicItems = [
+  "Private vulnerability reporting",
+  "Dependabot alerts",
+  "Dependabot security updates",
+  "Malware alerts",
+  "Secret scanning",
+  "Push protection",
+  "Code scanning",
+  "Read-only workflow token",
+];
+
+/** A report with no sections, for a repository that Eva cannot check, or that has no known type. */
+export function unreadableReport(
+  repositoryUrl: string,
+  slug: string | null,
+  problem: string | null,
+  type: string | null,
+): SetupReport {
+  return { repositoryUrl, slug, type, sections: [], allFixes: null, problem };
 }
 
 /** One request for every fix of the red and yellow items. A grey item's steps are for the person. */
@@ -150,17 +182,17 @@ class Context {
   referenceLink(kind: "tree" | "blob", path: string): string {
     return `https://github.com/${this.reference.slug}/${kind}/${this.reference.defaultBranch}/${path}`;
   }
+}
 
-  /** Why a fact that needs admin rights or a public repository is unknown. */
-  unknownReason(publicOnly: boolean): string {
-    if (publicOnly && this.target.isPrivate) return "GitHub does not offer this free on a private repository.";
-    return this.target.isAdmin ? notRead : needsAdmin;
-  }
+/** Why a fact that needs admin rights or a public repository is unknown. */
+function unknownReason(target: RepositoryFacts, publicOnly: boolean): string {
+  if (publicOnly && target.isPrivate) return "GitHub does not offer this free on a private repository.";
+  return target.isAdmin ? notRead : needsAdmin;
+}
 
-  /** A command that needs admin rights, as a fix request. */
-  adminCommand(command: string, what: string): string {
-    return `In ${this.target.slug}, ${what}. Run \`${command}\`. It needs admin rights on the repository.`;
-  }
+/** A command that needs admin rights, as a fix request. */
+function adminCommand(target: RepositoryFacts, command: string, what: string): string {
+  return `In ${target.slug}, ${what}. Run \`${command}\`. It needs admin rights on the repository.`;
 }
 
 function developmentItems(context: Context): SetupItem[] {
@@ -375,12 +407,13 @@ function requiredChecksItem(context: Context): SetupItem {
 
 function settingItem(context: Context, label: string, isOn: boolean | null, field: string, effect: string): SetupItem {
   if (isOn === true) return green(label, "On.");
-  if (isOn === null) return grey(label, context.unknownReason(false));
+  if (isOn === null) return grey(label, unknownReason(context.target, false));
   return {
     label,
     light: "red",
     detail: "Off.",
-    fixRequest: context.adminCommand(
+    fixRequest: adminCommand(
+      context.target,
       `gh api -X PATCH repos/${context.target.slug} -F ${field}=true`,
       `turn on the setting so that ${effect}`,
     ),
@@ -468,8 +501,7 @@ function permissionItem(context: Context): SetupItem {
   };
 }
 
-function securityItems(context: Context): SetupItem[] {
-  const { target } = context;
+function securityItems(target: RepositoryFacts): SetupItem[] {
   const slug = target.slug;
   const settingsPage = `https://github.com/${slug}/settings/security_analysis`;
   // The bracket form of -f works in every shell, unlike a piped JSON body.
@@ -481,18 +513,19 @@ function securityItems(context: Context): SetupItem[] {
       : target.codeScanningDefaultSetup;
   return [
     featureItem(
-      context,
+      target,
       "Private vulnerability reporting",
       target.isPrivate ? null : target.privateVulnerabilityReporting,
       true,
-      context.adminCommand(
+      adminCommand(
+        target,
         `gh api -X PUT repos/${slug}/private-vulnerability-reporting`,
         "let people report a vulnerability in private",
       ),
     ),
     {
       ...featureItem(
-        context,
+        target,
         "Security policy",
         target.securityPolicy,
         false,
@@ -507,18 +540,19 @@ function securityItems(context: Context): SetupItem[] {
         : { detail: target.securityPolicy ? "Has a SECURITY.md." : "No SECURITY.md." }),
     },
     featureItem(
-      context,
+      target,
       "Dependabot alerts",
       target.dependabotAlerts,
       false,
-      context.adminCommand(`gh api -X PUT repos/${slug}/vulnerability-alerts`, "turn on Dependabot alerts"),
+      adminCommand(target, `gh api -X PUT repos/${slug}/vulnerability-alerts`, "turn on Dependabot alerts"),
     ),
     featureItem(
-      context,
+      target,
       "Dependabot security updates",
       target.dependabotSecurityUpdates,
       false,
-      context.adminCommand(
+      adminCommand(
+        target,
         `gh api -X PUT repos/${slug}/automated-security-fixes`,
         "let Dependabot open pull requests that fix vulnerable dependencies",
       ),
@@ -530,35 +564,37 @@ function securityItems(context: Context): SetupItem[] {
       fixRequest: `Open ${settingsPage} and turn on Dependabot malware alerts.`,
     },
     featureItem(
-      context,
+      target,
       "Secret scanning",
       target.secretScanning,
       true,
-      context.adminCommand(securityPatch("secret_scanning"), "turn on secret scanning"),
+      adminCommand(target, securityPatch("secret_scanning"), "turn on secret scanning"),
     ),
     featureItem(
-      context,
+      target,
       "Push protection",
       target.pushProtection,
       true,
-      context.adminCommand(securityPatch("secret_scanning_push_protection"), "block pushes that contain a secret"),
+      adminCommand(target, securityPatch("secret_scanning_push_protection"), "block pushes that contain a secret"),
     ),
     featureItem(
-      context,
+      target,
       "Code scanning",
       codeScanning,
       true,
-      context.adminCommand(
+      adminCommand(
+        target,
         `gh api -X PATCH repos/${slug}/code-scanning/default-setup -f state=configured`,
         "turn on CodeQL code scanning",
       ),
     ),
     featureItem(
-      context,
+      target,
       "Read-only workflow token",
       target.readOnlyWorkflowToken,
       false,
-      context.adminCommand(
+      adminCommand(
+        target,
         `gh api -X PUT repos/${slug}/actions/permissions/workflow -f default_workflow_permissions=read`,
         "give workflows a read-only token by default",
       ),
@@ -567,14 +603,14 @@ function securityItems(context: Context): SetupItem[] {
 }
 
 function featureItem(
-  context: Context,
+  target: RepositoryFacts,
   label: string,
   isOn: boolean | null,
   publicOnly: boolean,
   fixRequest: string,
 ): SetupItem {
   if (isOn === true) return green(label, "On.");
-  if (isOn === null || (publicOnly && context.target.isPrivate)) return grey(label, context.unknownReason(publicOnly));
+  if (isOn === null || (publicOnly && target.isPrivate)) return grey(label, unknownReason(target, publicOnly));
   return { label, light: "red", detail: "Off.", fixRequest };
 }
 

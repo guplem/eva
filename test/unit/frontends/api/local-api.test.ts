@@ -1264,6 +1264,17 @@ describe("web routes", () => {
     expect((await call("/api/projects/missing/setup")).status).toBe(404);
   });
 
+  test("the type of a project repository: a bad type, or a repository that the project does not list, is a 400", async () => {
+    const address = "/api/projects/2025-03-02-1015-example-app/setup/type";
+    const repository = "https://github.com/example-owner/example-app";
+    expect((await call(address, { method: "PUT", body: { repository, type: "other" } })).status).toBe(400);
+    expect((await call(address, { method: "PUT", body: { repository, type: "standard" } })).status).toBe(400);
+    expect(
+      (await call("/api/projects/missing/setup/type", { method: "PUT", body: { repository, type: "standard" } }))
+        .status,
+    ).toBe(404);
+  });
+
   test("a project's clones, and a new clone", async () => {
     expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
     const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });

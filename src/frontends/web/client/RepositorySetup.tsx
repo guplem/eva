@@ -1,8 +1,10 @@
 /**
- * The setup report of each repository of a project: one mark per item, and a Fix button that
- * opens a new chat with Eva, with the fix request of the item in the message box.
+ * The setup report of each repository of a project: its type, one mark per item, and a Fix button
+ * that opens a new chat with Eva, with the fix request of the item in the message box. A repository
+ * with no known type shows only the type choice (#681).
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { repositoryTypes } from "../../../core/projects/repository-types.ts";
 import { api, type SetupItem, type SetupReport, type SetupSection } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
@@ -63,7 +65,13 @@ export function RepositorySetup({
           <>
             {reports.length === 0 && <div className="callout">This project lists no repository.</div>}
             {reports.map((report, index) => (
-              <ReportCard key={`${String(index)}-${report.repositoryUrl}`} report={report} onFix={onFix} />
+              <ReportCard
+                key={`${String(index)}-${report.repositoryUrl}`}
+                projectId={projectId}
+                report={report}
+                onFix={onFix}
+                onTypeChanged={() => void load()}
+              />
             ))}
           </>
         ) : reports.state === "loading" ? (
@@ -80,7 +88,15 @@ export function RepositorySetup({
   );
 }
 
-function ReportCard({ report, onFix }: { report: SetupReport; onFix: (request: string) => void }): ReactElement {
+interface ReportCardProps {
+  readonly projectId: string;
+  readonly report: SetupReport;
+  readonly onFix: (request: string) => void;
+  /** Reads the reports again, for the new type. */
+  readonly onTypeChanged: () => void;
+}
+
+function ReportCard({ projectId, report, onFix, onTypeChanged }: ReportCardProps): ReactElement {
   const summary = reportSummary(report);
   return (
     <Card
@@ -99,11 +115,73 @@ function ReportCard({ report, onFix }: { report: SetupReport; onFix: (request: s
         )
       }
     >
+      {report.slug !== null && <TypeChoice projectId={projectId} report={report} onChanged={onTypeChanged} />}
       {report.problem !== null && <div className="callout warning">{report.problem}</div>}
       {report.sections.map((section) => (
         <SectionView key={section.title} section={section} onFix={onFix} />
       ))}
     </Card>
+  );
+}
+
+/** The type of the repository. The person picks one for a repository that has none. */
+function TypeChoice({
+  projectId,
+  report,
+  onChanged,
+}: {
+  readonly projectId: string;
+  readonly report: SetupReport;
+  readonly onChanged: () => void;
+}): ReactElement {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const current = repositoryTypes.find((type) => type.name === report.type);
+  const choose = async (type: string): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.setRepositoryType(projectId, report.repositoryUrl, type);
+      onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      {report.type === null && (
+        <div className="callout">Pick the type of this repository. Eva then shows the report for that type.</div>
+      )}
+      <label className="field">
+        <span className="field-label">Repository type</span>
+        <select
+          value={report.type ?? ""}
+          disabled={saving}
+          aria-busy={saving}
+          onChange={(event) => void choose(event.target.value)}
+        >
+          {report.type === null && (
+            <option value="" disabled>
+              Pick a type
+            </option>
+          )}
+          {repositoryTypes.map((type) => (
+            <option key={type.name} value={type.name}>
+              {type.label}
+            </option>
+          ))}
+        </select>
+        {current !== undefined && <span className="field-hint">{current.description}</span>}
+      </label>
+      {saving && <ProgressBar label="Eva saves the type…" />}
+      {error !== null && (
+        <div className="callout danger" role="status">
+          {error}
+        </div>
+      )}
+    </>
   );
 }
 

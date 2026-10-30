@@ -275,6 +275,8 @@ export const api = {
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/clones`),
   repositorySetup: (projectId: string): Promise<SetupReport[]> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/setup`),
+  setRepositoryType: (projectId: string, repository: string, type: string): Promise<ProjectFile> =>
+    request("PUT", `/api/projects/${encodeURIComponent(projectId)}/setup/type`, { repository, type }),
   projectFile: (projectId: string): Promise<ProjectFile> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/file`),
   /** A file that changed since `version` answers 409. */

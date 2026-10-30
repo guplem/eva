@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  evaluateSetup,
+  setupReport,
+  vibeCodedSections,
   type RepositoryFacts,
   type SetupItem,
   type SetupReport,
@@ -47,6 +48,11 @@ const reference: RepositoryFacts = {
   codeScanningDefaultSetup: true,
   readOnlyWorkflowToken: true,
 };
+
+/** The full report of the vibe-coded type. */
+function evaluateSetup(referenceFacts: RepositoryFacts, targetFacts: RepositoryFacts): SetupReport {
+  return setupReport("vibe-coded", targetFacts, vibeCodedSections(referenceFacts, targetFacts));
+}
 
 function target(changes: Partial<RepositoryFacts> = {}): RepositoryFacts {
   return { ...reference, slug: "owner/example-app", ...changes };

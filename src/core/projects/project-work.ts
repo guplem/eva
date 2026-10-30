@@ -11,7 +11,6 @@ import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { cheapestModel, type ModelCalls } from "../model-calls/model-calls.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
-import { evaRepository } from "../../shared/version.ts";
 import type { ChatSummarizer } from "../sessions/chat-summary.ts";
 import type { HistoryPoint, RetryFiles, SessionManager } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
@@ -51,11 +50,13 @@ import {
   fileVersion,
   matchFileStyle,
   projectFileOf,
+  setRepositoryType,
   type ProjectDetails,
   type ProjectFile,
 } from "./project-file.ts";
 import { ghApiRequest, readRepositoryFacts, type GithubRequest } from "./repository-facts.ts";
-import { evaluateSetup, unreadableReport, type RepositoryFacts, type SetupReport } from "./repository-setup.ts";
+import { unreadableReport, type RepositoryFacts, type SetupReport } from "./repository-setup.ts";
+import { repositoryTypeOf, type RepositoryTypeName } from "./repository-types.ts";
 
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
@@ -425,8 +426,8 @@ export class ProjectWork {
   }
 
   /**
-   * The setup report of each repository of a project, judged against Eva's own repository.
-   * A repository that Eva cannot read gets a report with only the reason.
+   * The setup report of each repository of a project, by the repository's type. A repository
+   * with no known type gets no report, and one that Eva cannot read gets only the reason.
    */
   async repositorySetup(projectId: string): Promise<SetupReport[]> {
     const project = this.project(projectId);
@@ -440,27 +441,47 @@ export class ProjectWork {
         throw error;
       }
     };
-    let reference = await read(evaRepository);
-    // A gap in the reference would turn into false greens, such as "has every standard label".
-    if (
-      typeof reference !== "string" &&
-      (reference.files === null || reference.labels === null || !Array.isArray(reference.allowRules))
-    ) {
-      reference = `Eva could not read all of her reference repository, ${evaRepository}. Try again later.`;
-    }
-    const readReference = reference;
+    // Each reference is read once, and only when a repository of its type needs it.
+    const references = new Map<string, Promise<RepositoryFacts | string>>();
+    const readReference = (slug: string): Promise<RepositoryFacts | string> => {
+      const known = references.get(slug);
+      if (known !== undefined) return known;
+      const reading = read(slug).then((facts) =>
+        // A gap in the reference would turn into false greens, such as "has every standard label".
+        typeof facts !== "string" && (facts.files === null || facts.labels === null || !Array.isArray(facts.allowRules))
+          ? `Eva could not read all of her reference repository, ${slug}. Try again later.`
+          : facts,
+      );
+      references.set(slug, reading);
+      return reading;
+    };
     return Promise.all(
       project.frontMatter.repos.map(async (url) => {
         const slug = githubSlug(url);
-        if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.");
-        if (typeof readReference === "string") return unreadableReport(url, slug, readReference);
-        const target = await read(slug);
-        if (typeof target === "string") return unreadableReport(url, slug, target);
+        if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.", null);
+        const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
+        if (type === null) return unreadableReport(url, slug, null, null);
+        const [target, reference] = await Promise.all([
+          read(slug),
+          type.reference === null ? null : readReference(type.reference),
+        ]);
+        if (typeof reference === "string") return unreadableReport(url, slug, reference, type.name);
+        if (typeof target === "string") return unreadableReport(url, slug, target, type.name);
         if (target.isArchived)
-          return unreadableReport(url, slug, "This repository is archived, so it takes no changes.");
-        return evaluateSetup(readReference, target);
+          return unreadableReport(url, slug, "This repository is archived, so it takes no changes.", type.name);
+        return type.report(target, reference);
       }),
     );
+  }
+
+  /** Sets the type of one repository of a project, in its `AGENTS.md`. */
+  setRepositoryType(projectId: string, repository: string, type: RepositoryTypeName): ProjectFile {
+    const path = this.projectFilePath(projectId);
+    const before = projectText(path, projectId);
+    const text = setRepositoryType(before, repository, type);
+    checkProjectFile(text);
+    if (text !== before) writeFileAtomic(path, text);
+    return projectFileOf(text);
   }
 
   /** The clones of a project, with the branch, pull request, changes and sync of each repository. */

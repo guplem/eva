@@ -5,7 +5,13 @@
 import { createHash } from "node:crypto";
 import { isMap, isNode, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { EvaError } from "../../shared/errors.ts";
-import { frontMatterPattern, parseFrontMatter, titleHeading, type ProjectStatus } from "./project-catalog.ts";
+import {
+  frontMatterPattern,
+  parseFrontMatter,
+  repoTypesWarning,
+  titleHeading,
+  type ProjectStatus,
+} from "./project-catalog.ts";
 
 export interface ProjectDetails {
   /** An empty title removes the heading, so the list shows the folder name. */
@@ -50,10 +56,12 @@ export function setRepositoryType(text: string, repository: string, type: string
   const bom = text.startsWith("﻿") ? "﻿" : "";
   const withoutBom = text.slice(bom.length);
   const match = frontMatterPattern.exec(withoutBom);
-  const current = parseFrontMatter(withoutBom).frontMatter;
+  const { frontMatter: current, warnings } = parseFrontMatter(withoutBom);
   if (match === null || current === null) {
     throw invalid("Eva cannot read the front matter. Fix it in the AGENTS.md editor.");
   }
+  // Eva reads a broken map as empty, so a write would drop the types of the other repositories.
+  if (warnings.includes(repoTypesWarning)) throw invalid("Eva cannot read repo_types. Fix it in the AGENTS.md editor.");
   if (!current.repos.includes(repository)) throw invalid(`The project does not list the repository ${repository}.`);
   if (current.repoTypes[repository] === type) return text;
   const eol = match[0].includes("\r\n") ? "\r\n" : "\n";

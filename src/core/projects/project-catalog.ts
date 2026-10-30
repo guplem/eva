@@ -47,6 +47,8 @@ export interface Project {
 
 const statuses: readonly ProjectStatus[] = ["idea", "active", "paused", "closed"];
 const knownKeys = new Set(["created", "status", "repos", "tags", "legacy_id", "repo_types"]);
+/** The warning of a `repo_types` value that is not a map of text values. */
+export const repoTypesWarning = "repo_types must map each repository to its type";
 export const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export function parseFrontMatter(text: string): FrontMatterResult {
@@ -79,7 +81,7 @@ export function parseFrontMatter(text: string): FrontMatterResult {
   if (tags === null) warnings.push("tags must be a list");
   const legacyId = typeof fields["legacy_id"] === "string" ? fields["legacy_id"] : null;
   const repoTypes = readTextMap(fields["repo_types"]);
-  if (repoTypes === null) warnings.push("repo_types must map each repository to its type");
+  if (repoTypes === null) warnings.push(repoTypesWarning);
 
   const extra = Object.fromEntries(Object.entries(fields).filter(([key]) => !knownKeys.has(key)));
   return {

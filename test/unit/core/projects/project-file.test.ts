@@ -271,5 +271,8 @@ describe("the type of each repository", () => {
     expect(invalidCode(() => setRepositoryType(typed, "https://github.com/example/other", "standard"))).toBe(
       "project_invalid",
     );
+    // A broken map would lose the other types, so the person fixes it first.
+    const broken = typed.replace(`  ${api}: standard`, `  ${api}: [a, b]`);
+    expect(invalidCode(() => setRepositoryType(broken, app, "standard"))).toBe("project_invalid");
   });
 });

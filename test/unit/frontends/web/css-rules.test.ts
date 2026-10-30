@@ -190,6 +190,13 @@ describe("the style sheets of the web app", () => {
     expect(costly).toEqual([]);
   });
 
+  test("each motion token in use is defined", () => {
+    const text = sheets.map(({ name }) => readFileSync(join(webFolder, name), "utf8")).join("\n");
+    const used = new Set([...text.matchAll(/var\((--(?:dur|ease)-[\w-]+)\)/g)].map((match) => match[1] ?? ""));
+    expect(used.size).toBeGreaterThan(3);
+    for (const token of used) expect(text, token).toContain(`${token}:`);
+  });
+
   test("motion that plays once takes its duration and curve from the motion tokens", () => {
     const raw: string[] = [];
     for (const { sheet, block } of rules()) {

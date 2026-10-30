@@ -1,0 +1,38 @@
+{
+  "contract": 1,
+  "name": "Example widget",
+  "entry": "index.html",
+  "size": "medium",
+  "inputs": [
+    {
+      "id": "title",
+      "type": "text",
+      "label": "Title",
+      "description": "The title at the top of the widget.",
+      "why": "The widget shows it as its heading.",
+      "required": false,
+      "default": "Habits"
+    },
+    {
+      "id": "habits",
+      "type": "folder",
+      "label": "Habits folder",
+      "description": "The folder with one file for each habit, such as meditate.json.",
+      "why": "The widget shows your habits, and saves a check when you mark a habit done today.",
+      "required": true,
+      "access": "write",
+      "schema": "schemas/habits.json",
+      "files": "*.json"
+    },
+    {
+      "id": "location",
+      "type": "eva-location",
+      "label": "Location",
+      "description": "Your last location, from your phone.",
+      "why": "The widget shows near which place you check your habits.",
+      "required": false
+    }
+  ],
+  "hosts": [],
+  "prompt": "Habits live in {habits}, one JSON file for each habit. Before you create a habit file, ask the person once."
+}

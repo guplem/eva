@@ -229,8 +229,8 @@ A request from Eva's own computer can come from any program there, so only the t
 
 - **Create a project:** open **Projects** in the web app and tap **New project**. Give a name, a short description, a status and tags. Eva makes the folder `Projects/<date>-<time>-<name>/` in the vault, with its `AGENTS.md`.
   - Tick **Create a GitHub repository** to get a repository in your GitHub account. It takes the folder name without the date and time.
-  - Pick its type. **Standard** gets a first commit and the security items that GitHub offers. **Vibe-coded** follows the [vibe-coded standard](../vibe-coded-standard.md): Eva sets up what she can, then opens a project chat for the rest. That chat merges its own pull request.
-  - Pick **Private** or **Public**. A private vibe-coded repository uses the CI minutes of your GitHub account, and some guards of the standard need a paid plan.
+  - Pick its type. **Standard** gets a first commit and the security items that GitHub offers. **Vibe-coded** follows the [vibe-coded standard](../vibe-coded-standard.md): Eva sets up what she can, then opens a project chat for the rest. That chat merges its own pull request. **Widget** makes a widget for Eva's home page from Eva's template, as the [widget contract](../widgets.md) says: Eva pushes the template, turns on GitHub Pages for its demo, and opens a project chat where you say what the widget does.
+  - Pick **Private** or **Public**. A widget is public by default. A private vibe-coded repository uses the CI minutes of your GitHub account, and some guards of the standard need a paid plan. A private widget has no GitHub Pages demo on a free plan.
   - Tick **Create a Google Drive folder** to get a folder in your Drive. It needs the Drive access "Read and change", in **Settings > Connections > Google**.
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
 - **Repository setup:** open it from the project page. It checks each repository by its type. A repository with no type, such as one that you added by hand, shows no report: pick its type first.

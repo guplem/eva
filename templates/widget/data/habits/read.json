@@ -1,0 +1,7 @@
+{
+  "name": "Read",
+  "kind": "yesNo",
+  "frequency": { "times": 5, "days": 7 },
+  "checks": [{ "date": "2026-01-02" }],
+  "tags": ["evening"]
+}

@@ -14,7 +14,8 @@ import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/pro
 import type { TurnRequest } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGh } from "../../support/fake-gh.ts";
-import { fakeGithub } from "../../support/fake-github.ts";
+import { fakeGithub, fakeGithubWrite } from "../../support/fake-github.ts";
+import { widgetTemplate } from "../../../src/core/widgets/widget-template.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
@@ -746,6 +747,84 @@ describe("Eva", () => {
       expect(request).toContain("AGENTS.md");
       expect(request).toContain("Turn on auto-merge for the pull request");
       expect(request).not.toContain("gh label clone");
+    } finally {
+      await github.stop(true);
+    }
+  });
+
+  test("a new widget gets the template, Pages and its first deploy, then the chat where the person describes it", async () => {
+    const url = "https://github.com/you/example-widget";
+    const created: unknown[] = [];
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async (request) => {
+        created.push(await request.json());
+        return Response.json({ full_name: "you/example-widget", clone_url: `${url}.git` });
+      },
+    });
+    const writes: string[] = [];
+    const takeEveryFix = fakeGithubWrite();
+    const runner: ProcessRunner = {
+      run: (command, options) =>
+        fakeGh(systemProcessRunner).run(
+          command.map((part) => (part === url ? sandbox.remote : part)),
+          options,
+        ),
+    };
+    try {
+      const engine = new FakeEngine();
+      const instance = start(
+        engine,
+        {},
+        {
+          runner,
+          secrets: { claudeOauthToken: "oauth-token-value-for-tests", githubToken: "github-token-value" },
+          githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+          githubRequest: fakeGithub({
+            "guplem/eva": {
+              files: { "AGENTS.md": "# Rules\n", ".claude/settings.json": '{"permissions":{"allow":["Read"]}}' },
+              labels: [],
+            },
+            // GitHub shows the files of the template once Eva pushed them.
+            "you/example-widget": {
+              files: widgetTemplate({ owner: "you", repository: "example-widget", title: "Example Widget" }),
+              labels: [],
+            },
+          }),
+          githubWrite: (method, path, body) => {
+            writes.push(`${method} ${path}`);
+            return takeEveryFix(method, path, body);
+          },
+        },
+      );
+
+      const result = await instance.createProject({
+        name: "Example Widget",
+        description: "",
+        status: "active",
+        tags: [],
+        repository: { type: "widget", visibility: "public" },
+        drive: false,
+      });
+
+      expect(created).toEqual([{ name: "example-widget", private: false, auto_init: true }]);
+      expect(result.setup?.problems).toEqual([]);
+      const tree = writes.indexOf("POST repos/you/example-widget/git/trees");
+      const pages = writes.indexOf("POST repos/you/example-widget/pages");
+      const deploy = writes.indexOf("POST repos/you/example-widget/actions/workflows/pages.yml/dispatches");
+      expect(tree).toBeGreaterThanOrEqual(0);
+      expect(pages).toBeGreaterThan(tree);
+      expect(deploy).toBeGreaterThan(pages);
+      expect(readFileSync(join(vault, "Projects", result.projectId, "AGENTS.md"), "utf-8")).toContain(
+        "read `example-widget/AGENTS.md` in the clone",
+      );
+      const sessionId = result.setup?.sessionId ?? "";
+      expect(instance.sessions.get(sessionId)).toMatchObject({ mode: "project", projectId: result.projectId });
+      await waitFor(() => engine.requests.length > 0);
+      const request = JSON.stringify(engine.requests[0]);
+      expect(request).toContain("ask the person what the widget must do");
+      expect(request).not.toContain("The setup also left these items");
     } finally {
       await github.stop(true);
     }

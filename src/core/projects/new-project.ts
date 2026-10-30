@@ -12,7 +12,7 @@ import type { ProjectStatus } from "./project-catalog.ts";
 import type { RepositoryVisibility } from "../vault/github-repositories.ts";
 import { applyProjectDetails, setRepositoryType } from "./project-file.ts";
 import { formatProjectId, projectSlug } from "./project-id.ts";
-import type { RepositoryTypeName } from "./repository-types.ts";
+import { repositoryTypeOf, type RepositoryTypeName } from "./repository-types.ts";
 
 /** The repository that the form asks for. */
 export interface NewRepository {
@@ -154,9 +154,14 @@ function projectText(
   input: NewProjectInput,
   results: { readonly repository: string | null; readonly driveFolder: string | null },
 ): string {
+  const note =
+    results.repository === null
+      ? undefined
+      : repositoryTypeOf(input.repository?.type)?.projectNote?.(results.repository);
   const parts = [
     `# ${title}`,
     description,
+    note ?? "",
     // A list item, so the catalog never reads the link as the description.
     results.driveFolder === null ? "" : `- Google Drive folder: ${results.driveFolder}`,
   ];

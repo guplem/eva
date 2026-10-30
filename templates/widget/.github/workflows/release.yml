@@ -1,0 +1,61 @@
+name: Release
+
+# After CI passes on main, this workflow publishes a release when a commit since the last one has
+# the prefix feat, fix, perf, refactor or build. The prefixes pick the version: a "!" or a
+# "BREAKING CHANGE:" line raises the first number, feat the second, and the others the last. The
+# releases are a reference for the person: Eva reads no version of a widget.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only this job may write a tag and a release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Pick the version and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          last="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "$SHA" 2>/dev/null || true)"
+          range="${last:+$last..}$SHA"
+          subjects="$(git log --format=%s "$range")"
+          bodies="$(git log --format=%b "$range")"
+          if printf '%s\n' "$subjects" | grep -qE '^[a-z]+(\([^)]*\))?!:' || printf '%s\n' "$bodies" | grep -q '^BREAKING CHANGE:'; then
+            bump=major
+          elif printf '%s\n' "$subjects" | grep -qE '^feat(\([^)]*\))?:'; then
+            bump=minor
+          elif printf '%s\n' "$subjects" | grep -qE '^(fix|perf|refactor|build)(\([^)]*\))?:'; then
+            bump=patch
+          else
+            echo "No commit since ${last:-the start} changes the widget. Nothing to release."
+            exit 0
+          fi
+          version="${last#v}"
+          version="${version:-0.0.0}"
+          IFS=. read -r major minor patch <<< "$version"
+          case "$bump" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          next="v$major.$minor.$patch"
+          gh release create "$next" --target "$SHA" --title "$next" --generate-notes

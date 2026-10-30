@@ -1,6 +1,10 @@
 /** The logic of the "New project" form, apart from its markup. */
 import type { NewProjectResult } from "../../../core/projects/new-project.ts";
-import { repositoryTypes, type RepositoryTypeName } from "../../../core/projects/repository-types.ts";
+import {
+  repositoryCatalog,
+  repositoryTypeInfo,
+  type RepositoryTypeName,
+} from "../../../core/projects/repository-catalog.ts";
 import type { PublicSettings } from "../../../core/settings/live-settings.ts";
 import type { RepositoryVisibility } from "../../../core/vault/github-repositories.ts";
 
@@ -27,7 +31,7 @@ export function unavailableSteps(settings: PublicSettings): { github: string | n
 
 /** Why each repository type cannot be picked now, or null when it can. */
 export function unavailableTypes(settings: PublicSettings): Record<RepositoryTypeName, string | null> {
-  const reasons = repositoryTypes.map((type) => [
+  const reasons = repositoryCatalog.map((type) => [
     type.name,
     type.needsGithubLogin && !settings.secretsSet.githubToken ? githubLogin : null,
   ]);
@@ -43,10 +47,7 @@ export function repositoryNotes(
   visibility: RepositoryVisibility,
 ): { warning: string | null; note: string | null } {
   return {
-    warning:
-      type === "vibe-coded" && visibility === "private"
-        ? "A private repository uses the CI minutes of your GitHub account on each pull request. GitHub enforces the merge rules and some security scans of the standard only on a paid plan."
-        : null,
+    warning: visibility === "private" ? (repositoryTypeInfo(type)?.privateWarning ?? null) : null,
     note: visibility === "public" ? "Anyone can read the code of a public repository." : null,
   };
 }

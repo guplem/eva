@@ -1,0 +1,50 @@
+name: Pages
+
+# The demo on GitHub Pages, with the mock data. After CI passes on main, the demo shows the new
+# version. Eva starts the first deploy by hand (workflow_dispatch), once Pages is on.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only this job may deploy: the default token of the repository is read-only.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit that CI checked, or the newest main for a deploy by hand.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # The demo needs only the files that a browser loads. Each folder of the contract goes in.
+      - name: Collect the widget files
+        run: |
+          mkdir _site
+          for path in *.html *.js *.css *.json schemas data eva example; do
+            if [ -e "$path" ]; then cp -r "$path" _site/; fi
+          done
+          rm -f _site/package.json _site/package-lock.json _site/*.config.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

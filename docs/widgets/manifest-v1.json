@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/guplem/eva/main/docs/widgets/manifest-v1.json",
+  "title": "eva-widget.json, contract 1",
+  "description": "The manifest of a widget. docs/widgets.md describes each key. A new key needs a new contract.",
+  "type": "object",
+  "required": ["contract", "name", "size"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": { "const": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "entry": {
+      "description": "The page that Eva opens, by its path from the repository root. index.html when not given.",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9._/-]+\\.html$",
+      "default": "index.html"
+    },
+    "size": { "enum": ["small", "medium", "large"] },
+    "inputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/input" },
+      "default": []
+    },
+    "hosts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/host" },
+      "default": []
+    },
+    "prompt": {
+      "description": "One line for Eva's prompt. {<input id>} names the value of an input.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^[^\\n]*$"
+    }
+  },
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": ["id", "type", "label", "description", "why", "required"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "A camelCase name. It is a key of config.json and a folder of data/.",
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9]{0,39}$"
+        },
+        "type": { "enum": ["folder", "file", "text", "url", "number", "boolean", "choice", "eva-location"] },
+        "label": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "description": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "default": true,
+        "access": { "enum": ["read", "write"] },
+        "schema": {
+          "description": "The JSON Schema of each file that the widget writes, by its path from the repository root.",
+          "type": "string",
+          "pattern": "^schemas/[A-Za-z0-9._-]+\\.json$"
+        },
+        "files": {
+          "description": "A glob pattern of the file names of the folder, such as *.json. * and ? match no slash.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._*?-]+$"
+        },
+        "choices": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 2,
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "enum": ["folder", "file"] } } },
+          "then": { "required": ["access"] },
+          "else": { "not": { "anyOf": [{ "required": ["access"] }, { "required": ["schema"] }] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "folder" } } },
+          "then": { "required": ["files"] },
+          "else": { "not": { "required": ["files"] } }
+        },
+        {
+          "if": { "properties": { "access": { "const": "write" } }, "required": ["access"] },
+          "then": { "required": ["schema"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "choice" } } },
+          "then": { "required": ["choices"] },
+          "else": { "not": { "required": ["choices"] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "eva-location" } } },
+          "then": { "not": { "required": ["default"] } }
+        }
+      ]
+    },
+    "host": {
+      "type": "object",
+      "required": ["url", "why"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "description": "An https address with no path, such as https://api.example.com.",
+          "type": "string",
+          "pattern": "^https://[a-z0-9.-]+(?::[0-9]{1,5})?$"
+        },
+        "why": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

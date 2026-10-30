@@ -1,0 +1,5 @@
+# pskill settings (SPEC.md section 10.1 of github.com/guplem/pskill). Every other setting keeps its default.
+# The skill files go only to the open folder, which AGENTS.md names, so they work with no hook.
+stub_folders: [.agents/skills]
+hook_files: [.claude/settings.json]
+permissions: [claude-code]

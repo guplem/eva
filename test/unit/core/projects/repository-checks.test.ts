@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { checksOf } from "../../../../src/core/projects/repository-checks.ts";
+import { checksOf, expandedCommands } from "../../../../src/core/projects/repository-checks.ts";
 
 const root = fileURLToPath(new URL("../../../..", import.meta.url));
 
@@ -101,5 +101,24 @@ describe("checksOf on Eva's own repository, the reference of the setup report", 
       const commands = Object.values(hooks[hook]?.commands ?? {}).map((command) => command.run);
       expect([...checksOf(commands, scripts)].sort()).toEqual(["format", "lint"]);
     }
+  });
+});
+
+describe("expandedCommands", () => {
+  test("replaces each script call with the commands of the script, with its pre and post scripts", () => {
+    const scripts = {
+      precheck: "echo start",
+      check: "npm run lint && npm run-script check:widget",
+      lint: "eslint .",
+      "check:widget": "node scripts/check-widget.js",
+      loop: "npm run loop",
+    };
+    expect(expandedCommands(["npm run check", "npm run missing", "npm run loop"], scripts)).toEqual([
+      "echo start",
+      "eslint .",
+      "node scripts/check-widget.js",
+      "npm run missing",
+      "npm run loop",
+    ]);
   });
 });

@@ -6,6 +6,7 @@
 import { parse as parseYaml } from "yaml";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { manifestPath } from "../widgets/widget-contract.ts";
 import type { HookFacts, RepositoryFacts, WorkflowFacts } from "./repository-setup.ts";
 
 export interface GithubAnswer {
@@ -33,6 +34,7 @@ const huskyStages: Readonly<Record<string, keyof HookFacts>> = {
   ".husky/pre-push": "push",
 };
 const preCommitPath = ".pre-commit-config.yaml";
+const widgetSchemaPattern = /^schemas\/[A-Za-z0-9._-]+\.json$/;
 const labelsPerPage = 100;
 /** A limit for the label pages, so a broken answer never loops for ever. */
 const labelPageLimit = 10;
@@ -97,7 +99,7 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
   const encodedBranch = encodeURIComponent(branch);
 
   const [owner = "", name = ""] = slug.split("/");
-  const [files, labels, rules, branchInfo, reporting, security, fixes, codeScanning, workflowToken, languages] =
+  const [files, labels, rules, branchInfo, reporting, security, fixes, codeScanning, workflowToken, languages, pages] =
     await Promise.all([
       readFiles(request, `${address}/git/trees/${encodedBranch}?recursive=1`),
       readLabels(request, `${address}/labels`),
@@ -109,16 +111,19 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
       readJson(request, `${address}/code-scanning/default-setup`),
       readJson(request, `${address}/actions/permissions/workflow`),
       readJson(request, `${address}/languages`),
+      // It needs no file, so it runs with the first reads.
+      readPages(request, `${address}/pages`),
     ]);
   const readFile = (path: string): Promise<FileRead> =>
     request(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
       (answer) => (answer.status === 200 ? { text: answer.body } : answer.status === 404 ? "absent" : null),
     );
-  const [workflows, allowRules, scripts, hooks] = await Promise.all([
+  const [workflows, allowRules, scripts, hooks, widgetFiles] = await Promise.all([
     files === null ? null : readWorkflows(Object.keys(files), readFile),
     files !== null && !(settingsPath in files) ? ("none" as const) : readFile(settingsPath).then(readAllowRules),
     files === null ? null : packagePath in files ? readFile(packagePath).then(readScripts) : {},
     files === null ? null : readHooks(Object.keys(files), readFile),
+    files === null ? null : readWidgetFiles(files, readFile),
   ]);
 
   return {
@@ -147,7 +152,42 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
     readOnlyWorkflowToken:
       workflowToken === null ? null : textField(workflowToken, "default_workflow_permissions") === "read",
     hasCode: asRecord(languages) === null ? null : Object.keys(asRecord(languages) ?? {}).length > 0,
+    pages,
+    widgetFiles,
   };
+}
+
+/**
+ * The manifest of a widget and each schema that its inputs name (#688). Only a path under
+ * `schemas/` that the tree lists is read, so a manifest cannot point the reader elsewhere.
+ */
+async function readWidgetFiles(
+  files: Readonly<Record<string, string>>,
+  readFile: (path: string) => Promise<FileRead>,
+): Promise<Record<string, string> | null> {
+  if (!(manifestPath in files)) return {};
+  const manifest = await readFile(manifestPath);
+  if (manifest === null || manifest === "absent") return null;
+  const inputs = listOf(asRecord(parseJson(manifest.text))?.["inputs"]);
+  const schemas = [...new Set(inputs.flatMap((input) => textField(input, "schema") ?? []))].filter(
+    (path) => widgetSchemaPattern.test(path) && path in files,
+  );
+  const texts = await Promise.all(schemas.map(readFile));
+  const read: Record<string, string> = { [manifestPath]: manifest.text };
+  for (const [index, text] of texts.entries()) {
+    if (text === null || text === "absent") return null;
+    read[schemas[index] ?? ""] = text.text;
+  }
+  return read;
+}
+
+/** GitHub answers 404 when Pages is off. */
+async function readPages(request: GithubRequest, path: string): Promise<RepositoryFacts["pages"]> {
+  const answer = await request(path);
+  if (answer.status === 404) return "off";
+  if (answer.status !== 200) return null;
+  const buildType = textField(parseJson(answer.body), "build_type");
+  return buildType === "workflow" ? "workflow" : buildType === null ? null : "branch";
 }
 
 /** A file's text, "absent" when GitHub has no such file, or null when GitHub did not answer. */
@@ -196,6 +236,7 @@ async function readWorkflows(
       runsOnPullRequest: runsOnPullRequest(fields),
       usesCodeql: content.includes("github/codeql-action/"),
       commands: stepCommands(fields),
+      jobs: jobNames(fields),
     });
   }
   return withLocalWorkflows(workflows);
@@ -207,6 +248,25 @@ function runsOnPullRequest(fields: Record<string, unknown> | null): boolean {
   if (trigger === "pull_request") return true;
   if (Array.isArray(trigger)) return trigger.includes("pull_request");
   return asRecord(trigger)?.["pull_request"] !== undefined;
+}
+
+/**
+ * The check name that each job reports on every pull request: its `name` when it is plain text,
+ * else its key. A required check that never reports blocks each pull request, so a job with no
+ * sure name gives none: a matrix job reports `test (22)`, a call of a workflow reports
+ * `test / inner`, and a workflow with a path filter skips some pull requests.
+ */
+function jobNames(workflow: Record<string, unknown> | null): string[] {
+  const trigger = asRecord(workflow?.["on"] ?? workflow?.["true"]);
+  const pullRequest = asRecord(trigger?.["pull_request"]);
+  if (pullRequest?.["paths"] !== undefined || pullRequest?.["paths-ignore"] !== undefined) return [];
+  return Object.entries(asRecord(workflow?.["jobs"]) ?? {}).flatMap(([key, job]) => {
+    const fields = asRecord(job);
+    if (fields?.["uses"] !== undefined || asRecord(fields?.["strategy"])?.["matrix"] !== undefined) return [];
+    const name = textField(job, "name");
+    if (name === null) return [key];
+    return name.includes("${{") ? [] : [name];
+  });
 }
 
 /** The `run` text or the `uses` action of each step, job by job. A job can also `uses` a whole workflow. */

@@ -5,7 +5,11 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type NewProjectResult, type ProjectDetails, type PublicSettings } from "./api.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
-import { repositoryTypes, repositoryTypeOf, type RepositoryTypeName } from "../../../core/projects/repository-types.ts";
+import {
+  repositoryCatalog,
+  repositoryTypeInfo,
+  type RepositoryTypeName,
+} from "../../../core/projects/repository-catalog.ts";
 import type { RepositoryVisibility } from "../../../core/vault/github-repositories.ts";
 import { repositoryNotes, stepProblems, unavailableSteps, unavailableTypes } from "./new-project-form.ts";
 import { splitWords, statusChoices, statusOf } from "./ProjectDetailsEditor.tsx";
@@ -195,19 +199,19 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
                         value={type}
                         disabled={busy}
                         onChange={(event) => {
-                          const chosen = repositoryTypeOf(event.target.value);
+                          const chosen = repositoryTypeInfo(event.target.value);
                           if (chosen === null) return;
                           setType(chosen.name);
                           if (!visibilityPicked) setVisibility(chosen.defaultVisibility);
                         }}
                       >
-                        {repositoryTypes.map((choice) => (
+                        {repositoryCatalog.map((choice) => (
                           <option key={choice.name} value={choice.name} disabled={typeReasons?.[choice.name] !== null}>
                             {choice.label}
                           </option>
                         ))}
                       </select>
-                      <span className="field-hint">{typeReason ?? repositoryTypeOf(type)?.description}</span>
+                      <span className="field-hint">{typeReason ?? repositoryTypeInfo(type)?.description}</span>
                     </label>
                     <label>
                       Visibility

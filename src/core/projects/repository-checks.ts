@@ -86,6 +86,31 @@ function collect(
   }
 }
 
+/**
+ * Each simple command that the commands run, with each package script call replaced by the commands
+ * of the script and of its `pre` and `post` scripts. A call of a missing script stays as it is.
+ */
+export function expandedCommands(commands: readonly string[], scripts: Readonly<Record<string, string>>): string[] {
+  const found: string[] = [];
+  const expand = (text: string, visited: ReadonlySet<string>): void => {
+    for (const tokens of simpleCommands(text)) {
+      const manager = tokens.findIndex((token) => packageManagers.has(token));
+      const script = manager === -1 ? null : scriptCall(tokens.slice(manager), scripts);
+      const body = script === null ? undefined : scriptBody(scripts, script);
+      if (script === null || body === undefined || visited.has(script) || visited.size >= scriptDepthLimit) {
+        found.push(tokens.join(" "));
+        continue;
+      }
+      const inside = new Set([...visited, script]);
+      for (const part of [scriptBody(scripts, `pre${script}`), body, scriptBody(scripts, `post${script}`)]) {
+        if (part !== undefined) expand(part, inside);
+      }
+    }
+  };
+  for (const command of commands) expand(command, new Set());
+  return found;
+}
+
 /** A script runs with its `pre` and `post` scripts, as npm runs them. A missing script counts by its name. */
 function collectScript(
   script: string,

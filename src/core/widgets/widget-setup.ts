@@ -4,9 +4,9 @@
  * the ruleset and auto-merge through the direct fixes of the report, and starts the first deploy.
  */
 import { evaRepository } from "../../shared/version.ts";
-import { EvaError } from "../../shared/errors.ts";
-import { asRecord, textField } from "../projects/repository-facts.ts";
-import { githubCall, type GithubWrite } from "../projects/repository-fixes.ts";
+import { isEvaError } from "../../shared/errors.ts";
+import { textField } from "../projects/repository-facts.ts";
+import { branchHead, commitTree, githubCall, type GithubWrite, type TreeEntry } from "../projects/repository-fixes.ts";
 import type { DirectFix, RepositoryFacts, SetupItem, SetupSection } from "../projects/repository-setup.ts";
 import { checkWidget, manifestPath } from "./widget-contract.ts";
 import { widgetTemplate } from "./widget-template.ts";
@@ -18,7 +18,6 @@ const fillsScreenTest = "tests/fills-screen.spec.js";
 const templateLink = `https://github.com/${evaRepository}/tree/main/templates/widget`;
 const contractLink = `https://github.com/${evaRepository}/blob/main/docs/widgets.md`;
 const templateCommit = "feat: start the widget from Eva's template";
-/** GitHub makes the first commit of a new repository a moment after it answers. */
 const firstCommitTries = 5;
 
 /** The items that only a widget repository has, in their own section of the report. */
@@ -172,43 +171,40 @@ export async function pushWidgetTemplate(
 ): Promise<void> {
   const [owner = "", repository = ""] = slug.split("/");
   const files = widgetTemplate({ owner, repository, title });
-  const branch = textField(await githubCall(write, "GET", `repos/${slug}`), "default_branch") ?? "main";
-  const address = `repos/${slug}/git`;
-  const head = await firstCommit(write, `${address}/ref/heads/${encodeURIComponent(branch)}`, wait);
-  const base = textField(asRecord(await githubCall(write, "GET", `${address}/commits/${head}`))?.["tree"], "sha");
-  if (base === null) throw unreadable();
+  const branch = await defaultBranch(write, slug);
+  const head = await firstCommit(() => branchHead(write, slug, branch), wait);
   // Each entry carries its text, so the whole template is one tree call.
-  const tree = Object.entries(files).map(([path, content]) => ({ path, mode: "100644", type: "blob", content }));
-  const treeSha = textField(await githubCall(write, "POST", `${address}/trees`, { base_tree: base, tree }), "sha");
-  if (treeSha === null) throw unreadable();
-  const commit = textField(
-    await githubCall(write, "POST", `${address}/commits`, { message: templateCommit, tree: treeSha, parents: [head] }),
-    "sha",
-  );
-  if (commit === null) throw unreadable();
-  await githubCall(write, "PATCH", `${address}/refs/heads/${encodeURIComponent(branch)}`, { sha: commit });
+  const tree = Object.entries(files).map(([path, content]): TreeEntry => ({
+    path,
+    mode: "100644",
+    type: "blob",
+    content,
+  }));
+  await commitTree(write, slug, branch, head, tree, templateCommit);
 }
 
+/** GitHub makes the first commit of a new repository a moment after it answers, so Eva tries again. */
 async function firstCommit(
-  write: GithubWrite,
-  path: string,
+  read: () => Promise<string>,
   wait: (milliseconds: number) => Promise<void>,
 ): Promise<string> {
   for (let attempt = 1; ; attempt += 1) {
     try {
-      const sha = textField(asRecord(await githubCall(write, "GET", path))?.["object"], "sha");
-      if (sha !== null) return sha;
+      return await read();
     } catch (error) {
-      if (attempt >= firstCommitTries) throw error;
+      if (!isEvaError(error, "github_failed") || attempt >= firstCommitTries) throw error;
     }
-    if (attempt >= firstCommitTries) throw unreadable();
     await wait(1_000);
   }
 }
 
+async function defaultBranch(write: GithubWrite, slug: string): Promise<string> {
+  return textField(await githubCall(write, "GET", `repos/${slug}`), "default_branch") ?? "main";
+}
+
 /** Starts the first deploy of the demo. Pages must be on first, so this runs after the fixes. */
 export async function startFirstDeploy(slug: string, write: GithubWrite): Promise<void> {
-  const branch = textField(await githubCall(write, "GET", `repos/${slug}`), "default_branch") ?? "main";
+  const branch = await defaultBranch(write, slug);
   await githubCall(write, "POST", `repos/${slug}/actions/workflows/${deployWorkflow}/dispatches`, { ref: branch });
 }
 
@@ -239,8 +235,4 @@ function green(label: string, detail: string): SetupItem {
 
 function grey(label: string, detail: string): SetupItem {
   return { label, light: "grey", detail, fixRequest: null };
-}
-
-function unreadable(): EvaError {
-  return new EvaError("github_failed", "GitHub sent an answer that Eva cannot read.");
 }

@@ -1,13 +1,14 @@
 /**
  * On 2026-10-30 the person's Eva settings in the vault moved into one folder, `.eva/settings/` (#662).
  * This migration copies each old file to its new place. The old files stay for one release: an
- * older satellite reads only those, and the `vault_ahead` gate stops it from a write.
+ * older satellite reads only those, and the `vault_ahead` gate stops it from writing.
  *
  * The migration is frozen: it holds its own list of the moved files.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonTolerant } from "../../shared/files.ts";
+import { parseConfig } from "../settings/home.ts";
 import type { Migration } from "./migration-runner.ts";
 
 /** The files that moved on 2026-10-30, by their name in `.eva/`. */
@@ -18,9 +19,10 @@ export const moveSettingsToFolder: Migration = {
   store: "vault",
   run: (context) => {
     if (context.vaultPath === null) return "done";
-    // The older migrations clean the old settings file once it is valid again. A copy now would skip that.
+    // The older migrations fix only the old file, and they wait while Eva cannot read it. Wait with them.
     const settings = readJsonTolerant(join(context.vaultPath, ".eva", "settings.json"));
     if (!settings.ok && settings.reason !== "missing") return "later";
+    if (settings.ok && !isReadableSettings(settings.value)) return "later";
     for (const name of movedFiles) {
       const old = join(context.vaultPath, ".eva", name);
       if (!existsSync(old)) continue;
@@ -30,3 +32,13 @@ export const moveSettingsToFolder: Migration = {
     return "done";
   },
 };
+
+function isReadableSettings(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  try {
+    parseConfig(value, "settings");
+    return true;
+  } catch {
+    return false;
+  }
+}

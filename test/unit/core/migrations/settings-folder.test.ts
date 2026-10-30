@@ -84,6 +84,9 @@ describe("moveSettingsToFolder with a broken settings file", () => {
     });
     expect(result).toEqual({ kind: "done", applied: [], later: [moveSettingsToFolder.id] });
     expect(existsSync(join(vault, ".eva", "settings"))).toBe(false);
+    writeFileSync(join(vault, ".eva", "settings.json"), "{}\n");
+    migrate();
+    expect(read(".eva/settings/chat-names.md")).toBe("Lead with an emoji.\n");
   });
 
   test("runs again safely after a stop halfway", () => {
@@ -94,5 +97,20 @@ describe("moveSettingsToFolder with a broken settings file", () => {
     migrate();
     expect(read(".eva/settings/settings.json")).toBe("{}\n");
     expect(read(".eva/settings/chat-names.md")).toBe("Lead with an emoji.\n");
+  });
+});
+
+describe("moveSettingsToFolder with settings that Eva cannot read", () => {
+  test.each([["[1]"], ['{ "updates": { "frequency": "sometimes" } }']])("waits for %s", (text) => {
+    writeFileSync(join(vault, ".eva", "settings.json"), text);
+    const result = runMigrations({
+      store: "vault",
+      migrations: [moveSettingsToFolder],
+      paths,
+      vaultPath: vault,
+      version: "1.40.0",
+      now: () => new Date("2026-10-30T08:00:00.000Z"),
+    });
+    expect(result).toEqual({ kind: "done", applied: [], later: [moveSettingsToFolder.id] });
   });
 });

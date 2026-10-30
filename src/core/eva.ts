@@ -1745,8 +1745,8 @@ export class Eva {
   }
 
   /**
-   * Creates a project from the form, with a GitHub repository and a Drive folder when asked.
-   * The idle sweep commits the new files.
+   * Creates a project from the form, with a GitHub repository of a type and a Drive folder when
+   * asked. The repository then gets the setup of its type. The idle sweep commits the new files.
    */
   createProject(input: NewProjectInput): Promise<NewProjectResult> {
     const vaultPath = this.options.config.vaultPath;
@@ -1758,7 +1758,7 @@ export class Eva {
       input,
       { projectsFolder: join(vaultPath, "Projects"), wallClock: wallClockOf(this.options.now(), timeZone) },
       {
-        createRepository: async (name, description) => {
+        createRepository: async (name, description, visibility) => {
           const token = this.settings.secrets.githubToken;
           if (token === undefined)
             throw new EvaError("github_failed", "Log in to GitHub in Settings > Connections > GitHub first.");
@@ -1767,6 +1767,7 @@ export class Eva {
             name,
             ...(description === "" ? {} : { description }),
             initialize: true,
+            visibility,
             ...(this.options.githubApiBaseUrl === undefined ? {} : { baseUrl: this.options.githubApiBaseUrl }),
           });
           return repository.cloneUrl.replace(/\.git$/, "");
@@ -1781,6 +1782,7 @@ export class Eva {
             },
             name,
           ),
+        setUpRepository: (projectId, url) => this.projectWork.setUpRepository(projectId, url),
       },
     );
   }

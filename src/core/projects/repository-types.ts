@@ -5,6 +5,7 @@
  */
 import { evaRepository } from "../../shared/version.ts";
 import type { RepositoryVisibility } from "../vault/github-repositories.ts";
+import type { GithubWrite } from "./repository-fixes.ts";
 import {
   basicSections,
   setupReport,
@@ -30,6 +31,11 @@ export interface RepositoryType {
   readonly reference: string | null;
   /** The report of a repository of this type. `reference` holds the facts of `reference`, or null. */
   readonly report: (target: RepositoryFacts, reference: RepositoryFacts | null) => SetupReport;
+  /**
+   * A first step after GitHub creates the repository, before the fixes of the report, such as a
+   * push of a template. None for a type that starts from GitHub's first commit.
+   */
+  readonly afterCreate?: (slug: string, write: GithubWrite) => Promise<void>;
 }
 
 export const repositoryTypes: readonly RepositoryType[] = [

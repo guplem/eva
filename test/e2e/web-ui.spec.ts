@@ -1620,7 +1620,7 @@ test("New project: the form creates a project and opens its page", async ({ page
   await page.getByRole("button", { name: "New project" }).click();
   const form = page.getByRole("dialog", { name: "New project" });
   // The demo has no GitHub login, so the form says what to set up instead of a send that fails.
-  await expect(form.getByLabel(/Create a private GitHub repository/)).toBeDisabled();
+  await expect(form.getByLabel(/Create a GitHub repository/)).toBeDisabled();
   await expect(form).toContainText("Log in to GitHub");
   await form.getByLabel("Name").fill(name);
   await form.getByLabel("Description").fill("Made from the form.");
@@ -1640,6 +1640,31 @@ test("New project: a failed read of the settings turns the steps off and says so
   const form = page.getByRole("dialog", { name: "New project" });
   await expect(form.getByLabel(/Create a Google Drive folder/)).toBeDisabled();
   await expect(form).toContainText("Eva could not read the settings.");
+  await page.keyboard.press("Escape");
+  await expect(form).toHaveCount(0);
+});
+
+test("New project: the repository asks for a type and a visibility, and warns only when it applies", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openProjects(page);
+  // The demo has no GitHub login, so the page reads settings that say it has one.
+  await page.route("**/api/settings", async (route) => {
+    const settings = (await (await route.fetch()).json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await form.getByLabel(/Create a GitHub repository/).check();
+  await expect(form.getByLabel("Repository type")).toHaveValue("standard");
+  await expect(form.getByLabel("Visibility")).toHaveValue("private");
+  await expect(form).not.toContainText("CI minutes");
+  await form.getByLabel("Repository type").selectOption("vibe-coded");
+  await expect(form).toContainText("CI minutes");
+  await form.getByLabel("Visibility").selectOption("public");
+  await expect(form).not.toContainText("CI minutes");
+  await expect(form).toContainText("Anyone can read the code of a public repository.");
   await page.keyboard.press("Escape");
   await expect(form).toHaveCount(0);
 });

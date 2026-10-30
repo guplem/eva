@@ -43,6 +43,7 @@ import {
   readyToPush,
   switchToBranch,
 } from "./clone-sync.ts";
+import type { NewProjectSetup } from "./new-project.ts";
 import type { Project } from "./project-catalog.ts";
 import {
   applyProjectDetails,
@@ -141,6 +142,10 @@ const commitMessagePrompt = [
   "Add a short body after a blank line only when the subject cannot say why.",
   "Follow the style and the language of the recent commits of the repository.",
 ].join("\n");
+
+/** The end of the request of a new repository's setup chat: the standard has agents merge their own work. */
+const setupChatEnd =
+  "Turn on auto-merge for the pull request, so that it merges itself once its checks pass. Fix each check that fails.";
 
 /** The number of characters of a project answer that the report to the Assistant chat keeps. */
 const reportTextLimit = 3_000;
@@ -512,8 +517,7 @@ export class ProjectWork {
     const direct = chosen.flatMap((item) =>
       item.directFix === undefined || item.light === "grey" ? [] : [{ label: item.label, directFix: item.directFix }],
     );
-    const write = this.options.githubWrite ?? ghApiWrite(this.options.runner, this.options.gitEnvironment);
-    const outcome = await runDirectFixes(slug, direct, write);
+    const outcome = await runDirectFixes(slug, direct, this.githubWrite());
     const failed = new Set(outcome.failed.map((entry) => entry.label));
     const forChat = chosen.filter((item) => item.directFix === undefined || failed.has(item.label));
     return {
@@ -521,6 +525,29 @@ export class ProjectWork {
       problems: outcome.failed.map((entry) => `${entry.label}: ${entry.reason}`),
       chatRequest: chatRequest(slug, forChat),
     };
+  }
+
+  /**
+   * The setup of a new repository, by its type: the type's own first step, then every direct
+   * fix of its report, then one Project chat for the rest. The chat merges its own pull request.
+   */
+  async setUpRepository(projectId: string, url: string): Promise<NewProjectSetup> {
+    const project = this.project(projectId);
+    const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
+    const slug = githubSlug(url);
+    if (type?.afterCreate !== undefined && slug !== null) await type.afterCreate(slug, this.githubWrite());
+    const result = await this.fixRepository(projectId, url, null);
+    if (result.chatRequest === null) return { sessionId: null, problems: result.problems };
+    const session = await this.start({
+      projectId,
+      request: `${result.chatRequest}\n\n${setupChatEnd}`,
+      reportToSessionId: null,
+    });
+    return { sessionId: session.id, problems: result.problems };
+  }
+
+  private githubWrite(): GithubWrite {
+    return this.options.githubWrite ?? ghApiWrite(this.options.runner, this.options.gitEnvironment);
   }
 
   /** Sets the type of one repository of a project, in its `AGENTS.md`. */

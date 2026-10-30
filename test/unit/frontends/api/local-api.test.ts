@@ -1420,6 +1420,18 @@ describe("web routes", () => {
     expect((await call("/api/projects", { method: "POST", body: { ...form, status: "dreaming" } })).status).toBe(400);
   });
 
+  test("a new project reads the old github: true as a repository, and refuses an unknown type", async () => {
+    const form = { description: "", status: "idea", tags: [], drive: false };
+    const old = await call("/api/projects", { method: "POST", body: { ...form, name: "Old page app", github: true } });
+    // This Eva has no GitHub login, so the repository step says so: the page asked for one.
+    expect(await json<{ github: unknown; setup: unknown }>(old)).toMatchObject({
+      github: { problem: expect.stringContaining("Log in to GitHub") as string },
+      setup: null,
+    });
+    const unknown = { ...form, name: "Typed app", repository: { type: "widget-like", visibility: "public" } };
+    expect((await call("/api/projects", { method: "POST", body: unknown })).status).toBe(400);
+  });
+
   test("a project save: a stale version is a 409, a bad file or value a 400, an unknown project a 404", async () => {
     const path = "/api/projects/2025-03-02-1015-example-app";
     const stale = await call(`${path}/file`, { method: "PUT", body: { version: "old", text: "---\n---\n" } });

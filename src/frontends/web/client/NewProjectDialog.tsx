@@ -1,11 +1,13 @@
 /**
  * The "New project" form, in the sheet of the "Add schedule" form. Eva creates the folder and
- * its `AGENTS.md`, and a GitHub repository and a Drive folder when the person asks.
+ * its `AGENTS.md`, and a GitHub repository of a type and a Drive folder when the person asks.
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type NewProjectResult, type ProjectDetails, type PublicSettings } from "./api.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
-import { stepProblems, unavailableSteps } from "./new-project-form.ts";
+import { repositoryTypes, repositoryTypeOf, type RepositoryTypeName } from "../../../core/projects/repository-types.ts";
+import type { RepositoryVisibility } from "../../../core/vault/github-repositories.ts";
+import { repositoryNotes, stepProblems, unavailableSteps, unavailableTypes } from "./new-project-form.ts";
 import { splitWords, statusChoices, statusOf } from "./ProjectDetailsEditor.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -23,6 +25,9 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
   const [status, setStatus] = useState<NonNullable<ProjectDetails["status"]>>("active");
   const [tags, setTags] = useState("");
   const [github, setGithub] = useState(false);
+  // Standard and private: what Eva made before repository types (#681).
+  const [type, setType] = useState<RepositoryTypeName>("standard");
+  const [visibility, setVisibility] = useState<RepositoryVisibility>("private");
   const [drive, setDrive] = useState(false);
   /** Null while the read runs. */
   const [settings, setSettings] = useState<PublicSettings | "failed" | null>(null);
@@ -58,6 +63,9 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
   const unreadable = "Eva could not read the settings. Close the form and try again.";
   const unavailable =
     settings === null || settings === "failed" ? { github: unreadable, drive: unreadable } : unavailableSteps(settings);
+  const typeReasons = settings === null || settings === "failed" ? null : unavailableTypes(settings);
+  const typeReason = typeReasons === null ? unreadable : typeReasons[type];
+  const notes = repositoryNotes(type, visibility);
 
   const create = async (): Promise<void> => {
     setBusy(true);
@@ -68,7 +76,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
         description,
         status,
         tags: splitWords(tags),
-        github: github && unavailable.github === null,
+        repository: github && unavailable.github === null && typeReason === null ? { type, visibility } : null,
         drive: drive && unavailable.drive === null,
       });
       if (stepProblems(result).length === 0) onCreated(result.projectId);
@@ -176,7 +184,44 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
               <ProgressBar label="Eva reads which steps she can do." />
             ) : (
               <>
-                {step("Create a private GitHub repository", github, setGithub, unavailable.github)}
+                {step("Create a GitHub repository", github, setGithub, unavailable.github)}
+                {github && unavailable.github === null && (
+                  <>
+                    <label>
+                      Repository type
+                      <select
+                        value={type}
+                        disabled={busy}
+                        onChange={(event) => {
+                          const chosen = repositoryTypeOf(event.target.value);
+                          if (chosen === null) return;
+                          setType(chosen.name);
+                          setVisibility(chosen.defaultVisibility);
+                        }}
+                      >
+                        {repositoryTypes.map((choice) => (
+                          <option key={choice.name} value={choice.name} disabled={typeReasons?.[choice.name] !== null}>
+                            {choice.label}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="field-hint">{typeReason ?? repositoryTypeOf(type)?.description}</span>
+                    </label>
+                    <label>
+                      Visibility
+                      <select
+                        value={visibility}
+                        disabled={busy}
+                        onChange={(event) => setVisibility(event.target.value === "public" ? "public" : "private")}
+                      >
+                        <option value="private">Private</option>
+                        <option value="public">Public</option>
+                      </select>
+                    </label>
+                    {notes.warning !== null && <div className="callout warning">{notes.warning}</div>}
+                    {notes.note !== null && <div className="callout">{notes.note}</div>}
+                  </>
+                )}
                 {step("Create a Google Drive folder", drive, setDrive, unavailable.drive)}
               </>
             )}
@@ -195,6 +240,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
                 Cancel
               </button>
             </div>
+            {busy && <ProgressBar label="Eva creates the project and sets up its steps…" />}
           </form>
         )}
       </div>

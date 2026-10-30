@@ -163,14 +163,24 @@ const repositoryFixSchema = z.object({
   repository: z.string().min(1).max(2_000),
   items: z.array(z.string().max(500)).max(200).nullable(),
 });
-const newProjectSchema = z.object({
-  name: z.string().min(1).max(500),
-  description: z.string().max(10_000),
-  status: z.enum(["idea", "active", "paused", "closed"]),
-  tags: z.array(z.string().max(200)).max(100),
-  github: z.boolean(),
-  drive: z.boolean(),
-});
+/**
+ * The form sends `repository`. An older page sends `github: true`, which reads as a standard
+ * private repository, as Eva made before repository types (#681).
+ */
+const newProjectSchema = z
+  .object({
+    name: z.string().min(1).max(500),
+    description: z.string().max(10_000),
+    status: z.enum(["idea", "active", "paused", "closed"]),
+    tags: z.array(z.string().max(200)).max(100),
+    github: z.boolean().optional(),
+    repository: z.object({ type: z.enum(repositoryTypeNames), visibility: z.enum(["private", "public"]) }).nullish(),
+    drive: z.boolean(),
+  })
+  .transform(({ github, repository, ...rest }) => ({
+    ...rest,
+    repository: repository ?? (github === true ? { type: "standard" as const, visibility: "private" as const } : null),
+  }));
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
 const trustAnswerSchema = z.object({ url: z.string().min(1).max(2_000) });

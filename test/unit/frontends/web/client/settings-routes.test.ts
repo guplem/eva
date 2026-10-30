@@ -136,6 +136,31 @@ describe("the development section", () => {
   });
 });
 
+describe("the guide section", () => {
+  test("a heading of a doc has its own address, and Back goes to the guide", () => {
+    const route = parseSettingsHash("#/settings/guide/reference/vault-sync");
+    expect(route).toEqual({ section: "guide", item: "reference/vault-sync" });
+    expect(settingsHash(route)).toBe("#/settings/guide/reference/vault-sync");
+    expect(parentRoute(route)).toEqual({ section: "guide", item: null });
+  });
+
+  test("another section still reads only the first part after its name", () => {
+    expect(parseSettingsHash("#/settings/engines/pi/extra")).toEqual({ section: "engines", item: "pi" });
+  });
+
+  test("each part of the address is encoded on its own", () => {
+    expect(settingsHash({ section: "guide", item: "setup/a b" })).toBe("#/settings/guide/setup/a%20b");
+    expect(parseSettingsHash("#/settings/guide/setup/a%20b")).toEqual({ section: "guide", item: "setup/a b" });
+  });
+
+  test("each doc is a page of its own, and a heading of it keeps the same page", () => {
+    expect(sameSettingsPage("#/settings/guide/setup", "#/settings/guide/setup/remove-eva")).toBe(true);
+    expect(sameSettingsPage("#/settings/guide/setup/a", "#/settings/guide/setup/b")).toBe(true);
+    expect(sameSettingsPage("#/settings/guide/setup", "#/settings/guide/reference")).toBe(false);
+    expect(sameSettingsPage("#/settings/guide", "#/settings/guide/setup")).toBe(false);
+  });
+});
+
 describe("where each setting lives", () => {
   test("every setting that the vault holds shows in the vault list", () => {
     const covered = settingPlaces.filter((place) => place.home === "vault").flatMap((place) => place.keys);

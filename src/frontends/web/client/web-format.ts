@@ -6,7 +6,7 @@
  * All text is escaped and only these tags are added, so the HTML is safe to put in the page.
  */
 import { closesFence, openingFencePattern } from "../../markdown-fence.ts";
-import { escapeHtml, inlineHtml } from "../../markdown-inline.ts";
+import { escapeHtml, inlineHtml, unescapeHtml } from "../../markdown-inline.ts";
 import { fileAddressOf, vaultPathOf } from "./file-paths.ts";
 
 const headingPattern = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
@@ -47,11 +47,6 @@ function linkVaultPaths(html: string): string {
     if (path === null) return match;
     return `<a class="vault-link" href="${fileAddressOf(path)}">${match}</a>`;
   });
-}
-
-/** The text of `escapeHtml` back, which is all the escaping that a code span gets. */
-function unescapeHtml(text: string): string {
-  return text.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
 }
 
 /**

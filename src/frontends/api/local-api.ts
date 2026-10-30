@@ -356,6 +356,9 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         url.pathname.startsWith("/api/github/") ||
         // A summary waits for a model, and a Project chat may wait for a new clone.
         url.pathname.endsWith("/summary-chat") ||
+        // A new repository's setup and the direct fixes run many GitHub calls, and the setup a clone (#681).
+        (url.pathname === "/api/projects" && request.method === "POST") ||
+        url.pathname.endsWith("/setup/fix") ||
         // A fork or a retry of a Project chat may wait for a new clone and a summary (issue 523).
         (url.pathname.startsWith("/api/sessions/") && /\/(fork|retry)$/.test(url.pathname))
       )

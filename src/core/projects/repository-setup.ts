@@ -109,6 +109,13 @@ export interface RepositoryFacts {
   readonly readOnlyWorkflowToken: boolean | null;
   /** Whether GitHub finds code in a language, so code scanning has something to scan. */
   readonly hasCode: boolean | null;
+  /** How GitHub Pages builds: from a workflow, from a branch, or off. */
+  readonly pages: "workflow" | "branch" | "off" | null;
+  /**
+   * The text of `eva-widget.json` and of each schema that it names and the tree lists, by path.
+   * Empty for a repository with no manifest.
+   */
+  readonly widgetFiles: Readonly<Record<string, string>> | null;
 }
 
 const harnessOnlyRuleFiles = [

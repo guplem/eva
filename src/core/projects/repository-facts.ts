@@ -33,6 +33,8 @@ const huskyStages: Readonly<Record<string, keyof HookFacts>> = {
   ".husky/pre-push": "push",
 };
 const preCommitPath = ".pre-commit-config.yaml";
+const widgetManifestPath = "eva-widget.json";
+const widgetSchemaPattern = /^schemas\/[A-Za-z0-9._-]+\.json$/;
 const labelsPerPage = 100;
 /** A limit for the label pages, so a broken answer never loops for ever. */
 const labelPageLimit = 10;
@@ -114,11 +116,13 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
     request(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
       (answer) => (answer.status === 200 ? { text: answer.body } : answer.status === 404 ? "absent" : null),
     );
-  const [workflows, allowRules, scripts, hooks] = await Promise.all([
+  const [workflows, allowRules, scripts, hooks, widgetFiles, pages] = await Promise.all([
     files === null ? null : readWorkflows(Object.keys(files), readFile),
     files !== null && !(settingsPath in files) ? ("none" as const) : readFile(settingsPath).then(readAllowRules),
     files === null ? null : packagePath in files ? readFile(packagePath).then(readScripts) : {},
     files === null ? null : readHooks(Object.keys(files), readFile),
+    files === null ? null : readWidgetFiles(files, readFile),
+    readPages(request, `${address}/pages`),
   ]);
 
   return {
@@ -147,7 +151,42 @@ export async function readRepositoryFacts(slug: string, request: GithubRequest):
     readOnlyWorkflowToken:
       workflowToken === null ? null : textField(workflowToken, "default_workflow_permissions") === "read",
     hasCode: asRecord(languages) === null ? null : Object.keys(asRecord(languages) ?? {}).length > 0,
+    pages,
+    widgetFiles,
   };
+}
+
+/**
+ * The manifest of a widget and each schema that its inputs name (#688). Only a path under
+ * `schemas/` that the tree lists is read, so a manifest cannot point the reader elsewhere.
+ */
+async function readWidgetFiles(
+  files: Readonly<Record<string, string>>,
+  readFile: (path: string) => Promise<FileRead>,
+): Promise<Record<string, string> | null> {
+  if (!(widgetManifestPath in files)) return {};
+  const manifest = await readFile(widgetManifestPath);
+  if (manifest === null || manifest === "absent") return null;
+  const inputs = listOf(asRecord(parseJson(manifest.text))?.["inputs"]);
+  const schemas = [...new Set(inputs.flatMap((input) => textField(input, "schema") ?? []))].filter(
+    (path) => widgetSchemaPattern.test(path) && path in files,
+  );
+  const texts = await Promise.all(schemas.map(readFile));
+  const read: Record<string, string> = { [widgetManifestPath]: manifest.text };
+  for (const [index, text] of texts.entries()) {
+    if (text === null || text === "absent") return null;
+    read[schemas[index] ?? ""] = text.text;
+  }
+  return read;
+}
+
+/** GitHub answers 404 when Pages is off. */
+async function readPages(request: GithubRequest, path: string): Promise<RepositoryFacts["pages"]> {
+  const answer = await request(path);
+  if (answer.status === 404) return "off";
+  if (answer.status !== 200) return null;
+  const buildType = textField(parseJson(answer.body), "build_type");
+  return buildType === "workflow" ? "workflow" : buildType === null ? null : "branch";
 }
 
 /** A file's text, "absent" when GitHub has no such file, or null when GitHub did not answer. */

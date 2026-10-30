@@ -49,6 +49,8 @@ const reference: RepositoryFacts = {
   codeScanningDefaultSetup: true,
   readOnlyWorkflowToken: true,
   hasCode: true,
+  pages: "off",
+  widgetFiles: {},
 };
 
 /** The full report of the vibe-coded type. */

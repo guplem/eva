@@ -421,3 +421,63 @@ describe("readRepositoryFacts, GraphQL", () => {
     ]);
   });
 });
+
+describe("readRepositoryFacts, widgets", () => {
+  const manifest = JSON.stringify({
+    contract: 1,
+    name: "Habits",
+    size: "medium",
+    inputs: [
+      { id: "habits", schema: "schemas/habits.json" },
+      { id: "outside", schema: "../secret.json" },
+    ],
+  });
+
+  function widgetAnswers(): Map<string, GithubAnswer> {
+    const answers = fullAnswers();
+    const tree = ["eva-widget.json", "schemas/habits.json", "schemas/other.json"].map((path) => ({
+      path,
+      type: "blob",
+      sha: path,
+    }));
+    answers.set(`repos/${slug}/git/trees/main?recursive=1`, ok({ truncated: false, tree }));
+    answers.set(`raw:repos/${slug}/contents/eva-widget.json?ref=main`, { status: 200, body: manifest });
+    answers.set(`raw:repos/${slug}/contents/schemas/habits.json?ref=main`, { status: 200, body: '{"type":"object"}' });
+    answers.set(`repos/${slug}/pages`, ok({ build_type: "workflow" }));
+    return answers;
+  }
+
+  test("reads the manifest and each schema that it names, and how GitHub Pages builds", async () => {
+    const facts = await readRepositoryFacts(slug, fakeGet(widgetAnswers()));
+    expect(facts.widgetFiles).toEqual({ "eva-widget.json": manifest, "schemas/habits.json": '{"type":"object"}' });
+    expect(facts.pages).toBe("workflow");
+  });
+
+  test("a repository with no manifest has no widget files, and Pages off is off", async () => {
+    const facts = await readRepositoryFacts(slug, fakeGet(fullAnswers()));
+    expect(facts.widgetFiles).toEqual({});
+    expect(facts.pages).toBe("off");
+  });
+
+  test("Pages from a branch is a branch build; a refused Pages answer is unknown", async () => {
+    const answers = widgetAnswers();
+    answers.set(`repos/${slug}/pages`, ok({ build_type: "legacy" }));
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).pages).toBe("branch");
+    answers.set(`repos/${slug}/pages`, { status: 403, body: "{}" });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).pages).toBeNull();
+  });
+
+  test("a widget file that GitHub does not serve leaves the widget files unknown", async () => {
+    const answers = widgetAnswers();
+    answers.delete(`raw:repos/${slug}/contents/schemas/habits.json?ref=main`);
+    answers.set(`raw:repos/${slug}/contents/schemas/habits.json?ref=main`, { status: 500, body: "" });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).widgetFiles).toBeNull();
+  });
+
+  test("a schema that the tree does not list stays out, so the report can name it as missing", async () => {
+    const answers = widgetAnswers();
+    const tree = ["eva-widget.json"].map((path) => ({ path, type: "blob", sha: path }));
+    answers.set(`repos/${slug}/git/trees/main?recursive=1`, ok({ truncated: false, tree }));
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).widgetFiles).toEqual({ "eva-widget.json": manifest });
+  });
+});

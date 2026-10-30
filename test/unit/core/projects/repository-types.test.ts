@@ -30,6 +30,8 @@ const fresh: RepositoryFacts = {
   codeScanningDefaultSetup: true,
   readOnlyWorkflowToken: true,
   hasCode: true,
+  pages: "off",
+  widgetFiles: {},
 };
 
 function report(name: string, target: RepositoryFacts, reference: RepositoryFacts | null = null): SetupReport {

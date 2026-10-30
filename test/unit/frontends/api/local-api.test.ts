@@ -2106,6 +2106,59 @@ describe("web routes", () => {
     expect(existsSync(join(vaultPath, "Scratch", "received", "big.bin"))).toBe(false);
   });
 
+  test("a chat in a clone: an attached file lands in the clone, and a gone mention stops the message (#706)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    const cloneFolder = join(vaultPath, "Projects", "2026-01-01-0000-example-app", "repos", "clone-0");
+    mkdirSync(cloneFolder, { recursive: true });
+    const chat = eva.sessions.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: cloneFolder,
+      source: "web",
+      projectId: "2026-01-01-0000-example-app",
+      clone: "clone-0",
+    });
+
+    const response = await fetch(`${api.url}/api/files/received?name=photo.jpg&session=${chat.id}`, {
+      method: "POST",
+      headers: headers({ "content-type": "image/jpeg" }),
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(response.status).toBe(201);
+    const saved = await json<{ path: string; note: string }>(response);
+    // The path starts at the clone folder, so the note names no vault folder.
+    expect(saved.path).toMatch(/^\.mentions\/photo-[0-9a-f]{12}\.jpg$/);
+    expect(saved.note).toBe(`[The person sent a file, saved as ${saved.path}]`);
+    expect([...readFileSync(join(cloneFolder, saved.path))]).toEqual([1, 2, 3]);
+
+    const gone = await call(`/api/sessions/${chat.id}/messages`, {
+      method: "POST",
+      body: { text: "Read @file:Notes/Gone.md" },
+    });
+    expect(gone.status).toBe(404);
+    expect(await json(gone)).toMatchObject({ code: "file_not_found" });
+    writeFileSync(join(vaultPath, ".env.example-app"), "TOKEN=1");
+    const secret = await call(`/api/sessions/${chat.id}/messages`, {
+      method: "POST",
+      body: { text: "Use @file:.env.example-app" },
+    });
+    expect(secret.status).toBe(409);
+    expect(await json(secret)).toMatchObject({ code: "file_not_downloadable" });
+    expect(eva.sessions.get(chat.id).turns).toEqual([]);
+    expect(existsSync(join(cloneFolder, ".mentions", ".env.example-app"))).toBe(false);
+
+    // A late upload from the tab of a closed chat must not land in a clone that another chat may own now.
+    eva.sessions.close(chat.id);
+    const late = await fetch(`${api.url}/api/files/received?name=late.jpg&session=${chat.id}`, {
+      method: "POST",
+      headers: headers({ "content-type": "image/jpeg" }),
+      body: new Uint8Array([9]),
+    });
+    expect(late.status).toBe(409);
+    expect(await json(late)).toMatchObject({ code: "session_closed" });
+  });
+
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
     const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
     await call("/api/schedules", { method: "POST", body: entry });

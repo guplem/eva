@@ -671,7 +671,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     const action = parts[3];
     if (action === "messages") {
       const { text } = messageSchema.parse(await request.json());
-      eva.sessions.get(sessionId);
+      // Before the 202: a gone or refused file must stop the message, and the person must hear why.
+      eva.checkMessage(sessionId, text);
       void eva.sessions.send(sessionId, text, "api");
       return json({ accepted: true }, 202);
     }
@@ -829,12 +830,18 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     // The body is the file as it is, like a voice note: no multipart form to parse.
     const bytes = new Uint8Array(await request.arrayBuffer());
     if (bytes.byteLength > maxReceivedFileBytes) return json({ error: "Eva takes files up to 25 MB only." }, 413);
-    return json(eva.receiveFile(url.searchParams.get("name") ?? "file", bytes), 201);
+    return json(eva.receiveFile(url.searchParams.get("name") ?? "file", bytes, url.searchParams.get("session")), 201);
   }
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));
   if (method === "GET" && url.pathname === "/api/files/search")
-    return json(eva.searchFiles(url.searchParams.get("query") ?? "", url.searchParams.get("contents") === "true"));
+    return json(
+      eva.searchFiles(
+        url.searchParams.get("query") ?? "",
+        url.searchParams.get("contents") === "true",
+        url.searchParams.get("shareable") === "true",
+      ),
+    );
   if (method === "GET" && url.pathname === "/api/files/download")
     return downloadResponse(eva.downloadFile(url.searchParams.get("path") ?? ""));
   if (method === "PUT" && url.pathname === "/api/files") {

@@ -211,9 +211,16 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/effort`, { effort }),
   /** Turns a recording into text on Eva's machine. Eva keeps no audio. */
   transcribe: (audio: Blob): Promise<{ text: string }> => request("POST", "/api/transcribe", audio),
-  /** Keeps a file for the agent in the vault's Scratch folder, and answers the note that the message carries. */
-  attachFile: (file: File): Promise<{ path: string; note: string }> =>
-    request("POST", `/api/files/received?name=${encodeURIComponent(file.name)}`, file),
+  /**
+   * Keeps a file for the agent, and answers the note that the message carries: in the vault's
+   * Scratch folder, or in the clone of a chat in a clone, with a note that names no vault path (#706).
+   */
+  attachFile: (file: File, sessionId: string | null = null): Promise<{ path: string; note: string }> =>
+    request(
+      "POST",
+      `/api/files/received?name=${encodeURIComponent(file.name)}${sessionId === null ? "" : `&session=${encodeURIComponent(sessionId)}`}`,
+      file,
+    ),
   send: (sessionId: string, text: string): Promise<void> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }, { limit: quickSend }),
   /** A fork of a Project chat can run in a new clone (issue 523). The notice says why it lost its history. */
@@ -331,9 +338,15 @@ export const api = {
   /** Answers the new path. A name that is taken or not allowed answers 409 with `file_not_writable`. */
   renameFile: (path: string, name: string): Promise<{ path: string }> =>
     request("POST", "/api/files/rename", { path, name }),
-  /** The vault entries whose name holds `query`. With `contents`, the files whose text holds it too. */
-  searchFiles: (query: string, contents: boolean): Promise<SearchResult> =>
-    request("GET", `/api/files/search?query=${encodeURIComponent(query)}${contents ? "&contents=true" : ""}`),
+  /**
+   * The vault entries whose name holds `query`. With `contents`, the files whose text holds it too.
+   * With `shareable`, only what a chat in a clone may be given (#706).
+   */
+  searchFiles: (query: string, contents: boolean, shareable = false): Promise<SearchResult> =>
+    request(
+      "GET",
+      `/api/files/search?query=${encodeURIComponent(query)}${contents ? "&contents=true" : ""}${shareable ? "&shareable=true" : ""}`,
+    ),
   downloadFile: download,
   favorites: (): Promise<Favorite[]> => request("GET", "/api/files/favorites"),
   /** A missing path answers 404 with `file_not_found`. */

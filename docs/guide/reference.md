@@ -278,7 +278,12 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Change them in **Settings > Personalize > Message box menu**, or ask Eva to. Each one is a Markdown file in the vault, in `.eva/settings/text-actions/` or `.eva/settings/saved-prompts/`. The file name is the name in the menu.
   - A text action can start with a `model:` line between two `---` lines: `haiku` (Fast), `sonnet` (Balanced) or `opus` (Smart). With no such line, it uses the fast model.
   - Eva brings Polish and Summary as examples, once. If you delete one, it stays deleted.
-- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and does not show a secrets file, such as `.env`. Eva can also send a vault file in Telegram. She saves each file, photo or audio file that you send her in `Scratch/received/` in the vault. Git never saves `Scratch/`, and Eva deletes its files after a week.
+- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and does not show a secrets file, such as `.env`. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `Scratch/received/` in the vault. Git never saves `Scratch/`, and Eva deletes its files after a week.
+  - **In a project chat in a clone,** a file that you send goes into the clone's `.mentions/` folder, outside every repository.
+  - To give such a chat a vault file, such as a design or the notes of a meeting, type `@` in the web app and pick the file. Eva puts a copy in `.mentions/` too.
+  - The chat gets the name of the copy, never the vault path.
+  - Eva refuses a secrets file, a file that holds a secret, a folder, and a file in a clone of a project.
+  - When a file that you mention is gone, Eva does not send the message, and says which file is gone.
 - **Favorites.** Tap the star on a file or a folder in **Files** to make it a favorite. Your favorites show first on the Files page, so one tap opens them. Eva keeps them in `.eva/favorites.json` in the vault, so each computer shows the same ones.
 - **Your location.** Share your live location with Eva's bot in Telegram, or open **Settings > Access > Your location** and allow a device to send its location while Eva is open. Eva keeps only the last location, on the hub computer, never in the vault. Scripts such as a weather forecast use it. When your phone sent nothing in the last day, they use the home place of `Life/About me.md`.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva, type EvaOptions } from "../../../../src/core/eva.ts";
@@ -2500,6 +2500,40 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(prompt).toContain("What is this?\n\n[The person sent a file");
     const saved = /saved as (Scratch\/received\/photo-large-photo-\d+-[0-9a-f]{12}\.jpg)/.exec(prompt)?.[1] ?? "";
     expect(existsSync(join(vault(), saved))).toBe(true);
+  });
+
+  test("a file in the topic of a chat in a clone lands in the clone, and a gone mention gets an answer (#706)", async () => {
+    const cloneFolder = join(vault(), "Projects", "2026-01-01-0000-example-app", "repos", "clone-0");
+    mkdirSync(cloneFolder, { recursive: true });
+    const chat = eva.sessions.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: cloneFolder,
+      source: "web",
+      projectId: "2026-01-01-0000-example-app",
+      clone: "clone-0",
+    });
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${chat.id}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
+
+    telegram.sendFile(owner, "document", new Uint8Array([4, 5]), { fileName: "plan.pdf", topicId: 500 });
+    await settle(bot, () => engine.requests.length === 1);
+    const saved = /saved as (\.mentions\/plan-[0-9a-f]{12}\.pdf)/.exec(engine.requests[0]?.prompt ?? "")?.[1];
+    expect(saved).toBeDefined();
+    expect(existsSync(join(cloneFolder, saved ?? "missing"))).toBe(true);
+
+    telegram.sendText(owner, "Read @file:Notes/Gone.md", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Gone.md does not exist")));
+    expect(engine.requests).toHaveLength(1);
+
+    // Eva may have given the clone of a closed chat to another chat, so the file must not land there.
+    await settle(bot, () => !eva.sessions.isBusy(chat.id));
+    eva.sessions.close(chat.id);
+    telegram.sendFile(owner, "document", new Uint8Array([6]), { fileName: "late.pdf", topicId: 500 });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Eva closed this chat")));
+    expect(readdirSync(join(cloneFolder, ".mentions"))).toHaveLength(1);
   });
 
   test("an audio file is saved like a document", async () => {

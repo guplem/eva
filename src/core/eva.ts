@@ -89,6 +89,7 @@ import {
   type CloneDetails,
   type TrustAnswer,
 } from "./projects/clones.ts";
+import { checkMentions, saveInClone, withBaseNames } from "./projects/clone-files.ts";
 import {
   ProjectWork,
   type BranchResult,
@@ -691,6 +692,7 @@ export class Eva {
           snapshots: { runner: options.runner, environment: ownGitEnvironment },
           // Read at each restore: the project work exists only after the session manager.
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
+          vaultPath: () => this.options.config.vaultPath,
         }),
       },
       now: options.now,
@@ -1582,7 +1584,10 @@ export class Eva {
     const summary = await this.chatSummaries.summarize({
       engine: old.engine,
       model: old.modelAlias,
-      turns: this.sessions.branchTurns(old.id),
+      // A chat in a clone must never learn a vault folder from its own summary (#706).
+      turns: this.sessions
+        .branchTurns(old.id)
+        .map((turn) => (old.clone === null ? turn : { ...turn, userText: withBaseNames(turn.userText) })),
       gitState,
     });
     // The summary takes long, and the person may delete the old chat meanwhile: then no new chat opens.
@@ -1679,9 +1684,12 @@ export class Eva {
     return browseVault(this.browsedVault(), path, (text) => this.redactor.redact(text));
   }
 
-  /** The vault files and folders whose name holds `query`, and with `contents` the files whose text holds it. */
-  searchFiles(query: string, contents: boolean): SearchResult {
-    return searchVault(this.browsedVault(), query, { contents }, (text) => this.redactor.redact(text));
+  /**
+   * The vault files and folders whose name holds `query`, and with `contents` the files whose text
+   * holds it. With `shareable`, only what a chat in a clone may be given (#706).
+   */
+  searchFiles(query: string, contents: boolean, shareable = false): SearchResult {
+    return searchVault(this.browsedVault(), query, { contents, shareable }, (text) => this.redactor.redact(text));
   }
 
   /** A vault file, or a folder as one zip, for the Download button of the file explorer. */
@@ -1694,10 +1702,29 @@ export class Eva {
     return saveVaultFile(this.browsedVault(), path, version, text, (shown) => this.redactor.redact(shown));
   }
 
-  /** Keeps a file that the person attached in the web chat, as Telegram does, and answers the note for the agent. */
-  receiveFile(name: string, bytes: Uint8Array): { path: string; note: string } {
-    const path = saveReceivedFile(this.browsedVault(), name, bytes);
+  /**
+   * Keeps a file that the person attached, and answers the note for the agent. A chat in a clone
+   * gets it in the clone, with a path from the clone folder, so it sees no vault path (#706).
+   */
+  receiveFile(name: string, bytes: Uint8Array, sessionId: string | null = null): { path: string; note: string } {
+    const chat = sessionId === null ? null : this.sessions.get(sessionId);
+    // Eva may have given the clone of a closed chat to another chat (issue 521), so a late file must not land there.
+    if (chat?.closed === true)
+      throw new EvaError("session_closed", "This chat is closed, because Eva reused its clone. Start a new chat.");
+    const path =
+      chat?.mode === "project" && chat.clone !== null
+        ? saveInClone(chat.startFolder, name, bytes)
+        : saveReceivedFile(this.browsedVault(), name, bytes);
     return { path, note: receivedFileNote(path) };
+  }
+
+  /**
+   * Throws the first problem of a file that a message to a chat in a clone mentions, such as a gone
+   * file, so the message is not sent and the person hears why (#706).
+   */
+  checkMessage(sessionId: string, text: string): void {
+    const chat = this.sessions.get(sessionId);
+    if (chat.mode === "project" && chat.clone !== null) checkMentions(this.browsedVault(), text);
   }
 
   /** The favorite files and folders, which the file explorer shows first. */

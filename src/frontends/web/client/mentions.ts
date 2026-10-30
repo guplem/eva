@@ -4,9 +4,8 @@
  * The text stays as the person typed it. Eva gets one note for each mention after it, as for an
  * attached file, so the agent knows where the project or the file is.
  */
+import { mentionsIn, mentionToken } from "../../../shared/mentions.ts";
 import type { ListedSession, Project } from "./api.ts";
-
-export type MentionKind = "project" | "file";
 
 /** The part of a project that the search shows and a note names. */
 export interface MentionProject {
@@ -44,14 +43,6 @@ export function mentionQueryAt(text: string, caret: number): MentionQuery | null
   if (match === null) return null;
   const word = match[1] ?? "";
   return { start: caret - word.length - 1, query: word.replace(kindPrefix, "") };
-}
-
-/**
- * A path with a space goes in quotes, so the mention ends at the right place. A path that ends in
- * punctuation does too: without quotes, the note would read the punctuation as the end of a sentence.
- */
-export function mentionToken(kind: MentionKind, name: string): string {
-  return /[\s"]|[.,;:!?)\]]$/.test(name) ? `@${kind}:"${name.replaceAll('"', "")}"` : `@${kind}:${name}`;
 }
 
 /** The end of the word at the caret, so a pick in the middle of a mention replaces all of it. */
@@ -96,15 +87,10 @@ export function pickedProjects(
     .map(({ project }) => project);
 }
 
-/** A mention in a sent text. Punctuation after a mention without quotes ends the sentence, not the name. */
-const mentionPattern = /(?:^|\s)@(project|file):(?:"([^"]+)"|(\S+?))(?=[.,;:!?)\]]*(?:\s|$))/g;
-
 /** One note for each mention of the text, in order. A mention that shows twice gets one note. */
 export function mentionNotes(text: string, projects: readonly MentionProject[]): string[] {
   const notes = new Map<string, string>();
-  for (const match of text.matchAll(mentionPattern)) {
-    const kind = match[1] as MentionKind;
-    const name = match[2] ?? match[3] ?? "";
+  for (const { kind, name } of mentionsIn(text)) {
     const token = mentionToken(kind, name);
     if (notes.has(token)) continue;
     notes.set(token, kind === "file" ? fileNote(token, name) : projectNote(token, name, projects));

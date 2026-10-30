@@ -6,13 +6,13 @@ import {
   mentionProjectOf,
   mentionQueryAt,
   mentionWordEnd,
-  mentionToken,
   pickedProjects,
   projectsInUse,
   withFixRequest,
   withProjectMention,
   type MentionProject,
 } from "../../../../../src/frontends/web/client/mentions.ts";
+import { mentionToken } from "../../../../../src/shared/mentions.ts";
 
 function project(id: string, title: string, status: MentionProject["status"] = "active"): MentionProject {
   return { id, title, status, folder: `Projects/${id}` };
@@ -38,17 +38,6 @@ describe("mentionQueryAt (issue 657)", () => {
   test("a typed kind does not filter the names", () => {
     expect(mentionQueryAt("@project:exa", 12)).toEqual({ start: 0, query: "exa" });
     expect(mentionQueryAt("@file:notes", 11)).toEqual({ start: 0, query: "notes" });
-  });
-});
-
-describe("mentionToken", () => {
-  test("a project takes its id, and a file its vault path", () => {
-    expect(mentionToken("project", "2026-01-02-0304-example-app")).toBe("@project:2026-01-02-0304-example-app");
-    expect(mentionToken("file", "Notes/today.md")).toBe("@file:Notes/today.md");
-  });
-
-  test("a path with a space goes in double quotes, so the mention ends at the right place", () => {
-    expect(mentionToken("file", "Notes/My note.md")).toBe('@file:"Notes/My note.md"');
   });
 });
 

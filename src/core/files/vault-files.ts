@@ -21,7 +21,18 @@ import { containsSecretPattern } from "../../shared/redaction.ts";
 
 export type SendableFile =
   | { readonly ok: true; readonly path: string; readonly relativePath: string; readonly name: string }
-  | { readonly ok: false; readonly reason: string };
+  /** `missing`: the file does not exist, as opposed to a file that Eva refuses. */
+  | { readonly ok: false; readonly reason: string; readonly missing?: true };
+
+/**
+ * True for a path from the vault root inside a project's clones (`Projects/<id>/repos/...`): other
+ * chats' work, which can hold a project's secrets. Give it a resolved path, never a typed one.
+ */
+export function isClonePath(relativePath: string): boolean {
+  // Windows and macOS find `projects/x/REPOS` too, and realpath keeps the case as typed.
+  const parts = relativePath.split(/[/\\]/).map((part) => part.toLowerCase());
+  return parts[0] === "projects" && parts[2] === "repos";
+}
 
 /** Telegram lets a bot upload at most 50 MB. */
 export const maxSendableBytes = 50 * 1024 * 1024;
@@ -35,26 +46,30 @@ const secretNamePattern =
 
 /** True for a file name that holds secrets by convention, such as `.env` or `id.pem`. */
 export function looksLikeSecretsFile(name: string): boolean {
-  return secretNamePattern.test(name);
+  // Windows drops trailing dots and spaces, so `.env.` opens `.env`.
+  return secretNamePattern.test(name.replace(/[. ]+$/, ""));
 }
 
 /** Resolves a path from the vault root and checks that it may be sent. */
 export function resolveSendableFile(vaultPath: string, requested: string): SendableFile {
   if (isAbsolute(requested)) return { ok: false, reason: `${requested} is not a path from the vault root.` };
+  // Windows reads a colon in a name as a file stream, which a name check cannot see through.
+  if (process.platform === "win32" && requested.split(/[/\\]/).some((part) => part.includes(":")))
+    return { ok: false, reason: `${requested} is not a path that Eva sends.` };
   let root: string;
   let resolved: string;
   try {
     root = realpathSync(vaultPath);
     resolved = realpathSync(join(root, requested));
   } catch {
-    return { ok: false, reason: `${requested} does not exist.` };
+    return { ok: false, reason: `${requested} does not exist.`, missing: true };
   }
   const relativePath = relative(root, resolved);
   if (relativePath.startsWith("..") || isAbsolute(relativePath))
     return { ok: false, reason: `${requested} is outside the vault, so Eva does not send it.` };
   const parts = relativePath.split(sep);
   // Clones and git data can hold a project's secrets, which the owner allows inside a project only.
-  if (parts.includes(".git") || (parts[0] === "Projects" && parts[2] === "repos"))
+  if (parts.some((part) => part.toLowerCase() === ".git") || isClonePath(relativePath))
     return { ok: false, reason: `${requested} is in a repository folder, so Eva does not send it.` };
   if (looksLikeSecretsFile(basename(resolved)))
     return { ok: false, reason: `${requested} looks like a secrets file, so Eva does not send it.` };
@@ -98,11 +113,11 @@ export class OfferStore {
 }
 
 /**
- * Saves a file that the person sent into `Scratch/received/`, named by its content, so two
- * chats that receive files at once never overwrite each other (lesson 74). Returns the path
- * from the vault root.
+ * A safe file name that ends with a hash of the bytes: the same bytes get the same name, and two
+ * writers of different files never meet (lesson 74). The hash also means that no copy keeps the
+ * name of an instruction file, such as `AGENTS.md`.
  */
-export function saveReceivedFile(vaultPath: string, originalName: string, bytes: Uint8Array): string {
+export function contentName(originalName: string, bytes: Uint8Array): string {
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
   // Cut by letters, not UTF-16 units, so no letter splits in two. 60 letters of 4 bytes each,
   // with the hash, stay under the 255-byte limit of a file name.
@@ -111,7 +126,16 @@ export function saveReceivedFile(vaultPath: string, originalName: string, bytes:
       .slice(-60)
       .join("") || "file";
   const extension = extname(safeName);
-  const name = `${safeName.slice(0, safeName.length - extension.length)}-${hash}${extension}`;
+  return `${safeName.slice(0, safeName.length - extension.length)}-${hash}${extension}`;
+}
+
+/**
+ * Saves a file that the person sent into `Scratch/received/`, named by its content, so two
+ * chats that receive files at once never overwrite each other (lesson 74). Returns the path
+ * from the vault root.
+ */
+export function saveReceivedFile(vaultPath: string, originalName: string, bytes: Uint8Array): string {
+  const name = contentName(originalName, bytes);
   const folder = join(vaultPath, scratchFolderName, "received");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, name), bytes);

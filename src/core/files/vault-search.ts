@@ -6,7 +6,7 @@
 import { closeSync, constants, fstatSync, openSync, readSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { maxShownBytes, noWait, projectTitleIn, textOf } from "./file-browser.ts";
-import { looksLikeSecretsFile } from "./vault-files.ts";
+import { isClonePath, looksLikeSecretsFile } from "./vault-files.ts";
 
 export interface SearchMatch {
   /** The forward-slash path from the vault root. */
@@ -37,11 +37,13 @@ const hiddenName = ".git";
 /**
  * Finds the vault entries whose name, or project title, holds `query`, in any case. With
  * `contents`, a text file that holds `query` matches too. Folders near the root come first.
+ * With `shareable`, the search never walks into a project's clones and lists no secrets file,
+ * as the picker of a chat in a clone needs (#706).
  */
 export function searchVault(
   vaultPath: string,
   query: string,
-  options: { readonly contents: boolean },
+  options: { readonly contents: boolean; readonly shareable?: boolean },
   redact: (text: string) => string,
 ): SearchResult {
   const needle = query.trim().toLowerCase();
@@ -55,6 +57,10 @@ export function searchVault(
       budget.entries -= 1;
       if (budget.entries < 0) return { matches, complete: false };
       const path = folder === "" ? entry.name : `${folder}/${entry.name}`;
+      if (options.shareable === true) {
+        if (entry.kind === "folder" && isClonePath(path)) continue;
+        if (entry.kind === "file" && looksLikeSecretsFile(entry.name)) continue;
+      }
       const match = entry.kind === "folder" ? folderMatch(root, path, entry.name, needle) : null;
       const found =
         match ??

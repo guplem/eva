@@ -1515,8 +1515,8 @@ test("Project mode: search, a new clone with each repository and its branch, and
   await expect(page.locator(".main-header .sub")).toHaveText(
     `Example app › ${cloneName} · example-app: main · remote: main`,
   );
-  // A received file lands in the vault, which a clone's agent does not reach (issue 409).
-  await expect(page.getByRole("button", { name: "Attach a file" })).toHaveCount(0);
+  // A received file goes into the clone as a copy, so a chat in a clone can attach one (#706).
+  await expect(page.getByRole("button", { name: "Attach a file" })).toBeVisible();
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
@@ -3643,6 +3643,25 @@ test("an @ mentions a project and a vault file, and the agent gets where they ar
   await expect(message).toContainText("[@file:Journal/2027-trips.md is the file Journal/2027-trips.md of the vault]");
   // The demo engine echoes the last line of the message, so the note reached the agent.
   await expect(page.locator(".message.answer").first()).toContainText("the file Journal/2027-trips.md of the vault");
+});
+
+test("in a chat in a clone, an @ gives a vault file as a copy, with no vault path (#706)", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  await newProjectChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const search = page.getByRole("listbox", { name: "Mention a project or a file" });
+  await box.pressSequentially("Read @trips");
+  await expect(search.getByRole("option", { name: /2027-trips\.md/ })).toBeVisible();
+  // A project's folder would name the vault, so a chat in a clone mentions files only.
+  await expect(search.getByRole("option", { name: /Example app/ })).toHaveCount(0);
+  await search.getByRole("option", { name: /2027-trips\.md/ }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  // The demo engine echoes the last line of the message: the note of the copy, in the clone.
+  await answerInNewClone(page, "is the file .mentions/2027-trips-");
+  const answer = page.locator(".message.answer").filter({ hasText: ".mentions/" }).first();
+  await expect(answer).toContainText(/is the file \.mentions\/2027-trips-[0-9a-f]{12}\.md/);
+  await expect(answer).not.toContainText("Journal/");
 });
 
 test("Escape closes the @ search, and an email address opens none", async ({ page }) => {
@@ -6014,8 +6033,8 @@ test("Files: the search finds a name, then the text inside a file, and a match o
   const field = page.getByRole("searchbox", { name: "Search the vault" });
   await field.fill("trips");
   const results = page.getByRole("list", { name: "Search results" });
-  await expect(results.getByRole("link")).toHaveCount(1);
-  await expect(results.getByRole("link")).toContainText("Journal");
+  // Other tests can leave a copy of the file in a clone (#706), so only the Journal match counts.
+  await expect(results.getByRole("link").filter({ hasText: "Journal" })).toHaveCount(1);
   await field.fill("Shopping");
   await expect(page.getByText("No file or folder has this name.")).toBeVisible();
   const inside = page.getByRole("button", { name: "Search inside files" });

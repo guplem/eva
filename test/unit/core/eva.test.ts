@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
@@ -1182,7 +1182,9 @@ describe("Eva", () => {
       return new FakeEngine((request) => {
         if (request.mode === "project") {
           turn += 1;
-          writeFileSync(join(request.startFolder, "remote", `${request.prompt}.txt`), `turn ${String(turn)}\n`);
+          // A prompt with a mention holds `:` and new lines, which Windows refuses in a file name.
+          const name = request.prompt.replace(/[^\w]+/g, "-");
+          writeFileSync(join(request.startFolder, "remote", `${name}.txt`), `turn ${String(turn)}\n`);
         }
         const text = request.mode === "model-call" ? (options.summary ?? "A name") : "ok";
         return FakeEngine.answer(request, text);
@@ -1288,6 +1290,45 @@ describe("Eva", () => {
       expect(engine.requests.slice(before).every((request) => request.mode === "model-call")).toBe(true);
     });
 
+    test("a fork into another clone keeps the files that the chat was given (#706)", async () => {
+      const instance = start(writingEngine());
+      const chat = await chatWithTwoTurns(instance);
+      const given = join(vault, "Projects", projectId, "repos", "clone-0", ".mentions", "Plan-0123456789ab.md");
+      mkdirSync(dirname(given), { recursive: true });
+      writeFileSync(given, "The plan.");
+      for (const files of ["snapshot-clone", "clean-clone"] as const) {
+        const { session } = await instance.forkChat(chat.id, chat.turns[0]!.lastMessageId!, files);
+        expect(read(join(session.startFolder, ".mentions", "Plan-0123456789ab.md"))).toBe("The plan.");
+      }
+    });
+
+    test("a reuse counts no given file as work, and removes the given files (#706)", async () => {
+      const instance = start(finishingEngine());
+      const chat = await instance.createProjectSession({ projectId, source: "web" });
+      await instance.sessions.send(chat.id, "done");
+      const mentions = join(chat.startFolder, ".mentions");
+      mkdirSync(mentions, { recursive: true });
+      writeFileSync(join(mentions, "Plan-0123456789ab.md"), "The plan.");
+      const next = await instance.createProjectSession({ projectId, source: "web" });
+      expect(next.clone).toBe("clone-0");
+      expect(existsSync(mentions)).toBe(false);
+    });
+
+    test("a summary of a chat in a clone names no vault folder (#706)", async () => {
+      const engine = Object.assign(writingEngine({ summary: "Goal: the fix." }), { carryHistory: () => false });
+      const instance = start(engine);
+      const chat = await instance.createProjectSession({ projectId, source: "web" });
+      // The summary covers the turns before the retried one, so the mention goes in the first.
+      await instance.sessions.send(chat.id, "first @file:Notes/Plan.md", "api");
+      await instance.sessions.send(chat.id, "second", "api");
+      expect(instance.sessions.get(chat.id).turns.map((turn) => turn.failure)).toEqual([null, null]);
+      const before = engine.requests.length;
+      await instance.retryChat(chat.id, 1, "new-clone");
+      const summaryCall = engine.requests.slice(before).find((request) => request.mode === "model-call");
+      expect(summaryCall?.prompt).toContain("@file:Plan.md");
+      expect(summaryCall?.prompt).not.toContain("Notes/");
+    });
+
     test("a reuse of a clone deletes every snapshot in it", async () => {
       const instance = start(finishingEngine());
       const chat = await instance.createProjectSession({ projectId, source: "web" });
@@ -1351,7 +1392,7 @@ describe("Eva", () => {
       projectId: "2025-03-02-1015-example-app",
       source: "web",
     });
-    await instance.sessions.send(old.id, "fix login");
+    await instance.sessions.send(old.id, "fix login, see @file:Notes/Login.md");
     const { session } = await instance.continueFromSummary(old.id, "web");
     expect(session).toMatchObject({
       mode: "project",
@@ -1361,6 +1402,9 @@ describe("Eva", () => {
     });
     const call = engine.requests.find((request) => request.mode === "model-call");
     expect(call?.prompt).toContain("<git-state>\nRepository remote:\n## main...origin/main");
+    // The summary starts a chat in a clone, so it names no vault folder (#706).
+    expect(call?.prompt).toContain("@file:Login.md");
+    expect(call?.prompt).not.toContain("Notes/");
   });
 
   test("a chat deleted while its summary is written opens no new chat (#522)", async () => {

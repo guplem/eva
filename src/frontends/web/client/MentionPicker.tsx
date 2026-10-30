@@ -20,13 +20,12 @@ import {
   mentionNotes,
   mentionProjectOf,
   mentionQueryAt,
-  mentionToken,
   mentionWordEnd,
   pickedProjects,
-  type MentionKind,
   type MentionProject,
   type MentionQuery,
 } from "./mentions.ts";
+import { mentionToken, type MentionKind } from "../../../shared/mentions.ts";
 
 /** The projects with a chat that runs now. The Chats page gives them, so they come first in the search. */
 export const ProjectsInUse = createContext<readonly string[]>([]);
@@ -64,11 +63,17 @@ interface MentionPicker {
   readonly notes: (text: string) => string[];
 }
 
+/**
+ * `inClone`: a chat in a clone (#706). It mentions files only, since a project's folder would name
+ * the vault, and finds no clone file and no secrets file. It adds no note: the core gives the chat
+ * a copy of each file, with a note that names no vault path.
+ */
 export function useMentionPicker(
   enabled: boolean,
   box: RefObject<HTMLTextAreaElement | null>,
   text: string,
   setText: (text: string) => void,
+  inClone = false,
 ): MentionPicker {
   const inUse = useContext(ProjectsInUse);
   const [query, setQuery] = useState<MentionQuery | null>(null);
@@ -83,10 +88,10 @@ export function useMentionPicker(
   const open = enabled && query !== null && query.start !== dismissed;
 
   // A text from the project page names a project before any search ran, so its note needs the list too.
-  const needsList = enabled && projects === null && text.includes("@project:");
+  const needsList = enabled && !inClone && projects === null && text.includes("@project:");
   // Each open reads the list again, so a project made meanwhile shows. The old list shows until then.
   useEffect(() => {
-    if (!open && !needsList) return;
+    if (inClone || (!open && !needsList)) return;
     let current = true;
     api
       .projects("", "")
@@ -100,7 +105,7 @@ export function useMentionPicker(
     return () => {
       current = false;
     };
-  }, [open, needsList]);
+  }, [open, needsList, inClone]);
 
   const word = open ? query.query : "";
   useEffect(() => {
@@ -108,7 +113,7 @@ export function useMentionPicker(
     let current = true;
     const timer = setTimeout(() => {
       api
-        .searchFiles(word, false)
+        .searchFiles(word, false, inClone)
         .then((result) => {
           if (!current) return;
           const options = result.matches
@@ -125,9 +130,14 @@ export function useMentionPicker(
       current = false;
       clearTimeout(timer);
     };
-  }, [open, word]);
+  }, [open, word, inClone]);
 
-  const projectOptions: MentionOption[] = pickedProjects(projects ?? [], inUse, word, shownProjects).map((project) => ({
+  const projectOptions: MentionOption[] = pickedProjects(
+    inClone ? [] : (projects ?? []),
+    inUse,
+    word,
+    shownProjects,
+  ).map((project) => ({
     kind: "project",
     name: project.id,
     title: project.title,
@@ -254,6 +264,6 @@ export function useMentionPicker(
     },
     onKeyDown,
     follow,
-    notes: (sent) => (enabled ? mentionNotes(sent, projects ?? []) : []),
+    notes: (sent) => (enabled && !inClone ? mentionNotes(sent, projects ?? []) : []),
   };
 }

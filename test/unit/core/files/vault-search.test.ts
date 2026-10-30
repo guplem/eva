@@ -66,6 +66,22 @@ describe("searchVault: names", () => {
   });
 });
 
+describe("searchVault: files to share with a chat in a clone (#706)", () => {
+  test("never walks into a clone and lists no secret file", () => {
+    write("Projects/2025-03-02-1015-example-app/repos/clone-0/example-app/plan.md", "Code.\n");
+    write("Projects/2025-03-02-1015-example-app/.env.planning", "TOKEN=1\n");
+    const all = searchVault(vault, "plan", { contents: false }, keep).matches.map((match) => match.path);
+    expect(all).toContain("Projects/2025-03-02-1015-example-app/repos/clone-0/example-app/plan.md");
+    const shareable = searchVault(vault, "plan", { contents: false, shareable: true }, keep).matches.map(
+      (match) => match.path,
+    );
+    expect(shareable).toContain("Methods/Plan.md");
+    expect(shareable.some((path) => path.includes("/repos/"))).toBe(false);
+    expect(all).toContain("Projects/2025-03-02-1015-example-app/.env.planning");
+    expect(shareable).not.toContain("Projects/2025-03-02-1015-example-app/.env.planning");
+  });
+});
+
 describe("searchVault: contents", () => {
   test("also finds the text inside a file, with the first line that holds it", () => {
     const result = searchVault(vault, "plan", { contents: true }, keep);

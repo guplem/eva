@@ -14,6 +14,7 @@ import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { ChatSummarizer } from "../sessions/chat-summary.ts";
 import type { HistoryPoint, RetryFiles, SessionManager } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
+import { copyGivenFiles, mentionsFolderName, withBaseNames } from "./clone-files.ts";
 import { copySnapshot, deleteSnapshots, restoreSnapshot } from "./clone-snapshots.ts";
 import {
   cloneRepository,
@@ -320,6 +321,8 @@ export class ProjectWork {
         snapshot === null
           ? await this.freeOrNewClone(project, from.startFolder)
           : await this.cloneAt(project, from, snapshot);
+      // The history names the files that the chat was given, so they go along (#706).
+      copyGivenFiles(from.startFolder, clone.path);
       const carried =
         point === null ||
         sessions.carryHistory(from.engine, {
@@ -341,7 +344,8 @@ export class ProjectWork {
         : await this.options.summarizer.summarize({
             engine: from.engine,
             model: from.modelAlias,
-            turns: input.history,
+            // The summary becomes the new chat's first message, so it must name no vault folder (#706).
+            turns: input.history.map((turn) => ({ ...turn, userText: withBaseNames(turn.userText) })),
             gitState: null,
           });
     const draft = [summary.ok ? summary.text : null, input.retryTurn?.userText ?? null]
@@ -975,8 +979,9 @@ export class ProjectWork {
       const branch = branches.get(repository.path);
       if (branch !== undefined) await switchToBranch(repository, branch, runner, gitEnvironment);
     }
-    // The closed chats take no retry or fork, so their snapshots of the files serve nobody (issue 523).
+    // The closed chats take no retry or fork, so their snapshots and their given files serve nobody (issue 523).
     await deleteSnapshots(current.path, "all", { runner, environment: gitEnvironment });
+    rmSync(join(current.path, mentionsFolderName), { recursive: true, force: true, maxRetries: 5 });
     return current;
   }
 
@@ -986,7 +991,12 @@ export class ProjectWork {
    * writes, such as `desktop.ini`, holds no work.
    */
   private async holdsLocalWork(clone: Clone): Promise<boolean> {
-    const repositoryNames = new Set([...clone.repositories.map((repository) => repository.name), ...systemFiles]);
+    // The files that the person gave a chat are copies of vault files and attachments, not work (#706).
+    const repositoryNames = new Set([
+      ...clone.repositories.map((repository) => repository.name),
+      ...systemFiles,
+      mentionsFolderName,
+    ]);
     let names: string[];
     try {
       names = readdirSync(clone.path);

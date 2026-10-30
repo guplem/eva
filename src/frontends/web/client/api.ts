@@ -54,6 +54,7 @@ import type {
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
 import type { UndoPreview } from "../../../core/vault/vault-snapshots.ts";
+import type { ContextPart } from "../../../shared/chat-context.ts";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { QuestionAnswers, SessionEvent } from "../../../shared/events.ts";
 import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
@@ -176,6 +177,9 @@ export const api = {
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status", undefined, { limit: quickRead }),
   sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions", undefined, { limit: quickRead }),
+  /** Each part of the chat's context that the agent reads before the conversation, such as its prompt. */
+  chatContext: (sessionId: string): Promise<ContextPart[]> =>
+    request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/context`),
   /** The whole input and output of one step of a stored answer. Null when Eva kept none. */
   stepDetail: (sessionId: string, stepId: string): Promise<{ input: string | null; output: string | null }> =>
     request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(stepId)}`),

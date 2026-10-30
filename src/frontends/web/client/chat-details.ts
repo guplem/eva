@@ -1,4 +1,5 @@
 /** The figures of the chat panel. */
+import { contextGroups, type ContextGroup, type ContextPart } from "../../../shared/chat-context.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { SessionRecord } from "./api.ts";
 import { pathOf, type BranchSession } from "./branch-path.ts";
@@ -169,4 +170,19 @@ export function endedProjectWork(
   return new Map(
     turns.flatMap((turn) => turn.projectReports.map((report) => [report.projectSessionId, report.failed] as const)),
   );
+}
+
+const contextGroupLabels: Readonly<Record<ContextGroup, string>> = {
+  prompt: "System prompt",
+  instructions: "Instruction files",
+  skills: "Skills",
+  message: "Each message",
+};
+
+/** The parts of a chat's context by group, in the order of the groups. An empty group is left out. */
+export function contextSections(parts: readonly ContextPart[]): { label: string; parts: ContextPart[] }[] {
+  return contextGroups.flatMap((group) => {
+    const inGroup = parts.filter((part) => part.group === group);
+    return inGroup.length === 0 ? [] : [{ label: contextGroupLabels[group], parts: inGroup }];
+  });
 }

@@ -852,6 +852,24 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   await expect(page.getByLabel("Message").first()).toHaveValue("");
 });
 
+test("the chat details list the context, and a tap shows a part's whole text (issue 700)", async ({ page }) => {
+  await logIn(page);
+  await newAnsweredChat(page, "Context of a chat");
+  let details = page.getByRole("complementary", { name: "This chat" });
+  if (test.info().project.name !== "desktop") {
+    await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+    details = page.getByRole("dialog", { name: "This chat" });
+  }
+  const prompt = details.getByRole("region", { name: "System prompt" });
+  await expect(prompt.getByRole("button", { name: "Eva's prompt" })).toBeVisible();
+  await expect(details.getByRole("region", { name: "Instruction files" })).toContainText("AGENTS.md");
+  await prompt.getByRole("button", { name: "Your rules for Eva" }).click();
+  const part = page.getByRole("dialog", { name: "Your rules for Eva" });
+  await expect(part).toContainText("# You are Eva");
+  await part.getByRole("button", { name: "Close" }).click();
+  await expect(part).toHaveCount(0);
+});
+
 test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram does", async ({ page }) => {
   await logIn(page);
   const first = await newAnsweredChat(page, "First linked chat");

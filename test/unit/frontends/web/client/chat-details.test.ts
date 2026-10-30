@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   chatSubtitle,
+  contextSections,
   contextShare,
   contextFigure,
   engineLabel,
@@ -15,6 +16,7 @@ import {
   titleCase,
 } from "../../../../../src/frontends/web/client/chat-details.ts";
 import type { SessionRecord } from "../../../../../src/core/sessions/session-store.ts";
+import type { ContextPart } from "../../../../../src/shared/chat-context.ts";
 
 type Turn = SessionRecord["turns"][number];
 
@@ -265,5 +267,24 @@ describe("endedProjectWork", () => {
         ["p2", true],
       ]),
     );
+  });
+});
+
+describe("contextSections (issue 700)", () => {
+  const part = (group: ContextPart["group"], title: string): ContextPart => ({
+    group,
+    title,
+    source: null,
+    text: null,
+    note: null,
+  });
+
+  test("names each group that has parts, in the order of the groups", () => {
+    const sections = contextSections([part("skills", "write-note"), part("prompt", "Eva's prompt")]);
+    expect(sections.map((section) => [section.label, section.parts.map((found) => found.title)])).toEqual([
+      ["System prompt", ["Eva's prompt"]],
+      ["Skills", ["write-note"]],
+    ]);
+    expect(contextSections([])).toEqual([]);
   });
 });

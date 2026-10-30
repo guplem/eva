@@ -71,7 +71,8 @@
 /* A heading sits closer to its own content than to the next group. */
 .chat-panel h2 + .context-use,
 .chat-panel h3 + .task-list,
-.chat-panel h3 + .task-empty {
+.chat-panel h3 + .task-empty,
+.chat-panel h3 + .task-note {
   margin-top: -10px;
 }
 
@@ -263,7 +264,8 @@
 
 .chat-panel.in-sheet h2 + .context-use,
 .chat-panel.in-sheet h3 + .task-list,
-.chat-panel.in-sheet h3 + .task-empty {
+.chat-panel.in-sheet h3 + .task-empty,
+.chat-panel.in-sheet h3 + .task-note {
   margin-top: -4px;
 }
 
@@ -280,4 +282,75 @@
   .layout > .chat-panel-frame {
     display: none;
   }
+}
+
+/* The context of the chat: one small label for each group, then one row for each part. */
+.context-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.context-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.context-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.context-part {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: start;
+}
+
+.context-part > .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--accent-ink);
+}
+
+.context-part-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.context-source {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.context-full-text {
+  margin: 0;
+  padding: var(--space-3);
+  max-height: 60dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius-input);
+  background: var(--chip);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

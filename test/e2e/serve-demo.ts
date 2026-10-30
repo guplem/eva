@@ -14,6 +14,8 @@ import { systemProcessRunner, type ProcessRunner } from "../../src/shared/proces
 import { evaRepository } from "../../src/shared/version.ts";
 import type { PermissionContext } from "../../src/shared/permissions.ts";
 import { describeClaudePermissions } from "../../src/engines/claude-code/claude-code-permissions.ts";
+import { describeClaudeContext } from "../../src/engines/claude-code/claude-code-context.ts";
+import type { EngineContextInput } from "../../src/shared/chat-context.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
 import { fakeGithub } from "../support/fake-github.ts";
 import { fakeGh } from "../support/fake-gh.ts";
@@ -279,6 +281,7 @@ writeFileSync(
 );
 const demoEngine = Object.assign(engine, {
   describePermissions: (context: PermissionContext) => describeClaudePermissions("auto", context),
+  describeContext: (input: EngineContextInput) => describeClaudeContext(input),
 });
 const eva = new Eva({
   remoteAccess: demoRemoteAccess,

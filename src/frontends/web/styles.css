@@ -3159,7 +3159,8 @@ button.small {
   color: var(--muted);
 }
 
-/* The `.st.live` of the reference: "In use" differs from the green "Active" by colour and by its glowing dot. */
+/* The `.st.live` of the reference, such as "In use" beside the green "Active". The dot has no glow,
+   as on "Unread": a glow means that something runs now. */
 .pill.live {
   background: var(--soft);
   color: var(--soft-ink);
@@ -3167,7 +3168,6 @@ button.small {
 
 .pill.live.dot::before {
   background: var(--accent);
-  box-shadow: 0 0 6px var(--glow);
 }
 
 .mode-chip {

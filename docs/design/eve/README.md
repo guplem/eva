@@ -300,7 +300,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 ![Computer](screenshots/projects-computer-light.webp) ![Phone](screenshots/projects-phone-light.webp)
 
 - The status and tag filters are one-tap chips, not drop-down menus.
-- The status has a colour and a shape. "In use" takes the `.live` pill, so it differs from the green "Active".
+- The status has a colour and a shape. "In use" takes the `.live` pill, so it differs from the green "Active". Its dot has no glow, as on "Unread": nothing runs.
 - The list opens with the "Current" filter: the active and in-use projects.
 - Each clone is a card with its branch, its state and its chats.
 - A project card shows the "Unread" pill while one of its chats has an answer that the person did not see.
@@ -405,6 +405,7 @@ The pull requests of #161 and the owner chose these differences, each for the re
 | Settings in the phone tab bar                       | The visor, with the label "Eva", in its place.                                         | The visor opens the notification center, which links to Settings. The tab bar keeps five entries.      | #567         |
 | Problem notices at the top of each page             | The notification center behind the visor.                                              | The owner found the notices too large. The visor counts the problems, and the center lists them.       | #567         |
 | A "Create a project" suggestion in a new chat       | No project suggestion.                                                                 | The owner chose one way to make a project: the New project form, which can also create its repository. | #682         |
+| The "In use" pill has a glowing dot                 | The dot has no glow.                                                                   | A glow means that something runs now, as on "Working". A project in use runs nothing.                  | #722         |
 
 ## Captures
 

@@ -55,40 +55,42 @@ function agentsSkillFolders(startFolder: string): string[] {
     .map((folder) => join(folder, ".agents", "skills"));
 }
 
-/** pi takes the start folder's `.pi/` file first, then the agent folder's file. */
-function promptFile(name: string, startFolder: string, agentFolder: string): string | null {
-  return [join(startFolder, ".pi", name), join(agentFolder, name)].find(isFile) ?? null;
-}
-
-function promptPart(title: string, path: string, startFolder: string): ContextPart[] {
-  const part = instructionPart(path, startFolder);
-  if (part === null) return [];
-  const inFolder = dirname(path) === join(startFolder, ".pi");
-  return [{ ...part, group: "prompt", title, note: inFolder ? folderTrustNote : null }];
+/**
+ * pi takes the start folder's `.pi/` file when it trusts the folder, and the agent folder's file
+ * otherwise. Eva cannot read pi's trust, so she lists both, each with when pi reads it.
+ */
+function promptParts(name: string, title: string, startFolder: string, agentFolder: string): ContextPart[] {
+  const read = (path: string, note: string | null): ContextPart[] => {
+    const part = isFile(path) ? instructionPart(path, startFolder) : null;
+    return part === null ? [] : [{ ...part, group: "prompt", title, note }];
+  };
+  const folderFile = read(join(startFolder, ".pi", name), folderTrustNote);
+  const agentNote = folderFile.length > 0 ? "pi reads this when it does not trust the folder." : null;
+  return [...folderFile, ...read(join(agentFolder, name), agentNote)];
 }
 
 export function describePiContext(input: EngineContextInput): ContextPart[] {
   const agentFolder = input.environment["PI_CODING_AGENT_DIR"] ?? join(homedir(), ".pi", "agent");
   const home = input.environment["HOME"] ?? homedir();
-  const system = promptFile("SYSTEM.md", input.startFolder, agentFolder);
+  const system = promptParts("SYSTEM.md", "pi's prompt file", input.startFolder, agentFolder);
   // In an Assistant chat, Eva's prompt takes the place of an APPEND_SYSTEM.md (`--append-system-prompt`).
-  const append = input.mode === "project" ? promptFile("APPEND_SYSTEM.md", input.startFolder, agentFolder) : null;
+  const append =
+    input.mode === "project"
+      ? promptParts("APPEND_SYSTEM.md", "Added to pi's prompt", input.startFolder, agentFolder)
+      : [];
   const ownPrompt: ContextPart = {
     group: "prompt",
     title: "pi's prompt",
     source: null,
     text: null,
     note: [
-      system === null
+      system.length === 0
         ? "pi keeps its own prompt inside, so Eva cannot show its text."
         : "A SYSTEM.md file takes the place of pi's own prompt when pi reads it.",
       ...(input.mode === "assistant" ? ["Eva's prompt follows it."] : []),
     ].join(" "),
   };
-  const prompts = [
-    ...(system === null ? [] : promptPart("pi's prompt file", system, input.startFolder)),
-    ...(append === null ? [] : promptPart("Added to pi's prompt", append, input.startFolder)),
-  ];
+  const prompts = [...system, ...append];
   const files = [agentFolder, ...foldersUpTo(input.startFolder)].flatMap((folder) => contextFileIn(folder) ?? []);
   const instructions = [...new Set(files)].flatMap((path) => instructionPart(path, input.startFolder) ?? []);
   const userAgentsSkills = join(home, ".agents", "skills");

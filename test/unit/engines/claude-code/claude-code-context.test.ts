@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describeClaudeContext } from "../../../../src/engines/claude-code/claude-code-context.ts";
-import type { EngineContextInput } from "../../../../src/shared/chat-context.ts";
+import type { ContextPart, EngineContextInput } from "../../../../src/shared/chat-context.ts";
 
 let folder: string;
 let config: string;
@@ -12,6 +12,11 @@ let vault: string;
 function write(path: string, text: string): void {
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, text);
+}
+
+/** The parts from the test's own folder only: the engine walks up to the root, past the temporary folder. */
+function context(given: EngineContextInput): ContextPart[] {
+  return describeClaudeContext(given).filter((part) => part.source === null || part.source.startsWith(folder));
 }
 
 function input(overrides: Partial<EngineContextInput> = {}): EngineContextInput {
@@ -38,10 +43,10 @@ afterEach(() => {
 
 describe("describeClaudeContext", () => {
   test("names its own prompt, which Eva cannot read", () => {
-    const [assistant] = describeClaudeContext(input());
+    const [assistant] = context(input());
     expect(assistant).toMatchObject({ group: "prompt", title: "Claude Code's prompt", text: null });
     expect(assistant?.note).toContain("Eva's prompt takes the place");
-    const [project] = describeClaudeContext(input({ mode: "project" }));
+    const [project] = context(input({ mode: "project" }));
     expect(project?.note).toContain("cannot show its text");
   });
 
@@ -49,7 +54,7 @@ describe("describeClaudeContext", () => {
     write(join(config, "CLAUDE.md"), "User rules.");
     write(join(folder, "AGENTS.md"), "Outer rules.");
     write(join(vault, "AGENTS.md"), "Vault rules.");
-    const instructions = describeClaudeContext(input()).filter((part) => part.group === "instructions");
+    const instructions = context(input()).filter((part) => part.group === "instructions");
     expect(instructions.map((part) => [part.source, part.text])).toEqual([
       [join(config, "CLAUDE.md"), "User rules."],
       [join(folder, "AGENTS.md"), "Outer rules."],
@@ -61,7 +66,7 @@ describe("describeClaudeContext", () => {
   test("reads no AGENTS.md when a folder has a CLAUDE.md", () => {
     write(join(vault, "AGENTS.md"), "Vault rules.");
     write(join(vault, ".claude", "CLAUDE.md"), "Claude rules.");
-    const instructions = describeClaudeContext(input()).filter((part) => part.group === "instructions");
+    const instructions = context(input()).filter((part) => part.group === "instructions");
     expect(instructions.map((part) => part.text)).toEqual(["Claude rules."]);
   });
 
@@ -70,7 +75,7 @@ describe("describeClaudeContext", () => {
     write(join(config, "skills", "own-skill", "SKILL.md"), "A skill of the person.");
     write(join(vault, ".claude", "skills", "project-skill", "SKILL.md"), "A skill of the folder.");
     const skills = (overrides: Partial<EngineContextInput>): string[] =>
-      describeClaudeContext(input(overrides))
+      context(input(overrides))
         .filter((part) => part.group === "skills")
         .map((part) => part.title);
     expect(skills({ pluginFolders: [join(vault, ".eva")] })).toEqual(["write-note", "own-skill", "project-skill"]);
@@ -87,7 +92,7 @@ describe("describeClaudeContext, rules and local files", () => {
     write(join(vault, ".claude", "rules", "notes.txt"), "Not Markdown.");
     write(join(vault, "CLAUDE.local.md"), "Local rules.");
     const texts = (overrides: Partial<EngineContextInput>): (string | null)[] =>
-      describeClaudeContext(input(overrides))
+      context(input(overrides))
         .filter((part) => part.group === "instructions")
         .map((part) => part.text);
     expect(texts({})).toEqual(["User rule.", "Project rule."]);
@@ -101,7 +106,7 @@ describe("describeClaudeContext above and below the start folder", () => {
     const clone = join(vault, "Projects", "example-app", "repos", "clone-1");
     mkdirSync(clone, { recursive: true });
     write(join(vault, ".claude", "skills", "vault-skill", "SKILL.md"), "From the vault root.");
-    const skills = describeClaudeContext(input({ mode: "project", startFolder: clone }))
+    const skills = context(input({ mode: "project", startFolder: clone }))
       .filter((part) => part.group === "skills")
       .map((part) => part.title);
     expect(skills).toEqual(["vault-skill"]);
@@ -114,7 +119,7 @@ describe("describeClaudeContext above and below the start folder", () => {
     write(join(clone, "example-api", "CLAUDE.md"), "API rules.");
     write(join(clone, "example-api", "AGENTS.md"), "Not read: CLAUDE.md wins.");
     const nested = (trusted: boolean): [string, string | null][] =>
-      describeClaudeContext(input({ mode: "project", startFolder: clone, trusted }))
+      context(input({ mode: "project", startFolder: clone, trusted }))
         .filter((part) => part.note?.includes("works in this repository") === true)
         .map((part) => [part.title, part.text]);
     expect(nested(true)).toEqual([
@@ -124,5 +129,33 @@ describe("describeClaudeContext above and below the start folder", () => {
     ]);
     // Without the project source, Claude Code reads no nested file.
     expect(nested(false)).toEqual([]);
+  });
+});
+
+describe("describeClaudeContext, second review", () => {
+  test("lists the rules of each folder above the start folder, and notes a rule for some paths only", () => {
+    const clone = join(vault, "Projects", "example-app", "repos", "clone-1");
+    mkdirSync(clone, { recursive: true });
+    write(join(vault, ".claude", "rules", "style.md"), "Vault rule.");
+    write(join(clone, ".claude", "rules", "tests.md"), "---\npaths:\n  - test/**\n---\nTest rule.");
+    const rules = context(input({ mode: "project", startFolder: clone }))
+      .filter((part) => part.group === "instructions")
+      .map((part) => [part.text, part.note]);
+    expect(rules).toEqual([
+      ["Vault rule.", null],
+      [
+        "---\npaths:\n  - test/**\n---\nTest rule.",
+        "Claude Code reads this rule only when the agent works on a file that its paths name.",
+      ],
+    ]);
+  });
+
+  test("lists a repository's CLAUDE.local.md only in a trusted Project chat", () => {
+    const clone = join(folder, "clone-1");
+    write(join(clone, "example-app", "CLAUDE.local.md"), "Local repository rules.");
+    const texts = (trusted: boolean): (string | null)[] =>
+      context(input({ mode: "project", startFolder: clone, trusted })).map((part) => part.text);
+    expect(texts(true)).toContain("Local repository rules.");
+    expect(texts(false)).not.toContain("Local repository rules.");
   });
 });

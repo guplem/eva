@@ -40,15 +40,25 @@ const projectPromptNote = "Claude Code keeps its own prompt inside, so Eva canno
 /** A nested file loads only when the agent reads a file in its folder (lesson 2). */
 const repositoryNote = "Claude Code reads this when the agent works in this repository.";
 
+const pathRuleNote = "Claude Code reads this rule only when the agent works on a file that its paths name.";
+
+/** The rules of a rules folder. A rule with `paths` in its front matter loads only for those files. */
+function rulesIn(folder: string, startFolder: string): ContextPart[] {
+  return instructionPartsIn(folder, startFolder).map((part) =>
+    /^---\r?\n(?:.*\r?\n)*?paths\s*:/.test(part.text ?? "") ? { ...part, note: pathRuleNote } : part,
+  );
+}
+
 /** The instruction files and skills of each repository under the clone folder, which load on demand. */
-function repositoryParts(cloneFolder: string): ContextPart[] {
+function repositoryParts(cloneFolder: string, localSource: boolean): ContextPart[] {
   return repositoryFolders(cloneFolder).flatMap((repository) => {
     const files = (names: readonly string[]): ContextPart[] =>
       names.flatMap((name) => instructionPart(join(repository, name), cloneFolder) ?? []);
     const claudeFiles = files(["CLAUDE.md", join(".claude", "CLAUDE.md")]);
     return [
       ...(claudeFiles.length > 0 ? claudeFiles : files(["AGENTS.md"])),
-      ...instructionPartsIn(join(repository, ".claude", "rules"), cloneFolder),
+      ...(localSource ? files(["CLAUDE.local.md"]) : []),
+      ...rulesIn(join(repository, ".claude", "rules"), cloneFolder),
       // A nested skill answers to its name only after the agent reads a file in its folder (lesson 7).
       ...skillParts(join(repository, ".claude", "skills")),
     ].map((part) => ({ ...part, note: repositoryNote }));
@@ -88,15 +98,16 @@ export function describeClaudeContext(input: EngineContextInput): ContextPart[] 
   ];
   const instructions = [
     ...files.flatMap((path) => instructionPart(path, input.startFolder) ?? []),
-    ...instructionPartsIn(join(configFolder, "rules"), input.startFolder),
-    ...(projectSource ? instructionPartsIn(join(input.startFolder, ".claude", "rules"), input.startFolder) : []),
+    ...rulesIn(join(configFolder, "rules"), input.startFolder),
+    // Claude Code reads the rules of each folder from the start folder up, as its CLAUDE.md files.
+    ...(projectSource ? folders.flatMap((folder) => rulesIn(join(folder, ".claude", "rules"), input.startFolder)) : []),
   ];
   const skillFolders = [
     ...input.pluginFolders.map((folder) => join(folder, "skills")),
     join(configFolder, "skills"),
     // Claude Code finds skills from the start folder up to the root (lesson 5).
-    ...(projectSource ? folders.reverse().map((folder) => join(folder, ".claude", "skills")) : []),
+    ...(projectSource ? [...folders].reverse().map((folder) => join(folder, ".claude", "skills")) : []),
   ];
-  const nested = input.mode === "project" && projectSource ? repositoryParts(input.startFolder) : [];
+  const nested = input.mode === "project" && projectSource ? repositoryParts(input.startFolder, localSource) : [];
   return [ownPrompt, ...instructions, ...skillFolders.flatMap(skillParts), ...nested];
 }

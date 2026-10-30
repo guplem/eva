@@ -1,0 +1,19 @@
+# Git hooks. `npm install` installs them (the `prepare` script).
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: "*.{js,json,md,yml,yaml,css,html}"
+      run: npx prettier --check {staged_files}
+    lint:
+      glob: "*.js"
+      run: npx eslint --no-warn-ignored {staged_files}
+    # Claude Code reads AGENTS.md only when no CLAUDE.md exists in the folder or above it.
+    no-claude-md:
+      glob: ["CLAUDE.md", "**/CLAUDE.md"]
+      run: for file in {staged_files}; do if test -e $file; then echo 'Do not commit a CLAUDE.md. Write the rules in AGENTS.md.' >&2; exit 1; fi; done
+
+pre-push:
+  commands:
+    check:
+      run: npm run check

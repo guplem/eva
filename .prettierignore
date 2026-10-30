@@ -1,3 +1,7 @@
 node_modules/
 coverage/
 bun.lock
+# The widget template: its lock file, and the files that pskill generates, which must stay as pskill writes them.
+templates/widget/package-lock.json
+templates/widget/.pskill/
+templates/widget/.agents/

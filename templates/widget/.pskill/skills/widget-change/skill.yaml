@@ -1,0 +1,115 @@
+schema: pskill/v1
+id: widget-change
+description: >-
+  Make any change to this widget, from a request in the chat or a GitHub issue: a branch, a failing test first, the
+  code, a pull request with auto-merge, and green CI until it merges. Use for every change to the widget's code,
+  tests, docs or config.
+goal: >-
+  The change is merged into main through a pull request whose CI passed, and the pull request says each new
+  permission of eva-widget.json.
+inputs:
+  request: {type: string, description: "What the person wants, or the number of the GitHub issue."}
+outputs:
+  pr_url: {type: string, description: "The address of the pull request."}
+  state: {type: string, enum: [merged, failed], description: "merged when the pull request merged into main."}
+entry: understand
+
+blocks:
+  understand:
+    type: task
+    description: Read the rules and the request
+    instruction: instructions/understand.md
+    output:
+      summary: {type: string, description: "The change in one or two sentences, and the files that it touches."}
+      issue: {type: integer, optional: true, description: "The number of the GitHub issue of the change, when one exists."}
+    next: branch
+
+  branch:
+    type: task
+    description: Create the branch of the change
+    instruction: >-
+      Fetch origin, then create a new branch for the change from origin/main, named like 42-short-name or
+      short-name, and push it with `git push -u origin <branch>`.
+    output:
+      branch: {type: string, description: "The name of the new branch."}
+    next: red_test
+
+  red_test:
+    type: task
+    description: Write a failing test first
+    instruction: instructions/red_test.md
+    output:
+      tests: {type: array, items: {type: string}, description: "The name of each new or changed test."}
+    next: implement
+
+  implement:
+    type: task
+    description: Write the code until every check passes
+    instruction: instructions/implement.md
+    output:
+      summary: {type: string, description: "What changed, and why."}
+    next: permissions
+
+  permissions:
+    type: task
+    description: Compare the permissions of eva-widget.json with main
+    instruction: instructions/permissions.md
+    output:
+      widens: {type: boolean, description: "true when the change adds or widens a permission of eva-widget.json."}
+      changes: {type: array, items: {type: string}, description: "Each permission that the change adds or widens, in plain words."}
+    next: open_pr
+
+  open_pr:
+    type: task
+    description: Commit, push, open the pull request and turn on auto-merge
+    instruction: instructions/open_pr.md
+    output:
+      pr_number: {type: integer, description: "The number of the pull request."}
+      pr_url: {type: string, description: "The address of the pull request."}
+    next: wait_ci
+
+  wait_ci:
+    type: task
+    description: Wait until the pull request merges or a check fails
+    instruction: instructions/wait_ci.md
+    output:
+      state: {type: string, enum: [merged, failed], description: "merged when the pull request merged; failed when a check failed."}
+      failed_checks: {type: array, items: {type: string}, description: "Each failed check, as '<name>: <link>'."}
+    next:
+      - when: "{{ steps.wait_ci.state == 'failed' }}"
+        to: fix_ci
+      - to: merged
+
+  fix_ci:
+    type: task
+    description: Fix the failed checks
+    instruction: instructions/fix_ci.md
+    max_visits: 5
+    on_max_visits: failed
+    output:
+      summary: {type: string, description: "The cause of each failed check, and what you changed."}
+    next: wait_ci
+
+  merged:
+    type: end
+    description: The pull request merged
+    status: succeeded
+    pending: ""
+    outputs:
+      pr_url: "{{ steps.open_pr.pr_url }}"
+      state: merged
+    report: >-
+      Tell the person that pull request {{ steps.open_pr.pr_url }} merged, and that the GitHub Pages demo shows it
+      after its deploy.
+
+  failed:
+    type: end
+    description: The checks still fail after the last fix
+    status: failed
+    pending: "A person finds out why the checks of {{ steps.open_pr.pr_url }} still fail."
+    outputs:
+      pr_url: "{{ steps.open_pr.pr_url }}"
+      state: failed
+    report: >-
+      Tell the person which checks of {{ steps.open_pr.pr_url }} still fail
+      ({{ steps.wait_ci.failed_checks | join('; ') }}), and what you tried.

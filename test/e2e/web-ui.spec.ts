@@ -810,6 +810,30 @@ test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram
   expect(new URL(page.url()).hash).toBe("#/chats");
 });
 
+test("a half-written message shows on another device, live and after a reload (issue 652)", async ({
+  page,
+  browser,
+}) => {
+  await logIn(page);
+  const title = await newAnsweredChat(page, "Unsent text across devices");
+  const address = `/#/chat/${await chatIdNamed(page, title)}`;
+  // A second browser stands in for the phone.
+  const phoneContext = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+  const phone = await phoneContext.newPage();
+  await logIn(phone);
+  await phone.goto(address);
+  await expect(phone.getByRole("heading", { level: 1 })).toHaveText(title);
+  await page.getByLabel("Message").first().fill("Started on the computer");
+  await expect(phone.getByLabel("Message").first()).toHaveValue("Started on the computer");
+  await phone.getByLabel("Message").first().fill("Finished on the phone");
+  await page.reload();
+  await expect(page.getByLabel("Message").first()).toHaveValue("Finished on the phone");
+  // A clear, such as at a send, reaches every device.
+  await phone.getByLabel("Message").first().fill("");
+  await expect(page.getByLabel("Message").first()).toHaveValue("");
+  await phoneContext.close();
+});
+
 test("a link opened before the login opens its chat after the login", async ({ page }) => {
   await logIn(page);
   const linked = await newAnsweredChat(page, "Linked before login");

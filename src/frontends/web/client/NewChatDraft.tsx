@@ -12,6 +12,9 @@ import { useShowError } from "./error-toast.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 
+/** The key of the unsent text of this page, which has no chat yet. A chat id never takes it. */
+const newChatTextKey = "new-chat";
+
 /** How long the page waits to read the settings again after a failed read. */
 const settingsRetryMs = 5_000;
 
@@ -154,6 +157,8 @@ export function NewChatDraft({
               blocker={blocker}
               // A voice note sends the text that Eva heard. The new chat cannot play it back.
               voiceNotes={voiceNotes}
+              // A switch to another page, or to another device, must not lose the first message (issue 652).
+              draftKey={newChatTextKey}
             />
           )}
         </section>

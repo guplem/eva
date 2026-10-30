@@ -40,6 +40,7 @@ import type { SetupItem, SetupReport, SetupSection } from "../../../core/project
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
+import type { UnsentTextEvent, UnsentTexts } from "../../../core/sessions/unsent-texts.ts";
 import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { ChangelogEntry } from "../../../core/updates/release-policy.ts";
@@ -58,6 +59,9 @@ import { openEventStream, type EventSubscription, type StreamPlace } from "./eve
 import { failureOf, quickRead, quickSend, request } from "./request.ts";
 
 export { ApiError } from "./request.ts";
+
+/** The longest unsent text that goes out with keepalive. The browser allows 64 KiB for the bodies of a page. */
+const keepaliveTextLength = 16_000;
 
 export type { EventSubscription };
 
@@ -232,6 +236,15 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork-name`, { name }),
   archive: (sessionId: string, archived: boolean): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/archive`, { archived }),
+  unsentTexts: (): Promise<UnsentTexts> => request("GET", "/api/unsent-texts", undefined, { limit: quickRead }),
+  /** A short text goes out also while the page hides. The browser refuses a long body with keepalive. */
+  saveUnsentText: (key: string, text: string, keepEmpty: boolean, writer: string): Promise<{ revision: number }> =>
+    request(
+      "PUT",
+      `/api/unsent-texts/${encodeURIComponent(key)}`,
+      { text, keepEmpty, writer },
+      { keepalive: text.length <= keepaliveTextLength },
+    ),
   markSeen: (sessionId: string, turnCount: number): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/seen`, { turnCount }),
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals", undefined, { limit: quickRead }),
@@ -427,13 +440,13 @@ const browserStream: StreamPlace = {
 
 /** Opens the event stream, and opens it again after a drop. */
 export function subscribeToEvents(
-  onEvent: (event: SessionEvent | ScheduleCard | DeviceLoginEvent) => void,
+  onEvent: (event: SessionEvent | ScheduleCard | DeviceLoginEvent | UnsentTextEvent) => void,
   onConnectionChange: (isConnected: boolean) => void,
 ): EventSubscription {
   // Eva sends only these kinds on the event route.
   return openEventStream(
     browserStream,
-    (event) => onEvent(event as SessionEvent | ScheduleCard | DeviceLoginEvent),
+    (event) => onEvent(event as SessionEvent | ScheduleCard | DeviceLoginEvent | UnsentTextEvent),
     onConnectionChange,
   );
 }

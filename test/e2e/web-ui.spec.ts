@@ -2753,6 +2753,22 @@ test("Settings: the guide shows the docs, and the search opens a doc at its head
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install Eva, step by step");
 });
 
+test('Settings: a "?" opens the guide at the part that explains the card, and Back returns (issue 709)', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  await page.getByRole("link", { name: "Help: Vault sync" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Eva reference");
+  await expect(page.getByRole("heading", { name: "Vault sync", level: 2 })).toBeInViewport();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Vault and sync");
+  // A setup step has its own "?".
+  await page.goto("/#/settings/setup/telegram");
+  await page.getByRole("link", { name: "Help: Connect Telegram (optional)" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install Eva, step by step");
+});
+
 test("Settings: Development links to a GitHub report and opens the design reference", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Development");

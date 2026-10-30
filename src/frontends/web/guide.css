@@ -88,3 +88,28 @@
 .guide-results .field-hint {
   overflow-wrap: anywhere;
 }
+
+/* The "?" that opens the guide at the part that explains a place. It stays faint, so it does not
+   pull the eye from the place, and a finger still gets a whole target. */
+a.help-link {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: calc(-1 * var(--space-2));
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+}
+
+a.help-link:focus-visible {
+  color: var(--accent-ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.help-link:hover {
+    background: var(--chip);
+    color: var(--accent-ink);
+  }
+}

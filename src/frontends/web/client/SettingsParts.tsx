@@ -16,6 +16,8 @@ import { CopyButton } from "./CopyButton.tsx";
 import { Icon, type IconName } from "./icons.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
+import { helpOfCard } from "./help-links.ts";
+import { HelpLink } from "./HelpLink.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { restartNote, type Note } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
@@ -45,7 +47,7 @@ export interface SettingsContext {
   readonly onLoggedOut: () => void;
 }
 
-/** A titled block of settings. `item` gives it the id that search results and links scroll to. */
+/** A titled block of settings. `item` gives it the id that search results and links scroll to, and its "?" (help-links.ts). */
 export function Card({
   item,
   title,
@@ -63,6 +65,7 @@ export function Card({
   readonly aside?: ReactNode;
   readonly children?: ReactNode;
 }): ReactElement {
+  const help = helpOfCard(item);
   return (
     <section className="card" id={item === undefined ? undefined : cardId(item)} aria-label={title}>
       <header className="card-header">
@@ -76,6 +79,7 @@ export function Card({
           {description !== undefined && <p className="card-description">{description}</p>}
         </div>
         {aside}
+        {help !== null && <HelpLink topic={help} />}
       </header>
       {children !== undefined && <div className="card-body">{children}</div>}
     </section>

@@ -52,6 +52,8 @@ export class UnsentTexts {
   private readonly again: Set<string>;
   /** How many changes of each key this page made. A write that ends after a change leaves the key dirty. */
   private readonly changes: Map<string, number>;
+  /** The newest change of another page that came during a write of this page. It shows after the write. */
+  private readonly missed: Map<string, { readonly text: string | null; readonly revision: number }>;
   /** The newest read of Eva's texts. A key that this page reads later checks against it. */
   private lastRead: EvaTexts | null;
 
@@ -66,6 +68,7 @@ export class UnsentTexts {
     this.saving = new Set();
     this.again = new Set();
     this.changes = new Map();
+    this.missed = new Map();
     this.lastRead = null;
   }
 
@@ -115,6 +118,8 @@ export class UnsentTexts {
   set(draftKey: string, text: string, keepEmpty = false): void {
     this.keep(draftKey, text, keepEmpty);
     this.changes.set(draftKey, (this.changes.get(draftKey) ?? 0) + 1);
+    // The person's own newer change wins over a change that another page made before it.
+    this.missed.delete(draftKey);
     if (this.sync_ !== null) {
       this.setRevision(draftKey, dirty);
       this.schedule(draftKey);
@@ -160,7 +165,11 @@ export class UnsentTexts {
   /** Takes Eva's text of a key, unless this page knows a newer one. */
   private take(key: string, text: string | null, revision: number, tell: boolean): void {
     const known = this.revision(key);
-    if (known === dirty) {
+    // A text with no revision comes from a version before Eva kept the texts. Eva must get it.
+    if (known === dirty || (known === undefined && this.local(key) !== undefined)) {
+      if (known === undefined) this.setRevision(key, dirty);
+      if (this.saving.has(key) && revision > (this.missed.get(key)?.revision ?? 0))
+        this.missed.set(key, { text, revision });
       // Eva must get the change that this page has, also after a reload.
       if (!this.timers.has(key) && !this.saving.has(key)) this.schedule(key);
       return;
@@ -231,7 +240,11 @@ export class UnsentTexts {
       .save(key, local ?? "", keepEmpty)
       .then((revision) => {
         // A change during the write goes to Eva later, so it stays dirty.
-        if (this.changes.get(key) === change) this.setRevision(key, String(revision));
+        if (this.changes.get(key) !== change) return;
+        this.setRevision(key, String(revision));
+        const missed = this.missed.get(key);
+        this.missed.delete(key);
+        if (missed !== undefined) this.take(key, missed.text, missed.revision, true);
       })
       .catch(() => {
         // The text stays dirty: the next connection or change sends it again.

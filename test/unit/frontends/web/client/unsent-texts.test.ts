@@ -307,3 +307,58 @@ describe("UnsentTexts with Eva (issue 652)", () => {
     ]);
   });
 });
+
+describe("UnsentTexts with Eva, edge cases (issue 652)", () => {
+  test("a text from before the update, with no revision, goes to Eva instead of being erased", async () => {
+    const storage = memoryStorage();
+    storage.setItem("eva-unsent:chat-1", "Typed in the old version");
+    const eva = fakeEva();
+    const timers = manualTimers();
+    const page = new UnsentTexts(() => storage, { remote: eva, timers, writer: "page" });
+    page.subscribe("chat-1", () => undefined);
+    await page.sync();
+    expect(page.get("chat-1")).toBe("Typed in the old version");
+    timers.runAll();
+    await settle();
+    expect(eva.texts["chat-1"]?.text).toBe("Typed in the old version");
+  });
+
+  test("a change from another device during this page's write shows after the write", async () => {
+    const eva = fakeEva();
+    const answers: (() => void)[] = [];
+    const slow: TextRemote = {
+      ...eva,
+      save: (key, text, keepEmpty) =>
+        new Promise((resolve) => answers.push(() => void eva.save(key, text, keepEmpty).then(resolve))),
+    };
+    const timers = manualTimers();
+    const page = new UnsentTexts(memoryStorage, { remote: slow, timers, writer: "page" });
+    page.set("chat-1", "Mine");
+    timers.runAll();
+    // Eva gives the write revision 1, so the phone's change is newer.
+    page.receive({ kind: "unsent_text", key: "chat-1", text: "From the phone", revision: 5, writer: "phone" });
+    expect(page.get("chat-1")).toBe("Mine");
+    answers.shift()?.();
+    await settle();
+    expect(page.get("chat-1")).toBe("From the phone");
+  });
+
+  test("a change from another device during a write is dropped when this page types again", async () => {
+    const eva = fakeEva();
+    const answers: (() => void)[] = [];
+    const slow: TextRemote = {
+      ...eva,
+      save: (key, text, keepEmpty) =>
+        new Promise((resolve) => answers.push(() => void eva.save(key, text, keepEmpty).then(resolve))),
+    };
+    const timers = manualTimers();
+    const page = new UnsentTexts(memoryStorage, { remote: slow, timers, writer: "page" });
+    page.set("chat-1", "Mine");
+    timers.runAll();
+    page.receive({ kind: "unsent_text", key: "chat-1", text: "From the phone", revision: 5, writer: "phone" });
+    page.set("chat-1", "Mine, longer");
+    answers.shift()?.();
+    await settle();
+    expect(page.get("chat-1")).toBe("Mine, longer");
+  });
+});

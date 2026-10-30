@@ -7,7 +7,7 @@
  * Without voice notes on her machine, the microphone leads to the button that installs them.
  * The clip attaches files in an Assistant chat. A pasted or dropped file attaches the same way.
  * Each file uploads when the person picks it, so Send waits for no upload.
- * The star opens the menu of the vault's text actions, such as Polish, and saved prompts (issue 661).
+ * The command button opens the menu of the vault's text actions, such as Polish, and saved prompts (issue 661).
  * A text action rewrites the typed text and sends nothing; Undo brings the typed text back.
  */
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement, type RefObject } from "react";
@@ -381,7 +381,7 @@ export function Composer({
           }}
           onBlur={(event) => {
             mentions.boxProps.onBlur();
-            // A press on the star takes the focus. The cursor counts only when the person placed it.
+            // A press on the menu button takes the focus. The cursor counts only when the person placed it.
             const field = event.currentTarget;
             if (touched.current) caret.current = { start: field.selectionStart, end: field.selectionEnd };
           }}
@@ -464,7 +464,7 @@ export function Composer({
                 onPrompt: insertPrompt,
               })}
             >
-              <Icon name="star" />
+              <Icon name="command" />
             </MenuButton>
           )}
           <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />

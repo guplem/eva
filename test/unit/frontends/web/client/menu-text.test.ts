@@ -43,6 +43,14 @@ describe("composerMenuItems (#661)", () => {
     expect(chosen).toEqual(["action Polish", "prompt Sum it up."]);
   });
 
+  test("only the headings have an icon: a wand for the text actions, a clipboard for the saved prompts (#672)", () => {
+    const menu = composerMenuItems(items, { canRewrite: true, onAction: () => undefined, onPrompt: () => undefined });
+    expect(menu.map((item) => [item.groupIcon, item.icon])).toEqual([
+      ["wand", undefined],
+      ["clipboard", undefined],
+    ]);
+  });
+
   test("an empty box shows each text action, but turned off: there is nothing to rewrite", () => {
     const menu = composerMenuItems(items, { canRewrite: false, onAction: () => undefined, onPrompt: () => undefined });
     expect(menu.map((item) => [item.label, item.disabled === true])).toEqual([

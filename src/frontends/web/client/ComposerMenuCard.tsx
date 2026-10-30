@@ -41,7 +41,7 @@ export function ComposerMenuCard({ context }: { readonly context: SettingsContex
 
   if (items === "none") return null;
   const description =
-    "The star in the message box opens these. A text action rewrites the typed text with a model and sends nothing. A saved prompt puts its text at the cursor.";
+    "The command button (a slash) in the message box opens these. A text action rewrites the typed text with a model and sends nothing. A saved prompt puts its text at the cursor.";
   if (items === "loading")
     return (
       <Card item="composer-menu" title="Message box menu" description={description}>

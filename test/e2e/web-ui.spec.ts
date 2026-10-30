@@ -3388,7 +3388,7 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
   await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
 });
 
-test("a voice note sends what Eva heard, and its message can play the recording", async ({ page }) => {
+test("a voice note puts what Eva heard in the box, and the person sends it as text (issue 658)", async ({ page }) => {
   // A tone stands in for the microphone, so no browser flag and no real device is needed.
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = () => {
@@ -3414,18 +3414,18 @@ test("a voice note sends what Eva heard, and its message can play the recording"
   await newChat(page);
   await page.getByRole("button", { name: "Record a voice note" }).first().click();
   await expect(page.getByRole("status").filter({ hasText: /Recording \d:\d\d/ })).toBeVisible();
-  await page.getByRole("button", { name: "Send the voice note" }).click();
+  await page.getByRole("button", { name: "Stop the recording" }).click();
 
-  // The switch hides the text, so the message is found by its switch.
-  const message = page.locator(".message.user", { has: page.getByRole("group", { name: "Voice note" }) });
-  await expect(message).toContainText("Hello from my voice");
+  // The text waits in the box, so the person can fix a word that Eva heard wrong.
+  const composer = page.getByRole("textbox", { name: "Message" }).first();
+  await expect(composer).toHaveValue("Hello from my voice");
   expect(audioType).toMatch(/^audio\//);
-  await expect(page.locator(".message.answer").first()).toContainText("Hello from my voice");
-  await message.getByRole("button", { name: "Recording" }).click();
-  await expect(message.locator("audio")).toBeVisible();
-  await expect(message).not.toContainText("Hello from my voice");
-  await message.getByRole("button", { name: "Heard" }).click();
-  await expect(message).toContainText("Hello from my voice");
+  await expect(page.locator(".message.user")).toHaveCount(0);
+  await composer.fill("Hello from my fixed voice");
+  await page.getByRole("button", { name: "Send" }).first().click();
+  await expect(page.locator(".message.user", { hasText: "Hello from my fixed voice" })).toBeVisible();
+  await expect(page.locator(".message.answer").first()).toContainText("Hello from my fixed voice");
+  await expect(page.locator(".message.user audio")).toHaveCount(0);
 });
 
 test("an attached file reaches the agent as its vault path, and a removed one does not (issue 409)", async ({

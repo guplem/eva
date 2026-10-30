@@ -155,7 +155,6 @@ export function NewChatDraft({
               onStop={() => undefined}
               onChanged={() => Promise.resolve()}
               blocker={blocker}
-              // A voice note sends the text that Eva heard. The new chat cannot play it back.
               voiceNotes={voiceNotes}
               // A switch to another page, or to another device, must not lose the first message (issue 652).
               draftKey={newChatTextKey}

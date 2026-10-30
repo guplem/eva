@@ -60,7 +60,6 @@ import { RetryUndoDialog } from "./RetryUndoDialog.tsx";
 import { StepFold } from "./TurnSteps.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
-import { RecordingShelf } from "./voice-notes.ts";
 import { toWebHtml } from "./web-format.ts";
 import { shownAnswerText } from "../../../shared/file-markers.ts";
 import {
@@ -74,9 +73,6 @@ import {
 } from "../../../shared/project-report.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
-
-/** The voice notes of this tab, so a sent message can play what the person said. */
-const recordings = new RecordingShelf((url) => URL.revokeObjectURL(url));
 
 interface ConversationProps {
   readonly root: SessionRecord;
@@ -298,8 +294,7 @@ function Branch({
   const usageLimit = live.usageLimits[session.id];
   const notes = live.notes[session.id] ?? [];
 
-  const send = async (message: string, recording?: string): Promise<boolean> => {
-    if (recording !== undefined) recordings.keep(session.id, message, recording);
+  const send = async (message: string): Promise<boolean> => {
     const entry = { text: message, turnCount: sentTurnCount(turnCount, turnRuns) };
     setSent((current) => [...current, entry]);
     try {
@@ -387,14 +382,7 @@ function Branch({
                 turnKey={words === null ? stepKey(owner.id, index) : undefined}
               />
             ))}
-            {words !== null && (
-              <UserMessage
-                text={words}
-                fromEva={turn.fromEva}
-                recording={recordings.find(owner.id, words)}
-                turnKey={stepKey(owner.id, index)}
-              />
-            )}
+            {words !== null && <UserMessage text={words} fromEva={turn.fromEva} turnKey={stepKey(owner.id, index)} />}
             <EvaMessage face={stateFaces.idle} mode={owner.mode}>
               <AnswerBody
                 steps={turn.steps}
@@ -461,11 +449,7 @@ function Branch({
       {pending
         .filter((message) => message.turnCount === turnCount)
         .map((message, index) => (
-          <UserMessage
-            key={`sent-${String(index)}`}
-            text={message.text}
-            recording={recordings.find(session.id, message.text)}
-          />
+          <UserMessage key={`sent-${String(index)}`} text={message.text} />
         ))}
       {/* A live region on the streaming text would read the whole answer again at each token. */}
       <span className="visually-hidden" role="status">
@@ -478,11 +462,7 @@ function Branch({
       {pending
         .filter((message) => message.turnCount > turnCount)
         .map((message, index) => (
-          <UserMessage
-            key={`queued-${String(index)}`}
-            text={message.text}
-            recording={recordings.find(session.id, message.text)}
-          />
+          <UserMessage key={`queued-${String(index)}`} text={message.text} />
         ))}
       {waiting.length > 0 && (
         <ApprovalRequests approvals={waiting} place={approvalPlace(session)} onAnswer={approvals.onAnswer} />
@@ -555,48 +535,23 @@ function Branch({
   );
 }
 
-/**
- * The person's message. A voice note shows what Eva heard, since that is what she answers.
- * While this tab still holds the recording, a switch plays what the person said.
- */
+/** The person's message. A voice note is text too: the person read and fixed it in the box. */
 function UserMessage({
   text,
   fromEva = false,
-  recording,
   turnKey,
 }: {
   readonly text: string;
   /** Eva sent it, such as a project work result. */
   readonly fromEva?: boolean;
-  readonly recording: string | null;
   /** The key of its turn, so a pick in the branch map can scroll to it. */
   readonly turnKey?: string;
 }): ReactElement {
-  const [showRecording, setShowRecording] = useState(false);
   return (
     <div className="msg me" data-turn={turnKey}>
       <div className="message user">
         <div className="who">{senderName(fromEva)}</div>
-        {recording !== null && showRecording ? <audio className="voice-note" controls src={recording} /> : text}
-        {recording !== null && (
-          <div className="voice-switch" role="group" aria-label="Voice note">
-            <button
-              className={showRecording ? "" : "on"}
-              aria-pressed={!showRecording}
-              onClick={() => setShowRecording(false)}
-            >
-              Heard
-            </button>
-            <button
-              className={showRecording ? "on" : ""}
-              aria-pressed={showRecording}
-              onClick={() => setShowRecording(true)}
-            >
-              <Icon name="mic" />
-              Recording
-            </button>
-          </div>
-        )}
+        {text}
       </div>
     </div>
   );

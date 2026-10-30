@@ -1080,7 +1080,7 @@ button.ghost .icon {
 
   /*
    * Each step opens its dialog. A full 44 px row spreads the list far apart, so the rows stay compact,
-   * but they touch: each tap in the list lands on a step.
+   * but they touch: a tap between two steps lands on one of them.
    */
   .step-list {
     gap: 0;

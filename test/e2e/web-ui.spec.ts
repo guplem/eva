@@ -3182,7 +3182,8 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   await answer.getByRole("button", { name: "Show 3 steps" }).click();
   const step = answer.getByRole("list", { name: "Steps" }).getByRole("button", { name: /Command\s+ls/ });
   if (test.info().project.name === "phone") {
-    // The list stays compact like on a computer. The rows touch, so each tap in the list lands on a step.
+    // The list stays compact like on a computer. The rows touch, so a tap between two steps lands on one of them.
+    await expect(answer.locator(".step-row")).toHaveCount(3);
     const rows = await answer
       .locator(".step-row")
       .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect()));

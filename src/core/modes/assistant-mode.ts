@@ -9,7 +9,8 @@ import { EvaError } from "../../shared/errors.ts";
 import type { McpServerSpec } from "../../shared/engine-port.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
-import type { PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
+import type { ContextPart } from "../../shared/chat-context.ts";
+import type { ModeContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
 import { moveAssistantPersonality, withMovedSections } from "../migrations/assistant-rules-move.ts";
@@ -67,7 +68,6 @@ export class AssistantPreparer implements TurnPreparer {
       // An answer from an agent with no identity is worse than an error (lesson 11).
       throw new EvaError("vault_not_found", `${personalRulesPath} is missing, so Eva has no assistant rules.`);
     }
-    const pluginFolder = join(this.options.vaultPath, ".eva");
     // Fixed for the session, even when the agent edits .eva/assistant.md in it (lesson 115), so the
     // appended text stays byte-identical and the prompt cache holds (lesson 40). A restart reads it again.
     const appendSystemPrompt =
@@ -78,12 +78,58 @@ export class AssistantPreparer implements TurnPreparer {
       // The time goes in the message, never in the prompt (lesson 40).
       appendSystemPrompt,
       messagePrefix: this.messagePrefix(),
-      pluginFolders: existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [],
+      pluginFolders: this.pluginFolders(),
       mcpServers: this.options.mcpServers,
       trusted: true,
       // `eva work` reads it, so a project's result comes back to this chat.
       environment: { ...this.options.environment, EVA_SESSION_ID: session.id },
     };
+  }
+
+  describe(session: SessionRecord): Promise<ModeContext> {
+    const rulesPath = join(this.options.vaultPath, ".eva", "assistant.md");
+    const kept = this.promptBySession.get(session.id);
+    const prefix = `${this.options.basePrompt}\n\n`;
+    // A running chat keeps the rules of its first turn since Eva started, even when the file changed.
+    const rules =
+      kept?.startsWith(prefix) === true
+        ? kept.slice(prefix.length)
+        : existsSync(rulesPath)
+          ? this.personalRules(rulesPath)
+          : null;
+    const parts: ContextPart[] = [
+      { group: "prompt", title: "Eva's prompt", source: null, text: this.options.basePrompt, note: null },
+      {
+        group: "prompt",
+        title: "Your rules for Eva",
+        source: rulesPath,
+        text: rules,
+        note: rules === null ? "The file is missing, so a new message fails." : null,
+      },
+      {
+        group: "message",
+        title: "Before each message",
+        source: null,
+        text: this.messagePrefix(),
+        note: "Eva puts this text before each of your messages, with the time of that message.",
+      },
+    ];
+    return Promise.resolve({
+      parts,
+      engine: {
+        mode: "assistant",
+        startFolder: session.startFolder,
+        trusted: true,
+        pluginFolders: this.pluginFolders(),
+        environment: this.options.environment,
+      },
+    });
+  }
+
+  /** The vault's `.eva/` folder gives the assistant skills, when it is a plugin. */
+  private pluginFolders(): string[] {
+    const pluginFolder = join(this.options.vaultPath, ".eva");
+    return existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [];
   }
 
   /** The local time, and a note when `Life/About me.md` has a field that Eva must fix. */

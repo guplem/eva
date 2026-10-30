@@ -1167,6 +1167,131 @@ describe("Eva", () => {
     });
   });
 
+  describe("specialists (#703)", () => {
+    const coachId = "2025-03-02-1015-coach";
+    const coachFolder = (): string => join(vault, "Projects", coachId);
+
+    beforeEach(() => {
+      sandbox.write(
+        vault,
+        `Projects/${coachId}/AGENTS.md`,
+        "---\ncreated: 2025-03-02T10:15\nstatus: active\ntype: specialist\n---\n# Coach\n\nAsk about the training.\n",
+      );
+    });
+
+    test("a chat starts in the project folder, with no clone, and its file reaches the vault's remote", async () => {
+      const engine = new FakeEngine((request) => {
+        if (request.mode === "project") writeFileSync(join(request.startFolder, "log.md"), "Monday: legs.\n");
+        return FakeEngine.answer(request, "Noted.");
+      });
+      const instance = start(engine, { sync: syncOn });
+      const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      expect(chat).toMatchObject({ mode: "project", clone: null, startFolder: coachFolder(), projectId: coachId });
+      await instance.sessions.send(chat.id, "I trained legs.");
+      expect(engine.requests[0]).toMatchObject({
+        mode: "project",
+        startFolder: coachFolder(),
+        projectFolder: coachFolder(),
+        appendSystemPrompt: null,
+        pluginFolders: [],
+        trusted: true,
+        harnessMemory: false,
+        folderHooks: false,
+      });
+      expect(sandbox.git(sandbox.remote, "show", `main:Projects/${coachId}/log.md`)).toBe("Monday: legs.");
+    });
+
+    test("a specialist has no clones: a named clone, a fork or a retry in a new clone are refused", async () => {
+      const instance = start(new FakeEngine());
+      const named = await instance
+        .createProjectSession({ projectId: coachId, source: "web", cloneName: "clone-0" })
+        .catch((error: unknown) => error);
+      expect(isEvaError(named, "project_invalid")).toBe(true);
+      const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      await instance.sessions.send(chat.id, "first");
+      const messageId = instance.sessions.get(chat.id).turns[0]!.lastMessageId!;
+      const fork = await instance.forkChat(chat.id, messageId, "clean-clone").catch((error: unknown) => error);
+      expect(isEvaError(fork, "project_invalid")).toBe(true);
+      const retry = await instance.retryChat(chat.id, 0, "new-clone").catch((error: unknown) => error);
+      expect(isEvaError(retry, "project_invalid")).toBe(true);
+      // A fork in the same place is a branch of the chat, as for an Assistant chat.
+      expect((await instance.forkChat(chat.id, messageId)).session).toMatchObject({ clone: null, parentId: chat.id });
+      expect(existsSync(join(coachFolder(), "repos"))).toBe(false);
+    });
+
+    test("a specialist outside the vault gets no chat, since the vault sync cannot reach it", async () => {
+      const extra = join(home, "elsewhere");
+      mkdirSync(join(extra, "2026-01-01-0000-outside"), { recursive: true });
+      writeFileSync(
+        join(extra, "2026-01-01-0000-outside", "AGENTS.md"),
+        "---\ncreated: 2026-01-01T00:00\nstatus: active\ntype: specialist\n---\n# Outside\n",
+      );
+      const instance = start(new FakeEngine(), { projectRoots: [extra] });
+      const caught = await instance
+        .createProjectSession({ projectId: "2026-01-01-0000-outside", source: "web" })
+        .catch((error: unknown) => error);
+      expect(isEvaError(caught, "project_invalid")).toBe(true);
+    });
+
+    test("a retry with undo takes back the files that the chat changed, through the vault", async () => {
+      const engine = new FakeEngine((request, turnNumber) => {
+        if (turnNumber === 1) writeFileSync(join(request.startFolder, "plan.md"), "Week 1.\n");
+        return FakeEngine.answer(request, "Done.");
+      });
+      const instance = start(engine, { sync: syncOn });
+      const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      await instance.sessions.send(chat.id, "Write a plan.");
+      expect(await instance.retryUndoPreview(chat.id, 0)).toMatchObject({ restore: [`Projects/${coachId}/plan.md`] });
+      await instance.retryChat(chat.id, 0, "undo");
+      await instance.idle();
+      expect(existsSync(join(coachFolder(), "plan.md"))).toBe(false);
+    });
+
+    test("a chat goes on from a summary in a new chat of the same specialist, with no git state", async () => {
+      const engine = new FakeEngine((request) =>
+        FakeEngine.answer(request, request.mode === "model-call" ? "Goal: plan the week." : "ok"),
+      );
+      const instance = start(engine);
+      const old = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      await instance.sessions.send(old.id, "Plan my week.");
+      const { session } = await instance.continueFromSummary(old.id, "web");
+      expect(session).toMatchObject({ clone: null, startFolder: coachFolder(), continuedFrom: old.id });
+      const call = engine.requests.find((request) => request.mode === "model-call");
+      expect(call?.prompt).not.toContain("<git-state>");
+    });
+
+    test("project work on a specialist runs a specialist chat, and its result names the specialist", async () => {
+      const engine = new FakeEngine((request) =>
+        FakeEngine.answer(request, request.mode === "project" ? "The week is planned." : "Noted."),
+      );
+      const instance = start(engine);
+      const asking = instance.createAssistantSession({ source: "web" });
+      const work = await instance.startProjectWork({
+        projectId: coachId,
+        request: "Plan the week.",
+        reportToSessionId: asking.id,
+      });
+      expect(work).toMatchObject({ clone: null, startFolder: coachFolder(), reportsTo: asking.id });
+      await waitFor(() => instance.sessions.get(asking.id).turns.length === 1, 20_000);
+      await instance.idle();
+      expect(engine.requests[1]?.prompt).toContain(`[Project work finished: ${coachId}, specialist, chat ${work.id}]`);
+      expect(instance.sessions.get(asking.id).turns[0]?.projectReports).toMatchObject([
+        { projectId: coachId, clone: null, repositories: [], result: "The week is planned." },
+      ]);
+    });
+
+    test("a specialist chat takes no file, so it never learns a vault path", async () => {
+      const instance = start(new FakeEngine());
+      const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      const caught = await Promise.resolve()
+        .then(() => instance.receiveFile("plan.pdf", new Uint8Array([1, 2, 3]), chat.id))
+        .catch((error: unknown) => error);
+      expect(isEvaError(caught, "file_not_writable")).toBe(true);
+      expect((caught as Error).message).toBe("This chat takes no files.");
+      expect(existsSync(join(vault, "Scratch", "received"))).toBe(false);
+    });
+  });
+
   describe("forks and retries in other clones (issue 523)", () => {
     const projectId = "2025-03-02-1015-example-app";
     const repository = (_instance: Eva, clone: string): string =>

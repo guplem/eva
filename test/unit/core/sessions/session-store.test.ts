@@ -229,6 +229,23 @@ describe("SessionStore", () => {
     expect(openStore().get("one")?.turns[0]).toMatchObject({ fromEva: false, projectReports: [], personText: null });
   });
 
+  test("a result of a specialist keeps its empty clone after a reload (#703)", () => {
+    const report = {
+      projectId: "2025-03-02-1015-coach",
+      projectTitle: "Coach",
+      projectSessionId: "p1",
+      request: "Plan the week.",
+      clone: null,
+      repositories: [],
+      failed: false,
+      result: "Done.",
+      resultCut: false,
+    };
+    const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z", projectReports: [report] };
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn] }] }));
+    expect(openStore().get("one")?.turns[0]?.projectReports).toEqual([report]);
+  });
+
   test("a moved turn keeps where it ran after a reload, and a bad place costs only that field (issue 647)", () => {
     const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
     const ranIn = { sessionId: "gone", turnIndex: 2, engineSessionId: "engine-gone" };

@@ -1751,7 +1751,7 @@ function redactReport(report: ProjectReport, redactor: Redactor): ProjectReport 
     projectId: redact(report.projectId),
     projectTitle: redact(report.projectTitle),
     request: redact(report.request),
-    clone: redact(report.clone),
+    clone: report.clone === null ? null : redact(report.clone),
     repositories: report.repositories.map((repository) => ({
       ...repository,
       name: redact(repository.name),

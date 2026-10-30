@@ -27,7 +27,8 @@ const projectReportSchema = z.object({
   /** The Project chat that did the work. */
   projectSessionId: z.string(),
   request: z.string(),
-  clone: z.string(),
+  /** Null for a specialist (#703). An older Eva drops such a result, and shows the raw message. */
+  clone: z.string().nullable(),
   repositories: z.array(
     z.object({ name: z.string(), branch: z.string().nullable(), pullRequest: z.number().int().nullable() }),
   ),

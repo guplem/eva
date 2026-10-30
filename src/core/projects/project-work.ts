@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
+import { chatKind } from "../../shared/chat-kind.ts";
 import { cheapestModel, type ModelCalls } from "../model-calls/model-calls.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { ChatSummarizer } from "../sessions/chat-summary.ts";
@@ -191,6 +192,10 @@ export class ProjectWork {
   /** A Project chat in the named clone, or in a free clone, or in a new clone. */
   async createSession(input: NewProjectChatInput): Promise<SessionRecord> {
     const project = this.project(input.projectId);
+    if (project.frontMatter.type === "specialist") {
+      if (input.cloneName !== undefined) throw noClones();
+      return this.specialistChat(project, input);
+    }
     const inClone = (clone: Clone | undefined): SessionRecord => {
       if (clone === undefined)
         throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
@@ -232,6 +237,28 @@ export class ProjectWork {
   }
 
   /**
+   * A chat in the folder of a specialist (#703). It has no clone: it saves its work in the vault.
+   * Only the vault reaches the person's other machines, so a specialist elsewhere gets no chat.
+   */
+  private specialistChat(project: Project, input: NewChatInput & { reportsTo?: string }): SessionRecord {
+    if (project.vaultFolder === null)
+      throw new EvaError(
+        "project_invalid",
+        `${project.title} is outside the vault, so Eva cannot sync it. Move it to the vault's Projects folder.`,
+      );
+    return this.options.sessions.createSession({
+      mode: "project",
+      engine: input.engine ?? this.options.defaultEngine,
+      ...(input.model === undefined ? {} : { model: input.model }),
+      ...(input.effort === undefined ? {} : { effort: input.effort }),
+      startFolder: project.path,
+      source: input.source,
+      projectId: project.id,
+      ...(input.reportsTo === undefined ? {} : { reportsTo: input.reportsTo }),
+    });
+  }
+
+  /**
    * The git state of each repository of a Project chat's clone folder, for a chat summary, or null when
    * git fails for each one. The clone folder itself is no repository: git there would read the vault.
    */
@@ -253,6 +280,7 @@ export class ProjectWork {
   async fork(sessionId: string, atMessageId: string, files: ForkFiles = "same-clone"): Promise<BranchResult> {
     const sessions = this.options.sessions;
     const from = sessions.get(sessionId);
+    if (chatKind(from) === "specialist" && files !== "same-clone") throw noClones();
     if (from.mode !== "project" || files === "same-clone")
       return { session: sessions.fork(sessionId, atMessageId), notice: null };
     const turns = sessions.branchTurns(sessionId);
@@ -276,6 +304,7 @@ export class ProjectWork {
   async retry(sessionId: string, turnIndex: number, files: RetryChoice = "keep"): Promise<BranchResult> {
     const sessions = this.options.sessions;
     const from = sessions.get(sessionId);
+    if (chatKind(from) === "specialist" && files === "new-clone") throw noClones();
     if (from.mode !== "project" || files !== "new-clone")
       return {
         session: await sessions.retry(sessionId, turnIndex, files === "new-clone" ? "keep" : files),
@@ -383,21 +412,29 @@ export class ProjectWork {
   async start(input: ProjectWorkInput): Promise<SessionRecord> {
     const project = this.project(input.projectId);
     const sessions = this.options.sessions;
-    // The reservation happens inside the choice, so a second work cannot pick the same clone.
-    const clone = await this.oneCloneChoiceAtATime(project, async () => {
-      const chosen = await this.freeOrNewClone(project);
-      this.reservedClones.add(chosen.path);
-      return chosen;
-    });
-    const session = sessions.createSession({
-      mode: "project",
-      engine: this.options.defaultEngine,
-      startFolder: clone.path,
-      source: "cli",
-      projectId: project.id,
-      clone: clone.name,
-      ...(input.reportToSessionId === null ? {} : { reportsTo: input.reportToSessionId }),
-    });
+    const reportsTo = input.reportToSessionId === null ? {} : { reportsTo: input.reportToSessionId };
+    // A specialist does the work in its own folder, with no clone (#703).
+    const clone =
+      project.frontMatter.type === "specialist"
+        ? null
+        : // The reservation happens inside the choice, so a second work cannot pick the same clone.
+          await this.oneCloneChoiceAtATime(project, async () => {
+            const chosen = await this.freeOrNewClone(project);
+            this.reservedClones.add(chosen.path);
+            return chosen;
+          });
+    const session =
+      clone === null
+        ? this.specialistChat(project, { source: "cli", ...reportsTo })
+        : sessions.createSession({
+            mode: "project",
+            engine: this.options.defaultEngine,
+            startFolder: clone.path,
+            source: "cli",
+            projectId: project.id,
+            clone: clone.name,
+            ...reportsTo,
+          });
     // Before the work starts, so a front end can show the Project chat with its first message.
     if (input.reportToSessionId !== null)
       sessions.announceProjectWork(input.reportToSessionId, {
@@ -409,7 +446,7 @@ export class ProjectWork {
       try {
         await sessions.send(session.id, input.request);
       } finally {
-        this.reservedClones.delete(clone.path);
+        if (clone !== null) this.reservedClones.delete(clone.path);
       }
       if (input.reportToSessionId === null) return;
       // The person may delete either chat while the work runs: the Project chat then keeps the result.
@@ -421,7 +458,7 @@ export class ProjectWork {
       const result = failed ? `It failed: ${last?.failure ?? "no answer"}` : last.answerText;
       const details = await Promise.all(
         listClones(project.path)
-          .find((candidate) => candidate.path === clone.path)
+          .find((candidate) => candidate.path === clone?.path)
           ?.repositories.map((repository) =>
             describeRepository(repository, this.options.runner, this.options.gitEnvironment),
           ) ?? [],
@@ -432,13 +469,13 @@ export class ProjectWork {
         });
         return;
       }
-      const place = [`clone ${clone.name}`, ...details.map(repositoryPlace)].join("; ");
+      const place = clone === null ? "specialist" : [`clone ${clone.name}`, ...details.map(repositoryPlace)].join("; ");
       const report = {
         projectId: project.id,
         projectTitle: project.title,
         projectSessionId: session.id,
         request: input.request,
-        clone: clone.name,
+        clone: clone?.name ?? null,
         repositories: details.map(({ name, branch, pullRequest }) => ({ name, branch, pullRequest })),
         failed,
         result: result.slice(-reportTextLimit),
@@ -1063,6 +1100,11 @@ export class ProjectWork {
  * A model can wrap the message in a code fence or quotes, or add a label. The first line is the
  * subject, and a body may follow it.
  */
+/** A specialist saves its work in the vault, so it never gets a clone (#703). */
+function noClones(): EvaError {
+  return new EvaError("project_invalid", "A specialist has no clones: its chats work in its own folder.");
+}
+
 function cleanCommitMessage(text: string): string | null {
   const lines = text
     .trim()

@@ -1586,7 +1586,8 @@ export class Eva {
     source: SessionRecord["source"],
   ): Promise<{ readonly session: SessionRecord; readonly summaryFailure: string | null }> {
     const old = this.sessions.get(sessionId);
-    const gitState = old.mode === "project" ? await this.projectWork.gitState(old.startFolder) : null;
+    // A specialist folder is no repository: git there would read the vault (#703).
+    const gitState = chatKind(old) === "project" ? await this.projectWork.gitState(old.startFolder) : null;
     const summary = await this.chatSummaries.summarize({
       engine: old.engine,
       model: old.modelAlias,
@@ -1617,8 +1618,13 @@ export class Eva {
     return this.projectWork.fork(sessionId, atMessageId, files);
   }
 
-  /** A retry of a turn. A retry of a Project chat can undo the turn's files, or run in a new clone (issue 523). */
-  retryChat(sessionId: string, turnIndex: number, files?: RetryChoice): Promise<BranchResult> {
+  /**
+   * A retry of a turn. A retry of a Project chat can undo the turn's files, or run in a new clone (issue 523).
+   * A specialist works in the vault, so its undo goes through the vault, as for an Assistant chat (#703).
+   */
+  async retryChat(sessionId: string, turnIndex: number, files?: RetryChoice): Promise<BranchResult> {
+    if (files === "undo" && chatKind(this.sessions.get(sessionId)) === "specialist")
+      return { session: await this.retryTurn(sessionId, turnIndex, true), notice: null };
     return this.projectWork.retry(sessionId, turnIndex, files);
   }
 
@@ -1717,6 +1723,9 @@ export class Eva {
     // Eva may have given the clone of a closed chat to another chat (issue 521), so a late file must not land there.
     if (chat?.closed === true)
       throw new EvaError("session_closed", "This chat is closed, because Eva reused its clone. Start a new chat.");
+    // A saved file would give a specialist a vault path, so its chat takes none (#703).
+    if (chat !== null && chatKind(chat) === "specialist")
+      throw new EvaError("file_not_writable", "This chat takes no files.");
     const path =
       chat?.mode === "project" && chat.clone !== null
         ? saveInClone(chat.startFolder, name, bytes)

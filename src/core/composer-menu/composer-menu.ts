@@ -213,8 +213,11 @@ function saveItem(folder: string, name: string, previousName: string | undefined
   const previous = previousName === undefined ? null : existingFile(folder, previousName);
   // Windows and macOS see "summary.md" and "Summary.md" as one file, so the names compare without case.
   const sameFile = previousName?.toLowerCase() === target.toLowerCase();
-  const taken = readItems(folder).some((item) => item.name.toLowerCase() === target.toLowerCase());
-  if (taken && !sameFile) throw new EvaError("menu_item_invalid", `An item named "${target}" already exists.`);
+  // On Linux two files can differ only in case. The one that is not the renamed item is taken.
+  const taken = readItems(folder).some(
+    (item) => item.name.toLowerCase() === target.toLowerCase() && item.name !== previousName,
+  );
+  if (taken) throw new EvaError("menu_item_invalid", `An item named "${target}" already exists.`);
   mkdirSync(folder, { recursive: true });
   const file = join(folder, `${target}.md`);
   if (previous === null || previousName === target) {

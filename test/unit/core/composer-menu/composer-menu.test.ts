@@ -208,3 +208,20 @@ describe("the composer menu fixes after review (#661)", () => {
     );
   });
 });
+
+describe("two hand-made files that differ only in case (#661)", () => {
+  test("a rename of one onto the other's name is refused, so no text is lost", () => {
+    if (process.platform !== "linux") return;
+    const root = vault();
+    put(join(savedPromptsFolder(root), "summary.md"), "Small");
+    put(join(savedPromptsFolder(root), "Summary.md"), "Big");
+    const { menu: composer } = menu(root);
+    expect(() => composer.savePrompt({ name: "Summary", previousName: "summary", text: "Small" })).toThrow("already");
+    expect(
+      composer
+        .list()
+        .savedPrompts.map((prompt) => prompt.text)
+        .sort(),
+    ).toEqual(["Big", "Small"]);
+  });
+});

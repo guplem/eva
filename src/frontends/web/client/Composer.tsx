@@ -140,11 +140,18 @@ export function Composer({
   );
   // A send awaits the core, so its failure reads the text typed since then here, not from its closure.
   const typed = useRef(text);
+  /** Where the person last put the cursor, or null when they did not, as in a draft that came back. */
+  const caret = useRef<{ start: number; end: number } | null>(null);
+  /** True once the person typed or tapped in the box since Eva last set its text. */
+  const touched = useRef(false);
   const setText = (value: string): void => {
     // A cleared summary stays cleared: without the entry, the box would start with the summary again.
     if (draftKey !== undefined) unsentTexts.set(draftKey, value, summary !== null);
     typed.current = value;
     setTypedText(value);
+    // A new text makes the old cursor wrong, until the person types or taps again.
+    caret.current = null;
+    touched.current = false;
   };
   /**
    * Puts the message of a failed send back. A chat's box can mount again during the send, so the
@@ -160,6 +167,11 @@ export function Composer({
     if (draftKey === undefined) return;
     const follow = (): void => {
       const stored = unsentTexts.find(draftKey) ?? summary ?? "";
+      // The store also tells the box of its own changes. Only another text makes the cursor wrong.
+      if (stored !== typed.current) {
+        caret.current = null;
+        touched.current = false;
+      }
       typed.current = stored;
       setTypedText(stored);
     };
@@ -182,12 +194,11 @@ export function Composer({
   const [undoText, setUndoText] = useState<string | null>(null);
   /** The number of the newest text action run. A run whose number is old ends with no change. */
   const actionRun = useRef(0);
-  /** Where the person last put the cursor, or null when they did not, as in a draft that came back. */
-  const caret = useRef<{ start: number; end: number } | null>(null);
   // The box shows another chat now. A late answer belongs to the old chat's text, so it must not land here.
   useEffect(() => {
     actionRun.current += 1;
     caret.current = null;
+    touched.current = false;
     setRewriting(null);
     setUndoText(null);
   }, [draftKey]);
@@ -216,6 +227,7 @@ export function Composer({
     setText(next.text);
     setUndoText(null);
     caret.current = { start: next.cursor, end: next.cursor };
+    touched.current = true;
     // The cursor goes after the prompt, so the person types on from there.
     requestAnimationFrame(() => {
       box.current?.focus({ preventScroll: true });
@@ -327,11 +339,15 @@ export function Composer({
           onChange={(event) => {
             setText(event.target.value);
             setUndoText(null);
+            touched.current = true;
           }}
-          onSelect={(event) => {
+          onPointerDown={() => {
+            touched.current = true;
+          }}
+          onBlur={(event) => {
+            // A press on the star takes the focus. The cursor counts only when the person placed it.
             const field = event.currentTarget;
-            if (field === document.activeElement)
-              caret.current = { start: field.selectionStart, end: field.selectionEnd };
+            if (touched.current) caret.current = { start: field.selectionStart, end: field.selectionEnd };
           }}
           onPaste={(event) => {
             const pasted = pastedFiles(event.clipboardData);
@@ -340,6 +356,7 @@ export function Composer({
             files.add(pasted);
           }}
           onKeyDown={(event) => {
+            touched.current = true;
             const press = {
               key: event.key,
               shiftKey: event.shiftKey,

@@ -6399,8 +6399,8 @@ test("the message box menu polishes the typed text, puts a saved prompt at the c
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(composer).toHaveValue("helo wrld");
 
-  await composer.focus();
-  await composer.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(0, 0));
+  await composer.click();
+  await composer.press("Control+Home");
   await menuButton.click();
   await page.getByRole("menuitem", { name: "Summary" }).click();
   await expect(composer).toHaveValue("Can you give me a summary of everything that we did so far?helo wrld");

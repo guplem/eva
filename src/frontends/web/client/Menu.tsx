@@ -186,8 +186,11 @@ export function MoreMenu({
         data-tooltip={buttonLabel}
         aria-haspopup="menu"
         aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((isOpen) => !isOpen)}
+        // Not `disabled`: a disabled button drops the focus, and a chosen item gives the focus back to it.
+        aria-disabled={disabled ? true : undefined}
+        onClick={() => {
+          if (!disabled) setOpen((isOpen) => !isOpen);
+        }}
       >
         <Icon name={icon} />
       </button>

@@ -338,7 +338,8 @@ button.danger {
   border-color: var(--bad);
 }
 
-button:disabled {
+button:disabled,
+.more-picker > button[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }

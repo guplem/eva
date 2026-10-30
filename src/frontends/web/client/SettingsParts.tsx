@@ -47,7 +47,10 @@ export interface SettingsContext {
   readonly onLoggedOut: () => void;
 }
 
-/** A titled block of settings. `item` gives it the id that search results and links scroll to, and its "?" (help-links.ts). */
+/**
+ * A titled block of settings. `item` is the id that search results and links scroll to.
+ * `cardHelp` in help-links.ts uses the same id to add the "?".
+ */
 export function Card({
   item,
   title,
@@ -75,11 +78,18 @@ export function Card({
           </span>
         )}
         <div className="card-heading">
-          <h2>{title}</h2>
+          {help === null ? (
+            <h2>{title}</h2>
+          ) : (
+            // The "?" sits by the title, so a wide aside, such as a button, keeps its room on a phone.
+            <div className="card-title-row">
+              <h2>{title}</h2>
+              <HelpLink topic={help} place={title} />
+            </div>
+          )}
           {description !== undefined && <p className="card-description">{description}</p>}
         </div>
         {aside}
-        {help !== null && <HelpLink topic={help} />}
       </header>
       {children !== undefined && <div className="card-body">{children}</div>}
     </section>

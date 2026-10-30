@@ -22,7 +22,6 @@ export const helpTargets = {
   "several-computers": { page: "reference", slug: "several-computers" },
   updates: { page: "reference", slug: "updates" },
   notifications: { page: "reference", slug: "notifications-on-a-device" },
-  "optional-features": { page: "reference", slug: "optional-features" },
   "problems-and-alerts": { page: "reference", slug: "problems-and-alerts" },
 } as const satisfies Readonly<Record<string, HelpTarget>>;
 
@@ -45,7 +44,6 @@ export const cardHelp: Readonly<Partial<Record<string, HelpTopic>>> = {
   devices: "logging-in",
   notifications: "notifications",
   machine: "several-computers",
-  versions: "optional-features",
   "eva-updates": "updates",
 };
 

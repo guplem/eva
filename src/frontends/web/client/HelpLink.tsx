@@ -7,8 +7,9 @@ import { helpRoute, helpTitle, type HelpTopic } from "./help-links.ts";
 import { Icon } from "./icons.tsx";
 import { settingsHash } from "./settings-routes.ts";
 
-export function HelpLink({ topic }: { readonly topic: HelpTopic }): ReactElement {
-  const name = `Help: ${helpTitle(topic)}`;
+/** `place` names the place, so two places of one page that share a topic still have two names. */
+export function HelpLink({ topic, place }: { readonly topic: HelpTopic; readonly place?: string }): ReactElement {
+  const name = place === undefined ? `Help: ${helpTitle(topic)}` : `Help on ${place}: ${helpTitle(topic)}`;
   return (
     <a className="help-link" href={settingsHash(helpRoute(topic))} aria-label={name} data-tooltip={name}>
       <Icon name="help" />

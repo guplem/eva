@@ -21,7 +21,7 @@
 ## Settings
 
 - Add a setting to its section's file (`*Section.tsx`) as a `Card` with an `item` id. Add the same id to `searchEntries` in `client/settings-routes.ts`, so the search finds it.
-- Give a place a "?" help link only where the guide says more than the place. Add its topic to `client/help-links.ts`: a card by its `item` id in `cardHelp`, any other place with `HelpLink`.
+- Give a place a "?" help link only where the guide says more than the place. Add its topic to `client/help-links.ts`. A card adds its `item` id to `cardHelp`. Another place uses `HelpLink`.
 - Write a setup step's guide as numbered `guide-steps` in plain words, for a person who never used a terminal. Give each command a `CommandLine`, so the person copies it.
 
 ## Captures

@@ -91,6 +91,13 @@
 
 /* The "?" that opens the guide at the part that explains a place. It stays faint, so it does not
    pull the eye from the place, and a finger still gets a whole target. */
+/* A long title wraps: the "?" stays by its first line. */
+.card-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
 a.help-link {
   flex: none;
   display: inline-flex;

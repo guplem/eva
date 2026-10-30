@@ -145,7 +145,7 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
 
 ## Motion
 
-Motion gives feedback, shows where a thing comes from, or bridges a change that would jump. An action that a person repeats many times a day does not animate. Motion moves `transform` and `opacity` only.
+Motion gives feedback, shows where a thing comes from, or bridges a change that would jump. An action that a person repeats many times a day does not animate. Motion moves `transform` and `opacity`. A rule that must move more says why in a comment that starts with `Motion exception:`. Examples are the progress fill, the skeleton shimmer, the card flash and the visor.
 
 | Token          | Value                            | Use                                       |
 | -------------- | -------------------------------- | ----------------------------------------- |

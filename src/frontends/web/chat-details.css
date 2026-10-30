@@ -36,7 +36,7 @@
   }
 }
 
-/* The frame still needs the animation end to leave the page, so the motion only gets near instant. */
+/* The frame leaves the page only when the animation ends. So with reduced motion, the animation lasts 1 ms. */
 @media (prefers-reduced-motion: reduce) {
   .chat-panel-frame.opening > .chat-panel,
   .chat-panel-frame.closing > .chat-panel {

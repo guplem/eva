@@ -272,8 +272,8 @@ samp {
   box-sizing: border-box;
 }
 
-/* Eva is an app, not a document: the page never bounces up or down, and a pull never chains to it.
-   Only the vertical axis: a sideways swipe still goes back, as in any page. */
+/* Eva is an app, not a document. The page never bounces up or down, and a pull never chains to it.
+   The rule holds only the vertical axis. A sideways swipe still goes back, as in any page. */
 html {
   overscroll-behavior-y: none;
 }
@@ -2027,7 +2027,7 @@ textarea {
   --dur-fast: 150ms;
   --dur-medium: 220ms;
   --dur-slow: 400ms;
-  /* Things that come in start fast and settle; things that leave start slow and speed away. */
+  /* A thing that comes in starts fast and settles. A thing that leaves starts slow and speeds away. */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   /* The smallest side of a phone button, so a finger hits it. */

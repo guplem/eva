@@ -3349,13 +3349,18 @@ button.small {
   color: var(--bad);
 }
 
-.menu button:disabled {
+.menu button[aria-disabled="true"] {
   color: var(--muted);
   cursor: default;
 }
 
-.menu button:disabled:hover {
+.menu button[aria-disabled="true"]:hover {
   background: transparent;
+}
+
+.menu [role="group"] {
+  display: flex;
+  flex-direction: column;
 }
 
 .menu-group {

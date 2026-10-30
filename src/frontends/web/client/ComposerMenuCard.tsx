@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactElement } from "react";
 import { modelAliases, modelTierName, type ModelAlias } from "../../../shared/engine-port.ts";
 import { api, ApiError, type ComposerMenuItems } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
 
@@ -23,8 +24,8 @@ interface Draft {
 const modelChoices = modelAliases.map((model) => ({ value: model, label: modelTierName(model) }));
 
 export function ComposerMenuCard({ context }: { readonly context: SettingsContext }): ReactElement | null {
-  /** Null until loaded, and when no vault holds the items. */
-  const [items, setItems] = useState<ComposerMenuItems | null>(null);
+  /** "loading" until the read ends, and "none" when no vault holds the items. */
+  const [items, setItems] = useState<ComposerMenuItems | "loading" | "none">("loading");
   const { notify } = context;
 
   useEffect(() => {
@@ -33,17 +34,22 @@ export function ComposerMenuCard({ context }: { readonly context: SettingsContex
       .then(setItems)
       .catch((error: unknown) => {
         // Without a vault, the page shows no card.
+        setItems("none");
         if (!(error instanceof ApiError && error.status === 409)) notify(errorText(error));
       });
   }, [notify]);
 
-  if (items === null) return null;
+  if (items === "none") return null;
+  const description =
+    "The star in the message box opens these. A text action rewrites the typed text with a model and sends nothing. A saved prompt puts its text at the cursor.";
+  if (items === "loading")
+    return (
+      <Card item="composer-menu" title="Message box menu" description={description}>
+        <ProgressBar label="Eva reads the menu from your vault" />
+      </Card>
+    );
   return (
-    <Card
-      item="composer-menu"
-      title="Message box menu"
-      description="The star in the message box opens these. A text action rewrites the typed text with a model and sends nothing. A saved prompt puts its text at the cursor."
-    >
+    <Card item="composer-menu" title="Message box menu" description={description}>
       <ItemList
         kind="text-action"
         title="Text actions"
@@ -141,7 +147,7 @@ function ItemEditor({
   readonly kind: Kind;
   readonly initial: Draft;
   readonly onSaved: (items: ComposerMenuItems) => void;
-  /** Gets null for a new item that had no file. */
+  /** A new item with no file yet goes with no request, so it gets null. */
   readonly onRemoved: (items: ComposerMenuItems | null) => void;
   readonly notify: SettingsContext["notify"];
 }): ReactElement {

@@ -150,8 +150,11 @@ export function Composer({
    * Puts the message of a failed send back. A chat's box can mount again during the send, so the
    * stored draft of the chat is newer than this box's text.
    */
-  const restore = (failed: string): void =>
+  const restore = (failed: string): void => {
     setText(draftKey === undefined ? restoredText(failed, typed.current) : unsentTexts.restore(draftKey, failed));
+    // Undo would bring back a text from before the restored message.
+    setUndoText(null);
+  };
   // A failed send of a box that is gone restores its text to the store, so this box follows the store.
   useEffect(() => {
     if (draftKey === undefined) return;
@@ -177,30 +180,42 @@ export function Composer({
   const [rewriting, setRewriting] = useState<string | null>(null);
   /** The typed text before the last text action, until the person types again. */
   const [undoText, setUndoText] = useState<string | null>(null);
+  /** The number of the newest text action run. A run whose number is old ends with no change. */
+  const actionRun = useRef(0);
+  /** Where the person last put the cursor, or null when they did not, as in a draft that came back. */
+  const caret = useRef<{ start: number; end: number } | null>(null);
+  // The box shows another chat now. A late answer belongs to the old chat's text, so it must not land here.
+  useEffect(() => {
+    actionRun.current += 1;
+    caret.current = null;
+    setRewriting(null);
+    setUndoText(null);
+  }, [draftKey]);
   const showError = useShowError();
   const runAction = async (name: string): Promise<void> => {
     const before = text;
+    actionRun.current += 1;
+    const run = actionRun.current;
     setRewriting(name);
     try {
       const { text: rewritten } = await api.runTextAction(name, session.engine, before);
+      if (run !== actionRun.current) return;
       setText(rewritten);
       setUndoText(before);
     } catch (caught) {
       // The box keeps the typed text, so the person loses nothing.
-      showError(caught);
+      if (run === actionRun.current) showError(caught);
     } finally {
-      setRewriting(null);
+      if (run === actionRun.current) setRewriting(null);
     }
   };
   const insertPrompt = (inserted: string): void => {
-    const field = box.current;
-    const selection =
-      field === null
-        ? { start: text.length, end: text.length }
-        : { start: field.selectionStart, end: field.selectionEnd };
+    // With no cursor from the person, the prompt goes at the end: a browser can put a restored draft's cursor at its start.
+    const selection = caret.current ?? { start: text.length, end: text.length };
     const next = insertedText(text, selection, inserted);
     setText(next.text);
     setUndoText(null);
+    caret.current = { start: next.cursor, end: next.cursor };
     // The cursor goes after the prompt, so the person types on from there.
     requestAnimationFrame(() => {
       box.current?.focus({ preventScroll: true });
@@ -313,6 +328,11 @@ export function Composer({
             setText(event.target.value);
             setUndoText(null);
           }}
+          onSelect={(event) => {
+            const field = event.currentTarget;
+            if (field === document.activeElement)
+              caret.current = { start: field.selectionStart, end: field.selectionEnd };
+          }}
           onPaste={(event) => {
             const pasted = pastedFiles(event.clipboardData);
             if (!takesFiles || pasted.length === 0) return;
@@ -376,10 +396,11 @@ export function Composer({
               <Icon name="clip" />
             </button>
           )}
-          {block === null && menu.textActions.length + menu.savedPrompts.length > 0 && rewriting === null && (
+          {block === null && menu.textActions.length + menu.savedPrompts.length > 0 && (
             <MoreMenu
               icon="star"
               buttonLabel="Text actions and saved prompts"
+              disabled={rewriting !== null}
               label="Text actions and saved prompts"
               above
               items={composerMenuItems(menu, {

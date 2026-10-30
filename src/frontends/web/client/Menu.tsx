@@ -6,6 +6,7 @@
 import {
   Fragment,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -54,17 +55,18 @@ interface MenuListProps {
 export function MenuList({ items, label, className, style, listRef, onClose }: MenuListProps): ReactElement {
   const own = useRef<HTMLDivElement>(null);
   const menu = listRef ?? own;
+  const groupId = useId();
   // A long press opens a menu on a phone, so the Back button closes it, as in the phone's own apps.
   useBackLayer(true, () => onClose(false));
 
   useEffect(() => {
     // No scroll: a fixed menu takes the focus before it is at its place.
-    menu.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+    menu.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
   }, [menu]);
 
   /** Moves the focus by `step` items, or to the first or the last item. */
   const moveFocus = (step: number | "first" | "last"): void => {
-    const buttons = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+    const buttons = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
     const current = buttons.findIndex((button) => button === document.activeElement);
     const next =
       step === "first" ? 0 : step === "last" ? buttons.length - 1 : (current + step + buttons.length) % buttons.length;
@@ -88,30 +90,49 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
     event.stopPropagation();
   };
 
+  const button = (item: MenuItem): ReactElement => (
+    <button
+      key={item.label}
+      role="menuitem"
+      className={item.danger === true ? "danger" : undefined}
+      // Not `disabled`: a turned-off item keeps the focus, so the arrow keys and a screen reader still reach it.
+      aria-disabled={item.disabled === true ? true : undefined}
+      onClick={() => {
+        if (item.disabled === true) return;
+        onClose(false);
+        item.onChoose();
+      }}
+    >
+      <Icon name={item.icon} /> {item.label}
+    </button>
+  );
   return (
     <div className={`menu ${className}`} role="menu" aria-label={label} ref={menu} style={style} onKeyDown={onKeyDown}>
-      {items.map((item, index) => (
-        <Fragment key={`${item.group ?? ""}/${item.label}`}>
-          {item.group !== undefined && item.group !== items[index - 1]?.group && (
-            <span className="menu-group" role="presentation">
-              {item.group}
+      {menuGroups(items).map((group, index) =>
+        group.name === undefined ? (
+          <Fragment key={`items-${String(index)}`}>{group.items.map(button)}</Fragment>
+        ) : (
+          <div key={`group-${String(index)}`} role="group" aria-labelledby={`${groupId}-${String(index)}`}>
+            <span className="menu-group" id={`${groupId}-${String(index)}`}>
+              {group.name}
             </span>
-          )}
-          <button
-            role="menuitem"
-            className={item.danger === true ? "danger" : undefined}
-            disabled={item.disabled === true}
-            onClick={() => {
-              onClose(false);
-              item.onChoose();
-            }}
-          >
-            <Icon name={item.icon} /> {item.label}
-          </button>
-        </Fragment>
-      ))}
+            {group.items.map(button)}
+          </div>
+        ),
+      )}
     </div>
   );
+}
+
+/** Each run of items with one group, in order. Items with no group form runs too. */
+function menuGroups(items: readonly MenuItem[]): { name: string | undefined; items: MenuItem[] }[] {
+  const groups: { name: string | undefined; items: MenuItem[] }[] = [];
+  for (const item of items) {
+    const last = groups.at(-1);
+    if (last !== undefined && last.name === item.group) last.items.push(item);
+    else groups.push({ name: item.group, items: [item] });
+  }
+  return groups;
 }
 
 /** The less common actions of a part of the page. Escape or a tap outside closes it; the arrow keys move between the items. */
@@ -122,6 +143,7 @@ export function MoreMenu({
   icon = "more",
   buttonLabel = "More actions",
   above = false,
+  disabled = false,
 }: {
   readonly items: readonly MenuItem[];
   /** The name that a screen reader reads for the open menu, such as "Chat actions". */
@@ -131,6 +153,8 @@ export function MoreMenu({
   readonly buttonLabel?: string;
   /** The menu opens above the button, for a button at the bottom of the page, such as in the message box. */
   readonly above?: boolean;
+  /** A turned-off button, such as while the message box waits for a model. It stays in place, so nothing moves. */
+  readonly disabled?: boolean;
   /** Pass a ref when the caller must move the focus back to the button, for example after a dialog closes. */
   readonly toggle?: RefObject<HTMLButtonElement | null>;
 }): ReactElement {
@@ -162,6 +186,7 @@ export function MoreMenu({
         data-tooltip={buttonLabel}
         aria-haspopup="menu"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
         <Icon name={icon} />

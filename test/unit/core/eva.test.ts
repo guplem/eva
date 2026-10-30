@@ -649,6 +649,7 @@ describe("Eva", () => {
         tags: [],
         repository: { type: "standard", visibility: "public" },
         drive: true,
+        type: "software",
       });
 
       // 10:30 UTC is 12:30 in Madrid.
@@ -683,6 +684,7 @@ describe("Eva", () => {
       tags: [],
       repository: { type: "standard", visibility: "private" },
       drive: false,
+      type: "software",
     });
 
     expect(result.github).toEqual({ problem: expect.stringContaining("Log in to GitHub") as string });
@@ -735,6 +737,7 @@ describe("Eva", () => {
         tags: [],
         repository: { type: "vibe-coded", visibility: "private" },
         drive: false,
+        type: "software",
       });
 
       expect(result.setup?.problems).toEqual([]);
@@ -806,6 +809,7 @@ describe("Eva", () => {
         tags: [],
         repository: { type: "widget", visibility: "public" },
         drive: false,
+        type: "software",
       });
 
       expect(created).toEqual([{ name: "example-widget", private: false, auto_init: true }]);
@@ -1278,6 +1282,29 @@ describe("Eva", () => {
       expect(instance.sessions.get(asking.id).turns[0]?.projectReports).toMatchObject([
         { projectId: coachId, clone: null, repositories: [], result: "The week is planned." },
       ]);
+    });
+
+    test("the type changes only while the project has no chat and no clone, so no chat changes its kind", async () => {
+      const instance = start(new FakeEngine());
+      const details = { title: "Coach", status: "active" as const, tags: [], repos: [] };
+      const asSoftware = instance.saveProjectDetails(coachId, instance.projectFile(coachId).version, {
+        ...details,
+        type: "software",
+      });
+      expect(asSoftware.details?.type).toBe("software");
+      const back = instance.saveProjectDetails(coachId, asSoftware.version, { ...details, type: "specialist" });
+      await instance.createProjectSession({ projectId: coachId, source: "web" });
+      const caught = (() => {
+        try {
+          return instance.saveProjectDetails(coachId, back.version, { ...details, type: "software" });
+        } catch (error) {
+          return error;
+        }
+      })();
+      expect(isEvaError(caught, "project_invalid")).toBe(true);
+      // The whole-file editor follows the same rule.
+      const edited = back.text.replace("type: specialist\n", "");
+      expect(() => instance.saveProjectFile(coachId, back.version, edited)).toThrow("has chats");
     });
 
     test("a specialist chat takes no file, so it never learns a vault path", async () => {

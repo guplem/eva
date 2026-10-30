@@ -27,6 +27,7 @@ import {
 } from "./branch-path.ts";
 import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
 import { forkedFromText, historyNotice } from "./branch-choices.ts";
+import { chatKind } from "../../../shared/chat-kind.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { endedProjectWork, tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
@@ -317,17 +318,18 @@ function Branch({
   };
 
   /**
-   * A retry of an Assistant answer that changed files asks first whether to undo them (#525).
-   * A retry of a Project chat asks where it runs and from which files of its clone (#523).
+   * A retry of an answer in the vault that changed files asks first whether to undo them (#525):
+   * an Assistant or a specialist answer (#703). A retry of a chat in a clone asks where it runs and
+   * from which files of its clone (#523).
    */
   const retryAnswer = (owner: SessionRecord, index: number): void => {
     const turn = owner.turns[index];
-    if (owner.mode === "project" && turn !== undefined) {
+    if (chatKind(owner) === "project" && turn !== undefined) {
       setBranching({ kind: "retry", sessionId: owner.id, turnIndex: index, turn });
       return;
     }
     runAction(async () => {
-      const preview = owner.mode === "assistant" ? await api.retryUndo(owner.id, index) : null;
+      const preview = chatKind(owner) === "project" ? null : await api.retryUndo(owner.id, index);
       const title = preview === null ? null : undoQuestion(preview);
       if (preview === null || title === null) await api.retry(owner.id, index);
       else setUndoAsk({ sessionId: owner.id, index, title, preview });
@@ -412,7 +414,8 @@ function Branch({
                       <button
                         className="ghost"
                         onClick={() =>
-                          owner.mode === "project"
+                          // A specialist has no clone, so its fork is a branch of the chat (#703).
+                          chatKind(owner) === "project"
                             ? setBranching({
                                 kind: "fork",
                                 sessionId: owner.id,

@@ -80,7 +80,7 @@ describe("stepProblems", () => {
   test("names each failed step, and nothing for a step that worked or did not run", () => {
     const url = { url: "https://github.com/you/x" };
     expect(
-      stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: null, problems: [] } }),
+      stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: null, problems: [] }, chat: null }),
     ).toEqual([]);
     expect(
       stepProblems({
@@ -88,18 +88,39 @@ describe("stepProblems", () => {
         github: { problem: "Name taken." },
         drive: { problem: "No Drive." },
         setup: null,
+        chat: null,
       }),
     ).toEqual([
       "Eva could not create the GitHub repository: Name taken.",
       "Eva could not create the Drive folder: No Drive.",
     ]);
     expect(
-      stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: "s", problems: ["Labels: No."] } }),
+      stepProblems({
+        projectId: "x",
+        github: url,
+        drive: null,
+        setup: { sessionId: "s", problems: ["Labels: No."] },
+        chat: null,
+      }),
     ).toEqual([
       "Eva could not finish part of the repository setup. The setup chat in the project tries again: Labels: No.",
     ]);
     expect(
-      stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: null, problems: ["Labels: No."] } }),
+      stepProblems({
+        projectId: "x",
+        github: url,
+        drive: null,
+        setup: { sessionId: null, problems: ["Labels: No."] },
+        chat: null,
+      }),
     ).toEqual(["Eva could not finish the repository setup: Labels: No."]);
+  });
+
+  test("names the first chat of a specialist that did not start (#703)", () => {
+    const base = { projectId: "x", github: null, drive: null, setup: null };
+    expect(stepProblems({ ...base, chat: { sessionId: "s" } })).toEqual([]);
+    expect(stepProblems({ ...base, chat: { problem: "No engine is ready." } })).toEqual([
+      "Eva could not open a chat with the specialist: No engine is ready.",
+    ]);
   });
 });

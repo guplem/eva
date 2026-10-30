@@ -4,6 +4,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type NewProjectResult, type ProjectDetails, type PublicSettings } from "./api.ts";
+import type { ProjectType } from "../../../core/projects/project-catalog.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import {
   repositoryCatalog,
@@ -19,11 +20,21 @@ import { dialogBackdropClass } from "./Dialog.tsx";
 
 interface NewProjectDialogProps {
   readonly onClose: () => void;
-  /** Runs once the project exists, with the id of its folder. */
-  readonly onCreated: (projectId: string) => void;
+  /** Runs once the project exists, with the id of its folder, and the first chat of a specialist or null. */
+  readonly onCreated: (projectId: string, chatId: string | null) => void;
+}
+
+/** The first chat of a new specialist, which opens in place of the project page. */
+function firstChat(result: NewProjectResult): string | null {
+  // An older Eva sends no chat.
+  const chat = result.chat ?? null;
+  return chat !== null && "sessionId" in chat ? chat.sessionId : null;
 }
 
 export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps): ReactElement {
+  // A specialist is a chat with its own rules in the project folder, with no repository (#703).
+  const [projectType, setProjectType] = useState<ProjectType>("software");
+  const specialist = projectType === "specialist";
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<NonNullable<ProjectDetails["status"]>>("active");
@@ -51,7 +62,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
     if (busy) return;
     // The project exists already, so the list must show it.
     if (created === null) askFirst(onClose);
-    else onCreated(created.projectId);
+    else onCreated(created.projectId, firstChat(created));
   };
   useBackLayer(true, leave);
   useEffect(() => {
@@ -82,10 +93,12 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
         description,
         status,
         tags: splitWords(tags),
-        repository: github && unavailable.github === null && typeReason === null ? { type, visibility } : null,
-        drive: drive && unavailable.drive === null,
+        repository:
+          !specialist && github && unavailable.github === null && typeReason === null ? { type, visibility } : null,
+        drive: !specialist && drive && unavailable.drive === null,
+        type: projectType,
       });
-      if (stepProblems(result).length === 0) onCreated(result.projectId);
+      if (stepProblems(result).length === 0) onCreated(result.projectId, firstChat(result));
       else setCreated(result);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -128,7 +141,11 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
               </div>
             ))}
             <div className="schedule-sheet-actions">
-              <button type="button" className="primary" onClick={() => onCreated(created.projectId)}>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => onCreated(created.projectId, firstChat(created))}
+              >
                 Open the project
               </button>
             </div>
@@ -141,6 +158,22 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
               void create();
             }}
           >
+            <label>
+              Project type
+              <select
+                value={projectType}
+                disabled={busy}
+                onChange={(event) => setProjectType(event.target.value === "specialist" ? "specialist" : "software")}
+              >
+                <option value="software">Software</option>
+                <option value="specialist">Specialist</option>
+              </select>
+              <span className="field-hint">
+                {specialist
+                  ? "A chat with its own rules and memory, such as a coach. It keeps its files in this project folder."
+                  : "Work in repositories, such as an app, a website or a widget. Each chat works in a clone."}
+              </span>
+            </label>
             <label>
               Name
               <input
@@ -186,7 +219,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
                 onChange={(event) => setTags(event.target.value)}
               />
             </label>
-            {settings === null ? (
+            {specialist ? null : settings === null ? (
               <ProgressBar label="Eva reads which steps she can do." />
             ) : (
               <>

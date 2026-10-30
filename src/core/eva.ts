@@ -1825,6 +1825,7 @@ export class Eva {
             name,
           ),
         setUpRepository: (projectId, url) => this.projectWork.setUpRepository(projectId, url),
+        startChat: async (projectId) => (await this.createProjectSession({ projectId, source: "web" })).id,
       },
     );
   }

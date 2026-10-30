@@ -66,5 +66,9 @@ export function stepProblems(result: NewProjectResult): string[] {
       ? "Eva could not finish the repository setup"
       : "Eva could not finish part of the repository setup. The setup chat in the project tries again";
   for (const problem of setup?.problems ?? []) problems.push(`${lead}: ${problem}`);
+  // An older Eva sends no chat.
+  const chat = result.chat ?? null;
+  if (chat !== null && "problem" in chat)
+    problems.push(`Eva could not open a chat with the specialist: ${chat.problem}`);
   return problems;
 }

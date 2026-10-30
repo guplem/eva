@@ -908,8 +908,23 @@ export class ProjectWork {
     }
     const text = change(before);
     checkProjectFile(text);
+    this.checkTypeChange(projectId, before, text);
     if (text !== before) writeFileAtomic(path, text);
     return projectFileOf(text);
+  }
+
+  /**
+   * A chat of a specialist works in the project folder, and a chat of a software project in a clone.
+   * A new type would change the kind of each chat under the person, so it waits for none (#703).
+   */
+  private checkTypeChange(projectId: string, before: string, after: string): void {
+    const typeOf = (text: string): string | undefined => projectFileOf(text).details?.type;
+    if (typeOf(before) === typeOf(after)) return;
+    const project = this.project(projectId);
+    if (project.clones.length > 0)
+      throw new EvaError("project_invalid", `${project.title} has clones. Delete them before you change its type.`);
+    if (this.options.sessions.list().some((chat) => chat.projectId === projectId))
+      throw new EvaError("project_invalid", `${project.title} has chats. Delete them before you change its type.`);
   }
 
   /** The path comes from the project list, never from the id, so an id cannot point outside it. */

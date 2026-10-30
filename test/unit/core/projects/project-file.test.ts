@@ -172,7 +172,7 @@ describe("projectFileOf", () => {
     expect(projectFileOf(file)).toEqual({
       text: file,
       version: fileVersion(file),
-      details: { ...unchanged, created: "2026-01-31T09:15" },
+      details: { ...unchanged, type: "software", created: "2026-01-31T09:15" },
     });
   });
 
@@ -183,8 +183,20 @@ describe("projectFileOf", () => {
       status: null,
       tags: [],
       repos: [],
+      type: "software",
       created: null,
     });
+  });
+});
+
+describe("applyProjectDetails and the project type (#703)", () => {
+  test("a specialist gets the key, software removes it, and a form that sends no type keeps it", () => {
+    const specialist = applyProjectDetails(file, { ...unchanged, repos: [], type: "specialist" });
+    expect(specialist).toContain("type: specialist\n");
+    expect(parseFrontMatter(specialist).frontMatter?.type).toBe("specialist");
+    expect(applyProjectDetails(specialist, { ...unchanged, repos: [] })).toBe(specialist);
+    const software = applyProjectDetails(specialist, { ...unchanged, repos: [], type: "software" });
+    expect(software).not.toContain("type:");
   });
 });
 

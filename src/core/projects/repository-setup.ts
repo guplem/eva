@@ -26,9 +26,11 @@ export interface SetupItem {
 export type DirectFix =
   | {
       readonly kind: "api";
-      readonly method: "PUT" | "PATCH";
+      readonly method: "POST" | "PUT" | "PATCH";
       readonly path: string;
       readonly body: Readonly<Record<string, unknown>> | null;
+      /** True runs it after the commit of the file fixes, such as a ruleset that would refuse that commit. */
+      readonly last?: boolean;
     }
   | {
       readonly kind: "labels";
@@ -62,6 +64,8 @@ export interface SetupReport {
   readonly allFixes: string | null;
   /** Why there is no report, such as a URL that is not on GitHub. */
   readonly problem: string | null;
+  /** For a repository with no type: the type that its files show, such as "widget". */
+  readonly proposedType?: string;
 }
 
 export interface WorkflowFacts {

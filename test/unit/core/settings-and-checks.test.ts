@@ -180,7 +180,8 @@ describe("repository setup", () => {
       expect(await instance.repositorySetup(projectId)).toEqual([
         { repositoryUrl: url, slug: "owner/other-app", type: null, sections: [], allFixes: null, problem: null },
       ]);
-      expect(asked).toEqual([]);
+      // Only a look for a widget manifest, so Eva can propose a type.
+      expect(asked).toEqual(["repos/owner/other-app/contents/eva-widget.json"]);
 
       instance.setRepositoryType(projectId, url, "standard");
       expect(instance.projects().find((project) => project.id === projectId)?.frontMatter.repoTypes).toEqual({
@@ -190,6 +191,33 @@ describe("repository setup", () => {
       expect(report?.type).toBe("standard");
       expect(report?.sections.map((section) => section.title)).toEqual(["Security"]);
       expect(asked).not.toContain("repos/guplem/eva");
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("a repository with no type and an eva-widget.json gets the type widget as a proposal", async () => {
+    const projectId = "2025-04-01-0900-other-app";
+    const url = "https://github.com/owner/other-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - ${url}\n---\n`,
+    );
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: fakeGh(systemProcessRunner),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubRequest: fakeGithub({ "owner/other-app": { files: { "eva-widget.json": "{}" }, labels: [] } }),
+    });
+    try {
+      const [report] = await instance.repositorySetup(projectId);
+      expect(report).toMatchObject({ type: null, proposedType: "widget", sections: [] });
     } finally {
       instance.stop();
     }

@@ -10,7 +10,7 @@ import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { BackButton } from "./MainNav.tsx";
 import { Card, StatusIcon } from "./SettingsParts.tsx";
-import { lightMark, reportSummary, scoreMark } from "./setup-report.ts";
+import { lightMark, proposalText, proposedType, reportSummary, scoreMark } from "./setup-report.ts";
 
 const lightNames: Readonly<Record<SetupItem["light"], string>> = {
   green: "Done",
@@ -192,6 +192,7 @@ function TypeChoice({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const current = repositoryCatalog.find((type) => type.name === report.type);
+  const proposed = proposedType(report) ?? undefined;
   const choose = async (type: string): Promise<void> => {
     setSaving(true);
     setError(null);
@@ -206,8 +207,16 @@ function TypeChoice({
   };
   return (
     <>
-      {report.type === null && (
+      {report.type === null && proposed === undefined && (
         <div className="callout">Pick the type of this repository. Eva then shows the report for that type.</div>
+      )}
+      {report.type === null && proposed !== undefined && (
+        <div className="callout">
+          <p>{proposalText(proposed)}</p>
+          <button type="button" className="outline" disabled={saving} onClick={() => void choose(proposed.name)}>
+            Use {proposed.label}
+          </button>
+        </div>
       )}
       <label className="field">
         <span className="field-label">Repository type</span>

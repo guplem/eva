@@ -65,6 +65,7 @@ import {
   type SetupReport,
 } from "./repository-setup.ts";
 import { repositoryTypeOf, type RepositoryTypeName } from "./repository-types.ts";
+import { manifestPath } from "../widgets/widget-contract.ts";
 
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
@@ -480,7 +481,13 @@ export class ProjectWork {
         const slug = githubSlug(url);
         if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.", null);
         const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
-        if (type === null) return unreadableReport(url, slug, null, null);
+        if (type === null) {
+          const proposed = await this.proposedType(slug);
+          return {
+            ...unreadableReport(url, slug, null, null),
+            ...(proposed === null ? {} : { proposedType: proposed }),
+          };
+        }
         const [target, reference] = await Promise.all([
           this.readFacts(slug),
           type.reference === null ? null : readReference(type.reference),
@@ -493,6 +500,18 @@ export class ProjectWork {
         return { ...type.report(target, reference), repositoryUrl: url };
       }),
     );
+  }
+
+  /** The type that a repository's files show: a widget has its manifest at the root (#688). */
+  private async proposedType(slug: string): Promise<RepositoryTypeName | null> {
+    const request = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.options.gitEnvironment);
+    try {
+      const answer = await request(`repos/${slug}/contents/${manifestPath}`, true);
+      return answer.status === 200 ? "widget" : null;
+    } catch (error) {
+      if (isEvaError(error, "github_failed")) return null;
+      throw error;
+    }
   }
 
   /** The facts of a repository, or the reason that Eva cannot read them. */

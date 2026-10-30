@@ -139,7 +139,7 @@ export function currentNames(): string[] {
     ...schemaNames(pushStoreSchema).map((name) => `machine state/push-subscriptions.json ${name}`),
     ...config
       .filter((name) => isSharedSettingKey(settingKeyOf(name)))
-      .map((name) => `vault .eva/settings.json ${name}`),
+      .map((name) => `vault .eva/settings/settings.json ${name}`),
     ...[
       "version",
       `version=${String(scheduleFormatVersion)}`,

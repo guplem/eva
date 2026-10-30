@@ -30,7 +30,7 @@ describe("assistantBasePrompt", () => {
   });
 
   test("says where the rules for chat names go, so the person can change them in a chat (issue 50)", () => {
-    expect(assistantBasePrompt).toContain("`.eva/chat-names.md`");
+    expect(assistantBasePrompt).toContain("`.eva/settings/chat-names.md`");
   });
 
   test("offers to open a detailed issue in Eva's own repository when the person reports a problem with Eva", () => {

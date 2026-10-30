@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ModelCalls } from "../../../../src/core/model-calls/model-calls.ts";
@@ -32,7 +32,7 @@ function namer(script?: FakeTurnScript): { namer: ChatNamer; engine: FakeEngine 
 }
 
 function writeRules(text: string): void {
-  mkdirSync(join(vault, ".eva"), { recursive: true });
+  mkdirSync(join(vault, ".eva", "settings"), { recursive: true });
   writeFileSync(chatNameRulesPath(vault), text);
 }
 
@@ -106,5 +106,40 @@ describe("the chat namer", () => {
     expect(logs).toEqual([{ level: "warn", message: "A chat name failed: Not logged in" }]);
     const { namer: blank } = namer((request) => FakeEngine.answer(request, ' "" '));
     expect(await blank.name(turn)).toBeNull();
+  });
+});
+
+describe("the chat name rules in the settings folder (#662)", () => {
+  const oldFile = (): string => join(vault, ".eva", "chat-names.md");
+
+  test("the rules live in .eva/settings/", () => {
+    expect(chatNameRulesPath(vault)).toBe(join(vault, ".eva", "settings", "chat-names.md"));
+  });
+
+  test("before the hub moves the files, the namer reads the old file, which an older Eva still writes", () => {
+    mkdirSync(join(vault, ".eva", "settings"), { recursive: true });
+    writeFileSync(oldFile(), "Old rules.\n");
+    writeFileSync(chatNameRulesPath(vault), "New rules.\n");
+    expect(namer().namer.rules()).toBe("Old rules.");
+    writeFileSync(
+      join(vault, ".eva", "migrations.json"),
+      JSON.stringify({ applied: [{ id: "2026-10-30-settings-folder", at: "", version: "1.40.0" }] }),
+    );
+    expect(namer().namer.rules()).toBe("New rules.");
+  });
+
+  test("a save writes both places, so an older satellite reads the new rules", () => {
+    const { namer: rulesNamer } = namer();
+    rulesNamer.saveRules("Lead with an emoji.");
+    expect(readFileSync(chatNameRulesPath(vault), "utf-8")).toBe("Lead with an emoji.\n");
+    expect(readFileSync(oldFile(), "utf-8")).toBe("Lead with an emoji.\n");
+  });
+
+  test("an empty save clears the rules in a vault that has only the old file", () => {
+    mkdirSync(join(vault, ".eva"), { recursive: true });
+    writeFileSync(oldFile(), "Old rules.\n");
+    const { namer: rulesNamer } = namer();
+    rulesNamer.saveRules("");
+    expect(rulesNamer.rules()).toBe("");
   });
 });

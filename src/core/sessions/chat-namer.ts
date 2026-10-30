@@ -1,10 +1,15 @@
 /**
- * Names a chat after its first turn, by the person's rules in the vault's `.eva/chat-names.md`
+ * Names a chat after its first turn, by the person's rules in the vault's `.eva/settings/chat-names.md`
  * (issue 50). Without rules, the chat keeps the first line of its first message, and no model runs.
  */
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
+import {
+  movedSettingsFile,
+  readablePath,
+  settingsFileExists,
+  writeSettingsFile,
+  type VaultSettingsFile,
+} from "../settings/settings-folder.ts";
+import { readTextTolerant } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
 import { cheapestModel, type ModelCalls } from "../model-calls/model-calls.ts";
@@ -21,7 +26,11 @@ const systemPrompt = [
 ].join("\n");
 
 export function chatNameRulesPath(vaultPath: string): string {
-  return join(vaultPath, ".eva", "chat-names.md");
+  return chatNameRulesFile(vaultPath).path;
+}
+
+function chatNameRulesFile(vaultPath: string): VaultSettingsFile {
+  return movedSettingsFile(vaultPath, "chat-names.md");
 }
 
 export interface ChatNamerOptions {
@@ -39,7 +48,7 @@ export class ChatNamer {
 
   /** The person's rules, or an empty text for none. */
   rules(): string {
-    return readTextTolerant(chatNameRulesPath(this.options.vaultPath))?.trim() ?? "";
+    return readTextTolerant(readablePath(chatNameRulesFile(this.options.vaultPath)))?.trim() ?? "";
   }
 
   /** An empty text turns the names off. The idle sweep commits the file, as it does a note. */
@@ -47,8 +56,9 @@ export class ChatNamer {
     assertVaultWritable(this.options.vaultPath);
     const rules = text.trim();
     // A vault without rules keeps no empty file, so the autosave has nothing to commit.
-    if (rules.length === 0 && !existsSync(chatNameRulesPath(this.options.vaultPath))) return;
-    writeFileAtomic(chatNameRulesPath(this.options.vaultPath), rules.length === 0 ? "" : `${rules}\n`);
+    const file = chatNameRulesFile(this.options.vaultPath);
+    if (rules.length === 0 && !settingsFileExists(file)) return;
+    writeSettingsFile(file, rules.length === 0 ? "" : `${rules}\n`);
   }
 
   /** The name, or null to keep the first line. It reads the rules on each call, so an edit applies at once. */

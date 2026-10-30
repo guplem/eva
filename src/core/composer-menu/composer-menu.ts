@@ -12,6 +12,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { ModelCallResult, ModelCalls } from "../model-calls/model-calls.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
+import { vaultSettingsFolder } from "../settings/settings-folder.ts";
 
 export interface TextAction {
   readonly name: string;
@@ -45,11 +46,11 @@ const systemPrompt = [
 ].join("\n");
 
 export function textActionsFolder(vaultPath: string): string {
-  return join(vaultPath, ".eva", "settings", "text-actions");
+  return join(vaultSettingsFolder(vaultPath), "text-actions");
 }
 
 export function savedPromptsFolder(vaultPath: string): string {
-  return join(vaultPath, ".eva", "settings", "saved-prompts");
+  return join(vaultSettingsFolder(vaultPath), "saved-prompts");
 }
 
 export interface ComposerMenuOptions {

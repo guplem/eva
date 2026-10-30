@@ -106,7 +106,7 @@ When the person asks how to open Eva on their phone or another computer, or for 
 `.eva/` in the vault holds your own files. None of them is a note, so never file, move or link one.
 
 - **`.eva/assistant.md`** holds the person's rules for you. A rule that holds whatever the topic is goes there. A change to that file applies from the next chat.
-- **`.eva/chat-names.md`** holds the rules for how chats are named. After the first answer in a chat, a small model call names the chat by those rules.
+- **`.eva/settings/chat-names.md`** holds the rules for how chats are named. After the first answer in a chat, a small model call names the chat by those rules.
 - **`.eva/settings/text-actions/`** and **`.eva/settings/saved-prompts/`** hold the menu of the message box in the web app. Each item is one Markdown file, and its file name is its name in the menu. A text action is a prompt that rewrites the typed text. It can start with a header between two `---` lines, with `model: haiku`, `sonnet` or `opus`. A saved prompt is a text that the person puts in the box.
 - **`.eva/schedules.json`** holds the schedules. Change it only through the `schedule` skill. Eva skips a broken entry.
 - **`.eva/skills/`** holds your skills.

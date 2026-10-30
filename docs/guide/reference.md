@@ -38,7 +38,7 @@ Run these on the computer where Eva runs. Seven commands need Eva to run: `statu
 
 Eva keeps her settings in two places, and her tokens in a third:
 
-- **Your settings live in your vault,** in `.eva/settings.json`, so every computer with the vault uses the same ones.
+- **Your settings live in your vault,** in `.eva/settings/settings.json`, so every computer with the vault uses the same ones.
 - **This computer's settings live in Eva's home folder** (`~/.config/eva-<name>` on Linux, `%APPDATA%\eva-<name>` on Windows, where `<name>` is the name of this Eva), in `config.json`.
   - **The settings that decide who may open Eva, and what an agent may do, are always computer settings.** The table marks them "(security)". Eva's AI agent edits the vault as part of its work, so these never live there.
 - **Tokens live in `secrets.json`** in Eva's home folder, never in the vault: `githubToken`, `telegramBotToken`, `claudeOauthToken`, `localApiToken`, `googleOauthClientId` and `googleOauthClientSecret`.

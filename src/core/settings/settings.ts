@@ -1,10 +1,10 @@
 /**
- * The settings of a person live in the vault, in `.eva/settings.json`, so every machine with the
+ * The settings of a person live in the vault, in `.eva/settings/settings.json`, so every machine with the
  * vault uses the same ones. The settings of one machine, such as the vault folder,
  * the port and the program paths, stay in the home's `config.json`. Secrets never go in the vault.
  */
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { movedSettingsFile, readablePath, writeSettingsFile, type VaultSettingsFile } from "./settings-folder.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { defaultConfig, parseConfig, saveConfig, type EvaConfig, type HomePaths } from "./home.ts";
@@ -58,7 +58,11 @@ export interface LoadedSettings {
 }
 
 export function vaultSettingsPath(vaultPath: string): string {
-  return join(vaultPath, ".eva", "settings.json");
+  return vaultSettingsFile(vaultPath).path;
+}
+
+function vaultSettingsFile(vaultPath: string): VaultSettingsFile {
+  return movedSettingsFile(vaultPath, "settings.json");
 }
 
 /** The machine's `config.json`, with the machine's own defaults, and the vault's settings on top. */
@@ -75,7 +79,7 @@ export function loadSettings(paths: HomePaths): LoadedSettings {
  */
 export function withVaultSettings(config: EvaConfig): LoadedSettings {
   if (config.vaultPath === null) return { config, problem: null };
-  const file = vaultSettingsPath(config.vaultPath);
+  const file = readablePath(vaultSettingsFile(config.vaultPath));
   const read = readJsonTolerant(file);
   if (!read.ok) return { config, problem: read.reason === "missing" ? null : `${file} is not valid JSON.` };
   if (!isObject(read.value)) return { config, problem: `${file} does not hold a JSON object.` };
@@ -107,7 +111,7 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
   }
   writeFileAtomic(paths.config, toJson(machine));
   if (!ahead)
-    writeFileAtomic(vaultSettingsPath(vaultPath), toJson(withOldVaultKeys(pickKeys(config, sharedSettingKeys))));
+    writeSettingsFile(vaultSettingsFile(vaultPath), toJson(withOldVaultKeys(pickKeys(config, sharedSettingKeys))));
 }
 
 /** A config with a change, such as `{ updates: { frequency: "weekly" } }`, on top. Throws on a bad value. */

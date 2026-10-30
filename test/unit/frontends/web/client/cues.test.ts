@@ -274,11 +274,12 @@ describe("canVibrate", () => {
 });
 
 describe("cueOfClick", () => {
-  /** A click on a button with this `data-cue` and this `aria-disabled`. */
-  const target = (cue?: string, ariaDisabled: string | null = null): EventTarget => {
+  /** A click on a button with this `data-cue`, this `aria-disabled` and this `aria-busy`. */
+  const target = (cue?: string, ariaDisabled: string | null = null, ariaBusy: string | null = null): EventTarget => {
+    const attributes: Record<string, string | null> = { "aria-disabled": ariaDisabled, "aria-busy": ariaBusy };
     const button = {
       dataset: cue === undefined ? {} : { cue },
-      getAttribute: (name: string): string | null => (name === "aria-disabled" ? ariaDisabled : null),
+      getAttribute: (name: string): string | null => attributes[name] ?? null,
     };
     return { closest: () => button } as unknown as EventTarget;
   };
@@ -301,6 +302,10 @@ describe("cueOfClick", () => {
 
   test("a button with aria-disabled false keeps its cue", () => {
     expect(cueOfClick(target(undefined, "false"))).toBe("tap");
+  });
+
+  test("a turned-off button that is busy keeps its cue: it only waits", () => {
+    expect(cueOfClick(target(undefined, "true", "true"))).toBe("tap");
   });
 
   test("a click outside a button stays silent", () => {

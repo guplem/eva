@@ -371,7 +371,7 @@ export function canVibrate(devices: CueDevices = browserDevices): boolean {
 /**
  * Loads the levels and the palette, and plays a cue on each button press of the page. A button picks its cue
  * with `data-cue`, and `data-cue="none"` keeps it silent, as for a button whose action plays its own cue.
- * A button turned off with `aria-disabled` plays the problem cue, so a press on an action that cannot run
+ * A button turned off with `aria-disabled`, and not busy, plays the problem cue, so a press on an action that cannot run
  * never passes in silence (issue 674).
  */
 export function startCues(root: Pick<Document, "addEventListener"> = document): void {
@@ -389,7 +389,8 @@ export function cueOfClick(target: EventTarget | null): Cue | null {
   const button = element?.closest?.("button:not(:disabled)") ?? null;
   if (button === null) return null;
   // A native `disabled` button gets no click at all, so only `aria-disabled` can tell the person.
-  if (button.getAttribute("aria-disabled") === "true") return "problem";
+  // A busy button only waits: a second press is no error.
+  if (button.getAttribute("aria-disabled") === "true" && button.getAttribute("aria-busy") !== "true") return "problem";
   const named = button.dataset["cue"];
   if (named === "none") return null;
   return cues.find((cue) => cue === named) ?? "tap";

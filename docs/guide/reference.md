@@ -228,9 +228,14 @@ A request from Eva's own computer can come from any program there, so only the t
 ## Projects
 
 - **Create a project:** open **Projects** in the web app and tap **New project**. Give a name, a short description, a status and tags. Eva makes the folder `Projects/<date>-<time>-<name>/` in the vault, with its `AGENTS.md`.
-  - Tick **Create a private GitHub repository** to get a repository in your GitHub account. It takes the folder name without the date and time.
+  - Tick **Create a GitHub repository** to get a repository in your GitHub account. It takes the folder name without the date and time.
+  - Pick its type. **Standard** gets a first commit and the security items that GitHub offers. **Vibe-coded** follows the [vibe-coded standard](../vibe-coded-standard.md): Eva sets up what she can, then opens a project chat for the rest. That chat merges its own pull request.
+  - Pick **Private** or **Public**. A private vibe-coded repository uses the CI minutes of your GitHub account, and some guards of the standard need a paid plan.
   - Tick **Create a Google Drive folder** to get a folder in your Drive. It needs the Drive access "Read and change", in **Settings > Connections > Google**.
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
+- **Repository setup:** open it from the project page. It checks each repository by its type. A repository with no type, such as one that you added by hand, shows no report: pick its type first.
+  - **Fix** on an item that a command can fix runs it on GitHub at once. Press **Refresh** to see the item turn green. Any other **Fix** opens a chat with the request.
+  - **Fix all** runs every fix that a command can do. Then it opens one chat for the rest, when something is left.
 - **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, but no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
 - **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
   - All its work is on GitHub.

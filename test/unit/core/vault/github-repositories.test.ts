@@ -151,6 +151,20 @@ describe("createGitHubRepository", () => {
     });
   });
 
+  test("a public project repository is public", async () => {
+    const api = fakeApi({ status: 201, body: repository("you/example-app") });
+
+    await createGitHubRepository({
+      token: "secret-token",
+      name: "example-app",
+      initialize: true,
+      visibility: "public",
+      baseUrl: api.baseUrl,
+    });
+
+    expect(JSON.parse(api.requests[0]?.body ?? "{}")).toMatchObject({ private: false });
+  });
+
   test("a name that exists says so", async () => {
     const api = fakeApi({
       status: 422,

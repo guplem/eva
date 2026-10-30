@@ -164,7 +164,9 @@ async function setUp(browser: Browser): Promise<Demo> {
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
   );
-  await page.locator(".main-header > button").filter({ hasText: "New chat" }).click();
+  // "New chat" asks for the kind of chat (issue 657).
+  await page.locator(".main-header > .more-picker > button").filter({ hasText: "New chat" }).click();
+  await page.getByRole("menuitem", { name: "In a clone" }).click();
   const projectChat = ((await (await created).json()) as { id: string }).id;
   await send(page, "Run the tests and list what fails.");
   // Only the first chat in a clone asks to trust its repository.

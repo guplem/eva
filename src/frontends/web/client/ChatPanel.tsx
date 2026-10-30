@@ -3,13 +3,18 @@
  * such as subagents and background commands, and a way to fork it. A computer shows them in the
  * inspector column. A phone shows the same content in a bottom sheet from the chat header.
  */
-import { useCallback, useState, type CSSProperties, type ReactElement } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactElement } from "react";
+import type { ContextPart } from "../../../shared/chat-context.ts";
 import { takesEffort } from "../../../shared/engine-port.ts";
 import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
+import { CopyButton } from "./CopyButton.tsx";
 import { Dialog } from "./Dialog.tsx";
+import { ListSkeleton } from "./Loading.tsx";
 import { api, type SessionRecord } from "./api.ts";
 import {
   contextFigure,
+  contextSections,
+  partIcon,
   contextShare,
   engineLabel,
   branchForkPoint,
@@ -143,6 +148,87 @@ function ForkButton({
   );
 }
 
+/** One part's whole text. A part that only the engine can read shows why instead. */
+function ContextPartDialog({
+  part,
+  onClose,
+}: {
+  readonly part: ContextPart;
+  readonly onClose: () => void;
+}): ReactElement {
+  return (
+    <Dialog label={part.title} onClose={onClose} scrimCloses>
+      <strong>{part.title}</strong>
+      {part.source !== null && <p className="context-source">{part.source}</p>}
+      {part.note !== null && <p className="task-note">{part.note}</p>}
+      {part.text !== null && (
+        <>
+          <pre className="context-full-text">{part.text}</pre>
+          <CopyButton text={part.text} />
+        </>
+      )}
+    </Dialog>
+  );
+}
+
+/**
+ * Each part of the chat's context that the agent reads before the conversation, by group, such as
+ * the prompt and the instruction files. Eva reads them again after each answer. A tap shows a part's text.
+ */
+function ChatContext({ sessionId, answers }: { readonly sessionId: string; readonly answers: number }): ReactElement {
+  const [parts, setParts] = useState<readonly ContextPart[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState<ContextPart | null>(null);
+  const close = useCallback(() => setOpen(null), []);
+  useEffect(() => {
+    let current = true;
+    api.chatContext(sessionId).then(
+      (found) => {
+        if (!current) return;
+        setParts(found);
+        setFailed(false);
+      },
+      () => {
+        if (current) setFailed(true);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [sessionId, answers]);
+  return (
+    <>
+      <h3>Context</h3>
+      {failed ? (
+        <p className="task-empty">Eva could not read the context of this chat.</p>
+      ) : parts === null ? (
+        <ListSkeleton label="Reading the context…" rows={3} />
+      ) : (
+        <>
+          {/* Claude Code keeps the prompt of a chat's first request until it compacts the chat (lesson 115). */}
+          <p className="task-note">Eva shows each part as it is now. A running chat can still use an older copy.</p>
+          {contextSections(parts).map((section) => (
+            <section key={section.label} className="context-group" aria-label={section.label}>
+              <span className="context-group-label">{section.label}</span>
+              <ul className="context-list">
+                {section.parts.map((part, index) => (
+                  <li key={`${part.title}-${String(index)}`}>
+                    <button className="context-part" onClick={() => setOpen(part)}>
+                      <Icon name={partIcon(part)} />
+                      <span className="context-part-title">{part.title}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </>
+      )}
+      {open !== null && <ContextPartDialog part={open} onClose={close} />}
+    </>
+  );
+}
+
 /** The address of a chat opens it in its own view, whatever its mode. */
 function ChatLink({ chat }: { readonly chat: SessionRecord }): ReactElement {
   return <a href={`#/chat/${encodeURIComponent(chat.id)}`}>{chat.title}</a>;
@@ -150,6 +236,7 @@ function ChatLink({ chat }: { readonly chat: SessionRecord }): ReactElement {
 
 function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatProps): ReactElement {
   const root = tree[0];
+  const shown = tree.find((session) => session.id === shownId) ?? root;
   const links = chatLinks(tree, sessions);
   return (
     <>
@@ -205,6 +292,9 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatP
         empty={root?.engine === "pi" ? "pi does not report background tasks." : "No background task runs now."}
       />
       <ForkButton tree={tree} onChanged={onChanged} shownId={shownId} />
+      {/* A fork can run on another engine, so the branch in view gives the context. */}
+      {/* The key starts each chat with no parts, so another chat's parts never show while Eva reads. */}
+      {shown !== undefined && <ChatContext key={shown.id} sessionId={shown.id} answers={shown.turns.length} />}
     </>
   );
 }

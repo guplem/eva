@@ -16,6 +16,8 @@ export interface ProjectFrontMatter {
   readonly repos: readonly string[];
   readonly tags: readonly string[];
   readonly legacyId: string | null;
+  /** The type name of each repository address of `repos`, from the `repo_types` key (#681). */
+  readonly repoTypes: Readonly<Record<string, string>>;
   /** Every key Eva does not know, kept as it is. */
   readonly extra: Readonly<Record<string, unknown>>;
 }
@@ -44,7 +46,9 @@ export interface Project {
 }
 
 const statuses: readonly ProjectStatus[] = ["idea", "active", "paused", "closed"];
-const knownKeys = new Set(["created", "status", "repos", "tags", "legacy_id"]);
+const knownKeys = new Set(["created", "status", "repos", "tags", "legacy_id", "repo_types"]);
+/** The warning of a `repo_types` value that is not a map of text values. */
+export const repoTypesWarning = "repo_types must map each repository to its type";
 export const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export function parseFrontMatter(text: string): FrontMatterResult {
@@ -76,9 +80,14 @@ export function parseFrontMatter(text: string): FrontMatterResult {
   const tags = readTextList(fields["tags"]);
   if (tags === null) warnings.push("tags must be a list");
   const legacyId = typeof fields["legacy_id"] === "string" ? fields["legacy_id"] : null;
+  const repoTypes = readTextMap(fields["repo_types"]);
+  if (repoTypes === null) warnings.push(repoTypesWarning);
 
   const extra = Object.fromEntries(Object.entries(fields).filter(([key]) => !knownKeys.has(key)));
-  return { frontMatter: { created, status, repos: repos ?? [], tags: tags ?? [], legacyId, extra }, warnings };
+  return {
+    frontMatter: { created, status, repos: repos ?? [], tags: tags ?? [], legacyId, repoTypes: repoTypes ?? {}, extra },
+    warnings,
+  };
 }
 
 export interface DiscoveryOptions {
@@ -280,6 +289,16 @@ function readTextList(value: unknown): string[] | null {
   if (value === undefined || value === null || value === "") return [];
   if (!Array.isArray(value)) return null;
   return value.every((item) => typeof item === "string") ? value : null;
+}
+
+/** A map of text keys to text values, or null when the value is another shape. */
+function readTextMap(value: unknown): Record<string, string> | null {
+  if (value === undefined || value === null || value === "") return {};
+  if (typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>);
+  return entries.every((entry): entry is [string, string] => typeof entry[1] === "string")
+    ? Object.fromEntries(entries)
+    : null;
 }
 
 function isDirectory(path: string): boolean {

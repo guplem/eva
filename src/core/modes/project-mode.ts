@@ -20,7 +20,13 @@ import {
 } from "../projects/clones.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
-import type { PrepareContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
+import type {
+  ModeContext,
+  PrepareContext,
+  PreparedTurn,
+  TurnOutcome,
+  TurnPreparer,
+} from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
 export interface ProjectPreparerOptions {
@@ -55,6 +61,22 @@ export class ProjectPreparer implements TurnPreparer {
       mcpServers: {},
       trusted: await this.isCloneTrusted(session.startFolder, context),
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
+    };
+  }
+
+  /** Eva adds no part of her own. A clone with no answer yet counts as untrusted, as its turn would without one. */
+  async describe(session: SessionRecord): Promise<ModeContext> {
+    const noAnswer = { ask: () => Promise.resolve("expired" as const) };
+    return {
+      parts: [],
+      engine: {
+        mode: "project",
+        startFolder: session.startFolder,
+        projectFolder: projectFolderOf(session.startFolder, session.clone),
+        trusted: await this.isCloneTrusted(session.startFolder, noAnswer),
+        pluginFolders: [],
+        environment: this.options.environment,
+      },
     };
   }
 

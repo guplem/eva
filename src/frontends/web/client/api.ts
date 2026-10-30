@@ -31,7 +31,13 @@ import type { Clone, CloneDetails, RepositoryDetails } from "../../../core/proje
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
-import type { BranchResult, CloneFetch, ForkFiles, RetryChoice } from "../../../core/projects/project-work.ts";
+import type {
+  BranchResult,
+  CloneFetch,
+  ForkFiles,
+  RepositoryFixResult,
+  RetryChoice,
+} from "../../../core/projects/project-work.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
@@ -54,6 +60,7 @@ import type {
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
 import type { UndoPreview } from "../../../core/vault/vault-snapshots.ts";
+import type { ContextPart } from "../../../shared/chat-context.ts";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { QuestionAnswers, SessionEvent } from "../../../shared/events.ts";
 import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
@@ -176,6 +183,9 @@ export const api = {
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status", undefined, { limit: quickRead }),
   sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions", undefined, { limit: quickRead }),
+  /** Each part of the chat's context that the agent reads before the conversation, such as its prompt. */
+  chatContext: (sessionId: string): Promise<ContextPart[]> =>
+    request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/context`),
   /** The whole input and output of one step of a stored answer. Null when Eva kept none. */
   stepDetail: (sessionId: string, stepId: string): Promise<{ input: string | null; output: string | null }> =>
     request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(stepId)}`),
@@ -275,6 +285,15 @@ export const api = {
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/clones`),
   repositorySetup: (projectId: string): Promise<SetupReport[]> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/setup`),
+  setRepositoryType: (projectId: string, repository: string, type: string): Promise<ProjectFile> =>
+    request("PUT", `/api/projects/${encodeURIComponent(projectId)}/setup/type`, { repository, type }),
+  /** Runs the direct fixes of the named items, or of all of them for null. */
+  fixRepository: (
+    projectId: string,
+    repository: string,
+    items: readonly string[] | null,
+  ): Promise<RepositoryFixResult> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/setup/fix`, { repository, items }),
   projectFile: (projectId: string): Promise<ProjectFile> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/file`),
   /** A file that changed since `version` answers 409. */

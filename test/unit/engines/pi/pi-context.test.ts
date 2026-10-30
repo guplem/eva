@@ -68,3 +68,43 @@ describe("describePiContext", () => {
     expect(skills).toEqual(["from-eva", "from-pi-folder", "from-agents-folder", "from-agent", "from-home"]);
   });
 });
+
+describe("describePiContext, pi 1.4 rules", () => {
+  test("reads AGENTS.override.md first, and skips a folder with that name", () => {
+    write(join(clone, "AGENTS.override.md"), "Override rules.");
+    write(join(clone, "AGENTS.md"), "Not read: the override comes first.");
+    mkdirSync(join(folder, "AGENTS.override.md"));
+    write(join(folder, "AGENTS.md"), "Outer rules.");
+    const instructions = describePiContext(input()).filter((part) => part.group === "instructions");
+    expect(instructions.map((part) => part.text)).toEqual(["Outer rules.", "Override rules."]);
+  });
+
+  test("lists SYSTEM.md and, in a Project chat, APPEND_SYSTEM.md, with the folder's file first", () => {
+    write(join(agent, "SYSTEM.md"), "Agent system.");
+    write(join(clone, ".pi", "SYSTEM.md"), "Folder system.");
+    write(join(agent, "APPEND_SYSTEM.md"), "Agent append.");
+    const prompts = (mode: EngineContextInput["mode"]): [string, string | null, string | null][] =>
+      describePiContext(input({ mode }))
+        .filter((part) => part.group === "prompt")
+        .map((part) => [part.title, part.text, part.note]);
+    expect(prompts("project")).toEqual([
+      ["pi's prompt", null, "A SYSTEM.md file takes the place of pi's own prompt when pi reads it."],
+      ["pi's prompt file", "Folder system.", "pi reads this only when it trusts the folder."],
+      ["Added to pi's prompt", "Agent append.", null],
+    ]);
+    // Eva's own prompt takes the place of APPEND_SYSTEM.md in an Assistant chat.
+    expect(prompts("assistant").map(([title]) => title)).toEqual(["pi's prompt", "pi's prompt file"]);
+  });
+
+  test("notes that the skills of the folder need pi's own trust", () => {
+    write(join(clone, ".pi", "skills", "folder-skill", "SKILL.md"), "From the folder.");
+    write(join(agent, "skills", "agent-skill", "SKILL.md"), "From the agent folder.");
+    const notes = describePiContext(input())
+      .filter((part) => part.group === "skills")
+      .map((part) => [part.title, part.note]);
+    expect(notes).toEqual([
+      ["folder-skill", "pi reads this only when it trusts the folder."],
+      ["agent-skill", null],
+    ]);
+  });
+});

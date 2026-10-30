@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { instructionPart, shownPath, skillParts } from "../../../src/shared/context-files.ts";
+import { instructionPart, instructionPartsIn, shownPath, skillParts } from "../../../src/shared/context-files.ts";
 
 let folder: string;
 
@@ -58,5 +58,40 @@ describe("skillParts", () => {
 
   test("gives no skill for a missing folder", () => {
     expect(skillParts(join(folder, "missing"))).toEqual([]);
+  });
+});
+
+describe("skillParts and links", () => {
+  test("follows a link to a skill folder, as the engines do", () => {
+    const target = join(folder, "elsewhere", "linked-skill");
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, "SKILL.md"), "A linked skill.");
+    mkdirSync(join(folder, "skills"));
+    symlinkSync(target, join(folder, "skills", "linked-skill"), "junction");
+    expect(skillParts(join(folder, "skills")).map((part) => part.text)).toEqual(["A linked skill."]);
+  });
+});
+
+describe("instructionPartsIn", () => {
+  test("lists each Markdown file of a folder and its subfolders, and none for a missing folder", () => {
+    mkdirSync(join(folder, "rules", "deep"), { recursive: true });
+    writeFileSync(join(folder, "rules", "a.md"), "A.");
+    writeFileSync(join(folder, "rules", "deep", "b.md"), "B.");
+    writeFileSync(join(folder, "rules", "c.txt"), "C.");
+    expect(instructionPartsIn(join(folder, "rules"), folder).map((part) => part.title)).toEqual([
+      join("rules", "a.md"),
+      join("rules", "deep", "b.md"),
+    ]);
+    expect(instructionPartsIn(join(folder, "missing"), folder)).toEqual([]);
+  });
+});
+
+describe("instructionPartsIn and links", () => {
+  test("reads each real folder once, so a link back to a folder above cannot loop", () => {
+    mkdirSync(join(folder, "rules"));
+    writeFileSync(join(folder, "rules", "a.md"), "A.");
+    symlinkSync(join(folder, "rules"), join(folder, "rules", "loop"), "junction");
+    symlinkSync(join(folder, "rules"), join(folder, "rules", "again"), "junction");
+    expect(instructionPartsIn(join(folder, "rules"), folder).map((part) => part.text)).toEqual(["A."]);
   });
 });

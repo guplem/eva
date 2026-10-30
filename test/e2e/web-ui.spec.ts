@@ -1796,7 +1796,7 @@ test("the address of a fork opens that fork, even when another branch is newer",
   await expect(start).toContainText("Fork 1 · 2 of 2");
 });
 
-test("Project mode: the repository setup shows each item's light, and Fix opens a chat with the fix", async ({
+test("Project mode: the repository setup shows each item's light; Fix runs a direct fix, or opens a chat", async ({
   page,
 }) => {
   await logIn(page);
@@ -1815,15 +1815,19 @@ test("Project mode: the repository setup shows each item's light, and Fix opens 
   await expect(
     report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),
   ).toBeVisible();
+  // Eva copies a skill herself, so its Fix opens no chat.
   const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
   await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
-  await skill.getByRole("button", { name: "Fix Skill write-commit in a new chat" }).click();
+  await skill.getByRole("button", { name: "Fix Skill write-commit now" }).click();
+  await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
+  report = page.getByRole("region", { name: "example-owner/example-app" });
+  // Git hooks depend on the project's stack, so a coding agent adds them.
+  const hooks = report.locator(".setup-item", { hasText: "Git hooks" });
+  await hooks.getByRole("button", { name: "Fix Git hooks in a new chat" }).click();
   // The fix waits in the box of a new chat with Eva. The person sends it.
   await expect(page).toHaveURL(/#\/chats\/new$/);
   const box = page.getByRole("region", { name: "New chat", exact: true }).getByRole("textbox", { name: "Message" });
-  await expect(box).toHaveValue(
-    /^@project:2025-03-02-1015-example-app In example-owner\/example-app, add the skill `write-commit`/,
-  );
+  await expect(box).toHaveValue(/^@project:2025-03-02-1015-example-app In example-owner\/example-app, add git hooks/);
   // Other tests share the New chat page, so its text goes away.
   await box.fill("");
 
@@ -1833,7 +1837,9 @@ test("Project mode: the repository setup shows each item's light, and Fix opens 
   await expect(page).toHaveURL(/#\/chats\/new$/);
   await expect(box).toHaveValue(/^@project:2025-03-02-1015-example-app /);
   await expect(box).toHaveValue(/Open one pull request for all the file changes\./);
-  await expect(box).toHaveValue(/allow_auto_merge=true/);
+  // Eva turned auto-merge on herself, so the chat gets only the rest.
+  await expect(box).not.toHaveValue(/allow_auto_merge=true/);
+  await expect(box).toHaveValue(/add git hooks/);
   await box.fill("");
 });
 

@@ -14,7 +14,36 @@ export interface SetupItem {
   readonly detail: string;
   /** A request for a coding agent that runs on the repository, or steps for the person. Null when green. */
   readonly fixRequest: string | null;
+  /** What Eva runs herself to fix the item, with no chat. None when only a chat or the person can fix it. */
+  readonly directFix?: DirectFix;
 }
+
+/**
+ * A fix that Eva runs through the GitHub API (`repository-fixes.ts`). `api`: one call. `labels`:
+ * copy labels from a repository and delete others. `files`: make files exact copies of those of a
+ * repository, in one commit on the branch.
+ */
+export type DirectFix =
+  | {
+      readonly kind: "api";
+      readonly method: "PUT" | "PATCH";
+      readonly path: string;
+      readonly body: Readonly<Record<string, unknown>> | null;
+    }
+  | {
+      readonly kind: "labels";
+      readonly source: string;
+      readonly add: readonly string[];
+      readonly remove: readonly string[];
+    }
+  | {
+      readonly kind: "files";
+      readonly source: string;
+      readonly branch: string;
+      /** Each path and the blob SHA of its content in the source. */
+      readonly files: Readonly<Record<string, string>>;
+      readonly remove: readonly string[];
+    };
 
 export interface SetupSection {
   readonly title: string;
@@ -29,7 +58,7 @@ export interface SetupReport {
   /** The name of the repository's type in `repository-types.ts`, or null: no known type, so no report. */
   readonly type: string | null;
   readonly sections: readonly SetupSection[];
-  /** Every fix request that a coding agent can do, as one request. Null: nothing to fix. */
+  /** Every fix request that needs a coding agent, as one request. Null: nothing for a chat to fix. */
   readonly allFixes: string | null;
   /** Why there is no report, such as a URL that is not on GitHub. */
   readonly problem: string | null;
@@ -158,12 +187,21 @@ export function unreadableReport(
   return { repositoryUrl, slug, type, sections: [], allFixes: null, problem };
 }
 
-/** One request for every fix of the red and yellow items. A grey item's steps are for the person. */
+/**
+ * One request for the fixes of the red and yellow items that Eva cannot run herself. A grey item's
+ * steps are for the person.
+ */
 function joinFixes(slug: string, sections: readonly SetupSection[]): string | null {
-  const fixes = sections.flatMap((section) =>
-    section.items.flatMap((item) =>
-      item.light === "grey" || item.fixRequest === null ? [] : [item.fixRequest.replace(pullRequestStep, "")],
-    ),
+  return chatRequest(
+    slug,
+    sections.flatMap((section) => section.items.filter((item) => item.directFix === undefined)),
+  );
+}
+
+/** One request for a coding agent, for the fixes of these items. Null: none of them needs a fix. */
+export function chatRequest(slug: string, items: readonly SetupItem[]): string | null {
+  const fixes = items.flatMap((item) =>
+    item.light === "grey" || item.fixRequest === null ? [] : [item.fixRequest.replace(pullRequestStep, "")],
   );
   if (fixes.length === 0) return null;
   return `In ${slug}, make each change below. Open one pull request for all the file changes. A command that changes a GitHub setting needs no pull request.\n\n${fixes.map((fix) => `- ${fix}`).join("\n")}`;
@@ -216,6 +254,7 @@ function skillItems(context: Context): SetupItem[] {
         light: "yellow",
         detail: "Outdated.",
         fixRequest: `In ${context.target.slug}, make \`.agents/skills/${name}/\` an exact copy of ${link}. Put rules that fit only this project in \`AGENTS.md\` instead.${pullRequestStep}`,
+        directFix: copyFix(context, name, present),
       };
     }
     const where = `.claude/skills/${name}/`;
@@ -232,8 +271,22 @@ function skillItems(context: Context): SetupItem[] {
       light: "red",
       detail: "Missing.",
       fixRequest: `In ${context.target.slug}, add the skill \`${name}\`: copy ${link} to \`.agents/skills/${name}/\`. Add a line to \`AGENTS.md\` that tells agents when to use it.${pullRequestStep}`,
+      directFix: copyFix(context, name, new Map()),
     };
   });
+}
+
+/** Makes `.agents/skills/<name>/` an exact copy of the reference's folder. */
+function copyFix(context: Context, name: string, present: ReadonlyMap<string, string>): DirectFix {
+  const folder = `.agents/skills/${name}/`;
+  const wanted = filesUnder(context.reference.files ?? {}, folder);
+  return {
+    kind: "files",
+    source: context.reference.slug,
+    branch: context.target.defaultBranch,
+    files: Object.fromEntries([...wanted].map(([path, sha]) => [folder + path, sha])),
+    remove: [...present.keys()].filter((path) => !wanted.has(path)).map((path) => folder + path),
+  };
 }
 
 function labelItem(context: Context): SetupItem {
@@ -265,6 +318,7 @@ function labelItem(context: Context): SetupItem {
       .filter((part) => part !== "")
       .join(" "),
     fixRequest: `In ${slug}: ${add}${remove}`.trim(),
+    directFix: { kind: "labels", source: context.reference.slug, add: missing, remove: defaults },
   };
 }
 
@@ -417,6 +471,7 @@ function settingItem(context: Context, label: string, isOn: boolean | null, fiel
       `gh api -X PATCH repos/${context.target.slug} -F ${field}=true`,
       `turn on the setting so that ${effect}`,
     ),
+    directFix: { kind: "api", method: "PATCH", path: `repos/${context.target.slug}`, body: { [field]: true } },
   };
 }
 
@@ -434,7 +489,7 @@ function harnessItems(context: Context): SetupItem[] {
         label: labels[0] ?? "",
         light: "red",
         detail: "Missing. Most coding harnesses read AGENTS.md.",
-        fixRequest: `In ${slug}, write the agent rules in a short root \`AGENTS.md\`, as ${agentsExample} does. Move any rules from harness files into it.${pullRequestStep}`,
+        fixRequest: `In ${slug}, write the agent rules in a short root \`AGENTS.md\`, as ${agentsExample} does. Move any rules from harness files into it. Name each skill of \`.agents/skills/\` in it, with when to use it.${pullRequestStep}`,
       };
 
   // Claude Code reads AGENTS.md only when no CLAUDE.md exists in the folder or above it.
@@ -507,6 +562,8 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
   // The bracket form of -f works in every shell, unlike a piped JSON body.
   const securityPatch = (field: string): string =>
     `gh api -X PATCH repos/${slug} -f "security_and_analysis[${field}][status]=enabled"`;
+  const securityCall = (field: string): DirectFix =>
+    call("PATCH", `repos/${slug}`, { security_and_analysis: { [field]: { status: "enabled" } } });
   const codeScanning =
     target.codeScanningDefaultSetup === true || (target.workflows ?? []).some((workflow) => workflow.usesCodeql)
       ? true
@@ -522,6 +579,7 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
         `gh api -X PUT repos/${slug}/private-vulnerability-reporting`,
         "let people report a vulnerability in private",
       ),
+      call("PUT", `repos/${slug}/private-vulnerability-reporting`),
     ),
     {
       ...featureItem(
@@ -545,6 +603,7 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
       target.dependabotAlerts,
       false,
       adminCommand(target, `gh api -X PUT repos/${slug}/vulnerability-alerts`, "turn on Dependabot alerts"),
+      call("PUT", `repos/${slug}/vulnerability-alerts`),
     ),
     featureItem(
       target,
@@ -556,6 +615,7 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
         `gh api -X PUT repos/${slug}/automated-security-fixes`,
         "let Dependabot open pull requests that fix vulnerable dependencies",
       ),
+      call("PUT", `repos/${slug}/automated-security-fixes`),
     ),
     {
       label: "Malware alerts",
@@ -569,6 +629,7 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
       target.secretScanning,
       true,
       adminCommand(target, securityPatch("secret_scanning"), "turn on secret scanning"),
+      securityCall("secret_scanning"),
     ),
     featureItem(
       target,
@@ -576,6 +637,7 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
       target.pushProtection,
       true,
       adminCommand(target, securityPatch("secret_scanning_push_protection"), "block pushes that contain a secret"),
+      securityCall("secret_scanning_push_protection"),
     ),
     featureItem(
       target,
@@ -587,6 +649,7 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
         `gh api -X PATCH repos/${slug}/code-scanning/default-setup -f state=configured`,
         "turn on CodeQL code scanning",
       ),
+      call("PATCH", `repos/${slug}/code-scanning/default-setup`, { state: "configured" }),
     ),
     featureItem(
       target,
@@ -598,8 +661,14 @@ function securityItems(target: RepositoryFacts): SetupItem[] {
         `gh api -X PUT repos/${slug}/actions/permissions/workflow -f default_workflow_permissions=read`,
         "give workflows a read-only token by default",
       ),
+      call("PUT", `repos/${slug}/actions/permissions/workflow`, { default_workflow_permissions: "read" }),
     ),
   ];
+}
+
+/** One call of the GitHub API, as a direct fix. */
+function call(method: "PUT" | "PATCH", path: string, body: Readonly<Record<string, unknown>> | null = null): DirectFix {
+  return { kind: "api", method, path, body };
 }
 
 function featureItem(
@@ -608,10 +677,11 @@ function featureItem(
   isOn: boolean | null,
   publicOnly: boolean,
   fixRequest: string,
+  directFix?: DirectFix,
 ): SetupItem {
   if (isOn === true) return green(label, "On.");
   if (isOn === null || (publicOnly && target.isPrivate)) return grey(label, unknownReason(target, publicOnly));
-  return { label, light: "red", detail: "Off.", fixRequest };
+  return { label, light: "red", detail: "Off.", fixRequest, ...(directFix === undefined ? {} : { directFix }) };
 }
 
 /** `Read` or `Bash(git log*)` fits any project; `Bash(bun run *)` fits the reference's stack only. */

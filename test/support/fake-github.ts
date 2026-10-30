@@ -4,6 +4,7 @@
  */
 import { createHash } from "node:crypto";
 import type { GithubAnswer, GithubRequest } from "../../src/core/projects/repository-facts.ts";
+import type { GithubWrite } from "../../src/core/projects/repository-fixes.ts";
 
 /** The blob SHA that git gives a file with this text, as a real tree lists it. */
 function gitBlobSha(text: string): string {
@@ -56,4 +57,20 @@ function answerFor(address: string, fake: FakeRepository, path: string, raw: boo
   const content = contents === null ? undefined : fake.files[decodeURIComponent(contents[1] ?? "")];
   if (raw && content !== undefined) return { status: 200, body: content };
   return null;
+}
+
+/**
+ * A fake GitHub API that takes every direct fix: it answers the reads of a commit with made-up
+ * SHAs, and every change with 204. It changes nothing, so a report stays the same.
+ */
+export function fakeGithubWrite(): GithubWrite {
+  return (method, path) => {
+    const ok = (body: unknown): Promise<GithubAnswer> => Promise.resolve({ status: 200, body: JSON.stringify(body) });
+    if (method === "GET" && path.includes("/git/ref/heads/")) return ok({ object: { sha: "head" } });
+    if (method === "GET" && path.includes("/git/commits/")) return ok({ tree: { sha: "tree" } });
+    if (method === "GET" && path.includes("/git/blobs/")) return ok({ content: "", encoding: "base64" });
+    if (method === "GET" && path.includes("/labels?")) return ok([]);
+    if (method === "POST" && /\/git\/(trees|commits)$/.test(path)) return ok({ sha: "new" });
+    return Promise.resolve({ status: 204, body: "" });
+  };
 }

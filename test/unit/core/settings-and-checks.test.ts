@@ -193,6 +193,67 @@ describe("repository setup", () => {
     }
   });
 
+  test("Fix runs the direct fixes; the rest and the failed fixes go into one chat request", async () => {
+    const projectId = "2025-04-01-0900-other-app";
+    const url = "https://github.com/owner/other-app";
+    const write = (type: string): void =>
+      sandbox.write(
+        vault,
+        `Projects/${projectId}/AGENTS.md`,
+        `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - ${url}\nrepo_types:\n  ${url}: ${type}\n---\n`,
+      );
+    const calls: string[] = [];
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: fakeGh(systemProcessRunner),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubRequest: fakeGithub({
+        "guplem/eva": { files: referenceFiles, labels: ["bug"] },
+        "owner/other-app": {
+          files: {},
+          labels: [],
+          repository: { allow_auto_merge: false },
+          security: { hasVulnerabilityAlertsEnabled: false, isSecurityPolicyEnabled: true },
+        },
+      }),
+      githubWrite: (method, path) => {
+        calls.push(`${method} ${path}`);
+        const refused = method === "PATCH" && path === "repos/owner/other-app";
+        return Promise.resolve(refused ? { status: 403, body: '{"message":"No"}' } : { status: 204, body: "" });
+      },
+    });
+    try {
+      write("standard");
+      expect(await instance.fixRepository(projectId, url, null)).toEqual({
+        fixed: ["Dependabot alerts"],
+        problems: [],
+        chatRequest: null,
+      });
+      expect(calls).toEqual(["PUT repos/owner/other-app/vulnerability-alerts"]);
+
+      write("vibe-coded");
+      calls.length = 0;
+      const single = await instance.fixRepository(projectId, url, ["Auto-merge"]);
+      expect(single.problems).toEqual(["Auto-merge: GitHub refused it (HTTP 403): No"]);
+      expect(single.chatRequest).toContain("allow_auto_merge=true");
+      const all = await instance.fixRepository(projectId, url, null);
+      expect(all.fixed).toContain("Dependabot alerts");
+      expect(all.chatRequest).toContain("AGENTS.md");
+      const unknown = await instance.fixRepository(projectId, "https://github.com/owner/none", null).then(
+        () => "",
+        (error: unknown) => (error instanceof Error ? error.message : ""),
+      );
+      expect(unknown).toContain("does not list");
+    } finally {
+      instance.stop();
+    }
+  });
+
   test("when GitHub cannot be read, each report says why", async () => {
     sandbox.write(
       vault,

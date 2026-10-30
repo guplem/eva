@@ -42,31 +42,42 @@ const securityQuery =
 
 /** A GithubRequest over `gh api --include`, which prints the status line before the body. */
 export function ghApiRequest(runner: ProcessRunner, environment: Readonly<Record<string, string>>): GithubRequest {
-  return async (path, raw = false, fields = {}) => {
+  return (path, raw = false, fields = {}) => {
     const accept = raw ? ["-H", "Accept: application/vnd.github.raw"] : [];
     const fieldArguments = Object.entries(fields).flatMap(([key, value]) => ["-f", `${key}=${value}`]);
-    let output: { stdout: string; stderr: string };
-    try {
-      output = await runner.run(["gh", "api", "--include", ...accept, path, ...fieldArguments], {
-        cwd: process.cwd(),
-        environment: { ...environment, GH_PROMPT_DISABLED: "1" },
-        timeoutMs: ghTimeoutMs,
-      });
-    } catch (error) {
-      const message = isEvaError(error, "process_timeout")
-        ? "GitHub did not answer in time. Try again later."
-        : "Eva could not run gh, the GitHub CLI. Install it, then press Log in with GitHub on the GitHub card.";
-      throw new EvaError("github_failed", message, { cause: error });
-    }
-    const status = /^HTTP\/[\d.]+ (\d{3})/.exec(output.stdout);
-    if (status === null) {
-      const reason = output.stderr.trim().split(/\r?\n/)[0] ?? "";
-      throw new EvaError("github_failed", `gh could not reach GitHub: ${reason}`);
-    }
-    const bodyStart = /\r?\n\r?\n/.exec(output.stdout);
-    const body = bodyStart === null ? "" : output.stdout.slice(bodyStart.index + bodyStart[0].length);
-    return { status: Number(status[1]), body };
+    return ghApi(runner, environment, [...accept, path, ...fieldArguments]);
   };
+}
+
+/** Runs `gh api --include` with these arguments, and reads the HTTP status and the body. */
+export async function ghApi(
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+  args: readonly string[],
+  stdin?: string,
+): Promise<GithubAnswer> {
+  let output: { stdout: string; stderr: string };
+  try {
+    output = await runner.run(["gh", "api", "--include", ...args], {
+      cwd: process.cwd(),
+      environment: { ...environment, GH_PROMPT_DISABLED: "1" },
+      timeoutMs: ghTimeoutMs,
+      ...(stdin === undefined ? {} : { stdin }),
+    });
+  } catch (error) {
+    const message = isEvaError(error, "process_timeout")
+      ? "GitHub did not answer in time. Try again later."
+      : "Eva could not run gh, the GitHub CLI. Install it, then press Log in with GitHub on the GitHub card.";
+    throw new EvaError("github_failed", message, { cause: error });
+  }
+  const status = /^HTTP\/[\d.]+ (\d{3})/.exec(output.stdout);
+  if (status === null) {
+    const reason = output.stderr.trim().split(/\r?\n/)[0] ?? "";
+    throw new EvaError("github_failed", `gh could not reach GitHub: ${reason}`);
+  }
+  const bodyStart = /\r?\n\r?\n/.exec(output.stdout);
+  const body = bodyStart === null ? "" : output.stdout.slice(bodyStart.index + bodyStart[0].length);
+  return { status: Number(status[1]), body };
 }
 
 export async function readRepositoryFacts(slug: string, request: GithubRequest): Promise<RepositoryFacts> {

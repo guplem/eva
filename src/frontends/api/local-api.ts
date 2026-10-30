@@ -159,6 +159,10 @@ const projectDetailsSchema = z.object({
 });
 const repositoryTypeNames = repositoryTypes.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
 const repositoryTypeSchema = z.object({ repository: z.string().min(1).max(2_000), type: z.enum(repositoryTypeNames) });
+const repositoryFixSchema = z.object({
+  repository: z.string().min(1).max(2_000),
+  items: z.array(z.string().max(500)).max(200).nullable(),
+});
 const newProjectSchema = z.object({
   name: z.string().min(1).max(500),
   description: z.string().max(10_000),
@@ -730,6 +734,18 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   ) {
     const { repository, type } = repositoryTypeSchema.parse(await request.json());
     return json(eva.setRepositoryType(decodeURIComponent(parts[2]), repository, type));
+  }
+  if (
+    method === "POST" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "setup" &&
+    parts[4] === "fix" &&
+    parts.length === 5
+  ) {
+    const { repository, items } = repositoryFixSchema.parse(await request.json());
+    return json(await eva.fixRepository(decodeURIComponent(parts[2]), repository, items));
   }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "file") {
     const projectId = decodeURIComponent(parts[2]);

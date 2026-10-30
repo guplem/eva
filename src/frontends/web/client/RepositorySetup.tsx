@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { repositoryTypes } from "../../../core/projects/repository-types.ts";
 import { api, type SetupItem, type SetupReport, type SetupSection } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { BackButton } from "./MainNav.tsx";
 import { Card, StatusIcon } from "./SettingsParts.tsx";
 import { lightMark, reportSummary, scoreMark } from "./setup-report.ts";
@@ -98,30 +98,85 @@ interface ReportCardProps {
 
 function ReportCard({ projectId, report, onFix, onTypeChanged }: ReportCardProps): ReactElement {
   const summary = reportSummary(report);
+  // The item whose direct fix runs, "all" for Fix all, or null.
+  const [running, setRunning] = useState<string | null>(null);
+  const [problems, setProblems] = useState<readonly string[]>([]);
+  const canFixDirectly = report.sections.some((section) => section.items.some(hasDirectFix));
+
+  /** Runs the direct fixes, then opens one chat for the rest, or reads the report again. */
+  const fix = async (key: string, items: readonly string[] | null): Promise<void> => {
+    setRunning(key);
+    setProblems([]);
+    try {
+      const result = await api.fixRepository(projectId, report.repositoryUrl, items);
+      if (result.chatRequest !== null) onFix(result.chatRequest);
+      else {
+        setProblems(result.problems);
+        onTypeChanged();
+      }
+    } catch (caught) {
+      setProblems([caught instanceof Error ? caught.message : String(caught)]);
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  const fixAll =
+    canFixDirectly || report.allFixes === null ? (
+      canFixDirectly && (
+        <button
+          className="fix-button primary"
+          aria-label={`Fix all of ${report.slug ?? ""}`}
+          aria-busy={running === "all"}
+          disabled={running !== null}
+          onClick={() => void fix("all", null)}
+        >
+          {running === "all" && <ButtonSpinner />}
+          {running === "all" ? "Fixing…" : "Fix all"}
+        </button>
+      )
+    ) : (
+      <FixButton
+        request={report.allFixes}
+        label="Fix all"
+        name={`Fix all of ${report.slug ?? ""} in a new chat`}
+        onFix={onFix}
+        className="primary"
+      />
+    );
   return (
     <Card
       icon="branch"
       title={report.slug ?? report.repositoryUrl}
       description={summary === "" ? undefined : summary}
-      aside={
-        report.allFixes !== null && (
-          <FixButton
-            request={report.allFixes}
-            label="Fix all"
-            name={`Fix all of ${report.slug ?? ""} in a new chat`}
-            onFix={onFix}
-            className="primary"
-          />
-        )
-      }
+      aside={fixAll}
     >
       {report.slug !== null && <TypeChoice projectId={projectId} report={report} onChanged={onTypeChanged} />}
       {report.problem !== null && <div className="callout warning">{report.problem}</div>}
+      {running !== null && <ProgressBar label="Eva fixes the repository on GitHub…" />}
+      {problems.length > 0 && (
+        <div className="callout danger" role="status">
+          {problems.map((problem) => (
+            <p key={problem}>{problem}</p>
+          ))}
+        </div>
+      )}
       {report.sections.map((section) => (
-        <SectionView key={section.title} section={section} onFix={onFix} />
+        <SectionView
+          key={section.title}
+          section={section}
+          onFix={onFix}
+          running={running}
+          onDirectFix={(label) => void fix(label, [label])}
+        />
       ))}
     </Card>
   );
+}
+
+/** True for a red or yellow item that Eva fixes herself, with no chat. */
+function hasDirectFix(item: SetupItem): boolean {
+  return item.directFix !== undefined && item.light !== "grey" && item.light !== "green";
 }
 
 /** The type of the repository. The person picks one for a repository that has none. */
@@ -185,7 +240,15 @@ function TypeChoice({
   );
 }
 
-function SectionView({ section, onFix }: { section: SetupSection; onFix: (request: string) => void }): ReactElement {
+interface SectionViewProps {
+  readonly section: SetupSection;
+  readonly onFix: (request: string) => void;
+  /** The item whose direct fix runs, "all", or null. */
+  readonly running: string | null;
+  readonly onDirectFix: (label: string) => void;
+}
+
+function SectionView({ section, onFix, running, onDirectFix }: SectionViewProps): ReactElement {
   return (
     <section className="setup-section" aria-label={section.title}>
       <h3>
@@ -199,8 +262,22 @@ function SectionView({ section, onFix }: { section: SetupSection; onFix: (reques
             <b>{item.label}</b>
             <small>{item.detail}</small>
           </div>
-          {item.fixRequest !== null && (
-            <FixButton request={item.fixRequest} label="Fix" name={`Fix ${item.label} in a new chat`} onFix={onFix} />
+          {hasDirectFix(item) ? (
+            // Eva runs this fix herself, so the button opens no other page and has no arrow.
+            <button
+              className="fix-button"
+              aria-label={`Fix ${item.label} now`}
+              aria-busy={running === item.label}
+              disabled={running !== null}
+              onClick={() => onDirectFix(item.label)}
+            >
+              {running === item.label && <ButtonSpinner />}
+              Fix
+            </button>
+          ) : (
+            item.fixRequest !== null && (
+              <FixButton request={item.fixRequest} label="Fix" name={`Fix ${item.label} in a new chat`} onFix={onFix} />
+            )
           )}
         </div>
       ))}

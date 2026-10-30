@@ -1273,6 +1273,9 @@ describe("web routes", () => {
       (await call("/api/projects/missing/setup/type", { method: "PUT", body: { repository, type: "standard" } }))
         .status,
     ).toBe(404);
+    const fix = "/api/projects/2025-03-02-1015-example-app/setup/fix";
+    expect((await call(fix, { method: "POST", body: { repository } })).status).toBe(400);
+    expect((await call(fix, { method: "POST", body: { repository, items: null } })).status).toBe(400);
   });
 
   test("a project's clones, and a new clone", async () => {

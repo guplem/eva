@@ -55,7 +55,8 @@ import {
   type ProjectFile,
 } from "./project-file.ts";
 import { ghApiRequest, readRepositoryFacts, type GithubRequest } from "./repository-facts.ts";
-import { unreadableReport, type RepositoryFacts, type SetupReport } from "./repository-setup.ts";
+import { ghApiWrite, runDirectFixes, type GithubWrite } from "./repository-fixes.ts";
+import { chatRequest, unreadableReport, type RepositoryFacts, type SetupReport } from "./repository-setup.ts";
 import { repositoryTypeOf, type RepositoryTypeName } from "./repository-types.ts";
 
 export interface NewChatInput {
@@ -111,9 +112,21 @@ export interface ProjectWorkOptions {
   readonly inBackground: (what: string, task: () => Promise<unknown>) => void;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
+  /** One call of the GitHub API that changes a repository, for its direct fixes. Default: `gh api`. */
+  readonly githubWrite?: GithubWrite;
   /** Writes a commit message when the person leaves the note empty. Without it, a plain message. */
   readonly modelCalls?: Pick<ModelCalls, "ask">;
   readonly logger?: Logger;
+}
+
+/** What a run of direct fixes did. */
+export interface RepositoryFixResult {
+  /** The labels of the items that Eva fixed. */
+  readonly fixed: readonly string[];
+  /** One sentence for each direct fix that failed. */
+  readonly problems: readonly string[];
+  /** The request for a chat: the items that need one, and the failed direct fixes. Null: none. */
+  readonly chatRequest: string | null;
 }
 
 /** The clones after a fetch or a pull, and a reason for each clone that failed. */
@@ -472,6 +485,42 @@ export class ProjectWork {
         return type.report(target, reference);
       }),
     );
+  }
+
+  /**
+   * Runs the direct fixes of the named items of a repository's report, or of every red and yellow
+   * item when `items` is null. The result has the request for a chat: the items that need one, and
+   * the direct fixes that failed, so a coding agent can try them.
+   */
+  async fixRepository(
+    projectId: string,
+    repository: string,
+    items: readonly string[] | null,
+  ): Promise<RepositoryFixResult> {
+    const report = (await this.repositorySetup(projectId)).find((entry) => entry.repositoryUrl === repository);
+    if (report === undefined)
+      throw new EvaError("project_invalid", `The project does not list the repository ${repository}.`);
+    if (report.problem !== null) throw new EvaError("github_failed", report.problem);
+    const slug = report.slug;
+    if (slug === null || report.type === null)
+      throw new EvaError("project_invalid", "Pick the type of this repository first.");
+    const all = report.sections.flatMap((section) => section.items);
+    const chosen =
+      items === null
+        ? all.filter((item) => item.light === "red" || item.light === "yellow")
+        : all.filter((item) => items.includes(item.label));
+    const direct = chosen.flatMap((item) =>
+      item.directFix === undefined || item.light === "grey" ? [] : [{ label: item.label, directFix: item.directFix }],
+    );
+    const write = this.options.githubWrite ?? ghApiWrite(this.options.runner, this.options.gitEnvironment);
+    const outcome = await runDirectFixes(slug, direct, write);
+    const failed = new Set(outcome.failed.map((entry) => entry.label));
+    const forChat = chosen.filter((item) => item.directFix === undefined || failed.has(item.label));
+    return {
+      fixed: outcome.fixed,
+      problems: outcome.failed.map((entry) => `${entry.label}: ${entry.reason}`),
+      chatRequest: chatRequest(slug, forChat),
+    };
   }
 
   /** Sets the type of one repository of a project, in its `AGENTS.md`. */

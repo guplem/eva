@@ -97,6 +97,7 @@ import {
   type NewChatInput,
   type NewProjectChatInput,
   type ProjectWorkInput,
+  type RepositoryFixResult,
   type RetryChoice,
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
@@ -122,6 +123,7 @@ import { createProject, type NewProjectInput, type NewProjectResult } from "./pr
 import { wallClockOf } from "./schedules/schedule-timing.ts";
 import { createDriveFolder } from "./google/google-drive.ts";
 import type { GithubRequest } from "./projects/repository-facts.ts";
+import type { GithubWrite } from "./projects/repository-fixes.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
 import type { RepositoryTypeName } from "./projects/repository-types.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
@@ -241,6 +243,8 @@ export interface EvaOptions {
   readonly remoteAccess?: RemoteAccessControl | null;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
+  /** One call of the GitHub API that changes a repository, for its direct fixes. Default: `gh api`. */
+  readonly githubWrite?: GithubWrite;
   /** Google's address for the Google login and check; a test points it at a fake server. */
   readonly googleBaseUrl?: string;
   /** The GitHub API, which the vault step uses to list and create repositories; a test points it at a fake server. */
@@ -710,6 +714,7 @@ export class Eva {
       },
       modelCalls: this.modelCalls,
       ...(options.githubRequest === undefined ? {} : { githubRequest: options.githubRequest }),
+      ...(options.githubWrite === undefined ? {} : { githubWrite: options.githubWrite }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
 
@@ -1617,6 +1622,11 @@ export class Eva {
   /** The setup report of each repository of a project, judged against Eva's own repository. */
   repositorySetup(projectId: string): Promise<SetupReport[]> {
     return this.projectWork.repositorySetup(projectId);
+  }
+
+  /** Runs the direct fixes of a repository's report, and gives the request that a chat must do. */
+  fixRepository(projectId: string, repository: string, items: readonly string[] | null): Promise<RepositoryFixResult> {
+    return this.projectWork.fixRepository(projectId, repository, items);
   }
 
   /** Sets the type of one repository of a project, so its setup report shows. */

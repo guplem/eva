@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { Project } from "../../../../../src/frontends/web/client/api.ts";
 import {
   insertMention,
   mentionNotes,
+  mentionProjectOf,
   mentionQueryAt,
+  mentionWordEnd,
   mentionToken,
   pickedProjects,
   projectsInUse,
@@ -138,5 +141,52 @@ describe("projectsInUse", () => {
       { id: "d", mode: "assistant" as const, projectId: null, running: true },
     ];
     expect(projectsInUse(chats, (id) => id === "b")).toEqual(["first", "second"]);
+  });
+});
+
+describe("a mention round trip", () => {
+  test("a path that ends in punctuation keeps it, because the mention is in quotes", () => {
+    for (const path of ["Notes/Draft(1)", "Journal/Q&A?", "Notes/todo.", "Notes/a]", "Notes/día.md", "Notes\\win.md"]) {
+      const token = mentionToken("file", path);
+      expect(mentionNotes(`${token}, then more`, [])).toEqual([`[${token} is the file ${path} of the vault]`]);
+    }
+  });
+
+  test("a mention at the end of a line gets its note", () => {
+    expect(mentionNotes("Read @file:a.md\nthen answer", [])).toEqual(["[@file:a.md is the file a.md of the vault]"]);
+  });
+});
+
+describe("insertMention before a line break", () => {
+  test("a line break after the word needs no extra space", () => {
+    expect(insertMention("hi @fo\nthere", 3, 6, "@file:a.md")).toEqual({ text: "hi @file:a.md\nthere", caret: 13 });
+  });
+});
+
+describe("mentionWordEnd", () => {
+  test("the typed word goes on after the caret up to the next space", () => {
+    expect(mentionWordEnd("@project:abc more", 10)).toBe(12);
+    expect(mentionWordEnd("@ab", 3)).toBe(3);
+  });
+});
+
+describe("mentionProjectOf", () => {
+  const base = {
+    id: "2026-01-02-0304-example-app",
+    title: "Example app",
+    frontMatter: { status: "paused" },
+    path: "/vaults/demo/Projects/2026-01-02-0304-example-app",
+  };
+
+  test("a project in the vault names its vault folder, and one outside names its full path", () => {
+    const inVault = { ...base, vaultFolder: "Projects/2026-01-02-0304-example-app" } as unknown as Project;
+    const outside = { ...base, vaultFolder: null } as unknown as Project;
+    expect(mentionProjectOf(inVault)).toEqual({
+      id: base.id,
+      title: "Example app",
+      status: "paused",
+      folder: "Projects/2026-01-02-0304-example-app",
+    });
+    expect(mentionProjectOf(outside).folder).toBe(base.path);
   });
 });

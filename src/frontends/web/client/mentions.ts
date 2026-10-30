@@ -46,9 +46,17 @@ export function mentionQueryAt(text: string, caret: number): MentionQuery | null
   return { start: caret - word.length - 1, query: word.replace(kindPrefix, "") };
 }
 
-/** A path with a space goes in quotes, so the mention ends at the right place. */
+/**
+ * A path with a space goes in quotes, so the mention ends at the right place. A path that ends in
+ * punctuation does too: without quotes, the note would read the punctuation as the end of a sentence.
+ */
 export function mentionToken(kind: MentionKind, name: string): string {
-  return /[\s"]/.test(name) ? `@${kind}:"${name.replaceAll('"', "")}"` : `@${kind}:${name}`;
+  return /[\s"]|[.,;:!?)\]]$/.test(name) ? `@${kind}:"${name.replaceAll('"', "")}"` : `@${kind}:${name}`;
+}
+
+/** The end of the word at the caret, so a pick in the middle of a mention replaces all of it. */
+export function mentionWordEnd(text: string, caret: number): number {
+  return caret + (/^\S*/.exec(text.slice(caret))?.[0].length ?? 0);
 }
 
 /** Puts the mention in place of the typed `@word`, with a space after it, and gives the new caret. */
@@ -59,8 +67,10 @@ export function insertMention(
   token: string,
 ): { readonly text: string; readonly caret: number } {
   const after = text.slice(caret);
-  const spaced = after.startsWith(" ") ? token : `${token} `;
-  return { text: text.slice(0, start) + spaced + after, caret: start + token.length + 1 };
+  // A space or a line break already ends the mention. The caret goes past a space, not past a line break.
+  const spaced = /^\s/.test(after) ? token : `${token} `;
+  const skip = after.startsWith(" ") || spaced !== token ? 1 : 0;
+  return { text: text.slice(0, start) + spaced + after, caret: start + token.length + skip };
 }
 
 const statusOrder: readonly MentionProject["status"][] = ["active", "idea", "paused", "closed", null];

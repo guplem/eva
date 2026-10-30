@@ -3491,6 +3491,11 @@ test("Escape closes the @ search, and an email address opens none", async ({ pag
   await expect(search).toBeVisible();
   await box.press("Escape");
   await expect(search).toHaveCount(0);
+  // A phone has no Escape key: a tap outside the box closes the search too.
+  await box.pressSequentially(" @");
+  await expect(search).toBeVisible();
+  await page.getByRole("heading", { level: 1 }).click();
+  await expect(search).toHaveCount(0);
   await box.fill("");
 });
 

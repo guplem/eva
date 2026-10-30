@@ -7,7 +7,6 @@ import {
   useContext,
   useEffect,
   useId,
-  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
@@ -22,6 +21,7 @@ import {
   mentionProjectOf,
   mentionQueryAt,
   mentionToken,
+  mentionWordEnd,
   pickedProjects,
   type MentionKind,
   type MentionProject,
@@ -53,6 +53,8 @@ interface MentionPicker {
     readonly "aria-controls": string | undefined;
     readonly "aria-activedescendant": string | undefined;
     readonly "aria-autocomplete": "list";
+    /** A tap outside the box closes the search: a phone has no Escape key. */
+    readonly onBlur: () => void;
   };
   /** True when the key moved in the search or picked an item, so the box does nothing else with it. */
   readonly onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => boolean;
@@ -81,20 +83,24 @@ export function useMentionPicker(
   const open = enabled && query !== null && query.start !== dismissed;
 
   // A text from the project page names a project before any search ran, so its note needs the list too.
-  const needsProjects = open || (enabled && text.includes("@project:"));
-  const loading = useRef(false);
+  const needsList = enabled && projects === null && text.includes("@project:");
+  // Each open reads the list again, so a project made meanwhile shows. The old list shows until then.
   useEffect(() => {
-    if (!needsProjects || projects !== null || loading.current) return;
-    loading.current = true;
+    if (!open && !needsList) return;
+    let current = true;
     api
       .projects("", "")
-      .then((found) => setProjects(found.map(mentionProjectOf)))
+      .then((found) => {
+        if (current) setProjects(found.map(mentionProjectOf));
+      })
       // The search still finds files, and a note names the folder of the vault layout.
-      .catch(() => setProjects([]))
-      .finally(() => {
-        loading.current = false;
+      .catch(() => {
+        if (current) setProjects((known) => known ?? []);
       });
-  }, [needsProjects, projects]);
+    return () => {
+      current = false;
+    };
+  }, [open, needsList]);
 
   const word = open ? query.query : "";
   useEffect(() => {
@@ -144,7 +150,9 @@ export function useMentionPicker(
   const pick = (option: MentionOption): void => {
     const element = box.current;
     if (element === null || query === null) return;
-    const placed = insertMention(text, query.start, element.selectionStart, mentionToken(option.kind, option.name));
+    // A pick in the middle of a word replaces the whole word, so no rest of an older mention stays.
+    const end = mentionWordEnd(text, element.selectionStart);
+    const placed = insertMention(text, query.start, end, mentionToken(option.kind, option.name));
     setText(placed.text);
     setQuery(null);
     // The box shows the new text on the next render, so the caret moves after it.
@@ -155,7 +163,9 @@ export function useMentionPicker(
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (!open) return false;
+    // An input method's Enter or arrow picks its own word, not a mention.
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's key only with this code.
+    if (!open || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return false;
     if (event.key === "Escape") {
       event.preventDefault();
       setDismissed(query.start);
@@ -201,7 +211,7 @@ export function useMentionPicker(
 
   const menu = open ? (
     <div className="menu mention-menu" id={listId} role="listbox" aria-label="Mention a project or a file">
-      <div className="mention-group" role="group" aria-label="Projects">
+      <div className="mention-group">
         <span className="mention-group-name" aria-hidden="true">
           Projects
         </span>
@@ -210,10 +220,12 @@ export function useMentionPicker(
         ) : projectOptions.length === 0 ? (
           <span className="mention-empty">No project matches.</span>
         ) : (
-          projectOptions.map((option, index) => item(option, index))
+          <div className="mention-group" role="group" aria-label="Projects">
+            {projectOptions.map((option, index) => item(option, index))}
+          </div>
         )}
       </div>
-      <div className="mention-group" role="group" aria-label="Files">
+      <div className="mention-group">
         <span className="mention-group-name" aria-hidden="true">
           Files
         </span>
@@ -224,7 +236,9 @@ export function useMentionPicker(
         ) : fileOptions.length === 0 ? (
           <span className="mention-empty">No file matches.</span>
         ) : (
-          fileOptions.map((option, index) => item(option, projectOptions.length + index))
+          <div className="mention-group" role="group" aria-label="Files">
+            {fileOptions.map((option, index) => item(option, projectOptions.length + index))}
+          </div>
         )}
       </div>
     </div>
@@ -236,6 +250,7 @@ export function useMentionPicker(
       "aria-controls": open ? listId : undefined,
       "aria-activedescendant": open && options.length > 0 ? optionId(activeIndex) : undefined,
       "aria-autocomplete": "list",
+      onBlur: () => setQuery(null),
     },
     onKeyDown,
     follow,

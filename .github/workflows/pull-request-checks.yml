@@ -118,6 +118,11 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         working-directory: templates/widget
         run: npm ci --ignore-scripts
+      # The template can pin another Playwright version than Eva. Then it needs its own browser build.
+      - if: env.RUN_CODE_CHECKS == 'true'
+        working-directory: templates/widget
+        timeout-minutes: 20
+        run: npx playwright install chromium
       - if: env.RUN_CODE_CHECKS == 'true'
         working-directory: templates/widget
         timeout-minutes: 10

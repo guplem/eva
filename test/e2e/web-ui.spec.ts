@@ -6504,3 +6504,39 @@ test("a fact that Eva still needs shows as one special suggestion, and the answe
   await dialog.getByRole("button", { name: "Tell Eva" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("I was born on 1990-05-14");
 });
+
+test("the message box menu polishes the typed text, puts a saved prompt at the cursor, and lists both in Settings (#661)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  const menuButton = page.getByRole("button", { name: "Text actions and saved prompts" });
+  // Every device shares the unsent text of a new chat, so the run of the other size can leave some.
+  await composer.fill("");
+  // An empty box has nothing to rewrite, so Polish shows turned off.
+  await menuButton.click();
+  const polish = page.getByRole("menuitem", { name: "Polish" });
+  await expect(polish).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("group", { name: "Text actions" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await composer.fill("helo wrld");
+  await menuButton.click();
+  await page.getByRole("menuitem", { name: "Polish" }).click();
+  // The demo engine marks the rewritten text, and Eva sends nothing.
+  await expect(composer).toHaveValue("Helo wrld. (polished)");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(composer).toHaveValue("helo wrld");
+
+  await composer.click();
+  await composer.press("Control+Home");
+  await menuButton.click();
+  await page.getByRole("menuitem", { name: "Summary" }).click();
+  await expect(composer).toHaveValue("Can you give me a summary of everything that we did so far?helo wrld");
+  await composer.fill("");
+
+  await openSettings(page, "Personalize");
+  const card = page.getByRole("region", { name: "Message box menu" });
+  await expect(card.getByText("Polish", { exact: true })).toBeVisible();
+  await expect(card.getByText("Summary", { exact: true })).toBeVisible();
+});

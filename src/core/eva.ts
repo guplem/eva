@@ -130,6 +130,7 @@ import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
 import { answersToUndo, refsStillNamed } from "./sessions/retry-undo.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
+import { ComposerMenu } from "./composer-menu/composer-menu.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { StepDetailsStore } from "./sessions/step-details-store.ts";
 import { UnsentTextStore } from "./sessions/unsent-texts.ts";
@@ -394,6 +395,8 @@ export class Eva {
   readonly schedules: Scheduler | null;
   /** The person's rules for chat names. Null when no vault is configured. */
   readonly chatNames: ChatNamer | null;
+  /** The text actions and saved prompts of the message box, or null without a vault. */
+  readonly composerMenu: ComposerMenu | null;
   /** The unsent text of each chat, which every page of the web app shows. */
   readonly unsentTexts: UnsentTextStore;
   /** The person's rules for Eva, in `.eva/assistant.md`. Null when no vault is configured. */
@@ -620,6 +623,7 @@ export class Eva {
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
     this.chatNames = chatNamer;
+    this.composerMenu = vaultPath === null ? null : new ComposerMenu({ vaultPath, modelCalls: this.modelCalls });
     this.chatSummaries = new ChatSummarizer({
       modelCalls: this.modelCalls,
       ...(options.logger === undefined ? {} : { logger: options.logger }),

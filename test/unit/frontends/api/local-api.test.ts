@@ -1616,6 +1616,61 @@ describe("web routes", () => {
     expect((await call("/api/chat-names", { method: "DELETE" })).status).toBe(404);
   });
 
+  test("composer menu: items save, rename, run and go, and a bad body is refused (issue 661)", async () => {
+    const empty = await json<{ textActions: unknown[] }>(await call("/api/composer-menu"));
+    expect(Array.isArray(empty.textActions)).toBe(true);
+    const action = { name: "Shout", model: "sonnet", prompt: "Write it in capitals." };
+    expect((await call("/api/composer-menu/text-actions", { method: "PUT", body: action })).status).toBe(200);
+    const prompt = { name: "Plan", text: "Write a plan first." };
+    const saved = await json<{ textActions: unknown[]; savedPrompts: unknown[] }>(
+      await call("/api/composer-menu/saved-prompts", { method: "PUT", body: prompt }),
+    );
+    expect(saved.textActions).toContainEqual(action);
+    expect(saved.savedPrompts).toContainEqual(prompt);
+
+    turnScript = (request) => FakeEngine.answer(request, "HELLO");
+    const run = await call("/api/composer-menu/text-actions/run", {
+      method: "POST",
+      body: { name: "Shout", engine: "claude-code", text: "hello" },
+    });
+    expect(await json(run)).toEqual({ text: "HELLO" });
+    expect(engine.requests.at(-1)?.model).toBe("sonnet");
+
+    const renamed = await json<{ savedPrompts: unknown[] }>(
+      await call("/api/composer-menu/saved-prompts", {
+        method: "PUT",
+        body: { name: "Plan first", previousName: "Plan", text: "Write a plan first." },
+      }),
+    );
+    expect(renamed.savedPrompts).toContainEqual({ name: "Plan first", text: "Write a plan first." });
+    expect(renamed.savedPrompts).not.toContainEqual(prompt);
+    const removed = await json<{ textActions: unknown[] }>(
+      await call("/api/composer-menu/text-actions", { method: "DELETE", body: { name: "Shout" } }),
+    );
+    expect(removed.textActions).not.toContainEqual(action);
+
+    const badName = await call("/api/composer-menu/saved-prompts", { method: "PUT", body: { name: "a/b", text: "x" } });
+    expect(badName.status).toBe(400);
+    expect(await json(badName)).toMatchObject({ code: "menu_item_invalid" });
+    const badModel = await call("/api/composer-menu/text-actions", {
+      method: "PUT",
+      body: { name: "X", model: "huge", prompt: "x" },
+    });
+    expect(badModel.status).toBe(400);
+    const missing = await call("/api/composer-menu/text-actions/run", {
+      method: "POST",
+      body: { name: "Gone", engine: "claude-code", text: "hello" },
+    });
+    expect(missing.status).toBe(404);
+    await call("/api/composer-menu/text-actions", { method: "PUT", body: action });
+    const emptyBox = await call("/api/composer-menu/text-actions/run", {
+      method: "POST",
+      body: { name: "Shout", engine: "claude-code", text: " " },
+    });
+    expect(emptyBox.status).toBe(400);
+    expect(await json(emptyBox)).toMatchObject({ code: "menu_item_invalid" });
+  });
+
   test("push: a device subscribes, gets each alert as a push, reads the newest alert, and leaves", async () => {
     const key = await json<{ publicKey: string; isHub: boolean; devices: unknown[] }>(await call("/api/push"));
     expect(key.isHub).toBe(true);
@@ -2093,6 +2148,8 @@ describe("without a vault", () => {
       expect(response.status).toBe(409);
       const chatNames = await fetch(`${bareApi.url}/api/chat-names`, { headers: headers() });
       expect(chatNames.status).toBe(409);
+      const menu = await fetch(`${bareApi.url}/api/composer-menu`, { headers: headers() });
+      expect(menu.status).toBe(409);
       const rules = await fetch(`${bareApi.url}/api/assistant-rules`, { headers: headers() });
       expect(rules.status).toBe(409);
       const files = await fetch(`${bareApi.url}/api/files`, { headers: headers() });

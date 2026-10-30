@@ -7,6 +7,8 @@
  * Without voice notes on her machine, the microphone leads to the button that installs them.
  * The clip attaches files in an Assistant chat. A pasted or dropped file attaches the same way.
  * Each file uploads when the person picks it, so Send waits for no upload.
+ * The star opens the menu of the vault's text actions, such as Polish, and saved prompts (issue 661).
+ * A text action rewrites the typed text and sends nothing; Undo brings the typed text back.
  */
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement, type RefObject } from "react";
 import {
@@ -17,7 +19,7 @@ import {
   type EngineName,
   type ModelAlias,
 } from "../../../shared/engine-port.ts";
-import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
+import { api, type ChatBlocker, type ComposerMenuItems, type SessionRecord } from "./api.ts";
 import { messageWithFiles, pastedFiles } from "./attachments.ts";
 import {
   answeredModel,
@@ -38,6 +40,8 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { useMentionPicker } from "./MentionPicker.tsx";
+import { MenuButton } from "./Menu.tsx";
+import { composerMenuItems, insertedText } from "./menu-text.ts";
 import { setupBlock } from "./new-chat.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
@@ -137,23 +141,38 @@ export function Composer({
   );
   // A send awaits the core, so its failure reads the text typed since then here, not from its closure.
   const typed = useRef(text);
+  /** Where the person last put the cursor, or null when they did not, as in a draft that came back. */
+  const caret = useRef<{ start: number; end: number } | null>(null);
+  /** True once the person typed or tapped in the box since Eva last set its text. */
+  const touched = useRef(false);
   const setText = (value: string): void => {
     // A cleared summary stays cleared: without the entry, the box would start with the summary again.
     if (draftKey !== undefined) unsentTexts.set(draftKey, value, summary !== null);
     typed.current = value;
     setTypedText(value);
+    // A new text makes the old cursor wrong, until the person types or taps again.
+    caret.current = null;
+    touched.current = false;
   };
   /**
    * Puts the message of a failed send back. A chat's box can mount again during the send, so the
    * stored draft of the chat is newer than this box's text.
    */
-  const restore = (failed: string): void =>
+  const restore = (failed: string): void => {
     setText(draftKey === undefined ? restoredText(failed, typed.current) : unsentTexts.restore(draftKey, failed));
+    // Undo would bring back a text from before the restored message.
+    setUndoText(null);
+  };
   // A failed send of a box that is gone restores its text to the store, so this box follows the store.
   useEffect(() => {
     if (draftKey === undefined) return;
     const follow = (): void => {
       const stored = unsentTexts.find(draftKey) ?? summary ?? "";
+      // The store also tells the box of its own changes. Only another text makes the cursor wrong.
+      if (stored !== typed.current) {
+        caret.current = null;
+        touched.current = false;
+      }
       typed.current = stored;
       setTypedText(stored);
     };
@@ -173,17 +192,66 @@ export function Composer({
   };
   const voice = useVoiceNote((heard) => hear.current(heard));
 
+  const menu = useComposerMenu();
+  /** The text action that runs now, or null. */
+  const [rewriting, setRewriting] = useState<string | null>(null);
+  /** The typed text before the last text action, until the person types again. */
+  const [undoText, setUndoText] = useState<string | null>(null);
+  /** The number of the newest text action run. A run whose number is old ends with no change. */
+  const actionRun = useRef(0);
+  // The box shows another chat now. A late answer belongs to the old chat's text, so it must not land here.
+  useEffect(() => {
+    actionRun.current += 1;
+    caret.current = null;
+    touched.current = false;
+    setRewriting(null);
+    setUndoText(null);
+  }, [draftKey]);
+  const showError = useShowError();
+  const runAction = async (name: string): Promise<void> => {
+    const before = text;
+    actionRun.current += 1;
+    const run = actionRun.current;
+    setRewriting(name);
+    try {
+      const { text: rewritten } = await api.runTextAction(name, session.engine, before);
+      if (run !== actionRun.current) return;
+      setText(rewritten);
+      setUndoText(before);
+    } catch (caught) {
+      // The box keeps the typed text, so the person loses nothing.
+      if (run === actionRun.current) showError(caught);
+    } finally {
+      if (run === actionRun.current) setRewriting(null);
+    }
+  };
+  const insertPrompt = (inserted: string): void => {
+    // With no cursor from the person, the prompt goes at the end: a browser can put a restored draft's cursor at its start.
+    const selection = caret.current ?? { start: text.length, end: text.length };
+    const next = insertedText(text, selection, inserted);
+    setText(next.text);
+    setUndoText(null);
+    caret.current = { start: next.cursor, end: next.cursor };
+    touched.current = true;
+    // The cursor goes after the prompt, so the person types on from there.
+    requestAnimationFrame(() => {
+      box.current?.focus({ preventScroll: true });
+      box.current?.setSelectionRange(next.cursor, next.cursor);
+    });
+  };
+
   const uploading = files.attachments.some((attachment) => attachment.note === null);
   const notes = files.attachments.flatMap((attachment) => (attachment.note === null ? [] : [attachment.note]));
   const isEmpty = text.trim() === "" && files.attachments.length === 0;
 
   const send = async (): Promise<void> => {
     const message = messageWithFiles(text, [...mentions.notes(text), ...notes]);
-    if (message === "" || uploading || sending || blocker !== null) return;
+    if (message === "" || uploading || sending || rewriting !== null || blocker !== null) return;
     const attached = files.attachments;
     playCue("send");
     setSending(true);
     setText("");
+    setUndoText(null);
     files.set([]);
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
@@ -296,13 +364,27 @@ export function Composer({
           placeholder={block === null ? placeholder : "Eva cannot answer yet"}
           rows={1}
           disabled={block !== null}
+          // The answer of a text action takes the place of the text, so an edit meanwhile would be lost.
+          readOnly={rewriting !== null}
+          aria-busy={rewriting !== null}
           value={text}
           {...mentions.boxProps}
           onChange={(event) => {
             setText(event.target.value);
+            setUndoText(null);
+            touched.current = true;
             mentions.follow();
           }}
           onSelect={mentions.follow}
+          onPointerDown={() => {
+            touched.current = true;
+          }}
+          onBlur={(event) => {
+            mentions.boxProps.onBlur();
+            // A press on the star takes the focus. The cursor counts only when the person placed it.
+            const field = event.currentTarget;
+            if (touched.current) caret.current = { start: field.selectionStart, end: field.selectionEnd };
+          }}
           onPaste={(event) => {
             const pasted = pastedFiles(event.clipboardData);
             if (!takesFiles || pasted.length === 0) return;
@@ -310,6 +392,7 @@ export function Composer({
             files.add(pasted);
           }}
           onKeyDown={(event) => {
+            touched.current = true;
             if (mentions.onKeyDown(event)) return;
             const press = {
               key: event.key,
@@ -343,6 +426,7 @@ export function Composer({
           </ul>
         )}
         {uploading && <ProgressBar label="Eva receives the file" />}
+        {rewriting !== null && <ProgressBar label={`Eva runs ${rewriting} on the text`} />}
         <div className="composer-row">
           <input
             ref={picker}
@@ -366,7 +450,37 @@ export function Composer({
               <Icon name="clip" />
             </button>
           )}
+          {block === null && menu.textActions.length + menu.savedPrompts.length > 0 && (
+            <MenuButton
+              className="icon-button"
+              name="Text actions and saved prompts"
+              label="Text actions and saved prompts"
+              turnedOff={rewriting !== null}
+              fromStart
+              above
+              items={composerMenuItems(menu, {
+                canRewrite: text.trim() !== "",
+                onAction: (name) => void runAction(name),
+                onPrompt: insertPrompt,
+              })}
+            >
+              <Icon name="star" />
+            </MenuButton>
+          )}
           <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
+          {undoText !== null && rewriting === null && (
+            <button
+              className="ghost"
+              data-tooltip="Bring back the text from before the text action"
+              onClick={() => {
+                setText(undoText);
+                setUndoText(null);
+              }}
+            >
+              <Icon name="restart" />
+              Undo
+            </button>
+          )}
           <span className="grow" />
           {showMic && (
             <button
@@ -395,7 +509,9 @@ export function Composer({
                 data-cue="none"
                 aria-label="Send"
                 data-tooltip="Send"
-                disabled={sending || uploading || messageWithFiles(text, notes) === "" || block !== null}
+                disabled={
+                  sending || uploading || rewriting !== null || messageWithFiles(text, notes) === "" || block !== null
+                }
                 onClick={() => void send()}
               >
                 <Icon name="send" />
@@ -781,6 +897,27 @@ function isTextField(element: Element | null): boolean {
     (element instanceof HTMLElement && element.isContentEditable) ||
     (element instanceof HTMLInputElement && !["button", "checkbox", "radio", "submit", "range"].includes(element.type))
   );
+}
+
+const noMenuItems: ComposerMenuItems = { textActions: [], savedPrompts: [] };
+
+/** The vault's text actions and saved prompts. Without a vault, or on a failed read, the menu has none. */
+function useComposerMenu(): ComposerMenuItems {
+  const [items, setItems] = useState<ComposerMenuItems>(noMenuItems);
+  useEffect(() => {
+    let current = true;
+    api
+      .composerMenu()
+      .then((loaded) => {
+        if (current) setItems(loaded);
+      })
+      // The box works without the menu, so a failed read only hides the button.
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, []);
+  return items;
 }
 
 /** A box at least this tall shows the handle, even when its text does not scroll. */

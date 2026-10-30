@@ -240,6 +240,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },
   {
+    item: "composer-menu",
+    section: "personalize",
+    title: "Message box menu",
+    words: "text actions polish saved prompts summary star",
+  },
+  {
     item: "versions",
     section: "updates",
     title: "Versions",
@@ -306,6 +312,12 @@ export const settingPlaces: readonly SettingPlace[] = [
   { title: "Google account", home: "vault", keys: ["google.email"], link: { section: "connections", item: "google" } },
   { title: "Eva's rules", home: "vault", keys: [], link: { section: "personalize", item: "assistant-rules" } },
   { title: "Chat names", home: "vault", keys: [], link: { section: "personalize", item: "chat-names" } },
+  {
+    title: "Message box menu",
+    home: "vault",
+    keys: [],
+    link: { section: "personalize", item: "composer-menu" },
+  },
   { title: "The hub machine", home: "vault", keys: [], link: { section: "access", item: "machine" } },
   { title: "Voice note language", home: "vault", keys: ["voice.language"], link: null },
   { title: "Claude Code login", home: "machine", keys: [], link: { section: "engines", item: "claude-code" } },

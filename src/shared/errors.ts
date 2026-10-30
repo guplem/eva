@@ -28,6 +28,8 @@ export type EvaErrorCode =
   | "project_invalid"
   | "project_changed"
   | "title_invalid"
+  /** A text action or a saved prompt of the message box menu with a bad name or text. */
+  | "menu_item_invalid"
   | "vault_ahead"
   | "vault_setup_busy"
   | "file_not_found"

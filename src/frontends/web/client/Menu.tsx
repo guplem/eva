@@ -4,7 +4,9 @@
  * phone. Only an element with Eva actions blocks the browser's own menu, so text keeps copy and paste.
  */
 import {
+  Fragment,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -25,6 +27,10 @@ export interface MenuItem {
   readonly label: string;
   readonly icon: IconName;
   readonly danger?: boolean;
+  /** A heading above the item. Each run of items with one group gets one heading. */
+  readonly group?: string;
+  /** A turned-off item stays in the list, so the person sees that it exists. */
+  readonly disabled?: boolean;
   readonly onChoose: () => void;
 }
 
@@ -50,6 +56,7 @@ interface MenuListProps {
 export function MenuList({ items, label, className, style, listRef, onClose }: MenuListProps): ReactElement {
   const own = useRef<HTMLDivElement>(null);
   const menu = listRef ?? own;
+  const groupId = useId();
   // A long press opens a menu on a phone, so the Back button closes it, as in the phone's own apps.
   useBackLayer(true, () => onClose(false));
 
@@ -84,23 +91,49 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
     event.stopPropagation();
   };
 
+  const button = (item: MenuItem): ReactElement => (
+    <button
+      key={item.label}
+      role="menuitem"
+      className={item.danger === true ? "danger" : undefined}
+      // Not `disabled`: a turned-off item keeps the focus, so the arrow keys and a screen reader still reach it.
+      aria-disabled={item.disabled === true ? true : undefined}
+      onClick={() => {
+        if (item.disabled === true) return;
+        onClose(false);
+        item.onChoose();
+      }}
+    >
+      <Icon name={item.icon} /> {item.label}
+    </button>
+  );
   return (
     <div className={`menu ${className}`} role="menu" aria-label={label} ref={menu} style={style} onKeyDown={onKeyDown}>
-      {items.map((item) => (
-        <button
-          key={item.label}
-          role="menuitem"
-          className={item.danger === true ? "danger" : undefined}
-          onClick={() => {
-            onClose(false);
-            item.onChoose();
-          }}
-        >
-          <Icon name={item.icon} /> {item.label}
-        </button>
-      ))}
+      {menuGroups(items).map((group, index) =>
+        group.name === undefined ? (
+          <Fragment key={`items-${String(index)}`}>{group.items.map(button)}</Fragment>
+        ) : (
+          <div key={`group-${String(index)}`} role="group" aria-labelledby={`${groupId}-${String(index)}`}>
+            <span className="menu-group" id={`${groupId}-${String(index)}`}>
+              {group.name}
+            </span>
+            {group.items.map(button)}
+          </div>
+        ),
+      )}
     </div>
   );
+}
+
+/** Each run of items with one group, in order. Items with no group form runs too. */
+function menuGroups(items: readonly MenuItem[]): { name: string | undefined; items: MenuItem[] }[] {
+  const groups: { name: string | undefined; items: MenuItem[] }[] = [];
+  for (const item of items) {
+    const last = groups.at(-1);
+    if (last !== undefined && last.name === item.group) last.items.push(item);
+    else groups.push({ name: item.group, items: [item] });
+  }
+  return groups;
 }
 
 /** The less common actions of a part of the page. Escape or a tap outside closes it; the arrow keys move between the items. */
@@ -136,8 +169,10 @@ export function MenuButton({
   className,
   name,
   disabled = false,
+  turnedOff = false,
   busy = false,
   fromStart = false,
+  above = false,
   children,
 }: {
   readonly items: readonly MenuItem[];
@@ -149,9 +184,16 @@ export function MenuButton({
   /** The name and the tooltip of a button that shows only an icon. A button with words needs none. */
   readonly name?: string;
   readonly disabled?: boolean;
+  /**
+   * Turned off with `aria-disabled`, such as while the message box waits for a model. Unlike `disabled`, the
+   * button keeps the focus that a chosen item gives back to it.
+   */
+  readonly turnedOff?: boolean;
   readonly busy?: boolean;
   /** Opens the menu from the left edge of the button, for a button near the left of the screen. */
   readonly fromStart?: boolean;
+  /** Opens the menu above the button, for a button at the bottom of the page, such as in the message box. */
+  readonly above?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
@@ -183,8 +225,11 @@ export function MenuButton({
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
+        aria-disabled={turnedOff ? true : undefined}
         aria-busy={busy}
-        onClick={() => setOpen((isOpen) => !isOpen)}
+        onClick={() => {
+          if (!turnedOff) setOpen((isOpen) => !isOpen);
+        }}
       >
         {children}
       </button>
@@ -192,7 +237,7 @@ export function MenuButton({
         <MenuList
           items={items}
           label={label}
-          className={fromStart ? "more-menu from-start" : "more-menu"}
+          className={["more-menu", ...(fromStart ? ["from-start"] : []), ...(above ? ["above"] : [])].join(" ")}
           onClose={closeList}
         />
       )}

@@ -36,6 +36,7 @@ import type { ProjectDetails, ProjectFile } from "../../../core/projects/project
 import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
 import type { TemplatePart } from "../../../core/vault/template-alignment.ts";
+import type { ComposerMenuItems, SavedPrompt, TextAction } from "../../../core/composer-menu/composer-menu.ts";
 import type { SetupItem, SetupReport, SetupSection } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
@@ -67,6 +68,7 @@ export type { EventSubscription };
 
 /** A template part of the vault, such as a skill, and how it compares with this Eva's version. */
 export type TemplatePartView = TemplatePart;
+export type { ComposerMenuItems, SavedPrompt, TextAction };
 
 export type { PersonalFactsView };
 /** Where the person is, for scripts: a recent point from a phone, or the home place. */
@@ -335,6 +337,20 @@ export const api = {
   setPushInView: (endpoint: string, pageId: string, inView: boolean, chats: readonly string[]): Promise<void> =>
     request("POST", "/api/push/in-view", { endpoint, pageId, inView, chats }, { keepalive: true }),
   testPush: (): Promise<void> => request("POST", "/api/push/test"),
+  /** The text actions and saved prompts of the message box. Answers 409 when no vault is configured. */
+  composerMenu: (): Promise<ComposerMenuItems> => request("GET", "/api/composer-menu"),
+  /** With `previousName`, the item gets the new name. */
+  saveTextAction: (action: TextAction & { readonly previousName?: string }): Promise<ComposerMenuItems> =>
+    request("PUT", "/api/composer-menu/text-actions", action),
+  removeTextAction: (name: string): Promise<ComposerMenuItems> =>
+    request("DELETE", "/api/composer-menu/text-actions", { name }),
+  savePrompt: (prompt: SavedPrompt & { readonly previousName?: string }): Promise<ComposerMenuItems> =>
+    request("PUT", "/api/composer-menu/saved-prompts", prompt),
+  removePrompt: (name: string): Promise<ComposerMenuItems> =>
+    request("DELETE", "/api/composer-menu/saved-prompts", { name }),
+  /** The text of the box, rewritten by the action on the chat's engine. */
+  runTextAction: (name: string, engine: EngineName, text: string): Promise<{ text: string }> =>
+    request("POST", "/api/composer-menu/text-actions/run", { name, engine, text }),
   /** Answers 409 when no vault is configured. */
   chatNameRules: (): Promise<{ rules: string }> => request("GET", "/api/chat-names"),
   saveChatNameRules: (rules: string): Promise<{ rules: string }> => request("PUT", "/api/chat-names", { rules }),

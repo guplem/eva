@@ -25,7 +25,7 @@ import { isNewerVersion } from "../updates/version-order.ts";
 export type PartState = "current" | "pending" | "yours" | "kept" | "differs" | "missing";
 
 /** What a part is. Each kind gives the word that the page and the alert use for it. */
-export type PartKind = "skill";
+export type PartKind = "skill" | "text action" | "saved prompt";
 
 export interface TemplatePart {
   /** The path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
@@ -42,16 +42,20 @@ export interface TemplatePart {
 
 /**
  * The kinds of part, by the folder where they live. A new kind is one more entry. The name of a
- * part is the first folder under that place, so a skill with extra files keeps one name.
+ * part is the first folder or file under that place, so a skill with extra files keeps one name.
  */
 const partKinds: readonly { readonly kind: PartKind; readonly folder: string }[] = [
   { kind: "skill", folder: ".eva/skills/" },
+  { kind: "text action", folder: ".eva/settings/text-actions/" },
+  { kind: "saved prompt", folder: ".eva/settings/saved-prompts/" },
 ];
 
 function describePath(path: string): { readonly kind: PartKind; readonly name: string } {
   const place = partKinds.find((each) => path.startsWith(each.folder)) ?? partKinds[0];
   const folder = place?.folder ?? "";
-  return { kind: place?.kind ?? "skill", name: path.slice(folder.length).split("/")[0] ?? path };
+  const name = path.slice(folder.length).split("/")[0] ?? path;
+  // A menu item is one file, and the menu shows its name without the extension.
+  return { kind: place?.kind ?? "skill", name: name.endsWith(".md") ? name.slice(0, -".md".length) : name };
 }
 
 export const templateRecordFormatVersion = 1;
@@ -252,7 +256,11 @@ export class TemplateAlignment {
   }
 }
 
-const kindWords: Readonly<Record<PartKind, string>> = { skill: "skill" };
+const kindWords: Readonly<Record<PartKind, string>> = {
+  skill: "skill",
+  "text action": "text action",
+  "saved prompt": "saved prompt",
+};
 
 /** The alert of the parts that wait for the person's choice, or null when none waits. */
 export function alignmentProblem(parts: readonly TemplatePart[]): AlertProblem | null {

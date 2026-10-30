@@ -338,7 +338,8 @@ button.danger {
   border-color: var(--bad);
 }
 
-button:disabled {
+button:disabled,
+.more-picker > button[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }
@@ -3342,6 +3343,32 @@ button.small {
   color: var(--bad);
 }
 
+.menu button[aria-disabled="true"] {
+  color: var(--muted);
+  cursor: default;
+}
+
+.menu button[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+.menu [role="group"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-group {
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+/* A button at the bottom of the page, such as in the message box, opens its menu upward. */
+.more-menu.above {
+  top: auto;
+  bottom: calc(100% + var(--space-1));
+}
+
 .more-menu {
   position: absolute;
   top: calc(100% + var(--space-1));
@@ -3660,4 +3687,26 @@ a.link-chip:hover {
 
 .kept-open[hidden] {
   display: none;
+}
+
+/* One text action or saved prompt on the Personalize page. Closed, it is one line; open, it is a small form. */
+.composer-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-input);
+  background: var(--chip);
+}
+
+.composer-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.composer-menu-item.open {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
 }

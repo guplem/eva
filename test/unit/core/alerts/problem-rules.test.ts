@@ -216,6 +216,17 @@ describe("relayedProblem", () => {
     });
     expect(relayed.message.startsWith("On pc: Eva could not check")).toBe(true);
   });
+
+  test("says how old the report is when it is more than one day old (#542)", () => {
+    const problem = { key: "update", level: "warn", message: "No update check.", resolvedMessage: "" } as const;
+    const dayMs = 24 * 60 * 60_000;
+    const aged = (ageMs: number | null): string => relayedProblem("laptop", "desktop", file, problem, ageMs).message;
+    expect(aged(5 * dayMs + 60_000)).toBe(
+      "On laptop: No update check. laptop last reported 5 days ago. Fix it in Eva on laptop, not on desktop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
+    );
+    expect(aged(dayMs + 60_000)).toContain(" laptop last reported 1 day ago. ");
+    for (const fresh of [null, dayMs, -5 * dayMs]) expect(aged(fresh)).not.toContain("last reported");
+  });
 });
 
 describe("engineMissingProblem", () => {

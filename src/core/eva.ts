@@ -825,7 +825,9 @@ export class Eva {
             policy: () => this.settings.config.updates.install,
             requiredVersion: () => this.vaultNeeds(),
             // A waiting engine update runs first: the restart would lose it, as it lives in memory.
-            isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
+            // A restart during a tool install leaves the tool half installed (#565).
+            isIdle: () =>
+              !this.workRuns() && !this.toolInstallRuns && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
@@ -2245,7 +2247,8 @@ export class Eva {
       .filter((alert) => alert.key !== "vault_sync" && !alert.key.startsWith("machine:"))
       // The hub sends the reminders, so it must know which notice the person hid here.
       .map((alert) => (this.alerts.isHidden(alert.key) ? { ...alert, hidden: true as const } : alert));
-    const written = writeMachineReport(vaultPath, { machine: this.machine, version: evaVersion, problems });
+    const now = this.options.now();
+    const written = writeMachineReport(vaultPath, { machine: this.machine, version: evaVersion, problems }, now);
     if (written === "no_vault") return;
     this.noticeReportName(written === "name_taken");
 
@@ -2262,6 +2265,7 @@ export class Eva {
         continue;
       }
       if (report.machine === this.machine) continue;
+      const ageMs = report.reportedAt === undefined ? null : now.getTime() - Date.parse(report.reportedAt);
       const keys = new Set<string>();
       for (const problem of report.problems) {
         const key = `machine:${report.machine}:${problem.key}`;
@@ -2270,7 +2274,7 @@ export class Eva {
         if (problem.hidden === true) this.alerts.markHidden(key, problem.level);
         this.alerts.report(
           key,
-          relayedProblem(report.machine, this.machine, machineReportFile(report.machine), problem),
+          relayedProblem(report.machine, this.machine, machineReportFile(report.machine), problem, ageMs),
         );
       }
       relayed.set(file, keys);

@@ -31,7 +31,13 @@ import type { Clone, CloneDetails, RepositoryDetails } from "../../../core/proje
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
-import type { BranchResult, CloneFetch, ForkFiles, RetryChoice } from "../../../core/projects/project-work.ts";
+import type {
+  BranchResult,
+  CloneFetch,
+  ForkFiles,
+  RepositoryFixResult,
+  RetryChoice,
+} from "../../../core/projects/project-work.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
@@ -275,6 +281,15 @@ export const api = {
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/clones`),
   repositorySetup: (projectId: string): Promise<SetupReport[]> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/setup`),
+  setRepositoryType: (projectId: string, repository: string, type: string): Promise<ProjectFile> =>
+    request("PUT", `/api/projects/${encodeURIComponent(projectId)}/setup/type`, { repository, type }),
+  /** Runs the direct fixes of the named items, or of all of them for null. */
+  fixRepository: (
+    projectId: string,
+    repository: string,
+    items: readonly string[] | null,
+  ): Promise<RepositoryFixResult> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/setup/fix`, { repository, items }),
   projectFile: (projectId: string): Promise<ProjectFile> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/file`),
   /** A file that changed since `version` answers 409. */

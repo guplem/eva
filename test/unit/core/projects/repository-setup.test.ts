@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
-  evaluateSetup,
+  missesFacts,
+  setupReport,
+  vibeCodedSections,
   type RepositoryFacts,
   type SetupItem,
   type SetupReport,
@@ -46,7 +48,13 @@ const reference: RepositoryFacts = {
   pushProtection: true,
   codeScanningDefaultSetup: true,
   readOnlyWorkflowToken: true,
+  hasCode: true,
 };
+
+/** The full report of the vibe-coded type. */
+function evaluateSetup(referenceFacts: RepositoryFacts, targetFacts: RepositoryFacts): SetupReport {
+  return setupReport("vibe-coded", targetFacts, vibeCodedSections(referenceFacts, targetFacts));
+}
 
 function target(changes: Partial<RepositoryFacts> = {}): RepositoryFacts {
   return { ...reference, slug: "owner/example-app", ...changes };
@@ -339,15 +347,113 @@ describe("evaluateSetup, edge cases", () => {
     expect(fix).toContain("an exact copy of");
   });
 
-  test("all fixes join into one request with one pull request; grey items stay out", () => {
-    const report = evaluateSetup(reference, target({ allowAutoMerge: false, labels: ["bug"] }));
+  test("the fixes that need a chat join into one request with one pull request; direct and grey items stay out", () => {
+    const report = evaluateSetup(reference, target({ allowAutoMerge: false, labels: ["bug"], allowRules: "none" }));
     expect(report.allFixes).toStartWith("In owner/example-app, make each change below. Open one pull request for all");
-    expect(report.allFixes).toContain(
-      "- In owner/example-app, turn on the setting so that a pull request merges itself",
-    );
+    expect(report.allFixes).toContain("- In owner/example-app, add `.claude/settings.json`");
+    expect(report.allFixes).not.toContain("allow_auto_merge");
+    expect(report.allFixes).not.toContain("gh label");
     expect(report.allFixes).not.toContain("Then open a pull request.");
     expect(report.allFixes).not.toContain("malware");
     expect(evaluateSetup(reference, target()).allFixes).toBeNull();
+  });
+});
+
+describe("missesFacts", () => {
+  test("is true only when the files or the labels could not be read", () => {
+    expect(missesFacts(evaluateSetup(reference, target()))).toBe(false);
+    expect(missesFacts(evaluateSetup(reference, target({ files: null })))).toBe(true);
+    expect(missesFacts(evaluateSetup(reference, target({ labels: null })))).toBe(true);
+    expect(missesFacts(evaluateSetup(reference, target({ readOnlyWorkflowToken: null })))).toBe(false);
+  });
+});
+
+describe("evaluateSetup, direct fixes", () => {
+  test("a GitHub setting and a security switch are fixed with a GitHub API call", () => {
+    const report = evaluateSetup(
+      reference,
+      target({ allowAutoMerge: false, secretScanning: false, dependabotAlerts: false, readOnlyWorkflowToken: false }),
+    );
+    expect(item(report, "Auto-merge").directFix).toEqual({
+      kind: "api",
+      method: "PATCH",
+      path: "repos/owner/example-app",
+      body: { allow_auto_merge: true },
+    });
+    expect(item(report, "Secret scanning").directFix).toEqual({
+      kind: "api",
+      method: "PATCH",
+      path: "repos/owner/example-app",
+      body: { security_and_analysis: { secret_scanning: { status: "enabled" } } },
+    });
+    expect(item(report, "Dependabot alerts").directFix).toEqual({
+      kind: "api",
+      method: "PUT",
+      path: "repos/owner/example-app/vulnerability-alerts",
+      body: null,
+    });
+    expect(item(report, "Read-only workflow token").directFix).toEqual({
+      kind: "api",
+      method: "PUT",
+      path: "repos/owner/example-app/actions/permissions/workflow",
+      body: { default_workflow_permissions: "read" },
+    });
+    expect(item(report, "Code scanning").directFix).toBeUndefined();
+  });
+
+  test("labels copy from the reference, and GitHub's defaults go", () => {
+    // A default name that the reference also has stays.
+    const kept = item(
+      evaluateSetup({ ...reference, labels: ["bug", "auto-developing"] }, target({ labels: ["bug"] })),
+      "Labels",
+    );
+    expect(kept.directFix).toMatchObject({ add: ["auto-developing"], remove: [] });
+    const labels = item(evaluateSetup(reference, target({ labels: ["bug", "auto-developing"] })), "Labels");
+    expect(labels.directFix).toEqual({
+      kind: "labels",
+      source: "guplem/eva",
+      add: ["requires-human-intervention", "waiting-for-human-check"],
+      remove: ["bug"],
+    });
+  });
+
+  test("a missing or outdated skill becomes an exact copy of the reference's folder", () => {
+    const files = {
+      ...reference.files,
+      ".agents/skills/rename-symbol/SKILL.md": "rename-v0",
+      ".agents/skills/rename-symbol/old.md": "old",
+      ".agents/skills/write-commit/SKILL.md": undefined,
+    };
+    const report = evaluateSetup(reference, target({ defaultBranch: "trunk", files: withoutUndefined(files) }));
+    expect(item(report, "Skill write-commit").directFix).toEqual({
+      kind: "files",
+      source: "guplem/eva",
+      branch: "trunk",
+      files: { ".agents/skills/write-commit/SKILL.md": "commit-v2" },
+      remove: [],
+    });
+    expect(item(report, "Skill rename-symbol").directFix).toEqual({
+      kind: "files",
+      source: "guplem/eva",
+      branch: "trunk",
+      files: {
+        ".agents/skills/rename-symbol/SKILL.md": "rename-v1",
+        ".agents/skills/rename-symbol/notes.md": "notes-v1",
+      },
+      remove: [".agents/skills/rename-symbol/old.md"],
+    });
+    // A move from the Claude-only folder needs a chat.
+    const moved = evaluateSetup(
+      reference,
+      target({
+        files: withoutUndefined({
+          ...reference.files,
+          ".agents/skills/write-commit/SKILL.md": undefined,
+          ".claude/skills/write-commit/SKILL.md": "x",
+        }),
+      }),
+    );
+    expect(item(moved, "Skill write-commit").directFix).toBeUndefined();
   });
 });
 

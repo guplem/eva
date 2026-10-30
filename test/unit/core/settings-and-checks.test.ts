@@ -76,7 +76,7 @@ describe("repository setup", () => {
     sandbox.write(
       vault,
       "Projects/2025-04-01-0900-other-app/AGENTS.md",
-      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app.git\n  - ${sandbox.remote}\n---\n`,
+      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app.git\n  - ${sandbox.remote}\nrepo_types:\n  https://github.com/owner/other-app.git: vibe-coded\n---\n`,
     );
     const asked: string[] = [];
     const github = fakeGithub({
@@ -100,6 +100,8 @@ describe("repository setup", () => {
     const reports = await withGithub.repositorySetup("2025-04-01-0900-other-app");
     withGithub.stop();
     expect(reports.map((report) => report.slug)).toEqual(["owner/other-app", null]);
+    // The report keeps the address of the project file, so a Fix finds the repository again.
+    expect(reports[0]?.repositoryUrl).toBe("https://github.com/owner/other-app.git");
     expect(reports[0]?.sections.map((section) => section.title)).toContain("Security");
     const security = reports[0]?.sections.find((section) => section.title === "Security")?.items ?? [];
     expect(security.find((entry) => entry.label === "Dependabot alerts")?.light).toBe("green");
@@ -114,7 +116,7 @@ describe("repository setup", () => {
     sandbox.write(
       vault,
       "Projects/2025-04-01-0900-other-app/AGENTS.md",
-      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\n---\n",
+      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\nrepo_types:\n  https://github.com/owner/other-app: vibe-coded\n---\n",
     );
     const reportFor = async (github: GithubRequest): Promise<SetupReport | undefined> => {
       const instance = new Eva({
@@ -150,11 +152,116 @@ describe("repository setup", () => {
     expect((await reportFor(archived))?.problem).toBe("This repository is archived, so it takes no changes.");
   });
 
+  test("a repository with no known type has no report until the person picks one; standard needs no reference", async () => {
+    const projectId = "2025-04-01-0900-other-app";
+    const url = "https://github.com/owner/other-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - ${url}\nrepo_types:\n  ${url}: retired-type\n---\n`,
+    );
+    const asked: string[] = [];
+    const github = fakeGithub({ "owner/other-app": { files: {}, labels: [] } });
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: fakeGh(systemProcessRunner),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubRequest: (path, raw, fields) => {
+        asked.push(path);
+        return github(path, raw, fields);
+      },
+    });
+    try {
+      expect(await instance.repositorySetup(projectId)).toEqual([
+        { repositoryUrl: url, slug: "owner/other-app", type: null, sections: [], allFixes: null, problem: null },
+      ]);
+      expect(asked).toEqual([]);
+
+      instance.setRepositoryType(projectId, url, "standard");
+      expect(instance.projects().find((project) => project.id === projectId)?.frontMatter.repoTypes).toEqual({
+        [url]: "standard",
+      });
+      const [report] = await instance.repositorySetup(projectId);
+      expect(report?.type).toBe("standard");
+      expect(report?.sections.map((section) => section.title)).toEqual(["Security"]);
+      expect(asked).not.toContain("repos/guplem/eva");
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("Fix runs the direct fixes; the rest and the failed fixes go into one chat request", async () => {
+    const projectId = "2025-04-01-0900-other-app";
+    const url = "https://github.com/owner/other-app";
+    const write = (type: string): void =>
+      sandbox.write(
+        vault,
+        `Projects/${projectId}/AGENTS.md`,
+        `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - ${url}\nrepo_types:\n  ${url}: ${type}\n---\n`,
+      );
+    const calls: string[] = [];
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: fakeGh(systemProcessRunner),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubRequest: fakeGithub({
+        "guplem/eva": { files: referenceFiles, labels: ["bug"] },
+        "owner/other-app": {
+          files: {},
+          labels: [],
+          repository: { allow_auto_merge: false },
+          security: { hasVulnerabilityAlertsEnabled: false, isSecurityPolicyEnabled: true },
+        },
+      }),
+      githubWrite: (method, path) => {
+        calls.push(`${method} ${path}`);
+        const refused = method === "PATCH" && path === "repos/owner/other-app";
+        return Promise.resolve(refused ? { status: 403, body: '{"message":"No"}' } : { status: 204, body: "" });
+      },
+    });
+    try {
+      write("standard");
+      expect(await instance.fixRepository(projectId, url, null)).toEqual({
+        fixed: ["Dependabot alerts"],
+        problems: [],
+        chatRequest: null,
+      });
+      expect(calls).toEqual(["PUT repos/owner/other-app/vulnerability-alerts"]);
+
+      write("vibe-coded");
+      calls.length = 0;
+      const single = await instance.fixRepository(projectId, url, ["Auto-merge"]);
+      expect(single.problems).toEqual(["Auto-merge: GitHub refused it (HTTP 403): No"]);
+      expect(single.chatRequest).toContain("allow_auto_merge=true");
+      expect(single.chatRequest).toContain("GitHub refused them:\n\n- Auto-merge: GitHub refused it (HTTP 403): No");
+      const all = await instance.fixRepository(projectId, url, null);
+      expect(all.fixed).toContain("Dependabot alerts");
+      expect(all.chatRequest).toContain("AGENTS.md");
+      const unknown = await instance.fixRepository(projectId, "https://github.com/owner/none", null).then(
+        () => "",
+        (error: unknown) => (error instanceof Error ? error.message : ""),
+      );
+      expect(unknown).toContain("does not list");
+    } finally {
+      instance.stop();
+    }
+  });
+
   test("when GitHub cannot be read, each report says why", async () => {
     sandbox.write(
       vault,
       "Projects/2025-04-01-0900-other-app/AGENTS.md",
-      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\n---\n",
+      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\nrepo_types:\n  https://github.com/owner/other-app: standard\n---\n",
     );
     const failing: ProcessRunner = { run: () => Promise.reject(new Error("spawn gh ENOENT")) };
     const withoutGh = new Eva({

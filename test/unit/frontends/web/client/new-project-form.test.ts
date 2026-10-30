@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { defaultConfig } from "../../../../../src/core/settings/home.ts";
 import type { PublicSettings } from "../../../../../src/core/settings/live-settings.ts";
-import { stepProblems, unavailableSteps } from "../../../../../src/frontends/web/client/new-project-form.ts";
+import {
+  repositoryNotes,
+  stepProblems,
+  unavailableSteps,
+  unavailableTypes,
+} from "../../../../../src/frontends/web/client/new-project-form.ts";
 
 const secretsSet = {
   githubToken: true,
@@ -41,14 +46,49 @@ describe("unavailableSteps", () => {
   });
 });
 
+describe("the repository choices", () => {
+  test("a type that needs GitHub is unavailable, with the reason, until Eva has a GitHub login", () => {
+    expect(unavailableTypes(ready)).toEqual({ standard: null, "vibe-coded": null });
+    const reasons = unavailableTypes({ ...ready, secretsSet: { ...secretsSet, githubToken: false } });
+    expect(reasons["vibe-coded"]).toContain("Log in to GitHub");
+  });
+
+  test("only a private vibe-coded repository warns, and only a public one says that anyone reads it", () => {
+    expect(repositoryNotes("standard", "private")).toEqual({ warning: null, note: null });
+    expect(repositoryNotes("vibe-coded", "private").warning).toContain("CI minutes");
+    expect(repositoryNotes("vibe-coded", "private").warning).toContain("paid plan");
+    expect(repositoryNotes("vibe-coded", "public")).toEqual({
+      warning: null,
+      note: expect.stringContaining("Anyone can read") as string,
+    });
+    expect(repositoryNotes("standard", "public").warning).toBeNull();
+  });
+});
+
 describe("stepProblems", () => {
   test("names each failed step, and nothing for a step that worked or did not run", () => {
-    expect(stepProblems({ projectId: "x", github: { url: "https://github.com/you/x" }, drive: null })).toEqual([]);
+    const url = { url: "https://github.com/you/x" };
     expect(
-      stepProblems({ projectId: "x", github: { problem: "Name taken." }, drive: { problem: "No Drive." } }),
+      stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: null, problems: [] } }),
+    ).toEqual([]);
+    expect(
+      stepProblems({
+        projectId: "x",
+        github: { problem: "Name taken." },
+        drive: { problem: "No Drive." },
+        setup: null,
+      }),
     ).toEqual([
       "Eva could not create the GitHub repository: Name taken.",
       "Eva could not create the Drive folder: No Drive.",
     ]);
+    expect(
+      stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: "s", problems: ["Labels: No."] } }),
+    ).toEqual([
+      "Eva could not finish part of the repository setup. The setup chat in the project tries again: Labels: No.",
+    ]);
+    expect(
+      stepProblems({ projectId: "x", github: url, drive: null, setup: { sessionId: null, problems: ["Labels: No."] } }),
+    ).toEqual(["Eva could not finish the repository setup: Labels: No."]);
   });
 });

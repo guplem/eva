@@ -1620,7 +1620,7 @@ test("New project: the form creates a project and opens its page", async ({ page
   await page.getByRole("button", { name: "New project" }).click();
   const form = page.getByRole("dialog", { name: "New project" });
   // The demo has no GitHub login, so the form says what to set up instead of a send that fails.
-  await expect(form.getByLabel(/Create a private GitHub repository/)).toBeDisabled();
+  await expect(form.getByLabel(/Create a GitHub repository/)).toBeDisabled();
   await expect(form).toContainText("Log in to GitHub");
   await form.getByLabel("Name").fill(name);
   await form.getByLabel("Description").fill("Made from the form.");
@@ -1640,6 +1640,31 @@ test("New project: a failed read of the settings turns the steps off and says so
   const form = page.getByRole("dialog", { name: "New project" });
   await expect(form.getByLabel(/Create a Google Drive folder/)).toBeDisabled();
   await expect(form).toContainText("Eva could not read the settings.");
+  await page.keyboard.press("Escape");
+  await expect(form).toHaveCount(0);
+});
+
+test("New project: the repository asks for a type and a visibility, and warns only when it applies", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openProjects(page);
+  // The demo has no GitHub login, so the page reads settings that say it has one.
+  await page.route("**/api/settings", async (route) => {
+    const settings = (await (await route.fetch()).json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await form.getByLabel(/Create a GitHub repository/).check();
+  await expect(form.getByLabel("Repository type")).toHaveValue("standard");
+  await expect(form.getByLabel("Visibility")).toHaveValue("private");
+  await expect(form).not.toContainText("CI minutes");
+  await form.getByLabel("Repository type").selectOption("vibe-coded");
+  await expect(form).toContainText("CI minutes");
+  await form.getByLabel("Visibility").selectOption("public");
+  await expect(form).not.toContainText("CI minutes");
+  await expect(form).toContainText("Anyone can read the code of a public repository.");
   await page.keyboard.press("Escape");
   await expect(form).toHaveCount(0);
 });
@@ -1796,7 +1821,7 @@ test("the address of a fork opens that fork, even when another branch is newer",
   await expect(start).toContainText("Fork 1 · 2 of 2");
 });
 
-test("Project mode: the repository setup shows each item's light, and Fix opens a chat with the fix", async ({
+test("Project mode: the repository setup shows each item's light; Fix runs a direct fix, or opens a chat", async ({
   page,
 }) => {
   await logIn(page);
@@ -1809,18 +1834,25 @@ test("Project mode: the repository setup shows each item's light, and Fix opens 
   let report = await openSetup();
   // The local remote is not on GitHub, so its report only says why.
   await expect(page.getByText("Only a repository on GitHub has a setup report.")).toBeVisible();
+  // A repository with no type has no report until the person picks one. The other browser run may
+  // have picked it already, so the choice is made each time.
+  await report.getByLabel("Repository type").selectOption("vibe-coded");
   await expect(
     report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),
   ).toBeVisible();
+  // Eva copies a skill herself, so its Fix opens no chat.
   const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
   await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
-  await skill.getByRole("button", { name: "Fix Skill write-commit in a new chat" }).click();
+  await skill.getByRole("button", { name: "Fix Skill write-commit now" }).click();
+  await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
+  report = page.getByRole("region", { name: "example-owner/example-app" });
+  // Git hooks depend on the project's stack, so a coding agent adds them.
+  const hooks = report.locator(".setup-item", { hasText: "Git hooks" });
+  await hooks.getByRole("button", { name: "Fix Git hooks in a new chat" }).click();
   // The fix waits in the box of a new chat with Eva. The person sends it.
   await expect(page).toHaveURL(/#\/chats\/new$/);
   const box = page.getByRole("region", { name: "New chat", exact: true }).getByRole("textbox", { name: "Message" });
-  await expect(box).toHaveValue(
-    /^@project:2025-03-02-1015-example-app In example-owner\/example-app, add the skill `write-commit`/,
-  );
+  await expect(box).toHaveValue(/^@project:2025-03-02-1015-example-app In example-owner\/example-app, add git hooks/);
   // Other tests share the New chat page, so its text goes away.
   await box.fill("");
 
@@ -1830,7 +1862,9 @@ test("Project mode: the repository setup shows each item's light, and Fix opens 
   await expect(page).toHaveURL(/#\/chats\/new$/);
   await expect(box).toHaveValue(/^@project:2025-03-02-1015-example-app /);
   await expect(box).toHaveValue(/Open one pull request for all the file changes\./);
-  await expect(box).toHaveValue(/allow_auto_merge=true/);
+  // Eva turned auto-merge on herself, so the chat gets only the rest.
+  await expect(box).not.toHaveValue(/allow_auto_merge=true/);
+  await expect(box).toHaveValue(/add git hooks/);
   await box.fill("");
 });
 

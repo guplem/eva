@@ -14,6 +14,7 @@ import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/pro
 import type { TurnRequest } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGh } from "../../support/fake-gh.ts";
+import { fakeGithub } from "../../support/fake-github.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
@@ -608,8 +609,9 @@ describe("Eva", () => {
     expect(sandbox.git(sandbox.remote, "show", `main:Projects/${projectId}/AGENTS.md`)).toContain("More notes.");
   });
 
-  test("the person creates a project, named after the time of the configured time zone", async () => {
+  test("the person creates a project, named after the time of the configured time zone, with a public standard repository", async () => {
     const created: unknown[] = [];
+    const writes: string[] = [];
     const github = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -625,6 +627,17 @@ describe("Eva", () => {
         {
           secrets: { claudeOauthToken: "oauth-token-value-for-tests", githubToken: "github-token-value" },
           githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+          githubRequest: fakeGithub({
+            "you/example-app": {
+              files: { "README.md": "# Example App\n" },
+              labels: ["bug"],
+              security: { hasVulnerabilityAlertsEnabled: false, isSecurityPolicyEnabled: false },
+            },
+          }),
+          githubWrite: (method, path) => {
+            writes.push(`${method} ${path}`);
+            return Promise.resolve({ status: 204, body: "" });
+          },
         },
       );
 
@@ -633,7 +646,7 @@ describe("Eva", () => {
         description: "A small app.",
         status: "idea",
         tags: [],
-        github: true,
+        repository: { type: "standard", visibility: "public" },
         drive: true,
       });
 
@@ -641,11 +654,19 @@ describe("Eva", () => {
       expect(result.projectId).toBe("2026-10-14-1230-example-app");
       expect(result.github).toEqual({ url: "https://github.com/you/example-app" });
       expect(result.drive).toEqual({ problem: expect.stringContaining("Read and change") as string });
-      expect(created).toEqual([{ name: "example-app", description: "A small app.", private: true, auto_init: true }]);
+      expect(created).toEqual([{ name: "example-app", description: "A small app.", private: false, auto_init: true }]);
       expect(instance.projects()[0]).toMatchObject({
         id: "2026-10-14-1230-example-app",
-        frontMatter: { created: "2026-10-14T12:30", status: "idea", repos: ["https://github.com/you/example-app"] },
+        frontMatter: {
+          created: "2026-10-14T12:30",
+          status: "idea",
+          repos: ["https://github.com/you/example-app"],
+          repoTypes: { "https://github.com/you/example-app": "standard" },
+        },
       });
+      // Each basic item that GitHub offers is on, so nothing needs a chat.
+      expect(writes).toEqual(["PUT repos/you/example-app/vulnerability-alerts"]);
+      expect(result.setup).toEqual({ sessionId: null, problems: [] });
     } finally {
       await github.stop(true);
     }
@@ -659,12 +680,75 @@ describe("Eva", () => {
       description: "",
       status: "active",
       tags: [],
-      github: true,
+      repository: { type: "standard", visibility: "private" },
       drive: false,
     });
 
     expect(result.github).toEqual({ problem: expect.stringContaining("Log in to GitHub") as string });
     expect(result.drive).toBeNull();
+  });
+
+  test("a new vibe-coded repository gets the direct fixes, then a Project chat for the rest", async () => {
+    const url = "https://github.com/you/example-app";
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => Response.json({ full_name: "you/example-app", clone_url: `${url}.git` }),
+    });
+    const writes: string[] = [];
+    // The new repository is a local remote here, so the chat's clone never reaches GitHub.
+    const runner: ProcessRunner = {
+      run: (command, options) =>
+        fakeGh(systemProcessRunner).run(
+          command.map((part) => (part === url ? sandbox.remote : part)),
+          options,
+        ),
+    };
+    try {
+      const engine = new FakeEngine();
+      const instance = start(
+        engine,
+        {},
+        {
+          runner,
+          secrets: { claudeOauthToken: "oauth-token-value-for-tests", githubToken: "github-token-value" },
+          githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+          githubRequest: fakeGithub({
+            "guplem/eva": {
+              files: { "AGENTS.md": "# Rules\n", ".claude/settings.json": '{"permissions":{"allow":["Read"]}}' },
+              labels: ["auto-developing"],
+            },
+            "you/example-app": { files: { "README.md": "# Example App\n" }, labels: ["bug"] },
+          }),
+          githubWrite: (method, path) => {
+            writes.push(`${method} ${path}`);
+            return Promise.resolve({ status: 200, body: "[]" });
+          },
+        },
+      );
+
+      const result = await instance.createProject({
+        name: "Example App",
+        description: "",
+        status: "active",
+        tags: [],
+        repository: { type: "vibe-coded", visibility: "private" },
+        drive: false,
+      });
+
+      expect(result.setup?.problems).toEqual([]);
+      expect(writes).toContain("POST repos/you/example-app/labels");
+      expect(writes).toContain("DELETE repos/you/example-app/labels/bug");
+      const sessionId = result.setup?.sessionId ?? "";
+      expect(instance.sessions.get(sessionId)).toMatchObject({ mode: "project", projectId: result.projectId });
+      await waitFor(() => engine.requests.length > 0);
+      const request = JSON.stringify(engine.requests[0]);
+      expect(request).toContain("AGENTS.md");
+      expect(request).toContain("Turn on auto-merge for the pull request");
+      expect(request).not.toContain("gh label clone");
+    } finally {
+      await github.stop(true);
+    }
   });
 
   test("a project save refuses a stale version, a bad file and an unknown project", () => {

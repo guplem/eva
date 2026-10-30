@@ -15,6 +15,7 @@ import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
+import { repositoryTypes, type RepositoryTypeName } from "../../core/projects/repository-types.ts";
 import type {
   DeviceLoginApprover,
   DeviceLoginEvent,
@@ -156,14 +157,30 @@ const projectDetailsSchema = z.object({
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
 });
-const newProjectSchema = z.object({
-  name: z.string().min(1).max(500),
-  description: z.string().max(10_000),
-  status: z.enum(["idea", "active", "paused", "closed"]),
-  tags: z.array(z.string().max(200)).max(100),
-  github: z.boolean(),
-  drive: z.boolean(),
+const repositoryTypeNames = repositoryTypes.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
+const repositoryTypeSchema = z.object({ repository: z.string().min(1).max(2_000), type: z.enum(repositoryTypeNames) });
+const repositoryFixSchema = z.object({
+  repository: z.string().min(1).max(2_000),
+  items: z.array(z.string().max(500)).max(200).nullable(),
 });
+/**
+ * The form sends `repository`. An older page sends `github: true`, which reads as a standard
+ * private repository, as Eva made before repository types (#681).
+ */
+const newProjectSchema = z
+  .object({
+    name: z.string().min(1).max(500),
+    description: z.string().max(10_000),
+    status: z.enum(["idea", "active", "paused", "closed"]),
+    tags: z.array(z.string().max(200)).max(100),
+    github: z.boolean().optional(),
+    repository: z.object({ type: z.enum(repositoryTypeNames), visibility: z.enum(["private", "public"]) }).nullish(),
+    drive: z.boolean(),
+  })
+  .transform(({ github, repository, ...rest }) => ({
+    ...rest,
+    repository: repository ?? (github === true ? { type: "standard" as const, visibility: "private" as const } : null),
+  }));
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
 const trustAnswerSchema = z.object({ url: z.string().min(1).max(2_000) });
@@ -339,6 +356,9 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         url.pathname.startsWith("/api/github/") ||
         // A summary waits for a model, and a Project chat may wait for a new clone.
         url.pathname.endsWith("/summary-chat") ||
+        // A new repository's setup and the direct fixes run many GitHub calls, and the setup a clone (#681).
+        (url.pathname === "/api/projects" && request.method === "POST") ||
+        url.pathname.endsWith("/setup/fix") ||
         // A fork or a retry of a Project chat may wait for a new clone and a summary (issue 523).
         (url.pathname.startsWith("/api/sessions/") && /\/(fork|retry)$/.test(url.pathname))
       )
@@ -715,6 +735,30 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     parts[3] === "setup"
   ) {
     return json(await eva.repositorySetup(decodeURIComponent(parts[2])));
+  }
+  if (
+    method === "PUT" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "setup" &&
+    parts[4] === "type" &&
+    parts.length === 5
+  ) {
+    const { repository, type } = repositoryTypeSchema.parse(await request.json());
+    return json(eva.setRepositoryType(decodeURIComponent(parts[2]), repository, type));
+  }
+  if (
+    method === "POST" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "setup" &&
+    parts[4] === "fix" &&
+    parts.length === 5
+  ) {
+    const { repository, items } = repositoryFixSchema.parse(await request.json());
+    return json(await eva.fixRepository(decodeURIComponent(parts[2]), repository, items));
   }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "file") {
     const projectId = decodeURIComponent(parts[2]);

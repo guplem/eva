@@ -6,6 +6,7 @@
 import { readWidgetTemplate } from "./widget-template-files.ts" with { type: "macro" };
 
 const templateFiles: Readonly<Record<string, string>> = readWidgetTemplate();
+const manifestNameLimit = 60;
 
 export interface WidgetNames {
   /** The GitHub account of the repository, such as `you`. */
@@ -22,18 +23,23 @@ export function widgetTemplate(names: WidgetNames): Record<string, string> {
 }
 
 function fillNames(path: string, text: string, names: WidgetNames): string {
+  // The manifest keeps a name of 60 characters at most (docs/widgets/manifest-v1.json). The JSON Schema
+  // counts code points, as Array.from does.
+  const name =
+    path === "eva-widget.json" ? Array.from(names.title).slice(0, manifestNameLimit).join("").trim() : names.title;
   const title = path.endsWith(".json")
-    ? JSON.stringify(names.title).slice(1, -1)
+    ? JSON.stringify(name).slice(1, -1)
     : path.endsWith(".html")
-      ? escapeHtml(names.title)
-      : names.title;
+      ? escapeHtml(name)
+      : name;
+  // A function, so a "$" in a name is never read as a pattern of the replacement.
   return (
     text
       // GitHub Pages serves an account at its name in lower case.
-      .replaceAll("example-owner.github.io", `${names.owner.toLowerCase()}.github.io`)
-      .replaceAll("example-owner", names.owner)
-      .replaceAll("example-widget", names.repository)
-      .replaceAll("Example widget", title)
+      .replaceAll("example-owner.github.io", () => `${names.owner.toLowerCase()}.github.io`)
+      .replaceAll("example-owner", () => names.owner)
+      .replaceAll("example-widget", () => names.repository)
+      .replaceAll("Example widget", () => title)
   );
 }
 

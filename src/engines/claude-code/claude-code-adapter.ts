@@ -11,7 +11,7 @@ import {
   type SDKRateLimitInfo,
 } from "@anthropic-ai/claude-agent-sdk";
 import { realpathSync } from "node:fs";
-import defaultPath, { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve, win32 } from "node:path";
 import type { ApprovalAnswer, CarryHistoryInput, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
 import { readTextTolerant } from "../../shared/files.ts";
 import { carryClaudeHistory } from "./claude-code-history.ts";
@@ -203,16 +203,17 @@ export function buildQueryOptions(
     // vault's instructions hidden, so the chat does not know that it runs inside Eva (#702).
     options.systemPrompt = { type: "preset", preset: "claude_code" };
     options.settingSources = ["user", "project", "local"];
-    if (request.projectFolder !== null) {
-      options.settings = { claudeMdExcludes: hiddenInstructionPatterns(request.projectFolder) };
-    }
+    const hidden =
+      request.projectFolder === null ? {} : { claudeMdExcludes: hiddenInstructionPatterns(request.projectFolder) };
+    if (request.projectFolder !== null) options.settings = hidden;
     if (!request.trusted) {
       // An untrusted clone's own settings could allow every tool and skip the person's approval.
       options.settingSources = ["user"];
       // Without the `project` source, Claude Code reads no instruction file, so Eva gives it the same files (issue #535).
       const instructions = instructionFilesText(request.startFolder, request.projectFolder);
       if (instructions !== null) options.systemPrompt = { type: "preset", preset: "claude_code", append: instructions };
-      options.settings = { disableAllHooks: true };
+      // The `user` source reads no file above the project today. The exclusions still guard it, in case it ever does.
+      options.settings = { disableAllHooks: true, ...hidden };
       options.strictMcpConfig = true;
     }
     // A bypass would let an untrusted clone's own text run any tool with no question.
@@ -251,6 +252,8 @@ function instructionFilesText(startFolder: string, projectFolder: string | null)
     .join("\n\n");
 }
 
+const nativePath = process.platform === "win32" ? win32 : posix;
+
 /** The instruction files that Claude Code reads in one folder, as paths below it. */
 const instructionFileNames = [
   "CLAUDE.md",
@@ -263,12 +266,13 @@ const instructionFileNames = [
 
 /**
  * The `claudeMdExcludes` patterns that hide each instruction file of a folder above the project
- * folder (#702). Claude Code matches them with picomatch, after it turns every backslash into a
- * slash in the patterns too, so no escape can work. Each glob character of a path becomes `?`,
- * which matches one character but never a slash. picomatch matches case, so a drive letter
- * becomes `?` too. The real path gets its own patterns, since Claude Code may read either one.
+ * folder (#702). Claude Code matches them with picomatch, a library of glob patterns (`*`, `?`
+ * and the like), after it turns every backslash into a slash in the patterns too, so no escape
+ * can work. Each glob character of a path becomes `?`, which matches one character but never a
+ * slash. picomatch matches case, so a drive letter becomes `?` too. The real path gets its own
+ * patterns, since Claude Code may read either one.
  */
-export function hiddenInstructionPatterns(projectFolder: string, path: typeof defaultPath = defaultPath): string[] {
+export function hiddenInstructionPatterns(projectFolder: string, path: typeof posix = nativePath): string[] {
   const roots = [path.resolve(projectFolder)];
   try {
     roots.push(realpathSync(projectFolder));

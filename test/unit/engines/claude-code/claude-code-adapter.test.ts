@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix, win32 } from "node:path";
+import { join, posix, resolve, win32 } from "node:path";
 import type { McpServerStatus, Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   buildQueryOptions,
@@ -150,15 +150,29 @@ describe("buildQueryOptions", () => {
       "/bin/claude",
     );
     const names = ["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", "AGENTS.md", ".claude/AGENTS.md"];
+    // On Windows, `/vault` resolves to a path on the current drive, which becomes `?:/vault`.
+    const asPattern = (folder: string): string =>
+      resolve(folder)
+        .replaceAll("\\", "/")
+        .replace(/^[A-Za-z]:/, "?:")
+        .replace(/\/$/, "");
     const filesOf = (folder: string): string[] => [
-      ...names.map((name) => `${folder}/${name}`),
-      `${folder}/.claude/rules/**`,
+      ...names.map((name) => `${asPattern(folder)}/${name}`),
+      `${asPattern(folder)}/.claude/rules/**`,
     ];
     expect(options.settings).toEqual({
-      claudeMdExcludes: [...filesOf("/vault/Projects"), ...filesOf("/vault"), ...filesOf("")],
+      claudeMdExcludes: [...filesOf("/vault/Projects"), ...filesOf("/vault"), ...filesOf("/")],
     });
     // The project's own files and the person's user-level CLAUDE.md stay loaded.
     expect(options.settingSources).toEqual(["user", "project", "local"]);
+  });
+
+  test("the patterns never reach the person's user-level CLAUDE.md, beside the vault in Eva's folder", () => {
+    // Eva's layout: `<home>/vault/` and `<home>/engines/claude/`, the config folder of Claude Code.
+    const patterns = hiddenInstructionPatterns("/eva-home/vault/Projects/example-app", posix);
+    const userFile = "/eva-home/engines/claude/CLAUDE.md";
+    expect(patterns.some((pattern) => userFile.startsWith(pattern.replace(/\*\*$/, "")))).toBe(false);
+    expect(patterns).not.toContain(userFile);
   });
 
   test("a glob character in a folder name becomes `?`, because Claude Code turns a backslash into a slash", () => {

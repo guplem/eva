@@ -818,7 +818,7 @@ test("a half-written message shows on another device, live and after a reload (i
   const title = await newAnsweredChat(page, "Unsent text across devices");
   const address = `/#/chat/${await chatIdNamed(page, title)}`;
   // A second browser stands in for the phone.
-  const phoneContext = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+  const phoneContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
   const phone = await phoneContext.newPage();
   await logIn(phone);
   await phone.goto(address);

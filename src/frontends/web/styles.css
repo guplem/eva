@@ -272,11 +272,25 @@ samp {
   box-sizing: border-box;
 }
 
+/* Eva is an app, not a document. The page never bounces up or down, and a pull never chains to it.
+   The rule holds only the vertical axis. A sideways swipe still goes back, as in any page. */
+html {
+  overscroll-behavior-y: none;
+}
+
 /* A phone browser draws a blue box on each tap. The press rule below gives the feedback instead. */
 body {
   margin: 0;
   background: var(--bg);
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* A control never zooms on a double tap, so the browser fires a tap at once instead of waiting for a second one. */
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
 }
 
 button {
@@ -287,7 +301,7 @@ button {
   border-radius: var(--radius-pill);
   padding: var(--button-padding);
   cursor: pointer;
-  transition: transform 80ms ease-out;
+  transition: transform var(--dur-press) var(--ease-out);
 }
 
 /* One look for every link. The browser's default blue is hard to read in dark mode, and it ignores the seed. */
@@ -296,13 +310,31 @@ a {
   text-underline-offset: 2px;
 }
 
+/* A link that acts as a row, a chip or a button gets the press of a button. */
+a.button-link,
+a.files-entry,
+a.files-favorite,
+a.files-up,
+a.link-chip {
+  transition: transform var(--dur-press) var(--ease-out);
+}
+
 button:active:not(:disabled),
-a.button-link:active {
+a.button-link:active,
+a.files-entry:active,
+a.files-favorite:active,
+a.files-up:active,
+a.link-chip:active {
   transform: scale(0.96);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  button {
+  button,
+  a.button-link,
+  a.files-entry,
+  a.files-favorite,
+  a.files-up,
+  a.link-chip {
     transition: none;
   }
 }
@@ -349,10 +381,10 @@ button.save-button {
   display: inline-grid;
   place-items: center;
   transition:
-    transform 80ms ease-out,
-    background-color 160ms ease-out,
-    border-color 160ms ease-out,
-    color 160ms ease-out;
+    transform var(--dur-press) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
 .save-button-label,
@@ -385,13 +417,13 @@ button.save-button.done:disabled {
 
 .save-button.done .save-button-done {
   visibility: visible;
-  animation: save-done-in 220ms ease-out;
+  animation: save-done-in var(--dur-medium) var(--ease-out);
 }
 
 /* The check draws itself, as a pen would. */
 .save-button.done .save-button-done path {
   stroke-dasharray: 24;
-  animation: save-check-draw 320ms ease-out 80ms backwards;
+  animation: save-check-draw var(--dur-slow) var(--ease-out) var(--dur-press) backwards;
 }
 
 @keyframes save-done-in {
@@ -446,7 +478,7 @@ textarea {
 
   select::picker-icon {
     color: var(--muted);
-    transition: rotate 0.15s ease;
+    transition: rotate var(--dur-fast) var(--ease-out);
   }
 
   select:open::picker-icon {
@@ -469,10 +501,16 @@ textarea {
     cursor: pointer;
   }
 
-  option:hover,
   option:focus-visible {
     background: var(--chip);
     outline: none;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    option:hover {
+      background: var(--chip);
+      outline: none;
+    }
   }
 
   option:checked {
@@ -528,6 +566,7 @@ textarea {
   padding: max(18px, env(safe-area-inset-top)) 0 max(18px, env(safe-area-inset-bottom)) env(safe-area-inset-left);
   box-shadow: inset -1px 0 0 var(--line);
   overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .main-nav-visor {
@@ -728,6 +767,7 @@ textarea {
 .sidebar {
   box-shadow: inset -1px 0 0 var(--line);
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -746,6 +786,7 @@ textarea {
 /* The list inside scrolls and holds the padding, so a new chat can scroll the list to its top. */
 .sidebar.has-list {
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 0;
   gap: 0;
 }
@@ -754,6 +795,7 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -1017,6 +1059,7 @@ textarea {
 .main {
   min-width: 0;
   overflow: auto;
+  overscroll-behavior-y: contain;
   display: flex;
   flex-direction: column;
   background: var(--main-gradient);
@@ -1136,17 +1179,24 @@ textarea {
 /* The icon stays faint, so it does not pull the eye from the code, until the pointer or the focus comes. */
 .answer-body .code-box-bar button .icon {
   opacity: 0.55;
-  transition: opacity 120ms ease-out;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
-.answer-body .code-box:hover .code-box-bar button .icon,
 .answer-body .code-box-bar button:focus-visible .icon {
   opacity: 1;
 }
 
-.answer-body .code-box-bar button:hover {
-  background: var(--line);
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .answer-body .code-box:hover .code-box-bar button .icon {
+    opacity: 1;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .answer-body .code-box-bar button:hover {
+    background: var(--line);
+    color: var(--ink);
+  }
 }
 
 /* A block of one line is still as tall as its button, so the button stays inside the box. */
@@ -1288,6 +1338,7 @@ textarea {
   /* Long content, such as the output of a step, scrolls and never pushes the buttons off the screen. */
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1295,11 +1346,11 @@ textarea {
 
 /* A dialog fades in with its scrim and grows a little, so it does not flash onto the page. */
 .dialog-backdrop {
-  animation: fade-in 160ms ease-out;
+  animation: fade-in var(--dur-fast) var(--ease-out);
 }
 
 .dialog {
-  animation: dialog-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: dialog-in var(--dur-medium) var(--ease-out);
 }
 
 @keyframes fade-in {
@@ -1338,10 +1389,11 @@ textarea {
     max-width: none;
     max-height: calc(100dvh - 24px);
     overflow-y: auto;
+    overscroll-behavior-y: contain;
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
     padding: var(--space-3) var(--space-5) max(var(--space-6), env(safe-area-inset-bottom));
     box-shadow: var(--sheet-shadow);
-    animation: sheet-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    animation: sheet-in var(--dur-medium) var(--ease-out);
   }
 
   /* The grab handle says that the sheet came up from the bottom. */
@@ -1625,6 +1677,8 @@ textarea {
   background: var(--chip);
   max-height: 320px;
   overflow: auto;
+  /* It scrolls sideways for long lines. An up or down scroll on it goes on to the page. */
+  overscroll-behavior: auto;
 }
 
 .diff div {
@@ -1666,6 +1720,7 @@ textarea {
   max-width: 760px;
   max-height: calc(100dvh - 32px);
   overflow: auto;
+  overscroll-behavior-y: contain;
 }
 
 .menu-button,
@@ -1720,6 +1775,7 @@ textarea {
     /*
      * A tap on Send blurs the text first. A tab bar that came back at once would push Send away from the finger.
      * A transition cannot start from display: none, so the bar leaves the flow with position and visibility.
+     * Motion exception: this is a wait, not a motion.
      */
     .main-nav {
       transition:
@@ -1858,7 +1914,7 @@ textarea {
     width: min(320px, 85vw);
     z-index: 10;
     /* A fade only: a move changes the measured size and place of each item while it runs. */
-    animation: fade-in 160ms ease-out;
+    animation: fade-in var(--dur-fast) var(--ease-out);
   }
 
   .sidebar-backdrop {
@@ -1869,7 +1925,7 @@ textarea {
     border: none;
     border-radius: 0;
     background: var(--scrim);
-    animation: fade-in 180ms ease-out;
+    animation: fade-in var(--dur-fast) var(--ease-out);
   }
 
   /* A finger needs a target of --touch-target or more. */
@@ -1969,6 +2025,14 @@ textarea {
   --text-md: 15px;
   --text-lg: 18px;
   --text-xl: 24px;
+  /* The motion scale. A press answers the finger at once; a panel or a dialog takes a little longer. */
+  --dur-press: 100ms;
+  --dur-fast: 150ms;
+  --dur-medium: 220ms;
+  --dur-slow: 400ms;
+  /* A thing that comes in starts fast and settles. A thing that leaves starts slow and speeds away. */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
   /* The smallest side of a phone button, so a finger hits it. */
   --touch-target: 44px;
 }
@@ -2031,7 +2095,8 @@ button.link-button {
   /* A long Windows path or URL has no break points. */
   overflow-wrap: anywhere;
   scroll-margin-top: var(--space-4);
-  transition: box-shadow 400ms;
+  /* Motion exception: it plays only when a search result points at one card. The ring fades instead of blinking. */
+  transition: box-shadow var(--dur-slow) var(--ease-out);
 }
 
 /* A search result or a link points at this card for a moment. */
@@ -2491,6 +2556,7 @@ button.link-button {
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .nav-item {
@@ -2503,8 +2569,7 @@ button.link-button {
   text-align: left;
 }
 
-.nav-item[aria-current="page"],
-.nav-item[aria-current="page"]:hover {
+.nav-item[aria-current="page"] {
   background: var(--soft);
   color: var(--soft-ink);
   font-weight: 600;
@@ -2549,6 +2614,7 @@ button.link-button {
 .settings-content {
   min-width: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   display: flex;
   flex-direction: column;
 }
@@ -2649,10 +2715,12 @@ button.link-button {
   text-align: left;
 }
 
-.section-card:hover:not(:disabled) {
-  background: var(--panel);
-  border-color: var(--accent);
-  box-shadow: var(--shadow);
+@media (hover: hover) and (pointer: fine) {
+  .section-card:hover:not(:disabled) {
+    background: var(--panel);
+    border-color: var(--accent);
+    box-shadow: var(--shadow);
+  }
 }
 
 .section-icon {
@@ -2696,6 +2764,7 @@ button.link-button {
 .setting-homes {
   max-height: 60dvh;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: var(--space-1);
 }
 
@@ -2713,9 +2782,11 @@ button.link-button {
   box-shadow: none;
 }
 
-.setting-homes .section-card:hover:not(:disabled) {
-  background: var(--chip);
-  box-shadow: none;
+@media (hover: hover) and (pointer: fine) {
+  .setting-homes .section-card:hover:not(:disabled) {
+    background: var(--chip);
+    box-shadow: none;
+  }
 }
 
 .setting-homes .section-icon {
@@ -2910,8 +2981,10 @@ button.link-button {
   color: var(--panel);
 }
 
-.stepper-dot.done:hover:not(:disabled) {
-  background: var(--ok);
+@media (hover: hover) and (pointer: fine) {
+  .stepper-dot.done:hover:not(:disabled) {
+    background: var(--ok);
+  }
 }
 
 .stepper-dot.missing {
@@ -3234,8 +3307,11 @@ button.small {
   gap: 10px;
 }
 
+/* A long project name wraps, so the person reads all of it. A word with no break point breaks too. */
 .header-title h1 {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .main-header .sub {
@@ -3315,7 +3391,7 @@ button.small {
   background: var(--panel);
   box-shadow: var(--shadow);
   /* A fade only. menu-place.ts measures the menu, and a move would also delay a click on it. */
-  animation: fade-in 120ms ease-out;
+  animation: fade-in var(--dur-fast) var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3334,9 +3410,14 @@ button.small {
   text-align: left;
 }
 
-.menu button:hover,
 .menu button:focus-visible {
   background: var(--chip);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .menu button:hover {
+    background: var(--chip);
+  }
 }
 
 .menu button.danger {
@@ -3348,8 +3429,10 @@ button.small {
   cursor: default;
 }
 
-.menu button[aria-disabled="true"]:hover {
-  background: transparent;
+@media (hover: hover) and (pointer: fine) {
+  .menu button[aria-disabled="true"]:hover {
+    background: transparent;
+  }
 }
 
 .menu [role="group"] {
@@ -3468,8 +3551,10 @@ a.link-chip {
   text-decoration: none;
 }
 
-a.link-chip:hover {
-  background: var(--soft);
+@media (hover: hover) and (pointer: fine) {
+  a.link-chip:hover {
+    background: var(--soft);
+  }
 }
 
 .clones-section {
@@ -3609,7 +3694,7 @@ a.link-chip:hover {
   line-height: 1.4;
   overflow-wrap: anywhere;
   pointer-events: none;
-  animation: tooltip-in 120ms ease-out;
+  animation: tooltip-in var(--dur-fast) var(--ease-out);
 }
 
 .tooltip.below {

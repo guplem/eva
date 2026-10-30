@@ -40,7 +40,7 @@
   font-weight: 600;
   line-height: 1.4;
   box-shadow: var(--dialog-shadow);
-  animation: toast-in 180ms ease-out;
+  animation: toast-in var(--dur-medium) var(--ease-out);
 }
 
 /* With no close button at the right edge, both sides get the same room. */

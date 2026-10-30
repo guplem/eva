@@ -22,6 +22,7 @@ import {
   runningUntil,
   isWorking,
   sendsOnEnter,
+  enterKeyHint,
   sentTurnCount,
   undoQuestion,
   stepIcon,
@@ -456,6 +457,16 @@ describe("snapsToBottom", () => {
 
   test("a view that does not follow never snaps", () => {
     expect(snapsToBottom(false, false)).toBe(false);
+  });
+});
+
+describe("enterKeyHint", () => {
+  test("names a new line on a touch screen, where Enter does not send", () => {
+    expect(enterKeyHint(true)).toBe("enter");
+  });
+
+  test("names a send with a keyboard, where Enter sends", () => {
+    expect(enterKeyHint(false)).toBe("send");
   });
 });
 

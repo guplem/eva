@@ -13,4 +13,10 @@ describe("the tap feedback on a phone", () => {
   test("a pressed button shows its own feedback instead", () => {
     expect(styles).toMatch(/^button:active:not\(:disabled\)[^{]*\{[^}]*transform:/m);
   });
+
+  test("a link that acts as a row or a chip gets the same press", () => {
+    const press = /^button:active:not\(:disabled\)[^{]*\{/m.exec(styles)?.[0] ?? "";
+    for (const link of ["a.files-entry", "a.files-favorite", "a.files-up", "a.link-chip"])
+      expect(press).toContain(`${link}:active`);
+  });
 });

@@ -70,6 +70,18 @@ for (const path of [".eva/settings/text-actions/Polish.md", ".eva/settings/saved
 }
 // A date at the start of a name shows as a pill (issue 429).
 sandbox.write(vault, "Journal/2027-trips.md", "# Trips\n");
+// Real names can be long, and a long word has no break point. narrow-phone.spec.ts checks that no page then
+// scrolls sideways on a narrow phone (issue 675). No button name or test search holds these words.
+sandbox.write(
+  vault,
+  "Projects/2025-07-01-1200-quarterly-infrastructure-migration-of-the-northwind-holdings-reporting-backend/AGENTS.md",
+  "---\ncreated: 2025-07-01T12:00\nstatus: active\n---\n# Quarterly infrastructure migration of the Northwind Holdings reporting backend\n",
+);
+sandbox.write(
+  vault,
+  "Notes/Benachrichtigungseinstellungen-Datenschutzrichtlinien-Zusammenfassung.md",
+  "# Zusammenfassung\n",
+);
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");

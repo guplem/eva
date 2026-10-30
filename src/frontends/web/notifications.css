@@ -131,8 +131,10 @@
   text-align: left;
 }
 
-.center-row:hover {
-  background: var(--chip);
+@media (hover: hover) and (pointer: fine) {
+  .center-row:hover {
+    background: var(--chip);
+  }
 }
 
 .center-row.unread {
@@ -179,7 +181,7 @@
   flex: none;
   display: grid;
   color: var(--muted);
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 
 .center-row[aria-expanded="true"] .center-row-chevron {

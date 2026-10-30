@@ -28,6 +28,7 @@ import {
   effortLabel,
   effortName,
   engineLabel,
+  enterKeyHint,
   modelLabel,
   modelNote,
   restoredText,
@@ -360,6 +361,7 @@ export function Composer({
               : ({ "--composer-height": `${String(height.share * 100)}dvh` } as CSSProperties)
           }
           aria-label="Message"
+          enterKeyHint={enterKeyHint(isTouchScreen())}
           aria-describedby={block === null ? undefined : lineId}
           placeholder={block === null ? placeholder : "Eva cannot answer yet"}
           rows={1}

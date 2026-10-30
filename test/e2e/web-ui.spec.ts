@@ -3503,6 +3503,9 @@ test("New chat on a project page opens a chat with Eva that mentions the project
   await logIn(page);
   await openExampleApp(page);
   await page.locator(".main-header > .more-picker > button").filter({ hasText: "New chat" }).click();
+  // On a phone the button is at the left, and the whole menu must stay on the screen.
+  const menu = await page.getByRole("menu", { name: "New chat" }).boundingBox();
+  expect(menu?.x).toBeGreaterThanOrEqual(0);
   await page.getByRole("menuitem", { name: "With Eva" }).click();
   await expect(page).toHaveURL(/#\/chats\/new$/);
   const box = page.getByRole("region", { name: "New chat", exact: true }).getByRole("textbox", { name: "Message" });

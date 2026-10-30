@@ -3356,6 +3356,11 @@ button.small {
   z-index: 5;
 }
 
+.more-menu.from-start {
+  right: auto;
+  left: 0;
+}
+
 /* At the pointer, over the sidebar and the dialogs. The tooltip stays on top. */
 .context-menu {
   position: fixed;

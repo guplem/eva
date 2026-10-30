@@ -107,6 +107,8 @@ export function ProjectPage({
           label="New chat"
           disabled={startingChat}
           busy={startingChat}
+          // On a phone the button is at the left, so a menu that ends at its right edge would leave the screen.
+          fromStart
           items={[
             { label: "In a clone", icon: "branch", onChoose: onNewChat },
             { label: "With Eva", icon: "chat", onChoose: onAskEva },

@@ -137,6 +137,7 @@ export function MenuButton({
   name,
   disabled = false,
   busy = false,
+  fromStart = false,
   children,
 }: {
   readonly items: readonly MenuItem[];
@@ -149,6 +150,8 @@ export function MenuButton({
   readonly name?: string;
   readonly disabled?: boolean;
   readonly busy?: boolean;
+  /** Opens the menu from the left edge of the button, for a button near the left of the screen. */
+  readonly fromStart?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
@@ -185,7 +188,14 @@ export function MenuButton({
       >
         {children}
       </button>
-      {open && <MenuList items={items} label={label} className="more-menu" onClose={closeList} />}
+      {open && (
+        <MenuList
+          items={items}
+          label={label}
+          className={fromStart ? "more-menu from-start" : "more-menu"}
+          onClose={closeList}
+        />
+      )}
     </div>
   );
 }

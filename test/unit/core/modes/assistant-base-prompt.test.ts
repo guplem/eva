@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { assistantBasePrompt } from "../../../../src/core/modes/assistant-base-prompt.ts";
+import { projectStatuses } from "../../../../src/core/projects/project-catalog.ts";
 import { defaultAssistantRules } from "../../../../src/core/vault/vault-template.ts";
 import { evaRepository } from "../../../../src/shared/version.ts";
 
@@ -23,6 +24,11 @@ describe("assistantBasePrompt", () => {
       expect(defaultAssistantRules).toContain(section);
     }
     expect(assistantBasePrompt).toContain("the person's rules win");
+  });
+
+  test("names each project status, so the agent of an older vault learns in-use (#690)", () => {
+    for (const status of projectStatuses) expect(assistantBasePrompt).toContain(`\`${status}\``);
+    expect(assistantBasePrompt).toContain("comes after the person's rules");
   });
 
   test("sends a Google login to Settings: the login link of the Google tools opens only on Eva's computer", () => {

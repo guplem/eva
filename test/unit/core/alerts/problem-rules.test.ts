@@ -291,6 +291,7 @@ describe("lastLocationProblem", () => {
   test("clears after a write, and keeps the state while Eva waits", () => {
     expect(lastLocationProblem("written")).toBeNull();
     expect(lastLocationProblem("nothing")).toBeNull();
+    expect(lastLocationProblem("not_due")).toBeNull();
     expect(lastLocationProblem("waiting")).toBe("keep");
   });
 });

@@ -3072,7 +3072,7 @@ describe("the person's place (#371)", () => {
     instance.saveLocation(madrid, "telegram", clock, true);
     await waitFor(() => aboutMe().includes("lastLocation"));
     expect(aboutMe()).toBe(
-      "---\nname: Alex\n" +
+      "---\nname: Alex\n# Eva's code fills lastLocation from your phone. Keep it as it is.\n" +
         `lastLocation: { latitude: 40.4, longitude: -3.7, accuracy: null, at: "${clock.toISOString()}", source: telegram }\n` +
         "---\n\n# About Alex\n",
     );
@@ -3094,15 +3094,14 @@ describe("the person's place (#371)", () => {
   test("with no About me, a problem says why the location is not saved, and a new note clears it", async () => {
     const instance = start(new FakeEngine());
     rmSync(join(vault, "Life", "About me.md"), { force: true });
+    const problems = (): string => instance.status().problems.join("\n");
     instance.saveLocation(madrid, "telegram", clock, true);
-    await instance.backgroundTick();
-    expect(instance.status().problems.join("\n")).toContain(
-      "Eva cannot save your location: Life/About me.md is missing",
-    );
+    await waitFor(() => problems().includes("Eva cannot save your location: Life/About me.md is missing"));
     expect(instance.currentPlace()).toMatchObject({ latitude: 40.4 });
     sandbox.write(vault, "Life/About me.md", "# About Alex\n");
+    // The tick starts the write, and the write runs apart from it.
     await instance.backgroundTick();
-    expect(instance.status().problems.join("\n")).not.toContain("location");
+    await waitFor(() => !problems().includes("location"));
     expect(aboutMe()).toContain("lastLocation");
   });
 

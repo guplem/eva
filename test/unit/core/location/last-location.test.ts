@@ -132,7 +132,7 @@ describe("LocationKeeper.writeIfDue", () => {
     kept.writeIfDue();
     clock = minutes(6 * 60);
     kept.keep(north(30), "telegram", clock, false);
-    expect(kept.writeIfDue()).toBe("waiting");
+    expect(kept.writeIfDue()).toBe("not_due");
     clock = minutes(6 * 60 + 1);
     kept.keep(north(30), "telegram", clock, false);
     expect(kept.writeIfDue()).toBe("written");
@@ -145,7 +145,7 @@ describe("LocationKeeper.writeIfDue", () => {
     kept.writeIfDue();
     clock = minutes(30);
     kept.keep({ ...north(100), accuracy: 150 }, "telegram", clock, false);
-    expect(kept.writeIfDue()).toBe("waiting");
+    expect(kept.writeIfDue()).toBe("not_due");
     clock = minutes(31);
     kept.keep({ ...north(100), accuracy: null }, "telegram", clock, false);
     expect(kept.writeIfDue()).toBe("written");
@@ -159,6 +159,26 @@ describe("LocationKeeper.writeIfDue", () => {
     other.writeIfDue();
     expect(kept.writeIfDue()).toBe("nothing");
     expect(readLastLocation(vault)?.source).toBe("web");
+  });
+
+  test("says that the note is fine when a point waits for a rule", () => {
+    const kept = keeper();
+    kept.keep(here, "telegram", clock, true);
+    kept.writeIfDue();
+    clock = minutes(20);
+    kept.keep(north(10), "telegram", clock, false);
+    expect(kept.writeIfDue()).toBe("not_due");
+  });
+
+  test("puts a comment line before a new field, so a change of the line above it does not conflict", () => {
+    writeFileSync(note, "---\nname: Alex\nallergies: []\n---\n");
+    const kept = keeper();
+    kept.keep(here, "telegram", clock, true);
+    kept.writeIfDue();
+    const lines = readFileSync(note, "utf-8").split("\n");
+    expect(lines[2]).toBe("allergies: []");
+    expect(lines[3]).toStartWith("#");
+    expect(lines[4]).toStartWith("lastLocation: ");
   });
 
   test("says why when the note is missing or its header is broken, and writes when it is fixed", () => {
@@ -179,6 +199,19 @@ describe("LocationKeeper.writeIfDue", () => {
     kept.keep(here, "telegram", clock, true);
     expect(kept.writeIfDue()).toBe("waiting");
     expect(kept.newest()?.latitude).toBe(41.39);
+  });
+});
+
+describe("LocationKeeper and a time in the future", () => {
+  test("reads a stored time in the future as now, so it blocks no new point", () => {
+    writeFileSync(
+      note,
+      '---\nlastLocation: { latitude: 41.39, longitude: 2.17, accuracy: 20, at: "2026-10-22T09:00:00.000Z", source: web }\n---\n',
+    );
+    const kept = keeper();
+    expect(kept.keep(north(5_000), "telegram", minutes(2), true)).toBe(true);
+    expect(kept.writeIfDue()).toBe("written");
+    expect(readLastLocation(vault)?.source).toBe("telegram");
   });
 });
 

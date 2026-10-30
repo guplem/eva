@@ -285,10 +285,10 @@ export function readLastLocation(vaultPath: string): LastLocation | null {
 /**
  * The note's text with one top-level field of the header set to `line`, such as `key: value`.
  * Every other byte stays, so the person's own lines and comments survive. A missing field goes
- * at the end of the header, and a note with no header gets one. Null when the header is broken,
+ * at the end of the header, after `comment` when one is given, and a note with no header gets one. Null when the header is broken,
  * or when the new header would not read as the old one with only this field changed.
  */
-export function withHeaderField(text: string, key: string, line: string): string | null {
+export function withHeaderField(text: string, key: string, line: string, comment?: string): string | null {
   const bom = text.startsWith("\uFEFF") ? "\uFEFF" : "";
   const rest = text.slice(bom.length);
   const newline = rest.includes("\r\n") ? "\r\n" : "\n";
@@ -296,18 +296,19 @@ export function withHeaderField(text: string, key: string, line: string): string
   if (before === "broken") return null;
   const opening = /^---\r?\n/.exec(rest);
   const match = frontMatterPattern.exec(rest);
-  if (opening === null) return `${bom}---${newline}${line}${newline}---${newline}${rest}`;
+  const added = comment === undefined ? [line] : [comment, line];
+  if (opening === null) return `${bom}---${newline}${added.join(newline)}${newline}---${newline}${rest}`;
   // An empty header has no line between its two `---` lines, so the pattern does not match it.
   const empty = /^---\r?\n---(\r?\n|$)/.test(rest);
   if (match === null && !empty) return null;
   const headerEnd = empty ? opening[0].length : opening[0].length + (match?.[1] ?? "").length;
   const lines = empty ? [] : rest.slice(opening[0].length, headerEnd).split(/\r?\n/);
   const start = lines.findIndex((each) => each === `${key}:` || each.startsWith(`${key}: `));
-  if (start === -1) lines.push(line);
+  if (start === -1) lines.push(...added);
   else {
-    // The field's own lines are indented, or empty between indented lines.
+    // The field's own lines are indented, empty between indented lines, or items of a list.
     let end = start + 1;
-    while (end < lines.length && /^(\s|$)/.test(lines[end] ?? "")) end += 1;
+    while (end < lines.length && /^(\s|$|-(\s|$))/.test(lines[end] ?? "")) end += 1;
     while (end > start + 1 && (lines[end - 1] ?? "").trim() === "") end -= 1;
     lines.splice(start, end - start, line);
   }

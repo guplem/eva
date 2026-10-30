@@ -253,7 +253,7 @@ function withoutFinalPeriod(text: string): string {
 /** The hub cannot save the person's location in `Life/About me.md`. It keeps the point in memory. */
 export function lastLocationProblem(outcome: LocationWrite): AlertProblem | null | "keep" {
   if (outcome === "waiting") return "keep";
-  if (outcome === "written" || outcome === "nothing") return null;
+  if (outcome === "written" || outcome === "nothing" || outcome === "not_due") return null;
   const why =
     outcome === "no_note" ? "Life/About me.md is missing" : "the header of Life/About me.md is not valid YAML";
   return {

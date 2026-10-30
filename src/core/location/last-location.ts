@@ -81,15 +81,29 @@ export function distanceMeters(from: Point, to: Point): number {
  */
 function isDue(stored: LastLocation | null, point: LastLocation, now: number): boolean {
   if (stored === null) return true;
-  if (now - Date.parse(stored.at) > refreshAfterMs) return true;
+  if (now - timeOf(stored, now) > refreshAfterMs) return true;
   const moved = distanceMeters(stored, point);
   return moved > moveMeters && (point.accuracy === null || moved > point.accuracy);
+}
+
+/**
+ * The time of a point, but never later than now. A hub with a fast clock, or a hand edit, can
+ * store a time in the future, which would block every new point.
+ */
+function timeOf(point: LastLocation, now: number): number {
+  return Math.min(Date.parse(point.at), now);
 }
 
 function newer(first: LastLocation | null, second: LastLocation | null): LastLocation | null {
   if (first === null || second === null) return first ?? second;
   return Date.parse(first.at) >= Date.parse(second.at) ? first : second;
 }
+
+/**
+ * The line above a new field. Git sees a change on the next line as a conflict, so this line keeps
+ * the hub's writes apart from an edit of the last field, such as a new allergy from another computer.
+ */
+const commentLine = "# Eva's code fills lastLocation from your phone. Keep it as it is.";
 
 /** The header line, in flow form, so a write changes one line of the note. */
 function headerLine(point: LastLocation): string {
@@ -101,10 +115,11 @@ function headerLine(point: LastLocation): string {
 }
 
 /**
- * What a write did. "waiting" keeps the point for a later try. "no_note" and "broken_note" say
- * why Eva cannot save it, so the person can fix the note.
+ * What a write did. "waiting" keeps the point for a later try, before Eva could read the note.
+ * "not_due" keeps it too, but the note is fine. "no_note" and "broken_note" say why Eva cannot
+ * save it, so the person can fix the note.
  */
-export type LocationWrite = "written" | "nothing" | "waiting" | "no_note" | "broken_note";
+export type LocationWrite = "written" | "nothing" | "waiting" | "not_due" | "no_note" | "broken_note";
 
 export interface LocationKeeperOptions {
   /** Null when no vault is configured: the point then stays in memory. */
@@ -141,13 +156,18 @@ export class LocationKeeper {
     // A phone with a clock ahead of this computer would block every later point.
     const at = Math.min(takenAt.getTime(), now);
     const last = this.newest();
-    const lastAt = last === null ? null : Date.parse(last.at);
+    const lastAt = last === null ? null : timeOf(last, now);
     // At the same time, the later message wins: Telegram gives the time in whole seconds.
     if (lastAt !== null && at < lastAt) return false;
     if (lastAt !== null && !shared && at - lastAt < streamEveryMs) return false;
     const { latitude, longitude, accuracy } = input;
     this.pending = { latitude, longitude, accuracy, at: new Date(at).toISOString(), source };
     return true;
+  }
+
+  /** True when a write has something to do: a point in memory, or the old file to read. */
+  get hasWork(): boolean {
+    return this.pending !== null || !this.oldFileRead;
   }
 
   /** The newest point that Eva knows: the one in memory, or else the note's. */
@@ -174,9 +194,10 @@ export class LocationKeeper {
       const text = readTextTolerant(path);
       if (text === null) return "no_note";
       const stored = parseLastLocation(text);
-      if (stored !== null && Date.parse(stored.at) >= Date.parse(point.at)) return this.written("nothing");
-      if (!isDue(stored, point, now)) return "waiting";
-      const changed = withHeaderField(text, lastLocationKey, headerLine(point));
+      // At the same time, the newer message wins, as in keep.
+      if (stored !== null && timeOf(stored, now) > Date.parse(point.at)) return this.written("nothing");
+      if (!isDue(stored, point, now)) return "not_due";
+      const changed = withHeaderField(text, lastLocationKey, headerLine(point), commentLine);
       if (changed === null) return "broken_note";
       // The person, an app or a sync can save the note between the read and the write.
       if (readTextTolerant(path) !== text) continue;

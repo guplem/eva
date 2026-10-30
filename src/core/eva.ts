@@ -888,7 +888,8 @@ export class Eva {
       await this.vault.pullIfDue({ ...this.settings.config.sync, enabled: this.options.config.sync.enabled });
       this.noticeRoleChange();
       this.cleanUpIfDue();
-      await this.writeLocationIfDue();
+      // Apart from the tick: it waits for the sync queue, which a slow push can hold for minutes.
+      this.inBackground("The location write", () => this.writeLocationIfDue());
       this.noticeDefaultEngine();
       // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
       // its download can take minutes, and the next ticks must still fetch the vault.
@@ -1098,7 +1099,7 @@ export class Eva {
    * whose turn ends now: Eva writes before its snapshot, so an undo of that turn stays whole.
    */
   private async writeLocationIfDue(endingTurn?: string): Promise<void> {
-    if (this.role() !== "hub") return;
+    if (this.role() !== "hub" || !this.locations.hasWork) return;
     try {
       await this.vault.exclusive(() => {
         if (this.assistantBusy(endingTurn)) return;

@@ -323,14 +323,21 @@ describe("withHeaderField", () => {
     expect(withHeaderField(text, "lastLocation", pointLine)).toBe(`---\n${pointLine}\nname: Alex\n---\n${body}`);
   });
 
-  test("adds a missing field at the end of the header", () => {
-    expect(withHeaderField(`---\nname: Alex\ndiet: [vegetarian]\n---\n${body}`, "lastLocation", pointLine)).toBe(
-      `---\nname: Alex\ndiet: [vegetarian]\n${pointLine}\n---\n${body}`,
-    );
+  test("adds a missing field at the end of the header, after its comment line", () => {
+    expect(
+      withHeaderField(`---\nname: Alex\ndiet: [vegetarian]\n---\n${body}`, "lastLocation", pointLine, "# Eva's line"),
+    ).toBe(`---\nname: Alex\ndiet: [vegetarian]\n# Eva's line\n${pointLine}\n---\n${body}`);
+  });
+
+  test("replaces a list under the field at the same indent", () => {
+    const text = "---\nlastLocation:\n- 1\n- 2\nname: Alex\n---\n";
+    expect(withHeaderField(text, "lastLocation", pointLine)).toBe(`---\n${pointLine}\nname: Alex\n---\n`);
   });
 
   test("adds a header to a note with none", () => {
-    expect(withHeaderField("# About Alex\n", "lastLocation", pointLine)).toBe(`---\n${pointLine}\n---\n# About Alex\n`);
+    expect(withHeaderField("# About Alex\n", "lastLocation", pointLine, "# Eva's line")).toBe(
+      `---\n# Eva's line\n${pointLine}\n---\n# About Alex\n`,
+    );
   });
 
   test("keeps Windows line endings and a byte order mark", () => {

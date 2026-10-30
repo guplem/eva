@@ -5,6 +5,8 @@
 - Follow the EVE design in `docs/design/eve/README.md`. It owns the colour tokens, the radii, the fonts and the icons.
 - Take every colour from the EVE tokens at the top of `styles.css`, such as `--panel`, `--ink`, `--accent` and `--ok`. Write no raw colour in a component rule.
 - Take each space and text size from the `--space-*` and `--text-*` scale in `styles.css`.
+- Take each duration and curve from the `--dur-*` and `--ease-*` tokens in `styles.css`.
+- Animate only to give feedback, to show where a thing comes from, or to bridge a change. Never animate an action that a person repeats many times a day.
 - Use each state colour for the one meaning that the EVE guide gives it.
 - Show a state with a shape or a word too, never with colour alone.
 - Use the shared classes before you add one: `card`, `pill`, `callout`, `field`, `field-hint`, `inline-form`, `button-row`, `guide-steps`, `command-line`. Buttons take `primary`, `ghost`, `danger` or `large`.

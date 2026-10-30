@@ -143,6 +143,21 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
 - **Eyes:** `filter: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow))` on the wrapper of the two eyes, so that every eye shape glows the same way.
 - **Scrim behind a dialog:** `oklch(0.25 0.03 h / 0.32)`. Dark: `oklch(0.05 0.01 h / 0.55)`. On a phone, the scrim of a bottom sheet adds a 3 px backdrop blur. On a computer, the new-device, schedule and update dialogs add it too.
 
+## Motion
+
+Motion gives feedback, shows where a thing comes from, or bridges a change that would jump. An action that a person repeats many times a day does not animate. Motion moves `transform` and `opacity` only.
+
+| Token          | Value                            | Use                                       |
+| -------------- | -------------------------------- | ----------------------------------------- |
+| `--dur-press`  | 100 ms                           | The press of a button or a tappable row   |
+| `--dur-fast`   | 150 ms                           | Hover colours, menus, tooltips, chevrons  |
+| `--dur-medium` | 220 ms                           | Dialogs, sheets, toasts, the chat details |
+| `--dur-slow`   | 400 ms                           | A fill or a ring that shows progress      |
+| `--ease-out`   | `cubic-bezier(0.2, 0.8, 0.2, 1)` | Things that come in, and most changes     |
+| `--ease-in`    | `cubic-bezier(0.4, 0, 1, 1)`     | Things that leave                         |
+
+The visor and the looping waits keep their own timing, which [EVE's expressions](#eves-expressions) and [Components](#components) give.
+
 ## Layout
 
 ### Computer

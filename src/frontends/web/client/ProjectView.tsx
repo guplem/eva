@@ -621,6 +621,7 @@ export function ProjectView({
             projectId={page.project.id}
             title={page.project.title}
             onBack={() => openUp({ kind: "project", project: page.project })}
+            onFix={(request) => startChatAbout(page.project.id, request)}
           />
         ) : page.kind === "chat" && chat !== undefined ? (
           <>

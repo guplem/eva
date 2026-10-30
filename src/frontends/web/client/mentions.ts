@@ -130,6 +130,15 @@ export function withProjectMention(text: string, projectId: string): string {
   return `${token} ${text}`;
 }
 
+/**
+ * The text of a new chat that asks Eva to fix a repository of a project (issue 668). The text that
+ * the person typed before goes after the fix, so nothing is lost.
+ */
+export function withFixRequest(text: string, projectId: string, request: string): string {
+  const fix = `${mentionToken("project", projectId)} ${request}`;
+  return text.trim() === "" ? fix : `${fix}\n\n${text}`;
+}
+
 /** The projects with a Project chat that runs now: by the chat list, or by a turn that started since. */
 export function projectsInUse(
   chats: readonly Pick<ListedSession, "id" | "mode" | "projectId" | "running">[],

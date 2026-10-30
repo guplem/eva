@@ -306,6 +306,7 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   lock: "Private, locked",
   eye: "Show a secret",
   external: "Opens another site",
+  forward: "Opens another page of Eva, such as a new chat",
   play: "Run now",
   stop: "Stop a turn",
   user: "The person, an account",

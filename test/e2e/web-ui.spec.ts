@@ -1796,30 +1796,42 @@ test("the address of a fork opens that fork, even when another branch is newer",
   await expect(start).toContainText("Fork 1 · 2 of 2");
 });
 
-test("Project mode: the repository setup shows each item's light and copies its fix", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+test("Project mode: the repository setup shows each item's light, and Fix opens a chat with the fix", async ({
+  page,
+}) => {
   await logIn(page);
   await openExampleApp(page);
-  await page.getByRole("button", { name: "Repository setup" }).click();
-  await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
+  const openSetup = async (): Promise<Locator> => {
+    await page.getByRole("button", { name: "Repository setup" }).click();
+    await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
+    return page.getByRole("region", { name: "example-owner/example-app" });
+  };
+  let report = await openSetup();
   // The local remote is not on GitHub, so its report only says why.
   await expect(page.getByText("Only a repository on GitHub has a setup report.")).toBeVisible();
-  const report = page.getByRole("region", { name: "example-owner/example-app" });
-  const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
-  await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
-  await skill.getByRole("button", { name: "Copy the fix for Skill write-commit" }).click();
-  await expect(skill.getByRole("button", { name: "Copied" })).toHaveText("Copied");
-  const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(copied).toContain("In example-owner/example-app, add the skill `write-commit`");
-  await report.getByRole("button", { name: /Copy all fixes/ }).click();
-  const all = await page.evaluate(() => navigator.clipboard.readText());
-  expect(all).toContain("Open one pull request for all the file changes.");
-  expect(all).toContain("allow_auto_merge=true");
   await expect(
     report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+  const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
+  await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
+  await skill.getByRole("button", { name: "Fix Skill write-commit in a new chat" }).click();
+  // The fix waits in the box of a new chat with Eva. The person sends it.
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  const box = page.getByRole("region", { name: "New chat", exact: true }).getByRole("textbox", { name: "Message" });
+  await expect(box).toHaveValue(
+    /^@project:2025-03-02-1015-example-app In example-owner\/example-app, add the skill `write-commit`/,
+  );
+  // Other tests share the New chat page, so its text goes away.
+  await box.fill("");
+
+  await openExampleApp(page);
+  report = await openSetup();
+  await report.getByRole("button", { name: /Fix all/ }).click();
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  await expect(box).toHaveValue(/^@project:2025-03-02-1015-example-app /);
+  await expect(box).toHaveValue(/Open one pull request for all the file changes\./);
+  await expect(box).toHaveValue(/allow_auto_merge=true/);
+  await box.fill("");
 });
 
 test("the status chips hide a closed project until a tap clears the filter", async ({ page }) => {

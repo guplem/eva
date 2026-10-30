@@ -1549,32 +1549,25 @@ textarea {
 }
 
 /* The repository setup: each section of a report, with its items as the step rows of Remote access. */
-.copy-button {
+.fix-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex: none;
 }
 
-.copy-button .icon {
+.fix-button .icon {
   width: 16px;
   height: 16px;
 }
 
-/* The text shows under the row when the clipboard is off, so the person selects it by hand. */
-.copy-text {
-  grid-column: 1 / -1;
-  width: 100%;
-  min-height: 120px;
-}
-
 @media (max-width: 760px) {
-  /* On a phone, "Copy all fixes" goes under the repository name, so the name keeps the width. */
-  .card-header:has(> .copy-button) {
+  /* On a phone, "Fix all" goes under the repository name, so the name keeps the width. */
+  .card-header:has(> .fix-button) {
     flex-wrap: wrap;
   }
 
-  .card-header > .copy-button {
+  .card-header > .fix-button {
     flex-basis: 100%;
     justify-content: center;
   }

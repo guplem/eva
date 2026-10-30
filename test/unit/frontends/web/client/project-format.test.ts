@@ -41,6 +41,11 @@ describe("projectSummary", () => {
     // A chat can outlive its clone folder.
     expect(projectSummary(0, 2)).toBe("No clones yet · 2 chats");
   });
+
+  test("a specialist has no clones, so it counts its chats only (#703)", () => {
+    expect(projectSummary(0, 0, "specialist")).toBe("Specialist · No chats yet");
+    expect(projectSummary(0, 2, "specialist")).toBe("Specialist · 2 chats");
+  });
 });
 
 describe("changesPill", () => {

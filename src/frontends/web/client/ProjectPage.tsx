@@ -42,8 +42,10 @@ interface ProjectPageProps {
   readonly onDetails: () => void;
   readonly onSetup: () => void;
   readonly onNewClone: () => void;
-  /** With an action, the chat opens and its header starts it, as the context menu asks. */
-  readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
+  /** The root chats of a specialist, which work in its folder with no clone (#703). */
+  readonly specialistChats: readonly SessionRecord[];
+  /** With an action, the chat opens and its header starts it, as the context menu asks. No clone for a specialist. */
+  readonly onOpenChat: (clone: CloneDetails | null, chat: SessionRecord, action?: ChatAction) => void;
   /** Eva picks the clone of the new chat: a free one, or a new one. */
   readonly onNewChat: () => void;
   /** Opens a new Assistant chat that mentions the project (issue 657). */
@@ -74,6 +76,7 @@ export function ProjectPage({
   onDetails,
   onSetup,
   onNewClone,
+  specialistChats,
   onOpenChat,
   onNewChat,
   onAskEva,
@@ -89,6 +92,7 @@ export function ProjectPage({
   const now = new Date();
   const behind =
     clones?.flatMap((clone) => clone.repositories).filter((repository) => (repository.behind ?? 0) > 0).length ?? 0;
+  const specialist = project.frontMatter.type === "specialist";
   return (
     <>
       <div className="main-header">
@@ -110,7 +114,9 @@ export function ProjectPage({
           // On a phone the button is at the left, so a menu that ends at its right edge would leave the screen.
           fromStart
           items={[
-            { label: "In a clone", icon: "branch", onChoose: onNewChat },
+            specialist
+              ? { label: "With the specialist", icon: "briefcase", onChoose: onNewChat }
+              : { label: "In a clone", icon: "branch", onChoose: onNewChat },
             { label: "With Eva", icon: "chat", onChoose: onAskEva },
           ]}
         >
@@ -119,13 +125,21 @@ export function ProjectPage({
         <button className="outline" onClick={onDetails}>
           <Icon name="pen" /> Details
         </button>
-        <button className="soft" onClick={onSetup}>
-          Repository setup
-        </button>
+        {!specialist && (
+          <button className="soft" onClick={onSetup}>
+            Repository setup
+          </button>
+        )}
       </div>
       <div className="project-page">
         <Warnings project={project} />
-        {startingChat && <ProgressBar label="Eva looks for a free clone, or makes a new one." />}
+        {startingChat && (
+          <ProgressBar
+            label={
+              specialist ? "Eva opens a chat with the specialist." : "Eva looks for a free clone, or makes a new one."
+            }
+          />
+        )}
         <ProjectFacts project={project} />
         {error !== null && (
           <div className="warning-banner" role="alert">
@@ -133,51 +147,156 @@ export function ProjectPage({
             <span>{error}</span>
           </div>
         )}
-        <section className="clones-section" aria-labelledby="clones-heading">
-          <h2 id="clones-heading">Clones</h2>
-          {clones === null ? (
-            <CardsSkeleton label="Loading the clones…" cards={2} />
-          ) : (
-            <>
-              {clones.length > 0 && (
-                <div className="button-row">
-                  <button className="soft small" disabled={syncWork !== null} onClick={onCheckRemotes}>
-                    <Icon name="sync" /> Check remotes
-                  </button>
-                  {behind > 0 && (
-                    <button className="soft small" disabled={syncWork !== null} onClick={onPullAll}>
-                      <Icon name="download" /> Pull all ({behind})
-                    </button>
-                  )}
-                </div>
-              )}
-              {/* Each open checks the remotes, but a project with no clone has none to check. */}
-              {syncWork !== null && clones.length > 0 && <ProgressBar label={syncWork} />}
-              <div className="clone-grid">
-                {clones.map((clone) => (
-                  <CloneCard
-                    key={clone.path}
-                    clone={clone}
-                    chats={chatsOf(clone)}
-                    stateOf={stateOf}
-                    isWorking={isWorking}
-                    now={now}
-                    onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
-                    onDelete={() => onDeleteClone(clone)}
-                    pulling={pulling}
-                    syncBusy={syncWork !== null}
-                    onPull={(repository) => onPull(clone, repository)}
-                    onPush={(repository) => onPush(clone, repository)}
-                  />
-                ))}
-
-                <NewCloneCard first={clones.length === 0 && !clonesFailed} onNewClone={onNewClone} />
-              </div>
-            </>
-          )}
-        </section>
+        {specialist ? (
+          <SpecialistChats
+            chats={specialistChats}
+            now={now}
+            stateOf={stateOf}
+            onOpenChat={(chat, action) => onOpenChat(null, chat, action)}
+          />
+        ) : (
+          <ClonesSection
+            clones={clones}
+            clonesFailed={clonesFailed}
+            chatsOf={chatsOf}
+            stateOf={stateOf}
+            isWorking={isWorking}
+            now={now}
+            behind={behind}
+            syncWork={syncWork}
+            pulling={pulling}
+            onNewClone={onNewClone}
+            onOpenChat={onOpenChat}
+            onDeleteClone={onDeleteClone}
+            onCheckRemotes={onCheckRemotes}
+            onPullAll={onPullAll}
+            onPull={onPull}
+            onPush={onPush}
+          />
+        )}
       </div>
     </>
+  );
+}
+
+/** The chats of a specialist, in one card: a specialist has no clones (#703). */
+function SpecialistChats({
+  chats,
+  now,
+  stateOf,
+  onOpenChat,
+}: {
+  readonly chats: readonly SessionRecord[];
+  readonly now: Date;
+  readonly stateOf: (chat: SessionRecord) => ChatState;
+  readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
+}): ReactElement {
+  return (
+    <section className="clones-section" aria-labelledby="chats-heading">
+      <h2 id="chats-heading">Chats</h2>
+      <div className="card clone-card">
+        {chats.length === 0 && (
+          <p className="muted">
+            No chats yet. A specialist works with its own rules and memory, in the files of this project.
+          </p>
+        )}
+        {chats.map((chat) => (
+          <CloneChat
+            key={chat.id}
+            chat={chat}
+            time={chatTime(new Date(chat.lastTurnAt ?? chat.createdAt), now)}
+            state={stateOf(chat)}
+            onOpen={(action) => onOpenChat(chat, action)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** One card for each clone, with its chats, and the card that makes a new clone. */
+function ClonesSection({
+  clones,
+  clonesFailed,
+  chatsOf,
+  stateOf,
+  isWorking,
+  now,
+  behind,
+  syncWork,
+  pulling,
+  onNewClone,
+  onOpenChat,
+  onDeleteClone,
+  onCheckRemotes,
+  onPullAll,
+  onPull,
+  onPush,
+}: Pick<
+  ProjectPageProps,
+  | "clones"
+  | "clonesFailed"
+  | "chatsOf"
+  | "stateOf"
+  | "isWorking"
+  | "syncWork"
+  | "pulling"
+  | "onNewClone"
+  | "onDeleteClone"
+  | "onCheckRemotes"
+  | "onPullAll"
+  | "onPull"
+  | "onPush"
+> & {
+  readonly now: Date;
+  /** How many repositories of the clones are behind their remote. */
+  readonly behind: number;
+  readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
+}): ReactElement {
+  return (
+    <section className="clones-section" aria-labelledby="clones-heading">
+      <h2 id="clones-heading">Clones</h2>
+      {clones === null ? (
+        <CardsSkeleton label="Loading the clones…" cards={2} />
+      ) : (
+        <>
+          {clones.length > 0 && (
+            <div className="button-row">
+              <button className="soft small" disabled={syncWork !== null} onClick={onCheckRemotes}>
+                <Icon name="sync" /> Check remotes
+              </button>
+              {behind > 0 && (
+                <button className="soft small" disabled={syncWork !== null} onClick={onPullAll}>
+                  <Icon name="download" /> Pull all ({behind})
+                </button>
+              )}
+            </div>
+          )}
+          {/* Each open checks the remotes, but a project with no clone has none to check. */}
+          {syncWork !== null && clones.length > 0 && <ProgressBar label={syncWork} />}
+          <div className="clone-grid">
+            {clones.map((clone) => (
+              <CloneCard
+                key={clone.path}
+                clone={clone}
+                chats={chatsOf(clone)}
+                stateOf={stateOf}
+                isWorking={isWorking}
+                now={now}
+                onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
+                onDelete={() => onDeleteClone(clone)}
+                pulling={pulling}
+                syncBusy={syncWork !== null}
+                onPull={(repository) => onPull(clone, repository)}
+                onPush={(repository) => onPush(clone, repository)}
+              />
+            ))}
+
+            <NewCloneCard first={clones.length === 0 && !clonesFailed} onNewClone={onNewClone} />
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

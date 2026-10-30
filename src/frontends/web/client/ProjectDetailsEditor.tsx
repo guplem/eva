@@ -20,6 +20,11 @@ export const statusChoices = [
   { value: "closed", label: "Closed" },
 ] as const;
 
+const projectTypeChoices = [
+  { value: "software", label: "Software" },
+  { value: "specialist", label: "Specialist" },
+] as const;
+
 const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
 
 type Loading = { readonly state: "loading" } | { readonly state: "failed"; readonly reason: string };
@@ -190,6 +195,15 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
                 choices={statusChoices}
                 onChange={(value) => edit(() => setDetails({ ...details, status: statusOf(value) }))}
               />
+              <SelectField
+                label="Project type"
+                value={details.type ?? "software"}
+                choices={projectTypeChoices}
+                hint="A specialist is a chat with its own rules in this folder. The type changes only while the project has no chats and no clones."
+                onChange={(value) =>
+                  edit(() => setDetails({ ...details, type: value === "specialist" ? "specialist" : "software" }))
+                }
+              />
               <ListField
                 name="tag"
                 heading="Tags"
@@ -321,6 +335,7 @@ function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {
   return (
     first.title === second.title &&
     first.status === second.status &&
+    (first.type ?? "software") === (second.type ?? "software") &&
     sameList(first.tags, second.tags) &&
     sameList(first.repos, second.repos)
   );

@@ -11,6 +11,7 @@ import type { StepDetail, TurnStep } from "../../../shared/turn-steps.ts";
 import { api } from "./api.ts";
 import { Dialog } from "./Dialog.tsx";
 import {
+  commandFailure,
   hasToolDetails,
   inputFields,
   missingDetail,
@@ -171,6 +172,7 @@ function StepDialog({
   const details: Details = carried ? { input: step.input, output: step.output } : fetched;
   const read = details !== "loading" && !("failed" in details) ? details : null;
   const fields = inputFields(read?.input);
+  const failure = commandFailure(step, read?.output);
   const origin = stepOrigin(step);
   const tool = origin?.tool ?? null;
   const description = fields?.description ?? null;
@@ -218,6 +220,19 @@ function StepDialog({
           </div>
         ) : (
           <>
+            {failure !== null && (
+              <div role="status" className="callout danger">
+                <p>
+                  The command ended with exit code {failure.code}. A code other than 0 means that a program reported a
+                  problem. The code comes from the last program that ran.
+                </p>
+                {failure.lastLine !== null && (
+                  <p>
+                    The output ends with: <code>{failure.lastLine}</code>
+                  </p>
+                )}
+              </div>
+            )}
             {fields === null ? (
               <DetailFold title="Input" text={details.input} missing={missingDetail("input", live)} />
             ) : (

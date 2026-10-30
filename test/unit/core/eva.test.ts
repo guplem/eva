@@ -2749,6 +2749,7 @@ describe("machine reports (#126)", () => {
     expect(readReport("example-pc")).toEqual({
       machine: "example-pc",
       version: expect.any(String) as string,
+      reportedAt: clock.toISOString(),
       problems: [
         { key: "telegram", level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." },
         { key: "update", level: "warn", message: "No update check.", resolvedMessage: "Ok.", hidden: true },
@@ -2768,6 +2769,21 @@ describe("machine reports (#126)", () => {
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.syncVault();
     expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+  });
+
+  test("the hub says how old a report is once it is more than a day old (#542)", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(
+      vault,
+      ".eva/machines/laptop.json",
+      JSON.stringify({ machine: "laptop", version: "0.1.0", reportedAt: clock.toISOString(), problems: [ahead] }),
+    );
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    await instance.syncVault();
+    expect(instance.status().problemDetails[0]?.message).not.toContain("last reported");
+    clock = new Date(clock.getTime() + 3 * 24 * 60 * 60_000);
+    await instance.syncVault();
+    expect(instance.status().problemDetails[0]?.message).toContain("laptop last reported 3 days ago.");
   });
 
   test("the hub sends no alert for a problem that another machine hid before the hub saw it", async () => {

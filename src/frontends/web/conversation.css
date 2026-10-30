@@ -1122,13 +1122,9 @@ button.ghost .icon {
     font-size: 26px;
   }
 
-  /* The reference shows three suggestions in one column, so the composer stays in reach. */
+  /* One column, as in the reference, so the composer stays in reach. */
   .suggestions {
     grid-template-columns: 1fr;
-  }
-
-  .suggestion:nth-child(n + 4) {
-    display: none;
   }
 
   .composer {

@@ -3113,8 +3113,8 @@ test("a new chat greets with EVE and suggestions, and a tap on one starts the ch
   const googleReady = settings.config.google.email !== null;
   await expect(cards.first()).toBeVisible();
   const visible = await cards.evaluateAll((buttons) => buttons.filter((button) => button.checkVisibility()).length);
-  // A phone shows three suggestions. A computer shows the calendar too, when Google is set up.
-  expect(visible).toBe(test.info().project.name === "phone" || !googleReady ? 3 : 4);
+  // The calendar shows only when Google is set up.
+  expect(visible).toBe(googleReady ? 3 : 2);
   await expect(cards.filter({ hasText: "What do I have this week?" })).toHaveCount(googleReady ? 1 : 0);
   // The cards keep the page within the screen, and each is a touch target.
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

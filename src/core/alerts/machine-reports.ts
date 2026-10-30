@@ -17,10 +17,20 @@ export interface MachineReport {
   readonly machine: string;
   /** The Eva version of the machine. */
   readonly version: string;
+  /**
+   * When the machine last renewed its report, so the hub can tell an old report (#542).
+   * Absent when the report has no problems, or from an older Eva.
+   */
+  readonly reportedAt?: string;
   readonly problems: readonly ReportedProblem[];
 }
 
 const reportsFolder = [".eva", "machines"] as const;
+/**
+ * A machine renews its time stamp only after this long, so the stamp makes at most two commits a
+ * day. It stays below one day, so a running machine never looks old on the hub.
+ */
+const renewStampAfterMs = 12 * 60 * 60_000;
 
 export function machineReportPath(vaultPath: string, machine: string): string {
   return join(vaultPath, ...reportsFolder, `${safeFileName(machine)}.json`);
@@ -34,18 +44,24 @@ export function machineReportFile(machine: string): string {
 export type ReportWrite = "written" | "unchanged" | "no_vault" | "name_taken";
 
 /**
- * Writes the report only when its content changes. The file has no time stamp. The sync commits
- * every change, and a report runs after each sync step.
+ * Writes the report only when its content changes. The sync commits every change, and a report
+ * runs after each sync step. So the time stamp changes only after `renewStampAfterMs`, and only
+ * while the machine has problems.
  */
-export function writeMachineReport(vaultPath: string, report: MachineReport): ReportWrite {
+export function writeMachineReport(
+  vaultPath: string,
+  report: Omit<MachineReport, "reportedAt">,
+  now: Date,
+): ReportWrite {
   // A vault folder that waits for its clone must stay empty, or the clone fails.
   if (!existsSync(join(vaultPath, ".git"))) return "no_vault";
   const path = machineReportPath(vaultPath, report.machine);
   const current = readTextTolerant(path);
-  const content = JSON.stringify(report, null, 2) + "\n";
+  const written = current === null ? null : readReport(current);
+  const content = JSON.stringify(stamped(report, written?.reportedAt, now), null, 2) + "\n";
   if (current === content) return "unchanged";
   // Two machines that share a file would rewrite it at each sync, and make a commit each time.
-  const owner = current === null ? null : readOwner(current);
+  const owner = written?.machine ?? null;
   if (owner !== null && owner !== report.machine) return "name_taken";
   writeFileAtomic(path, content);
   return "written";
@@ -80,9 +96,19 @@ function safeFileName(machine: string): string {
   return machine.toLowerCase().replace(/[^a-z0-9._-]/g, "-");
 }
 
-function readOwner(content: string): string | null {
+/** The report with its time stamp: the written one while it is fresh, or now. */
+function stamped(report: Omit<MachineReport, "reportedAt">, writtenAt: string | undefined, now: Date): MachineReport {
+  const { machine, version, problems } = report;
+  if (problems.length === 0) return { machine, version, problems };
+  const ageMs = writtenAt === undefined ? Number.NaN : now.getTime() - Date.parse(writtenAt);
+  // A stamp from the future, such as after a clock fix, would never age, so it is renewed too.
+  const reportedAt = writtenAt !== undefined && ageMs >= 0 && ageMs < renewStampAfterMs ? writtenAt : now.toISOString();
+  return { machine, version, reportedAt, problems };
+}
+
+function readReport(content: string): MachineReport | null {
   try {
-    return parseReport(JSON.parse(content) as unknown)?.machine ?? null;
+    return parseReport(JSON.parse(content) as unknown);
   } catch {
     return null;
   }
@@ -90,11 +116,12 @@ function readOwner(content: string): string | null {
 
 function parseReport(value: unknown): MachineReport | null {
   if (value === null || typeof value !== "object") return null;
-  const { machine, version, problems } = value as Partial<Record<keyof MachineReport, unknown>>;
+  const { machine, version, reportedAt, problems } = value as Partial<Record<keyof MachineReport, unknown>>;
   if (typeof machine !== "string" || machine.length === 0) return null;
   return {
     machine,
     version: typeof version === "string" ? version : "",
+    ...(typeof reportedAt === "string" && !Number.isNaN(Date.parse(reportedAt)) ? { reportedAt } : {}),
     problems: Array.isArray(problems) ? problems.flatMap((problem) => parseProblem(problem) ?? []) : [],
   };
 }

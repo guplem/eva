@@ -10,6 +10,8 @@ import type { VaultSyncState } from "../vault/vault-sync.ts";
 import type { AlertProblem, OpenAlert } from "./alert-center.ts";
 import type { VaultAhead } from "../migrations/migrations.ts";
 
+const dayMs = 24 * 60 * 60_000;
+
 /** A short network loss is normal for a laptop; only a long one needs the owner. */
 export const vaultOfflineAlertMs = 30 * 60_000;
 
@@ -218,13 +220,22 @@ export function heldBackNews(status: UpdateStatus): string | null {
  * A problem that another machine reports through the vault, for the hub to send. A Telegram command
  * acts on the hub, so the alert says to fix it on the machine with the problem.
  */
-export function relayedProblem(machine: string, hub: string, reportFile: string, problem: OpenAlert): AlertProblem {
+export function relayedProblem(
+  machine: string,
+  hub: string,
+  reportFile: string,
+  problem: OpenAlert,
+  reportAgeMs: number | null = null,
+): AlertProblem {
   // A message such as vault_ahead starts with the machine name already.
   const named = (line: string): string => (line.startsWith(`${machine} `) ? line : `On ${machine}: ${line}`);
+  // A machine that is off reports nothing, so its last problems stay open on the hub (#542).
+  const days = reportAgeMs === null || reportAgeMs <= dayMs ? 0 : Math.floor(reportAgeMs / dayMs);
   return {
     level: problem.level,
     message: [
       named(problem.message),
+      ...(days === 0 ? [] : [`${machine} last reported ${String(days)} ${days === 1 ? "day" : "days"} ago.`]),
       `Fix it in Eva on ${machine}, not on ${hub}.`,
       `If ${machine} no longer runs Eva, ask the Assistant to delete ${reportFile}.`,
     ].join(" "),

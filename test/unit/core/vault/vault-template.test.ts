@@ -54,6 +54,8 @@ describe("the vault template", () => {
       ".eva/.claude-plugin/plugin.json",
       ".eva/assistant.md",
       ".eva/schedules.json",
+      ".eva/settings/saved-prompts/Summary.md",
+      ".eva/settings/text-actions/Polish.md",
       ".eva/skills/about-me/SKILL.md",
       ".eva/skills/schedule/SKILL.md",
       ".gitignore",

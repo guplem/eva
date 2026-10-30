@@ -16,6 +16,8 @@ import assistantFile from "../../../templates/vault/.eva/assistant.md" with { ty
 import aboutFile from "../../../templates/vault/Life/About me.md" with { type: "text" };
 import aboutMeSkillFile from "../../../templates/vault/.eva/skills/about-me/SKILL.md" with { type: "text" };
 import scheduleSkillFile from "../../../templates/vault/.eva/skills/schedule/SKILL.md" with { type: "text" };
+import polishActionFile from "../../../templates/vault/.eva/settings/text-actions/Polish.md" with { type: "text" };
+import summaryPromptFile from "../../../templates/vault/.eva/settings/saved-prompts/Summary.md" with { type: "text" };
 
 /**
  * The person's rules for Eva as a new vault gets them. They hold no setup answer, so the settings
@@ -25,11 +27,13 @@ export const defaultAssistantRules: string = assistantFile;
 
 /**
  * The parts of the template that Eva keeps aligned in each vault after an update, by path from the
- * vault root (`template-alignment.ts`). Add each new skill here.
+ * vault root (`template-alignment.ts`). Add each new skill, text action and saved prompt here.
  */
 export const templateParts: Readonly<Record<string, string>> = {
   ".eva/skills/about-me/SKILL.md": aboutMeSkillFile,
   ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
+  ".eva/settings/text-actions/Polish.md": polishActionFile,
+  ".eva/settings/saved-prompts/Summary.md": summaryPromptFile,
 };
 
 export interface VaultTemplateAnswers {

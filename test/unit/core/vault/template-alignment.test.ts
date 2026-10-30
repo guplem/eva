@@ -267,3 +267,18 @@ describe("a newer Eva", () => {
     expect(() => alignment().align()).toThrow("newer Eva");
   });
 });
+
+describe("the message box menu parts (#661)", () => {
+  test("a text action and a saved prompt are parts with their own kind, named by the file", () => {
+    const action = ".eva/settings/text-actions/Polish.md";
+    const prompt = ".eva/settings/saved-prompts/Summary.md";
+    const parts = alignment({ [action]: "Fix it.\n", [prompt]: "Sum it up.\n" }).align();
+    expect(stateOf(parts, action)).toMatchObject({ kind: "text action", name: "Polish", state: "current" });
+    expect(stateOf(parts, prompt)).toMatchObject({ kind: "saved prompt", name: "Summary", state: "current" });
+  });
+
+  test("the template holds Polish and Summary, so every vault gets them once", () => {
+    expect(Object.keys(templateParts)).toContain(".eva/settings/text-actions/Polish.md");
+    expect(Object.keys(templateParts)).toContain(".eva/settings/saved-prompts/Summary.md");
+  });
+});

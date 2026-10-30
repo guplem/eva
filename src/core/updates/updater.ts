@@ -1,6 +1,6 @@
 /**
  * Eva's automatic updates: a check at the frequency in the settings, and an install
- * only when no chat runs a turn, so a restart never cuts a turn off. A manual update waits for
+ * only when no work runs, so a restart never cuts a turn or a tool install off. A manual update waits for
  * the same moment. The person's policy decides which releases she installs by herself.
  */
 import { EvaError } from "../../shared/errors.ts";

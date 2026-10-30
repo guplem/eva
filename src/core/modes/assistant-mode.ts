@@ -29,6 +29,11 @@ export interface VaultSyncPort {
 export interface AssistantPreparerOptions {
   readonly vaultPath: string;
   readonly vaultSync: VaultSyncPort;
+  /**
+   * Writes Eva's own vault edits that waited for the turn, such as the last location, before the
+   * snapshot after it. So an undo of the turn also undoes them. It never fails the turn.
+   */
+  readonly beforeEndSnapshot?: (sessionId: string) => Promise<void>;
   /** Eva's base prompt, shipped with the engine. */
   readonly basePrompt: string;
   readonly runner: ProcessRunner;
@@ -165,6 +170,7 @@ export class AssistantPreparer implements TurnPreparer {
   async afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null> {
     const turnIndex = this.turnBySession.get(session.id);
     this.turnBySession.delete(session.id);
+    await this.options.beforeEndSnapshot?.(session.id);
     if (turnIndex !== undefined) await this.options.vaultSync.snapshot(turnSnapshotRef(session.id, turnIndex, "after"));
     await this.options.vaultSync.save();
     // A stopped or failed turn must end the work: a usage limit would fail each follow-up again.

@@ -5,6 +5,7 @@
  * names it, so Eva can fix it in her next turn.
  */
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { parse as parseYaml } from "yaml";
 import { readJsonTolerant, readTextTolerant } from "../../shared/files.ts";
 import { frontMatterPattern } from "../projects/project-catalog.ts";
@@ -49,6 +50,7 @@ export const aboutMeHeaderKeys = [
   "dates",
   "diet",
   "allergies",
+  "lastLocation",
 ] as const;
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -90,9 +92,12 @@ function isMap(value: unknown): value is Record<string, unknown> {
  * failsafe schema keeps every value as text, so a date stays exactly as the person wrote it.
  */
 function readHeader(vaultPath: string): Record<string, unknown> | null | "broken" {
-  const text = readTextTolerant(join(vaultPath, aboutMeFile));
+  return headerOf(readTextTolerant(join(vaultPath, aboutMeFile)) ?? "");
+}
+
+function headerOf(text: string): Record<string, unknown> | null | "broken" {
   // A Windows editor can put a byte order mark before the header.
-  const match = frontMatterPattern.exec((text ?? "").replace(/^\uFEFF/, ""));
+  const match = frontMatterPattern.exec(text.replace(/^\uFEFF/, ""));
   if (match === null) return null;
   try {
     const header: unknown = parseYaml(match[1] ?? "", { schema: "failsafe" });
@@ -227,7 +232,93 @@ export function readHomePlace(vaultPath: string): { readonly lat: number; readon
   return lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
 }
 
-/** A decimal number written as text. An empty field must not read as 0, which is a place at sea. */
+/**
+ * A decimal number written as text. An empty field must not read as 0, which is a place at sea.
+ * JavaScript writes a very small number with an exponent, such as `1e-7`.
+ */
 function coordinate(value: unknown): number | null {
-  return typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : null;
+  return typeof value === "string" && /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(value.trim()) ? Number(value) : null;
+}
+
+/** Where a point came from: a live location in Telegram, or the open web app. */
+export type LocationSource = "telegram" | "web";
+
+/** The person's last location, as `lastLocation` in the header. Eva's code writes it, never an agent. */
+export interface LastLocation {
+  readonly latitude: number;
+  readonly longitude: number;
+  /** The radius of the error, in meters, or null when the phone does not say. */
+  readonly accuracy: number | null;
+  /** When the phone took the point, as an ISO time. */
+  readonly at: string;
+  readonly source: LocationSource;
+}
+
+export const lastLocationKey = "lastLocation";
+
+const isoTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/** The point of `lastLocation` in a note's text, or null when the field is empty or bad. */
+export function parseLastLocation(text: string): LastLocation | null {
+  const header = headerOf(text);
+  const value = isMap(header) ? header[lastLocationKey] : undefined;
+  if (!isMap(value)) return null;
+  const [latitude, longitude] = [coordinate(value["latitude"]), coordinate(value["longitude"])];
+  if (latitude === null || longitude === null || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  // The failsafe schema reads YAML's null as the text "null".
+  const noAccuracy = isEmpty(value["accuracy"]) || value["accuracy"] === "null" || value["accuracy"] === "~";
+  const accuracy = noAccuracy ? null : coordinate(value["accuracy"]);
+  if (!noAccuracy && (accuracy === null || accuracy < 0)) return null;
+  const at = value["at"];
+  if (typeof at !== "string" || !isoTimePattern.test(at) || Number.isNaN(Date.parse(at))) return null;
+  const source = value["source"];
+  if (source !== "telegram" && source !== "web") return null;
+  return { latitude, longitude, accuracy, at, source };
+}
+
+export function readLastLocation(vaultPath: string): LastLocation | null {
+  return parseLastLocation(readTextTolerant(join(vaultPath, aboutMeFile)) ?? "");
+}
+
+/**
+ * The note's text with one top-level field of the header set to `line`, such as `key: value`.
+ * Every other byte stays, so the person's own lines and comments survive. A missing field goes
+ * at the end of the header, after `comment` when one is given, and a note with no header gets one. Null when the header is broken,
+ * or when the new header would not read as the old one with only this field changed.
+ */
+export function withHeaderField(text: string, key: string, line: string, comment?: string): string | null {
+  const bom = text.startsWith("\uFEFF") ? "\uFEFF" : "";
+  const rest = text.slice(bom.length);
+  const before = headerOf(rest);
+  if (before === "broken") return null;
+  const opening = /^---\r?\n/.exec(rest);
+  // The header's own line ending: a body pasted from elsewhere can have another one.
+  const newline = (opening?.[0] ?? rest).includes("\r\n") ? "\r\n" : "\n";
+  const match = frontMatterPattern.exec(rest);
+  const added = comment === undefined ? [line] : [comment, line];
+  if (opening === null) return `${bom}---${newline}${added.join(newline)}${newline}---${newline}${rest}`;
+  // An empty header has no line between its two `---` lines, so the pattern does not match it.
+  const empty = /^---\r?\n---(\r?\n|$)/.test(rest);
+  if (match === null && !empty) return null;
+  const headerEnd = empty ? opening[0].length : opening[0].length + (match?.[1] ?? "").length;
+  const lines = empty ? [] : rest.slice(opening[0].length, headerEnd).split(/\r?\n/);
+  const start = lines.findIndex((each) => each === `${key}:` || each.startsWith(`${key}: `));
+  if (start === -1) lines.push(...added);
+  else {
+    // The field's own lines are indented, empty between indented lines, or items of a list.
+    let end = start + 1;
+    while (end < lines.length && /^(\s|$|-(\s|$))/.test(lines[end] ?? "")) end += 1;
+    while (end > start + 1 && (lines[end - 1] ?? "").trim() === "") end -= 1;
+    lines.splice(start, end - start, line);
+  }
+  const header = lines.join(newline);
+  const changed = empty
+    ? `${opening[0]}${header}${newline}${rest.slice(opening[0].length)}`
+    : `${rest.slice(0, opening[0].length)}${header}${rest.slice(headerEnd)}`;
+  const after = headerOf(changed);
+  if (!isMap(after) || !(key in after)) return null;
+  const old = before ?? {};
+  const others = new Set([...Object.keys(old), ...Object.keys(after)].filter((each) => each !== key));
+  for (const other of others) if (!isDeepStrictEqual(old[other], after[other])) return null;
+  return bom + changed;
 }

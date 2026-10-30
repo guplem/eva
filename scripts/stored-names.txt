@@ -356,6 +356,14 @@ vault Life/About-me.md diet
 vault Life/About-me.md familyName
 vault Life/About-me.md givenName
 vault Life/About-me.md hemisphere
+vault Life/About-me.md lastLocation
+vault Life/About-me.md lastLocation.accuracy
+vault Life/About-me.md lastLocation.at
+vault Life/About-me.md lastLocation.latitude
+vault Life/About-me.md lastLocation.longitude
+vault Life/About-me.md lastLocation.source
+vault Life/About-me.md lastLocation.source=telegram
+vault Life/About-me.md lastLocation.source=web
 vault Life/About-me.md name
 vault Life/About-me.md nickname
 vault Life/About-me.md people

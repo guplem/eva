@@ -108,7 +108,7 @@ export interface HomePaths {
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
   readonly runningMarker: string;
   readonly devices: string;
-  /** The person's last known location, from their phone. Never in the vault. */
+  /** Where Eva kept the last location before it moved to `Life/About me.md` (#689). Read once, then deleted. */
   readonly location: string;
   /** The devices that get Eva's alerts as web push notifications. */
   readonly pushSubscriptions: string;

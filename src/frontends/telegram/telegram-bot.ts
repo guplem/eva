@@ -389,7 +389,7 @@ export class TelegramBot {
     // The time of the move, not of its arrival: a backlog after a restart must not look new.
     const sentAt = message.edit_date ?? message.date;
     this.options.eva.saveLocation(
-      { lat: location.latitude, lon: location.longitude, accuracy: location.horizontal_accuracy ?? null },
+      { latitude: location.latitude, longitude: location.longitude, accuracy: location.horizontal_accuracy ?? null },
       "telegram",
       sentAt === undefined ? new Date() : new Date(sentAt * 1000),
       shared,

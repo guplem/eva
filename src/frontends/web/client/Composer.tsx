@@ -34,6 +34,7 @@ import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
+import { useMentionPicker } from "./MentionPicker.tsx";
 import { setupBlock } from "./new-chat.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
@@ -173,7 +174,7 @@ export function Composer({
   const isEmpty = text.trim() === "" && files.attachments.length === 0;
 
   const send = async (): Promise<void> => {
-    const message = messageWithFiles(text, notes);
+    const message = messageWithFiles(text, [...mentions.notes(text), ...notes]);
     if (message === "" || uploading || sending || blocker !== null) return;
     const attached = files.attachments;
     playCue("send");
@@ -203,6 +204,8 @@ export function Composer({
   const showMic = canRecord && isEmpty;
   // A received file lands in the vault. A Project chat's agent works in its clone and does not reach it.
   const canAttach = session.mode !== "project";
+  // A Project chat's agent works in its clone, so it would not find a vault file or another project.
+  const mentions = useMentionPicker(session.mode !== "project" && block === null, box, text, setText);
   // A file picked during a send that fails would be lost when the box gets its files back.
   const takesFiles = canAttach && block === null && !sending;
   if (voice.state.phase !== "idle") {
@@ -237,6 +240,7 @@ export function Composer({
   }
   return (
     <div className="composer">
+      {mentions.menu}
       <div
         className={dropping ? "composer-box dropping" : "composer-box"}
         onDragOver={(event) => {
@@ -265,7 +269,12 @@ export function Composer({
           rows={1}
           disabled={block !== null}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          {...mentions.boxProps}
+          onChange={(event) => {
+            setText(event.target.value);
+            mentions.follow();
+          }}
+          onSelect={mentions.follow}
           onPaste={(event) => {
             const pasted = pastedFiles(event.clipboardData);
             if (!takesFiles || pasted.length === 0) return;
@@ -273,6 +282,7 @@ export function Composer({
             files.add(pasted);
           }}
           onKeyDown={(event) => {
+            if (mentions.onKeyDown(event)) return;
             const press = {
               key: event.key,
               shiftKey: event.shiftKey,

@@ -1,0 +1,142 @@
+import { describe, expect, test } from "bun:test";
+import {
+  insertMention,
+  mentionNotes,
+  mentionQueryAt,
+  mentionToken,
+  pickedProjects,
+  projectsInUse,
+  withProjectMention,
+  type MentionProject,
+} from "../../../../../src/frontends/web/client/mentions.ts";
+
+function project(id: string, title: string, status: MentionProject["status"] = "active"): MentionProject {
+  return { id, title, status, folder: `Projects/${id}` };
+}
+
+describe("mentionQueryAt (issue 657)", () => {
+  test("an @ at the start or after a space opens the search, with the typed word", () => {
+    expect(mentionQueryAt("@", 1)).toEqual({ start: 0, query: "" });
+    expect(mentionQueryAt("Look at @exa", 12)).toEqual({ start: 8, query: "exa" });
+    expect(mentionQueryAt("Line one\n@ex", 12)).toEqual({ start: 9, query: "ex" });
+  });
+
+  test("an email address or a finished word opens nothing", () => {
+    expect(mentionQueryAt("me@example.com", 14)).toBeNull();
+    expect(mentionQueryAt("@exa more", 9)).toBeNull();
+    expect(mentionQueryAt("no mention", 10)).toBeNull();
+  });
+
+  test("the search reads only the text before the caret", () => {
+    expect(mentionQueryAt("@example and more", 4)).toEqual({ start: 0, query: "exa" });
+  });
+
+  test("a typed kind does not filter the names", () => {
+    expect(mentionQueryAt("@project:exa", 12)).toEqual({ start: 0, query: "exa" });
+    expect(mentionQueryAt("@file:notes", 11)).toEqual({ start: 0, query: "notes" });
+  });
+});
+
+describe("mentionToken", () => {
+  test("a project takes its id, and a file its vault path", () => {
+    expect(mentionToken("project", "2026-01-02-0304-example-app")).toBe("@project:2026-01-02-0304-example-app");
+    expect(mentionToken("file", "Notes/today.md")).toBe("@file:Notes/today.md");
+  });
+
+  test("a path with a space goes in double quotes, so the mention ends at the right place", () => {
+    expect(mentionToken("file", "Notes/My note.md")).toBe('@file:"Notes/My note.md"');
+  });
+});
+
+describe("insertMention", () => {
+  test("the mention takes the place of the typed word, with a space after it", () => {
+    expect(insertMention("Look at @exa please", 8, 12, "@project:example-app")).toEqual({
+      text: "Look at @project:example-app please",
+      caret: 29,
+    });
+    expect(insertMention("@ex", 0, 3, "@file:a.md")).toEqual({ text: "@file:a.md ", caret: 11 });
+  });
+});
+
+describe("pickedProjects", () => {
+  const projects = [
+    project("2026-01-01-0000-closed-one", "Closed one", "closed"),
+    project("2026-01-01-0000-idea-one", "Idea one", "idea"),
+    project("2026-01-01-0000-paused-one", "Paused one", "paused"),
+    project("2026-01-01-0000-active-one", "Active one"),
+    project("2026-01-01-0000-busy-one", "Busy one", "closed"),
+    project("2026-01-01-0000-no-status", "No status", null),
+  ];
+
+  test("a project in use comes first, then by status: active, idea, paused, closed", () => {
+    expect(pickedProjects(projects, ["2026-01-01-0000-busy-one"], "", 10).map((each) => each.title)).toEqual([
+      "Busy one",
+      "Active one",
+      "Idea one",
+      "Paused one",
+      "Closed one",
+      "No status",
+    ]);
+  });
+
+  test("the query matches a part of the title or of the id, in any case", () => {
+    expect(pickedProjects(projects, [], "ACTIVE", 10).map((each) => each.title)).toEqual(["Active one"]);
+    expect(pickedProjects(projects, [], "idea-o", 10).map((each) => each.title)).toEqual(["Idea one"]);
+  });
+
+  test("the list keeps the first ones only", () => {
+    expect(pickedProjects(projects, [], "", 2)).toHaveLength(2);
+  });
+});
+
+describe("mentionNotes", () => {
+  const projects = [project("2026-01-02-0304-example-app", "Example app")];
+
+  test("each mention gets one note that says where it is", () => {
+    expect(
+      mentionNotes(
+        'See @project:2026-01-02-0304-example-app and @file:Notes/today.md, then @file:"Notes/My note.md".',
+        projects,
+      ),
+    ).toEqual([
+      '[@project:2026-01-02-0304-example-app is the project "Example app", in the folder Projects/2026-01-02-0304-example-app]',
+      "[@file:Notes/today.md is the file Notes/today.md of the vault]",
+      '[@file:"Notes/My note.md" is the file Notes/My note.md of the vault]',
+    ]);
+  });
+
+  test("a project that Eva does not list takes the folder of the vault layout", () => {
+    expect(mentionNotes("@project:2026-01-01-0000-gone", [])).toEqual([
+      "[@project:2026-01-01-0000-gone is the project in the folder Projects/2026-01-01-0000-gone]",
+    ]);
+  });
+
+  test("a mention that shows twice gets one note, and an email address gets none", () => {
+    expect(mentionNotes("@file:a.md and @file:a.md, me@file:b.md", [])).toEqual([
+      "[@file:a.md is the file a.md of the vault]",
+    ]);
+  });
+});
+
+describe("withProjectMention", () => {
+  test("the mention goes before the text that the new chat already has", () => {
+    expect(withProjectMention("", "example-app")).toBe("@project:example-app ");
+    expect(withProjectMention("Hello", "example-app")).toBe("@project:example-app Hello");
+  });
+
+  test("a text that already mentions the project stays as it is", () => {
+    expect(withProjectMention("@project:example-app Hello", "example-app")).toBe("@project:example-app Hello");
+  });
+});
+
+describe("projectsInUse", () => {
+  test("a project is in use while one of its Project chats runs, by the list or by the live turns", () => {
+    const chats = [
+      { id: "a", mode: "project" as const, projectId: "first", running: true },
+      { id: "b", mode: "project" as const, projectId: "second", running: false },
+      { id: "c", mode: "project" as const, projectId: "third", running: false },
+      { id: "d", mode: "assistant" as const, projectId: null, running: true },
+    ];
+    expect(projectsInUse(chats, (id) => id === "b")).toEqual(["first", "second"]);
+  });
+});

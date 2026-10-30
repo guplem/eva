@@ -3453,6 +3453,45 @@ test("an attached file reaches the agent as its vault path, and a removed one do
   await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
 });
 
+test("an @ mentions a project and a vault file, and the agent gets where they are (issue 657)", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const search = page.getByRole("listbox", { name: "Mention a project or a file" });
+  await box.pressSequentially("Plan @exam");
+  await expect(search.getByRole("option", { name: /Example app/ })).toBeVisible();
+  await box.press("Enter");
+  await expect(search).toHaveCount(0);
+  await expect(box).toHaveValue("Plan @project:2025-03-02-1015-example-app ");
+
+  await box.pressSequentially("with @trips");
+  await search.getByRole("option", { name: /2027-trips\.md/ }).click();
+  await expect(box).toHaveValue("Plan @project:2025-03-02-1015-example-app with @file:Journal/2027-trips.md ");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+
+  const message = page.locator(".message.user").last();
+  await expect(message).toContainText(
+    'is the project "Example app", in the folder Projects/2025-03-02-1015-example-app',
+  );
+  await expect(message).toContainText("[@file:Journal/2027-trips.md is the file Journal/2027-trips.md of the vault]");
+  // The demo engine echoes the last line of the message, so the note reached the agent.
+  await expect(page.locator(".message.answer").first()).toContainText("the file Journal/2027-trips.md of the vault");
+});
+
+test("Escape closes the @ search, and an email address opens none", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const search = page.getByRole("listbox", { name: "Mention a project or a file" });
+  await box.pressSequentially("Write to me@exam");
+  await expect(search).toHaveCount(0);
+  await box.pressSequentially(" @");
+  await expect(search).toBeVisible();
+  await box.press("Escape");
+  await expect(search).toHaveCount(0);
+  await box.fill("");
+});
+
 test("the message box shows no mode chip", async ({ page }) => {
   await logIn(page);
   await newChat(page);

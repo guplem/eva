@@ -367,6 +367,11 @@ export function sendsOnEnter(press: ComposerKey, touchScreen: boolean): boolean 
   return !press.isComposing && press.keyCode !== inputMethodKeyCode;
 }
 
+/** The label of the Enter key on a phone keyboard. It names what Enter does, as `sendsOnEnter` decides. */
+export function enterKeyHint(touchScreen: boolean): "enter" | "send" {
+  return touchScreen ? "enter" : "send";
+}
+
 /**
  * The text of the message box after a failed send. The person gets the message back, and keeps
  * what they typed during the send after it.

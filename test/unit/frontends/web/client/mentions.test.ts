@@ -9,6 +9,7 @@ import {
   mentionToken,
   pickedProjects,
   projectsInUse,
+  withFixRequest,
   withProjectMention,
   type MentionProject,
 } from "../../../../../src/frontends/web/client/mentions.ts";
@@ -129,6 +130,21 @@ describe("withProjectMention", () => {
 
   test("a text that already mentions the project stays as it is", () => {
     expect(withProjectMention("@project:example-app Hello", "example-app")).toBe("@project:example-app Hello");
+  });
+});
+
+describe("withFixRequest (issue 668)", () => {
+  test("the mention and the fix request make the text of the new chat", () => {
+    expect(withFixRequest("", "example-app", "In example-owner/example-app, add hooks.")).toBe(
+      "@project:example-app In example-owner/example-app, add hooks.",
+    );
+  });
+
+  test("the text that the new chat already has stays after the fix", () => {
+    expect(withFixRequest("Half a thought", "example-app", "Add hooks.")).toBe(
+      "@project:example-app Add hooks.\n\nHalf a thought",
+    );
+    expect(withFixRequest("  \n", "example-app", "Add hooks.")).toBe("@project:example-app Add hooks.");
   });
 });
 

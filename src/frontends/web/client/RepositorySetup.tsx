@@ -1,6 +1,6 @@
 /**
- * The setup report of each repository of a project: one mark per item, and a Copy button
- * that copies the fix request for a coding agent that runs on that repository.
+ * The setup report of each repository of a project: one mark per item, and a Fix button that
+ * opens a new chat with Eva, with the fix request of the item in the message box.
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type SetupItem, type SetupReport, type SetupSection } from "./api.ts";
@@ -23,11 +23,14 @@ export function RepositorySetup({
   projectId,
   title,
   onBack,
+  onFix,
 }: {
   readonly projectId: string;
   readonly title: string;
   /** Goes back to the project page. */
   readonly onBack: () => void;
+  /** Opens a new chat with Eva that holds the fix request, unsent (issue 668). */
+  readonly onFix: (request: string) => void;
 }): ReactElement {
   const [reports, setReports] = useState<SetupReport[] | Loading>({ state: "loading" });
 
@@ -60,7 +63,7 @@ export function RepositorySetup({
           <>
             {reports.length === 0 && <div className="callout">This project lists no repository.</div>}
             {reports.map((report, index) => (
-              <ReportCard key={`${String(index)}-${report.repositoryUrl}`} report={report} />
+              <ReportCard key={`${String(index)}-${report.repositoryUrl}`} report={report} onFix={onFix} />
             ))}
           </>
         ) : reports.state === "loading" ? (
@@ -77,7 +80,7 @@ export function RepositorySetup({
   );
 }
 
-function ReportCard({ report }: { report: SetupReport }): ReactElement {
+function ReportCard({ report, onFix }: { report: SetupReport; onFix: (request: string) => void }): ReactElement {
   const summary = reportSummary(report);
   return (
     <Card
@@ -86,10 +89,11 @@ function ReportCard({ report }: { report: SetupReport }): ReactElement {
       description={summary === "" ? undefined : summary}
       aside={
         report.allFixes !== null && (
-          <CopyButton
-            text={report.allFixes}
-            label="Copy all fixes"
-            name={`Copy all fixes for ${report.slug ?? ""}`}
+          <FixButton
+            request={report.allFixes}
+            label="Fix all"
+            name={`Fix all of ${report.slug ?? ""} in a new chat`}
+            onFix={onFix}
             className="primary"
           />
         )
@@ -97,13 +101,13 @@ function ReportCard({ report }: { report: SetupReport }): ReactElement {
     >
       {report.problem !== null && <div className="callout warning">{report.problem}</div>}
       {report.sections.map((section) => (
-        <SectionView key={section.title} section={section} />
+        <SectionView key={section.title} section={section} onFix={onFix} />
       ))}
     </Card>
   );
 }
 
-function SectionView({ section }: { section: SetupSection }): ReactElement {
+function SectionView({ section, onFix }: { section: SetupSection; onFix: (request: string) => void }): ReactElement {
   return (
     <section className="setup-section" aria-label={section.title}>
       <h3>
@@ -118,7 +122,7 @@ function SectionView({ section }: { section: SetupSection }): ReactElement {
             <small>{item.detail}</small>
           </div>
           {item.fixRequest !== null && (
-            <CopyButton text={item.fixRequest} label="Copy" name={`Copy the fix for ${item.label}`} />
+            <FixButton request={item.fixRequest} label="Fix" name={`Fix ${item.label} in a new chat`} onFix={onFix} />
           )}
         </div>
       ))}
@@ -136,45 +140,20 @@ function ItemMark({ light }: { light: SetupItem["light"] }): ReactElement {
   );
 }
 
-interface CopyButtonProps {
-  readonly text: string;
+interface FixButtonProps {
+  readonly request: string;
   readonly label: string;
   readonly name: string;
+  readonly onFix: (request: string) => void;
   readonly className?: string;
 }
 
-function CopyButton({ text, label, name, className }: CopyButtonProps): ReactElement {
-  const [copied, setCopied] = useState(false);
-  const [showText, setShowText] = useState(false);
-  const copy = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2_000);
-    } catch {
-      // The clipboard needs HTTPS or localhost. Elsewhere the person selects the text by hand.
-      setShowText(true);
-    }
-  };
+/** The arrow says that the button opens another page: a new chat with the fix in its box. */
+function FixButton({ request, label, name, onFix, className }: FixButtonProps): ReactElement {
   return (
-    <>
-      <button
-        className={`copy-button ${className ?? ""}`}
-        aria-label={copied ? "Copied" : name}
-        onClick={() => void copy()}
-      >
-        <Icon name={copied ? "check" : "copy"} />
-        {copied ? "Copied" : label}
-      </button>
-      {showText && (
-        <textarea
-          className="copy-text"
-          readOnly
-          aria-label={`Text to copy: ${name}`}
-          value={text}
-          onFocus={(event) => event.currentTarget.select()}
-        />
-      )}
-    </>
+    <button className={`fix-button ${className ?? ""}`} aria-label={name} onClick={() => onFix(request)}>
+      {label}
+      <Icon name="forward" />
+    </button>
   );
 }

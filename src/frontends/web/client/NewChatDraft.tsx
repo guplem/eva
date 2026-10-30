@@ -12,7 +12,7 @@ import { useShowError } from "./error-toast.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { goTo } from "./back-layers.ts";
-import { withProjectMention } from "./mentions.ts";
+import { withFixRequest, withProjectMention } from "./mentions.ts";
 import { assistantChatAddressOf, newChatPageId } from "./navigation.ts";
 
 /** The key of the unsent text of this page, which has no chat yet. A chat id never takes it. */
@@ -20,10 +20,15 @@ const newChatTextKey = "new-chat";
 
 /**
  * Opens the New chat page of Chats with a mention of the project at the start of its text (issue 657).
+ * A fix request of the repository setup follows the mention (issue 668). The person sends it.
  * The page keeps the text that the person typed before, so nothing is lost.
  */
-export function startChatAbout(projectId: string): void {
-  unsentTexts.set(newChatTextKey, withProjectMention(unsentTexts.get(newChatTextKey), projectId));
+export function startChatAbout(projectId: string, fixRequest?: string): void {
+  const text = unsentTexts.get(newChatTextKey);
+  unsentTexts.set(
+    newChatTextKey,
+    fixRequest === undefined ? withProjectMention(text, projectId) : withFixRequest(text, projectId, fixRequest),
+  );
   goTo(assistantChatAddressOf(newChatPageId));
 }
 

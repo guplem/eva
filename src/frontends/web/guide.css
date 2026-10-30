@@ -89,8 +89,6 @@
   overflow-wrap: anywhere;
 }
 
-/* The "?" that opens the guide at the part that explains a place. It stays faint, so it does not
-   pull the eye from the place, and a finger still gets a whole target. */
 /* A long title wraps: the "?" stays by its first line. */
 .card-title-row {
   display: flex;
@@ -98,6 +96,8 @@
   gap: var(--space-3);
 }
 
+/* The "?" that opens the guide at the part that explains a place. It stays faint, so it does not
+   pull the eye from the place, and a finger still gets a whole target. */
 a.help-link {
   flex: none;
   display: inline-flex;

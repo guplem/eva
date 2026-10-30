@@ -1182,7 +1182,9 @@ describe("Eva", () => {
       return new FakeEngine((request) => {
         if (request.mode === "project") {
           turn += 1;
-          writeFileSync(join(request.startFolder, "remote", `${request.prompt}.txt`), `turn ${String(turn)}\n`);
+          // A prompt with a mention holds `:` and new lines, which Windows refuses in a file name.
+          const name = request.prompt.replace(/[^\w]+/g, "-");
+          writeFileSync(join(request.startFolder, "remote", `${name}.txt`), `turn ${String(turn)}\n`);
         }
         const text = request.mode === "model-call" ? (options.summary ?? "A name") : "ok";
         return FakeEngine.answer(request, text);
@@ -1319,6 +1321,7 @@ describe("Eva", () => {
       // The summary covers the turns before the retried one, so the mention goes in the first.
       await instance.sessions.send(chat.id, "first @file:Notes/Plan.md", "api");
       await instance.sessions.send(chat.id, "second", "api");
+      expect(instance.sessions.get(chat.id).turns.map((turn) => turn.failure)).toEqual([null, null]);
       const before = engine.requests.length;
       await instance.retryChat(chat.id, 1, "new-clone");
       const summaryCall = engine.requests.slice(before).find((request) => request.mode === "model-call");

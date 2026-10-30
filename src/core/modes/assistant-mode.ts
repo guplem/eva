@@ -83,6 +83,9 @@ export class AssistantPreparer implements TurnPreparer {
       pluginFolders: this.pluginFolders(),
       mcpServers: this.options.mcpServers,
       trusted: true,
+      // The engine turns both off in Assistant mode by itself; these say the same.
+      harnessMemory: false,
+      folderHooks: false,
       // `eva work` reads it, so a project's result comes back to this chat.
       environment: { ...this.options.environment, EVA_SESSION_ID: session.id },
     };

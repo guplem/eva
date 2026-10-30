@@ -63,6 +63,9 @@ export class ProjectPreparer implements TurnPreparer {
       pluginFolders: [],
       mcpServers: {},
       trusted: await this.isCloneTrusted(session.startFolder, context),
+      // As in a session that the person opens by hand.
+      harnessMemory: true,
+      folderHooks: true,
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };
   }

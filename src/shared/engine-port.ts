@@ -92,6 +92,16 @@ export interface TurnRequest {
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
   /** Project mode: false runs the clone with its hooks and project MCP servers off. */
   readonly trusted: boolean;
+  /**
+   * Project mode: false turns off the harness's own memory, such as Claude Code's auto memory. That
+   * memory stays on one machine, so a specialist keeps its memory in its folder instead (#703).
+   */
+  readonly harnessMemory: boolean;
+  /**
+   * Project mode: false turns off the hooks of the folder and of the person's harness config. A
+   * specialist works in the vault, where Eva owns the sync (#703). Eva's own callbacks keep working.
+   */
+  readonly folderHooks: boolean;
   /** The whole environment of the engine process (lesson 96). */
   readonly environment: Readonly<Record<string, string>>;
   readonly requestApproval: (request: ApprovalRequest) => Promise<ApprovalAnswer>;

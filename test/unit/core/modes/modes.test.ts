@@ -172,6 +172,8 @@ describe("Assistant mode", () => {
       pluginFolders: [join(vault, ".eva")],
       mcpServers: { google: { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: {} } },
       trusted: true,
+      harnessMemory: false,
+      folderHooks: false,
       environment: { PATH: "/bin" },
     });
   });
@@ -373,6 +375,8 @@ describe("Project mode", () => {
       pluginFolders: [],
       mcpServers: {},
       trusted: true,
+      harnessMemory: true,
+      folderHooks: true,
       // Git stops at the folder of the clones, so a git command in the clone folder never reads the vault.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: sandbox.root },
     });

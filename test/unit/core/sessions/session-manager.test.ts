@@ -36,6 +36,8 @@ const preparer: TurnPreparer = {
       pluginFolders: [],
       mcpServers: {},
       trusted: true,
+      harnessMemory: true,
+      folderHooks: true,
       environment: { PATH: "/bin" },
     }),
   afterTurn: () => {

@@ -56,6 +56,10 @@ export interface PreparedTurn {
   readonly pluginFolders: readonly string[];
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
   readonly trusted: boolean;
+  /** False turns off the harness's own memory (#703). */
+  readonly harnessMemory: boolean;
+  /** False turns off the hooks of the folder and of the harness config (#703). */
+  readonly folderHooks: boolean;
   readonly environment: Readonly<Record<string, string>>;
 }
 
@@ -1290,6 +1294,8 @@ ${engineText}`,
         pluginFolders: prepared.pluginFolders,
         mcpServers: prepared.mcpServers,
         trusted: prepared.trusted,
+        harnessMemory: prepared.harnessMemory,
+        folderHooks: prepared.folderHooks,
         environment: prepared.environment,
         requestApproval: async (request) =>
           (await this.requestApproval(sessionId, request.toolName, request.summary, null, controller.signal)) ===

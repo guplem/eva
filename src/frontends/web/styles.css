@@ -3310,8 +3310,11 @@ button.small {
   gap: 10px;
 }
 
+/* A long project name wraps, so the person reads all of it. A word with no break point breaks too. */
 .header-title h1 {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .main-header .sub {

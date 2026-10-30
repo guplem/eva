@@ -695,6 +695,8 @@ a.files-entry[aria-current="true"] {
 
 .files-search .search-field {
   flex: 1 1 260px;
+  /* A narrow phone shrinks the field. Its text box takes the loss, not the edge of the screen. */
+  min-width: 0;
   max-width: 480px;
   padding: 0 var(--space-1) 0 0;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { repositoryTypeInfo } from "../../../../../src/core/projects/repository-catalog.ts";
 import { defaultConfig } from "../../../../../src/core/settings/home.ts";
 import type { PublicSettings } from "../../../../../src/core/settings/live-settings.ts";
 import {
@@ -48,7 +49,7 @@ describe("unavailableSteps", () => {
 
 describe("the repository choices", () => {
   test("a type that needs GitHub is unavailable, with the reason, until Eva has a GitHub login", () => {
-    expect(unavailableTypes(ready)).toEqual({ standard: null, "vibe-coded": null });
+    expect(unavailableTypes(ready)).toEqual({ standard: null, "vibe-coded": null, widget: null });
     const reasons = unavailableTypes({ ...ready, secretsSet: { ...secretsSet, githubToken: false } });
     expect(reasons["vibe-coded"]).toContain("Log in to GitHub");
   });
@@ -62,6 +63,16 @@ describe("the repository choices", () => {
       note: expect.stringContaining("Anyone can read") as string,
     });
     expect(repositoryNotes("standard", "public").warning).toBeNull();
+  });
+
+  test("a widget is public by default; a private one warns that Pages and the merge rules need a paid plan", () => {
+    expect(repositoryTypeInfo("widget")?.defaultVisibility).toBe("public");
+    expect(unavailableTypes({ ...ready, secretsSet: { ...secretsSet, githubToken: false } }).widget).toContain(
+      "Log in to GitHub",
+    );
+    expect(repositoryNotes("widget", "private").warning).toContain("Pages");
+    expect(repositoryNotes("widget", "private").warning).toContain("paid plan");
+    expect(repositoryNotes("widget", "public").warning).toBeNull();
   });
 });
 

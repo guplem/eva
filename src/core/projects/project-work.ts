@@ -566,7 +566,15 @@ export class ProjectWork {
     const project = this.project(projectId);
     const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
     const slug = githubSlug(url);
-    if (type?.afterCreate !== undefined && slug !== null) await type.afterCreate(slug, this.githubWrite());
+    if (type?.afterCreate !== undefined && slug !== null) {
+      try {
+        await type.afterCreate(slug, this.githubWrite(), { title: project.title });
+      } catch (error) {
+        if (!isEvaError(error, "github_failed")) throw error;
+        // The fixes would land on a repository with no template, so the setup stops here.
+        throw new EvaError("github_failed", `Eva could not push the first files: ${error.message}`, { cause: error });
+      }
+    }
     const { result, needsChanges, report } = await this.runFixes(project, url, null);
     // GitHub can serve a new repository's files or labels a moment late. Their items are grey then, so
     // neither a fix nor the chat would cover them.
@@ -576,13 +584,27 @@ export class ProjectWork {
           ...result.problems,
           "GitHub did not show all of the new repository yet. Open Repository setup later, and press Fix all.",
         ]
-      : result.problems;
-    if (result.chatRequest === null) return { sessionId: null, problems };
-    const session = await this.start({
-      projectId,
-      request: needsChanges ? `${result.chatRequest}\n\n${setupChatEnd}` : result.chatRequest,
-      reportToSessionId: null,
-    });
+      : [...result.problems];
+    if (type?.afterFixes !== undefined && slug !== null) {
+      try {
+        await type.afterFixes(slug, this.githubWrite());
+      } catch (error) {
+        if (!isEvaError(error, "github_failed")) throw error;
+        problems.push(`Eva could not finish the last setup step: ${error.message}`);
+      }
+    }
+    const fixes =
+      result.chatRequest === null
+        ? null
+        : needsChanges
+          ? `${result.chatRequest}\n\n${setupChatEnd}`
+          : result.chatRequest;
+    // A type with its own first chat, such as a widget, opens it instead; the setup items that are left come last.
+    const first = type?.firstChat === undefined || slug === null ? null : type.firstChat(slug);
+    const request =
+      first === null ? fixes : fixes === null ? first : `${first}\n\nThe setup also left these items:\n\n${fixes}`;
+    if (request === null) return { sessionId: null, problems };
+    const session = await this.start({ projectId, request, reportToSessionId: null });
     return { sessionId: session.id, problems };
   }
 

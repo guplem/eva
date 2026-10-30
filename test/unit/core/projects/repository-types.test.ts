@@ -45,10 +45,11 @@ function labels(setup: SetupReport): string[] {
 }
 
 describe("repository types", () => {
-  test("standard and vibe-coded exist, both private by default; only vibe-coded has a reference", () => {
+  test("standard and vibe-coded are private by default, a widget public; only standard has no reference", () => {
     expect(repositoryTypes.map((type) => [type.name, type.defaultVisibility, type.reference])).toEqual([
       ["standard", "private", null],
       ["vibe-coded", "private", evaRepository],
+      ["widget", "public", evaRepository],
     ]);
     expect(repositoryTypes.every((type) => type.needsGithubLogin)).toBe(true);
     expect(repositoryTypeOf("unknown")).toBeNull();

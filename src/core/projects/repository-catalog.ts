@@ -6,7 +6,7 @@
 import type { RepositoryVisibility } from "../vault/github-repositories.ts";
 
 /** A stored name: the values of `repo_types` in a project's front matter. */
-export type RepositoryTypeName = "standard" | "vibe-coded";
+export type RepositoryTypeName = "standard" | "vibe-coded" | "widget";
 
 export interface RepositoryTypeInfo {
   readonly name: RepositoryTypeName;
@@ -38,6 +38,16 @@ export const repositoryCatalog: readonly RepositoryTypeInfo[] = [
     needsGithubLogin: true,
     privateWarning:
       "A private repository uses the CI minutes of your GitHub account on each pull request. GitHub enforces the merge rules and some security scans of the standard only on a paid plan.",
+  },
+  {
+    name: "widget",
+    label: "Widget",
+    description:
+      "A widget for Eva's home page, from Eva's template: the vibe-coded standard, with its demo on GitHub Pages.",
+    defaultVisibility: "public",
+    needsGithubLogin: true,
+    privateWarning:
+      "GitHub offers Pages and the merge rules on a private repository only on a paid plan. Without them, the widget has no demo, and a pull request can merge with a failed check.",
   },
 ];
 

@@ -130,6 +130,24 @@ describe("createProject", () => {
     expect(project?.description).toBe("A small app to try Eva.");
   });
 
+  test("a widget project tells the agent to read the rules of the repository first, as a list item", async () => {
+    const result = await createProject(
+      { ...input, description: "", repository: { type: "widget", visibility: "public" } },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      {
+        ...noSteps,
+        createRepository: () => Promise.resolve("https://github.com/example/habits-widget"),
+        setUpRepository: () => Promise.resolve({ sessionId: "chat-1", problems: [] }),
+      },
+    );
+    const text = fileOf(result.projectId);
+    expect(text).toEndWith(
+      "# Example App\n\n- This project is a widget for Eva's home page. Before any work, read `habits-widget/AGENTS.md` in the clone.\n",
+    );
+    const [project] = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    expect(project?.description).toBeNull();
+  });
+
   test("without a description, the Drive link never reads as the description", async () => {
     await createProject(
       { ...input, description: "", drive: true },

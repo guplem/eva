@@ -99,6 +99,18 @@ const retrySchema = z.object({
 const renameSchema = z.object({ title: z.string() });
 const forkNameSchema = z.object({ name: z.string() });
 const seenSchema = z.object({ turnCount: z.number().int().min(0) });
+/** The bounds keep a wild request small. A real message is far shorter. */
+const unsentTextSchema = z.object({
+  text: z.string().max(100_000),
+  keepEmpty: z.boolean(),
+  writer: z.string().regex(/^[\w-]{1,64}$/),
+  /** The revision that the page built on, or null when it knew none. */
+  base: z.number().int().min(0).nullable(),
+});
+/** The key of the text of the New chat page, which has no chat yet. The web app uses the same key. */
+const newChatTextKey = "new-chat";
+/** A chat id, or the key of the New chat page. */
+const unsentTextKeySchema = z.string().regex(/^[\w-]{1,128}$/);
 const archiveSchema = z.object({ archived: z.boolean() });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 /** The core checks that the answers fit the questions. The bounds keep a wild request small. */
@@ -334,6 +346,8 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
             socket.send(JSON.stringify(event));
           }),
         );
+        // Each page shows the unsent text that another page typed (issue 652).
+        socket.data.unsubscribe.push(options.eva.unsentTexts.subscribe((event) => socket.send(JSON.stringify(event))));
         const schedules = options.eva.schedules;
         if (schedules !== null) {
           socket.data.unsubscribe.push(
@@ -755,6 +769,14 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (method === "PUT" && url.pathname === "/api/files") {
     const { path, version, text } = vaultFileSchema.parse(await request.json());
     return json(eva.saveFile(path, version, text));
+  }
+  if (method === "GET" && url.pathname === "/api/unsent-texts") return json(eva.unsentTexts.list());
+  if (method === "PUT" && url.pathname.startsWith("/api/unsent-texts/")) {
+    const key = unsentTextKeySchema.parse(decodeURIComponent(url.pathname.slice("/api/unsent-texts/".length)));
+    const { text, keepEmpty, writer, base } = unsentTextSchema.parse(await request.json());
+    // A late write of a deleted chat, such as at a page hide, must leave no text behind: an unknown chat answers 404.
+    if (key !== newChatTextKey) eva.sessions.get(key);
+    return json(eva.unsentTexts.set(key, text, keepEmpty, writer, base));
   }
   if (method === "GET" && url.pathname === "/api/files/favorites") return json(eva.favoriteFiles());
   if (method === "PUT" && url.pathname === "/api/files/favorites") {

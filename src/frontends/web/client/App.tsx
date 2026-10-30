@@ -21,10 +21,12 @@ import {
   type ProgressStep,
 } from "./api.ts";
 import type { HistoryEntry } from "../../../core/alerts/notification-history.ts";
+import type { UnsentTextEvent } from "../../../core/sessions/unsent-texts.ts";
 import { ApprovalNotice } from "./ApprovalCard.tsx";
 import { cueOfEvent, playCue } from "./cues.ts";
 import { approvalNoticeWords, approvalPlace, approvalsOutside, pendingOf } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
+import { unsentTexts } from "./Composer.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { FilesView } from "./FilesView.tsx";
 import {
@@ -407,8 +409,11 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     const onVisible = (): void => {
       if (document.visibilityState !== "visible") {
         hiddenAt = Date.now();
+        // A hidden page can stop before the pause ends, and the person may go on typing on the phone.
+        unsentTexts.flushAll();
         return;
       }
+      unsentTexts.sync().catch(() => undefined);
       void recover();
       // After a long hide the socket can read open but be dead. A quick tab switch keeps a good socket.
       if (isLongHide(hiddenAt, Date.now())) events.current?.reconnect();
@@ -442,62 +447,71 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     if (authenticated !== true) return undefined;
     const onConnectionChange = (connected: boolean): void => {
       setIsConnected(connected);
+      // A device that slept missed the changes of the unsent texts. A failed read keeps the copies of the tab.
+      if (connected) unsentTexts.sync().catch(() => undefined);
       if (connected) void recover();
       // The server closes the socket of a removed device. A WebSocket never sees the 401 that follows,
       // so ask over HTTP: a 401 there shows the login page and ends the retries.
       else void refreshSessions();
     };
-    const subscription = subscribeToEvents((event: SessionEvent | ScheduleCard | DeviceLoginEvent) => {
-      if (event.kind === "device_login_request") {
-        setDeviceRequests((current) => [...current.filter((entry) => entry.id !== event.request.id), event.request]);
-        return;
-      }
-      if (event.kind === "device_login_settled") {
-        setDeviceRequests((current) => current.filter((entry) => entry.id !== event.id));
-        return;
-      }
-      if (event.kind === "schedule_card") {
-        // The core sends a waiting card again at each check. It replaces the old one in place, so
-        // the dialog never jumps to another card while the person reads.
-        setCards((current) =>
-          current.some((card) => card.scheduleId === event.scheduleId)
-            ? current.map((card) => (card.scheduleId === event.scheduleId ? event : card))
-            : [...current, event],
-        );
-        return;
-      }
-      setLive((state) => applyEvent(state, event));
-      const cue = cueOfEvent(event);
-      if (cue !== null) playCue(cue);
-      if (event.kind === "approval_resolved") {
-        setApprovals((current) => current.filter((approval) => approval.requestId !== event.requestId));
-      } else if (event.kind === "approval_needed") {
-        setApprovals((current) => [
-          ...current.filter((approval) => approval.requestId !== event.requestId),
-          pendingOf(event),
-        ]);
-      } else if (event.kind === "session_deleted") {
-        // Another front end deleted a chat: the list drops it.
-        void refreshSessions();
-      } else if (event.kind === "session_renamed" || event.kind === "fork_named") {
-        // A rename can come from Telegram, the terminal or another device.
-        void refreshSessions();
-      } else if (event.kind === "session_seen") {
-        // The person read the chat here or on another device: the list drops its unread mark.
-        void refreshSessions();
-      } else if (event.kind === "session_archived") {
-        // An archive on another device, or a new message that brought the chat back.
-        void refreshSessions();
-      } else if (event.kind === "session_closed") {
-        // Eva reused the chat's clone: its page swaps the message box for a note.
-        void refreshSessions();
-      } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
-        void refreshSessions();
-      } else if (event.kind === "message_received") {
-        // A turn starts. Its first step can come much later, and the list already says that the chat works.
-        void refreshSessions();
-      }
-    }, onConnectionChange);
+    const subscription = subscribeToEvents(
+      (event: SessionEvent | ScheduleCard | DeviceLoginEvent | UnsentTextEvent) => {
+        if (event.kind === "unsent_text") {
+          unsentTexts.receive(event);
+          return;
+        }
+        if (event.kind === "device_login_request") {
+          setDeviceRequests((current) => [...current.filter((entry) => entry.id !== event.request.id), event.request]);
+          return;
+        }
+        if (event.kind === "device_login_settled") {
+          setDeviceRequests((current) => current.filter((entry) => entry.id !== event.id));
+          return;
+        }
+        if (event.kind === "schedule_card") {
+          // The core sends a waiting card again at each check. It replaces the old one in place, so
+          // the dialog never jumps to another card while the person reads.
+          setCards((current) =>
+            current.some((card) => card.scheduleId === event.scheduleId)
+              ? current.map((card) => (card.scheduleId === event.scheduleId ? event : card))
+              : [...current, event],
+          );
+          return;
+        }
+        setLive((state) => applyEvent(state, event));
+        const cue = cueOfEvent(event);
+        if (cue !== null) playCue(cue);
+        if (event.kind === "approval_resolved") {
+          setApprovals((current) => current.filter((approval) => approval.requestId !== event.requestId));
+        } else if (event.kind === "approval_needed") {
+          setApprovals((current) => [
+            ...current.filter((approval) => approval.requestId !== event.requestId),
+            pendingOf(event),
+          ]);
+        } else if (event.kind === "session_deleted") {
+          // Another front end deleted a chat: the list drops it.
+          void refreshSessions();
+        } else if (event.kind === "session_renamed" || event.kind === "fork_named") {
+          // A rename can come from Telegram, the terminal or another device.
+          void refreshSessions();
+        } else if (event.kind === "session_seen") {
+          // The person read the chat here or on another device: the list drops its unread mark.
+          void refreshSessions();
+        } else if (event.kind === "session_archived") {
+          // An archive on another device, or a new message that brought the chat back.
+          void refreshSessions();
+        } else if (event.kind === "session_closed") {
+          // Eva reused the chat's clone: its page swaps the message box for a note.
+          void refreshSessions();
+        } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
+          void refreshSessions();
+        } else if (event.kind === "message_received") {
+          // A turn starts. Its first step can come much later, and the list already says that the chat works.
+          void refreshSessions();
+        }
+      },
+      onConnectionChange,
+    );
     events.current = subscription;
     return () => {
       subscription.close();

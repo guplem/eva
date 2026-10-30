@@ -45,8 +45,40 @@ import { useBackLayer } from "./back-layer-hook.ts";
 type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns"> &
   Partial<Pick<SessionRecord, "firstMessageDraft">>;
 
-/** The unsent text of each chat in this tab, by its draft key. */
-const unsentTexts = new UnsentTexts(() => window.sessionStorage);
+/**
+ * The id of this tab, so it skips its own changes when Eva sends them back. The tab keeps it across
+ * a reload: Eva lets a tab write over its own newest text. A page on a plain http address has no
+ * `crypto.randomUUID`, and the id needs no strength.
+ */
+const pageWriter = ((): string => {
+  const key = "eva-unsent-writer";
+  try {
+    const kept = window.sessionStorage.getItem(key);
+    if (kept !== null) return kept;
+  } catch {
+    // A blocked storage gives each load a new id.
+  }
+  const made = `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  try {
+    window.sessionStorage.setItem(key, made);
+  } catch {
+    // The id still serves this load.
+  }
+  return made;
+})();
+
+/** The unsent text of each chat, by its draft key. Eva keeps it too, so every device shows it (issue 652). */
+export const unsentTexts = new UnsentTexts(() => window.sessionStorage, {
+  remote: {
+    list: () => api.unsentTexts(),
+    save: (key, text, keepEmpty, base) => api.saveUnsentText(key, text, keepEmpty, pageWriter, base),
+  },
+  timers: {
+    set: (run, ms) => setTimeout(run, ms),
+    clear: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
+  },
+  writer: pageWriter,
+});
 
 /** How the chip changes the engine of a chat that has no turn yet, and the model and effort of any chat. */
 export interface ChatChoices {

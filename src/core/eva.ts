@@ -132,6 +132,7 @@ import { answersToUndo, refsStillNamed } from "./sessions/retry-undo.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { StepDetailsStore } from "./sessions/step-details-store.ts";
+import { UnsentTextStore } from "./sessions/unsent-texts.ts";
 import {
   type ConflictChoice,
   type ConflictResolution,
@@ -393,6 +394,8 @@ export class Eva {
   readonly schedules: Scheduler | null;
   /** The person's rules for chat names. Null when no vault is configured. */
   readonly chatNames: ChatNamer | null;
+  /** The unsent text of each chat, which every page of the web app shows. */
+  readonly unsentTexts: UnsentTextStore;
   /** The person's rules for Eva, in `.eva/assistant.md`. Null when no vault is configured. */
   readonly assistantRules: AssistantRules | null;
   /** The vault's template parts, such as the skills. Null when no vault is configured. */
@@ -510,6 +513,7 @@ export class Eva {
       },
     });
     this.redactor = redactor;
+    this.unsentTexts = new UnsentTextStore(options.paths.unsentTexts, redactor);
     this.locations = new LocationStore({ path: options.paths.location, now: options.now });
     this.webPush = new WebPush({
       paths: options.paths,
@@ -735,6 +739,7 @@ export class Eva {
         options.logger?.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
       if (event.kind === "turn_failed" || event.kind === "turn_finished") this.reportEngineLogin(event);
       if (event.kind === "session_deleted") {
+        this.unsentTexts.remove(event.sessionId);
         // After the delete of one branch, its forks still name the snapshots of the turns that they took.
         // The deleted turns can also be the last that named the snapshots of a branch that went before.
         for (const id of [event.sessionId, ...(event.snapshotsOf ?? [])]) {

@@ -12,7 +12,7 @@ interface BlockPart {
 }
 
 const blockIntro =
-  "Eva lists these projects of the person at the start of this chat, from the `status` in the front matter of each project's `AGENTS.md`. A change shows in the next chat. Each line gives the title, the project id and the description. A project outside `Projects/` also gives its folder.";
+  "Eva picks these projects by the `status` in each project's `AGENTS.md`. Each line gives the title, the project id and the description. A project outside `Projects/` also gives its folder.";
 
 /** The block, or null when no project is active or in use. Each empty part is left out. */
 export function projectsBlock(projects: readonly Project[]): string | null {

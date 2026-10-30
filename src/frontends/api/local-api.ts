@@ -835,7 +835,13 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));
   if (method === "GET" && url.pathname === "/api/files/search")
-    return json(eva.searchFiles(url.searchParams.get("query") ?? "", url.searchParams.get("contents") === "true"));
+    return json(
+      eva.searchFiles(
+        url.searchParams.get("query") ?? "",
+        url.searchParams.get("contents") === "true",
+        url.searchParams.get("shareable") === "true",
+      ),
+    );
   if (method === "GET" && url.pathname === "/api/files/download")
     return downloadResponse(eva.downloadFile(url.searchParams.get("path") ?? ""));
   if (method === "PUT" && url.pathname === "/api/files") {

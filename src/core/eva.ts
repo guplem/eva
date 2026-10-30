@@ -1684,9 +1684,12 @@ export class Eva {
     return browseVault(this.browsedVault(), path, (text) => this.redactor.redact(text));
   }
 
-  /** The vault files and folders whose name holds `query`, and with `contents` the files whose text holds it. */
-  searchFiles(query: string, contents: boolean): SearchResult {
-    return searchVault(this.browsedVault(), query, { contents }, (text) => this.redactor.redact(text));
+  /**
+   * The vault files and folders whose name holds `query`, and with `contents` the files whose text
+   * holds it. With `shareable`, only what a chat in a clone may be given (#706).
+   */
+  searchFiles(query: string, contents: boolean, shareable = false): SearchResult {
+    return searchVault(this.browsedVault(), query, { contents, shareable }, (text) => this.redactor.redact(text));
   }
 
   /** A vault file, or a folder as one zip, for the Download button of the file explorer. */

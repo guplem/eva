@@ -34,14 +34,19 @@ const maxReadBytes = 50_000_000;
 const lineContext = 60;
 const hiddenName = ".git";
 
+/** A project's clones: other chats' work, which a chat in a clone must not be given (#706). */
+const clonesFolderPattern = /^Projects\/[^/]+\/repos$/i;
+
 /**
  * Finds the vault entries whose name, or project title, holds `query`, in any case. With
  * `contents`, a text file that holds `query` matches too. Folders near the root come first.
+ * With `shareable`, the search never walks into a project's clones and lists no secrets file,
+ * as the picker of a chat in a clone needs (#706).
  */
 export function searchVault(
   vaultPath: string,
   query: string,
-  options: { readonly contents: boolean },
+  options: { readonly contents: boolean; readonly shareable?: boolean },
   redact: (text: string) => string,
 ): SearchResult {
   const needle = query.trim().toLowerCase();
@@ -55,6 +60,10 @@ export function searchVault(
       budget.entries -= 1;
       if (budget.entries < 0) return { matches, complete: false };
       const path = folder === "" ? entry.name : `${folder}/${entry.name}`;
+      if (options.shareable === true) {
+        if (entry.kind === "folder" && clonesFolderPattern.test(path)) continue;
+        if (entry.kind === "file" && looksLikeSecretsFile(entry.name)) continue;
+      }
       const match = entry.kind === "folder" ? folderMatch(root, path, entry.name, needle) : null;
       const found =
         match ??

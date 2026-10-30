@@ -51,8 +51,9 @@ import { goTo } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
 /** What the composer shows of a chat. A new chat has no record until its first message. */
+/** A new chat has no id and no clone yet, so it takes no file of a clone. */
 type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns"> &
-  Partial<Pick<SessionRecord, "firstMessageDraft">>;
+  Partial<Pick<SessionRecord, "firstMessageDraft" | "id" | "clone">>;
 
 /**
  * The id of this tab, so it skips its own changes when Eva sends them back. The tab keeps it across
@@ -182,7 +183,8 @@ export function Composer({
   }, [draftKey, summary]);
   const [sending, setSending] = useState(false);
   const [dropping, setDropping] = useState(false);
-  const files = useAttachments();
+  // A chat in a clone keeps its files in the clone, so the core needs the chat with each upload (#706).
+  const files = useAttachments(session.mode === "project" ? (session.id ?? null) : null);
   const picker = useRef<HTMLInputElement>(null);
   const heardText = useRef(false);
   // The box can show another chat when Eva hears the note, so the text goes to the chat of the newest render.
@@ -282,10 +284,11 @@ export function Composer({
   }, [voice.state.phase]);
   const canRecord = block === null && voice.isSupported;
   const showMic = canRecord && isEmpty;
-  // A received file lands in the vault. A Project chat's agent works in its clone and does not reach it.
-  const canAttach = session.mode !== "project";
-  // A Project chat's agent works in its clone, so it would not find a vault file or another project.
-  const mentions = useMentionPicker(session.mode !== "project" && block === null, box, text, setText);
+  // A chat in a clone gets a copy of each file in its clone (#706). A Project chat with no clone,
+  // such as a specialist chat, keeps its files in the vault, so it takes none here.
+  const inClone = session.mode === "project" && session.id !== undefined && (session.clone ?? null) !== null;
+  const canAttach = session.mode !== "project" || inClone;
+  const mentions = useMentionPicker(canAttach && block === null, box, text, setText, inClone);
   // A file picked during a send that fails would be lost when the box gets its files back.
   const takesFiles = canAttach && block === null && !sending;
   if (voice.state.phase !== "idle") {
@@ -776,7 +779,7 @@ interface Attachments {
   readonly set: (attachments: readonly Attachment[]) => void;
 }
 
-function useAttachments(): Attachments {
+function useAttachments(sessionId: string | null): Attachments {
   const [attachments, setAttachments] = useState<readonly Attachment[]>([]);
   const nextKey = useRef(0);
   const showError = useShowError();
@@ -788,7 +791,7 @@ function useAttachments(): Attachments {
       const key = nextKey.current;
       nextKey.current += 1;
       setAttachments((current) => [...current, { key, name: file.name, note: null }]);
-      api.attachFile(file).then(
+      api.attachFile(file, sessionId).then(
         // A file that the person removed during its upload stays removed.
         ({ note }) => setAttachments((current) => current.map((item) => (item.key === key ? { ...item, note } : item))),
         (caught: unknown) => {

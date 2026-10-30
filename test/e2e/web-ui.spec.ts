@@ -3628,6 +3628,25 @@ test("an @ mentions a project and a vault file, and the agent gets where they ar
   await expect(page.locator(".message.answer").first()).toContainText("the file Journal/2027-trips.md of the vault");
 });
 
+test("in a chat in a clone, an @ gives a vault file as a copy, with no vault path (#706)", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  await newProjectChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const search = page.getByRole("listbox", { name: "Mention a project or a file" });
+  await box.pressSequentially("Read @trips");
+  await expect(search.getByRole("option", { name: /2027-trips\.md/ })).toBeVisible();
+  // A project's folder would name the vault, so a chat in a clone mentions files only.
+  await expect(search.getByRole("option", { name: /Example app/ })).toHaveCount(0);
+  await search.getByRole("option", { name: /2027-trips\.md/ }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  // The demo engine echoes the last line of the message: the note of the copy, in the clone.
+  await answerInNewClone(page, "is the file .mentions/2027-trips-");
+  const answer = page.locator(".message.answer").filter({ hasText: ".mentions/" }).first();
+  await expect(answer).toContainText(/is the file \.mentions\/2027-trips-[0-9a-f]{12}\.md/);
+  await expect(answer).not.toContainText("Journal/");
+});
+
 test("Escape closes the @ search, and an email address opens none", async ({ page }) => {
   await logIn(page);
   await newChat(page);

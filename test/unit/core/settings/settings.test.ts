@@ -41,7 +41,7 @@ function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
 }
 
-/** Most vaults have the settings folder: the hub moved the files (#662). */
+/** Records the move of #662 in the vault, as the hub does at start. Most tests use a moved vault. */
 function recordTheMove(): void {
   mkdirSync(join(vault, ".eva", "settings"), { recursive: true });
   writeFileSync(
@@ -370,5 +370,20 @@ describe("the settings folder of the vault (#662)", () => {
     saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
     expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Europe/Madrid" });
     expect(readJson(oldFile())).toMatchObject({ timeZone: "Europe/Madrid" });
+  });
+});
+
+describe("a new satellite on a vault that the hub did not move yet (#662)", () => {
+  test("a save writes both places, and the next read keeps every value", () => {
+    rmSync(join(vault, ".eva", "migrations.json"));
+    writeFileSync(join(vault, ".eva", "settings.json"), JSON.stringify({ voice: { language: "es" } }));
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    changeSettings(paths, { timeZone: "Asia/Tokyo" });
+    expect(readJson(join(vault, ".eva", "settings.json"))).toMatchObject({
+      timeZone: "Asia/Tokyo",
+      voice: { language: "es" },
+    });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
+    expect(loadSettings(paths).config).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
   });
 });

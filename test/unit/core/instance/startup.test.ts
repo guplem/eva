@@ -13,7 +13,7 @@ import {
   saveSecrets,
   type HomePaths,
 } from "../../../../src/core/settings/home.ts";
-import { vaultSettingsPath } from "../../../../src/core/settings/settings.ts";
+import { loadSettings, vaultSettingsPath } from "../../../../src/core/settings/settings.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
 
@@ -152,6 +152,18 @@ describe("prepareStart with a vault", () => {
     expect(prepared.config.timeZone).toBe("Europe/Madrid");
     expect(prepared.migrations.vault).toMatchObject({ kind: "done" });
     expect(JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8"))).toMatchObject({ timeZone: "Europe/Madrid" });
+  });
+
+  test("after the update, the hub moves the old vault files, and Eva shows the same values (#662)", async () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    mkdirSync(join(vault, ".eva"), { recursive: true });
+    writeFileSync(oldSettingsPath(), JSON.stringify({ timeZone: "Asia/Tokyo", voice: { language: "es" } }));
+    writeFileSync(join(vault, ".eva", "chat-names.md"), "Lead with an emoji.\n");
+    const prepared = await start();
+    expect(prepared.config).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
+    expect(JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8"))).toMatchObject({ timeZone: "Asia/Tokyo" });
+    expect(readFileSync(join(vault, ".eva", "settings", "chat-names.md"), "utf-8")).toBe("Lead with an emoji.\n");
+    expect(loadSettings(paths).config).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
   });
 
   test("the hub drops a security setting from the vault (#119)", async () => {

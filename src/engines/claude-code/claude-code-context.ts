@@ -117,6 +117,9 @@ export function describeClaudeContext(input: EngineContextInput): ContextPart[] 
           .map((folder) => join(folder, ".claude", "skills"))
       : []),
   ];
-  const nested = input.mode === "project" && projectSource ? repositoryParts(input.startFolder, localSource) : [];
+  // A specialist starts in its project folder, whose folders are its own files, not repositories (#703).
+  const inClone = input.startFolder !== input.projectFolder;
+  const nested =
+    input.mode === "project" && projectSource && inClone ? repositoryParts(input.startFolder, localSource) : [];
   return [ownPrompt, ...instructions, ...skillFolders.flatMap(skillParts), ...nested];
 }

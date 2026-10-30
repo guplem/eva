@@ -4,6 +4,7 @@
  * phone. Only an element with Eva actions blocks the browser's own menu, so text keeps copy and paste.
  */
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -24,6 +25,10 @@ export interface MenuItem {
   readonly label: string;
   readonly icon: IconName;
   readonly danger?: boolean;
+  /** A heading above the item. Each run of items with one group gets one heading. */
+  readonly group?: string;
+  /** A turned-off item stays in the list, so the person sees that it exists. */
+  readonly disabled?: boolean;
   readonly onChoose: () => void;
 }
 
@@ -54,12 +59,12 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
 
   useEffect(() => {
     // No scroll: a fixed menu takes the focus before it is at its place.
-    menu.current?.querySelector("button")?.focus({ preventScroll: true });
+    menu.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
   }, [menu]);
 
   /** Moves the focus by `step` items, or to the first or the last item. */
   const moveFocus = (step: number | "first" | "last"): void => {
-    const buttons = [...(menu.current?.querySelectorAll("button") ?? [])];
+    const buttons = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
     const current = buttons.findIndex((button) => button === document.activeElement);
     const next =
       step === "first" ? 0 : step === "last" ? buttons.length - 1 : (current + step + buttons.length) % buttons.length;
@@ -85,18 +90,25 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
 
   return (
     <div className={`menu ${className}`} role="menu" aria-label={label} ref={menu} style={style} onKeyDown={onKeyDown}>
-      {items.map((item) => (
-        <button
-          key={item.label}
-          role="menuitem"
-          className={item.danger === true ? "danger" : undefined}
-          onClick={() => {
-            onClose(false);
-            item.onChoose();
-          }}
-        >
-          <Icon name={item.icon} /> {item.label}
-        </button>
+      {items.map((item, index) => (
+        <Fragment key={`${item.group ?? ""}/${item.label}`}>
+          {item.group !== undefined && item.group !== items[index - 1]?.group && (
+            <span className="menu-group" role="presentation">
+              {item.group}
+            </span>
+          )}
+          <button
+            role="menuitem"
+            className={item.danger === true ? "danger" : undefined}
+            disabled={item.disabled === true}
+            onClick={() => {
+              onClose(false);
+              item.onChoose();
+            }}
+          >
+            <Icon name={item.icon} /> {item.label}
+          </button>
+        </Fragment>
       ))}
     </div>
   );
@@ -107,10 +119,18 @@ export function MoreMenu({
   items,
   label,
   toggle,
+  icon = "more",
+  buttonLabel = "More actions",
+  above = false,
 }: {
   readonly items: readonly MenuItem[];
   /** The name that a screen reader reads for the open menu, such as "Chat actions". */
   readonly label: string;
+  readonly icon?: IconName;
+  /** The name and the tooltip of the button. */
+  readonly buttonLabel?: string;
+  /** The menu opens above the button, for a button at the bottom of the page, such as in the message box. */
+  readonly above?: boolean;
   /** Pass a ref when the caller must move the focus back to the button, for example after a dialog closes. */
   readonly toggle?: RefObject<HTMLButtonElement | null>;
 }): ReactElement {
@@ -138,15 +158,17 @@ export function MoreMenu({
       <button
         ref={button}
         className="icon-button"
-        aria-label="More actions"
-        data-tooltip="More actions"
+        aria-label={buttonLabel}
+        data-tooltip={buttonLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
-        <Icon name="more" />
+        <Icon name={icon} />
       </button>
-      {open && <MenuList items={items} label={label} className="more-menu" onClose={closeList} />}
+      {open && (
+        <MenuList items={items} label={label} className={above ? "more-menu above" : "more-menu"} onClose={closeList} />
+      )}
     </div>
   );
 }

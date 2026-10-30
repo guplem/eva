@@ -6,6 +6,8 @@
  * Without voice notes on her machine, the microphone leads to the button that installs them.
  * The clip attaches files in an Assistant chat. A pasted or dropped file attaches the same way.
  * Each file uploads when the person picks it, so Send waits for no upload.
+ * The star opens the menu of the vault's text actions, such as Polish, and saved prompts (issue 661).
+ * A text action rewrites the typed text and sends nothing; Undo brings the typed text back.
  */
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import {
@@ -16,7 +18,7 @@ import {
   type EngineName,
   type ModelAlias,
 } from "../../../shared/engine-port.ts";
-import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
+import { api, type ChatBlocker, type ComposerMenuItems, type SessionRecord } from "./api.ts";
 import { messageWithFiles, pastedFiles } from "./attachments.ts";
 import {
   answeredModel,
@@ -34,6 +36,8 @@ import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
+import { MoreMenu } from "./Menu.tsx";
+import { composerMenuItems, insertedText } from "./menu-text.ts";
 import { setupBlock } from "./new-chat.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
@@ -168,17 +172,54 @@ export function Composer({
     if (!(await onSend(heard, recording))) restore(heard);
   });
 
+  const menu = useComposerMenu();
+  /** The text action that runs now, or null. */
+  const [rewriting, setRewriting] = useState<string | null>(null);
+  /** The typed text before the last text action, until the person types again. */
+  const [undoText, setUndoText] = useState<string | null>(null);
+  const showError = useShowError();
+  const runAction = async (name: string): Promise<void> => {
+    const before = text;
+    setRewriting(name);
+    try {
+      const { text: rewritten } = await api.runTextAction(name, session.engine, before);
+      setText(rewritten);
+      setUndoText(before);
+    } catch (caught) {
+      // The box keeps the typed text, so the person loses nothing.
+      showError(caught);
+    } finally {
+      setRewriting(null);
+    }
+  };
+  const insertPrompt = (inserted: string): void => {
+    const field = box.current;
+    const selection =
+      field === null
+        ? { start: text.length, end: text.length }
+        : { start: field.selectionStart, end: field.selectionEnd };
+    const next = insertedText(text, selection, inserted);
+    setText(next.text);
+    setUndoText(null);
+    // The cursor goes after the prompt, so the person types on from there.
+    requestAnimationFrame(() => {
+      box.current?.focus({ preventScroll: true });
+      box.current?.setSelectionRange(next.cursor, next.cursor);
+    });
+  };
+
   const uploading = files.attachments.some((attachment) => attachment.note === null);
   const notes = files.attachments.flatMap((attachment) => (attachment.note === null ? [] : [attachment.note]));
   const isEmpty = text.trim() === "" && files.attachments.length === 0;
 
   const send = async (): Promise<void> => {
     const message = messageWithFiles(text, notes);
-    if (message === "" || uploading || sending || blocker !== null) return;
+    if (message === "" || uploading || sending || rewriting !== null || blocker !== null) return;
     const attached = files.attachments;
     playCue("send");
     setSending(true);
     setText("");
+    setUndoText(null);
     files.set([]);
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
@@ -264,8 +305,14 @@ export function Composer({
           placeholder={block === null ? placeholder : "Eva cannot answer yet"}
           rows={1}
           disabled={block !== null}
+          // The answer of a text action takes the place of the text, so an edit meanwhile would be lost.
+          readOnly={rewriting !== null}
+          aria-busy={rewriting !== null}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value);
+            setUndoText(null);
+          }}
           onPaste={(event) => {
             const pasted = pastedFiles(event.clipboardData);
             if (!takesFiles || pasted.length === 0) return;
@@ -305,6 +352,7 @@ export function Composer({
           </ul>
         )}
         {uploading && <ProgressBar label="Eva receives the file" />}
+        {rewriting !== null && <ProgressBar label={`Eva runs ${rewriting} on the text`} />}
         <div className="composer-row">
           <input
             ref={picker}
@@ -328,7 +376,33 @@ export function Composer({
               <Icon name="clip" />
             </button>
           )}
+          {block === null && menu.textActions.length + menu.savedPrompts.length > 0 && rewriting === null && (
+            <MoreMenu
+              icon="star"
+              buttonLabel="Text actions and saved prompts"
+              label="Text actions and saved prompts"
+              above
+              items={composerMenuItems(menu, {
+                canRewrite: text.trim() !== "",
+                onAction: (name) => void runAction(name),
+                onPrompt: insertPrompt,
+              })}
+            />
+          )}
           <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
+          {undoText !== null && rewriting === null && (
+            <button
+              className="ghost"
+              data-tooltip="Bring back the text from before the text action"
+              onClick={() => {
+                setText(undoText);
+                setUndoText(null);
+              }}
+            >
+              <Icon name="restart" />
+              Undo
+            </button>
+          )}
           <span className="grow" />
           {showMic && (
             <button
@@ -357,7 +431,9 @@ export function Composer({
                 data-cue="none"
                 aria-label="Send"
                 data-tooltip="Send"
-                disabled={sending || uploading || messageWithFiles(text, notes) === "" || block !== null}
+                disabled={
+                  sending || uploading || rewriting !== null || messageWithFiles(text, notes) === "" || block !== null
+                }
                 onClick={() => void send()}
               >
                 <Icon name="send" />
@@ -743,4 +819,25 @@ function isTextField(element: Element | null): boolean {
     (element instanceof HTMLElement && element.isContentEditable) ||
     (element instanceof HTMLInputElement && !["button", "checkbox", "radio", "submit", "range"].includes(element.type))
   );
+}
+
+const noMenuItems: ComposerMenuItems = { textActions: [], savedPrompts: [] };
+
+/** The vault's text actions and saved prompts. Without a vault, or on a failed read, the menu has none. */
+function useComposerMenu(): ComposerMenuItems {
+  const [items, setItems] = useState<ComposerMenuItems>(noMenuItems);
+  useEffect(() => {
+    let current = true;
+    api
+      .composerMenu()
+      .then((loaded) => {
+        if (current) setItems(loaded);
+      })
+      // The box works without the menu, so a failed read only hides the button.
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, []);
+  return items;
 }

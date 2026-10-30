@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { Eva } from "../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
+import { templateParts } from "../../src/core/vault/vault-template.ts";
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../src/shared/process-runner.ts";
 import { evaRepository } from "../../src/shared/version.ts";
@@ -63,6 +64,10 @@ for (const run of ["desktop", "phone"]) {
   sandbox.write(vault, `Notes/${run}-draft.md`, "# Draft\n");
 }
 sandbox.write(vault, "Notes/settings.json", '{"theme":"dark","size":2}');
+// The message box menu shows the examples that each vault gets (issue 661).
+for (const path of [".eva/settings/text-actions/Polish.md", ".eva/settings/saved-prompts/Summary.md"]) {
+  sandbox.write(vault, path, templateParts[path] ?? "");
+}
 // A date at the start of a name shows as a pill (issue 429).
 sandbox.write(vault, "Journal/2027-trips.md", "# Trips\n");
 sandbox.git(vault, "add", "-A");
@@ -73,6 +78,12 @@ const writtenNotes = new Set<string>();
 const engine = new FakeEngine(async function* (request, turnNumber) {
   if (request.mode === "model-call" && request.prompt.startsWith("Summarize this chat.")) {
     yield* FakeEngine.answer(request, "Goal: the demo summary.");
+    return;
+  }
+  // A text action of the message box menu, such as Polish (issue 661).
+  const typed = /<text>\n([\s\S]*)\n<\/text>$/.exec(request.prompt)?.[1];
+  if (request.mode === "model-call" && typed !== undefined) {
+    yield* FakeEngine.answer(request, `${typed.charAt(0).toUpperCase()}${typed.slice(1).trim()}. (polished)`);
     return;
   }
   const lastLine = request.prompt.split("\n").at(-1) ?? "";

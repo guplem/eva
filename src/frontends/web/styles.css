@@ -310,10 +310,11 @@ a {
   text-underline-offset: 2px;
 }
 
-/* A link that acts as a row or a chip gets the press of a button. */
+/* A link that acts as a row, a chip or a button gets the press of a button. */
 a.button-link,
 a.files-entry,
 a.files-favorite,
+a.files-up,
 a.link-chip {
   transition: transform var(--dur-press) var(--ease-out);
 }
@@ -322,6 +323,7 @@ button:active:not(:disabled),
 a.button-link:active,
 a.files-entry:active,
 a.files-favorite:active,
+a.files-up:active,
 a.link-chip:active {
   transform: scale(0.96);
 }
@@ -331,6 +333,7 @@ a.link-chip:active {
   a.button-link,
   a.files-entry,
   a.files-favorite,
+  a.files-up,
   a.link-chip {
     transition: none;
   }
@@ -2570,14 +2573,6 @@ button.link-button {
   background: var(--soft);
   color: var(--soft-ink);
   font-weight: 600;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .nav-item[aria-current="page"]:hover {
-    background: var(--soft);
-    color: var(--soft-ink);
-    font-weight: 600;
-  }
 }
 
 .settings-nav-label {

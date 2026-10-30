@@ -123,6 +123,7 @@
   stroke-linecap: round;
   transform: rotate(-90deg);
   transform-origin: center;
+  /* Motion exception: the ring fills only when the share changes, and it is one text line high. */
   transition: stroke-dasharray var(--dur-slow) var(--ease-out);
 }
 

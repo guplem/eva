@@ -32,6 +32,7 @@ export function ColumnDivider({
   target,
   sizeVariable = "--files-width",
   maxSize,
+  sizeFrom,
 }: {
   readonly label: string;
   readonly minWidth: number;
@@ -44,6 +45,11 @@ export function ColumnDivider({
   readonly sizeVariable?: string;
   /** The largest size in pixels. By default, the size has no limit. */
   readonly maxSize?: () => number;
+  /**
+   * The size that a grow or a shrink starts from. By default, the measured size. A box that is shorter than its limit
+   * grows from the limit, but shrinks from the height on the screen, so the box follows the pointer.
+   */
+  readonly sizeFrom?: (grow: boolean) => number;
 }): ReactElement {
   const divider = useRef<HTMLDivElement>(null);
   /** Stops the running drag, or null when no drag runs. */
@@ -72,7 +78,7 @@ export function ColumnDivider({
     if (element === null) return;
     const measure = (): void => {
       const row = maxSize?.() ?? element.parentElement?.clientWidth ?? 0;
-      const now = Math.round(sizeOf(element));
+      const now = Math.round(sizeFrom?.(true) ?? sizeOf(element));
       // A column can be wider than the row, which then scrolls.
       setShown({ now, max: Math.max(row, now, minWidth) });
     };
@@ -91,7 +97,12 @@ export function ColumnDivider({
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     const element = column();
     if (event.button !== 0 || drag.current !== null || element === null) return;
-    const start = { pointerId: event.pointerId, at: vertical ? event.clientY : event.clientX, width: columnWidth() };
+    const start = {
+      pointerId: event.pointerId,
+      at: vertical ? event.clientY : event.clientX,
+      grow: sizeFrom?.(true) ?? columnWidth(),
+      shrink: sizeFrom?.(false) ?? columnWidth(),
+    };
     // The dragged size, not the measured one: a short text stays shorter than the height that the person chose.
     let dragged: number | null = null;
     // The window follows the drag, so the drag goes on when the pointer leaves the divider.
@@ -105,7 +116,7 @@ export function ColumnDivider({
       if (dragged === null && Math.abs(offset) < dragStart) return;
       // Each move sets the size on the element only: a render of the whole page at each move makes a drag stutter.
       element.classList.add("resized");
-      dragged = clamp(start.width + offset);
+      dragged = clamp((offset > 0 ? start.grow : start.shrink) + offset);
       element.style.setProperty(sizeVariable, `${String(dragged)}px`);
     };
     // A text selection or a link under the pointer can start a drag of the browser. It ends the pointer events, so the
@@ -136,7 +147,8 @@ export function ColumnDivider({
     }
     if (event.key !== look.grow && event.key !== look.shrink) return;
     event.preventDefault();
-    onWidth(clamp(columnWidth() + (event.key === look.grow ? keyStep : -keyStep)));
+    const grow = event.key === look.grow;
+    onWidth(clamp((sizeFrom?.(grow) ?? columnWidth()) + (grow ? keyStep : -keyStep)));
   };
 
   return (

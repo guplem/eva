@@ -673,7 +673,8 @@ button.ghost .icon {
   top: calc(-1 * var(--space-2));
   left: calc(50% - var(--touch-target));
   width: calc(2 * var(--touch-target));
-  height: calc(2 * var(--space-2) + 10px);
+  /* The handle ends at the top padding of the box, so it covers no text. */
+  height: calc(var(--space-2) + 14px);
   cursor: row-resize;
   /* A drag must not scroll the chat or select the text. */
   user-select: none;
@@ -715,15 +716,15 @@ button.ghost .icon {
   }
 }
 
-/* A finger needs a taller target. It reaches above the box, so it covers little of the first line. */
+/* A finger needs a taller target. It reaches above the box, so it still covers no text. */
 @media (pointer: coarse) {
   .row-divider {
-    top: calc(-1 * var(--touch-target) / 2);
+    top: calc(14px - var(--touch-target));
     height: var(--touch-target);
   }
 
   .row-divider::after {
-    top: calc(var(--touch-target) / 2 + 4px);
+    top: calc(var(--touch-target) - 10px);
   }
 }
 

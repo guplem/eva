@@ -268,6 +268,7 @@ export function Composer({
             target={() => box.current}
             sizeVariable="--composer-height"
             maxSize={() => window.innerHeight * composerHeightRange.max}
+            sizeFrom={height.sizeFrom}
             onWidth={height.onHeight}
           />
         )}
@@ -781,6 +782,7 @@ function useComposerHeight(
   readonly share: number | null;
   readonly tall: boolean;
   readonly onHeight: (height: number | null) => void;
+  readonly sizeFrom: (grow: boolean) => number;
 } {
   const [share, setShare] = useState(readComposerHeight);
   const [tall, setTall] = useState(false);
@@ -797,7 +799,17 @@ function useComposerHeight(
   const onHeight = (height: number | null): void => {
     const next = height === null ? null : heightShare(height, window.innerHeight);
     saveComposerHeight(next);
+    // A drag writes pixels on the box. An unchanged share renders nothing, so the box would keep them and stop following
+    // the window.
+    if (next !== null) box.current?.style.setProperty("--composer-height", `${String(next * 100)}dvh`);
     setShare(next);
   };
-  return { share, tall, onHeight };
+  /** A box that is shorter than its limit grows from the limit, so a drag up never lowers the limit. */
+  const sizeFrom = (grow: boolean): number => {
+    const element = box.current;
+    if (element === null) return 0;
+    const shown = element.getBoundingClientRect().height;
+    return grow ? Math.max(shown, Number.parseFloat(getComputedStyle(element).maxHeight) || shown) : shown;
+  };
+  return { share, tall, onHeight, sizeFrom };
 }

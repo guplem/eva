@@ -423,6 +423,14 @@ test("a drag of the handle sets the tallest height of the message box (issue 660
   // A double click gives the usual height back.
   await handle.dblclick();
   await expectHeight(box, usual);
+
+  // A box whose text does not scroll yet keeps its limit: ArrowUp raises the limit, not the height of the text.
+  await box.fill(long.split("\n").slice(0, 6).join("\n"));
+  await expect(handle).toBeVisible();
+  await handle.focus();
+  await page.keyboard.press("ArrowUp");
+  await box.fill(long);
+  await expectHeight(box, usual + 16);
 });
 
 test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {

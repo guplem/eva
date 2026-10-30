@@ -4,8 +4,11 @@
  * chat panel: a phone and a computer need different heights.
  */
 
-/** The shares of the window height that the text can take. The box never hides the whole chat. */
-export const composerHeightRange = { min: 0.1, max: 0.8 } as const;
+/**
+ * The shares of the window height that the text can take. The box never hides the whole chat. The smallest share stays
+ * below the two lines that the handle keeps on most windows, so a box does not jump when the drag ends.
+ */
+export const composerHeightRange = { min: 0.05, max: 0.8 } as const;
 
 const storageKey = "eva.composer-height";
 

@@ -33,6 +33,7 @@ export interface FixOutcome {
 }
 
 const commitMessage = "chore: copy the agent skills of the vibe-coded standard";
+const copiesAtOnce = 4;
 /** One page holds every label of a reference repository. */
 const labelPage = "?per_page=100";
 
@@ -110,16 +111,18 @@ async function commitFiles(
   const copies = fixes.flatMap((fix) =>
     Object.entries(fix.files).map(([path, sha]) => ({ source: fix.source, path, sha })),
   );
-  // Each copy is two calls of its own, so the copies run side by side.
-  await Promise.all(
-    copies.map(async ({ source, sha }) => {
-      const blob = asRecord(await call(write, "GET", `repos/${source}/git/blobs/${sha}`));
-      await call(write, "POST", `${address}/blobs`, {
-        content: textField(blob, "content") ?? "",
-        encoding: textField(blob, "encoding") ?? "base64",
-      });
-    }),
-  );
+  // A few copies run side by side: GitHub limits how many writes run at once.
+  for (let start = 0; start < copies.length; start += copiesAtOnce) {
+    await Promise.all(
+      copies.slice(start, start + copiesAtOnce).map(async ({ source, sha }) => {
+        const blob = asRecord(await call(write, "GET", `repos/${source}/git/blobs/${sha}`));
+        await call(write, "POST", `${address}/blobs`, {
+          content: textField(blob, "content") ?? "",
+          encoding: textField(blob, "encoding") ?? "base64",
+        });
+      }),
+    );
+  }
   const tree: { path: string; mode: string; type: string; sha: string | null }[] = copies.map(({ path, sha }) => ({
     path,
     mode: "100644",

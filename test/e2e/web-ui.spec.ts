@@ -81,8 +81,10 @@ async function newProjectChat(page: Page): Promise<string> {
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
   );
-  // A direct child: the title of an open chat is a "New chat" button inside the heading.
-  await page.locator(".main-header > button").filter({ hasText: "New chat" }).click();
+  // The header's own menu: the title of an open chat is a "New chat" button inside the heading.
+  await page.locator(".main-header > .more-picker > button").filter({ hasText: "New chat" }).click();
+  // "New chat" asks for the kind of chat (issue 657).
+  await page.getByRole("menuitem", { name: "In a clone" }).click();
   const clone = ((await (await created).json()) as { clone: string }).clone;
   await expect(page.getByText("Project mode")).toBeVisible();
   return clone;
@@ -375,6 +377,62 @@ test("a fork continues under its answer, in the same column, and the switcher go
   await expect(page.locator(".message.user")).toHaveCount(1);
   await point.getByRole("button", { name: "Previous branch" }).click();
   await expect(page.getByLabel("Message").first()).toHaveValue("Half a thought");
+});
+
+/** Waits until the element is the given height, give or take the rounding of a pixel. */
+async function expectHeight(element: Locator, expected: number): Promise<void> {
+  await expect
+    .poll(async () => Math.abs(((await element.boundingBox())?.height ?? 0) - expected))
+    .toBeLessThanOrEqual(1);
+}
+
+/** Drags the handle up by the offset, in steps, as a hand does. A negative offset drags it down. */
+async function dragHandleUp(page: Page, handle: Locator, offset: number): Promise<void> {
+  const box = await handle.boundingBox();
+  if (box === null) throw new Error("The handle has no box.");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - offset, { steps: 5 });
+  await page.mouse.up();
+}
+
+test("a drag of the handle sets the tallest height of the message box (issue 660)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const handle = page.getByRole("separator", { name: "Height of the text" });
+  // A short message has nothing to resize.
+  await box.fill("Hello Eva");
+  await expect(handle).toHaveCount(0);
+
+  const long = Array.from({ length: 40 }, (_, line) => `Line ${String(line + 1)}`).join("\n");
+  await box.fill(long);
+  await expect(handle).toBeVisible();
+  const usual = (await box.boundingBox())?.height ?? 0;
+
+  await dragHandleUp(page, handle, 100);
+  await expectHeight(box, usual + 100);
+  await dragHandleUp(page, handle, -200);
+  await expectHeight(box, usual - 100);
+
+  // Each browser keeps the height after a reload.
+  await page.reload();
+  await page.getByRole("textbox", { name: "Message" }).fill(long);
+  await expectHeight(box, usual - 100);
+
+  // A double click gives the usual height back.
+  await handle.dblclick();
+  await expectHeight(box, usual);
+
+  // A box whose text does not scroll yet keeps its limit: ArrowUp raises the limit, not the height of the text.
+  await box.fill(long.split("\n").slice(0, 6).join("\n"));
+  await expect(handle).toBeVisible();
+  await handle.focus();
+  await page.keyboard.press("ArrowUp");
+  await box.fill(long);
+  await expectHeight(box, usual + 16);
 });
 
 test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
@@ -1738,30 +1796,42 @@ test("the address of a fork opens that fork, even when another branch is newer",
   await expect(start).toContainText("Fork 1 · 2 of 2");
 });
 
-test("Project mode: the repository setup shows each item's light and copies its fix", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+test("Project mode: the repository setup shows each item's light, and Fix opens a chat with the fix", async ({
+  page,
+}) => {
   await logIn(page);
   await openExampleApp(page);
-  await page.getByRole("button", { name: "Repository setup" }).click();
-  await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
+  const openSetup = async (): Promise<Locator> => {
+    await page.getByRole("button", { name: "Repository setup" }).click();
+    await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
+    return page.getByRole("region", { name: "example-owner/example-app" });
+  };
+  let report = await openSetup();
   // The local remote is not on GitHub, so its report only says why.
   await expect(page.getByText("Only a repository on GitHub has a setup report.")).toBeVisible();
-  const report = page.getByRole("region", { name: "example-owner/example-app" });
-  const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
-  await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
-  await skill.getByRole("button", { name: "Copy the fix for Skill write-commit" }).click();
-  await expect(skill.getByRole("button", { name: "Copied" })).toHaveText("Copied");
-  const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(copied).toContain("In example-owner/example-app, add the skill `write-commit`");
-  await report.getByRole("button", { name: /Copy all fixes/ }).click();
-  const all = await page.evaluate(() => navigator.clipboard.readText());
-  expect(all).toContain("Open one pull request for all the file changes.");
-  expect(all).toContain("allow_auto_merge=true");
   await expect(
     report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+  const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
+  await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
+  await skill.getByRole("button", { name: "Fix Skill write-commit in a new chat" }).click();
+  // The fix waits in the box of a new chat with Eva. The person sends it.
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  const box = page.getByRole("region", { name: "New chat", exact: true }).getByRole("textbox", { name: "Message" });
+  await expect(box).toHaveValue(
+    /^@project:2025-03-02-1015-example-app In example-owner\/example-app, add the skill `write-commit`/,
+  );
+  // Other tests share the New chat page, so its text goes away.
+  await box.fill("");
+
+  await openExampleApp(page);
+  report = await openSetup();
+  await report.getByRole("button", { name: /Fix all/ }).click();
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  await expect(box).toHaveValue(/^@project:2025-03-02-1015-example-app /);
+  await expect(box).toHaveValue(/Open one pull request for all the file changes\./);
+  await expect(box).toHaveValue(/allow_auto_merge=true/);
+  await box.fill("");
 });
 
 test("the status chips hide a closed project until a tap clears the filter", async ({ page }) => {
@@ -3388,7 +3458,7 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
   await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
 });
 
-test("a voice note sends what Eva heard, and its message can play the recording", async ({ page }) => {
+test("a voice note puts what Eva heard in the box, and the person sends it as text (issue 658)", async ({ page }) => {
   // A tone stands in for the microphone, so no browser flag and no real device is needed.
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = () => {
@@ -3414,18 +3484,18 @@ test("a voice note sends what Eva heard, and its message can play the recording"
   await newChat(page);
   await page.getByRole("button", { name: "Record a voice note" }).first().click();
   await expect(page.getByRole("status").filter({ hasText: /Recording \d:\d\d/ })).toBeVisible();
-  await page.getByRole("button", { name: "Send the voice note" }).click();
+  await page.getByRole("button", { name: "Stop the recording" }).click();
 
-  // The switch hides the text, so the message is found by its switch.
-  const message = page.locator(".message.user", { has: page.getByRole("group", { name: "Voice note" }) });
-  await expect(message).toContainText("Hello from my voice");
+  // The text waits in the box, so the person can fix a word that Eva heard wrong.
+  const composer = page.getByRole("textbox", { name: "Message" }).first();
+  await expect(composer).toHaveValue("Hello from my voice");
   expect(audioType).toMatch(/^audio\//);
-  await expect(page.locator(".message.answer").first()).toContainText("Hello from my voice");
-  await message.getByRole("button", { name: "Recording" }).click();
-  await expect(message.locator("audio")).toBeVisible();
-  await expect(message).not.toContainText("Hello from my voice");
-  await message.getByRole("button", { name: "Heard" }).click();
-  await expect(message).toContainText("Hello from my voice");
+  await expect(page.locator(".message.user")).toHaveCount(0);
+  await composer.fill("Hello from my fixed voice");
+  await page.getByRole("button", { name: "Send" }).first().click();
+  await expect(page.locator(".message.user", { hasText: "Hello from my fixed voice" })).toBeVisible();
+  await expect(page.locator(".message.answer").first()).toContainText("Hello from my fixed voice");
+  await expect(page.locator(".message.user audio")).toHaveCount(0);
 });
 
 test("an attached file reaches the agent as its vault path, and a removed one does not (issue 409)", async ({
@@ -3451,6 +3521,65 @@ test("an attached file reaches the agent as its vault path, and a removed one do
   await expect(message).not.toContainText("extra");
   await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
   await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
+});
+
+test("an @ mentions a project and a vault file, and the agent gets where they are (issue 657)", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const search = page.getByRole("listbox", { name: "Mention a project or a file" });
+  await box.pressSequentially("Plan @exam");
+  await expect(search.getByRole("option", { name: /Example app/ })).toBeVisible();
+  await box.press("Enter");
+  await expect(search).toHaveCount(0);
+  await expect(box).toHaveValue("Plan @project:2025-03-02-1015-example-app ");
+
+  await box.pressSequentially("with @trips");
+  await search.getByRole("option", { name: /2027-trips\.md/ }).click();
+  await expect(box).toHaveValue("Plan @project:2025-03-02-1015-example-app with @file:Journal/2027-trips.md ");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+
+  const message = page.locator(".message.user").last();
+  await expect(message).toContainText(
+    'is the project "Example app", in the folder Projects/2025-03-02-1015-example-app',
+  );
+  await expect(message).toContainText("[@file:Journal/2027-trips.md is the file Journal/2027-trips.md of the vault]");
+  // The demo engine echoes the last line of the message, so the note reached the agent.
+  await expect(page.locator(".message.answer").first()).toContainText("the file Journal/2027-trips.md of the vault");
+});
+
+test("Escape closes the @ search, and an email address opens none", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const search = page.getByRole("listbox", { name: "Mention a project or a file" });
+  await box.pressSequentially("Write to me@exam");
+  await expect(search).toHaveCount(0);
+  await box.pressSequentially(" @");
+  await expect(search).toBeVisible();
+  await box.press("Escape");
+  await expect(search).toHaveCount(0);
+  // A phone has no Escape key: a tap outside the box closes the search too.
+  await box.pressSequentially(" @");
+  await expect(search).toBeVisible();
+  await page.getByRole("heading", { level: 1 }).click();
+  await expect(search).toHaveCount(0);
+  await box.fill("");
+});
+
+test("New chat on a project page opens a chat with Eva that mentions the project (issue 657)", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  await page.locator(".main-header > .more-picker > button").filter({ hasText: "New chat" }).click();
+  // On a phone the button is at the left, and the whole menu must stay on the screen.
+  const menu = await page.getByRole("menu", { name: "New chat" }).boundingBox();
+  expect(menu?.x).toBeGreaterThanOrEqual(0);
+  await page.getByRole("menuitem", { name: "With Eva" }).click();
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  const box = page.getByRole("region", { name: "New chat", exact: true }).getByRole("textbox", { name: "Message" });
+  await expect(box).toHaveValue(/^@project:2025-03-02-1015-example-app /);
+  // Other tests share the New chat page, so its text goes away.
+  await box.fill("");
 });
 
 test("the message box shows no mode chip", async ({ page }) => {

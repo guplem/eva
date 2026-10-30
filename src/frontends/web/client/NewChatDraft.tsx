@@ -6,14 +6,31 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
-import { Composer, type ChatChoices } from "./Composer.tsx";
+import { Composer, unsentTexts, type ChatChoices } from "./Composer.tsx";
 import type { SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
+import { goTo } from "./back-layers.ts";
+import { withFixRequest, withProjectMention } from "./mentions.ts";
+import { assistantChatAddressOf, newChatPageId } from "./navigation.ts";
 
 /** The key of the unsent text of this page, which has no chat yet. A chat id never takes it. */
 const newChatTextKey = "new-chat";
+
+/**
+ * Opens the New chat page of Chats with a mention of the project at the start of its text (issue 657).
+ * A fix request of the repository setup follows the mention (issue 668). The person sends it.
+ * The page keeps the text that the person typed before, so nothing is lost.
+ */
+export function startChatAbout(projectId: string, fixRequest?: string): void {
+  const text = unsentTexts.get(newChatTextKey);
+  unsentTexts.set(
+    newChatTextKey,
+    fixRequest === undefined ? withProjectMention(text, projectId) : withFixRequest(text, projectId, fixRequest),
+  );
+  goTo(assistantChatAddressOf(newChatPageId));
+}
 
 /** How long the page waits to read the settings again after a failed read. */
 const settingsRetryMs = 5_000;
@@ -155,7 +172,6 @@ export function NewChatDraft({
               onStop={() => undefined}
               onChanged={() => Promise.resolve()}
               blocker={blocker}
-              // A voice note sends the text that Eva heard. The new chat cannot play it back.
               voiceNotes={voiceNotes}
               // A switch to another page, or to another device, must not lose the first message (issue 652).
               draftKey={newChatTextKey}

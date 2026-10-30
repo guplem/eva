@@ -28,6 +28,7 @@ import { useContextMenu } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
+import { startChatAbout } from "./NewChatDraft.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
@@ -620,6 +621,7 @@ export function ProjectView({
             projectId={page.project.id}
             title={page.project.title}
             onBack={() => openUp({ kind: "project", project: page.project })}
+            onFix={(request) => startChatAbout(page.project.id, request)}
           />
         ) : page.kind === "chat" && chat !== undefined ? (
           <>
@@ -701,6 +703,7 @@ export function ProjectView({
               open({ kind: "chat", project: page.project, clone, chatId: picked.id });
             }}
             onNewChat={() => void startChat(page.project)}
+            onAskEva={() => startChatAbout(page.project.id)}
             startingChat={startingChat}
             onDeleteClone={(clone) => deleteClone(page.project, clone)}
             syncWork={syncWork?.projectId === page.project.id ? syncWork.label : null}

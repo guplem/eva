@@ -2,14 +2,15 @@
  * The message box of a chat: the text, the engine and model chip, and the round
  * Send button. While a turn runs and the box is empty, Send becomes Stop at the same place.
  * Eva queues a message sent during a turn, so typed text brings Send back.
- * The microphone records a voice note. Eva turns it into text on her machine and sends the text.
+ * The microphone records a voice note. Eva turns it into text on her machine and puts the text in
+ * the box, so the person can fix it before they send it.
  * Without voice notes on her machine, the microphone leads to the button that installs them.
  * The clip attaches files in an Assistant chat. A pasted or dropped file attaches the same way.
  * Each file uploads when the person picks it, so Send waits for no upload.
  * The star opens the menu of the vault's text actions, such as Polish, and saved prompts (issue 661).
  * A text action rewrites the typed text and sends nothing; Undo brings the typed text back.
  */
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement, type RefObject } from "react";
 import {
   effortLevels,
   modelAliases,
@@ -32,16 +33,19 @@ import {
   restoredText,
   sendsOnEnter,
 } from "./conversation-parts.ts";
+import { ColumnDivider } from "./ColumnDivider.tsx";
+import { composerHeightRange, heightShare, readComposerHeight, saveComposerHeight } from "./composer-height.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
-import { MoreMenu } from "./Menu.tsx";
+import { useMentionPicker } from "./MentionPicker.tsx";
+import { MenuButton } from "./Menu.tsx";
 import { composerMenuItems, insertedText } from "./menu-text.ts";
 import { setupBlock } from "./new-chat.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
-import { recordingTime, recordingType } from "./voice-notes.ts";
+import { recordingTime, recordingType, withHeardText } from "./voice-notes.ts";
 import { goTo } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
@@ -104,11 +108,8 @@ interface ComposerProps {
   readonly session: ComposerChat;
   readonly choices: ChatChoices;
   readonly running: boolean;
-  /**
-   * Resolves false when the send failed, so the box gets its text back. A voice note also
-   * gives the address of its recording in this tab.
-   */
-  readonly onSend: (text: string, recording?: string) => Promise<boolean>;
+  /** Resolves false when the send failed, so the box gets its text back. */
+  readonly onSend: (text: string) => Promise<boolean>;
   readonly onStop: () => void;
   readonly onChanged: () => Promise<void>;
   /** The missing setup step that stops the chat. It locks the box, because a send would fail. */
@@ -182,10 +183,14 @@ export function Composer({
   const [dropping, setDropping] = useState(false);
   const files = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
-  const voice = useVoiceNote(async (heard, recording) => {
-    // The person must not lose what they said.
-    if (!(await onSend(heard, recording))) restore(heard);
-  });
+  const heardText = useRef(false);
+  // The box can show another chat when Eva hears the note, so the text goes to the chat of the newest render.
+  const hear = useRef((_heard: string): void => undefined);
+  hear.current = (heard) => {
+    setText(withHeardText(typed.current, heard));
+    heardText.current = true;
+  };
+  const voice = useVoiceNote((heard) => hear.current(heard));
 
   const menu = useComposerMenu();
   /** The text action that runs now, or null. */
@@ -240,7 +245,7 @@ export function Composer({
   const isEmpty = text.trim() === "" && files.attachments.length === 0;
 
   const send = async (): Promise<void> => {
-    const message = messageWithFiles(text, notes);
+    const message = messageWithFiles(text, [...mentions.notes(text), ...notes]);
     if (message === "" || uploading || sending || rewriting !== null || blocker !== null) return;
     const attached = files.attachments;
     playCue("send");
@@ -261,16 +266,25 @@ export function Composer({
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
   const box = useRef<HTMLTextAreaElement>(null);
+  const height = useComposerHeight(box, text);
   const locked = block !== null;
   // On a computer the person types into a chat at once. On a touch screen the focus would raise the keyboard over the chat.
   useEffect(() => {
     if (locked || isTouchScreen() || isTextField(document.activeElement)) return;
     box.current?.focus({ preventScroll: true });
   }, [draftKey, locked]);
+  // The box is gone while Eva turns a voice note into text, so it takes the focus when it comes back.
+  useEffect(() => {
+    if (voice.state.phase !== "idle" || !heardText.current) return;
+    heardText.current = false;
+    if (!isTouchScreen() && !isTextField(document.activeElement)) box.current?.focus({ preventScroll: true });
+  }, [voice.state.phase]);
   const canRecord = block === null && voice.isSupported;
   const showMic = canRecord && isEmpty;
   // A received file lands in the vault. A Project chat's agent works in its clone and does not reach it.
   const canAttach = session.mode !== "project";
+  // A Project chat's agent works in its clone, so it would not find a vault file or another project.
+  const mentions = useMentionPicker(session.mode !== "project" && block === null, box, text, setText);
   // A file picked during a send that fails would be lost when the box gets its files back.
   const takesFiles = canAttach && block === null && !sending;
   if (voice.state.phase !== "idle") {
@@ -287,13 +301,12 @@ export function Composer({
                 Cancel
               </button>
               <button
-                className="send"
-                aria-label="Send the voice note"
-                data-tooltip="Send the voice note"
-                data-cue="send"
+                className="send stop"
+                aria-label="Stop the recording"
+                data-tooltip="Stop the recording"
                 onClick={voice.finish}
               >
-                <Icon name="send" />
+                <Icon name="stop" />
               </button>
             </div>
           ) : (
@@ -305,6 +318,7 @@ export function Composer({
   }
   return (
     <div className="composer">
+      {mentions.menu}
       <div
         className={dropping ? "composer-box dropping" : "composer-box"}
         onDragOver={(event) => {
@@ -325,8 +339,26 @@ export function Composer({
           files.add([...event.dataTransfer.files]);
         }}
       >
+        {height.tall && (
+          <ColumnDivider
+            label="Height of the text"
+            side="top"
+            minWidth={shortestText}
+            target={() => box.current}
+            sizeVariable="--composer-height"
+            maxSize={() => window.innerHeight * composerHeightRange.max}
+            sizeFrom={height.sizeFrom}
+            onWidth={height.onHeight}
+          />
+        )}
         <textarea
           ref={box}
+          className={height.share === null ? undefined : "resized"}
+          style={
+            height.share === null
+              ? undefined
+              : ({ "--composer-height": `${String(height.share * 100)}dvh` } as CSSProperties)
+          }
           aria-label="Message"
           aria-describedby={block === null ? undefined : lineId}
           placeholder={block === null ? placeholder : "Eva cannot answer yet"}
@@ -336,15 +368,19 @@ export function Composer({
           readOnly={rewriting !== null}
           aria-busy={rewriting !== null}
           value={text}
+          {...mentions.boxProps}
           onChange={(event) => {
             setText(event.target.value);
             setUndoText(null);
             touched.current = true;
+            mentions.follow();
           }}
+          onSelect={mentions.follow}
           onPointerDown={() => {
             touched.current = true;
           }}
           onBlur={(event) => {
+            mentions.boxProps.onBlur();
             // A press on the star takes the focus. The cursor counts only when the person placed it.
             const field = event.currentTarget;
             if (touched.current) caret.current = { start: field.selectionStart, end: field.selectionEnd };
@@ -357,6 +393,7 @@ export function Composer({
           }}
           onKeyDown={(event) => {
             touched.current = true;
+            if (mentions.onKeyDown(event)) return;
             const press = {
               key: event.key,
               shiftKey: event.shiftKey,
@@ -414,18 +451,21 @@ export function Composer({
             </button>
           )}
           {block === null && menu.textActions.length + menu.savedPrompts.length > 0 && (
-            <MoreMenu
-              icon="star"
-              buttonLabel="Text actions and saved prompts"
-              disabled={rewriting !== null}
+            <MenuButton
+              className="icon-button"
+              name="Text actions and saved prompts"
               label="Text actions and saved prompts"
+              turnedOff={rewriting !== null}
+              fromStart
               above
               items={composerMenuItems(menu, {
                 canRewrite: text.trim() !== "",
                 onAction: (name) => void runAction(name),
                 onPrompt: insertPrompt,
               })}
-            />
+            >
+              <Icon name="star" />
+            </MenuButton>
           )}
           <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
           {undoText !== null && rewriting === null && (
@@ -770,13 +810,13 @@ interface VoiceNote {
   /** False on a page that cannot reach the microphone, such as one over plain HTTP. */
   readonly isSupported: boolean;
   readonly start: () => Promise<void>;
-  /** Stops the recording and sends what Eva heard. */
+  /** Stops the recording and hands what Eva heard to the box. */
   readonly finish: () => void;
   readonly cancel: () => void;
 }
 
-/** Records a voice note in the browser, and hands Eva's text and the recording's address to `deliver`. */
-function useVoiceNote(deliver: (heard: string, recording: string) => Promise<void>): VoiceNote {
+/** Records a voice note in the browser, and hands Eva's text to `deliver`. */
+function useVoiceNote(deliver: (heard: string) => void): VoiceNote {
   const [state, setState] = useState<VoiceState>({ phase: "idle" });
   const recorder = useRef<MediaRecorder | null>(null);
   const keep = useRef(false);
@@ -805,7 +845,7 @@ function useVoiceNote(deliver: (heard: string, recording: string) => Promise<voi
     try {
       const { text } = await api.transcribe(audio);
       if (text === "") throw new Error("Eva heard no speech in the voice note.");
-      await deliver(text, URL.createObjectURL(audio));
+      deliver(text);
     } catch (caught) {
       showError(caught);
     } finally {
@@ -878,4 +918,52 @@ function useComposerMenu(): ComposerMenuItems {
     };
   }, []);
   return items;
+}
+
+/** A box at least this tall shows the handle, even when its text does not scroll. */
+const tallText = 96;
+/** The handle never makes the text shorter than two lines. */
+const shortestText = 48;
+
+/**
+ * The tallest height of the text, as a share of the window, and whether the handle shows (issue 660). A box with a
+ * line or two has nothing to resize, so the handle shows only when the text scrolls or the box is tall.
+ */
+function useComposerHeight(
+  box: RefObject<HTMLTextAreaElement | null>,
+  text: string,
+): {
+  readonly share: number | null;
+  readonly tall: boolean;
+  readonly onHeight: (height: number | null) => void;
+  readonly sizeFrom: (grow: boolean) => number;
+} {
+  const [share, setShare] = useState(readComposerHeight);
+  const [tall, setTall] = useState(false);
+  useEffect(() => {
+    const element = box.current;
+    if (element === null) return;
+    const measure = (): void =>
+      setTall(element.scrollHeight > element.clientHeight + 1 || element.clientHeight >= tallText);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [box, text, share]);
+  const onHeight = (height: number | null): void => {
+    const next = height === null ? null : heightShare(height, window.innerHeight);
+    saveComposerHeight(next);
+    // A drag writes pixels on the box. An unchanged share renders nothing, so the box would keep them and stop following
+    // the window.
+    if (next !== null) box.current?.style.setProperty("--composer-height", `${String(next * 100)}dvh`);
+    setShare(next);
+  };
+  /** A box that is shorter than its limit grows from the limit, so a drag up never lowers the limit. */
+  const sizeFrom = (grow: boolean): number => {
+    const element = box.current;
+    if (element === null) return 0;
+    const shown = element.getBoundingClientRect().height;
+    return grow ? Math.max(shown, Number.parseFloat(getComputedStyle(element).maxHeight) || shown) : shown;
+  };
+  return { share, tall, onHeight, sizeFrom };
 }

@@ -1,42 +1,84 @@
 /**
- * The divider at the right of a column (issue 626). A drag or the arrow keys change the width of the column. A double
- * click or Enter gives the column its usual width again. The divider sits inside its column, so it measures the column.
+ * The divider at the edge of an element (issue 626). A drag or the arrow keys change the size of the element. A double
+ * click or Enter gives the element its usual size again. By default, the divider sits at the right of its column, and
+ * it measures that column. The message box puts one on its top edge, so a person sets the height of the text (issue 660).
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from "react";
 
 /** One press of an arrow key. */
 const keyStep = 16;
-/** A click that moves a few pixels is still a click, so it keeps the usual width. */
+/** A click that moves a few pixels is still a click, so it keeps the usual size. */
 const dragStart = 3;
+
+/** On the right, a drag to the right makes the element wider. On the top, a drag up makes it taller. */
+type Side = "right" | "top";
+
+const sides = {
+  right: {
+    className: "column-divider",
+    orientation: "vertical",
+    grow: "ArrowRight",
+    shrink: "ArrowLeft",
+    tip: "right",
+  },
+  top: { className: "row-divider", orientation: "horizontal", grow: "ArrowUp", shrink: "ArrowDown", tip: undefined },
+} as const;
 
 export function ColumnDivider({
   label,
   minWidth,
   onWidth,
+  side = "right",
+  target,
+  sizeVariable = "--files-width",
+  maxSize,
+  sizeFrom,
 }: {
   readonly label: string;
   readonly minWidth: number;
-  /** A width in pixels, or null for the usual width. */
+  /** A size in pixels, or null for the usual size. */
   readonly onWidth: (width: number | null) => void;
+  readonly side?: Side;
+  /** The element that the divider resizes. By default, its parent. */
+  readonly target?: () => HTMLElement | null;
+  /** The CSS variable that a drag sets on the element, in pixels. */
+  readonly sizeVariable?: string;
+  /** The largest size in pixels. By default, the size has no limit. */
+  readonly maxSize?: () => number;
+  /**
+   * The size that a grow or a shrink starts from. By default, the measured size. A box that is shorter than its limit
+   * grows from the limit, but shrinks from the height on the screen, so the box follows the pointer.
+   */
+  readonly sizeFrom?: (grow: boolean) => number;
 }): ReactElement {
   const divider = useRef<HTMLDivElement>(null);
   /** Stops the running drag, or null when no drag runs. */
   const drag = useRef<(() => void) | null>(null);
   const keepWidth = useRef(onWidth);
   keepWidth.current = onWidth;
-  /** The width on the screen and the width of the row, so a screen reader reads the width in pixels. */
+  const look = sides[side];
+  const vertical = side === "top";
+  /** The size on the screen and the largest size, so a screen reader reads the size in pixels. */
   const [shown, setShown] = useState<{ readonly now: number; readonly max: number } | null>(null);
-  const column = (): HTMLElement | null => divider.current?.parentElement ?? null;
-  const columnWidth = (): number => column()?.getBoundingClientRect().width ?? minWidth;
-  const clamp = (width: number): number => Math.max(minWidth, Math.round(width));
+  const column = (): HTMLElement | null => (target === undefined ? (divider.current?.parentElement ?? null) : target());
+  const sizeOf = (element: HTMLElement): number => {
+    const box = element.getBoundingClientRect();
+    return vertical ? box.height : box.width;
+  };
+  const columnWidth = (): number => {
+    const element = column();
+    return element === null ? minWidth : sizeOf(element);
+  };
+  const clamp = (width: number): number =>
+    Math.max(minWidth, Math.round(maxSize === undefined ? width : Math.min(maxSize(), width)));
 
-  // The usual width follows the window, so the value is measured each time the column changes size.
+  // The usual size follows the window, so the value is measured each time the element changes size.
   useEffect(() => {
     const element = column();
     if (element === null) return;
     const measure = (): void => {
-      const row = element.parentElement?.clientWidth ?? 0;
-      const now = Math.round(element.getBoundingClientRect().width);
+      const row = maxSize?.() ?? element.parentElement?.clientWidth ?? 0;
+      const now = Math.round(sizeFrom?.(true) ?? sizeOf(element));
       // A column can be wider than the row, which then scrolls.
       setShown({ now, max: Math.max(row, now, minWidth) });
     };
@@ -55,8 +97,14 @@ export function ColumnDivider({
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     const element = column();
     if (event.button !== 0 || drag.current !== null || element === null) return;
-    const start = { pointerId: event.pointerId, x: event.clientX, width: columnWidth() };
-    let moved = false;
+    const start = {
+      pointerId: event.pointerId,
+      at: vertical ? event.clientY : event.clientX,
+      grow: sizeFrom?.(true) ?? columnWidth(),
+      shrink: sizeFrom?.(false) ?? columnWidth(),
+    };
+    // The dragged size, not the measured one: a short text stays shorter than the height that the person chose.
+    let dragged: number | null = null;
     // The window follows the drag, so the drag goes on when the pointer leaves the divider.
     const onMove = (move: globalThis.PointerEvent): void => {
       if (move.pointerId !== start.pointerId) return;
@@ -64,12 +112,12 @@ export function ColumnDivider({
         stop();
         return;
       }
-      const offset = move.clientX - start.x;
-      if (!moved && Math.abs(offset) < dragStart) return;
-      moved = true;
-      // Each move sets the width on the column only: a render of the whole page at each move makes a drag stutter.
+      const offset = vertical ? start.at - move.clientY : move.clientX - start.at;
+      if (dragged === null && Math.abs(offset) < dragStart) return;
+      // Each move sets the size on the element only: a render of the whole page at each move makes a drag stutter.
       element.classList.add("resized");
-      element.style.setProperty("--files-width", `${String(clamp(start.width + offset))}px`);
+      dragged = clamp((offset > 0 ? start.grow : start.shrink) + offset);
+      element.style.setProperty(sizeVariable, `${String(dragged)}px`);
     };
     // A text selection or a link under the pointer can start a drag of the browser. It ends the pointer events, so the
     // divider stops halfway.
@@ -83,7 +131,7 @@ export function ColumnDivider({
       window.removeEventListener("pointercancel", onEnd);
       window.removeEventListener("dragstart", noNativeDrag);
       drag.current = null;
-      if (moved) keepWidth.current(clamp(element.getBoundingClientRect().width));
+      if (dragged !== null) keepWidth.current(dragged);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onEnd);
@@ -97,25 +145,26 @@ export function ColumnDivider({
       onWidth(null);
       return;
     }
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (event.key !== look.grow && event.key !== look.shrink) return;
     event.preventDefault();
-    onWidth(clamp(columnWidth() + (event.key === "ArrowRight" ? keyStep : -keyStep)));
+    const grow = event.key === look.grow;
+    onWidth(clamp((sizeFrom?.(grow) ?? columnWidth()) + (grow ? keyStep : -keyStep)));
   };
 
   return (
     <div
       ref={divider}
-      className="column-divider"
+      className={look.className}
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={look.orientation}
       aria-label={label}
       aria-valuemin={minWidth}
       aria-valuemax={shown?.max}
       aria-valuenow={shown?.now}
       aria-valuetext={shown === null ? undefined : `${String(shown.now)} pixels`}
       tabIndex={0}
-      data-tooltip="Drag or press the arrow keys to resize. Double click or press Enter for the usual width."
-      data-tooltip-side="right"
+      data-tooltip={`Drag or press the arrow keys to resize. Double click or press Enter for the usual ${vertical ? "height" : "width"}.`}
+      data-tooltip-side={look.tip}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={() => onWidth(null)}

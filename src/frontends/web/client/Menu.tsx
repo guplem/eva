@@ -15,6 +15,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
@@ -61,12 +62,12 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
 
   useEffect(() => {
     // No scroll: a fixed menu takes the focus before it is at its place.
-    menu.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+    menu.current?.querySelector("button")?.focus({ preventScroll: true });
   }, [menu]);
 
   /** Moves the focus by `step` items, or to the first or the last item. */
   const moveFocus = (step: number | "first" | "last"): void => {
-    const buttons = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+    const buttons = [...(menu.current?.querySelectorAll("button") ?? [])];
     const current = buttons.findIndex((button) => button === document.activeElement);
     const next =
       step === "first" ? 0 : step === "last" ? buttons.length - 1 : (current + step + buttons.length) % buttons.length;
@@ -140,23 +141,60 @@ export function MoreMenu({
   items,
   label,
   toggle,
-  icon = "more",
-  buttonLabel = "More actions",
-  above = false,
-  disabled = false,
 }: {
   readonly items: readonly MenuItem[];
   /** The name that a screen reader reads for the open menu, such as "Chat actions". */
   readonly label: string;
-  readonly icon?: IconName;
-  /** The name and the tooltip of the button. */
-  readonly buttonLabel?: string;
-  /** The menu opens above the button, for a button at the bottom of the page, such as in the message box. */
-  readonly above?: boolean;
-  /** A turned-off button, such as while the message box waits for a model. It stays in place, so nothing moves. */
-  readonly disabled?: boolean;
   /** Pass a ref when the caller must move the focus back to the button, for example after a dialog closes. */
   readonly toggle?: RefObject<HTMLButtonElement | null>;
+}): ReactElement {
+  return (
+    <MenuButton
+      items={items}
+      label={label}
+      className="icon-button"
+      name="More actions"
+      {...(toggle === undefined ? {} : { toggle })}
+    >
+      <Icon name="more" />
+    </MenuButton>
+  );
+}
+
+/** A button that opens a menu below it, such as "More actions", or the two kinds of a new project chat. */
+export function MenuButton({
+  items,
+  label,
+  toggle,
+  className,
+  name,
+  disabled = false,
+  turnedOff = false,
+  busy = false,
+  fromStart = false,
+  above = false,
+  children,
+}: {
+  readonly items: readonly MenuItem[];
+  /** The name that a screen reader reads for the open menu, such as "Chat actions". */
+  readonly label: string;
+  /** Pass a ref when the caller must move the focus back to the button, for example after a dialog closes. */
+  readonly toggle?: RefObject<HTMLButtonElement | null>;
+  readonly className: string;
+  /** The name and the tooltip of a button that shows only an icon. A button with words needs none. */
+  readonly name?: string;
+  readonly disabled?: boolean;
+  /**
+   * Turned off with `aria-disabled`, such as while the message box waits for a model. Unlike `disabled`, the
+   * button keeps the focus that a chosen item gives back to it.
+   */
+  readonly turnedOff?: boolean;
+  readonly busy?: boolean;
+  /** Opens the menu from the left edge of the button, for a button near the left of the screen. */
+  readonly fromStart?: boolean;
+  /** Opens the menu above the button, for a button at the bottom of the page, such as in the message box. */
+  readonly above?: boolean;
+  readonly children: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -181,21 +219,27 @@ export function MoreMenu({
     <div className="more-picker" ref={root}>
       <button
         ref={button}
-        className="icon-button"
-        aria-label={buttonLabel}
-        data-tooltip={buttonLabel}
+        className={className}
+        aria-label={name}
+        data-tooltip={name}
         aria-haspopup="menu"
         aria-expanded={open}
-        // Not `disabled`: a disabled button drops the focus, and a chosen item gives the focus back to it.
-        aria-disabled={disabled ? true : undefined}
+        disabled={disabled}
+        aria-disabled={turnedOff ? true : undefined}
+        aria-busy={busy}
         onClick={() => {
-          if (!disabled) setOpen((isOpen) => !isOpen);
+          if (!turnedOff) setOpen((isOpen) => !isOpen);
         }}
       >
-        <Icon name={icon} />
+        {children}
       </button>
       {open && (
-        <MenuList items={items} label={label} className={above ? "more-menu above" : "more-menu"} onClose={closeList} />
+        <MenuList
+          items={items}
+          label={label}
+          className={["more-menu", ...(fromStart ? ["from-start"] : []), ...(above ? ["above"] : [])].join(" ")}
+          onClose={closeList}
+        />
       )}
     </div>
   );

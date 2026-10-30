@@ -634,6 +634,7 @@ button.ghost .icon {
 }
 
 .composer-box {
+  position: relative;
   background: var(--panel);
   border-radius: var(--radius-composer);
   box-shadow: var(--shadow);
@@ -661,6 +662,72 @@ button.ghost .icon {
   outline: none;
 }
 
+/* The person dragged the handle to choose the tallest height of the text (issue 660). */
+.composer-box textarea.resized {
+  max-height: var(--composer-height);
+}
+
+/* The handle sits on the top edge of the box, like the grab bar of a sheet, so it covers no text. */
+.row-divider {
+  position: absolute;
+  top: calc(-1 * var(--space-2));
+  left: calc(50% - var(--touch-target));
+  width: calc(2 * var(--touch-target));
+  /* The handle ends at the top padding of the box, so it covers no text. */
+  height: calc(var(--space-2) + 14px);
+  cursor: row-resize;
+  /* A drag must not scroll the chat or select the text. */
+  user-select: none;
+  touch-action: none;
+}
+
+.row-divider::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--space-2) + 4px);
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.row-divider:hover::after,
+.row-divider:active::after,
+.row-divider:focus-visible::after {
+  background: var(--accent);
+}
+
+.row-divider:focus-visible {
+  outline: none;
+}
+
+/* Forced colours drop the background of the bar, so it needs system colours. */
+@media (forced-colors: active) {
+  .row-divider::after {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+
+  .row-divider:hover::after,
+  .row-divider:active::after,
+  .row-divider:focus-visible::after {
+    background: Highlight;
+  }
+}
+
+/* A finger needs a taller target. It reaches above the box, so it still covers no text. */
+@media (pointer: coarse) {
+  .row-divider {
+    top: calc(14px - var(--touch-target));
+    height: var(--touch-target);
+  }
+
+  .row-divider::after {
+    top: calc(var(--touch-target) - 10px);
+  }
+}
+
 .composer-box textarea::placeholder {
   color: var(--muted);
 }
@@ -673,6 +740,62 @@ button.ghost .icon {
 .composer-blocked {
   margin: var(--space-2) 0 0;
   text-align: center;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* The search of an @ mention floats above the box. .menu gives its look. */
+.mention-menu {
+  position: absolute;
+  bottom: calc(100% - var(--space-2));
+  left: 0;
+  right: 0;
+  z-index: 5;
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+  gap: var(--space-2);
+}
+
+.mention-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.mention-group-name {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.mention-empty {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.mention-menu button {
+  padding: var(--space-1) var(--space-2);
+}
+
+.mention-menu button.on {
+  background: var(--chip);
+}
+
+.mention-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mention-title,
+.mention-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-detail {
   font-size: var(--text-xs);
   color: var(--muted);
 }
@@ -928,36 +1051,6 @@ button.ghost .icon {
   background: var(--accent);
   box-shadow: 0 0 6px var(--glow);
   animation: working-dot 1.3s infinite ease-in-out;
-}
-
-/* Under a voice note: what Eva heard, or the recording itself. */
-.voice-switch {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-1);
-  margin-top: var(--space-2);
-}
-
-.voice-switch button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 2px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: inherit;
-  font-size: var(--text-xs);
-}
-
-.voice-switch button.on {
-  background: var(--panel);
-  color: var(--ink);
-}
-
-.voice-note {
-  display: block;
-  max-width: 100%;
 }
 
 @media (max-width: 760px) {

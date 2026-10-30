@@ -56,33 +56,6 @@ export function downloadVaultPath(
   }
 }
 
-/**
- * The bytes of one vault file as they are, for a copy that the person gives to a chat (#706). The
- * checks of a download apply, but a folder is refused and no text is redacted: the person chose
- * to share the file.
- */
-export function readVaultFile(
-  vaultPath: string,
-  requested: string,
-  limitBytes = maxDownloadBytes,
-): { readonly name: string; readonly bytes: Uint8Array<ArrayBuffer> } {
-  const { path, resolved, notFound } = resolveInVault(vaultPath, requested);
-  const name = basename(path);
-  try {
-    if (statSync(resolved).isDirectory())
-      throw new EvaError("file_not_downloadable", `${name} is a folder. Mention a file in it.`);
-    if (looksLikeSecretsFile(basename(resolved)) || looksLikeSecretsFile(name))
-      throw new EvaError("file_not_downloadable", `${name} looks like a secrets file, so Eva does not share it.`);
-    const file = readWhole(resolved, limitBytes);
-    if (file === null) throw notFound;
-    return { name, bytes: file.bytes };
-  } catch (error) {
-    if (error instanceof EvaError) throw error;
-    if (errorCode(error) === "ENOENT") throw notFound;
-    throw new EvaError("file_not_downloadable", "Eva has no permission to open this.");
-  }
-}
-
 /** Folders first, then files, each by name, as the explorer lists them. A folder seen once is skipped, so a link loop ends. */
 function addFolder(
   zip: ZipWriter,

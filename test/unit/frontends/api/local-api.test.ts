@@ -2138,7 +2138,15 @@ describe("web routes", () => {
     });
     expect(gone.status).toBe(404);
     expect(await json(gone)).toMatchObject({ code: "file_not_found" });
+    writeFileSync(join(vaultPath, ".env.example-app"), "TOKEN=1");
+    const secret = await call(`/api/sessions/${chat.id}/messages`, {
+      method: "POST",
+      body: { text: "Use @file:.env.example-app" },
+    });
+    expect(secret.status).toBe(409);
+    expect(await json(secret)).toMatchObject({ code: "file_not_downloadable" });
     expect(eva.sessions.get(chat.id).turns).toEqual([]);
+    expect(existsSync(join(cloneFolder, ".mentions", ".env.example-app"))).toBe(false);
   });
 
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {

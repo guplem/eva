@@ -4,40 +4,46 @@
  * every repository, so git never sees it. The chat gets the copy's name and never a vault path,
  * so it does not learn that it runs inside a vault (#702).
  */
-import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { mentionsIn, mentionToken } from "../../shared/mentions.ts";
-import { readVaultFile } from "../files/file-download.ts";
-import { contentName } from "../files/vault-files.ts";
+import { contentName, resolveSendableFile } from "../files/vault-files.ts";
 
 /** The folder of a clone that holds the copies. A dot name, so no tool takes it for a repository. */
 export const mentionsFolderName = ".mentions";
 
-/** A path under a project's clones: another chat's work, which a mention must not reach. */
-const clonePathPattern = /^Projects\/[^/]+\/repos(\/|$)/i;
+/** The largest copy: the same limit as a file that the person attaches in the web app. */
+const maxCopyBytes = 25 * 1024 * 1024;
 
 /**
  * Saves bytes into the clone's mention folder, named by their content, and gives the path from the
- * clone folder. The same bytes get the same name, so a second save adds nothing.
+ * clone folder. The same bytes get the same name, so a second save adds nothing. A failed write
+ * names only the file, since a system error holds the whole path, which the chat must not see.
  */
 export function saveInClone(clonePath: string, originalName: string, bytes: Uint8Array): string {
   const name = contentName(originalName, bytes);
   const folder = join(clonePath, mentionsFolderName);
-  mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, name), bytes);
+  try {
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, name), bytes);
+  } catch {
+    throw new EvaError("file_not_writable", `Eva could not save ${basename(originalName)} for the chat.`);
+  }
   return `${mentionsFolderName}/${name}`;
 }
 
-/** Reads a mentioned vault file, with every check of a download and the clone rule. */
-function readMentioned(vaultPath: string, vaultRelative: string): { name: string; bytes: Uint8Array } {
-  if (clonePathPattern.test(vaultRelative.replaceAll("\\", "/").replace(/^\/+/, ""))) {
-    throw new EvaError(
-      "file_not_downloadable",
-      `${basename(vaultRelative)} belongs to a clone, so Eva does not share it.`,
-    );
-  }
-  return readVaultFile(vaultPath, vaultRelative);
+/**
+ * The real path of a mentioned vault file, with the checks of a file that Eva sends in Telegram:
+ * no path out of the vault, no clone and no git data, no secrets file by name or by contents. The
+ * checks run on the resolved path, so `..`, `./` and links cannot reach a clone.
+ */
+function checkedMention(vaultPath: string, requested: string): { readonly path: string; readonly name: string } {
+  const found = resolveSendableFile(vaultPath, requested);
+  if (!found.ok) throw new EvaError(found.missing === true ? "file_not_found" : "file_not_downloadable", found.reason);
+  if (statSync(found.path).size > maxCopyBytes)
+    throw new EvaError("file_not_downloadable", `${requested} is larger than 25 MB, so Eva does not share it.`);
+  return found;
 }
 
 /**
@@ -66,13 +72,16 @@ export function withBaseNames(text: string): string {
 
 /** Copies a vault file into the clone, and gives the copy's path from the clone folder. */
 export function copyVaultFileToClone(vaultPath: string, clonePath: string, vaultRelative: string): string {
-  const { name, bytes } = readMentioned(vaultPath, vaultRelative);
-  return saveInClone(clonePath, name, bytes);
+  const { path, name } = checkedMention(vaultPath, vaultRelative);
+  return saveInClone(clonePath, name, readFileSync(path));
 }
 
-/** Throws the first problem of a file that a text mentions, so the message is not sent (#706). */
+/**
+ * Throws the first problem of a file that a text mentions, so the message is not sent (#706). It
+ * checks the files and copies none: the turn copies them.
+ */
 export function checkMentions(vaultPath: string, text: string): void {
-  for (const mention of mentionsIn(text)) if (mention.kind === "file") readMentioned(vaultPath, mention.name);
+  for (const mention of mentionsIn(text)) if (mention.kind === "file") checkedMention(vaultPath, mention.name);
 }
 
 /**
@@ -92,7 +101,6 @@ export function withCloneMentions(text: string, vaultPath: string, clonePath: st
       token = mentionToken("file", basename(copy));
       notes.set(token, `[${token} is the file ${copy}]`);
     } catch (error) {
-      if (!isEvaError(error)) throw error;
       token = mentionToken("file", basename(mention.name));
       notes.set(token, `[${token}: Eva could not give this file to the chat. ${shownReason(error, mention.name)}]`);
     }
@@ -104,9 +112,10 @@ export function withCloneMentions(text: string, vaultPath: string, clonePath: st
 }
 
 /**
- * Why a file could not be copied, with no vault path. The path check names the whole path, so a
- * missing file gets its own text. The other refusals name only the base name.
+ * Why a file could not be copied, with no vault path. Each check names the path as the person typed
+ * it, so the base name takes its place. A system error holds a whole path, so it gets its own text.
  */
-function shownReason(error: EvaError, vaultRelative: string): string {
-  return error.code === "file_not_found" ? `${basename(vaultRelative)} was not found.` : error.message;
+function shownReason(error: unknown, vaultRelative: string): string {
+  if (!isEvaError(error)) return `Eva could not read ${basename(vaultRelative)}.`;
+  return error.message.replaceAll(vaultRelative, basename(vaultRelative));
 }

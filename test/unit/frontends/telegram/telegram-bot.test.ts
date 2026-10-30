@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva, type EvaOptions } from "../../../../src/core/eva.ts";
@@ -2525,8 +2525,15 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(existsSync(join(cloneFolder, saved ?? "missing"))).toBe(true);
 
     telegram.sendText(owner, "Read @file:Notes/Gone.md", 500);
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Gone.md was not found")));
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Gone.md does not exist")));
     expect(engine.requests).toHaveLength(1);
+
+    // Eva may have given the clone of a closed chat to another chat, so the file must not land there.
+    await settle(bot, () => !eva.sessions.isBusy(chat.id));
+    eva.sessions.close(chat.id);
+    telegram.sendFile(owner, "document", new Uint8Array([6]), { fileName: "late.pdf", topicId: 500 });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Eva closed this chat")));
+    expect(readdirSync(join(cloneFolder, ".mentions"))).toHaveLength(1);
   });
 
   test("an audio file is saved like a document", async () => {

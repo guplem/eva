@@ -6,7 +6,7 @@
 import { closeSync, constants, fstatSync, openSync, readSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { maxShownBytes, noWait, projectTitleIn, textOf } from "./file-browser.ts";
-import { looksLikeSecretsFile } from "./vault-files.ts";
+import { isClonePath, looksLikeSecretsFile } from "./vault-files.ts";
 
 export interface SearchMatch {
   /** The forward-slash path from the vault root. */
@@ -34,9 +34,6 @@ const maxReadBytes = 50_000_000;
 const lineContext = 60;
 const hiddenName = ".git";
 
-/** A project's clones: other chats' work, which a chat in a clone must not be given (#706). */
-const clonesFolderPattern = /^Projects\/[^/]+\/repos$/i;
-
 /**
  * Finds the vault entries whose name, or project title, holds `query`, in any case. With
  * `contents`, a text file that holds `query` matches too. Folders near the root come first.
@@ -61,7 +58,7 @@ export function searchVault(
       if (budget.entries < 0) return { matches, complete: false };
       const path = folder === "" ? entry.name : `${folder}/${entry.name}`;
       if (options.shareable === true) {
-        if (entry.kind === "folder" && clonesFolderPattern.test(path)) continue;
+        if (entry.kind === "folder" && isClonePath(path)) continue;
         if (entry.kind === "file" && looksLikeSecretsFile(entry.name)) continue;
       }
       const match = entry.kind === "folder" ? folderMatch(root, path, entry.name, needle) : null;

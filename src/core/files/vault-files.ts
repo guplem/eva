@@ -21,7 +21,17 @@ import { containsSecretPattern } from "../../shared/redaction.ts";
 
 export type SendableFile =
   | { readonly ok: true; readonly path: string; readonly relativePath: string; readonly name: string }
-  | { readonly ok: false; readonly reason: string };
+  /** `missing`: the file does not exist, as opposed to a file that Eva refuses. */
+  | { readonly ok: false; readonly reason: string; readonly missing?: true };
+
+/**
+ * True for a path from the vault root inside a project's clones (`Projects/<id>/repos/...`): other
+ * chats' work, which can hold a project's secrets. Give it a resolved path, never a typed one.
+ */
+export function isClonePath(relativePath: string): boolean {
+  const parts = relativePath.split(/[/\\]/);
+  return parts[0] === "Projects" && parts[2]?.toLowerCase() === "repos";
+}
 
 /** Telegram lets a bot upload at most 50 MB. */
 export const maxSendableBytes = 50 * 1024 * 1024;
@@ -47,14 +57,14 @@ export function resolveSendableFile(vaultPath: string, requested: string): Senda
     root = realpathSync(vaultPath);
     resolved = realpathSync(join(root, requested));
   } catch {
-    return { ok: false, reason: `${requested} does not exist.` };
+    return { ok: false, reason: `${requested} does not exist.`, missing: true };
   }
   const relativePath = relative(root, resolved);
   if (relativePath.startsWith("..") || isAbsolute(relativePath))
     return { ok: false, reason: `${requested} is outside the vault, so Eva does not send it.` };
   const parts = relativePath.split(sep);
   // Clones and git data can hold a project's secrets, which the owner allows inside a project only.
-  if (parts.includes(".git") || (parts[0] === "Projects" && parts[2] === "repos"))
+  if (parts.includes(".git") || isClonePath(relativePath))
     return { ok: false, reason: `${requested} is in a repository folder, so Eva does not send it.` };
   if (looksLikeSecretsFile(basename(resolved)))
     return { ok: false, reason: `${requested} looks like a secrets file, so Eva does not send it.` };

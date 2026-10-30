@@ -472,11 +472,25 @@ export class TelegramBot {
     file: TelegramFile,
     caption: string,
   ): Promise<void> {
+    const entry = this.state.topics[keyOf(chatId, topicId)];
+    const existing = entry !== undefined && this.sessionExists(entry.sessionId) ? entry.sessionId : null;
+    const chat = existing === null ? null : this.options.eva.sessions.get(existing);
+    // Before the save: Eva may have given the clone of a closed chat to another chat (issue 521).
+    if (chat?.closed === true) {
+      await this.send(chatId, topicId, closedChatText);
+      return;
+    }
+    // Before the download: a file that cannot be kept must not leave Telegram, nor start a chat.
+    if (!(chat?.mode === "project" && chat.clone !== null) && this.options.eva.status().vaultPath === null) {
+      await this.send(chatId, topicId, "No vault is configured, so Eva cannot keep the file.");
+      return;
+    }
     const bytes = await this.files.download(chatId, topicId, file);
     if (bytes === null) return;
     let note: string;
     try {
-      note = this.options.eva.receiveFile(file.file_name ?? "file", bytes, this.chatOf(chatId, topicId)).note;
+      // A topic with no chat yet gets an Assistant chat when the message goes, so the file goes to Scratch/.
+      note = this.options.eva.receiveFile(file.file_name ?? "file", bytes, existing).note;
     } catch (error) {
       await this.send(chatId, topicId, `Eva cannot keep the file: ${this.describeError(error)}`);
       return;
@@ -739,23 +753,18 @@ export class TelegramBot {
     }
   }
 
-  /** The chat of a topic. A topic with no chat yet gets a new Assistant chat. */
-  private chatOf(chatId: number, topicId: number | null): string {
-    const key = keyOf(chatId, topicId);
-    const entry = this.state.topics[key];
-    if (entry !== undefined && this.sessionExists(entry.sessionId)) return entry.sessionId;
-    const session = this.options.eva.createAssistantSession({
-      source: "telegram",
-      ...(topicId === null ? {} : { telegramTopicId: topicId }),
-    });
-    this.state.topics[key] = { sessionId: session.id, openedByEva: false, renamed: true };
-    this.saveState();
-    return session.id;
-  }
-
   private async forward(chatId: number, topicId: number | null, text: string): Promise<void> {
-    const sessionId = this.chatOf(chatId, topicId);
-    const entry = this.state.topics[keyOf(chatId, topicId)] ?? { sessionId, openedByEva: false, renamed: true };
+    const key = keyOf(chatId, topicId);
+    let entry = this.state.topics[key];
+    if (entry === undefined || !this.sessionExists(entry.sessionId)) {
+      const session = this.options.eva.createAssistantSession({
+        source: "telegram",
+        ...(topicId === null ? {} : { telegramTopicId: topicId }),
+      });
+      entry = { sessionId: session.id, openedByEva: false, renamed: true };
+      this.state.topics[key] = entry;
+      this.saveState();
+    }
     if (topicId !== null && entry.openedByEva && !entry.renamed) {
       entry.renamed = true;
       this.saveState();

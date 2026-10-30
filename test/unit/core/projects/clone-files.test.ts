@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -72,7 +81,7 @@ describe("copyVaultFileToClone", () => {
     write(join(folder, "outside.md"), "Not in the vault.");
     write(join(vault, "Projects", "2026-01-01-0000-example-app", ".env.local"), "TOKEN=1");
     write(join(clone, "example-app", "README.md"), "Code.");
-    expect(errorOf(() => copyVaultFileToClone(vault, clone, "../outside.md"))).toBe("file_not_found");
+    expect(errorOf(() => copyVaultFileToClone(vault, clone, "../outside.md"))).toBe("file_not_downloadable");
     expect(errorOf(() => copyVaultFileToClone(vault, clone, "Projects"))).toBe("file_not_downloadable");
     expect(errorOf(() => copyVaultFileToClone(vault, clone, "Projects/2026-01-01-0000-example-app/.env.local"))).toBe(
       "file_not_downloadable",
@@ -87,6 +96,29 @@ describe("copyVaultFileToClone", () => {
 
   test("refuses a file that is gone", () => {
     expect(errorOf(() => copyVaultFileToClone(vault, clone, "Gone.md"))).toBe("file_not_found");
+  });
+
+  test("checks the real path, so `..`, `./` and a link cannot reach a clone (review of #716)", () => {
+    write(join(clone, "example-app", "work.txt"), "Another chat's work.");
+    const inClone = "Projects/2026-01-01-0000-example-app/repos/clone-0/example-app/work.txt";
+    expect(errorOf(() => copyVaultFileToClone(vault, clone, `Notes/../${inClone}`))).toBe("file_not_downloadable");
+    expect(errorOf(() => copyVaultFileToClone(vault, clone, `./${inClone}`))).toBe("file_not_downloadable");
+    mkdirSync(join(vault, "Notes"), { recursive: true });
+    // A junction needs no admin rights on Windows.
+    symlinkSync(
+      join(vault, "Projects", "2026-01-01-0000-example-app", "repos"),
+      join(vault, "Notes", "link"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    expect(errorOf(() => copyVaultFileToClone(vault, clone, "Notes/link/clone-0/example-app/work.txt"))).toBe(
+      "file_not_downloadable",
+    );
+    expect(existsSync(join(clone, mentionsFolderName))).toBe(false);
+  });
+
+  test("refuses a file whose text holds a secret, as Telegram does when it sends a file", () => {
+    write(join(vault, "Notes", "keys.txt"), "The key is ghp_0123456789abcdefghijklmnopqrstuvwxyzAB.");
+    expect(errorOf(() => copyVaultFileToClone(vault, clone, "Notes/keys.txt"))).toBe("file_not_downloadable");
   });
 });
 
@@ -110,7 +142,7 @@ describe("withCloneMentions", () => {
   test("a file that is gone or refused gets its base name and a note that says why", () => {
     const text = withCloneMentions("Read @file:Notes/Gone.md", vault, clone);
     expect(text).toBe(
-      "Read @file:Gone.md\n\n[@file:Gone.md: Eva could not give this file to the chat. Gone.md was not found.]",
+      "Read @file:Gone.md\n\n[@file:Gone.md: Eva could not give this file to the chat. Gone.md does not exist.]",
     );
   });
 

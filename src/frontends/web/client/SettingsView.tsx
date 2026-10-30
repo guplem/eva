@@ -74,7 +74,7 @@ export function SettingsView({
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  // A card, or a heading of the guide, that a search result or a link names scrolls into view, and shows for a moment.
+  // A search result or a link can name a card or a heading of the guide. Scroll to it, and mark it for a moment.
   useEffect(() => {
     const heading =
       route.section === "guide" && route.item !== null ? (parseGuideItem(route.item)?.slug ?? null) : null;
@@ -96,8 +96,8 @@ export function SettingsView({
     }
     card.scrollIntoView({ block: "start" });
     if (heading !== null) {
-      // The doc's HTML is not React's, so the effect makes the heading able to take the focus.
-      // A keyboard then goes on from there, and a screen reader reads the new place.
+      // React does not make the doc's HTML, so the heading has no tabIndex. Give it one, so it can take the focus.
+      // A keyboard then continues from the heading, and a screen reader reads it.
       card.tabIndex = -1;
       card.focus({ preventScroll: true });
     }

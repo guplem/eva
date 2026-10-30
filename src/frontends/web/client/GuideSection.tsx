@@ -20,7 +20,9 @@ function addressOf(page: GuideSource, slug: string | null): string {
 function followSettingsLink(event: MouseEvent, navigate: (route: SettingsRoute) => void): void {
   const link = event.target instanceof Element ? event.target.closest("a") : null;
   const address = link?.getAttribute("href") ?? "";
-  if (!isSettingsHash(address) || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  if (!isSettingsHash(address) || link?.target === "_blank") return;
+  // A click with a key or another button keeps what the browser does, such as a new tab.
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
   navigate(parseSettingsHash(address));
 }
@@ -41,7 +43,7 @@ export function GuideHome({ navigate }: { readonly navigate: (route: SettingsRou
               ))}
           </ol>
           <div className="button-row">
-            <a className="button-link" href={addressOf(page, null)}>
+            <a className="button-link" href={addressOf(page, null)} aria-label={`Read the page: ${page.title}`}>
               Read the page
               <Icon name="back" className="flip" />
             </a>

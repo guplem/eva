@@ -81,6 +81,12 @@ export interface ModeContext {
 /** What each mode does around a turn (Assistant: pull, prompt, save, skill runs; Project: trust). */
 export interface TurnPreparer {
   prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn>;
+  /**
+   * The text that the engine gets for a turn's text, such as a chat in a clone, which gets copies
+   * in place of vault paths (#706). Eva calls it after `prepare`, while the turn holds the folder.
+   * The turn record keeps the text as sent, so a retry runs this again.
+   */
+  engineMessage?(session: SessionRecord, text: string): string;
   /** The context of the chat's next turn, for the chat details. It changes nothing and asks nobody. */
   describe?(session: SessionRecord): Promise<ModeContext>;
   /** Returns a message to send to the same session as its next turn, or null. */
@@ -1256,6 +1262,7 @@ export class SessionManager {
       }
       await this.restorePending(session, preparer);
       startSnapshot = await this.takeSnapshot(session, preparer);
+      const engineText = preparer.engineMessage?.(session, prompt) ?? prompt;
       engineRan = true;
       const history = this.historyOf(session);
       // A continue after failed turns only: the engine may never have created its session. Its
@@ -1269,10 +1276,10 @@ export class SessionManager {
         startFolder: prepared.startFolder,
         prompt:
           prepared.messagePrefix === null
-            ? prompt
+            ? engineText
             : `${prepared.messagePrefix}
 
-${prompt}`,
+${engineText}`,
         model: session.modelAlias,
         ...(previousModel === undefined ? {} : { previousModel }),
         effort: takesEffort(session.engine, session.modelAlias) ? session.effort : null,

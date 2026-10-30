@@ -1453,6 +1453,20 @@ describe("file snapshots of Project chats (issue 523)", () => {
     expect(manager.get(sessionId).turns[0]).toMatchObject({ startSnapshot: start, endSnapshot: end });
   });
 
+  test("a mode's engine message reaches the engine, and the turn keeps the text as sent (#706)", async () => {
+    const engine = new FakeEngine();
+    const rewriting: TurnPreparer = {
+      ...preparer,
+      engineMessage: (_session, text) => `${text} [copy]`,
+    };
+    const manager = createManager(engine, { projectPreparer: rewriting });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "Read @file:Notes/Plan.md");
+    expect(engine.requests[0]?.prompt).toBe("Read @file:Notes/Plan.md [copy]");
+    // A retry copies again from the vault, so the record keeps the vault path that the person sent.
+    expect(manager.get(sessionId).turns[0]?.userText).toBe("Read @file:Notes/Plan.md");
+  });
+
   test("a failed turn keeps its snapshots too, so a retry can undo it", async () => {
     const log: string[] = [];
     const engine = new FakeEngine(() => [{ kind: "turn_failed", reason: "boom" }]);

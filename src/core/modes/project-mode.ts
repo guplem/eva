@@ -16,6 +16,7 @@ import {
   type TrustStore,
 } from "../projects/clones.ts";
 import { EvaError } from "../../shared/errors.ts";
+import { withCloneMentions } from "../projects/clone-files.ts";
 import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
 import type {
   ModeContext,
@@ -39,6 +40,8 @@ export interface ProjectPreparerOptions {
   readonly snapshots?: SnapshotRun;
   /** True while Eva pulls or pushes a repository of the clone. A restore must not change files under it. */
   readonly isSyncing?: (cloneFolder: string) => boolean;
+  /** The vault, read at each turn, for the files that a message mentions (#706). Without it, mentions stay as they are. */
+  readonly vaultPath?: () => string | null;
 }
 
 export class ProjectPreparer implements TurnPreparer {
@@ -73,6 +76,17 @@ export class ProjectPreparer implements TurnPreparer {
         environment: this.options.environment,
       },
     };
+  }
+
+  /**
+   * A chat in a clone gets a copy of each vault file that its text mentions, and the copy's name in
+   * place of the vault path, so it never learns where the vault is (#706). The notes hold only
+   * what the person gave, so Eva still adds no prompt of her own.
+   */
+  engineMessage(session: SessionRecord, text: string): string {
+    const vaultPath = this.options.vaultPath?.() ?? null;
+    if (session.clone === null || vaultPath === null) return text;
+    return withCloneMentions(text, vaultPath, session.startFolder);
   }
 
   afterTurn(_session: SessionRecord, _outcome: TurnOutcome): Promise<string | null> {

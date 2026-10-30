@@ -691,6 +691,7 @@ export class Eva {
           snapshots: { runner: options.runner, environment: ownGitEnvironment },
           // Read at each restore: the project work exists only after the session manager.
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
+          vaultPath: () => this.options.config.vaultPath,
         }),
       },
       now: options.now,

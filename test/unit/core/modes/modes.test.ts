@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ApprovalAnswer } from "../../../../src/shared/engine-port.ts";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
@@ -335,6 +335,28 @@ describe("Project mode", () => {
       readRemote: (folder) => Promise.resolve(sandbox.git(folder, "remote", "get-url", "origin")),
     });
   }
+
+  test("a chat in a clone gets a copy of each mentioned vault file, and no vault path (#706)", () => {
+    writeFileSync(join(vault, "Plan.md"), "The plan.");
+    const preparer = new ProjectPreparer({
+      trustStore: new TrustStore(join(sandbox.root, "trust.json")),
+      cloneOrigins: origins,
+      trustedOwners: () => [],
+      environment: {},
+      readRemote: () => Promise.resolve(null),
+      vaultPath: () => vault,
+    });
+    const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
+    const text = preparer.engineMessage(chat, "Read @file:Plan.md");
+    expect(text).toMatch(
+      /^Read @file:Plan-[0-9a-f]{12}\.md\n\n\[@file:Plan-[0-9a-f]{12}\.md is the file \.mentions\/Plan-[0-9a-f]{12}\.md\]$/,
+    );
+    expect(readdirSync(join(cloneFolder, ".mentions"))).toHaveLength(1);
+    // A chat with no clone, such as a specialist chat of #703, keeps its text.
+    expect(
+      preparer.engineMessage(session({ mode: "project", startFolder: vault, clone: null }), "Read @file:Plan.md"),
+    ).toBe("Read @file:Plan.md");
+  });
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
     const prepared = await project(["owner"]).prepare(session({ mode: "project", startFolder: cloneFolder }), deny);

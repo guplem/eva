@@ -965,6 +965,53 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("keeps the unsent text of a chat for every page, and sends each change on the socket (issue 652)", async () => {
+    const events: { kind: string; [field: string]: unknown }[] = [];
+    const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events?devices`, {
+      headers: headers(),
+    } as unknown as string[]);
+    await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve()));
+    socket.addEventListener("message", (message) => events.push(JSON.parse(String(message.data)) as { kind: string }));
+    const saved = await call("/api/unsent-texts/new-chat", {
+      method: "PUT",
+      body: { text: "Half a thought", keepEmpty: false, writer: "page-1" },
+    });
+    expect(saved.status).toBe(200);
+    const { revision } = await json<{ revision: number }>(saved);
+    expect(await json(await call("/api/unsent-texts"))).toEqual({
+      revision,
+      texts: { "new-chat": { text: "Half a thought", revision } },
+    });
+    while (!events.some((event) => event.kind === "unsent_text")) await Bun.sleep(10);
+    socket.close();
+    expect(events.find((event) => event.kind === "unsent_text")).toEqual({
+      kind: "unsent_text",
+      key: "new-chat",
+      text: "Half a thought",
+      revision,
+      writer: "page-1",
+    });
+    const bad = await call("/api/unsent-texts/new-chat", { method: "PUT", body: { text: 3, writer: "page-1" } });
+    expect(bad.status).toBe(400);
+    const badKey = await call("/api/unsent-texts/a%2Fb", {
+      method: "PUT",
+      body: { text: "Hi", keepEmpty: false, writer: "page-1" },
+    });
+    expect(badKey.status).toBe(400);
+  });
+
+  test("the delete of a chat removes its unsent text (issue 652)", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await call(`/api/unsent-texts/${session.id}`, {
+      method: "PUT",
+      body: { text: "Never sent", keepEmpty: false, writer: "page-1" },
+    });
+    eva.sessions.delete(session.id);
+    expect((await json<{ texts: Record<string, unknown> }>(await call("/api/unsent-texts"))).texts).toEqual({});
+  });
+
   test("archives and brings back a chat, and refuses a bad body or an unknown chat (issue 388)", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),

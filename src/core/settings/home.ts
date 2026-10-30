@@ -89,6 +89,8 @@ export interface HomePaths {
   readonly lock: string;
   readonly stateFolder: string;
   readonly sessions: string;
+  /** The unsent text of each chat. */
+  readonly unsentTexts: string;
   /** The whole input and output of the tool steps, one file per chat. */
   readonly stepDetails: string;
   readonly trust: string;
@@ -126,6 +128,7 @@ export function homePaths(root: string): HomePaths {
     lock: join(root, "eva.lock"),
     stateFolder,
     sessions: join(stateFolder, "sessions.json"),
+    unsentTexts: join(stateFolder, "unsent-texts.json"),
     stepDetails: join(stateFolder, "step-details"),
     trust: join(stateFolder, "trust.json"),
     cloneOrigins: join(stateFolder, "clone-origins.json"),

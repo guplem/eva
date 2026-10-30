@@ -1515,8 +1515,8 @@ test("Project mode: search, a new clone with each repository and its branch, and
   await expect(page.locator(".main-header .sub")).toHaveText(
     `Example app › ${cloneName} · example-app: main · remote: main`,
   );
-  // A received file lands in the vault, which a clone's agent does not reach (issue 409).
-  await expect(page.getByRole("button", { name: "Attach a file" })).toHaveCount(0);
+  // A received file goes into the clone as a copy, so a chat in a clone can attach one (#706).
+  await expect(page.getByRole("button", { name: "Attach a file" })).toBeVisible();
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
@@ -6033,8 +6033,8 @@ test("Files: the search finds a name, then the text inside a file, and a match o
   const field = page.getByRole("searchbox", { name: "Search the vault" });
   await field.fill("trips");
   const results = page.getByRole("list", { name: "Search results" });
-  await expect(results.getByRole("link")).toHaveCount(1);
-  await expect(results.getByRole("link")).toContainText("Journal");
+  // Other tests can leave a copy of the file in a clone (#706), so only the Journal match counts.
+  await expect(results.getByRole("link").filter({ hasText: "Journal" })).toHaveCount(1);
   await field.fill("Shopping");
   await expect(page.getByText("No file or folder has this name.")).toBeVisible();
   const inside = page.getByRole("button", { name: "Search inside files" });

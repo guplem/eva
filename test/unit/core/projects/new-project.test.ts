@@ -25,14 +25,17 @@ const input: NewProjectInput = {
   description: "A small app to try Eva.",
   status: "active",
   tags: ["work", "#demo"],
-  github: false,
+  repository: null,
   drive: false,
 };
+
+const standard = { type: "standard", visibility: "private" } as const;
 
 /** Steps that a test must not reach. */
 const noSteps: NewProjectSteps = {
   createRepository: () => Promise.reject(new Error("No repository in this test.")),
   createDriveFolder: () => Promise.reject(new Error("No Drive folder in this test.")),
+  setUpRepository: () => Promise.reject(new Error("No repository setup in this test.")),
 };
 
 function fileOf(projectId: string): string {
@@ -47,7 +50,7 @@ describe("createProject", () => {
       noSteps,
     );
 
-    expect(result).toEqual({ projectId: "2026-10-21-1542-example-app", github: null, drive: null });
+    expect(result).toEqual({ projectId: "2026-10-21-1542-example-app", github: null, drive: null, setup: null });
     expect(fileOf(result.projectId)).toBe(
       [
         "---",
@@ -83,14 +86,20 @@ describe("createProject", () => {
     expect(fileOf(result.projectId)).toBe("---\ncreated: 2026-10-21T15:42\nstatus: active\n---\n\n# Example App\n");
   });
 
-  test("creates the repository and the Drive folder, and the file names both", async () => {
+  test("creates the repository and the Drive folder, the file names both, then the repository gets its setup", async () => {
     const asked: string[] = [];
     const result = await createProject(
-      { ...input, github: true, drive: true },
+      { ...input, repository: { type: "vibe-coded", visibility: "public" }, drive: true },
       { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
       {
-        createRepository: (name, description) => {
-          asked.push(`repository ${name}: ${description}`);
+        setUpRepository: (projectId, url, type) => {
+          // The setup reads the project file, so the file names the repository and its type first.
+          expect(fileOf(projectId)).toContain(`repo_types:\n  ${url}: ${type}\n`);
+          asked.push(`setup ${url} as ${type}`);
+          return Promise.resolve({ sessionId: "chat-1", problems: [] });
+        },
+        createRepository: (name, description, visibility) => {
+          asked.push(`repository ${name} (${visibility}): ${description}`);
           return Promise.resolve("https://github.com/example/example-app");
         },
         createDriveFolder: (name) => {
@@ -100,11 +109,16 @@ describe("createProject", () => {
       },
     );
 
-    expect(asked.toSorted()).toEqual(["folder Example App", "repository example-app: A small app to try Eva."]);
+    expect(asked.toSorted()).toEqual([
+      "folder Example App",
+      "repository example-app (public): A small app to try Eva.",
+      "setup https://github.com/example/example-app as vibe-coded",
+    ]);
     expect(result).toEqual({
       projectId: "2026-10-21-1542-example-app",
       github: { url: "https://github.com/example/example-app" },
       drive: { url: "https://drive.google.com/drive/folders/folder-1" },
+      setup: { sessionId: "chat-1", problems: [] },
     });
     const text = fileOf(result.projectId);
     expect(text).toContain("repos:\n  - https://github.com/example/example-app\n");
@@ -130,10 +144,11 @@ describe("createProject", () => {
   test("a long name gives a repository name that GitHub takes", async () => {
     const names: string[] = [];
     await createProject(
-      { ...input, name: "A very long project name ".repeat(8), github: true },
+      { ...input, name: "A very long project name ".repeat(8), repository: standard },
       { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
       {
         ...noSteps,
+        setUpRepository: () => Promise.resolve({ sessionId: null, problems: [] }),
         createRepository: (name) => {
           names.push(name);
           return Promise.resolve("https://github.com/example/x");
@@ -148,11 +163,12 @@ describe("createProject", () => {
 
   test("a failed step keeps the project and says why", async () => {
     const result = await createProject(
-      { ...input, github: true, drive: true },
+      { ...input, repository: standard, drive: true },
       { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
       {
         createRepository: () => Promise.reject(new EvaError("github_failed", "name already exists on this account")),
         createDriveFolder: () => Promise.reject(new EvaError("google_failed", "Turn on Google Drive first.")),
+        setUpRepository: () => Promise.reject(new Error("No setup without a repository.")),
       },
     );
 
@@ -160,8 +176,25 @@ describe("createProject", () => {
       projectId: "2026-10-21-1542-example-app",
       github: { problem: "name already exists on this account" },
       drive: { problem: "Turn on Google Drive first." },
+      setup: null,
     });
     expect(fileOf(result.projectId)).not.toContain("repos:");
+  });
+
+  test("a failed setup keeps the project and the repository, and says why", async () => {
+    const result = await createProject(
+      { ...input, repository: standard },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      {
+        ...noSteps,
+        createRepository: () => Promise.resolve("https://github.com/example/example-app"),
+        setUpRepository: () => Promise.reject(new EvaError("github_failed", "GitHub did not answer in time.")),
+      },
+    );
+
+    expect(result.github).toEqual({ url: "https://github.com/example/example-app" });
+    expect(result.setup).toEqual({ sessionId: null, problems: ["GitHub did not answer in time."] });
+    expect(fileOf(result.projectId)).toContain("repo_types:");
   });
 
   test("an id that exists fails, and the old project stays as it was", async () => {
@@ -184,7 +217,7 @@ describe("createProject", () => {
       { ...input, tags: ["two words"] },
     ]) {
       const error = await createProject(
-        { ...bad, github: true },
+        { ...bad, repository: standard },
         { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
         noSteps,
       ).catch((caught: unknown) => caught);

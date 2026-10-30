@@ -11,7 +11,6 @@ import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { cheapestModel, type ModelCalls } from "../model-calls/model-calls.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
-import { evaRepository } from "../../shared/version.ts";
 import type { ChatSummarizer } from "../sessions/chat-summary.ts";
 import type { HistoryPoint, RetryFiles, SessionManager } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
@@ -44,6 +43,7 @@ import {
   readyToPush,
   switchToBranch,
 } from "./clone-sync.ts";
+import type { NewProjectSetup } from "./new-project.ts";
 import type { Project } from "./project-catalog.ts";
 import {
   applyProjectDetails,
@@ -51,11 +51,20 @@ import {
   fileVersion,
   matchFileStyle,
   projectFileOf,
+  setRepositoryType,
   type ProjectDetails,
   type ProjectFile,
 } from "./project-file.ts";
 import { ghApiRequest, readRepositoryFacts, type GithubRequest } from "./repository-facts.ts";
-import { evaluateSetup, unreadableReport, type RepositoryFacts, type SetupReport } from "./repository-setup.ts";
+import { ghApiWrite, runDirectFixes, type GithubWrite } from "./repository-fixes.ts";
+import {
+  chatRequest,
+  missesFacts,
+  unreadableReport,
+  type RepositoryFacts,
+  type SetupReport,
+} from "./repository-setup.ts";
+import { repositoryTypeOf, type RepositoryTypeName } from "./repository-types.ts";
 
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
@@ -110,9 +119,21 @@ export interface ProjectWorkOptions {
   readonly inBackground: (what: string, task: () => Promise<unknown>) => void;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
+  /** One call of the GitHub API that changes a repository, for its direct fixes. Default: `gh api`. */
+  readonly githubWrite?: GithubWrite;
   /** Writes a commit message when the person leaves the note empty. Without it, a plain message. */
   readonly modelCalls?: Pick<ModelCalls, "ask">;
   readonly logger?: Logger;
+}
+
+/** What a run of direct fixes did. */
+export interface RepositoryFixResult {
+  /** The labels of the items that Eva fixed. */
+  readonly fixed: readonly string[];
+  /** One sentence for each direct fix that failed. */
+  readonly problems: readonly string[];
+  /** The request for a chat: the items that need one, and the failed direct fixes. Null: none. */
+  readonly chatRequest: string | null;
 }
 
 /** The clones after a fetch or a pull, and a reason for each clone that failed. */
@@ -127,6 +148,10 @@ const commitMessagePrompt = [
   "Add a short body after a blank line only when the subject cannot say why.",
   "Follow the style and the language of the recent commits of the repository.",
 ].join("\n");
+
+/** The end of the request of a new repository's setup chat: the standard has agents merge their own work. */
+const setupChatEnd =
+  "Turn on auto-merge for the pull request, so that it merges itself once its checks pass. Fix each check that fails.";
 
 /** The number of characters of a project answer that the report to the Assistant chat keeps. */
 const reportTextLimit = 3_000;
@@ -425,42 +450,154 @@ export class ProjectWork {
   }
 
   /**
-   * The setup report of each repository of a project, judged against Eva's own repository.
-   * A repository that Eva cannot read gets a report with only the reason.
+   * The setup report of each repository of a project, by the repository's type. A repository
+   * with no known type gets no report, and one that Eva cannot read gets only the reason.
    */
   async repositorySetup(projectId: string): Promise<SetupReport[]> {
     const project = this.project(projectId);
-    if (project.frontMatter.repos.length === 0) return [];
-    const request = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.options.gitEnvironment);
-    const read = async (slug: string): Promise<RepositoryFacts | string> => {
-      try {
-        return await readRepositoryFacts(slug, request);
-      } catch (error) {
-        if (isEvaError(error, "github_failed")) return error.message;
-        throw error;
-      }
+    return this.reports(project, project.frontMatter.repos);
+  }
+
+  /** The reports of these repositories of the project. */
+  private async reports(project: Project, urls: readonly string[]): Promise<SetupReport[]> {
+    if (urls.length === 0) return [];
+    // Each reference is read once, and only when a repository of its type needs it.
+    const references = new Map<string, Promise<RepositoryFacts | string>>();
+    const readReference = (slug: string): Promise<RepositoryFacts | string> => {
+      const known = references.get(slug);
+      if (known !== undefined) return known;
+      const reading = this.readFacts(slug).then((facts) =>
+        // A gap in the reference would turn into false greens, such as "has every standard label".
+        typeof facts !== "string" && (facts.files === null || facts.labels === null || !Array.isArray(facts.allowRules))
+          ? `Eva could not read all of her reference repository, ${slug}. Try again later.`
+          : facts,
+      );
+      references.set(slug, reading);
+      return reading;
     };
-    let reference = await read(evaRepository);
-    // A gap in the reference would turn into false greens, such as "has every standard label".
-    if (
-      typeof reference !== "string" &&
-      (reference.files === null || reference.labels === null || !Array.isArray(reference.allowRules))
-    ) {
-      reference = `Eva could not read all of her reference repository, ${evaRepository}. Try again later.`;
-    }
-    const readReference = reference;
     return Promise.all(
-      project.frontMatter.repos.map(async (url) => {
+      urls.map(async (url) => {
         const slug = githubSlug(url);
-        if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.");
-        if (typeof readReference === "string") return unreadableReport(url, slug, readReference);
-        const target = await read(slug);
-        if (typeof target === "string") return unreadableReport(url, slug, target);
+        if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.", null);
+        const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
+        if (type === null) return unreadableReport(url, slug, null, null);
+        const [target, reference] = await Promise.all([
+          this.readFacts(slug),
+          type.reference === null ? null : readReference(type.reference),
+        ]);
+        if (typeof reference === "string") return unreadableReport(url, slug, reference, type.name);
+        if (typeof target === "string") return unreadableReport(url, slug, target, type.name);
         if (target.isArchived)
-          return unreadableReport(url, slug, "This repository is archived, so it takes no changes.");
-        return evaluateSetup(readReference, target);
+          return unreadableReport(url, slug, "This repository is archived, so it takes no changes.", type.name);
+        // The address of the project file, so a Fix or a type change finds the repository again.
+        return { ...type.report(target, reference), repositoryUrl: url };
       }),
     );
+  }
+
+  /** The facts of a repository, or the reason that Eva cannot read them. */
+  private async readFacts(slug: string): Promise<RepositoryFacts | string> {
+    const request = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.options.gitEnvironment);
+    try {
+      return await readRepositoryFacts(slug, request);
+    } catch (error) {
+      if (isEvaError(error, "github_failed")) return error.message;
+      throw error;
+    }
+  }
+
+  /**
+   * Runs the direct fixes of the named items of a repository's report, or of every red and yellow
+   * item when `items` is null. The result has the request for a chat: the items that need one, and
+   * the direct fixes that failed, so a coding agent can try them.
+   */
+  async fixRepository(
+    projectId: string,
+    repository: string,
+    items: readonly string[] | null,
+  ): Promise<RepositoryFixResult> {
+    return (await this.runFixes(this.project(projectId), repository, items)).result;
+  }
+
+  private async runFixes(
+    project: Project,
+    repository: string,
+    items: readonly string[] | null,
+  ): Promise<{ result: RepositoryFixResult; needsChanges: boolean; report: SetupReport }> {
+    if (!project.frontMatter.repos.includes(repository))
+      throw new EvaError("project_invalid", `The project does not list the repository ${repository}.`);
+    const [report] = await this.reports(project, [repository]);
+    if (report === undefined) throw new EvaError("project_invalid", "Eva could not read the repository's report.");
+    if (report.problem !== null) throw new EvaError("github_failed", report.problem);
+    const slug = report.slug;
+    if (slug === null || report.type === null)
+      throw new EvaError("project_invalid", "Pick the type of this repository first.");
+    const all = report.sections.flatMap((section) => section.items);
+    const chosen =
+      items === null
+        ? all.filter((item) => item.light === "red" || item.light === "yellow")
+        : all.filter((item) => items.includes(item.label));
+    const direct = chosen.flatMap((item) =>
+      item.directFix === undefined || item.light === "grey" ? [] : [{ label: item.label, directFix: item.directFix }],
+    );
+    const outcome = await runDirectFixes(slug, direct, this.githubWrite());
+    const failed = new Set(outcome.failed.map((entry) => entry.label));
+    const forChat = chosen.filter((item) => item.directFix === undefined || failed.has(item.label));
+    const problems = outcome.failed.map((entry) => `${entry.label}: ${entry.reason}`);
+    const request = chatRequest(slug, forChat);
+    // The chat opens instead of the report, so it says why each direct fix failed.
+    const refused =
+      problems.length === 0
+        ? ""
+        : `\n\nEva tried these commands herself, and GitHub refused them:\n\n${problems.map((problem) => `- ${problem}`).join("\n")}`;
+    return {
+      result: { fixed: outcome.fixed, problems, chatRequest: request === null ? null : request + refused },
+      needsChanges: forChat.some((item) => item.directFix === undefined && item.light !== "grey"),
+      report,
+    };
+  }
+
+  /**
+   * The setup of a new repository, by its type: the type's own first step, then every direct
+   * fix of its report, then one Project chat for the rest. A chat that changes files merges its
+   * own pull request, as the vibe-coded standard says.
+   */
+  async setUpRepository(projectId: string, url: string): Promise<NewProjectSetup> {
+    const project = this.project(projectId);
+    const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
+    const slug = githubSlug(url);
+    if (type?.afterCreate !== undefined && slug !== null) await type.afterCreate(slug, this.githubWrite());
+    const { result, needsChanges, report } = await this.runFixes(project, url, null);
+    // GitHub can serve a new repository's files or labels a moment late. Their items are grey then, so
+    // neither a fix nor the chat would cover them.
+    const unread = missesFacts(report);
+    const problems = unread
+      ? [
+          ...result.problems,
+          "GitHub did not show all of the new repository yet. Open Repository setup later, and press Fix all.",
+        ]
+      : result.problems;
+    if (result.chatRequest === null) return { sessionId: null, problems };
+    const session = await this.start({
+      projectId,
+      request: needsChanges ? `${result.chatRequest}\n\n${setupChatEnd}` : result.chatRequest,
+      reportToSessionId: null,
+    });
+    return { sessionId: session.id, problems };
+  }
+
+  private githubWrite(): GithubWrite {
+    return this.options.githubWrite ?? ghApiWrite(this.options.runner, this.options.gitEnvironment);
+  }
+
+  /** Sets the type of one repository of a project, in its `AGENTS.md`. */
+  setRepositoryType(projectId: string, repository: string, type: RepositoryTypeName): ProjectFile {
+    const path = this.projectFilePath(projectId);
+    const before = projectText(path, projectId);
+    const text = setRepositoryType(before, repository, type);
+    checkProjectFile(text);
+    if (text !== before) writeFileAtomic(path, text);
+    return projectFileOf(text);
   }
 
   /** The clones of a project, with the branch, pull request, changes and sync of each repository. */

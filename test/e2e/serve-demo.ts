@@ -15,7 +15,7 @@ import { evaRepository } from "../../src/shared/version.ts";
 import type { PermissionContext } from "../../src/shared/permissions.ts";
 import { describeClaudePermissions } from "../../src/engines/claude-code/claude-code-permissions.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
-import { fakeGithub } from "../support/fake-github.ts";
+import { fakeGithub, fakeGithubWrite } from "../support/fake-github.ts";
 import { fakeGh } from "../support/fake-gh.ts";
 import { fakeGoogle } from "../support/fake-google.ts";
 import { googleScopes } from "../../src/core/google/google-scopes.ts";
@@ -316,6 +316,7 @@ const eva = new Eva({
       labels: ["bug"],
     },
   }),
+  githubWrite: fakeGithubWrite(),
 });
 // No front end confirms a card here, so each new schedule's card waits for the web UI. A short
 // check keeps the browser tests fast; Eva itself checks every 30 seconds.

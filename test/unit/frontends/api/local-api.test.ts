@@ -1264,6 +1264,20 @@ describe("web routes", () => {
     expect((await call("/api/projects/missing/setup")).status).toBe(404);
   });
 
+  test("the type of a project repository: a bad type, or a repository that the project does not list, is a 400", async () => {
+    const address = "/api/projects/2025-03-02-1015-example-app/setup/type";
+    const repository = "https://github.com/example-owner/example-app";
+    expect((await call(address, { method: "PUT", body: { repository, type: "other" } })).status).toBe(400);
+    expect((await call(address, { method: "PUT", body: { repository, type: "standard" } })).status).toBe(400);
+    expect(
+      (await call("/api/projects/missing/setup/type", { method: "PUT", body: { repository, type: "standard" } }))
+        .status,
+    ).toBe(404);
+    const fix = "/api/projects/2025-03-02-1015-example-app/setup/fix";
+    expect((await call(fix, { method: "POST", body: { repository } })).status).toBe(400);
+    expect((await call(fix, { method: "POST", body: { repository, items: null } })).status).toBe(400);
+  });
+
   test("a project's clones, and a new clone", async () => {
     expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
     const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });
@@ -1404,6 +1418,18 @@ describe("web routes", () => {
     const again = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });
     expect(again.status).toBe(400);
     expect((await call("/api/projects", { method: "POST", body: { ...form, status: "dreaming" } })).status).toBe(400);
+  });
+
+  test("a new project reads the old github: true as a repository, and refuses an unknown type", async () => {
+    const form = { description: "", status: "idea", tags: [], drive: false };
+    const old = await call("/api/projects", { method: "POST", body: { ...form, name: "Old page app", github: true } });
+    // This Eva has no GitHub login, so the repository step says so: the page asked for one.
+    expect(await json<{ github: unknown; setup: unknown }>(old)).toMatchObject({
+      github: { problem: expect.stringContaining("Log in to GitHub") as string },
+      setup: null,
+    });
+    const unknown = { ...form, name: "Typed app", repository: { type: "widget-like", visibility: "public" } };
+    expect((await call("/api/projects", { method: "POST", body: unknown })).status).toBe(400);
   });
 
   test("a project save: a stale version is a 409, a bad file or value a 400, an unknown project a 404", async () => {

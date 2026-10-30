@@ -97,6 +97,7 @@ import {
   type NewChatInput,
   type NewProjectChatInput,
   type ProjectWorkInput,
+  type RepositoryFixResult,
   type RetryChoice,
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
@@ -122,7 +123,9 @@ import { createProject, type NewProjectInput, type NewProjectResult } from "./pr
 import { wallClockOf } from "./schedules/schedule-timing.ts";
 import { createDriveFolder } from "./google/google-drive.ts";
 import type { GithubRequest } from "./projects/repository-facts.ts";
+import type { GithubWrite } from "./projects/repository-fixes.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
+import type { RepositoryTypeName } from "./projects/repository-types.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
@@ -240,6 +243,8 @@ export interface EvaOptions {
   readonly remoteAccess?: RemoteAccessControl | null;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
+  /** One call of the GitHub API that changes a repository, for its direct fixes. Default: `gh api`. */
+  readonly githubWrite?: GithubWrite;
   /** Google's address for the Google login and check; a test points it at a fake server. */
   readonly googleBaseUrl?: string;
   /** The GitHub API, which the vault step uses to list and create repositories; a test points it at a fake server. */
@@ -709,6 +714,7 @@ export class Eva {
       },
       modelCalls: this.modelCalls,
       ...(options.githubRequest === undefined ? {} : { githubRequest: options.githubRequest }),
+      ...(options.githubWrite === undefined ? {} : { githubWrite: options.githubWrite }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
 
@@ -1618,6 +1624,16 @@ export class Eva {
     return this.projectWork.repositorySetup(projectId);
   }
 
+  /** Runs the direct fixes of a repository's report, and gives the request that a chat must do. */
+  fixRepository(projectId: string, repository: string, items: readonly string[] | null): Promise<RepositoryFixResult> {
+    return this.projectWork.fixRepository(projectId, repository, items);
+  }
+
+  /** Sets the type of one repository of a project, so its setup report shows. */
+  setRepositoryType(projectId: string, repository: string, type: RepositoryTypeName): ProjectFile {
+    return this.projectWork.setRepositoryType(projectId, repository, type);
+  }
+
   /** The clones of a project, with their branch and pull request. */
   clones(projectId: string): Promise<CloneDetails[]> {
     return this.projectWork.clones(projectId);
@@ -1729,8 +1745,8 @@ export class Eva {
   }
 
   /**
-   * Creates a project from the form, with a GitHub repository and a Drive folder when asked.
-   * The idle sweep commits the new files.
+   * Creates a project from the form, with a GitHub repository of a type and a Drive folder when
+   * asked. The repository then gets the setup of its type. The idle sweep commits the new files.
    */
   createProject(input: NewProjectInput): Promise<NewProjectResult> {
     const vaultPath = this.options.config.vaultPath;
@@ -1742,7 +1758,7 @@ export class Eva {
       input,
       { projectsFolder: join(vaultPath, "Projects"), wallClock: wallClockOf(this.options.now(), timeZone) },
       {
-        createRepository: async (name, description) => {
+        createRepository: async (name, description, visibility) => {
           const token = this.settings.secrets.githubToken;
           if (token === undefined)
             throw new EvaError("github_failed", "Log in to GitHub in Settings > Connections > GitHub first.");
@@ -1751,6 +1767,7 @@ export class Eva {
             name,
             ...(description === "" ? {} : { description }),
             initialize: true,
+            visibility,
             ...(this.options.githubApiBaseUrl === undefined ? {} : { baseUrl: this.options.githubApiBaseUrl }),
           });
           return repository.cloneUrl.replace(/\.git$/, "");
@@ -1765,6 +1782,7 @@ export class Eva {
             },
             name,
           ),
+        setUpRepository: (projectId, url) => this.projectWork.setUpRepository(projectId, url),
       },
     );
   }

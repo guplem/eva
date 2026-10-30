@@ -6,6 +6,7 @@ function report(lights: readonly ("green" | "yellow" | "red" | "grey")[]): Setup
   return {
     repositoryUrl: "https://github.com/example-owner/example-app",
     slug: "example-owner/example-app",
+    type: "vibe-coded",
     sections: [
       {
         title: "Development",

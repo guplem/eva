@@ -37,6 +37,7 @@ describe("parseFrontMatter", () => {
       repos: ["https://github.com/owner/app"],
       tags: ["work", "tool"],
       legacyId: "P93",
+      repoTypes: {},
       extra: { custom: "kept" },
     });
     expect(result.warnings).toEqual([]);
@@ -58,6 +59,18 @@ describe("parseFrontMatter", () => {
   test("reports a file with no front matter, or broken YAML", () => {
     expect(parseFrontMatter("# Just text\n")).toEqual({ frontMatter: null, warnings: ["no front matter"] });
     expect(parseFrontMatter("---\ncreated: [unclosed\n---\n").warnings[0]).toContain("invalid YAML");
+  });
+
+  test("reads the type of each repository, and warns about a type list that is not a map", () => {
+    const typed = parseFrontMatter(
+      "---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - https://github.com/owner/app\nrepo_types:\n  https://github.com/owner/app: vibe-coded\n---\n",
+    );
+    expect(typed.frontMatter?.repoTypes).toEqual({ "https://github.com/owner/app": "vibe-coded" });
+    expect(typed.frontMatter?.extra).toEqual({});
+    expect(typed.warnings).toEqual([]);
+    const broken = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: active\nrepo_types: [a, b]\n---\n");
+    expect(broken.frontMatter?.repoTypes).toEqual({});
+    expect(broken.warnings).toEqual(["repo_types must map each repository to its type"]);
   });
 
   test("reads a YAML date value as text", () => {

@@ -6,14 +6,26 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
-import { Composer, type ChatChoices } from "./Composer.tsx";
+import { Composer, unsentTexts, type ChatChoices } from "./Composer.tsx";
 import type { SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
+import { goTo } from "./back-layers.ts";
+import { withProjectMention } from "./mentions.ts";
+import { assistantChatAddressOf, newChatPageId } from "./navigation.ts";
 
 /** The key of the unsent text of this page, which has no chat yet. A chat id never takes it. */
 const newChatTextKey = "new-chat";
+
+/**
+ * Opens the New chat page of Chats with a mention of the project at the start of its text (issue 657).
+ * The page keeps the text that the person typed before, so nothing is lost.
+ */
+export function startChatAbout(projectId: string): void {
+  unsentTexts.set(newChatTextKey, withProjectMention(unsentTexts.get(newChatTextKey), projectId));
+  goTo(assistantChatAddressOf(newChatPageId));
+}
 
 /** How long the page waits to read the settings again after a failed read. */
 const settingsRetryMs = 5_000;

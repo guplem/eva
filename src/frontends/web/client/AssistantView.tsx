@@ -22,6 +22,8 @@ import { BackButton } from "./MainNav.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
+import { ProjectsInUse } from "./MentionPicker.tsx";
+import { projectsInUse } from "./mentions.ts";
 import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf, newChatPageId } from "./navigation.ts";
 import { goTo, replaceAddress } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -109,6 +111,8 @@ export function AssistantView({
   // The list knows the turns that ran before this page loaded. The events know the newer ones.
   const isRunning = (sessionId: string): boolean =>
     sessionId in live.steps || sessions.some((session) => session.id === sessionId && session.running);
+  // The @ search shows first the projects with a Project chat that runs now (issue 657).
+  const inUse = projectsInUse(sessions, (sessionId) => sessionId in live.steps);
   // Any root chat, and the chats list first, so a switch between the lists keeps the open chat.
   // True while the page shows a new chat before its first message. The chat exists only once it is sent.
   const drafting = selectedId === newChatPageId;
@@ -307,48 +311,50 @@ export function AssistantView({
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
-        {notices}
-        {selected === undefined ? (
-          <NewChatDraft
-            blocker={blocker}
-            voiceNotes={voiceNotes}
-            onShowList={onShowList}
-            listHasUnread={listHasUnread}
-            onSending={setFirstMessage}
-            onStarted={openNewChat}
-          />
-        ) : (
-          <>
-            <ChatHeader
-              key={actionRequest.headerProps(selected.id).key}
-              startWith={actionRequest.headerProps(selected.id).startWith}
-              chat={selected}
-              details={chat}
-              subtitle={chatSubtitle(
-                selected,
-                tree.some((session) => isRunning(session.id)),
-              )}
-              onShowList={onShowList}
-              listHasUnread={listHasUnread}
-              onArchived={afterArchive}
-              panelShown={panelShown}
-              extra={<BranchesButton tree={tree} shown={branch} states={states} />}
-              onTogglePanel={togglePanel}
-              onChanged={onChanged}
-            />
-            <Conversation
-              root={selected}
-              shown={branch}
-              sessions={sessions}
-              live={live}
-              onChanged={onChanged}
-              approvals={approvals}
+        <ProjectsInUse.Provider value={inUse}>
+          {notices}
+          {selected === undefined ? (
+            <NewChatDraft
               blocker={blocker}
               voiceNotes={voiceNotes}
-              firstMessage={firstMessage}
+              onShowList={onShowList}
+              listHasUnread={listHasUnread}
+              onSending={setFirstMessage}
+              onStarted={openNewChat}
             />
-          </>
-        )}
+          ) : (
+            <>
+              <ChatHeader
+                key={actionRequest.headerProps(selected.id).key}
+                startWith={actionRequest.headerProps(selected.id).startWith}
+                chat={selected}
+                details={chat}
+                subtitle={chatSubtitle(
+                  selected,
+                  tree.some((session) => isRunning(session.id)),
+                )}
+                onShowList={onShowList}
+                listHasUnread={listHasUnread}
+                onArchived={afterArchive}
+                panelShown={panelShown}
+                extra={<BranchesButton tree={tree} shown={branch} states={states} />}
+                onTogglePanel={togglePanel}
+                onChanged={onChanged}
+              />
+              <Conversation
+                root={selected}
+                shown={branch}
+                sessions={sessions}
+                live={live}
+                onChanged={onChanged}
+                approvals={approvals}
+                blocker={blocker}
+                voiceNotes={voiceNotes}
+                firstMessage={firstMessage}
+              />
+            </>
+          )}
+        </ProjectsInUse.Provider>
       </main>
       {/* The inspector is about one chat, so a new chat draft has none. */}
       {selected !== undefined && <ChatPanel shown={panelShown} {...chat} />}

@@ -219,6 +219,22 @@ const drawings = {
   ),
   /** A favorite. The page fills it when the path is one. */
   star: <path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.15 1 5.85L12 16.9l-5.25 2.8 1-5.85L3.5 9.7l5.9-.9z" />,
+  /** A slash in a key: the menu of text actions and saved prompts in the message box. */
+  command: (
+    <>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+      <path d="M14 8l-4 8" />
+    </>
+  ),
+  /** A magic wand: a text action changes the typed text. */
+  wand: <path d="M4 20L15 9M13 7l4 4M18.5 2.5v3M17 4h3M20.5 12v2.5M19.25 13.25h2.5M7.5 3.5v2.5M6.25 4.75h2.5" />,
+  /** A clipboard with lines: a saved prompt, a text kept to use again. */
+  clipboard: (
+    <>
+      <rect x="5" y="4.5" width="14" height="16" rx="2.5" />
+      <path d="M9 4.5v-1h6v1M9 10.5h6M9 14.5h4" />
+    </>
+  ),
   /** A box with a lid: a chat that leaves the list but stays. */
   archive: (
     <>

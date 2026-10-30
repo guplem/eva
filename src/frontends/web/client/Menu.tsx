@@ -25,10 +25,13 @@ import { useBackLayer } from "./back-layer-hook.ts";
 
 export interface MenuItem {
   readonly label: string;
-  readonly icon: IconName;
+  /** A menu of names only, such as the message box menu, leaves it out: its headings carry the icons. */
+  readonly icon?: IconName;
   readonly danger?: boolean;
   /** A heading above the item. Each run of items with one group gets one heading. */
   readonly group?: string;
+  /** The icon of the heading. The first item of each group gives it. */
+  readonly groupIcon?: IconName;
   /** A turned-off item stays in the list, so the person sees that it exists. */
   readonly disabled?: boolean;
   readonly onChoose: () => void;
@@ -104,7 +107,7 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
         item.onChoose();
       }}
     >
-      <Icon name={item.icon} /> {item.label}
+      {item.icon !== undefined && <Icon name={item.icon} />} {item.label}
     </button>
   );
   return (
@@ -115,6 +118,7 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
         ) : (
           <div key={`group-${String(index)}`} role="group" aria-labelledby={`${groupId}-${String(index)}`}>
             <span className="menu-group" id={`${groupId}-${String(index)}`}>
+              {group.items[0]?.groupIcon !== undefined && <Icon name={group.items[0].groupIcon} />}
               {group.name}
             </span>
             {group.items.map(button)}

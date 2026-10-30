@@ -266,7 +266,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Eva's built-in rules come first and say how Eva works, such as how she gives work to a project. The page shows them, but only an update of Eva changes them. Where the two disagree, your rules win.
   - **Restore the default** replaces your rules with Eva's default rules. It first offers to save your old rules in a backup file in `.eva/`.
 - **Chat names.** A chat takes the first line of its first message as its name. To name chats your way, write rules in **Settings > Personalize > Chat names**, or ask Eva to, such as "Lead every name with an emoji". After the first answer, a small AI call with your engine login names the chat by your rules. Your own rename always wins.
-- **Text actions and saved prompts.** Tap the star in the message box of a web chat to open its menu.
+- **Text actions and saved prompts.** Tap the command button (a slash in a square) in the message box of a web chat to open its menu.
   - A text action, such as **Polish**, asks a model to rewrite the text in the box. It sends nothing. The model sees only that text. **Undo** brings back your text.
   - A saved prompt, such as **Summary**, puts its text at the cursor.
   - Change them in **Settings > Personalize > Message box menu**, or ask Eva to. Each one is a Markdown file in the vault, in `.eva/settings/text-actions/` or `.eva/settings/saved-prompts/`. The file name is the name in the menu.

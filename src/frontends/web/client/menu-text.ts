@@ -29,15 +29,15 @@ export function composerMenuItems(items: ComposerMenuItems, choices: ComposerMen
   return [
     ...items.textActions.map((action) => ({
       group: "Text actions",
+      groupIcon: "wand" as const,
       label: action.name,
-      icon: "pen" as const,
       disabled: !choices.canRewrite,
       onChoose: () => choices.onAction(action.name),
     })),
     ...items.savedPrompts.map((prompt) => ({
       group: "Saved prompts",
+      groupIcon: "clipboard" as const,
       label: prompt.name,
-      icon: "chat" as const,
       onChoose: () => choices.onPrompt(prompt.text),
     })),
   ];

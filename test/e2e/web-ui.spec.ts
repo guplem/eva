@@ -2745,6 +2745,33 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
 
+test("Settings: the guide shows the docs, and the search opens a doc at its heading (issue 708)", async ({ page }) => {
+  // The test reads the real docs: it needs the headings "Chats" and "Vault conflicts" in reference.md,
+  // "More than one Eva on a computer" in setup.md, and the link to it in reference.md.
+  await logIn(page);
+  await openSettings(page, "Guide");
+  await page.getByRole("list", { name: "Parts of Eva reference" }).getByRole("link", { name: "Chats" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Eva reference");
+  await expect(page.getByRole("heading", { name: "Chats", level: 2 })).toBeInViewport();
+  // A link between the docs stays in the app.
+  await page.getByRole("link", { name: "More than one Eva on a computer" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install Eva, step by step");
+  await expect(page.getByRole("heading", { name: "More than one Eva on a computer" })).toBeInViewport();
+  await page.getByLabel("Search settings").fill("vault conflicts");
+  const results = page.getByRole("list", { name: "Guide results" });
+  await results.getByRole("button", { name: /^Vault conflicts/ }).click();
+  await expect(page).toHaveURL(/#\/settings\/guide\/reference\/vault-conflicts$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Eva reference");
+  await expect(page.getByRole("heading", { name: "Vault conflicts", level: 3 })).toBeInViewport();
+  await expect(page.getByRole("heading", { name: "Vault conflicts", level: 3 })).toBeFocused();
+  // A link to the heading that the address already names still scrolls to it.
+  await page.locator(".settings-content").evaluate((box) => box.scrollTo({ top: 0 }));
+  await page.locator(".guide-body").getByRole("link", { name: "Vault conflicts" }).click();
+  await expect(page.getByRole("heading", { name: "Vault conflicts", level: 3 })).toBeInViewport();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install Eva, step by step");
+});
+
 test("Settings: Development links to a GitHub report and opens the design reference", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Development");

@@ -106,6 +106,7 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
     ["#/projects", [page.locator("button.project-card").first()]],
     ["#/schedules", [page.locator(".schedule-panel").first()]],
     ["#/settings", [page.locator(".section-card").first()]],
+    ["#/settings/guide/reference", [page.locator(".guide-body")]],
   ];
   for (const [address, cards] of pages) {
     await page.goto(`/${address}`);

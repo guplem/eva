@@ -73,6 +73,11 @@ export function escapeHtml(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+/** The text of `escapeHtml` back, which is all the escaping that text outside an attribute gets. */
+export function unescapeHtml(text: string): string {
+  return text.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+}
+
 function escapeAttribute(text: string): string {
   return escapeHtml(text).replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
 }

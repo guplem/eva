@@ -183,14 +183,29 @@ describe("readRepositoryFacts", () => {
     expect(facts.workflows?.[0]?.runsOnPullRequest).toBe(false);
   });
 
-  test("a job's check name is its plain name, or its key when the name holds an expression", async () => {
+  test("a job's check name is its plain name or its key; a name with an expression gives none", async () => {
     const answers = fullAnswers();
     answers.set(`raw:repos/${slug}/contents/.github/workflows/checks.yml?ref=main`, {
       status: 200,
       body: "on: pull_request\njobs:\n  lint:\n    name: Lint the code\n    steps: []\n  test:\n    name: test ${{ matrix.os }}\n    steps: []\n",
     });
     const facts = await readRepositoryFacts(slug, fakeGet(answers));
-    expect(facts.workflows?.[0]?.jobs).toEqual(["Lint the code", "test"]);
+    expect(facts.workflows?.[0]?.jobs).toEqual(["Lint the code"]);
+  });
+
+  test("a matrix job, a call of a workflow and a path filter give no sure check name", async () => {
+    const answers = fullAnswers();
+    const file = `raw:repos/${slug}/contents/.github/workflows/checks.yml?ref=main`;
+    answers.set(file, {
+      status: 200,
+      body: "on: pull_request\njobs:\n  lint:\n    steps: []\n  test:\n    strategy:\n      matrix:\n        node: [20, 22]\n    steps: []\n  inner:\n    uses: ./.github/workflows/inner.yml\n",
+    });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).workflows?.[0]?.jobs).toEqual(["lint"]);
+    answers.set(file, {
+      status: 200,
+      body: "on:\n  pull_request:\n    paths: [src/**]\njobs:\n  lint:\n    steps: []\n",
+    });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).workflows?.[0]?.jobs).toEqual([]);
   });
 
   test("the list form and the string form of `on` both count", async () => {

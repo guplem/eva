@@ -249,12 +249,22 @@ function runsOnPullRequest(fields: Record<string, unknown> | null): boolean {
   return asRecord(trigger)?.["pull_request"] !== undefined;
 }
 
-/** The name that GitHub gives the check of each job: its `name` when it is plain text, else its key. */
+/**
+ * The check name that each job reports on every pull request: its `name` when it is plain text,
+ * else its key. A required check that never reports blocks each pull request, so a job with no
+ * sure name gives none: a matrix job reports `test (22)`, a call of a workflow reports
+ * `test / inner`, and a workflow with a path filter skips some pull requests.
+ */
 function jobNames(workflow: Record<string, unknown> | null): string[] {
-  return Object.entries(asRecord(workflow?.["jobs"]) ?? {}).map(([key, job]) => {
+  const trigger = asRecord(workflow?.["on"] ?? workflow?.["true"]);
+  const pullRequest = asRecord(trigger?.["pull_request"]);
+  if (pullRequest?.["paths"] !== undefined || pullRequest?.["paths-ignore"] !== undefined) return [];
+  return Object.entries(asRecord(workflow?.["jobs"]) ?? {}).flatMap(([key, job]) => {
+    const fields = asRecord(job);
+    if (fields?.["uses"] !== undefined || asRecord(fields?.["strategy"])?.["matrix"] !== undefined) return [];
     const name = textField(job, "name");
-    // A name with an expression, such as a matrix value, gives other check names.
-    return name !== null && !name.includes("${{") ? name : key;
+    if (name === null) return [key];
+    return name.includes("${{") ? [] : [name];
   });
 }
 

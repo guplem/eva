@@ -6,7 +6,7 @@
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
@@ -74,6 +74,14 @@ export function listRepositories(clonePath: string): CloneRepository[] {
     .map((name) => ({ name, path: join(clonePath, name) }))
     .filter((repository) => isFolder(repository.path) && hasGitEntry(repository.path))
     .sort((first, second) => first.name.localeCompare(second.name));
+}
+
+/**
+ * The project folder of a Project chat. A chat with no clone, such as a specialist chat (#703),
+ * starts in the project folder itself.
+ */
+export function projectFolderOf(startFolder: string, clone: string | null): string {
+  return clone === null ? startFolder : dirname(dirname(startFolder));
 }
 
 /**

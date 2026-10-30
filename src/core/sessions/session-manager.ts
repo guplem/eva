@@ -47,6 +47,8 @@ import type { StepDetailsStore } from "./step-details-store.ts";
 
 export interface PreparedTurn {
   readonly startFolder: string;
+  /** Project mode: the project folder. The engine hides each instruction file above it (#702). */
+  readonly projectFolder: string | null;
   readonly appendSystemPrompt: string | null;
   /** Put before the person's message, such as the local time (lesson 40). */
   readonly messagePrefix: string | null;
@@ -1242,6 +1244,7 @@ export class SessionManager {
         mode: session.mode,
         history,
         startFolder: prepared.startFolder,
+        projectFolder: prepared.projectFolder,
         prompt:
           prepared.messagePrefix === null
             ? prompt

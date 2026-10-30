@@ -11,6 +11,7 @@ import { basename, delimiter, dirname } from "node:path";
 import {
   isTrustedByDefault,
   listRepositories,
+  projectFolderOf,
   shownUrl,
   type CloneOriginStore,
   type TrustStore,
@@ -45,6 +46,7 @@ export class ProjectPreparer implements TurnPreparer {
   async prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn> {
     return {
       startFolder: session.startFolder,
+      projectFolder: projectFolderOf(session.startFolder, session.clone),
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],

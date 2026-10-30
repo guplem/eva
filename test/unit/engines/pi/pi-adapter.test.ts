@@ -33,6 +33,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     mode: "assistant",
     history: { kind: "new", engineSessionId: "session-1" },
     startFolder: "/demo-vault",
+    projectFolder: null,
     prompt: "Hello",
     model: "opus",
     effort: null,

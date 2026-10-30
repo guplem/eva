@@ -300,9 +300,14 @@ describe("Project mode", () => {
   }
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
-    const prepared = await project(["owner"]).prepare(session({ mode: "project", startFolder: cloneFolder }), deny);
+    const prepared = await project(["owner"]).prepare(
+      session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" }),
+      deny,
+    );
     expect(prepared).toEqual({
       startFolder: cloneFolder,
+      // The engine hides each instruction file above this folder (#702).
+      projectFolder: dirname(sandbox.root),
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],

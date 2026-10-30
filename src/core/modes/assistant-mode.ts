@@ -75,6 +75,7 @@ export class AssistantPreparer implements TurnPreparer {
     this.promptBySession.set(session.id, appendSystemPrompt);
     return {
       startFolder: session.startFolder,
+      projectFolder: null,
       // The time goes in the message, never in the prompt (lesson 40).
       appendSystemPrompt,
       messagePrefix: this.messagePrefix(),

@@ -29,6 +29,7 @@ const preparer: TurnPreparer = {
   prepare: (session) =>
     Promise.resolve({
       startFolder: session.startFolder,
+      projectFolder: null,
       appendSystemPrompt: session.mode === "assistant" ? "You are Eva." : null,
       messagePrefix: null,
       pluginFolders: [],

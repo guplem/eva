@@ -305,6 +305,7 @@
   /* A pushed prompt can be long, so the card scrolls and never pushes the buttons off a phone screen. */
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;

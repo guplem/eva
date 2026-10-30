@@ -71,10 +71,16 @@
   text-decoration: none;
 }
 
-.files-crumbs a:hover,
 .files-crumbs a:focus-visible {
   background: var(--soft);
   color: var(--soft-ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .files-crumbs a:hover {
+    background: var(--soft);
+    color: var(--soft-ink);
+  }
 }
 
 .files-crumbs h1 {
@@ -139,9 +145,14 @@
   color: var(--muted);
 }
 
-a.files-favorite:hover,
 a.files-favorite:focus-visible {
   background: var(--soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.files-favorite:hover {
+    background: var(--soft);
+  }
 }
 
 a.files-favorite[aria-current="page"] {
@@ -211,10 +222,15 @@ a.files-favorite[aria-current="page"] {
   background: transparent;
 }
 
-.column-divider:hover::after,
 .column-divider:active::after,
 .column-divider:focus-visible::after {
   background: var(--accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .column-divider:hover::after {
+    background: var(--accent);
+  }
 }
 
 .column-divider:focus-visible {
@@ -242,6 +258,7 @@ a.files-favorite[aria-current="page"] {
 .files-pane > .files-list {
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .files-preview {
@@ -300,9 +317,14 @@ a.files-favorite[aria-current="page"] {
   text-decoration: none;
 }
 
-a.files-entry:hover,
 a.files-entry:focus-visible {
   background: var(--soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.files-entry:hover {
+    background: var(--soft);
+  }
 }
 
 /* The folder or file that the next column shows. The weight marks it too, not the colour alone. */
@@ -428,6 +450,7 @@ a.files-entry[aria-current="true"] {
   background: var(--panel);
   box-shadow: var(--shadow);
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .files-file-bar {
@@ -703,6 +726,7 @@ a.files-entry[aria-current="true"] {
 
 .files-search-results {
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* The name, its folder and the line that holds the text, each on its own line. */

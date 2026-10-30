@@ -3,7 +3,10 @@
  * The design is in docs/design/eve/README.md, section "Chat details and background tasks".
  */
 
-/* The frame clips the column while its width animates, so the text inside never rewraps. */
+/*
+ * The frame takes its width at once, so the chat beside it rewraps once, not on each frame.
+ * The column inside slides in from the edge. The frame clips it while it moves.
+ */
 .chat-panel-frame {
   width: 300px;
   min-height: 0;
@@ -11,51 +14,34 @@
   overflow: hidden;
 }
 
-.chat-panel-frame.opening {
-  animation: chat-panel-open 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.chat-panel-frame.closing {
-  animation: chat-panel-close 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
-}
-
-@keyframes chat-panel-open {
-  from {
-    width: 0;
-  }
-}
-
-@keyframes chat-panel-close {
-  to {
-    width: 0;
-  }
-}
-
 .chat-panel-frame.opening > .chat-panel {
-  animation: chat-panel-content-in 240ms ease-out;
+  animation: chat-panel-in var(--dur-medium) var(--ease-out);
 }
 
 .chat-panel-frame.closing > .chat-panel {
-  opacity: 0;
-  transition: opacity 150ms ease-in;
+  animation: chat-panel-out var(--dur-medium) var(--ease-in) forwards;
 }
 
-@keyframes chat-panel-content-in {
+@keyframes chat-panel-in {
   from {
     opacity: 0;
+    transform: translateX(100%);
   }
 }
 
-/* The frame still needs its animation end to leave the page, so the motion only gets near instant. */
-@media (prefers-reduced-motion: reduce) {
-  .chat-panel-frame.opening,
-  .chat-panel-frame.closing {
-    animation-duration: 1ms;
+@keyframes chat-panel-out {
+  to {
+    opacity: 0;
+    transform: translateX(100%);
   }
+}
 
-  .chat-panel-frame > .chat-panel {
-    animation: none;
-    transition: none;
+/* The frame still needs the animation end to leave the page, so the motion only gets near instant. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel-frame.opening > .chat-panel,
+  .chat-panel-frame.closing > .chat-panel {
+    /* Motion exception: 1 ms is no motion. It only keeps the end of the animation. */
+    animation-duration: 1ms;
   }
 }
 
@@ -66,6 +52,7 @@
   flex: none;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 22px 18px;
   display: flex;
   flex-direction: column;

@@ -42,6 +42,7 @@
   border-radius: 50%;
   background-color: var(--eye);
   animation: blink 7s infinite;
+  /* Motion exception: the EVE guide gives this morph between faces. The eyes are a few pixels big. */
   transition:
     width 0.35s,
     height 0.35s,
@@ -71,6 +72,7 @@
   border-radius: 0.07em 0.07em 0 0;
   background: var(--eye);
   opacity: 0;
+  /* Motion exception: these parts of an eye morph with it, as the EVE guide gives it. */
   transition:
     opacity 0.3s,
     rotate 0.3s,

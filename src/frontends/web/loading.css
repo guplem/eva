@@ -45,7 +45,8 @@
   border-radius: inherit;
   background: var(--accent);
   box-shadow: 0 0 8px var(--glow);
-  transition: width 0.4s ease-out;
+  /* Motion exception: scaleX() would squeeze the round ends and the glow. The fill moves only when the share changes. */
+  transition: width var(--dur-slow) var(--ease-out);
 }
 
 /* An unknown share: two lines of light run across the track, at two speeds, so it never looks stuck. */
@@ -59,7 +60,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -45%;
+  left: 0;
   border-radius: inherit;
   background: var(--accent);
   box-shadow: 0 0 8px var(--glow);
@@ -67,23 +68,37 @@
 
 .progress-track.running::before {
   width: 40%;
-  animation: progress-run 1.8s cubic-bezier(0.65, 0.05, 0.36, 1) infinite;
+  animation: progress-run-long 1.8s cubic-bezier(0.65, 0.05, 0.36, 1) infinite;
 }
 
 .progress-track.running::after {
   width: 18%;
   /* "backwards" keeps the second line off the track until its turn, so it never stands still at the start. */
-  animation: progress-run 1.8s cubic-bezier(0.65, 0.05, 0.36, 1) 0.75s infinite backwards;
+  animation: progress-run-short 1.8s cubic-bezier(0.65, 0.05, 0.36, 1) 0.75s infinite backwards;
 }
 
-/* "left" is a share of the track, so each line crosses all of it, whatever its own width. */
-@keyframes progress-run {
+/*
+ * Each line runs from 45% of the track before its start to the end of the track. A translate share
+ * is a share of the line itself, so each width needs its own numbers: 45 / 40 and 100 / 40 for the
+ * long line, 45 / 18 and 100 / 18 for the short one.
+ */
+@keyframes progress-run-long {
   from {
-    left: -45%;
+    transform: translateX(-112.5%);
   }
 
   to {
-    left: 100%;
+    transform: translateX(250%);
+  }
+}
+
+@keyframes progress-run-short {
+  from {
+    transform: translateX(-250%);
+  }
+
+  to {
+    transform: translateX(555.6%);
   }
 }
 
@@ -108,7 +123,7 @@
   stroke-linecap: round;
   transform: rotate(-90deg);
   transform-origin: center;
-  transition: stroke-dasharray 0.4s ease-out;
+  transition: stroke-dasharray var(--dur-slow) var(--ease-out);
 }
 
 .button-spinner.running {
@@ -155,6 +170,7 @@ button[aria-busy="true"]:disabled {
   height: 13px;
 }
 
+/* Motion exception: a shape can be an input, which has no pseudo-element for a moving overlay. */
 @keyframes skeleton-shimmer {
   from {
     background-position: 100% 0;

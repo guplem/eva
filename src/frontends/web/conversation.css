@@ -10,6 +10,7 @@
   padding: 20px 28px 0;
   align-items: stretch;
   overflow: auto;
+  overscroll-behavior: contain;
   flex: 1;
   min-height: 0;
   background: var(--main-gradient);
@@ -87,6 +88,7 @@
   width: 260px;
   max-height: calc(100dvh - 180px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-4) var(--space-2);
   border-radius: var(--radius-card);
   background: var(--side);
@@ -126,8 +128,10 @@
   text-align: left;
 }
 
-.branch-row:hover {
-  background: var(--chip);
+@media (hover: hover) and (pointer: fine) {
+  .branch-row:hover {
+    background: var(--chip);
+  }
 }
 
 .branch-row[aria-current="true"] {
@@ -262,7 +266,7 @@
 .message {
   min-width: 0;
   overflow-wrap: anywhere;
-  animation: message-in 220ms ease-out;
+  animation: message-in var(--dur-medium) var(--ease-out);
 }
 
 /* A new message fades in. A move would make each button in it measure a fraction of a pixel short while it runs. */
@@ -365,7 +369,7 @@
 }
 
 .steps-arrow .icon {
-  transition: rotate 0.2s;
+  transition: rotate var(--dur-fast) var(--ease-out);
 }
 
 .steps-arrow.open .icon {
@@ -412,8 +416,10 @@
   cursor: pointer;
 }
 
-.step-row:hover .step-text {
-  text-decoration: underline;
+@media (hover: hover) and (pointer: fine) {
+  .step-row:hover .step-text {
+    text-decoration: underline;
+  }
 }
 
 .step-list li .icon {
@@ -472,10 +478,12 @@
 }
 
 .dots i:nth-child(2) {
+  /* Motion exception: the dots of a looping wait take turns. */
   animation-delay: 0.15s;
 }
 
 .dots i:nth-child(3) {
+  /* Motion exception: the dots of a looping wait take turns. */
   animation-delay: 0.3s;
 }
 
@@ -526,9 +534,11 @@ button.ghost {
   font-weight: 600;
 }
 
-button.ghost:hover {
-  background: var(--chip);
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  button.ghost:hover {
+    background: var(--chip);
+    color: var(--ink);
+  }
 }
 
 button.ghost .icon {
@@ -602,13 +612,14 @@ button.ghost .icon {
   text-align: left;
   font-size: 13.5px;
   font-weight: 600;
-  transition: box-shadow 200ms;
 }
 
-.suggestion.card:hover {
-  box-shadow:
-    var(--shadow),
-    0 0 0 2px var(--soft);
+@media (hover: hover) and (pointer: fine) {
+  .suggestion.card:hover {
+    box-shadow:
+      var(--shadow),
+      0 0 0 2px var(--soft);
+  }
 }
 
 .suggestion .icon {
@@ -692,10 +703,15 @@ button.ghost .icon {
   background: var(--line);
 }
 
-.row-divider:hover::after,
 .row-divider:active::after,
 .row-divider:focus-visible::after {
   background: var(--accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row-divider:hover::after {
+    background: var(--accent);
+  }
 }
 
 .row-divider:focus-visible {
@@ -753,6 +769,7 @@ button.ghost .icon {
   z-index: 5;
   max-height: min(360px, 50vh);
   overflow-y: auto;
+  overscroll-behavior: contain;
   gap: var(--space-2);
 }
 
@@ -995,20 +1012,21 @@ button.ghost .icon {
   color: var(--accent-ink);
   box-shadow: var(--send-shadow);
   transition:
-    background 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.25s ease;
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
 /* A thicker line than other icons: the light pearl needs it to read as the main action. */
 .send .icon {
   stroke-width: 2.3;
   filter: var(--send-icon-glow);
-  transition: transform 0.25s ease;
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 
-.send:not(:disabled):hover .icon {
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .send:not(:disabled):hover .icon {
+    transform: translateY(-1px);
+  }
 }
 
 .send.stop {
@@ -1220,6 +1238,7 @@ button.ghost .icon {
   padding: var(--space-3);
   max-height: 50dvh;
   overflow: auto;
+  overscroll-behavior: contain;
   border-radius: var(--radius-input);
   background: var(--chip);
   font-size: var(--text-xs);
@@ -1287,6 +1306,7 @@ button.ghost .icon {
 .undo-files ul {
   max-height: 10rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin-block: var(--space-1) var(--space-3);
   padding-inline-start: var(--space-4);
   overflow-wrap: anywhere;

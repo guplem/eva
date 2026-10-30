@@ -245,8 +245,8 @@ export function useChatPanelShown(): readonly [boolean, () => void] {
 type PanelMotion = "open" | "opening" | "closing" | "gone";
 
 /**
- * The column slides open and shut, so a hide does not jump the chat. It stays in the page until its
- * close animation ends. A page load shows it at once: only a toggle animates it.
+ * The column slides in and out at the edge of the chat. It stays in the page until its close
+ * animation ends. A page load shows it at once: only a toggle animates it.
  */
 export function ChatPanel({ shown, ...props }: ChatProps & { readonly shown: boolean }): ReactElement | null {
   const [motion, setMotion] = useState<PanelMotion>(shown ? "open" : "gone");
@@ -260,8 +260,8 @@ export function ChatPanel({ shown, ...props }: ChatProps & { readonly shown: boo
       aria-label="This chat"
       inert={motion === "closing"}
       onAnimationEnd={(event) => {
-        // The animations of the content inside bubble up here too.
-        if (event.target !== event.currentTarget) return;
+        // The column slides, not the frame. The animations of the content inside bubble up here too.
+        if (event.animationName !== "chat-panel-in" && event.animationName !== "chat-panel-out") return;
         setMotion((current) => (current === "opening" ? "open" : current === "closing" ? "gone" : current));
       }}
     >

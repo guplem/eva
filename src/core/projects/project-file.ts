@@ -33,13 +33,36 @@ export function applyProjectDetails(text: string, details: ProjectDetails): stri
     // The form shows "None" for a status it cannot read, so None there keeps the person's value.
     ...(details.status === current.status ? {} : { status: details.status }),
     ...changedList("tags", current.tags, details.tags, (tag) => tag.replace(/^#/, ""), "A tag"),
-    ...changedList("repos", current.repos, details.repos, (repo) => repo, "A repository"),
+    ...changedRepos(current.repos, current.repoTypes, details.repos),
   });
   const body = withTitle(withoutBom.slice(match[0].length), title, eol);
   let head = frontMatter === null ? match[0] : `---${eol}${frontMatter.replaceAll("\n", eol)}${eol}---${eol}`;
   // A front matter that ends the file has no line break after `---`; a new heading needs one.
   if (!head.endsWith("\n") && body !== "") head += eol;
   return bom + head + body;
+}
+
+/**
+ * The text of a project file where one repository of `repos` has this type. Throws
+ * `project_invalid` for a repository that the project does not list, or a bad file.
+ */
+export function setRepositoryType(text: string, repository: string, type: string): string {
+  const bom = text.startsWith("﻿") ? "﻿" : "";
+  const withoutBom = text.slice(bom.length);
+  const match = frontMatterPattern.exec(withoutBom);
+  const current = parseFrontMatter(withoutBom).frontMatter;
+  if (match === null || current === null) {
+    throw invalid("Eva cannot read the front matter. Fix it in the AGENTS.md editor.");
+  }
+  if (!current.repos.includes(repository)) throw invalid(`The project does not list the repository ${repository}.`);
+  if (current.repoTypes[repository] === type) return text;
+  const eol = match[0].includes("\r\n") ? "\r\n" : "\n";
+  const frontMatter = editFrontMatter((match[1] ?? "").replaceAll("\r\n", "\n"), {
+    repo_types: { ...current.repoTypes, [repository]: type },
+  });
+  const after = withoutBom.slice(match[0].length);
+  const head = `---${eol}${(frontMatter ?? "").replaceAll("\n", eol)}${eol}---${after === "" ? "" : eol}`;
+  return bom + head + after;
 }
 
 /** Throws `project_invalid` for a text that the project list cannot read, so the project would vanish. */
@@ -58,6 +81,26 @@ interface FrontMatterChanges {
   readonly status?: ProjectStatus | null;
   readonly tags?: readonly string[];
   readonly repos?: readonly string[];
+  readonly repo_types?: Readonly<Record<string, string>> | null;
+}
+
+/** A value of the front matter: text, a list, or a map such as `repo_types`. */
+type FrontMatterValue = string | readonly string[] | Readonly<Record<string, string>> | null;
+
+function isEmptyMap(value: FrontMatterValue): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
+/** The new `repos`, and the types of the repositories that stay: a removed repository loses its type. */
+function changedRepos(
+  current: readonly string[],
+  types: Readonly<Record<string, string>>,
+  next: readonly string[],
+): FrontMatterChanges {
+  const repos = changedList("repos", current, next, (repo) => repo, "A repository");
+  if (repos.repos === undefined) return repos;
+  const kept = Object.fromEntries(Object.entries(types).filter(([url]) => repos.repos?.includes(url) === true));
+  return Object.keys(kept).length === Object.keys(types).length ? repos : { ...repos, repo_types: kept };
 }
 
 function changedList(
@@ -85,10 +128,10 @@ function editFrontMatter(source: string, changes: FrontMatterChanges): string | 
   if (document.errors.length > 0 || !isMap(document.contents)) {
     throw invalid("Eva cannot read the front matter. Fix it in the AGENTS.md editor.");
   }
-  const entries = Object.entries(changes) as [string, string | readonly string[] | null][];
+  const entries = Object.entries(changes) as [string, FrontMatterValue][];
   if (entries.length === 0) return null;
   for (const [key, value] of entries) {
-    if (value === null || (Array.isArray(value) && value.length === 0)) {
+    if (value === null || (Array.isArray(value) && value.length === 0) || isEmptyMap(value)) {
       document.delete(key);
       continue;
     }

@@ -6,6 +6,7 @@ import {
   fileVersion,
   matchFileStyle,
   projectFileOf,
+  setRepositoryType,
   type ProjectDetails,
 } from "../../../../src/core/projects/project-file.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -230,6 +231,45 @@ describe("the title under a body that starts with ---", () => {
     expect(projectFileOf(text).details?.title).toBe("Old");
     expect(applyProjectDetails(text, { title: "Old", status: "paused", tags: [], repos: [] })).toBe(
       text.replace("active", "paused"),
+    );
+  });
+});
+
+describe("the type of each repository", () => {
+  const app = "https://github.com/example/example-app";
+  const api = "https://github.com/example/example-api";
+  const typed = [
+    "---",
+    "created: 2026-01-31T09:15",
+    "repos:",
+    `  - ${app}`,
+    `  - ${api}`,
+    "repo_types:",
+    `  ${app}: vibe-coded`,
+    `  ${api}: standard`,
+    "---",
+    "# Example app",
+    "",
+  ].join("\n");
+  const details: ProjectDetails = { title: "Example app", status: null, tags: [], repos: [app, api] };
+
+  test("an edit of the details keeps the types, and a removed repository loses its type", () => {
+    expect(applyProjectDetails(typed, details)).toBe(typed);
+    const withoutApi = applyProjectDetails(typed, { ...details, repos: [app] });
+    expect(parseFrontMatter(withoutApi).frontMatter?.repoTypes).toEqual({ [app]: "vibe-coded" });
+    const withoutAny = applyProjectDetails(typed, { ...details, repos: [] });
+    expect(withoutAny).not.toContain("repo_types");
+  });
+
+  test("setRepositoryType sets, changes and adds the key, and refuses a repository that the project does not list", () => {
+    const changed = setRepositoryType(typed, api, "vibe-coded");
+    expect(parseFrontMatter(changed).frontMatter?.repoTypes).toEqual({ [app]: "vibe-coded", [api]: "vibe-coded" });
+    const fresh = setRepositoryType(`---\ncreated: 2026-01-31T09:15\nrepos:\n  - ${app}\n---\n# A\n`, app, "standard");
+    expect(fresh).toBe(
+      `---\ncreated: 2026-01-31T09:15\nrepos:\n  - ${app}\nrepo_types:\n  ${app}: standard\n---\n# A\n`,
+    );
+    expect(invalidCode(() => setRepositoryType(typed, "https://github.com/example/other", "standard"))).toBe(
+      "project_invalid",
     );
   });
 });

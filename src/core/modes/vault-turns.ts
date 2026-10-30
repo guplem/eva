@@ -17,10 +17,11 @@ export interface VaultSyncPort {
 export class VaultTurns {
   private readonly vaultSync: VaultSyncPort;
   /** The index of the running turn of each session, from its start, for the snapshot after it. */
-  private readonly turnBySession = new Map<string, number>();
+  private readonly turnBySession: Map<string, number>;
 
   constructor(vaultSync: VaultSyncPort) {
     this.vaultSync = vaultSync;
+    this.turnBySession = new Map();
   }
 
   async before(session: SessionRecord): Promise<void> {

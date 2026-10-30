@@ -21,6 +21,30 @@ A specialist is a project that the person chats with directly. Its chat starts i
 10. **Telegram and CLI:** the specialist label. A file sent to a specialist chat gets a refusal. The CLI `--project` opens a specialist chat.
 11. **Texts:** the goal in `AGENTS.md`, `templates/vault/AGENTS.md` with a dated migration for existing vaults, `assistant-base-prompt.md`, `docs/guide/`.
 
+## Decisions
+
+The three gap agents agreed on each point below.
+
+1. `src/shared/chat-kind.ts`: `chatKind(chat)` gives `assistant`, `specialist` or `project`, and `chatKindName` gives the shown word. `src/shared/` is the one layer that the core and every front end import.
+2. `SessionManagerOptions.preparers` is keyed by chat kind. The manager reads `preparers[chatKind(session)]` at its three lookups. `ProjectPreparer` cannot serve a specialist: a folder with no repository counts as untrusted.
+3. `harnessMemory` and `folderHooks` on the turn request and on `PreparedTurn`. The SDK types say that `disableAllHooks` covers the hooks of settings files and plugins, and that SDK callbacks keep running, so #711 can still add one.
+4. `src/core/modes/vault-turns.ts` holds the pull, the snapshots and the save. `AssistantPreparer` and `SpecialistPreparer` both use it. The specialist preparer has no `snapshot`, `restore` or `forget`: the `session_deleted` listener already deletes its vault snapshots.
+5. The `takeFolder` notice: "Another chat of this specialist runs a turn. This turn starts when that turn ends." The abort text names the specialist too. The Telegram label: "Specialist: ". The file refusal: "This chat takes no files."
+6. `ProjectReport.clone` is `string | null`, and the store reads it as nullable. An older Eva drops the card of a specialist report and shows the raw message. `reportPlace` drops a null clone, and says "specialist" when nothing is left. The message keeps the `[Project work finished` prefix with the place "specialist".
+7. The New project API takes `type`, with software as the default. A specialist with a repository or a Drive folder is refused. The result gets the chat that Eva opened, or the reason why she could not. The web form opens that chat.
+8. A frozen vault migration replaces the exact old _Projects_ paragraph and the exact old YAML example. When the person edited them, it changes nothing.
+9. The core refuses, for a specialist: a fork or retry in a new clone, a named clone, a received file, and a chat outside the vault. `continueFromSummary` reads no git state for a specialist. The web app sends a specialist fork straight to `api.fork`, and its retry with `{ undo }`. The project page gets a chat route with no clone.
+10. `describe` shows no part of Eva's. The Claude Code context lists no "repository" part for a specialist folder (`startFolder === projectFolder`). The subtitle says "Specialist".
+11. No vault links in a specialist answer: its paths start at its own folder, not at the vault root.
+
+### Risks found
+
+- The project details form changes the type only when the project has no clones and no chats. Otherwise a chat would change kind under the person.
+- A vault snapshot covers the whole vault, so a specialist undo can take back an Assistant chat's writes from the same moment, as between two Assistant chats today (lesson 30). The PR says so.
+- Before #707, a secret file in a specialist folder reaches the vault's remote in plain text, as in any project folder today. The PR says so.
+- The vault upkeep texts that say "an Assistant chat" also cover a specialist chat.
+- Claude Code still loads `.claude/skills/` from the folders above (lesson 5). The PR says so.
+
 ## Gaps
 
 1. Where the chat kind helper lives, and its name, so the core and the web app share it.

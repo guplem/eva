@@ -1,20 +1,22 @@
 /**
- * The answers that a retry undoes (#525): every Assistant turn of the chat tree that ended at or
- * after the retried turn. Every chat shares the one vault, so a later answer in a fork counts too.
+ * The answers that a retry undoes (#525): every turn of the chat tree that ended at or after the
+ * retried turn, in an Assistant or specialist chat. Every chat shares the one vault, so a later
+ * answer in a fork counts too.
  */
+import { chatKind } from "../../shared/chat-kind.ts";
 import { turnSnapshotRef, type UndoAnswer } from "../vault/vault-snapshots.ts";
 import type { SessionRecord } from "./session-store.ts";
 
-/** The answers to undo, oldest first. Empty for a Project chat or a turn that does not exist. */
+/** The answers to undo, oldest first. Empty for a chat in a clone or a turn that does not exist. */
 export function answersToUndo(sessions: readonly SessionRecord[], sessionId: string, turnIndex: number): UndoAnswer[] {
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const session = byId.get(sessionId);
   const retried = session?.turns[turnIndex];
-  if (session === undefined || retried === undefined || session.mode !== "assistant") return [];
+  if (session === undefined || retried === undefined || !worksInVault(session)) return [];
   const root = rootId(byId, session);
   const later: { sessionId: string; turnIndex: number; order: number; at: string; chatCreatedAt: string }[] = [];
   for (const candidate of sessions) {
-    if (candidate.mode !== "assistant" || rootId(byId, candidate) !== root) continue;
+    if (!worksInVault(candidate) || rootId(byId, candidate) !== root) continue;
     for (const [index, turn] of candidate.turns.entries()) {
       // In the chat itself, the order of its turns decides: two turns can end in the same second.
       const isLater = candidate.id === sessionId ? index >= turnIndex : turn.at >= retried.at;
@@ -40,6 +42,11 @@ export function answersToUndo(sessions: readonly SessionRecord[], sessionId: str
     before: turnSnapshotRef(turn.sessionId, turn.turnIndex, "before"),
     after: turnSnapshotRef(turn.sessionId, turn.turnIndex, "after"),
   }));
+}
+
+/** An Assistant chat and a specialist chat keep vault snapshots of each turn (#703). */
+function worksInVault(session: SessionRecord): boolean {
+  return chatKind(session) !== "project";
 }
 
 function rootId(byId: ReadonlyMap<string, SessionRecord>, session: SessionRecord): string {

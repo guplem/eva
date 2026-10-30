@@ -59,13 +59,19 @@ function createManager(
     firstId?: number;
     /** The preparer of Project chats; without one, the same as for Assistant chats. */
     projectPreparer?: TurnPreparer;
+    /** The preparer of specialist chats; without one, the same as for Assistant chats. */
+    specialistPreparer?: TurnPreparer;
   } = {},
 ): SessionManager {
   let nextId = overrides.firstId ?? 0;
   const manager = new SessionManager({
     engines: [engine],
     store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
-    preparers: { assistant: preparer, project: overrides.projectPreparer ?? preparer },
+    preparers: {
+      assistant: preparer,
+      project: overrides.projectPreparer ?? preparer,
+      specialist: overrides.specialistPreparer ?? preparer,
+    },
     stepDetails: new StepDetailsStore(join(folder, "step-details")),
     now: () => new Date("2026-10-14T12:00:00Z"),
     newId: () => {
@@ -1493,6 +1499,35 @@ describe("file snapshots of Project chats (issue 523)", () => {
     expect(logged.some((line) => line.includes("could not keep a snapshot"))).toBe(true);
   });
 
+  test("a specialist chat runs with the specialist preparer, and keeps no clone snapshot (#703)", async () => {
+    const log: string[] = [];
+    const specialistPreparer: TurnPreparer = {
+      ...preparer,
+      prepare: async (session, context) => {
+        log.push("specialist prepare");
+        return preparer.prepare(session, context);
+      },
+    };
+    const manager = createManager(loggingEngine(log), {
+      projectPreparer: snapshotPreparer(log),
+      specialistPreparer,
+    });
+    const sessionId = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/vault/Projects/2025-03-02-1015-coach",
+      source: "web",
+      projectId: "2025-03-02-1015-coach",
+    }).id;
+    await manager.send(sessionId, "one");
+    expect(log).toEqual(["specialist prepare", "engine"]);
+    // A retry with undo takes back the vault files before it starts, so no clone restore waits.
+    const retry = await manager.retry(sessionId, 0, "undo");
+    expect(retry.pendingRestore).toBeNull();
+    await waitUntil(() => !manager.isActive(retry.id));
+  });
+
   test("an Assistant turn keeps no snapshot", async () => {
     const manager = createManager(new FakeEngine(), { projectPreparer: snapshotPreparer([]) });
     const sessionId = newAssistantSession(manager);
@@ -2176,7 +2211,7 @@ describe("approvals", () => {
     const manager = new SessionManager({
       engines: [overrides.engine ?? new FakeEngine()],
       store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
-      preparers: { assistant: asking, project: asking },
+      preparers: { assistant: asking, project: asking, specialist: asking },
       now: () => new Date("2026-10-14T12:00:00Z"),
       newId: () => {
         nextId += 1;
@@ -3213,6 +3248,33 @@ describe("one turn per clone (issue 356)", () => {
     expect(manager.get(second).turns[0]?.notes).toEqual([]);
   });
 
+  test("two chats of one specialist run one turn at a time, and the notice names the specialist (#703)", async () => {
+    const { engine, release } = heldEngine();
+    const manager = createManager(engine);
+    const specialistChat = (): string =>
+      manager.createSession({
+        mode: "project",
+        engine: "claude-code",
+        model: "opus",
+        startFolder: "/vault/Projects/2025-03-02-1015-coach",
+        source: "web",
+        projectId: "2025-03-02-1015-coach",
+      }).id;
+    const first = specialistChat();
+    const second = specialistChat();
+    const running = manager.send(first, "long");
+    await waitUntil(() => engine.requests.length === 1);
+    const waiting = manager.send(second, "short");
+    await waitUntil(() => events.some((event) => event.sessionId === second && event.kind === "notice"));
+    const notice = events.find((event) => event.sessionId === second && event.kind === "notice");
+    expect(notice).toMatchObject({
+      text: "Another chat of this specialist runs a turn. This turn starts when that turn ends.",
+    });
+    release();
+    await Promise.all([running, waiting]);
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["long", "short"]);
+  });
+
   test("a wait never blocks another clone or an Assistant chat", async () => {
     const { engine, release } = heldEngine();
     const manager = createManager(engine);
@@ -3314,7 +3376,7 @@ describe("recent activity (issue 356)", () => {
     const manager = new SessionManager({
       engines: [engine],
       store: new SessionStore(join(folder, "sessions.json"), { now: () => clock }),
-      preparers: { assistant: preparer, project: preparer },
+      preparers: { assistant: preparer, project: preparer, specialist: preparer },
       now: () => clock,
       newId: () => `id-${String((nextId += 1))}`,
       redactor: new Redactor(),
@@ -3380,6 +3442,7 @@ describe("the context of a chat (issue 700)", () => {
       engine: "claude-code",
       model: "opus",
       startFolder: "/clone",
+      clone: "clone-0",
       source: "cli",
     });
     expect((await manager.context(project.id)).map((found) => found.title)).toEqual([
@@ -3422,6 +3485,7 @@ describe("the context of a chat (issue 700)", () => {
       engine: "claude-code",
       model: "opus",
       startFolder: "/clone",
+      clone: "clone-0",
       source: "cli",
     });
     const [prompt, instructions, skill] = await manager.context(project.id);
@@ -3452,6 +3516,7 @@ describe("the context of a chat (issue 700)", () => {
       engine: "claude-code",
       model: "opus",
       startFolder: "/clone",
+      clone: "clone-0",
       source: "cli",
     });
     expect((await manager.context(project.id)).map((found) => found.title)).toEqual(["Eva's prompt"]);

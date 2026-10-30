@@ -2169,7 +2169,7 @@ describe("Eva alerts", () => {
     const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
     expect(result.found).toBe(false);
     expect(result.state.status).toBe("skipped");
-    expect(result.state.lastError).toContain("Assistant chat");
+    expect(result.state.lastError).toContain("in the vault in a chat");
     release();
     await turn;
   });
@@ -2191,6 +2191,28 @@ describe("Eva alerts", () => {
     expect((await instance.syncVault()).skipReason).toBeUndefined();
     const bare = start(new FakeEngine(), { vaultPath: null });
     expect((await bare.syncVault()).skipReason).toBe("no_vault");
+  });
+
+  test("a sync also waits while a specialist chat runs a turn, since it works in the vault (#703)", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine);
+    const session = instance.sessions.createSession({
+      mode: "project",
+      engine: "claude-code",
+      startFolder: join(vault, "Projects", "2025-03-02-1015-coach"),
+      source: "web",
+      projectId: "2025-03-02-1015-coach",
+    });
+    const turn = instance.sessions.send(session.id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    expect((await instance.syncVault()).skipReason).toBe("assistant_busy");
+    release();
+    await turn;
+    expect((await instance.syncVault()).skipReason).toBeUndefined();
   });
 
   test("with no vault, there is no conflict to list or resolve", async () => {

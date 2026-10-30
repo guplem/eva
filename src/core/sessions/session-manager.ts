@@ -43,6 +43,7 @@ import {
   type StepDetail,
   type TurnStep,
 } from "../../shared/turn-steps.ts";
+import { chatKind, type ChatKind } from "../../shared/chat-kind.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
 import type { StepDetailsStore } from "./step-details-store.ts";
 
@@ -163,7 +164,8 @@ export interface SessionManagerOptions {
   readonly store: SessionStore;
   /** Keeps the whole input and output of each tool step. Without it, Eva keeps none. */
   readonly stepDetails?: StepDetailsStore;
-  readonly preparers: Readonly<Record<SessionMode, TurnPreparer>>;
+  /** By chat kind: a specialist chat is stored as a Project chat with no clone (#703). */
+  readonly preparers: Readonly<Record<ChatKind, TurnPreparer>>;
   readonly now: () => Date;
   readonly newId: () => string;
   readonly redactor: Redactor;
@@ -881,8 +883,9 @@ export class SessionManager {
       const session = this.get(sessionId);
       this.assertOpen(session);
       const turn = this.turnOf(session, turnIndex);
-      // Only a Project chat has a clone whose files a snapshot keeps.
-      const restore = files === "undo" && session.mode === "project" ? this.startSnapshotOf(session, turnIndex) : null;
+      // Only a chat in a clone has files that a snapshot keeps. A chat in the vault undoes through the vault.
+      const restore =
+        files === "undo" && chatKind(session) === "project" ? this.startSnapshotOf(session, turnIndex) : null;
       const created = this.retryBranch(session, turnIndex);
       const branch = restore === null ? created : { ...created, pendingRestore: restore };
       if (branch !== created) this.options.store.save(branch);
@@ -982,7 +985,7 @@ export class SessionManager {
    */
   async context(sessionId: string): Promise<ContextPart[]> {
     const session = this.get(sessionId);
-    const mode = await this.options.preparers[session.mode].describe?.(session);
+    const mode = await this.preparerOf(session).describe?.(session);
     if (mode === undefined) return [];
     const engine = this.options.engines.find((candidate) => candidate.name === session.engine);
     // A file outside the vault, such as the engine's own CLAUDE.md, can hold a token, as any text that leaves the core.
@@ -1192,7 +1195,7 @@ export class SessionManager {
     // The record is read once at the start, so a change made during the turn cannot move it (lesson 48).
     const session = this.get(sessionId);
     const engine = this.options.engines.find((candidate) => candidate.name === session.engine);
-    const preparer = this.options.preparers[session.mode];
+    const preparer = this.preparerOf(session);
     const turn = { ended: false };
     let finished: Extract<EngineEventPayload, { kind: "turn_finished" }> | null = null;
     let lastText: string | null = null;
@@ -1424,14 +1427,20 @@ ${engineText}`,
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
   }
 
+  private preparerOf(session: SessionRecord): TurnPreparer {
+    return this.options.preparers[chatKind(session)];
+  }
+
   /**
    * Waits until no other chat runs a turn in the folder of a Project chat, then holds the folder.
-   * Two agents in one clone would pull, commit and push against each other (issue 356). Every
-   * Assistant chat runs at the vault root, and Eva's vault sync handles them, so they never wait.
+   * Two agents in one clone would pull, commit and push against each other (issue 356). Two chats
+   * of one specialist would write the same memory files (#703). Every Assistant chat runs at the
+   * vault root, and Eva's vault sync handles them, so they never wait.
    */
   private async takeFolder(session: SessionRecord, signal: AbortSignal): Promise<() => void> {
     if (session.mode !== "project") return () => undefined;
     const folder = session.startFolder;
+    const place = chatKind(session) === "specialist" ? "of this specialist" : "in this clone";
     let told = false;
     // Several turns can wait. The first to wake takes the folder, and the others wait again.
     for (let held = this.folderTurns.get(folder); held !== undefined; held = this.folderTurns.get(folder)) {
@@ -1439,7 +1448,10 @@ ${engineText}`,
         told = true;
         this.emit(session.id, {
           kind: "notice",
-          text: "Another chat runs a turn in this clone. This turn starts when that turn ends.",
+          text:
+            place === "in this clone"
+              ? "Another chat runs a turn in this clone. This turn starts when that turn ends."
+              : "Another chat of this specialist runs a turn. This turn starts when that turn ends.",
         });
       }
       // A front end can stop the turn inside the notice event, before the listener exists.
@@ -1453,7 +1465,7 @@ ${engineText}`,
           });
         });
       }
-      if (signal.aborted) throw new Error("The turn stopped while it waited for another chat in this clone.");
+      if (signal.aborted) throw new Error(`The turn stopped while it waited for another chat ${place}.`);
     }
     let release = (): void => undefined;
     this.folderTurns.set(
@@ -1497,7 +1509,7 @@ ${engineText}`,
    * branch still uses.
    */
   private forgetSnapshots(session: SessionRecord, keep: ReadonlySet<string> = new Set()): void {
-    const preparer = this.options.preparers[session.mode];
+    const preparer = this.preparerOf(session);
     const ids = session.turns
       .flatMap((turn) => [turn.startSnapshot, turn.endSnapshot])
       .filter((id): id is string => id !== null && !keep.has(id));

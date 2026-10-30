@@ -8,6 +8,7 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import type { EngineName, EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import type { EnginePermissions } from "../shared/permissions.ts";
+import { chatKind } from "../shared/chat-kind.ts";
 import {
   baseEnvironmentAllowlist,
   buildChildEnvironment,
@@ -80,6 +81,8 @@ import {
 import { claimHub, claimHubIfUnclaimed, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
+import { SpecialistPreparer } from "./modes/specialist-mode.ts";
+import type { VaultSyncPort } from "./modes/vault-turns.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
   CloneOriginStore,
@@ -551,7 +554,7 @@ export class Eva {
       now: options.now,
       // The start value, as the sweep timer reads it: a change of the setting waits for a restart.
       syncEnabled: () => options.config.sync.enabled,
-      assistantBusy: () => this.assistantBusy(),
+      vaultTurnRunning: () => this.vaultTurnRunning(),
       reportProblem: (problem) => {
         this.alerts.report("vault_sync", problem);
       },
@@ -612,6 +615,12 @@ export class Eva {
       },
     });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
+    // An Assistant chat and a specialist chat both work in the vault (#703).
+    const vaultSync: VaultSyncPort = {
+      pull: () => this.vault.pull(),
+      save: () => this.vault.save(),
+      snapshot: (ref) => this.vault.snapshot(ref),
+    };
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
     this.trustStore = new TrustStore(options.paths.trust);
     this.modelCalls = new ModelCalls({
@@ -670,11 +679,7 @@ export class Eva {
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
-          vaultSync: {
-            pull: () => this.vault.pull(),
-            save: () => this.vault.save(),
-            snapshot: (ref) => this.vault.snapshot(ref),
-          },
+          vaultSync,
           basePrompt: options.basePrompt,
           runner: options.runner,
           environment: agentEnvironment,
@@ -694,6 +699,7 @@ export class Eva {
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
         }),
+        specialist: new SpecialistPreparer({ vaultSync, environment: agentEnvironment }),
       },
       now: options.now,
       newId: () => crypto.randomUUID(),
@@ -2181,7 +2187,7 @@ export class Eva {
     const now = this.options.now();
     if (this.lastHousekeepingAt !== null && now.getTime() - this.lastHousekeepingAt.getTime() < housekeepingIntervalMs)
       return;
-    if (this.assistantBusy()) return;
+    if (this.vaultTurnRunning()) return;
     this.lastHousekeepingAt = now;
     this.options.removeOldLogs?.();
     const vaultPath = this.options.config.vaultPath;
@@ -2349,8 +2355,9 @@ export class Eva {
     this.reportNameTaken = taken;
   }
 
-  private assistantBusy(): boolean {
-    return this.sessions.list().some((session) => session.mode === "assistant" && this.sessions.isBusy(session.id));
+  private vaultTurnRunning(): boolean {
+    // An Assistant chat and a specialist chat both work in the vault (#703).
+    return this.sessions.list().some((session) => chatKind(session) !== "project" && this.sessions.isBusy(session.id));
   }
 
   /** Runs a task that nobody awaits, and logs its failure instead of losing it (lesson 50). */

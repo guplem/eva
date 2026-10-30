@@ -300,7 +300,8 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 ![Computer](screenshots/projects-computer-light.webp) ![Phone](screenshots/projects-phone-light.webp)
 
 - The status and tag filters are one-tap chips, not drop-down menus.
-- The status has a colour and a shape.
+- The status has a colour and a shape. "In use" takes the `.live` pill, so it differs from the green "Active".
+- The list opens with the "Current" filter: the active and in-use projects.
 - Each clone is a card with its branch, its state and its chats.
 - A project card shows the "Unread" pill while one of its chats has an answer that the person did not see.
 

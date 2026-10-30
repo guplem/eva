@@ -28,9 +28,9 @@ export function movedSettingsFile(vaultPath: string, name: string): VaultSetting
 }
 
 /**
- * The place to read. Until the hub moves the files, an older Eva can still write the old place, so it
- * holds the newest value. A vault without the old file, such as a new one, reads the new place.
- * After the move, only the new place counts, so a deleted file never brings back old values.
+ * The place to read. Until the hub moves the files, an older Eva can still write the old place.
+ * So the old place holds the newest value. A new vault has no old file, so it reads the new place.
+ * After the move, only the new place counts. A deleted file then never brings back old values.
  */
 export function readablePath(file: VaultSettingsFile): string {
   if (migrationApplied(vaultMigrationRecordPath(file.vaultPath), moveSettingsToFolder.id)) return file.path;
@@ -43,8 +43,8 @@ export function settingsFileExists(file: VaultSettingsFile): boolean {
 }
 
 /**
- * Writes both places, so an older satellite reads the new value too. The old place goes first: before
- * the move, Eva reads it, so a stop between the two writes keeps the newest value where Eva reads.
+ * Writes both places, so an older satellite reads the new value too. The old place goes first.
+ * Before the move, Eva reads the old place, so a stop between the writes keeps the newest value there.
  */
 export function writeSettingsFile(file: VaultSettingsFile, content: string): void {
   writeFileAtomic(file.oldPath, content);

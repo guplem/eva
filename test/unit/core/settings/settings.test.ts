@@ -316,6 +316,7 @@ describe("a vault that a newer Eva migrated (#119)", () => {
     saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
     writeNewerRecord();
     const machineBefore = readFileSync(paths.config, "utf-8");
+    const oldBefore = readFileSync(join(vault, ".eva", "settings.json"), "utf-8");
     const vaultBefore = readFileSync(vaultSettingsPath(vault), "utf-8");
     let caught: unknown = null;
     try {
@@ -325,6 +326,7 @@ describe("a vault that a newer Eva migrated (#119)", () => {
     }
     expect(isEvaError(caught, "vault_ahead")).toBe(true);
     expect(readFileSync(paths.config, "utf-8")).toBe(machineBefore);
+    expect(readFileSync(join(vault, ".eva", "settings.json"), "utf-8")).toBe(oldBefore);
     expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toBe(vaultBefore);
   });
 });
@@ -353,9 +355,15 @@ describe("the settings folder of the vault (#662)", () => {
     expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Europe/Madrid");
   });
 
-  test("when the file to read is missing, Eva reads the other place", () => {
-    writeFileSync(oldFile(), JSON.stringify({ timeZone: "Asia/Tokyo" }));
+  test("before the move, a vault with only the new file reads it", () => {
+    rmSync(join(vault, ".eva", "migrations.json"));
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: "Asia/Tokyo" }));
     expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Asia/Tokyo");
+  });
+
+  test("after the move, a deleted new file does not bring back the old values", () => {
+    writeFileSync(oldFile(), JSON.stringify({ timeZone: "Asia/Tokyo" }));
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBeNull();
   });
 
   test("a save writes both places, so an older satellite reads the new value", () => {

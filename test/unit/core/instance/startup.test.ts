@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readHubClaim } from "../../../../src/core/instance/hub.ts";
@@ -170,6 +170,7 @@ describe("prepareStart with a vault", () => {
     const prepared = await start();
     expect(prepared.migrations.vault).toBeNull();
     expect(JSON.parse(readFileSync(oldSettingsPath(), "utf-8"))).toHaveProperty("trust");
+    expect(existsSync(vaultSettingsPath(vault))).toBe(false);
   });
 
   test("names a vault settings file that it could not use", async () => {
@@ -180,7 +181,7 @@ describe("prepareStart with a vault", () => {
     expect(prepared.notes).toContainEqual({
       level: "warn",
       message: "The vault's settings were not used.",
-      fields: { problem: `${vaultSettingsPath(vault)} is not valid JSON.` },
+      fields: { problem: `${oldSettingsPath()} is not valid JSON.` },
     });
   });
 });

@@ -29,12 +29,12 @@ export function movedSettingsFile(vaultPath: string, name: string): VaultSetting
 
 /**
  * The place to read. Until the hub moves the files, an older Eva can still write the old place, so it
- * holds the newest value. A missing file falls back to the other place.
+ * holds the newest value. A vault without the old file, such as a new one, reads the new place.
+ * After the move, only the new place counts, so a deleted file never brings back old values.
  */
 export function readablePath(file: VaultSettingsFile): string {
-  const moved = migrationApplied(vaultMigrationRecordPath(file.vaultPath), moveSettingsToFolder.id);
-  const [first, second] = moved ? [file.path, file.oldPath] : [file.oldPath, file.path];
-  return existsSync(first) || !existsSync(second) ? first : second;
+  if (migrationApplied(vaultMigrationRecordPath(file.vaultPath), moveSettingsToFolder.id)) return file.path;
+  return existsSync(file.oldPath) || !existsSync(file.path) ? file.oldPath : file.path;
 }
 
 /** True when either place holds the file. */
@@ -42,8 +42,11 @@ export function settingsFileExists(file: VaultSettingsFile): boolean {
   return existsSync(file.path) || existsSync(file.oldPath);
 }
 
-/** Writes both places, so an older satellite reads the new value too. */
+/**
+ * Writes both places, so an older satellite reads the new value too. The old place goes first: before
+ * the move, Eva reads it, so a stop between the two writes keeps the newest value where Eva reads.
+ */
 export function writeSettingsFile(file: VaultSettingsFile, content: string): void {
-  writeFileAtomic(file.path, content);
   writeFileAtomic(file.oldPath, content);
+  writeFileAtomic(file.path, content);
 }

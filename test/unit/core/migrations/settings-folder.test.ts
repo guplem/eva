@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runMigrations } from "../../../../src/core/migrations/migration-runner.ts";
+import { migrationBackupPath, runMigrations } from "../../../../src/core/migrations/migration-runner.ts";
 import { moveSettingsToFolder } from "../../../../src/core/migrations/settings-folder.ts";
 import { homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
 
@@ -55,6 +55,8 @@ describe("moveSettingsToFolder (vault)", () => {
     writeFileSync(join(vault, ".eva", "settings", "chat-names.md"), "Older rules.\n");
     migrate();
     expect(read(".eva/settings/chat-names.md")).toBe("Lead with an emoji.\n");
+    const backup = migrationBackupPath(paths, moveSettingsToFolder, join(".eva", "settings", "chat-names.md"));
+    expect(readFileSync(backup, "utf-8")).toBe("Older rules.\n");
   });
 
   test("a vault without the old files gets no new files", () => {
@@ -65,5 +67,32 @@ describe("moveSettingsToFolder (vault)", () => {
   test("an instance without a vault has nothing to move", () => {
     const context = { paths, vaultPath: null, write: () => expect.unreachable() };
     expect(moveSettingsToFolder.run(context)).toBe("done");
+  });
+});
+
+describe("moveSettingsToFolder with a broken settings file", () => {
+  test("waits until the old file is valid, so the older migrations can still clean it first", () => {
+    writeFileSync(join(vault, ".eva", "settings.json"), "{ not json");
+    writeFileSync(join(vault, ".eva", "chat-names.md"), "Lead with an emoji.\n");
+    const result = runMigrations({
+      store: "vault",
+      migrations: [moveSettingsToFolder],
+      paths,
+      vaultPath: vault,
+      version: "1.40.0",
+      now: () => new Date("2026-10-30T08:00:00.000Z"),
+    });
+    expect(result).toEqual({ kind: "done", applied: [], later: [moveSettingsToFolder.id] });
+    expect(existsSync(join(vault, ".eva", "settings"))).toBe(false);
+  });
+
+  test("runs again safely after a stop halfway", () => {
+    writeFileSync(join(vault, ".eva", "settings.json"), "{}\n");
+    writeFileSync(join(vault, ".eva", "chat-names.md"), "Lead with an emoji.\n");
+    mkdirSync(join(vault, ".eva", "settings"));
+    writeFileSync(join(vault, ".eva", "settings", "settings.json"), "{}\n");
+    migrate();
+    expect(read(".eva/settings/settings.json")).toBe("{}\n");
+    expect(read(".eva/settings/chat-names.md")).toBe("Lead with an emoji.\n");
   });
 });

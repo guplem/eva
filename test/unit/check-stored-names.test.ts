@@ -55,7 +55,7 @@ describe("currentNames", () => {
     "machine state/sessions.json sessions[].turns[].userText",
     "machine state/sessions.json sessions[].engine=pi",
     "machine state/devices.json devices[].hash",
-    "vault .eva/settings.json updates.install",
+    "vault .eva/settings/settings.json updates.install",
     "vault .eva/schedules.json schedules[].at",
     "vault .eva/schedules.json schedules[].days=thu",
     "vault .eva/hub.json machine",
@@ -68,7 +68,7 @@ describe("currentNames", () => {
   });
 
   test("keeps the machine's settings out of the vault file", () => {
-    expect(names).not.toContain("vault .eva/settings.json port");
+    expect(names).not.toContain("vault .eva/settings/settings.json port");
     expect(names).toContain("machine config.json port");
   });
 

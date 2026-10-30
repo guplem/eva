@@ -7,6 +7,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readJsonTolerant } from "../../shared/files.ts";
 import type { Migration } from "./migration-runner.ts";
 
 /** The files that moved on 2026-10-30, by their name in `.eva/`. */
@@ -17,6 +18,9 @@ export const moveSettingsToFolder: Migration = {
   store: "vault",
   run: (context) => {
     if (context.vaultPath === null) return "done";
+    // The older migrations clean the old settings file once it is valid again. A copy now would skip that.
+    const settings = readJsonTolerant(join(context.vaultPath, ".eva", "settings.json"));
+    if (!settings.ok && settings.reason !== "missing") return "later";
     for (const name of movedFiles) {
       const old = join(context.vaultPath, ".eva", name);
       if (!existsSync(old)) continue;

@@ -1659,6 +1659,51 @@ describe("Eva", () => {
     }
   });
 
+  test("Eva's own update waits for a running tool install, then restarts (#565)", async () => {
+    const release = serveGhRelease();
+    const ghRunner = ghInstallRunner(systemProcessRunner, { version: null });
+    const unpackGate: { open: (() => void) | null } = { open: null };
+    const runner: ProcessRunner = {
+      run: async (command, options) => {
+        if (command[0] === "tar") await new Promise<void>((resolve) => (unpackGate.open = resolve));
+        return ghRunner.run(command, options);
+      },
+    };
+    const restarts: string[] = [];
+    try {
+      const instance = new Eva({
+        paths: homePaths(home),
+        config: config(),
+        secrets: {},
+        engines: [new FakeEngine()],
+        runner,
+        processEnvironment: gitEnvironment,
+        now: () => clock,
+        basePrompt: "Base.",
+        toolPlaces: { platform: "linux", userHome: home, standalone: false },
+        toolInstall: { arch: "x64", ghReleaseUrl: release.url },
+        updateChannel: {
+          kind: "executable",
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
+        },
+        restartForUpdate: () => restarts.push("restart"),
+      });
+      eva = instance;
+      const installing = instance.installTool("gh");
+      await waitFor(() => unpackGate.open !== null);
+      expect((await instance.updateNow())?.phase).toBe("waiting_for_idle");
+      await instance.backgroundTick();
+      expect(restarts).toEqual([]);
+      unpackGate.open?.();
+      expect((await installing).ok).toBe(true);
+      await instance.backgroundTick();
+      expect(restarts).toEqual(["restart"]);
+    } finally {
+      await release.stop();
+    }
+  });
+
   test("the Updates page lists what voice notes lack, and one install adds each part", async () => {
     const archive = new TextEncoder().encode("a pretend archive");
     const archiveHash = createHash("sha256").update(archive).digest("hex");
@@ -2704,6 +2749,7 @@ describe("machine reports (#126)", () => {
     expect(readReport("example-pc")).toEqual({
       machine: "example-pc",
       version: expect.any(String) as string,
+      reportedAt: clock.toISOString(),
       problems: [
         { key: "telegram", level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." },
         { key: "update", level: "warn", message: "No update check.", resolvedMessage: "Ok.", hidden: true },
@@ -2723,6 +2769,21 @@ describe("machine reports (#126)", () => {
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.syncVault();
     expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+  });
+
+  test("the hub says how old a report is once it is more than a day old (#542)", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(
+      vault,
+      ".eva/machines/laptop.json",
+      JSON.stringify({ machine: "laptop", version: "0.1.0", reportedAt: clock.toISOString(), problems: [ahead] }),
+    );
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    await instance.syncVault();
+    expect(instance.status().problemDetails[0]?.message).not.toContain("last reported");
+    clock = new Date(clock.getTime() + 3 * 24 * 60 * 60_000);
+    await instance.syncVault();
+    expect(instance.status().problemDetails[0]?.message).toContain("laptop last reported 3 days ago.");
   });
 
   test("the hub sends no alert for a problem that another machine hid before the hub saw it", async () => {

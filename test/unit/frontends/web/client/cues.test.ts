@@ -274,22 +274,42 @@ describe("canVibrate", () => {
 });
 
 describe("cueOfClick", () => {
-  const target = (
-    button: { dataset: Record<string, string> } | null,
-  ): { closest: () => { dataset: Record<string, string> } | null } => ({ closest: () => button });
+  /** A click on a button with this `data-cue`, this `aria-disabled` and this `aria-busy`. */
+  const target = (cue?: string, ariaDisabled: string | null = null, ariaBusy: string | null = null): EventTarget => {
+    const attributes: Record<string, string | null> = { "aria-disabled": ariaDisabled, "aria-busy": ariaBusy };
+    const button = {
+      dataset: cue === undefined ? {} : { cue },
+      getAttribute: (name: string): string | null => attributes[name] ?? null,
+    };
+    return { closest: () => button } as unknown as EventTarget;
+  };
 
   test("a button with no cue taps", () => {
-    expect(cueOfClick(target({ dataset: {} }) as unknown as EventTarget)).toBe("tap");
+    expect(cueOfClick(target())).toBe("tap");
   });
 
   test("a button picks its cue, or none", () => {
-    expect(cueOfClick(target({ dataset: { cue: "saved" } }) as unknown as EventTarget)).toBe("saved");
-    expect(cueOfClick(target({ dataset: { cue: "none" } }) as unknown as EventTarget)).toBeNull();
-    expect(cueOfClick(target({ dataset: { cue: "unknown" } }) as unknown as EventTarget)).toBe("tap");
+    expect(cueOfClick(target("saved"))).toBe("saved");
+    expect(cueOfClick(target("none"))).toBeNull();
+    expect(cueOfClick(target("unknown"))).toBe("tap");
+  });
+
+  test("a turned-off button plays the problem cue, whatever cue it names", () => {
+    expect(cueOfClick(target(undefined, "true"))).toBe("problem");
+    expect(cueOfClick(target("none", "true"))).toBe("problem");
+    expect(cueOfClick(target("send", "true"))).toBe("problem");
+  });
+
+  test("a button with aria-disabled false keeps its cue", () => {
+    expect(cueOfClick(target(undefined, "false"))).toBe("tap");
+  });
+
+  test("a turned-off button that is busy keeps its cue: it only waits", () => {
+    expect(cueOfClick(target(undefined, "true", "true"))).toBe("tap");
   });
 
   test("a click outside a button stays silent", () => {
-    expect(cueOfClick(target(null) as unknown as EventTarget)).toBeNull();
+    expect(cueOfClick({ closest: () => null } as unknown as EventTarget)).toBeNull();
     expect(cueOfClick(null)).toBeNull();
   });
 });
@@ -369,7 +389,9 @@ describe("stored levels", () => {
     });
     expect(listeners).toEqual(["click"]);
     const click = onClick as ((event: { target: EventTarget | null }) => void) | null;
-    expect(() => click?.({ target: { closest: () => ({ dataset: {} }) } as unknown as EventTarget })).not.toThrow();
+    expect(() =>
+      click?.({ target: { closest: () => ({ dataset: {}, getAttribute: () => null }) } as unknown as EventTarget }),
+    ).not.toThrow();
     expect(() => click?.({ target: null })).not.toThrow();
   });
 });

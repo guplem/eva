@@ -72,13 +72,13 @@ const statusOrder: readonly MentionProject["status"][] = ["active", "idea", "pau
  */
 export function pickedProjects(
   projects: readonly MentionProject[],
-  inUseIds: readonly string[],
+  busyIds: readonly string[],
   query: string,
   limit: number,
 ): MentionProject[] {
   const needle = query.toLowerCase();
   const rank = (project: MentionProject): number =>
-    inUseIds.includes(project.id) ? -1 : statusOrder.indexOf(project.status);
+    busyIds.includes(project.id) ? -1 : statusOrder.indexOf(project.status);
   return projects
     .filter((project) => project.title.toLowerCase().includes(needle) || project.id.toLowerCase().includes(needle))
     .map((project, index) => ({ project, index }))
@@ -126,7 +126,7 @@ export function withFixRequest(text: string, projectId: string, request: string)
 }
 
 /** The projects with a Project chat that runs now: by the chat list, or by a turn that started since. */
-export function projectsInUse(
+export function busyProjects(
   chats: readonly Pick<ListedSession, "id" | "mode" | "projectId" | "running">[],
   isLive: (sessionId: string) => boolean,
 ): string[] {

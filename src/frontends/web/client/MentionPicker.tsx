@@ -28,7 +28,7 @@ import {
 import { mentionToken, type MentionKind } from "../../../shared/mentions.ts";
 
 /** The projects with a chat that runs now. The Chats page gives them, so they come first in the search. */
-export const ProjectsInUse = createContext<readonly string[]>([]);
+export const BusyProjects = createContext<readonly string[]>([]);
 
 /** A phone shows a few items of each kind above the keyboard. The person types more to find others. */
 const shownProjects = 5;
@@ -75,7 +75,7 @@ export function useMentionPicker(
   setText: (text: string) => void,
   inClone = false,
 ): MentionPicker {
-  const inUse = useContext(ProjectsInUse);
+  const busy = useContext(BusyProjects);
   const [query, setQuery] = useState<MentionQuery | null>(null);
   // Escape closes the search until the person types another `@`.
   const [dismissed, setDismissed] = useState<number | null>(null);
@@ -134,7 +134,7 @@ export function useMentionPicker(
 
   const projectOptions: MentionOption[] = pickedProjects(
     inClone ? [] : (projects ?? []),
-    inUse,
+    busy,
     word,
     shownProjects,
   ).map((project) => ({

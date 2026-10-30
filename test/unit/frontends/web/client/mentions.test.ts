@@ -7,7 +7,7 @@ import {
   mentionQueryAt,
   mentionWordEnd,
   pickedProjects,
-  projectsInUse,
+  busyProjects,
   withFixRequest,
   withProjectMention,
   type MentionProject,
@@ -61,7 +61,7 @@ describe("pickedProjects", () => {
     project("2026-01-01-0000-no-status", "No status", null),
   ];
 
-  test("a project in use comes first, then by status: active, idea, paused, closed", () => {
+  test("a busy project comes first, then by status: active, idea, paused, closed", () => {
     expect(pickedProjects(projects, ["2026-01-01-0000-busy-one"], "", 10).map((each) => each.title)).toEqual([
       "Busy one",
       "Active one",
@@ -137,15 +137,15 @@ describe("withFixRequest (issue 668)", () => {
   });
 });
 
-describe("projectsInUse", () => {
-  test("a project is in use while one of its Project chats runs, by the list or by the live turns", () => {
+describe("busyProjects", () => {
+  test("a project is busy while one of its Project chats runs, by the list or by the live turns", () => {
     const chats = [
       { id: "a", mode: "project" as const, projectId: "first", running: true },
       { id: "b", mode: "project" as const, projectId: "second", running: false },
       { id: "c", mode: "project" as const, projectId: "third", running: false },
       { id: "d", mode: "assistant" as const, projectId: null, running: true },
     ];
-    expect(projectsInUse(chats, (id) => id === "b")).toEqual(["first", "second"]);
+    expect(busyProjects(chats, (id) => id === "b")).toEqual(["first", "second"]);
   });
 });
 

@@ -402,6 +402,12 @@ describe("evaluateSetup, direct fixes", () => {
   });
 
   test("labels copy from the reference, and GitHub's defaults go", () => {
+    // A default name that the reference also has stays.
+    const kept = item(
+      evaluateSetup({ ...reference, labels: ["bug", "auto-developing"] }, target({ labels: ["bug"] })),
+      "Labels",
+    );
+    expect(kept.directFix).toMatchObject({ add: ["auto-developing"], remove: [] });
     const labels = item(evaluateSetup(reference, target({ labels: ["bug", "auto-developing"] })), "Labels");
     expect(labels.directFix).toEqual({
       kind: "labels",

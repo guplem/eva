@@ -299,7 +299,10 @@ function labelItem(context: Context): SetupItem {
   const have = new Set(present.map((name) => name.toLowerCase()));
   const missing = wanted.filter((name) => !have.has(name.toLowerCase()));
   // Only names that equal a known default go into the command, so a label name never injects shell text.
-  const defaults = present.filter((name) => githubDefaultLabels.has(name.toLowerCase()));
+  const wantedNames = new Set(wanted.map((name) => name.toLowerCase()));
+  const defaults = present.filter(
+    (name) => githubDefaultLabels.has(name.toLowerCase()) && !wantedNames.has(name.toLowerCase()),
+  );
   if (missing.length === 0 && defaults.length === 0) return green(label, "Has every standard label.");
   const slug = context.target.slug;
   const add =

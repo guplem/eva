@@ -116,6 +116,14 @@ describe("copyVaultFileToClone", () => {
     expect(existsSync(join(clone, mentionsFolderName))).toBe(false);
   });
 
+  test("refuses a file larger than 25 MB, and a secret past the first 2 MB (review of #716)", () => {
+    write(join(vault, "Notes", "big.bin"), new Uint8Array(26 * 1024 * 1024));
+    expect(errorOf(() => copyVaultFileToClone(vault, clone, "Notes/big.bin"))).toBe("file_not_downloadable");
+    // The check before the copy scans 2 MB at most, so the copy scans the bytes that it writes.
+    write(join(vault, "Notes", "log.txt"), `${"x".repeat(3 * 1024 * 1024)} ghp_0123456789abcdefghijklmnopqrstuvwxyzAB`);
+    expect(errorOf(() => copyVaultFileToClone(vault, clone, "Notes/log.txt"))).toBe("file_not_downloadable");
+  });
+
   test("refuses a file whose text holds a secret, as Telegram does when it sends a file", () => {
     write(join(vault, "Notes", "keys.txt"), "The key is ghp_0123456789abcdefghijklmnopqrstuvwxyzAB.");
     expect(errorOf(() => copyVaultFileToClone(vault, clone, "Notes/keys.txt"))).toBe("file_not_downloadable");
@@ -127,6 +135,18 @@ describe("saveInClone", () => {
     const saved = saveInClone(clone, "photo.jpg", new Uint8Array([1, 2, 3]));
     expect(saved).toMatch(/^\.mentions\/photo-[0-9a-f]{12}\.jpg$/);
     expect(new Uint8Array(readFileSync(join(clone, saved)))).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  test("a failed write names only the file, since a system error holds the whole path", () => {
+    // A file where the mention folder must go makes the folder fail.
+    writeFileSync(join(clone, mentionsFolderName), "not a folder");
+    let message = "";
+    try {
+      saveInClone(clone, "photo.jpg", new Uint8Array([1]));
+    } catch (error) {
+      message = isEvaError(error, "file_not_writable") ? error.message : String(error);
+    }
+    expect(message).toBe("Eva could not save photo.jpg for the chat.");
   });
 });
 
@@ -144,6 +164,14 @@ describe("withCloneMentions", () => {
     expect(text).toBe(
       "Read @file:Gone.md\n\n[@file:Gone.md: Eva could not give this file to the chat. Gone.md does not exist.]",
     );
+  });
+
+  test("two mentions with the same base name each keep their own note (review of #716)", () => {
+    write(join(vault, "A", "x.md"), "Shared.");
+    write(join(vault, "B", "x.md"), "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB");
+    const text = withCloneMentions("See @file:A/x.md and @file:B/x.md", vault, clone);
+    expect(text).toMatch(/is the file \.mentions\/x-[0-9a-f]{12}\.md\]/);
+    expect(text).toContain("[@file:x.md: Eva could not give this file to the chat. x.md holds a secret");
   });
 
   test("leaves a text with no file mention as it is, and drops a project note's vault folder", () => {

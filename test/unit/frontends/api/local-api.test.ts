@@ -2147,6 +2147,16 @@ describe("web routes", () => {
     expect(await json(secret)).toMatchObject({ code: "file_not_downloadable" });
     expect(eva.sessions.get(chat.id).turns).toEqual([]);
     expect(existsSync(join(cloneFolder, ".mentions", ".env.example-app"))).toBe(false);
+
+    // A late upload from the tab of a closed chat must not land in a clone that another chat may own now.
+    eva.sessions.close(chat.id);
+    const late = await fetch(`${api.url}/api/files/received?name=late.jpg&session=${chat.id}`, {
+      method: "POST",
+      headers: headers({ "content-type": "image/jpeg" }),
+      body: new Uint8Array([9]),
+    });
+    expect(late.status).toBe(409);
+    expect(await json(late)).toMatchObject({ code: "session_closed" });
   });
 
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {

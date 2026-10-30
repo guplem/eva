@@ -8,6 +8,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } 
 import { basename, join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { mentionsIn, mentionToken } from "../../shared/mentions.ts";
+import { containsSecretPattern } from "../../shared/redaction.ts";
 import { contentName, resolveSendableFile } from "../files/vault-files.ts";
 
 /** The folder of a clone that holds the copies. A dot name, so no tool takes it for a repository. */
@@ -39,9 +40,17 @@ export function saveInClone(clonePath: string, originalName: string, bytes: Uint
  * checks run on the resolved path, so `..`, `./` and links cannot reach a clone.
  */
 function checkedMention(vaultPath: string, requested: string): { readonly path: string; readonly name: string } {
-  const found = resolveSendableFile(vaultPath, requested);
+  let found: ReturnType<typeof resolveSendableFile>;
+  let size: number;
+  try {
+    found = resolveSendableFile(vaultPath, requested);
+    size = found.ok ? statSync(found.path).size : 0;
+  } catch {
+    // A system error, such as a file that went away during the check, holds the whole path.
+    throw new EvaError("file_not_downloadable", `Eva could not read ${basename(requested)}.`);
+  }
   if (!found.ok) throw new EvaError(found.missing === true ? "file_not_found" : "file_not_downloadable", found.reason);
-  if (statSync(found.path).size > maxCopyBytes)
+  if (size > maxCopyBytes)
     throw new EvaError("file_not_downloadable", `${requested} is larger than 25 MB, so Eva does not share it.`);
   return found;
 }
@@ -73,7 +82,12 @@ export function withBaseNames(text: string): string {
 /** Copies a vault file into the clone, and gives the copy's path from the clone folder. */
 export function copyVaultFileToClone(vaultPath: string, clonePath: string, vaultRelative: string): string {
   const { path, name } = checkedMention(vaultPath, vaultRelative);
-  return saveInClone(clonePath, name, readFileSync(path));
+  const bytes = readFileSync(path);
+  // The scan reads exactly the bytes that go into the clone: the check above scans 2 MB at most,
+  // and the file can change between the check and the read.
+  if (containsSecretPattern(bytes.toString("utf8")))
+    throw new EvaError("file_not_downloadable", `${vaultRelative} holds a secret, so Eva does not share it.`);
+  return saveInClone(clonePath, name, bytes);
 }
 
 /**
@@ -99,10 +113,13 @@ export function withCloneMentions(text: string, vaultPath: string, clonePath: st
     try {
       const copy = copyVaultFileToClone(vaultPath, clonePath, mention.name);
       token = mentionToken("file", basename(copy));
-      notes.set(token, `[${token} is the file ${copy}]`);
+      notes.set(mention.token, `[${token} is the file ${copy}]`);
     } catch (error) {
       token = mentionToken("file", basename(mention.name));
-      notes.set(token, `[${token}: Eva could not give this file to the chat. ${shownReason(error, mention.name)}]`);
+      notes.set(
+        mention.token,
+        `[${token}: Eva could not give this file to the chat. ${shownReason(error, mention.name)}]`,
+      );
     }
     result += text.slice(from, mention.start) + token;
     from = mention.start + mention.token.length;

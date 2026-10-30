@@ -14,6 +14,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   cleanScratch,
+  isClonePath,
+  looksLikeSecretsFile,
   OfferStore,
   receivedFileNote,
   resolveSendableFile,
@@ -109,6 +111,24 @@ describe("resolveSendableFile (lesson 72)", () => {
     write("Big.bin", "");
     writeFileSync(join(vault, "Big.bin"), new Uint8Array(50 * 1024 * 1024 + 1));
     expect(resolveSendableFile(vault, "Big.bin")).toEqual({ ok: false, reason: "Big.bin is larger than 50 MB." });
+  });
+});
+
+describe("names that Windows and macOS read in another way (review of #716)", () => {
+  test("a clone path matches in any case, since those systems find `projects/x/REPOS` too", () => {
+    expect(isClonePath("projects/example-app/REPOS/clone-0/a.md")).toBe(true);
+    expect(isClonePath("Projects/example-app/repos")).toBe(true);
+    expect(isClonePath("Projects/example-app/notes.md")).toBe(false);
+  });
+
+  test("a secrets name with a trailing dot or space still counts, since Windows drops them", () => {
+    expect(looksLikeSecretsFile(".env.")).toBe(true);
+    expect(looksLikeSecretsFile("credentials.json ")).toBe(true);
+    expect(looksLikeSecretsFile("notes.md.")).toBe(false);
+  });
+
+  test.skipIf(process.platform !== "win32")("a colon is refused on Windows, where it opens a file stream", () => {
+    expect(resolveSendableFile(vault, "Methods/Plan.md::$DATA").ok).toBe(false);
   });
 });
 

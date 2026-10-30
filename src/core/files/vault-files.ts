@@ -29,8 +29,9 @@ export type SendableFile =
  * chats' work, which can hold a project's secrets. Give it a resolved path, never a typed one.
  */
 export function isClonePath(relativePath: string): boolean {
-  const parts = relativePath.split(/[/\\]/);
-  return parts[0] === "Projects" && parts[2]?.toLowerCase() === "repos";
+  // Windows and macOS find `projects/x/REPOS` too, and realpath keeps the case as typed.
+  const parts = relativePath.split(/[/\\]/).map((part) => part.toLowerCase());
+  return parts[0] === "projects" && parts[2] === "repos";
 }
 
 /** Telegram lets a bot upload at most 50 MB. */
@@ -45,12 +46,16 @@ const secretNamePattern =
 
 /** True for a file name that holds secrets by convention, such as `.env` or `id.pem`. */
 export function looksLikeSecretsFile(name: string): boolean {
-  return secretNamePattern.test(name);
+  // Windows drops trailing dots and spaces, so `.env.` opens `.env`.
+  return secretNamePattern.test(name.replace(/[. ]+$/, ""));
 }
 
 /** Resolves a path from the vault root and checks that it may be sent. */
 export function resolveSendableFile(vaultPath: string, requested: string): SendableFile {
   if (isAbsolute(requested)) return { ok: false, reason: `${requested} is not a path from the vault root.` };
+  // Windows reads a colon in a name as a file stream, which a name check cannot see through.
+  if (process.platform === "win32" && requested.split(/[/\\]/).some((part) => part.includes(":")))
+    return { ok: false, reason: `${requested} is not a path that Eva sends.` };
   let root: string;
   let resolved: string;
   try {
@@ -64,7 +69,7 @@ export function resolveSendableFile(vaultPath: string, requested: string): Senda
     return { ok: false, reason: `${requested} is outside the vault, so Eva does not send it.` };
   const parts = relativePath.split(sep);
   // Clones and git data can hold a project's secrets, which the owner allows inside a project only.
-  if (parts.includes(".git") || isClonePath(relativePath))
+  if (parts.some((part) => part.toLowerCase() === ".git") || isClonePath(relativePath))
     return { ok: false, reason: `${requested} is in a repository folder, so Eva does not send it.` };
   if (looksLikeSecretsFile(basename(resolved)))
     return { ok: false, reason: `${requested} looks like a secrets file, so Eva does not send it.` };

@@ -1708,6 +1708,9 @@ export class Eva {
    */
   receiveFile(name: string, bytes: Uint8Array, sessionId: string | null = null): { path: string; note: string } {
     const chat = sessionId === null ? null : this.sessions.get(sessionId);
+    // Eva may have given the clone of a closed chat to another chat (issue 521), so a late file must not land there.
+    if (chat?.closed === true)
+      throw new EvaError("session_closed", "This chat is closed, because Eva reused its clone. Start a new chat.");
     const path =
       chat?.mode === "project" && chat.clone !== null
         ? saveInClone(chat.startFolder, name, bytes)

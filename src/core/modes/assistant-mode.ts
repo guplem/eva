@@ -107,8 +107,12 @@ export class AssistantPreparer implements TurnPreparer {
         title: "Your rules for Eva",
         source: rulesPath,
         text: rules,
-        // `prepare` checks the file before each turn, also when the chat keeps a copy.
-        note: onDisk === null ? "Eva cannot read the file, so a new message fails." : null,
+        // `prepare` checks that the file exists before each turn, also when the chat keeps a copy.
+        note: !existsSync(rulesPath)
+          ? "The file is missing, so a new message fails."
+          : rules === null
+            ? "Eva cannot read the file."
+            : null,
       },
       {
         group: "message",

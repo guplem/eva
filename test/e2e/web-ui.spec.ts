@@ -6081,14 +6081,30 @@ async function logInAsDevice(page: Page): Promise<void> {
 test("Settings: a vault with no password asks for it twice (#707)", async ({ page }) => {
   await page.route("**/api/vault/secrets", (route) =>
     route.fulfill({
-      json: { hasKey: false, keyChanged: false, unlocked: false, defaults: [], added: [], waiting: [] },
+      json: {
+        hasKey: false,
+        keyChanged: false,
+        unlocked: false,
+        defaults: [],
+        added: [],
+        waiting: [],
+        waitingFiles: [],
+      },
     }),
   );
   const sent: unknown[] = [];
   await page.route("**/api/vault/secrets/password", async (route) => {
     sent.push(route.request().postDataJSON());
     await route.fulfill({
-      json: { hasKey: true, keyChanged: false, unlocked: false, defaults: [], added: [], waiting: [] },
+      json: {
+        hasKey: true,
+        keyChanged: false,
+        unlocked: false,
+        defaults: [],
+        added: [],
+        waiting: [],
+        waitingFiles: [],
+      },
     });
   });
   await logIn(page);
@@ -6119,6 +6135,7 @@ test("Settings: this tab unlocks, and a default secret pattern waits before it s
   await card.getByRole("switch", { name: "Encrypt *.pfx" }).click();
   await card.getByRole("button", { name: "Save the list" }).click();
   await expect(card.getByRole("status").filter({ hasText: "These patterns still apply" })).toContainText("*.pfx");
+  await expect(card).toContainText("No encrypted file matches them now.");
   await card.getByRole("switch", { name: "Encrypt *.pfx" }).click();
   await card.getByRole("button", { name: "Save the list" }).click();
   await expect(card.getByText("These patterns still apply")).toHaveCount(0);

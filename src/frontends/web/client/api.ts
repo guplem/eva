@@ -386,8 +386,8 @@ export const api = {
   setSecretPatterns: (added: readonly string[], off: readonly string[]): Promise<VaultSecretsStatus> =>
     request("PUT", "/api/vault/secrets/patterns", { added, off }, { headers: unlockHeaders() }),
   /** Answers the paths that the removals decrypted. A locked tab answers 403 with `vault_locked`. */
-  confirmSecretRemovals: (): Promise<{ decrypted: string[] }> =>
-    request("POST", "/api/vault/secrets/confirm", undefined, { headers: unlockHeaders() }),
+  confirmSecretRemovals: (patterns: readonly string[], files: readonly string[]): Promise<{ decrypted: string[] }> =>
+    request("POST", "/api/vault/secrets/confirm", { patterns, files }, { headers: unlockHeaders() }),
   /** The keys stay the same, so this tab stays unlocked. */
   changeVaultPassword: (password: string): Promise<VaultSecretsStatus> =>
     request("POST", "/api/vault/secrets/change-password", { password }, { headers: unlockHeaders() }),

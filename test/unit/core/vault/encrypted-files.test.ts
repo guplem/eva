@@ -3,8 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
-  decryptRemovedFiles,
+  decryptFiles,
   encryptAgain,
+  filesFreedBy,
   readEncryptedFile,
   saveEncryptedFile,
 } from "../../../../src/core/vault/encrypted-files.ts";
@@ -105,7 +106,8 @@ describe("a confirmed removal and a new key (#707)", () => {
     writeEncrypted("Toolbox/server.pem", "PEM\n");
     // A conflict copy keeps Eva's header, but no pattern names it: a removal must not touch it.
     writeEncrypted("Notes/old (conflict copy).md", "OLD\n");
-    const decrypted = decryptRemovedFiles(vault, new SecretMatcher(["*.key"]), new SecretMatcher(["*.pem"]), unlocked);
+    const decrypted = filesFreedBy(vault, new SecretMatcher(["*.key"]), new SecretMatcher(["*.pem"]));
+    decryptFiles(vault, decrypted, unlocked);
     expect(decrypted).toEqual(["deploy/id.key"]);
     expect(new TextDecoder().decode(read("deploy/id.key"))).toBe("KEY\n");
     expect(encryptedState(read("Toolbox/server.pem"))).toBe("encrypted");
@@ -115,7 +117,7 @@ describe("a confirmed removal and a new key (#707)", () => {
   test("a removal gives a binary file back byte for byte", () => {
     const bytes = new Uint8Array([0, 1, 2, 200, 255]);
     writeEncrypted("certs/me.p12", bytes);
-    decryptRemovedFiles(vault, new SecretMatcher(["*.p12"]), new SecretMatcher([]), unlocked);
+    decryptFiles(vault, filesFreedBy(vault, new SecretMatcher(["*.p12"]), new SecretMatcher([])), unlocked);
     expect(read("certs/me.p12")).toEqual(bytes);
   });
 

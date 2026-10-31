@@ -87,7 +87,7 @@ describe("the vault password (#707)", () => {
     const service = encryption();
     await service.setPassword(token, password);
     write("deploy/id.key", "OLD\n");
-    await service.setPatterns({ added: [], off: [] });
+    await service.setPatterns(null, null, { added: [], off: [] });
     expect(encryptedState(new TextEncoder().encode(read("deploy/id.key")))).toBe("encrypted");
     const secret = await service.unlock(token, password);
     expect(service.status(token, secret).unlocked).toBe(true);
@@ -106,7 +106,7 @@ describe("the vault password (#707)", () => {
     const service = encryption();
     await service.setPassword(token, password);
     write("deploy/id.key", "KEY\n");
-    await service.setPatterns({ added: [], off: [] });
+    await service.setPatterns(null, null, { added: [], off: [] });
     let secret = await service.unlock(token, password);
     await service.changePassword(token, secret, "a second long password");
     secret = await service.unlock(token, "a second long password");
@@ -128,7 +128,7 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
     const service = encryption();
     await service.setPassword(token, password);
     write("Life/Health/blood.md", "Results.\n");
-    await service.setPatterns({ added: ["Life/Health/**"], off: [] });
+    await service.setPatterns(null, null, { added: ["Life/Health/**"], off: [] });
     expect(read(".eva/secret-files")).toContain("Life/Health/**");
     expect(encryptedState(new TextEncoder().encode(read("Life/Health/blood.md")))).toBe("encrypted");
   });
@@ -137,13 +137,22 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
     const service = encryption();
     await service.setPassword(token, password);
     write("deploy/id.key", "KEY\n");
-    await service.setPatterns({ added: [], off: [] });
-    await service.setPatterns({ added: [], off: ["*.key"] });
+    await service.setPatterns(null, null, { added: [], off: [] });
+    await service.setPatterns(null, null, { added: [], off: ["*.key"] });
     expect(service.status(null, null).waiting).toEqual(["*.key"]);
     expect(encryptedState(new TextEncoder().encode(read("deploy/id.key")))).toBe("encrypted");
-    expect(isEvaError(await failure(() => service.confirmRemovals(token, "no secret")), "vault_locked")).toBe(true);
+    expect(
+      isEvaError(
+        await failure(() =>
+          service.confirmRemovals(token, "no secret", { patterns: ["*.key"], files: ["deploy/id.key"] }),
+        ),
+        "vault_locked",
+      ),
+    ).toBe(true);
     const secret = await service.unlock(token, password);
-    expect(await service.confirmRemovals(token, secret)).toEqual(["deploy/id.key"]);
+    expect(await service.confirmRemovals(token, secret, { patterns: ["*.key"], files: ["deploy/id.key"] })).toEqual([
+      "deploy/id.key",
+    ]);
     expect(read("deploy/id.key")).toBe("KEY\n");
     expect(service.status(null, null).waiting).toEqual([]);
     const defaults = service.status(null, null).defaults;
@@ -180,7 +189,7 @@ describe("a key file that an agent changes (review of #707)", () => {
     const service = encryption();
     await service.setPassword(token, password);
     write("deploy/id.key", "KEY\n");
-    await service.setPatterns({ added: [], off: [] });
+    await service.setPatterns(null, null, { added: [], off: [] });
     const secret = await service.unlock(token, password);
     const version = (service.readFile(token, secret, "deploy/id.key") as { version: string }).version;
     // An agent swaps in a key of its own.
@@ -230,5 +239,71 @@ describe("a key file that goes away (review of #707)", () => {
     expect(isEvaError(refused, "vault_key_invalid")).toBe(true);
     expect(refused instanceof Error ? refused.message : "").toContain("Restore .eva/vault-key.json");
     expect(readVaultKey(vault)).toBeNull();
+  });
+});
+
+describe("removals that the person confirms, after the review of #707", () => {
+  async function keyRemoved(service: VaultEncryption): Promise<string> {
+    await service.setPassword(token, password);
+    write("deploy/id.key", "KEY\n");
+    await service.setPatterns(null, null, { added: [], off: [] });
+    await service.setPatterns(null, null, { added: [], off: ["*.key"] });
+    return service.unlock(token, password);
+  }
+
+  test("a confirmation names its files, and a file that comes meanwhile stops it", async () => {
+    const service = encryption();
+    const secret = await keyRemoved(service);
+    expect(service.status(token, secret).waitingFiles).toEqual(["deploy/id.key"]);
+    const stale = await failure(() => service.confirmRemovals(token, secret, { patterns: ["*.key"], files: [] }));
+    expect(isEvaError(stale, "file_changed")).toBe(true);
+    expect(service.status(null, null).waiting).toEqual(["*.key"]);
+    expect(await service.confirmRemovals(token, secret, { patterns: ["*.key"], files: ["deploy/id.key"] })).toEqual([
+      "deploy/id.key",
+    ]);
+  });
+
+  test("only the patterns that the person saw stop", async () => {
+    const service = encryption();
+    const secret = await keyRemoved(service);
+    await service.setPatterns(token, secret, { added: [], off: ["*.key", "*.pem"] });
+    expect(service.status(null, null).waiting).toEqual(["*.key", "*.pem"]);
+    await service.confirmRemovals(token, secret, { patterns: ["*.key"], files: ["deploy/id.key"] });
+    expect(service.status(null, null).waiting).toEqual(["*.pem"]);
+  });
+
+  test("a file that does not decrypt stops the confirmation, and nothing changes", async () => {
+    const service = encryption();
+    const secret = await keyRemoved(service);
+    const other = await createVaultKey("another long password", { logN: 10 });
+    write("deploy/foreign.key", new TextDecoder().decode(encryptFile(new TextEncoder().encode("X\n"), other)));
+    const files = service.status(token, secret).waitingFiles;
+    const refused = await failure(() => service.confirmRemovals(token, secret, { patterns: ["*.key"], files }));
+    expect(isEvaError(refused, "vault_file_unreadable")).toBe(true);
+    expect(service.status(null, null).waiting).toEqual(["*.key"]);
+    expect(encryptedState(new TextEncoder().encode(read("deploy/id.key")))).toBe("encrypted");
+  });
+
+  test("a pattern added back needs an unlocked device, and an agent that drops it again changes nothing", async () => {
+    const service = encryption();
+    const secret = await keyRemoved(service);
+    await service.confirmRemovals(token, secret, { patterns: ["*.key"], files: ["deploy/id.key"] });
+    const locked = await failure(() => service.setPatterns(null, null, { added: [], off: [] }));
+    expect(isEvaError(locked, "vault_locked")).toBe(true);
+    await service.setPatterns(token, secret, { added: [], off: [] });
+    expect(encryptedState(new TextEncoder().encode(read("deploy/id.key")))).toBe("encrypted");
+    // An agent turns the default off again, by hand.
+    write(".eva/secret-files", "!*.key\n");
+    expect(service.status(null, null).waiting).toEqual(["*.key"]);
+  });
+
+  test("a person's own pattern that the person saved from an unlocked device stays, though an agent drops its line", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const secret = await service.unlock(token, password);
+    await service.setPatterns(token, secret, { added: ["Life/Health/**"], off: [] });
+    write(".eva/secret-files", "");
+    rmSync(join(root, "state"), { recursive: true, force: true });
+    expect(service.status(null, null).waiting).toContain("Life/Health/**");
   });
 });

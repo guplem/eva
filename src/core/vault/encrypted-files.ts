@@ -45,24 +45,35 @@ export function saveEncryptedFile(
 }
 
 /**
- * Decrypts each encrypted file that a removed pattern covered and that no active pattern covers. A
- * file that no pattern ever named, such as a conflict copy, stays as it is. Gives the paths.
+ * Each encrypted file that a removed pattern covers and that no active pattern covers: the files
+ * that a removal would decrypt. A file that no pattern names, such as a conflict copy, is not one.
  */
-export function decryptRemovedFiles(
-  vaultPath: string,
-  removed: SecretMatcher,
-  active: SecretMatcher,
-  unlocked: UnlockedVaultKey,
-): string[] {
-  const decrypted: string[] = [];
-  for (const relativePath of encryptedFiles(vaultPath)) {
-    if (!removed.matches(relativePath) || active.matches(relativePath)) continue;
-    const path = join(vaultPath, relativePath);
-    // The bytes as they are: a binary file, such as a `.p12`, must not pass through a text decoder.
-    writeFileAtomic(path, decryptFile(new Uint8Array(readFileSync(path)), unlocked));
-    decrypted.push(relativePath);
+export function filesFreedBy(vaultPath: string, removed: SecretMatcher, active: SecretMatcher): string[] {
+  return encryptedFiles(vaultPath).filter((path) => removed.matches(path) && !active.matches(path));
+}
+
+/**
+ * Decrypts each file in place, all or none: a file that does not decrypt, such as one that an agent
+ * changed, throws `vault_file_unreadable`, and no file changes.
+ */
+export function decryptFiles(vaultPath: string, paths: readonly string[], unlocked: UnlockedVaultKey): void {
+  const planned: { readonly path: string; readonly bytes: Uint8Array }[] = [];
+  const unreadable: string[] = [];
+  for (const relativePath of paths) {
+    try {
+      const path = join(vaultPath, relativePath);
+      // The bytes as they are: a binary file, such as a `.p12`, must not pass through a text decoder.
+      planned.push({ path, bytes: decryptFile(new Uint8Array(readFileSync(path)), unlocked) });
+    } catch {
+      unreadable.push(relativePath);
+    }
   }
-  return decrypted;
+  if (unreadable.length > 0)
+    throw new EvaError(
+      "vault_file_unreadable",
+      `The vault's key does not open ${unreadable.join(", ")}, so Eva decrypted nothing. Restore each file from an older commit, or delete it.`,
+    );
+  for (const { path, bytes } of planned) writeFileAtomic(path, bytes);
 }
 
 /**

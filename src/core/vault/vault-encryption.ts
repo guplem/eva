@@ -9,16 +9,23 @@ import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import {
-  decryptRemovedFiles,
+  decryptFiles,
   encryptAgain,
+  filesFreedBy,
   readEncryptedFile,
   saveEncryptedFile,
   type OpenedFile,
 } from "./encrypted-files.ts";
 import { defaultSecretPatterns, SecretMatcher, secretFilesPath, type SecretFilesChanges } from "./secret-files.ts";
-import { activeSecretPatterns, signedPayload } from "./secret-policy.ts";
+import { activeSecretPatterns, addedBack, signedPayload } from "./secret-policy.ts";
 import { readVaultKey, vaultKeyPath, writeSignedState, writeVaultKey } from "./secret-state.ts";
-import { createVaultKey, keyFingerprint, rewrapVaultKey, unlockVaultKey } from "./vault-crypto.ts";
+import {
+  createVaultKey,
+  keyFingerprint,
+  rewrapVaultKey,
+  unlockVaultKey,
+  type UnlockedVaultKey,
+} from "./vault-crypto.ts";
 import type { VaultKeys } from "./vault-keys.ts";
 import type { VaultSecrets } from "./vault-secrets.ts";
 
@@ -54,6 +61,14 @@ export interface VaultSecretsStatus {
   readonly added: readonly string[];
   /** The patterns that still apply but that the file no longer asks for: removals that wait. */
   readonly waiting: readonly string[];
+  /** The encrypted files that a confirmation of every waiting removal would decrypt. */
+  readonly waitingFiles: readonly string[];
+}
+
+/** What the person saw before a confirmation: only these patterns stop, and only if these files are the ones. */
+export interface ConfirmedRemoval {
+  readonly patterns: readonly string[];
+  readonly files: readonly string[];
 }
 
 export class VaultEncryption {
@@ -66,8 +81,17 @@ export class VaultEncryption {
   status(deviceToken: string | null, secret: string | null): VaultSecretsStatus {
     const secrets = this.options.secrets();
     if (secrets === null)
-      return { hasKey: false, keyChanged: false, unlocked: false, defaults: [], added: [], waiting: [] };
+      return {
+        hasKey: false,
+        keyChanged: false,
+        unlocked: false,
+        defaults: [],
+        added: [],
+        waiting: [],
+        waitingFiles: [],
+      };
     const { key, keyChanged, input } = secrets.inputs();
+    const { active, waiting } = activeSecretPatterns(input);
     const off = new Set(input.changes.off);
     return {
       hasKey: key !== null,
@@ -75,7 +99,8 @@ export class VaultEncryption {
       unlocked: this.options.keys.isUnlocked(deviceToken, secret),
       defaults: defaultSecretPatterns.map((pattern) => ({ pattern, on: !off.has(pattern) })),
       added: input.changes.added,
-      waiting: activeSecretPatterns(input).waiting,
+      waiting,
+      waitingFiles: waiting.length === 0 ? [] : this.freedFiles(active, waiting),
     };
   }
 
@@ -141,39 +166,66 @@ export class VaultEncryption {
    * Writes the person's patterns. An added pattern encrypts its files at the save that follows. A
    * default turned off, or a pattern taken out, waits for a confirmation from an unlocked device.
    */
-  async setPatterns(changes: SecretFilesChanges): Promise<void> {
+  async setPatterns(deviceToken: string | null, secret: string | null, changes: SecretFilesChanges): Promise<void> {
     const vaultPath = this.vaultPath();
+    const added = changes.added
+      .map((pattern) => pattern.trim())
+      .filter((pattern) => pattern !== "" && !pattern.startsWith("!"));
+    const off = changes.off.filter((pattern) => defaultSecretPatterns.includes(pattern));
     const lines = [
       "# The secret files of this vault: Eva encrypts each one. Settings writes this file.",
       "# A line adds a pattern, in .gitignore syntax. A line with ! turns a default off.",
-      ...changes.added.map((pattern) => pattern.trim()).filter((pattern) => pattern !== "" && !pattern.startsWith("!")),
-      ...changes.off.filter((pattern) => defaultSecretPatterns.includes(pattern)).map((pattern) => `!${pattern}`),
+      ...added,
+      ...off.map((pattern) => `!${pattern}`),
     ];
     await this.options.vault.exclusive(() => {
+      const secrets = this.secrets();
+      const { key, keyChanged, machine, input } = secrets.inputs();
+      const next = { ...input, changes: { added, off } };
+      // An agent could drop a pattern that only the file holds, so an unlocked device signs the new list.
+      // A pattern that a signed removal took out comes back only that way, or the old record drops it again.
+      const unlocked = this.unlockedOrNull(deviceToken, secret);
+      if (unlocked === null && addedBack(next).length > 0)
+        throw new EvaError("vault_locked", "Unlock this tab to add back a pattern that you took out before.");
       writeFileAtomic(join(vaultPath, secretFilesPath), `${lines.join("\n")}\n`);
+      if (unlocked === null || key === null || keyChanged) return;
+      const sequence = Math.max(machine.sequence, input.signed?.sequence ?? 0) + 1;
+      const state = signedPayload(
+        next,
+        activeSecretPatterns({ ...next, signed: null }).active,
+        sequence,
+        keyFingerprint(key),
+      );
+      writeSignedState(vaultPath, state, unlocked);
+      secrets.acceptSequence(sequence);
     });
     await this.persist();
   }
 
-  /** Signs every removal that waits, decrypts the files that they freed, and saves. Gives those paths. */
-  async confirmRemovals(deviceToken: string | null, secret: string | null): Promise<string[]> {
-    const unlocked = this.options.keys.keyFor(deviceToken, secret);
+  /**
+   * Signs the removals that the person saw, decrypts the files that they free, and saves. Refuses
+   * when the files are not the ones that the person saw. Gives the decrypted paths.
+   */
+  async confirmRemovals(deviceToken: string | null, secret: string | null, seen: ConfirmedRemoval): Promise<string[]> {
     const vaultPath = this.vaultPath();
     const decrypted = await this.options.vault.exclusive(() => {
+      const unlocked = this.options.keys.keyFor(deviceToken, secret);
+      this.refuseChangedKey();
       const secrets = this.secrets();
-      const { key, keyChanged, machine, input } = secrets.inputs();
-      if (key === null || keyChanged) throw new EvaError("vault_locked", "Confirm the vault's key first.");
-      const before = activeSecretPatterns(input).active;
-      const state = signedPayload(
-        input,
-        Math.max(machine.sequence, input.signed?.sequence ?? 0) + 1,
-        keyFingerprint(key),
-      );
-      writeSignedState(vaultPath, state, unlocked);
-      secrets.acceptSequence(state.sequence);
-      const after = activeSecretPatterns({ ...input, signed: state }).active;
-      const removed = before.filter((pattern) => !after.includes(pattern));
-      return decryptRemovedFiles(vaultPath, new SecretMatcher(removed), new SecretMatcher(after), unlocked);
+      const { key, machine, input } = secrets.inputs();
+      if (key === null) throw new EvaError("vault_key_missing", "This vault has no password yet. Set one in Settings.");
+      const { active, waiting } = activeSecretPatterns(input);
+      const patterns = seen.patterns.filter((pattern) => waiting.includes(pattern));
+      const keep = active.filter((pattern) => !patterns.includes(pattern));
+      const files = patterns.length === 0 ? [] : this.freedFiles(keep, patterns);
+      if ([...files].sort().join("\n") !== [...seen.files].sort().join("\n"))
+        throw new EvaError("file_changed", "The files changed since you looked. Look at the list again.");
+      // The files first: a file that does not decrypt leaves the record, and so every file, as it was.
+      decryptFiles(vaultPath, files, unlocked);
+      const sequence = Math.max(machine.sequence, input.signed?.sequence ?? 0) + 1;
+      writeSignedState(vaultPath, signedPayload(input, keep, sequence, keyFingerprint(key)), unlocked);
+      secrets.acceptSequence(sequence);
+      return files;
     });
     await this.persist();
     return decrypted;
@@ -233,6 +285,21 @@ export class VaultEncryption {
       this.secrets().pinKey(keyFingerprint(key));
     });
     await this.persist();
+  }
+
+  /** The encrypted files that the `removed` patterns cover and that no pattern of `keep` covers. */
+  private freedFiles(keep: readonly string[], removed: readonly string[]): string[] {
+    const after = keep.filter((pattern) => !removed.includes(pattern));
+    return filesFreedBy(this.vaultPath(), new SecretMatcher(removed), new SecretMatcher(after));
+  }
+
+  /** The unlocked key of this device, or null for a request that has none. */
+  private unlockedOrNull(deviceToken: string | null, secret: string | null): UnlockedVaultKey | null {
+    try {
+      return this.options.keys.keyFor(deviceToken, secret);
+    } catch {
+      return null;
+    }
   }
 
   /** A key that changed and that the person did not confirm here may be an agent's: give it nothing. */

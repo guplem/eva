@@ -40,18 +40,47 @@ export interface SecretPolicy {
 
 export function activeSecretPatterns(input: SecretPolicyInput): SecretPolicy {
   const desired = desiredPatterns(input);
-  const candidates = new Set([...desired, ...input.defaults, ...input.retired, ...input.applied]);
+  // A pattern that a signed record keeps stays, though an agent drops its line and this machine's memory.
+  const candidates = new Set([
+    ...desired,
+    ...input.defaults,
+    ...input.retired,
+    ...input.applied,
+    ...(input.signed?.active ?? []),
+  ]);
   const removed = (pattern: string): boolean =>
     input.signed !== null && input.signed.known.includes(pattern) && !input.signed.active.includes(pattern);
   const active = [...candidates].filter((pattern) => desired.has(pattern) || !removed(pattern)).sort();
   return { active, waiting: active.filter((pattern) => !desired.has(pattern)) };
 }
 
-/** What an unlocked device signs to confirm every removal that waits. */
-export function signedPayload(input: SecretPolicyInput, sequence: number, fingerprint: string): SignedSecretState {
-  const desired = desiredPatterns(input);
-  const known = new Set([...desired, ...input.defaults, ...input.retired, ...input.applied]);
-  return { sequence, fingerprint, known: [...known].sort(), active: [...desired].sort() };
+/** The patterns that a signed record took out, but that the person's file asks for again. */
+export function addedBack(input: SecretPolicyInput): string[] {
+  const signed = input.signed;
+  if (signed === null) return [];
+  return [...desiredPatterns(input)].filter(
+    (pattern) => signed.known.includes(pattern) && !signed.active.includes(pattern),
+  );
+}
+
+/**
+ * What an unlocked device signs: `keep` stays, and each other pattern that Eva knows stops. So a
+ * removal that the person did not confirm still waits, since it is in `keep`.
+ */
+export function signedPayload(
+  input: SecretPolicyInput,
+  keep: readonly string[],
+  sequence: number,
+  fingerprint: string,
+): SignedSecretState {
+  const known = new Set([
+    ...(input.signed?.known ?? []),
+    ...activeSecretPatterns(input).active,
+    ...input.defaults,
+    ...input.retired,
+    ...keep,
+  ]);
+  return { sequence, fingerprint, known: [...known].sort(), active: [...new Set(keep)].sort() };
 }
 
 /** The defaults that the file does not turn off, and the patterns that it adds. */

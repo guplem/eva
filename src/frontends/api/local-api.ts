@@ -204,6 +204,10 @@ const secretPatternsSchema = z.object({
   added: z.array(z.string().max(500)).max(200),
   off: z.array(z.string().max(500)).max(200),
 });
+const confirmSchema = z.object({
+  patterns: z.array(z.string().max(500)).max(200),
+  files: z.array(z.string().max(2_000)).max(10_000),
+});
 const encryptedSaveSchema = z.object({
   path: z.string().min(1).max(2_000),
   text: z.string().max(1_000_000),
@@ -1378,11 +1382,13 @@ async function secretsRoute(request: Request, url: URL, eva: Eva, deviceToken: s
     return noStore(encryption.status(deviceToken, null));
   }
   if (method === "PUT" && path === "/api/vault/secrets/patterns") {
-    await encryption.setPatterns(secretPatternsSchema.parse(await request.json()));
+    await encryption.setPatterns(deviceToken, secret, secretPatternsSchema.parse(await request.json()));
     return noStore(encryption.status(deviceToken, secret));
   }
   if (method === "POST" && path === "/api/vault/secrets/confirm")
-    return noStore({ decrypted: await encryption.confirmRemovals(deviceToken, secret) });
+    return noStore({
+      decrypted: await encryption.confirmRemovals(deviceToken, secret, confirmSchema.parse(await request.json())),
+    });
   if (method === "POST" && path === "/api/vault/secrets/change-password") {
     await encryption.changePassword(deviceToken, secret, passwordSchema.parse(await request.json()).password);
     return noStore(encryption.status(deviceToken, secret));

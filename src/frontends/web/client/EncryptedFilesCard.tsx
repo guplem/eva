@@ -50,7 +50,7 @@ export function EncryptedFilesCard(): ReactElement {
   const confirmRemovals = async (): Promise<boolean> => {
     let decrypted = 0;
     const done = await act(async () => {
-      decrypted = (await api.confirmSecretRemovals()).decrypted.length;
+      decrypted = (await api.confirmSecretRemovals(status?.waiting ?? [], status?.waitingFiles ?? [])).decrypted.length;
       return api.vaultSecrets();
     }, null);
     if (done) setNote(`Eva decrypted ${String(decrypted)} files. The vault sync sends them as they are now.`);
@@ -258,13 +258,28 @@ function WaitingRemovals({
         These patterns still apply, though the list no longer asks for them. When you confirm, Eva decrypts their files,
         and the vault's remote gets the plain text.
       </p>
-      <ul>
+      <ul aria-label="Patterns that wait">
         {status.waiting.map((pattern) => (
           <li key={pattern}>
             <code>{pattern}</code>
           </li>
         ))}
       </ul>
+      {/* An agent can copy encrypted files under such a name, so the person sees each file before it opens. */}
+      {status.waitingFiles.length === 0 ? (
+        <p>No encrypted file matches them now.</p>
+      ) : (
+        <>
+          <p>Eva decrypts these files:</p>
+          <ul aria-label="Files that Eva decrypts">
+            {status.waitingFiles.map((path) => (
+              <li key={path}>
+                <code>{path}</code>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {status.unlocked ? (
         <SaveButton className="danger" onSave={onConfirm}>
           Confirm and decrypt

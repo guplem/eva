@@ -8,16 +8,13 @@ import { api, ApiError, type WidgetInputValue, type WidgetItem, type WidgetRevie
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
-import { Card, ChoiceChips, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
-import { VaultPicker } from "./VaultPicker.tsx";
+import { Card, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
+import { WidgetInputs, WidgetPermissions } from "./WidgetInputs.tsx";
 import {
   checkChoices,
   updateCheckNote,
-  formInputs,
   initialValues,
   missingInputs,
-  ownValue,
-  permissionLines,
   promptLine,
   sentValues,
   type FormValues,
@@ -388,11 +385,6 @@ function WidgetActivation({
   const [problem, setProblem] = useState<string | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
   const [values, setValues] = useState<FormValues>({});
-  const [picking, setPicking] = useState<{
-    readonly id: string;
-    readonly kind: "folder" | "file";
-    readonly writes: boolean;
-  } | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -482,37 +474,8 @@ function WidgetActivation({
                 )}
               </div>
             )}
-            {formInputs(manifest).map((input) => (
-              <InputField
-                key={input.id}
-                input={input}
-                value={ownValue(values, input.id)}
-                onChange={(value) => set(input.id, value)}
-                onPick={(kind) => setPicking({ id: input.id, kind, writes: input.access === "write" })}
-              />
-            ))}
-            <div className="field">
-              <span className="field-label">What this widget may do</span>
-              {permissionLines(manifest, values).length === 0 ? (
-                <span className="field-hint">Nothing: it only shows its own page.</span>
-              ) : (
-                <ul className="widget-permissions">
-                  {permissionLines(manifest, values).map((line) => (
-                    <li key={line.text}>
-                      <Icon name={line.icon} />
-                      <span>
-                        <strong>{line.text}</strong>
-                        <span className="field-hint">{line.why}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <span className="field-hint">
-                It reaches only these places and hosts. A change of the widget gives it nothing until you approve it
-                again.
-              </span>
-            </div>
+            <WidgetInputs manifest={manifest} values={values} onChange={set} />
+            <WidgetPermissions manifest={manifest} values={values} />
             {line !== null && (
               <div className="field">
                 <span className="field-label">What this widget tells Eva</span>
@@ -552,107 +515,7 @@ function WidgetActivation({
         )}
         {manifest === null && problem !== null && <div className="callout danger">{problem}</div>}
       </Dialog>
-      {picking !== null && (
-        <VaultPicker
-          label={picking.kind === "folder" ? "Pick a folder" : "Pick a file"}
-          newFile={picking.writes}
-          kind={picking.kind}
-          start={folderOf(ownValue(values, picking.id), picking.kind)}
-          onClose={() => setPicking(null)}
-          onPick={(path) => {
-            set(picking.id, path);
-            setPicking(null);
-          }}
-        />
-      )}
     </>
   );
 }
 
-/** The folder where the picker opens: the current folder, or the folder of the current file. */
-function folderOf(value: WidgetInputValue | undefined, kind: "folder" | "file"): string {
-  if (typeof value !== "string" || value.trim() === "") return "";
-  const path = value.trim();
-  if (kind === "folder") return path;
-  return path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-}
-
-function InputField({
-  input,
-  value,
-  onChange,
-  onPick,
-}: {
-  readonly input: ReturnType<typeof formInputs>[number];
-  readonly value: WidgetInputValue | undefined;
-  readonly onChange: (value: WidgetInputValue | undefined) => void;
-  readonly onPick: (kind: "folder" | "file") => void;
-}): ReactElement {
-  const label = input.required ? `${input.label} (required)` : input.label;
-  const hint = (
-    <>
-      {input.description} <em>Why: {input.why}</em>
-    </>
-  );
-  if (input.type === "folder" || input.type === "file") {
-    const kind = input.type;
-    return (
-      <div className="field">
-        <span className="field-label">{label}</span>
-        <div className="inline-form">
-          <span className="widget-picked">{typeof value === "string" && value !== "" ? value : "Nothing picked"}</span>
-          <button type="button" className="ghost" onClick={() => onPick(kind)}>
-            <Icon name={kind === "folder" ? "folder" : "file"} />
-            {kind === "folder" ? "Pick a folder" : "Pick a file"}
-          </button>
-        </div>
-        <span className="field-hint">{hint}</span>
-      </div>
-    );
-  }
-  if (input.type === "choice") {
-    const choices = [
-      { value: "", label: "None" },
-      ...(input.choices ?? []).map((choice) => ({ value: choice, label: choice })),
-    ];
-    return (
-      <SelectField
-        label={label}
-        value={typeof value === "string" ? value : ""}
-        choices={choices}
-        hint={hint}
-        onChange={(picked) => onChange(picked === "" ? undefined : picked)}
-      />
-    );
-  }
-  if (input.type === "boolean") {
-    return (
-      <ChoiceChips
-        label={label}
-        value={value === true ? "yes" : value === false ? "no" : ""}
-        choices={[
-          { value: "yes", label: "Yes" },
-          { value: "no", label: "No" },
-        ]}
-        hint={`${input.description} Why: ${input.why}`}
-        onChange={(picked) => onChange(picked === "yes")}
-      />
-    );
-  }
-  return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      <input
-        type={input.type === "number" ? "number" : input.type === "url" ? "url" : "text"}
-        value={value === undefined || typeof value === "boolean" ? "" : String(value)}
-        autoComplete="off"
-        onChange={(event) => {
-          const text = event.target.value;
-          if (input.type !== "number") onChange(text);
-          else onChange(text.trim() === "" || !Number.isFinite(Number(text)) ? undefined : Number(text));
-        }}
-      />
-      <span className="field-hint">{hint}</span>
-    </label>
-  );
-}

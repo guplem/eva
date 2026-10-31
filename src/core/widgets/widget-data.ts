@@ -204,7 +204,7 @@ function writeData(
   const next = parseData(text, yaml);
   if (next === undefined) return { status: 400, contentType: "text/plain; charset=utf-8", body: "Not valid data." };
   let content = text;
-  let written = next;
+  let written: unknown = next;
   if (current !== null) {
     const onDisk = readSame(target, current);
     const before = onDisk === null ? undefined : parseData(Buffer.from(onDisk).toString("utf-8"), yaml);

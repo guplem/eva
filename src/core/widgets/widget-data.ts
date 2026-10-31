@@ -237,3 +237,20 @@ export function keepUnknownFields(before: unknown, next: unknown, schema: unknow
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
+
+/**
+ * What a picked path is, for the check at the approval: a folder, a file, a path that does not
+ * exist yet in a folder that does ("missing"), or null for a path that a widget may never reach.
+ */
+export function placeOf(vaultPath: string, path: string): "folder" | "file" | "missing" | null {
+  const segments = openPath(path);
+  if (segments === null) return null;
+  const stats = walk(vaultPath, segments);
+  if (stats?.isDirectory() === true) return "folder";
+  if (stats?.isFile() === true) return "file";
+  if (stats !== null) return null;
+  const parentIsFolder = segments.length === 1 || walk(vaultPath, segments.slice(0, -1))?.isDirectory() === true;
+  // A link or a special file is never a place, and a missing file needs a folder that exists.
+  if (lstatOrNull(join(vaultPath, ...segments)) !== null) return null;
+  return parentIsFolder ? "missing" : null;
+}

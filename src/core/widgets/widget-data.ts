@@ -12,6 +12,9 @@ import { looksLikeSecretsFile } from "../files/vault-files.ts";
 import type { ApprovedPath } from "./widget-approvals.ts";
 import { isPlainName, isWritableName, matchesFiles, openPath } from "./widget-places.ts";
 
+/** An approved path with a value: an empty input reaches nothing. */
+export type OpenApprovedPath = ApprovedPath & { readonly path: string };
+
 export interface WidgetAnswer {
   readonly status: number;
   readonly contentType?: string;
@@ -61,7 +64,7 @@ export function contentTypeOf(name: string): string {
  */
 export function answerData(
   vaultPath: string,
-  approved: ApprovedPath,
+  approved: OpenApprovedPath,
   rest: string | null,
   method: string,
   write: DataWrite | null,
@@ -122,7 +125,7 @@ function lstatOrNull(path: string): Stats | null {
 }
 
 /** Each file of the folder and its subfolders, by its path from the folder, that the pattern takes. */
-function listFolder(vaultPath: string, approved: ApprovedPath): WidgetAnswer {
+function listFolder(vaultPath: string, approved: OpenApprovedPath): WidgetAnswer {
   const segments = openPath(approved.path);
   const stats = segments === null ? null : walk(vaultPath, segments);
   if (segments === null || !stats?.isDirectory()) return notFound;

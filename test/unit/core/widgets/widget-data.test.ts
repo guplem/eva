@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ApprovedPath } from "../../../../src/core/widgets/widget-approvals.ts";
+import type { OpenApprovedPath as ApprovedPath } from "../../../../src/core/widgets/widget-data.ts";
 import {
   answerData,
   contentTypeOf,

@@ -16,8 +16,8 @@ export const commitPattern = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 const approvedPathSchema = z.object({
   input: z.string(),
   type: z.enum(["folder", "file"]),
-  /** A forward-slash path from the vault root. */
-  path: z.string(),
+  /** A forward-slash path from the vault root, or null for an input that the person left empty. */
+  path: z.string().nullable(),
   access: z.enum(["read", "write"]),
   /** The `files` pattern of a folder input; null for a file input. */
   files: z.string().nullable(),

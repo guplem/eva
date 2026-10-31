@@ -339,7 +339,11 @@ function WidgetActivation({
 
   const manifest = review?.manifest ?? null;
   const missing = manifest === null ? [] : missingInputs(manifest, values);
-  const set = (id: string, value: WidgetInputValue | undefined): void => setValues((old) => ({ ...old, [id]: value }));
+  const set = (id: string, value: WidgetInputValue | undefined): void => {
+    setValues((old) => ({ ...old, [id]: value }));
+    // The warning was for the old values: another folder needs a new check.
+    setConflict(null);
+  };
 
   const approve = async (readOnly = false): Promise<void> => {
     if (review === null || manifest === null || missing.length > 0) return;

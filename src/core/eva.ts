@@ -781,7 +781,8 @@ export class Eva {
                 this.alerts.notify("data_format_edited", "warn", dataFormatEditedMessage(edited));
               },
               log: (reason) => options.logger?.log("warn", "Eva could not write the data formats.", { reason }),
-              vaultBusy: () => this.vaultTurnRunning(),
+              // With sync off, Eva takes no snapshot, so a write during a turn changes no undo.
+              vaultBusy: () => options.config.sync.enabled && this.vaultTurnRunning(),
             },
           });
 

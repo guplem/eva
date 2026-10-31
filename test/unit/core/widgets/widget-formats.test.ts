@@ -248,6 +248,68 @@ describe("the data format file", () => {
     expect(isEvaError(error, "widget_format_conflict")).toBe(true);
   });
 
+  test("a read of the widget's own yields to its write, whatever their order", async () => {
+    publish("training", {
+      "eva-widget.json": JSON.stringify({
+        contract: 1,
+        name: "Training",
+        size: "small",
+        inputs: [{ ...folderInput("other", "read") }, folderInput("training")],
+      }),
+      "schemas/training.json": JSON.stringify({ ...schemaHeader, properties: { value: { type: "number" } } }),
+      "schemas/other.json": JSON.stringify({ ...schemaHeader, properties: { value: { type: "string" } } }),
+      "index.html": "<p>training</p>",
+    });
+    await approve(trainingId, { training: "Life/Training", other: "Life/Training" });
+    expect(dataFormat("Life/Training/DATA_FORMAT.md")).toContain("| `value` | number |");
+  });
+
+  test("an input with a conflict sets no format for the inputs after it", async () => {
+    await approve(habitsId, { habits: "Life/Habits" });
+    publish("training", {
+      "eva-widget.json": JSON.stringify({
+        contract: 1,
+        name: "Training",
+        size: "small",
+        inputs: [folderInput("training"), folderInput("other")],
+      }),
+      "schemas/training.json": JSON.stringify({
+        ...schemaHeader,
+        properties: { name: { type: "number" }, count: { type: "number" } },
+      }),
+      "schemas/other.json": JSON.stringify({ ...schemaHeader, properties: { count: { type: "string" } } }),
+      "index.html": "<p>training</p>",
+    });
+    const error = await failure(() => approve(trainingId, { training: "Life/Habits", other: "Life/Habits" }));
+    // Only the first input conflicts: its schema leaves, so `count` of the second one fits.
+    expect((error as Error).message).toContain('training folder: the field "name"');
+    expect((error as Error).message).not.toContain("other folder:");
+  });
+
+  test("a file of another pattern in a subfolder shares no format with the folder above", async () => {
+    vaultFile("Life/Habits/Log/day.json", "{}");
+    publish("habits", {
+      "eva-widget.json": JSON.stringify({ ...habitsManifest, inputs: [{ ...folderInput("habits"), files: "*.yaml" }] }),
+      "schemas/habits.json": JSON.stringify(habitsSchema),
+      "index.html": "<p>habits</p>",
+    });
+    await approve(habitsId, { habits: "Life/Habits" });
+    publish("training", {
+      "eva-widget.json": JSON.stringify({
+        contract: 1,
+        name: "Training",
+        size: "small",
+        inputs: [{ ...folderInput("training"), type: "file", files: undefined }],
+      }),
+      "schemas/training.json": JSON.stringify({ ...schemaHeader, properties: { name: { type: "number" } } }),
+      "index.html": "<p>training</p>",
+    });
+    await approve(trainingId, { training: "Life/Habits/Log/day.json" });
+    const log = dataFormat("Life/Habits/Log/DATA_FORMAT.md");
+    expect(log).toContain("| `name` | number |");
+    expect(log).not.toContain("Habits (`example-owner/habits`)");
+  });
+
   test("waits while a chat runs a turn in the vault", async () => {
     busy = true;
     await approve(habitsId, { habits: "Life/Habits" });

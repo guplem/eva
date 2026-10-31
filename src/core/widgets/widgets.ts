@@ -30,6 +30,7 @@ import { themeCss, type WidgetTheme } from "./widget-policy.ts";
 import type { DataFormatRecord } from "./data-format-writer.ts";
 import type { FormatConflict } from "./data-formats.ts";
 import { installedSchema, WidgetFormats } from "./widget-formats.ts";
+import { oneLine } from "./widget-prompt.ts";
 
 export interface WidgetsOptions {
   readonly vaultPath: string;
@@ -631,7 +632,9 @@ function conflictText(manifest: WidgetManifest, conflicts: ReadonlyMap<string, r
     const fields = found.map((conflict) => `the field "${conflict.path}" is ${conflict.reason}`).join("; ");
     return `${folder}: ${fields}.`;
   });
-  return `${manifest.name} does not fit the data that the folder holds already. ${lines.join(" ")} Turn it on with read access only, or pick another folder.`;
+  return oneLine(
+    `${manifest.name} does not fit the data that the folder holds already. ${lines.join(" ")} Turn it on with read access only, or pick another folder.`,
+  );
 }
 
 function json(value: unknown): WidgetAnswer {

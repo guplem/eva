@@ -23,7 +23,7 @@ const deviceName = /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\..*)?$
  * A name as a file system that ignores case can read it. Windows folds `ſ` to `S` and the Kelvin
  * sign to `K`, so Eva folds both ways, after the compatibility form of Unicode.
  */
-function folded(name: string): string {
+export function folded(name: string): string {
   return name.normalize("NFKC").toUpperCase().toLowerCase();
 }
 

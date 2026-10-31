@@ -93,6 +93,11 @@ describe("exampleOf", () => {
     });
   });
 
+  test("gives a nullable field a real value", () => {
+    const schema = { type: "object", properties: { note: { type: ["string", "null"] } } };
+    expect(exampleOf(mergeFormats([{ widget: "a", name: "a", schema }]).fields)).toEqual({ note: "text" });
+  });
+
   test("gives a value for each common format and type", () => {
     const schema = {
       type: "object",

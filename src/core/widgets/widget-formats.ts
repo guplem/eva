@@ -19,7 +19,7 @@ import { checkData } from "./widget-contract.ts";
 import type { WidgetCopies } from "./widget-copies.ts";
 import { parseData, readVaultData } from "./widget-data.ts";
 import { readWidgetList } from "./widget-list.ts";
-import { isWritableName, matchesFiles } from "./widget-places.ts";
+import { folded, isWritableName, matchesFiles } from "./widget-places.ts";
 import { defaultPrompt, filledPrompt, oneLine, type PromptPlace } from "./widget-prompt.ts";
 
 /** One input with a schema, in the folder of its `DATA_FORMAT.md`. */
@@ -89,21 +89,33 @@ export class WidgetFormats {
     paths: readonly ApprovedPath[],
     schemas: ReadonlyMap<string, unknown>,
   ): Map<string, FormatConflict[]> {
-    // The new widget's own inputs count too: two of them can share a folder.
+    // The new widget's own inputs count too: two of them can share a folder. Its writes come
+    // first, so a read of its own yields to them, as a read always yields.
     const known: FolderUse[] = this.uses().filter((use) => use.widget !== id);
     const found = new Map<string, FormatConflict[]>();
-    for (const approved of paths) {
+    const ordered = [...paths].sort(
+      (first, second) => Number(second.access === "write") - Number(first.access === "write"),
+    );
+    for (const approved of ordered) {
       const place = placeOfInput(approved);
       const schema = approved.schema === null ? undefined : schemas.get(approved.schema);
       if (place === null || schema === undefined) continue;
-      const use: FolderUse = { widget: id, name, input: approved.input, access: approved.access, schema, ...place };
+      const use: FolderUse = {
+        widget: id,
+        name: oneLine(name),
+        input: approved.input,
+        access: approved.access,
+        schema,
+        ...place,
+      };
       // A folder and its subfolder share the files of the subfolder.
       const before = known.filter((other) => overlaps(other, use));
       const base = mergeFormats(before).conflicts.length;
       // The conflicts of the places before come first; the rest are the new input's.
       const conflicts = mergeFormats([...before, use]).conflicts.slice(base);
+      // An input with a conflict loses its schema, so it sets no format for the inputs after it.
       if (conflicts.length > 0) found.set(approved.input, conflicts);
-      known.push(use);
+      else known.push(use);
     }
     return found;
   }
@@ -113,16 +125,13 @@ export class WidgetFormats {
     const record = this.options.record;
     if (record === null || !this.options.isHub()) return null;
     const uses = this.uses();
+    // One file for each folder, without case, as a file system that ignores case sees it.
+    const byKey = new Map<string, string>();
+    for (const use of uses) if (!byKey.has(folded(use.folder))) byKey.set(folded(use.folder), use.folder);
     // The vault root holds the rules of the vault, not data.
-    const folders = [...new Set(uses.map((use) => use.folder))]
+    const folders = [...byKey.values()]
       .filter((folder) => folder !== "")
-      .map((folder) => ({
-        folder,
-        text: dataFormatText(
-          folder,
-          uses.filter((use) => readsFolder(use, folder)),
-        ),
-      }));
+      .map((folder) => ({ folder, text: dataFormatText(folder, usesOfFolder(uses, folder)) }));
     const result = await this.options.exclusive(() => writeDataFormats(this.options.vaultPath, folders, record));
     if (result.edited.length > 0) this.options.notify(result.edited);
     return result;
@@ -182,12 +191,14 @@ export class WidgetFormats {
       const yaml = /\.ya?ml$/i.test(name);
       const value = parseData(text, yaml);
       if (value === undefined) {
-        problems.push(`${path} is not valid ${yaml ? "YAML" : "JSON"}.`);
+        problems.push(oneLine(`${path} is not valid ${yaml ? "YAML" : "JSON"}.`));
         continue;
       }
       for (const use of covering) {
         const found = checkData(value, use.schema);
-        if (found.length > 0) problems.push(`${path} does not fit the format of ${use.name}: ${found.join("; ")}.`);
+        // A field name of the schema is the author's text: it stays on one line of the message.
+        if (found.length > 0)
+          problems.push(oneLine(`${path} does not fit the format of ${use.name}: ${found.join("; ")}.`));
       }
     }
     return problems;
@@ -232,22 +243,34 @@ function covers(use: Place, path: string): boolean {
   return coversFile(use, folder === "." ? "" : folder, posix.basename(path));
 }
 
-/** True when two places can hold the same file: the same folder, a folder and its subfolder, or a file of a folder. */
+/**
+ * True when Eva compares the formats of two places: one `DATA_FORMAT.md` describes both (the same
+ * folder), or they can hold the same file (a folder and its subfolder, or a file of a folder).
+ */
 function overlaps(first: Place, second: Place): boolean {
+  if (same(first.folder, second.folder)) return true;
   if (first.single) return coversFile(second, first.folder, first.files ?? "");
   if (second.single) return coversFile(first, second.folder, second.files ?? "");
   return within(first.folder, second.folder) || within(second.folder, first.folder);
 }
 
-/** True when the use reads files in `folder`: its own folder, or a folder above it. */
-function readsFolder(use: Place, folder: string): boolean {
-  return same(use.folder, folder) || (!use.single && within(folder, use.folder));
+/**
+ * The uses that the `DATA_FORMAT.md` of `folder` lists: those of the folder, and those of a folder
+ * above it that can read the same files. The conflict check compared exactly these.
+ */
+function usesOfFolder(uses: readonly FolderUse[], folder: string): FolderUse[] {
+  const own = uses.filter((use) => same(use.folder, folder));
+  const above = uses.filter(
+    (use) =>
+      !use.single && !same(use.folder, folder) && within(folder, use.folder) && own.some((each) => overlaps(use, each)),
+  );
+  return [...above, ...own];
 }
 
 function within(child: string, parent: string): boolean {
-  return same(child, parent) || parent === "" || child.toLowerCase().startsWith(`${parent.toLowerCase()}/`);
+  return same(child, parent) || parent === "" || folded(child).startsWith(`${folded(parent)}/`);
 }
 
 function same(first: string, second: string): boolean {
-  return first.toLowerCase() === second.toLowerCase();
+  return folded(first) === folded(second);
 }

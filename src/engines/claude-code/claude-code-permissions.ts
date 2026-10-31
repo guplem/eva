@@ -58,19 +58,23 @@ function assistantChat(mode: ClaudePermissionMode): ChatPermissions {
   };
 }
 
+/** The file wall of a Project chat (#711). The shell part needs Claude Code's sandbox on the computer. */
+const outsideFolder =
+  "Each file outside the chat's own folder, by a file tool, and by a shell command where the sandbox runs";
+
 function projectChat(chat: "trusted-project" | "untrusted-project", mode: ClaudePermissionMode): ChatPermissions {
   const note =
     chat === "trusted-project"
       ? "Claude Code runs as you would run it in the clone: its own settings, hooks and MCP servers apply."
       : "Always in Auto mode. Only your own settings apply: the clone's settings, hooks and MCP servers are off.";
   if (mode === "bypassPermissions") {
-    return { chat, runs: ["Every action"], asks: [], blocks: [anyDenyRule], note };
+    return { chat, runs: ["Every action"], asks: [], blocks: [outsideFolder, anyDenyRule], note };
   }
   return {
     chat,
     runs: ["Each action that the safety check of Claude Code or an allow rule allows"],
     asks: ["Each action that Claude Code asks about in a terminal"],
-    blocks: [safetyCheckRefusals, anyDenyRule],
+    blocks: [outsideFolder, safetyCheckRefusals, anyDenyRule],
     note,
   };
 }

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
+import { approvalExtensionSource, approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
 import { buildPiArguments, PiEngine } from "../../../../src/engines/pi/pi-adapter.ts";
 import {
   contextExtensionSource,
@@ -737,5 +737,50 @@ describe("PiEngine", () => {
     );
     expect(events[0]).toEqual({ kind: "history_lost" });
     expect(existsSync(join(sessions, "fork-1.jsonl"))).toBe(false);
+  });
+});
+
+describe("the file wall of a pi Project chat (#711)", () => {
+  /** The recorded approval, as if pi asked about this tool call instead. */
+  function asking(toolName: string, input: Record<string, unknown>): PiRecord[] {
+    return loadPiFixture("approval-allowed").map((record) =>
+      record["type"] === "extension_ui_request"
+        ? { ...record, message: JSON.stringify({ toolName, toolCallId: "call_wall", input }) }
+        : record,
+    );
+  }
+
+  async function answer(toolName: string, input: Record<string, unknown>, cwd: string, area: string): Promise<unknown> {
+    const fake = new FakePi([{ records: asking(toolName, input) }]);
+    await drain(
+      engine(fake).runTurn(
+        request({
+          mode: "project",
+          appendSystemPrompt: null,
+          startFolder: cwd,
+          fileWall: { area, closed: [folder] },
+        }),
+      ),
+    );
+    return (fake.runs[0]?.sent[1] as { confirmed?: boolean } | undefined)?.confirmed;
+  }
+
+  test("a file tool outside the chat's folder is refused, and one inside runs with no question", async () => {
+    const area = join(folder, "Projects", "example-app", "repos", "clone-0");
+    mkdirSync(area, { recursive: true });
+    expect(await answer("read", { path: join(folder, "AGENTS.md") }, area, area)).toBe(false);
+    expect(await answer("write", { path: "../../../../Notes/a.md" }, area, area)).toBe(false);
+    expect(await answer("ls", { path: folder }, area, area)).toBe(false);
+    expect(await answer("find", { pattern: "../**" }, area, area)).toBe(false);
+    expect(await answer("grep", { pattern: "x", path: folder }, area, area)).toBe(false);
+    expect(await answer("read", { path: "src/a.ts" }, area, area)).toBe(true);
+    expect(await answer("edit", { path: join(area, "a.ts") }, area, area)).toBe(true);
+    // pi has no shell wall: the status says so.
+    expect(await answer("bash", { command: "cat ../../AGENTS.md" }, area, area)).toBe(true);
+  });
+
+  test("the extension's refusal names no vault, and says that the path can be outside the chat's folder", () => {
+    expect(approvalExtensionSource).toContain("outside this chat's folder");
+    expect(approvalExtensionSource).not.toContain("vault");
   });
 });

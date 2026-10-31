@@ -34,10 +34,12 @@ import {
   modelTierName,
   type ApprovalAnswer,
   type EnginePort,
+  type FileWall,
   type ModelAlias,
   type TurnRequest,
 } from "../../shared/engine-port.ts";
 import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
+import { isInsideArea, isPatternInsideArea } from "../../shared/path-area.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -454,9 +456,36 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
   });
 }
 
+/** pi's file tools, and the fields that name a path or a file pattern. Relative ones start at the chat's folder. */
+const piPathFields: Readonly<Record<string, readonly string[]>> = {
+  read: ["path"],
+  write: ["path"],
+  edit: ["path"],
+  ls: ["path"],
+  find: ["path"],
+  grep: ["path"],
+};
+const piPatternFields: Readonly<Record<string, readonly string[]>> = { find: ["pattern"], grep: ["glob"] };
+
+function isOutsidePiWall(
+  wall: FileWall,
+  startFolder: string,
+  toolName: string,
+  input: Record<string, unknown>,
+): boolean {
+  const named = (keys: readonly string[] | undefined): string[] =>
+    (keys ?? []).map((key) => input[key]).filter((value): value is string => typeof value === "string" && value !== "");
+  return (
+    named(piPathFields[toolName]).some((path) => !isInsideArea(wall.area, path, startFolder)) ||
+    named(piPatternFields[toolName]).some((pattern) => !isPatternInsideArea(wall.area, pattern, startFolder))
+  );
+}
 function decide(request: TurnRequest, toolName: string, input: Record<string, unknown>): Promise<ApprovalAnswer> {
   // A model call has no tools, and nobody waits for a question.
   if (request.mode === "model-call") return Promise.resolve("deny");
+  // A Project chat's file tools stay inside its own folder (#711). pi has no shell wall.
+  if (request.fileWall !== null && isOutsidePiWall(request.fileWall, request.startFolder, toolName, input))
+    return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
   if (request.mode === "project" || !asksThePerson(toolName, input)) return Promise.resolve("allow");
   return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });

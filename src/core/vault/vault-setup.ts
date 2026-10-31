@@ -12,7 +12,9 @@ import { loadSettings } from "../settings/settings.ts";
 import { createGitHubRepository, listGitHubRepositories, type GitHubRepository } from "./github-repositories.ts";
 import { checkVaultRepository, cloneVault, isAddress, pushNewVault, vaultNeedsPush } from "./vault-clone.ts";
 import { createVaultKey } from "./vault-crypto.ts";
+import { plainSecretsIn } from "./plain-secrets.ts";
 import { createVaultFromTemplate } from "./vault-template.ts";
+import { VaultSecrets } from "./vault-secrets.ts";
 
 export interface VaultSetupOptions {
   readonly paths: HomePaths;
@@ -50,6 +52,8 @@ export interface VaultSetupResult {
 }
 
 const noToken = "Save a GitHub token first, in the GitHub step.";
+/** Each git step of the check of the history, which reads one commit or one file. */
+const historyCheckMs = 20_000;
 
 export class VaultSetup {
   private readonly options: VaultSetupOptions;
@@ -116,10 +120,36 @@ export class VaultSetup {
       const folder = this.options.savedVaultPath();
       if (folder === null || !(await this.lacksRemote(folder)))
         throw new EvaError("config_invalid", "The vault needs no push: it has a repository, or no commit yet.");
+      // A local vault can be old: its history may hold a secret file from before the encryption.
+      const plain = await this.plainSecretsInHistory(folder);
+      if (plain === null || plain.length > 0)
+        throw new EvaError(
+          "github_failed",
+          plain === null
+            ? "Eva could not check the vault's commits for secrets, so she did not push."
+            : `A commit of the vault holds ${plain.join(", ")} in plain text, so Eva did not push. Ask the Assistant to remove the file from the vault's history.`,
+        );
       const result = await this.pushTo(folder, repository);
       if (result.problem !== null) throw new EvaError("github_failed", result.problem);
       return result;
     });
+  }
+
+  private plainSecretsInHistory(folder: string): Promise<string[] | null> {
+    const secrets = new VaultSecrets({
+      vaultPath: folder,
+      machineStatePath: join(this.options.paths.stateFolder, "vault-secrets.json"),
+    });
+    return plainSecretsIn(
+      (args) =>
+        this.options.runner.run(["git", ...args], {
+          cwd: folder,
+          environment: this.options.gitEnvironment(),
+          timeoutMs: historyCheckMs,
+        }),
+      "HEAD",
+      (path, bytes) => secrets.isPlainSecret(path, bytes),
+    );
   }
 
   /** True for a saved vault with a commit and no remote, which the page offers to push. */

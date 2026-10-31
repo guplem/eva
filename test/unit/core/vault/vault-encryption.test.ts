@@ -17,6 +17,8 @@ import { isEvaError } from "../../../../src/shared/errors.ts";
 let root: string;
 let vault: string;
 let saves: number;
+/** What the next pull answers: "offline" plays a computer that cannot reach the remote. */
+let pullStatus: string;
 let secrets: VaultSecrets;
 const password = "correct horse battery";
 const token = "phone-token";
@@ -36,7 +38,7 @@ function encryption(): VaultEncryption {
     // The vault sync of a test: each save runs one round of the secret files, as a commit does.
     vault: {
       exclusive: (work) => Promise.resolve().then(work),
-      pull: () => Promise.resolve(),
+      pull: () => Promise.resolve({ status: pullStatus }),
       encryptSecrets: () => {
         const prepare = secrets.round();
         for (const path of ["deploy/id.key", "Toolbox/server.pem", "Life/Health/blood.md"]) prepare(path);
@@ -66,6 +68,7 @@ beforeEach(() => {
   mkdirSync(join(vault, ".eva"), { recursive: true });
   secrets = new VaultSecrets({ vaultPath: vault, machineStatePath: join(root, "state", "vault-secrets.json") });
   saves = 0;
+  pullStatus = "ok";
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -169,7 +172,7 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
       keys: new VaultKeys({ vaultPath: () => vault, now: () => new Date(), isDeviceValid: () => true }),
       vault: {
         exclusive: (work) => Promise.resolve().then(work),
-        pull: () => Promise.resolve(),
+        pull: () => Promise.resolve({ status: "ok" }),
         encryptSecrets: () => Promise.resolve(),
         save: () => Promise.resolve(),
       },
@@ -305,5 +308,32 @@ describe("removals that the person confirms, after the review of #707", () => {
     write(".eva/secret-files", "");
     rmSync(join(root, "state"), { recursive: true, force: true });
     expect(service.status(null, null).waiting).toContain("Life/Health/**");
+  });
+});
+
+describe("the first password and the remote (second review of #707)", () => {
+  test("a computer that cannot reach the remote makes no key, so two computers never make two", async () => {
+    const service = encryption();
+    pullStatus = "offline";
+    const refused = await failure(() => service.setPassword(token, password));
+    expect(isEvaError(refused, "vault_key_invalid")).toBe(true);
+    expect(readVaultKey(vault)).toBeNull();
+    pullStatus = "ok";
+    await service.setPassword(token, password);
+    expect(readVaultKey(vault)).not.toBeNull();
+  });
+});
+
+describe("a save of the list after a confirmed removal (second review of #707)", () => {
+  test("keeps the removal confirmed, so nothing waits again", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write("deploy/id.key", "KEY\n");
+    const secret = await service.unlock(token, password);
+    await service.setPatterns(token, secret, { added: [], off: ["*.key"] });
+    await service.confirmRemovals(token, secret, { patterns: ["*.key"], files: ["deploy/id.key"] });
+    await service.setPatterns(token, secret, { added: ["Life/Health/**"], off: ["*.key"] });
+    expect(service.status(null, null).waiting).toEqual([]);
+    expect(read("deploy/id.key")).toBe("KEY\n");
   });
 });

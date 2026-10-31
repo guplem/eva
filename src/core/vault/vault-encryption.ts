@@ -33,7 +33,8 @@ import type { VaultSecrets } from "./vault-secrets.ts";
 export interface VaultSteps {
   /** Runs the work between two sync steps. */
   exclusive<Result>(work: () => Result): Promise<Result>;
-  pull(): Promise<unknown>;
+  /** Its status tells whether the remote answered. */
+  pull(): Promise<{ readonly status: string }>;
   /** Encrypts each plain secret file now, even with the vault sync off. */
   encryptSecrets(): Promise<void>;
   /** Commits and pushes, when the vault sync is on. */
@@ -110,7 +111,13 @@ export class VaultEncryption {
     this.options.keys.checkDevice(deviceToken);
     const vaultPath = this.vaultPath();
     const file = await createVaultKey(password, this.options.cost);
-    await this.options.vault.pull();
+    // A key made with no word from the remote could meet a key that another computer made meanwhile.
+    const pulled = await this.options.vault.pull();
+    if (pulled.status === "offline" || pulled.status === "error" || pulled.status === "conflict")
+      throw new EvaError(
+        "vault_key_invalid",
+        "Eva cannot sync the vault now, so she makes no key: two computers could make two. Try again when the sync works.",
+      );
     await this.options.vault.exclusive(() => {
       // A broken file, or one from a newer Eva, still holds the only copy of a key: never write over it.
       if (existsSync(join(vaultPath, vaultKeyPath)))
@@ -192,7 +199,8 @@ export class VaultEncryption {
       const sequence = Math.max(machine.sequence, input.signed?.sequence ?? 0) + 1;
       const state = signedPayload(
         next,
-        activeSecretPatterns({ ...next, signed: null }).active,
+        // What applies now under the old record: a confirmed removal stays confirmed, and one that waits still waits.
+        activeSecretPatterns(next).active,
         sequence,
         keyFingerprint(key),
       );
@@ -258,13 +266,13 @@ export class VaultEncryption {
       this.refuseChangedKey();
       const secrets = this.secrets();
       const { machine, input } = secrets.inputs();
-      const { unreadable } = encryptAgain(vaultPath, unlocked, next);
+      // The new key file first: a stop halfway leaves files on the old key, which git still holds.
+      const { unreadable } = encryptAgain(vaultPath, unlocked, next, () => writeVaultKey(vaultPath, next));
       if (unreadable.length > 0)
         throw new EvaError(
           "vault_file_unreadable",
           `The vault's key does not open ${unreadable.join(", ")}, so Eva made no new key. Restore each file from an older commit, or delete it.`,
         );
-      writeVaultKey(vaultPath, next);
       secrets.pinKey(keyFingerprint(next));
       if (input.signed !== null) {
         const sequence = Math.max(machine.sequence, input.signed.sequence) + 1;

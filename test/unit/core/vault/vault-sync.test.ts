@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnvironmentWithToken } from "../../../../src/core/instance/child-environments.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
@@ -1243,3 +1243,64 @@ function remoteVersions(path: string): string[] {
     .filter((shown) => shown.exitCode === 0)
     .map((shown) => shown.stdout.toString());
 }
+
+describe("the push check, after the second review of #707", () => {
+  test("a plain secret in the very first commit of a vault never reaches an empty remote", async () => {
+    const bare = join(sandbox.root, "empty-707.git");
+    mkdirSync(bare);
+    sandbox.git(bare, "init", "-q", "--bare", "-b", "main");
+    const fresh = join(sandbox.root, "fresh-707");
+    mkdirSync(fresh);
+    sandbox.git(fresh, "init", "-q", "-b", "main");
+    sandbox.git(fresh, "remote", "add", "origin", bare);
+    writeVaultKey(fresh, await createVaultKey("correct horse battery", { logN: 10 }));
+    sandbox.write(fresh, "deploy/id.key", "PRIVATE\n");
+    sandbox.git(fresh, "add", "-A");
+    sandbox.git(
+      fresh,
+      "-c",
+      "user.name=Eva Test",
+      "-c",
+      "user.email=eva-test@example.invalid",
+      "commit",
+      "-q",
+      "-m",
+      "first",
+    );
+    const sync = new VaultSync({
+      vaultPath: fresh,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: fresh, machineStatePath: join(sandbox.root, "machine-707.json") }),
+    });
+    await sync.save();
+    const shown = Bun.spawnSync(["git", "show", "main:deploy/id.key"], { cwd: bare, env: gitEnvironment });
+    expect(shown.stdout.toString()).not.toContain("PRIVATE");
+  });
+
+  test("a plain secret that the remote already holds does not stop the push of a merge", async () => {
+    // An older Eva on another computer pushed a plain file that a default of this version matches.
+    const other = sandbox.clone("other-707b");
+    sandbox.write(other, "deploy/old.key", "OLD\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "older Eva");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    writeVaultKey(vault, await createVaultKey("correct horse battery", { logN: 10 }));
+    sandbox.write(vault, "Notes/mine.md", "mine\n");
+    sandbox.git(vault, "add", ".eva/vault-key.json", "Notes/mine.md");
+    sandbox.git(vault, "commit", "-q", "-m", "mine");
+    sandbox.git(vault, "fetch", "-q", "origin");
+    sandbox.git(vault, "merge", "-q", "--no-edit", "origin/main");
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine-707b.json") }),
+    });
+    const state = await sync.save();
+    expect(state.lastError ?? "").not.toContain("plain text");
+    expect(remoteVersions("Notes/mine.md")).toContain("mine\n");
+  });
+});

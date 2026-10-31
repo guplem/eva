@@ -258,3 +258,30 @@ describe("VaultSetup: the vault password (#707)", () => {
     expect(existsSync(join(paths.root, "vault"))).toBe(false);
   });
 });
+
+describe("VaultSetup: the first push of a local vault (second review of #707)", () => {
+  test("a commit that holds a plain secret file stops the push, and names the file", async () => {
+    await setup().create({ ...answers, repository: "" });
+    const vault = join(paths.root, "vault");
+    writeFileSync(join(vault, "server.pem"), "PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(
+      vault,
+      "-c",
+      "user.name=Eva Test",
+      "-c",
+      "user.email=eva-test@example.invalid",
+      "commit",
+      "-q",
+      "-m",
+      "an old commit",
+    );
+    const bare = join(sandbox.root, "empty-push.git");
+    mkdirSync(bare);
+    sandbox.git(bare, "init", "-q", "--bare");
+    const refused = await failure(setup().push(bare));
+    expect(isEvaError(refused, "github_failed")).toBe(true);
+    expect(refused instanceof Error ? refused.message : "").toContain("server.pem");
+    expect(sandbox.git(bare, "rev-list", "--all")).toBe("");
+  });
+});

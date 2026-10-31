@@ -84,6 +84,8 @@ export function encryptAgain(
   vaultPath: string,
   unlocked: UnlockedVaultKey,
   next: Pick<VaultKeyFile, "publicKey" | "signingKey">,
+  /** Runs once every file opens, before any file changes, such as to write the new key file. */
+  beforeWrite: () => void = () => undefined,
 ): { moved: string[]; unreadable: string[] } {
   const planned: { readonly path: string; readonly text: string }[] = [];
   const unreadable: string[] = [];
@@ -97,6 +99,7 @@ export function encryptAgain(
   }
   // All or nothing: a file left on the old key would open with no password once the old key goes.
   if (unreadable.length > 0) return { moved: [], unreadable };
+  beforeWrite();
   for (const { path, text } of planned) writeFileAtomic(join(vaultPath, path), text);
   return { moved: planned.map(({ path }) => path), unreadable };
 }

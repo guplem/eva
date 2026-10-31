@@ -9,6 +9,7 @@ import type { Logger } from "../../shared/logger.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
+import { plainSecretsIn } from "./plain-secrets.ts";
 import { scratchFolderName } from "../files/vault-files.ts";
 import {
   changedLeftOut,
@@ -955,11 +956,18 @@ export class VaultSync {
     };
     if (await this.hasUnpushedMerge(branch))
       return stop("Eva did not push. Remove the file from that commit, or ask for help.");
-    const reset = await this.git(["reset", "-q", "--soft", `origin/${branch}`], localTimeoutMs);
+    // Before the first push there is no remote commit to go back to, so the branch starts again.
+    const reset = (await this.remoteBranchKnown(branch))
+      ? await this.git(["reset", "-q", "--soft", `origin/${branch}`], localTimeoutMs)
+      : await this.git(["update-ref", "-d", "HEAD"], localTimeoutMs);
     if (reset.exitCode !== 0) return stop("Eva did not push.");
     if (!(await this.commitChanges(await this.statusEntries()))) return false;
     if ((await this.plainUnpushedSecrets(branch, secrets))?.length !== 0) return stop("Eva did not push.");
     return true;
+  }
+
+  private async remoteBranchKnown(branch: string): Promise<boolean> {
+    return (await this.git(["rev-parse", "--verify", "--quiet", `origin/${branch}`], localTimeoutMs)).exitCode === 0;
   }
 
   /**
@@ -971,25 +979,22 @@ export class VaultSync {
     secrets: NonNullable<VaultSyncOptions["secrets"]>,
   ): Promise<string[] | null> {
     // Before the first push, the remote has no branch yet, so every commit is unpushed.
-    const remoteKnown =
-      (await this.git(["rev-parse", "--verify", "--quiet", `origin/${branch}`], localTimeoutMs)).exitCode === 0;
-    const commits = await this.git(["rev-list", remoteKnown ? `origin/${branch}..HEAD` : "HEAD"], localTimeoutMs);
-    if (commits.exitCode !== 0) return null;
-    const plain = new Set<string>();
-    for (const commit of commits.stdout.split("\n").filter((sha) => sha !== "")) {
-      // `-m` lists a merge's files against each parent, so a merge hides nothing either.
-      const changed = await this.git(
-        ["diff-tree", "-r", "-m", "--no-commit-id", "--name-only", "--no-renames", "-z", commit],
-        localTimeoutMs,
-      );
-      if (changed.exitCode !== 0) return null;
-      for (const path of new Set(changed.stdout.split("\0").filter((name) => name !== ""))) {
-        const blob = await this.git(["show", `${commit}:${path}`], localTimeoutMs);
-        // A deleted file is in no tree of that commit.
-        if (blob.exitCode === 0 && secrets.isPlainSecret(path, new TextEncoder().encode(blob.stdout))) plain.add(path);
-      }
-    }
-    return [...plain];
+    const remoteKnown = await this.remoteBranchKnown(branch);
+    return plainSecretsIn(
+      (args) => this.git(args, localTimeoutMs),
+      remoteKnown ? `origin/${branch}..HEAD` : "HEAD",
+      (path, bytes) => secrets.isPlainSecret(path, bytes),
+      // A file that the remote holds as it is, such as one that a merge brings in, leaks nothing new.
+      (commit, path) =>
+        remoteKnown ? this.sameBlob(`${commit}:${path}`, `origin/${branch}:${path}`) : Promise.resolve(false),
+    );
+  }
+
+  private async sameBlob(first: string, second: string): Promise<boolean> {
+    const ids = await Promise.all(
+      [first, second].map((name) => this.git(["rev-parse", "--verify", "--quiet", name], localTimeoutMs)),
+    );
+    return ids.every((id) => id.exitCode === 0) && ids[0]?.stdout.trim() === ids[1]?.stdout.trim();
   }
 
   /**

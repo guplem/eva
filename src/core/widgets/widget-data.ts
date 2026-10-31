@@ -19,7 +19,7 @@ import {
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { writeFileAtomic } from "../../shared/files.ts";
-import { looksLikeSecretsFile } from "../files/vault-files.ts";
+import { isEncryptedOnDisk, secretMatcherOf, type SecretPaths } from "../files/secret-paths.ts";
 import type { ApprovedPath } from "./widget-approvals.ts";
 import { checkData } from "./widget-contract.ts";
 import { isDataFormatFile, isPlainName, isWritableName, matchesFiles, openPath } from "./widget-places.ts";
@@ -97,9 +97,9 @@ export function answerData(
   if (approved.access !== "write") return refused;
   const name = segments.at(-1) ?? "";
   if (!isWritableName(name) || (approved.files !== null && !matchesFiles(approved.files, name))) return refused;
-  // A folder input never writes over the list that Eva gives at its `index.json`. A secrets file is
+  // A folder input never writes over the list that Eva gives at its `index.json`. A secret file is
   // never a widget's data: Eva does not read one, so no widget writes or deletes one either.
-  if (isIndex || looksLikeSecretsFile(name)) return refused;
+  if (isIndex || isSecretData(vaultPath, segments)) return refused;
   // A file input may write a file that does not exist yet, in the folder that holds it.
   const depthOfPlace = isFolder ? (openPath(approved.path) ?? []).length : segments.length - 1;
   return method === "PUT"
@@ -115,7 +115,7 @@ function readData(vaultPath: string, segments: readonly string[]): WidgetAnswer 
   // A hard link can name a file of another place, such as `Life/About me.md`, from inside the folder.
   if (!stats?.isFile() || stats.nlink > 1) return notFound;
   const name = segments.at(-1) ?? "";
-  if (looksLikeSecretsFile(name) || isDataFormatFile(name)) return notFound;
+  if (isSecretData(vaultPath, segments) || isDataFormatFile(name)) return notFound;
   if (stats.size > maxReadBytes) return { status: 413 };
   const bytes = readSame(join(vaultPath, ...segments), stats);
   return bytes === null ? notFound : { status: 200, contentType: contentTypeOf(name), body: bytes };
@@ -156,6 +156,7 @@ function listFolder(vaultPath: string, approved: OpenApprovedPath): WidgetAnswer
   const stats = segments === null ? null : walk(vaultPath, segments);
   if (segments === null || !stats?.isDirectory()) return notFound;
   const names: string[] = [];
+  const secrets = secretMatcherOf(vaultPath);
   const visit = (relative: readonly string[]): void => {
     let entries: string[];
     try {
@@ -170,7 +171,12 @@ function listFolder(vaultPath: string, approved: OpenApprovedPath): WidgetAnswer
       const entryStats = lstatOrNull(join(vaultPath, ...segments, ...inner));
       if (entryStats === null || entryStats.isSymbolicLink()) continue;
       if (entryStats.isDirectory()) visit(inner);
-      else if (entryStats.isFile() && entryStats.nlink === 1 && listedFile(inner, entry, approved.files))
+      else if (
+        entryStats.isFile() &&
+        entryStats.nlink === 1 &&
+        listedFile(inner, entry, approved.files) &&
+        !isSecretData(vaultPath, [...segments, ...inner], secrets)
+      )
         names.push(inner.join("/"));
     }
   };
@@ -181,7 +187,7 @@ function listFolder(vaultPath: string, approved: OpenApprovedPath): WidgetAnswer
 function listedFile(inner: readonly string[], name: string, pattern: string | null): boolean {
   // The list itself answers at `index.json`, so a file of that name in the folder stays hidden.
   if (inner.length === 1 && name.toLowerCase() === indexFile) return false;
-  if (isDataFormatFile(name) || looksLikeSecretsFile(name)) return false;
+  if (isDataFormatFile(name)) return false;
   return pattern === null || matchesFiles(pattern, name);
 }
 
@@ -317,4 +323,13 @@ export function placeOf(vaultPath: string, path: string): "folder" | "file" | "m
   // A link or a special file is never a place, and a missing file needs a folder that exists.
   if (lstatOrNull(join(vaultPath, ...segments)) !== null) return null;
   return parentIsFolder ? "missing" : null;
+}
+
+/** A secret file of the vault's list, or an encrypted file of any name, is never a widget's data (#707). */
+function isSecretData(
+  vaultPath: string,
+  segments: readonly string[],
+  secrets: SecretPaths = secretMatcherOf(vaultPath),
+): boolean {
+  return secrets.matches(segments.join("/")) || isEncryptedOnDisk(join(vaultPath, ...segments));
 }

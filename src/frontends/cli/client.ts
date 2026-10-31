@@ -138,6 +138,11 @@ export function heldBackLines(files: readonly WithheldFile[]): string[] {
   const reasons: readonly (readonly [WithheldReason, string])[] = [
     ["secret", "as they look like secrets"],
     ["too_large", "as they are over 50 MB"],
+    ["no_vault_key", "as they are secret files and the vault has no password yet"],
+    ["vault_key_changed", "as they are secret files and the vault's key changed"],
+    ["not_decryptable", "as they are encrypted but someone changed them"],
+    ["env_has_secret", "as they are .env files with a key: move the key to .env.local"],
+    ["unreadable", "as Eva could not read them: they stay out until she can"],
   ];
   return reasons.flatMap(([reason, because]) => {
     const paths = files.filter((file) => file.reason === reason).map((file) => file.path);

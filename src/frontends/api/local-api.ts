@@ -35,6 +35,7 @@ import { serviceWorkerScript } from "../web/service-worker-script.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
+import { unlockHeader } from "../../shared/vault-unlock.ts";
 import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
 
 export interface LocalApiOptions {
@@ -200,6 +201,21 @@ const localAccount = "this computer";
 const googleLoginSchema = z.object({ address: z.string().min(1).max(10_000) });
 const vaultCloneSchema = z.object({ repository: z.string().min(1).max(2_000) });
 const vaultPushSchema = vaultCloneSchema;
+/** A vault password (#707). Its length rule lives in the core, so the reason reads the same everywhere. */
+const passwordSchema = z.object({ password: z.string().max(1_000) });
+const secretPatternsSchema = z.object({
+  added: z.array(z.string().max(500)).max(200),
+  off: z.array(z.string().max(500)).max(200),
+});
+const confirmSchema = z.object({
+  patterns: z.array(z.string().max(500)).max(200),
+  files: z.array(z.string().max(2_000)).max(10_000),
+});
+const encryptedSaveSchema = z.object({
+  path: z.string().min(1).max(2_000),
+  text: z.string().max(1_000_000),
+  version: z.string().min(1).max(100),
+});
 const newVaultSchema = z.object({
   name: z.string().max(200),
   language: z.string().max(200),
@@ -207,6 +223,8 @@ const newVaultSchema = z.object({
   notesLanguage: z.string().max(200).default(""),
   topics: z.array(z.string().max(200)).max(50),
   repository: z.string().max(2_000),
+  // A page from before #707 sends none, and the core then says that the password is too short.
+  password: z.string().max(1_000).default(""),
 });
 const claudeLoginSchema = z.object({ code: z.string().min(1).max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
@@ -1081,6 +1099,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     return json(await eva.createVault(newVaultSchema.parse(await request.json())));
   if (method === "POST" && url.pathname === "/api/vault/push")
     return json(await eva.pushVault(vaultPushSchema.parse(await request.json()).repository));
+  if (url.pathname.startsWith("/api/vault/secrets") || url.pathname === "/api/files/encrypted")
+    return secretsRoute(request, url, eva, deviceToken);
   if (url.pathname === "/api/vault/conflicts") {
     if (method === "GET") return json(await eva.vaultConflicts());
     if (method === "POST") {
@@ -1391,8 +1411,10 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
     isEvaError(error, "widget_invalid")
   )
     return json(body, 400);
+  if (isEvaError(error, "vault_password_invalid") || isEvaError(error, "vault_password_wrong")) return json(body, 400);
   if (isEvaError(error, "rate_limited")) return json(body, 429);
-  if (isEvaError(error, "setting_forbidden")) return json(body, 403);
+  // The page asks for the vault password on this code (#707).
+  if (isEvaError(error, "setting_forbidden") || isEvaError(error, "vault_locked")) return json(body, 403);
   return json(body, 409);
 }
 
@@ -1485,6 +1507,67 @@ function safeHost(origin: string): string | null {
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
+}
+
+/**
+ * The routes of the vault's encryption (#707). Only a device's own request decrypts: a request
+ * with the local API token has no device token. A decrypted text is never redacted, logged or put
+ * in an event, and no browser or proxy may keep it.
+ */
+async function secretsRoute(request: Request, url: URL, eva: Eva, deviceToken: string | null): Promise<Response> {
+  const encryption = eva.encryption;
+  const secret = request.headers.get(unlockHeader);
+  const method = request.method;
+  const path = url.pathname;
+  const noStore = (body: unknown): Response => Response.json(body, { headers: { "cache-control": "no-store" } });
+  if (method === "GET" && path === "/api/vault/secrets") return noStore(encryption.status(deviceToken, secret));
+  if (method === "POST" && path === "/api/vault/secrets/password") {
+    await encryption.setPassword(deviceToken, passwordSchema.parse(await request.json()).password);
+    return noStore(encryption.status(deviceToken, secret));
+  }
+  if (method === "POST" && path === "/api/vault/secrets/unlock")
+    return noStore({
+      secret: await encryption.unlock(deviceToken, passwordSchema.parse(await request.json()).password),
+    });
+  if (method === "POST" && path === "/api/vault/secrets/lock") {
+    encryption.lock(deviceToken);
+    return noStore(encryption.status(deviceToken, null));
+  }
+  if (method === "PUT" && path === "/api/vault/secrets/patterns") {
+    await encryption.setPatterns(deviceToken, secret, secretPatternsSchema.parse(await request.json()));
+    return noStore(encryption.status(deviceToken, secret));
+  }
+  if (method === "POST" && path === "/api/vault/secrets/confirm")
+    return noStore({
+      decrypted: await encryption.confirmRemovals(deviceToken, secret, confirmSchema.parse(await request.json())),
+    });
+  if (method === "POST" && path === "/api/vault/secrets/change-password") {
+    await encryption.changePassword(deviceToken, secret, passwordSchema.parse(await request.json()).password);
+    return noStore(encryption.status(deviceToken, secret));
+  }
+  if (method === "POST" && path === "/api/vault/secrets/new-key") {
+    await encryption.newKey(deviceToken, secret, passwordSchema.parse(await request.json()).password);
+    return noStore(encryption.status(deviceToken, null));
+  }
+  if (method === "POST" && path === "/api/vault/secrets/accept-key") {
+    await encryption.acceptKey(deviceToken, secret);
+    return noStore(encryption.status(deviceToken, secret));
+  }
+  if (method === "GET" && path === "/api/files/encrypted") {
+    const filePath = url.searchParams.get("path") ?? "";
+    const opened = encryption.readFile(deviceToken, secret, filePath);
+    if (opened.kind === "text") return noStore({ text: opened.text, version: opened.version });
+    const name = filePath.split("/").at(-1) ?? "file";
+    const response = downloadResponse({ name, bytes: new Uint8Array(opened.bytes), zip: false });
+    response.headers.set("cache-control", "no-store");
+    return response;
+  }
+  if (method === "PUT" && path === "/api/files/encrypted") {
+    const { path: filePath, text, version } = encryptedSaveSchema.parse(await request.json());
+    await encryption.saveFile(deviceToken, secret, filePath, text, version);
+    return noStore({ saved: true });
+  }
+  return json({ error: "Not found." }, 404);
 }
 
 /**

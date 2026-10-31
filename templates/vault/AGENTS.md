@@ -56,7 +56,7 @@ Inside each folder, group by topic. Purpose first, topic second.
 - **Write all notes in {{notesLanguage}}**, even when the person talks in another language, so that one search finds everything. Keep quotes and names in their own language.
 - **Close a note with its source** when the person says where it came from: `> Source: *Title*, Author`, plus a link when one exists.
 - **Mark few notes as important.** When the person would want to see a note even while they ask about another topic, put `> Important: <why it matters>` under its title.
-- **Secrets** (keys, passwords) may live only in the folder of the project that uses them. Never copy one into a note outside that folder. One known place for each secret makes it possible to change it later.
+- **Secrets** (keys, passwords) live only in secret files, such as `.env.local` or `server.pem`. Eva encrypts each one, so you see only her first line and encrypted text. Never copy a secret into a note. Tell the person which file holds it, and ask them to open it in Eva's Files page. One known place for each secret makes it possible to change it later.
 
 ## Grow the vault
 

@@ -60,10 +60,12 @@ import {
 import { logInGitHubCli } from "../../core/vault/github-cli-login.ts";
 import { githubLoginAccess } from "../../core/vault/github-login.ts";
 import { vaultFolders, vaultFoldersHint } from "../../core/vault/vault-folders.ts";
+import { createVaultKey } from "../../core/vault/vault-crypto.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import type { EngineName } from "../../shared/engine-port.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { minimumPasswordLength, newPasswordProblem } from "../../shared/vault-unlock.ts";
 import {
   engineLoginReport,
   engineLoginState,
@@ -83,6 +85,8 @@ export type SetupQuestion =
   | "language"
   | "notesLanguage"
   | "topics"
+  | "vaultPassword"
+  | "vaultPasswordAgain"
   | "githubRepository"
   | "engine"
   | "installEngines"
@@ -98,6 +102,8 @@ export type SetupQuestion =
   | "googleClientSecret"
   | "voiceModel";
 
+/** The questions whose answer the terminal never shows. */
+export const hiddenSetupQuestions: ReadonlySet<SetupQuestion> = new Set(["vaultPassword", "vaultPasswordAgain"]);
 /** The environment variable that answers each question in `eva setup --non-interactive`. */
 export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   timeZone: "EVA_TIME_ZONE",
@@ -109,6 +115,9 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   language: "EVA_LANGUAGE",
   notesLanguage: "EVA_NOTES_LANGUAGE",
   topics: "EVA_TOPICS",
+  vaultPassword: "EVA_VAULT_PASSWORD",
+  // A script asks nothing twice, so it needs only `EVA_VAULT_PASSWORD`.
+  vaultPasswordAgain: "EVA_VAULT_PASSWORD_AGAIN",
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
   installEngines: "EVA_INSTALL_ENGINES",
@@ -752,8 +761,10 @@ async function offerNewVault(
   const topics = splitList(
     await ask("topics", "Your main topics, comma-separated, such as work, family, music (Enter to skip): "),
   );
+  const key = await createVaultKey(await askVaultPassword(options, ask));
   await createVaultFromTemplate({
     folder,
+    key,
     answers: { name, language, notesLanguage, timeZone, topics },
     runner: options.runner,
     // The first commit carries this Eva's commit identity, as each later one does.
@@ -766,6 +777,35 @@ async function offerNewVault(
   });
   options.write(`Created a new vault in ${folder}.`);
   await offerVaultPush(options, folder, ask);
+}
+
+/** A person gets this many tries at a new vault password before setup stops. */
+const passwordTries = 3;
+
+/**
+ * Asks for the password of a new vault twice, so a typing mistake cannot lock the files away (#707).
+ * A script gives it once, and a bad answer from a script stops setup.
+ */
+async function askVaultPassword(
+  options: SetupOptions,
+  ask: (key: SetupQuestion, question: string) => Promise<string>,
+): Promise<string> {
+  options.write(
+    noteLine(
+      `Eva encrypts the secret files of your vault, such as keys, with a vault password of at least ${String(minimumPasswordLength)} characters. Nobody can recover a lost password: keep it in a password manager.`,
+    ),
+  );
+  let problem = "";
+  for (let tries = 0; tries < passwordTries; tries += 1) {
+    const password = await ask("vaultPassword", "The vault password: ");
+    const again = options.interactive ? await ask("vaultPasswordAgain", "The same password again: ") : password;
+    const found = newPasswordProblem(password, again);
+    if (found === null) return password;
+    problem = found;
+    if (!options.interactive) break;
+    options.write(noteLine(found));
+  }
+  throw new EvaError("vault_password_invalid", problem);
 }
 
 /**

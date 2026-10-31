@@ -158,3 +158,31 @@ describe("downloadVaultPath: folders", () => {
     expect(codeOf(() => downloadVaultPath(vault, "Methods", keep, 1_000))).toBe("file_not_downloadable");
   });
 });
+
+describe("downloadVaultPath: the vault's secret files (#707)", () => {
+  const encrypted =
+    "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n";
+
+  test("an encrypted file, whatever its name, sends the person to the Files page", () => {
+    write("Notes/copy.md", encrypted);
+    let message = "";
+    try {
+      downloadVaultPath(vault, "Notes/copy.md", keep);
+    } catch (error) {
+      message = error instanceof Error ? error.message : "";
+    }
+    expect(message).toContain("Files page");
+  });
+
+  test("a pattern of the person's own list stops a download, and the zip leaves it and each encrypted file out", () => {
+    write(".eva/secret-files", "Private/**\n");
+    write("Private/plan.md", "x");
+    write("Notes/copy.md", encrypted);
+    write("Notes/keep.md", "keep\n");
+    expect(codeOf(() => downloadVaultPath(vault, "Private/plan.md", keep))).toBe("file_not_downloadable");
+    const names = readZip(downloadVaultPath(vault, "", keep).bytes).map((entry) => entry.name);
+    expect(names).toContain("vault/Notes/keep.md");
+    expect(names).not.toContain("vault/Notes/copy.md");
+    expect(names).not.toContain("vault/Private/plan.md");
+  });
+});

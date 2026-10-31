@@ -60,6 +60,7 @@ import type {
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
 import type { UndoPreview } from "../../../core/vault/vault-snapshots.ts";
+import type { VaultSecretsStatus } from "../../../core/vault/vault-encryption.ts";
 import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
 import type { WidgetFrame, WidgetItem, WidgetReview } from "../../../core/widgets/widgets.ts";
 import type { ContextPart } from "../../../shared/chat-context.ts";
@@ -67,6 +68,7 @@ import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine
 import type { QuestionAnswers, SessionEvent } from "../../../shared/events.ts";
 import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
 import { failureOf, quickRead, quickSend, request } from "./request.ts";
+import { forgetUnlockSecret, keepUnlockSecret, unlockHeaders } from "./vault-unlock.ts";
 
 export { ApiError } from "./request.ts";
 
@@ -80,6 +82,7 @@ export type TemplatePartView = TemplatePart;
 export type { ComposerMenuItems, SavedPrompt, TextAction };
 
 export type { PersonalFactsView };
+export type { VaultSecretsStatus };
 export type { WidgetFrame, WidgetInputValue, WidgetItem, WidgetReview };
 /** Where the person is, for scripts: a recent point from a phone, or the home place. */
 export type CurrentPlaceView = CurrentPlace;
@@ -159,6 +162,24 @@ async function download(path: string, onShare: (share: number) => void): Promise
   const named = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get("content-disposition") ?? "")?.[1];
   const name = named === undefined ? (path.split("/").pop() ?? "download") : decodeURIComponent(named);
   return { name, blob: new Blob(chunks, { type: response.headers.get("content-type") ?? "" }) };
+}
+
+/** An encrypted file that this tab unlocked: a text opens in the page, any other file downloads (#707). */
+export type OpenedEncryptedFile =
+  | { readonly kind: "text"; readonly text: string; readonly version: string }
+  | { readonly kind: "binary"; readonly name: string; readonly blob: Blob };
+
+async function openEncryptedFile(path: string): Promise<OpenedEncryptedFile> {
+  const response = await fetch(`/api/files/encrypted?path=${encodeURIComponent(path)}`, {
+    credentials: "same-origin",
+    headers: unlockHeaders(),
+  });
+  if (!response.ok) throw await failureOf(response);
+  if ((response.headers.get("content-type") ?? "").startsWith("application/json")) {
+    const { text, version } = (await response.json()) as { text: string; version: string };
+    return { kind: "text", text, version };
+  }
+  return { kind: "binary", name: path.split("/").pop() ?? "file", blob: await response.blob() };
 }
 
 /** The address of one repository of a clone: each one has its own pull and push. */
@@ -351,6 +372,45 @@ export const api = {
       `/api/files/search?query=${encodeURIComponent(query)}${contents ? "&contents=true" : ""}${shareable ? "&shareable=true" : ""}`,
     ),
   downloadFile: download,
+  /** The vault's encryption: its key, this tab's unlock and the list of secret files (#707). */
+  vaultSecrets: (): Promise<VaultSecretsStatus> =>
+    request("GET", "/api/vault/secrets", undefined, { limit: quickRead, headers: unlockHeaders() }),
+  setVaultPassword: (password: string): Promise<VaultSecretsStatus> =>
+    request("POST", "/api/vault/secrets/password", { password }, { headers: unlockHeaders() }),
+  /** A wrong password answers 400 with `vault_password_wrong`. The secret stays in this tab only. */
+  unlockVault: async (password: string): Promise<void> => {
+    const { secret } = await request<{ secret: string }>("POST", "/api/vault/secrets/unlock", { password });
+    keepUnlockSecret(secret);
+  },
+  lockVault: async (): Promise<VaultSecretsStatus> => {
+    forgetUnlockSecret();
+    return request("POST", "/api/vault/secrets/lock");
+  },
+  setSecretPatterns: (added: readonly string[], off: readonly string[]): Promise<VaultSecretsStatus> =>
+    request("PUT", "/api/vault/secrets/patterns", { added, off }, { headers: unlockHeaders() }),
+  /** Answers the paths that the removals decrypted. A locked tab answers 403 with `vault_locked`. */
+  confirmSecretRemovals: (patterns: readonly string[], files: readonly string[]): Promise<{ decrypted: string[] }> =>
+    request("POST", "/api/vault/secrets/confirm", { patterns, files }, { headers: unlockHeaders() }),
+  /** The keys stay the same, so this tab stays unlocked. */
+  changeVaultPassword: (password: string): Promise<VaultSecretsStatus> =>
+    request("POST", "/api/vault/secrets/change-password", { password }, { headers: unlockHeaders() }),
+  /** The old key opens nothing any more, so the core locks every device, this tab too. */
+  newVaultKey: async (password: string): Promise<VaultSecretsStatus> => {
+    const status = await request<VaultSecretsStatus>(
+      "POST",
+      "/api/vault/secrets/new-key",
+      { password },
+      { headers: unlockHeaders() },
+    );
+    forgetUnlockSecret();
+    return status;
+  },
+  acceptVaultKey: (): Promise<VaultSecretsStatus> =>
+    request("POST", "/api/vault/secrets/accept-key", undefined, { headers: unlockHeaders() }),
+  openEncryptedFile,
+  /** A file that changed since `version` answers 409 with `file_changed`. */
+  saveEncryptedFile: (path: string, version: string, text: string): Promise<{ saved: true }> =>
+    request("PUT", "/api/files/encrypted", { path, version, text }, { headers: unlockHeaders() }),
   favorites: (): Promise<Favorite[]> => request("GET", "/api/files/favorites"),
   /** A missing path answers 404 with `file_not_found`. */
   setFavorite: (path: string, favorite: boolean): Promise<Favorite[]> =>

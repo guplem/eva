@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page, type WebSocketRoute } from "@playwright/test";
 
 const token = "e2e-demo-token";
+const vaultPassword = "a long demo password";
 
 // A route handler can still run as its test ends, and its error then fails the next test.
 test.afterEach(async ({ page }) => {
@@ -4309,6 +4310,37 @@ test("Settings: the vault step lists the repositories and clones the picked one,
   await expect(page.getByRole("button", { name: "Create a new vault" })).toBeDisabled();
 });
 
+test("Settings: a new vault asks for its password twice before Eva creates it (#707)", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  const created: { password?: string }[] = [];
+  await page.route("**/api/vault/create", async (route) => {
+    created.push(route.request().postDataJSON() as { password?: string });
+    await route.fulfill({ json: { folder: "/eva-home/vault", repository: null, problem: null } });
+  });
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Step \d+ Your vault/ })
+    .click();
+  await page.getByRole("button", { name: "Start a new vault" }).click();
+  await page.getByLabel("A vault password").fill(vaultPassword);
+  await page.getByLabel("The same password again").fill("not the same password");
+  await page.getByRole("button", { name: "Create a new vault" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "The two passwords are not the same." })).toBeVisible();
+  expect(created).toEqual([]);
+  await page.getByLabel("The same password again").fill(vaultPassword);
+  await page.getByRole("button", { name: "Create a new vault" }).click();
+  await expect.poll(() => created.map((answers) => answers.password)).toEqual([vaultPassword]);
+});
+
 test("Settings: a token saved in the vault step lists the repositories at once", async ({ page }) => {
   await page.route("**/api/settings/setup", async (route) => {
     const response = await route.fetch();
@@ -6035,7 +6067,127 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Vault" }).click();
   await expect(list("Vault").getByRole("link", { name: ".eva" })).toBeVisible();
-  await expect(list("Vault").getByRole("link", { name: ".git" })).toHaveCount(0);
+  await expect(list("Vault").getByRole("link", { name: ".git", exact: true })).toHaveCount(0);
+});
+
+/** Only a device's own login decrypts, so the browser logs in as a device, with a login link. */
+async function logInAsDevice(page: Page): Promise<void> {
+  const link = (await (
+    await page.request.post("/api/devices/link", { headers: { authorization: `Bearer ${token}` }, data: {} })
+  ).json()) as { secret: string };
+  expect((await page.request.post("/api/login/link", { data: { secret: link.secret } })).ok()).toBe(true);
+}
+
+test("Settings: a vault with no password asks for it twice (#707)", async ({ page }) => {
+  await page.route("**/api/vault/secrets", (route) =>
+    route.fulfill({
+      json: {
+        hasKey: false,
+        keyChanged: false,
+        unlocked: false,
+        defaults: [],
+        added: [],
+        waiting: [],
+        waitingFiles: [],
+      },
+    }),
+  );
+  const sent: unknown[] = [];
+  await page.route("**/api/vault/secrets/password", async (route) => {
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: {
+        hasKey: true,
+        keyChanged: false,
+        unlocked: false,
+        defaults: [],
+        added: [],
+        waiting: [],
+        waitingFiles: [],
+      },
+    });
+  });
+  await logIn(page);
+  await page.goto("/#/settings/vault/encrypted-files");
+  const card = page.getByRole("region", { name: "Encrypted files" });
+  await expect(card).toContainText("This vault has no password yet");
+  const form = card.getByRole("form", { name: "New vault password" });
+  await form.getByLabel("New vault password").fill(vaultPassword);
+  await form.getByLabel("The same password again").fill("another long password");
+  await form.getByRole("button", { name: "Set the password" }).click();
+  await expect(form.getByRole("alert")).toHaveText("The two passwords are not the same.");
+  expect(sent).toEqual([]);
+  await form.getByLabel("The same password again").fill(vaultPassword);
+  await form.getByRole("button", { name: "Set the password" }).click();
+  await expect(card.getByRole("status").filter({ hasText: "The vault password is set." })).toBeVisible();
+  expect(sent).toEqual([{ password: vaultPassword }]);
+});
+
+test("Settings: this tab unlocks, and a default secret pattern waits before it stops (#707)", async ({ page }) => {
+  await logInAsDevice(page);
+  await page.goto("/#/settings/vault/encrypted-files");
+  const card = page.getByRole("region", { name: "Encrypted files" });
+  await card.getByLabel("Vault password").fill(vaultPassword);
+  await card.getByRole("button", { name: "Unlock" }).click();
+  await expect(card.getByText("This tab is unlocked")).toBeVisible();
+
+  // A default that the person turns off still applies until a confirmation.
+  await card.getByRole("switch", { name: "Encrypt *.pfx" }).click();
+  await card.getByRole("button", { name: "Save the list" }).click();
+  await expect(card.getByRole("status").filter({ hasText: "These patterns still apply" })).toContainText("*.pfx");
+  await expect(card).toContainText("No encrypted file matches them now.");
+  await card.getByRole("switch", { name: "Encrypt *.pfx" }).click();
+  await card.getByRole("button", { name: "Save the list" }).click();
+  await expect(card.getByText("These patterns still apply")).toHaveCount(0);
+  await card.getByRole("button", { name: "Lock" }).click();
+  await expect(card.getByLabel("Vault password")).toBeVisible();
+});
+
+test("Files: an encrypted file shows a lock, opens with the vault password, saves and locks again (#707)", async ({
+  page,
+}, testInfo) => {
+  const path = `Private/${testInfo.project.name}.secrets`;
+  await logInAsDevice(page);
+  const password = vaultPassword;
+  // The secret file never shows its text before the unlock, not even to a raw request.
+  expect(await (await page.request.get(`/api/files?path=${path}`)).text()).not.toContain("demo-value");
+
+  await page.goto(`/#/files/${path}`);
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
+  await page.getByLabel("Vault password").fill("a wrong password");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByLabel("Vault password").fill(password);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file).toContainText("API_KEY=demo-value");
+
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByLabel(`Text of ${path}`).fill("API_KEY=new-value\n");
+  await file.getByRole("button", { name: "Save" }).click();
+  // The editor closes only when the save lands: a Lock before that would ask about the unsaved text.
+  await expect(file.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+  await expect(file).toContainText("API_KEY=new-value");
+  expect(await (await page.request.get(`/api/files?path=${path}`)).text()).not.toContain("new-value");
+
+  // An unsaved edit makes Lock ask first. A no keeps the edit.
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByLabel(`Text of ${path}`).fill("API_KEY=draft-value\n");
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await chooseFileAction(page, "Lock encrypted files");
+  await expect(file.getByLabel(`Text of ${path}`)).toHaveValue("API_KEY=draft-value\n");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await chooseFileAction(page, "Lock encrypted files");
+  await expect(page.getByLabel("Vault password")).toBeVisible();
+  // The decrypted draft went with the lock: the unlock opens the saved text, not the editor.
+  await page.getByLabel("Vault password").fill(password);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(file).toContainText("API_KEY=new-value");
+  await expect(file.getByLabel(`Text of ${path}`)).toHaveCount(0);
+  await chooseFileAction(page, "Lock encrypted files");
+  await expect(page.getByLabel("Vault password")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
 });
 
 test("Files: a wide screen shows each folder of the path as a column, and the file can fill the page (issue 308)", async ({

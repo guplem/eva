@@ -18,6 +18,7 @@ import {
 import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
+import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
 
 export type SendableFile =
   | { readonly ok: true; readonly path: string; readonly relativePath: string; readonly name: string }
@@ -39,16 +40,8 @@ export const maxSendableBytes = 50 * 1024 * 1024;
 export const scratchFolderName = "Scratch";
 /** Scratch files older than this are removed. */
 const scratchMaxAgeMs = 7 * 24 * 60 * 60_000;
-/** File names that hold secrets by convention; the vault's .gitignore names the same ones. */
+/** Only a text file this small is scanned for a secret: a larger one is a document or a media file. */
 const secretScanBytes = 2 * 1024 * 1024;
-const secretNamePattern =
-  /^\.env(\..*)?$|\.(pem|key|p12|pfx)$|^(\.npmrc|\.pypirc|\.netrc|secrets?\.json|credentials\.json|client_secret.*\.json)$/i;
-
-/** True for a file name that holds secrets by convention, such as `.env` or `id.pem`. */
-export function looksLikeSecretsFile(name: string): boolean {
-  // Windows drops trailing dots and spaces, so `.env.` opens `.env`.
-  return secretNamePattern.test(name.replace(/[. ]+$/, ""));
-}
 
 /** Resolves a path from the vault root and checks that it may be sent. */
 export function resolveSendableFile(vaultPath: string, requested: string): SendableFile {
@@ -71,8 +64,11 @@ export function resolveSendableFile(vaultPath: string, requested: string): Senda
   // Clones and git data can hold a project's secrets, which the owner allows inside a project only.
   if (parts.some((part) => part.toLowerCase() === ".git") || isClonePath(relativePath))
     return { ok: false, reason: `${requested} is in a repository folder, so Eva does not send it.` };
-  if (looksLikeSecretsFile(basename(resolved)))
-    return { ok: false, reason: `${requested} looks like a secrets file, so Eva does not send it.` };
+  // Telegram keeps each message on its servers, so an encrypted file opens only in Eva's web app (#707).
+  if (isEncryptedOnDisk(resolved))
+    return { ok: false, reason: `${requested} is encrypted. Open it in Eva's web app, on the Files page.` };
+  if (secretMatcherOf(root).matches(relativePath.split(sep).join("/")))
+    return { ok: false, reason: `${requested} is a secret file, so Eva does not send it.` };
   const stats = statSync(resolved);
   if (!stats.isFile()) return { ok: false, reason: `${requested} is not a file.` };
   if (stats.size > maxSendableBytes) return { ok: false, reason: `${requested} is larger than 50 MB.` };

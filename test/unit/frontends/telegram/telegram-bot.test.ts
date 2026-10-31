@@ -14,6 +14,7 @@ import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts
 import type { EngineEventPayload } from "../../../../src/shared/events.ts";
 import { FakeTelegram } from "../../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
+import { testVaultKeyText } from "../../../support/vault-key.ts";
 
 const owner = 4242;
 const readNote = {
@@ -114,6 +115,7 @@ beforeEach(() => {
   sandbox = createGitSandbox();
   const vault = sandbox.clone("vault");
   sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
+  sandbox.write(vault, ".eva/vault-key.json", testVaultKeyText);
   // A shared location goes into this note. With no note, a problem alert would reach the chat.
   sandbox.write(vault, "Life/About me.md", "---\nname: Alex\n---\n");
   sandbox.git(vault, "add", "-A");

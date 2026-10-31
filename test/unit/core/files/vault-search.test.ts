@@ -122,3 +122,19 @@ describe("searchVault: contents", () => {
     expect(result.complete).toBe(false);
   });
 });
+
+describe("searchVault: the vault's secret files (#707)", () => {
+  test("never reads the text of a listed or an encrypted file, and lists neither to share", () => {
+    write(".eva/secret-files", "Private/**\n");
+    write("Private/keys.md", "the zebra key\n");
+    write(
+      "Notes/copy.md",
+      "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n",
+    );
+    expect(searchVault(vault, "zebra", { contents: true }, keep).matches).toEqual([]);
+    expect(searchVault(vault, "aaaa", { contents: true }, keep).matches).toEqual([]);
+    const shareable = searchVault(vault, "md", { contents: false, shareable: true }, keep).matches;
+    expect(shareable.map((match) => match.path)).not.toContain("Private/keys.md");
+    expect(shareable.map((match) => match.path)).not.toContain("Notes/copy.md");
+  });
+});

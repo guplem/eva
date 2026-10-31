@@ -9,6 +9,7 @@ import {
   lastLocationProblem,
   lastLocationWriteProblem,
   relayedProblem,
+  shellWallProblem,
   updateProblem,
   vaultErrorAlertSteps,
   vaultOfflineAlertMs,
@@ -299,6 +300,16 @@ describe("lastLocationProblem", () => {
     expect(lastLocationProblem("nothing")).toBeNull();
     expect(lastLocationProblem("not_due")).toBeNull();
     expect(lastLocationProblem("waiting")).toBe("keep");
+  });
+});
+
+describe("shellWallProblem (#711)", () => {
+  test("says that the shell of a Project chat can read the vault and Eva's folder, why, and that the file tools stay walled", () => {
+    const problem = shellWallProblem("Claude Code's shell sandbox needs bubblewrap.");
+    expect(problem?.message).toContain("can read the vault and Eva's own folder on this computer");
+    expect(problem?.message).toContain("bubblewrap");
+    expect(problem?.message).toContain("file tools");
+    expect(shellWallProblem(null)).toBeNull();
   });
 });
 

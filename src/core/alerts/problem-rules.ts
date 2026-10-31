@@ -67,6 +67,19 @@ export function vaultSyncProblem(
   }
 }
 
+/**
+ * The shell of a Project chat has no wall on this computer (#711). A chat does not stop for it:
+ * its file tools stay inside its own folder.
+ */
+export function shellWallProblem(gap: string | null): AlertProblem | null {
+  if (gap === null) return null;
+  return {
+    level: "warn",
+    message: `The shell of a Project chat can read the vault and Eva's own folder on this computer. ${gap} The file tools of each chat stay out of them.`,
+    resolvedMessage: "The shell of each Project chat stays out of the vault and Eva's own folder on this computer.",
+  };
+}
+
 /** The alert keys of the vault's encryption (#707), so each problem opens and closes by itself. */
 type VaultSecretsKey = "vault_password" | "vault_key_changed" | "vault_secret_files";
 

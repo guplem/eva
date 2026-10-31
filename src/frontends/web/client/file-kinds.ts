@@ -84,3 +84,44 @@ export function nameEnds(name: string): { readonly head: string; readonly tail: 
   const kept = Math.min(extension + tailLetters, Math.floor(name.length / 2));
   return { head: name.slice(0, name.length - kept), tail: name.slice(name.length - kept) };
 }
+
+export interface Media {
+  readonly kind: "image" | "audio" | "video";
+  /** The MIME type that the browser needs to show the bytes. */
+  readonly type: string;
+}
+
+/**
+ * The formats that every current browser shows by itself. A PDF stays out: most phone browsers do
+ * not show one inside a page. An SVG stays out too: Eva shows it as text.
+ */
+const media: Readonly<Record<string, Media>> = {
+  png: { kind: "image", type: "image/png" },
+  jpg: { kind: "image", type: "image/jpeg" },
+  jpeg: { kind: "image", type: "image/jpeg" },
+  gif: { kind: "image", type: "image/gif" },
+  webp: { kind: "image", type: "image/webp" },
+  avif: { kind: "image", type: "image/avif" },
+  bmp: { kind: "image", type: "image/bmp" },
+  ico: { kind: "image", type: "image/x-icon" },
+  mp3: { kind: "audio", type: "audio/mpeg" },
+  wav: { kind: "audio", type: "audio/wav" },
+  ogg: { kind: "audio", type: "audio/ogg" },
+  opus: { kind: "audio", type: "audio/ogg" },
+  m4a: { kind: "audio", type: "audio/mp4" },
+  aac: { kind: "audio", type: "audio/aac" },
+  flac: { kind: "audio", type: "audio/flac" },
+  mp4: { kind: "video", type: "video/mp4" },
+  m4v: { kind: "video", type: "video/mp4" },
+  webm: { kind: "video", type: "video/webm" },
+  mov: { kind: "video", type: "video/quicktime" },
+};
+
+/** The media of a file that the page can show, or null for any other file. */
+export function mediaOf(name: string): Media | null {
+  const dot = name.lastIndexOf(".");
+  const start = name.lastIndexOf("/") + 1;
+  // A dot at the start of the name, as in ".png", is no extension.
+  if (dot <= start) return null;
+  return media[name.slice(dot + 1).toLowerCase()] ?? null;
+}

@@ -96,6 +96,7 @@ export class ModelCalls {
         trusted: false,
         harnessMemory: false,
         folderHooks: false,
+        fileWall: null,
         environment: this.options.environment,
         requestApproval: () => Promise.resolve("deny"),
         askQuestions: () => Promise.resolve("declined"),

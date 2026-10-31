@@ -23,6 +23,7 @@ import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import type { ApprovalQuestion, EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
 import type { EnginePermissions, PermissionContext } from "../../shared/permissions.ts";
 import { describeClaudePermissions, type ClaudePermissionMode } from "./claude-code-permissions.ts";
+import { fileWallHooks, fileWallSandbox, toolCacheVariables } from "./claude-code-file-wall.ts";
 
 /** The SDK's query, with the one control request that Eva uses. */
 type QueryRun = AsyncIterable<SDKMessage> & { mcpServerStatus?: () => Promise<McpServerStatus[]> };
@@ -230,6 +231,19 @@ export function buildQueryOptions(
     }
     // A bypass would let an untrusted clone's own text run any tool with no question.
     setPermissionMode(options, request.trusted ? permissionMode : "auto");
+    if (request.fileWall !== null) {
+      // The chat cannot open the vault or Eva's folder, by a file tool or by the shell (#711).
+      options.settings = {
+        ...(typeof options.settings === "object" ? options.settings : {}),
+        sandbox: fileWallSandbox(request.fileWall),
+      };
+      options.hooks = fileWallHooks(
+        request.fileWall,
+        request.startFolder,
+        request.environment["CLAUDE_CONFIG_DIR"] ?? null,
+      );
+      options.env = { ...options.env, ...toolCacheVariables() };
+    }
   }
   return options;
 }

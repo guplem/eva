@@ -56,6 +56,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     trusted: true,
     harnessMemory: true,
     folderHooks: true,
+    fileWall: null,
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
     askQuestions: () => Promise.resolve<QuestionsOutcome>("declined"),

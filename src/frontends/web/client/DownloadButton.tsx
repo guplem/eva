@@ -34,13 +34,7 @@ export function useDownload(
     setProblem(null);
     try {
       const { name, blob } = await fetchFile(setShare);
-      const address = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = address;
-      link.download = name;
-      link.click();
-      // Safari starts the save after the click returns, so the address must live a while.
-      setTimeout(() => URL.revokeObjectURL(address), 60_000);
+      saveBlob(name, blob);
     } catch (caught) {
       setProblem(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -48,6 +42,17 @@ export function useDownload(
     }
   };
   return { start, busy, share, problem };
+}
+
+/** Saves bytes that the page holds already on the person's device. */
+export function saveBlob(name: string, blob: Blob): void {
+  const address = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = address;
+  link.download = name;
+  link.click();
+  // Safari starts the save after the click returns, so the address must live a while.
+  setTimeout(() => URL.revokeObjectURL(address), 60_000);
 }
 
 export function DownloadWait({

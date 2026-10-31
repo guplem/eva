@@ -38,6 +38,7 @@ const preparer: TurnPreparer = {
       trusted: true,
       harnessMemory: true,
       folderHooks: true,
+      fileWall: null,
       environment: { PATH: "/bin" },
     }),
   afterTurn: () => {

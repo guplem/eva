@@ -9,8 +9,9 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry, type SearchResult } from "./api.ts";
 import { readAppearance } from "./appearance.ts";
-import { useIsPhone } from "./ChatHeader.tsx";
 import { ColumnDivider } from "./ColumnDivider.tsx";
+import { copyText } from "./CopyButton.tsx";
+import { FileBar } from "./FileBar.tsx";
 import { DownloadButton, DownloadWait, useDownload, type FetchFile } from "./DownloadButton.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
@@ -24,10 +25,11 @@ import {
   sizeWords,
   splitFrontMatter,
 } from "./file-paths.ts";
-import { fileBadgeOf, nameEnds } from "./file-kinds.ts";
+import { fileBadgeOf, mediaOf, nameEnds } from "./file-kinds.ts";
+import { maxMediaBytes, MediaPreview } from "./FileMedia.tsx";
 import { Icon } from "./icons.tsx";
 import { ListSkeleton } from "./Loading.tsx";
-import { MoreMenu, type MenuItem } from "./Menu.tsx";
+import { type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
@@ -35,7 +37,6 @@ import { UnlockVaultForm } from "./VaultPasswordForms.tsx";
 import { draftOf, hasEncryptedDraft, keepDraft, moveDrafts, sameText, type Draft } from "./file-drafts.ts";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
-import { useBackLayer } from "./back-layer-hook.ts";
 
 type ShownFile = Extract<BrowsedPath, { kind: "file" }>;
 type Answer =
@@ -456,6 +457,20 @@ function Column({
       </div>
     );
   if (!isLast) return null;
+  // A file that Eva may not download, such as a secrets file, never shows either.
+  const media = shown.kind === "unreadable" && shown.downloadable ? mediaOf(path) : null;
+  if (shown.kind === "unreadable" && media !== null && shown.size <= maxMediaBytes)
+    // The size is in the key, so a file that changes on disk shows its new bytes.
+    return (
+      <MediaPreview
+        key={`${path}:${String(shown.size)}`}
+        path={path}
+        size={shown.size}
+        media={media}
+        large={large}
+        onLarge={onLarge}
+      />
+    );
   if (shown.kind === "encrypted")
     return (
       <EncryptedFile
@@ -887,23 +902,9 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
   };
   const view = viewOf(file.path);
 
-  // The large file fills the screen, so the Back button makes it small first.
-  useBackLayer(large, () => onLarge(false));
-  useEffect(() => {
-    if (!large) return;
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && !event.defaultPrevented) onLarge(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [large, onLarge]);
-
   const unsaved = draft !== null && !sameText(draft.text, file.text);
 
   const download = useDownload(file.path, files.download);
-  const isPhone = useIsPhone();
-  /** The Appearance setting changes on the Settings page, so the file reads it once, as it opens. */
-  const [oneFolder] = useState(() => readAppearance().filesView === "single");
   const items: MenuItem[] = [];
   if (draft === null && (view === "markdown" || view === "json")) {
     items.push({ label: plain ? "Show formatted" : "Show plain text", icon: "code", onChoose: () => setPlain(!plain) });
@@ -918,11 +919,6 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
   }
   items.push({ label: "Download", icon: "download", onChoose: () => void download.start() });
   items.push(...(files.items ?? []));
-  // A phone and the one folder view show no folder columns, so the file fills the page already.
-  const canLarge = !isPhone && !oneFolder;
-  const largeLabel = large ? "Make the file small" : "Make the file large";
-  const largeIcon = large ? "shrink" : "expand";
-  if (canLarge) items.push({ label: largeLabel, icon: largeIcon, onChoose: () => onLarge(!large) });
 
   const save = async (): Promise<boolean> => {
     if (draft === null) return false;
@@ -967,56 +963,48 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
 
   return (
     <section className="files-pane files-preview files-file" aria-label="File text">
-      <div className="files-file-bar">
-        <span className="files-size">{sizeWords(file.size)}</span>
-        <div className="files-file-actions">
-          {/* The menu has the same item, but a person makes the file large often, so it is one tap away. */}
-          {canLarge && (
-            <button
-              className="icon-button"
-              aria-label={largeLabel}
-              data-tooltip={largeLabel}
-              onClick={() => onLarge(!large)}
-            >
-              <Icon name={largeIcon} />
-            </button>
-          )}
-          {draft === null ? (
-            <>
-              {saved && (
-                <span role="status" className="files-size">
-                  <Icon name="check" /> Saved
-                </span>
-              )}
-              {file.editable ? (
-                <button
-                  onClick={() => {
-                    setSaved(false);
-                    setDraft({ text: file.text, version: file.version });
-                  }}
-                >
-                  <Icon name="pen" />
-                  Edit
-                </button>
-              ) : (
-                <span className="files-size">
-                  <Icon name="lock" /> Read only: Eva hid a secret in it
-                </span>
-              )}
-            </>
-          ) : (
-            <>
-              <button className="ghost" onClick={() => setDraft(null)}>
-                Cancel
+      <FileBar
+        size={file.size}
+        large={large}
+        onLarge={onLarge}
+        items={items}
+        // The text area of the editor copies by itself.
+        copy={draft === null ? () => copyText(file.text) : null}
+      >
+        {draft === null ? (
+          <>
+            {saved && (
+              <span role="status" className="files-size">
+                <Icon name="check" /> Saved
+              </span>
+            )}
+            {file.editable ? (
+              <button
+                onClick={() => {
+                  setSaved(false);
+                  setDraft({ text: file.text, version: file.version });
+                }}
+              >
+                <Icon name="pen" />
+                Edit
               </button>
-              <SaveButton className="primary" onSave={save} disabled={!unsaved || busy}>
-                Save
-              </SaveButton>
-            </>
-          )}
-          <MoreMenu items={items} label="File actions" />
-        </div>
-      </div>
+            ) : (
+              <span className="files-size">
+                <Icon name="lock" /> Read only: Eva hid a secret in it
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <button className="ghost" onClick={() => setDraft(null)}>
+              Cancel
+            </button>
+            <SaveButton className="primary" onSave={save} disabled={!unsaved || busy}>
+              Save
+            </SaveButton>
+          </>
+        )}
+      </FileBar>
       <div className="files-wait">
         <DownloadWait download={download} folder={false} />
       </div>

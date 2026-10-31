@@ -2,7 +2,7 @@
  * Starts Eva for the Playwright tests: a neutral demo vault in a temporary folder, a local bare
  * remote, a scripted engine, and the local API on the ports of `e2e-ports.ts`. No real login is used.
  */
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../src/core/eva.ts";
@@ -74,6 +74,11 @@ for (const run of ["desktop", "phone"]) {
   sandbox.write(vault, `Notes/${run}-draft.md`, "# Draft\n");
 }
 sandbox.write(vault, "Notes/settings.json", '{"theme":"dark","size":2}');
+// A browser shows an image and plays a sound, so the Files page shows them too (issue 737).
+mkdirSync(join(vault, "Media"), { recursive: true });
+writeFileSync(join(vault, "Media/landscape.png"), readFileSync(join(import.meta.dir, "demo-landscape.png")));
+writeFileSync(join(vault, "Media/silence.wav"), silentWave());
+writeFileSync(join(vault, "Media/data.bin"), new Uint8Array([0, 159, 146, 150, 255, 0, 1]));
 // The vault has a key, so the demo shows no "no password" notice. The tests unlock it with this password.
 const vaultKey = await createVaultKey("a long demo password", { logN: 10 });
 sandbox.write(vault, ".eva/vault-key.json", `${JSON.stringify(vaultKey, null, 2)}\n`);
@@ -384,3 +389,26 @@ setInterval(() => void eva.schedules?.tick(), 300);
 Bun.serve({ hostname: "127.0.0.1", port: galleryPort, routes: { "/": visorGallery }, development: false });
 startLocalApi({ eva, port: demoPort, token: demoToken, extraHosts: [], allowedTailscaleIdentities: [] });
 process.stdout.write(`Eva demo ready on http://127.0.0.1:${String(demoPort)}\n`);
+
+/** A tenth of a second of silence: a WAV file of 8 kHz, 8-bit mono samples. */
+function silentWave(): Uint8Array {
+  const samples = 800;
+  const bytes = new Uint8Array(44 + samples).fill(128, 44);
+  const view = new DataView(bytes.buffer);
+  const text = (at: number, word: string): void => {
+    bytes.set(new TextEncoder().encode(word), at);
+  };
+  text(0, "RIFF");
+  view.setUint32(4, 36 + samples, true);
+  text(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 8000, true);
+  view.setUint32(28, 8000, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  text(36, "data");
+  view.setUint32(40, samples, true);
+  return bytes;
+}

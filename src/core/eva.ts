@@ -41,6 +41,7 @@ import {
   uncleanExitMessage,
   updateProblem,
   relayedProblem,
+  shellWallProblem,
   vaultAheadProblem,
   newSecretDefaultsNews,
   vaultSecretsProblems,
@@ -65,6 +66,7 @@ import {
   engineEnvironment,
   engineToolEnvironment,
   gitEnvironment,
+  projectWallRoots,
   type InstanceFacts,
 } from "./instance/child-environments.ts";
 import {
@@ -237,6 +239,8 @@ export interface EvaOptions {
   readonly config: EvaConfig;
   readonly secrets: EvaSecrets;
   readonly engines: readonly EnginePort[];
+  /** Why the shell of a Project chat has no wall on this computer, or null when it has one (#711). */
+  readonly shellWallGap?: () => Promise<string | null>;
   readonly runner: ProcessRunner;
   /** The environment Eva started with. Child processes only get its allowlisted part. */
   readonly processEnvironment: EnvironmentMap;
@@ -758,6 +762,8 @@ export class Eva {
           // Read at each restore: the project work exists only after the session manager.
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
+          wallRoots: () =>
+            projectWallRoots(this.options.paths, this.options.config.vaultPath, this.options.config.projectRoots),
         }),
         specialist: new SpecialistPreparer({
           vaultSync,
@@ -765,6 +771,8 @@ export class Eva {
           // A project that is gone keeps its chat's refusal to the engine: its folder no longer exists.
           isSpecialist: (projectId) =>
             this.projects().find((project) => project.id === projectId)?.frontMatter.type !== "software",
+          wallRoots: () =>
+            projectWallRoots(this.options.paths, this.options.config.vaultPath, this.options.config.projectRoots),
         }),
       },
       now: options.now,
@@ -1359,6 +1367,11 @@ export class Eva {
     if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
+    // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
+    if (this.options.engines.some((engine) => engine.name === "claude-code"))
+      void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
+        this.alerts.report("shell_wall", shellWallProblem(gap));
+      });
     this.noticeVaultSecrets();
     this.encryptVaultSecrets();
   }

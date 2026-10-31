@@ -19,8 +19,9 @@ import {
   writeFileSync,
   type Stats,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
+import { isInside } from "../../shared/path-area.ts";
 import { projectTitleOf } from "../projects/project-catalog.ts";
 import { fileVersion, matchFileStyle } from "../projects/project-file.ts";
 import { encryptedState } from "../vault/vault-crypto.ts";
@@ -313,13 +314,6 @@ export function normalizedPath(requested: string): string {
     .split(/[/\\]/)
     .filter((part) => part !== "" && part !== ".")
     .join("/");
-}
-
-export function isInside(root: string, resolved: string): boolean {
-  const relativePath = relative(root, resolved);
-  return (
-    relativePath === "" || (!relativePath.startsWith(`..${sep}`) && relativePath !== ".." && !isAbsolute(relativePath))
-  );
 }
 
 /** Any part named `.git`, in any case: Windows and macOS read `.GIT` as the same folder. */

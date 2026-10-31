@@ -38,6 +38,7 @@ import {
   type TurnRequest,
 } from "../../shared/engine-port.ts";
 import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
+import { wallRefusesCall } from "../../shared/path-area.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -454,9 +455,18 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
   });
 }
 
+/** pi's fields that hold a file pattern, by tool. Every path field of every tool is walled. */
+const piPatternFields: Readonly<Record<string, readonly string[]>> = { find: ["pattern"], grep: ["glob"] };
+/** pi's tools that write a file. A write to the folder's own settings could run code at the next turn. */
+const piWriteTools = new Set(["write", "edit"]);
+
 function decide(request: TurnRequest, toolName: string, input: Record<string, unknown>): Promise<ApprovalAnswer> {
   // A model call has no tools, and nobody waits for a question.
   if (request.mode === "model-call") return Promise.resolve("deny");
+  // A Project chat's file tools may not open a closed folder, such as the vault (#711). pi has no shell wall.
+  const wall = request.fileWall;
+  const options = { patternKeys: piPatternFields[toolName] ?? [], write: piWriteTools.has(toolName), dropsAt: true };
+  if (wall !== null && wallRefusesCall(wall, request.startFolder, input, options)) return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
   if (request.mode === "project" || !asksThePerson(toolName, input)) return Promise.resolve("allow");
   return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });

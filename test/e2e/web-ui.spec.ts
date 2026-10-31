@@ -4567,13 +4567,17 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
   await expect(dialog.getByRole("alert")).toContainText("It can break things");
   await dialog.getByText("Every change up to v1.0.0").click();
   await expect(dialog.getByText("feat!: rename the keys (1.0.0)")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "See v1.0.0 on GitHub" })).toHaveAttribute(
+    "href",
+    "https://github.com/guplem/eva/releases/tag/v1.0.0",
+  );
   await expect(dialog).toContainText("Your chats stay as they are.");
   if (test.info().project.name === "phone") {
     // A phone shows the dialog as a bottom sheet, with its buttons at full width.
     const box = await dialog.boundingBox();
     expect(Math.abs((box?.y ?? 0) + (box?.height ?? 0) - (page.viewportSize()?.height ?? 0))).toBeLessThanOrEqual(1);
     const heights = await dialog
-      .locator("button, summary")
+      .locator("button, summary, a")
       .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
   }
@@ -4705,6 +4709,24 @@ test("Settings: the changelog lists each release with its own changes", async ({
   await expect(dialog).toContainText("v0.3.0");
   await expect(dialog).toContainText("Voice notes.");
   await expect(dialog.locator(".version-row", { hasText: "v0.2.0" })).toContainText("Installed");
+  await expect(dialog.getByRole("link", { name: "v0.3.0" })).toHaveAttribute(
+    "href",
+    "https://github.com/guplem/eva/releases/tag/v0.3.0",
+  );
+  // A tap on the headline, not only on the version, opens the release page.
+  await page.context().route("https://github.com/**", (route) => route.fulfill({ body: "release" }));
+  const releaseTab = page.waitForEvent("popup");
+  // The link lies over the headline. A click on the row waits until the sheet stops, and its link may take the click.
+  const row = dialog.locator(".version-row", { hasText: "v0.3.0" });
+  const rowBox = await row.boundingBox();
+  const headlineBox = await row.getByText("Voice notes.").boundingBox();
+  if (rowBox === null || headlineBox === null) throw new Error("The release row is not on the screen.");
+  await row.click({
+    position: { x: headlineBox.x - rowBox.x + 4, y: headlineBox.y - rowBox.y + headlineBox.height / 2 },
+  });
+  expect((await releaseTab).url()).toBe("https://github.com/guplem/eva/releases/tag/v0.3.0");
+  await (await releaseTab).close();
+  // The changes toggle sits above the row link, so it still opens in place.
   await dialog.getByText("Every change in v0.3.0").click();
   await expect(dialog.getByText("feat: voice notes (#7)")).toBeVisible();
   await dialog.getByRole("button", { name: "Close" }).click();
@@ -6135,7 +6157,7 @@ test("Settings: this tab unlocks, and a default secret pattern waits before it s
   await logInAsDevice(page);
   await page.goto("/#/settings/vault/encrypted-files");
   const card = page.getByRole("region", { name: "Encrypted files" });
-  await card.getByLabel("Vault password").fill(vaultPassword);
+  await card.getByLabel("Vault password", { exact: true }).fill(vaultPassword);
   await card.getByRole("button", { name: "Unlock" }).click();
   await expect(card.getByText("This tab is unlocked")).toBeVisible();
 
@@ -6148,7 +6170,8 @@ test("Settings: this tab unlocks, and a default secret pattern waits before it s
   await card.getByRole("button", { name: "Save the list" }).click();
   await expect(card.getByText("These patterns still apply")).toHaveCount(0);
   await card.getByRole("button", { name: "Lock" }).click();
-  await expect(card.getByLabel("Vault password")).toBeVisible();
+  // The unlocked view also has a "New vault password" field, so only the exact label waits for the locked view.
+  await expect(card.getByLabel("Vault password", { exact: true })).toBeVisible();
 });
 
 test("Files: an encrypted file shows a lock, opens with the vault password, saves and locks again (#707)", async ({
@@ -6866,6 +6889,88 @@ test("Files: a file and a folder download from their own button, and a failed do
   );
   await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "larger than 200 MB" })).toBeVisible();
+});
+
+test("Files: an image and a sound show on the page, and another file that is not text shows why not (issue 737)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.goto("/#/files/Media/landscape.png");
+  const preview = page.getByRole("region", { name: "File preview" });
+  const picture = preview.getByRole("img", { name: "landscape.png" });
+  await expect(picture).toBeVisible();
+  await expect.poll(() => picture.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(160);
+  await expect(preview.getByText("857 B")).toBeVisible();
+  // The page holds the bytes already, so Download does not read them again.
+  let reads = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/files/download")) reads += 1;
+  });
+  await preview.getByRole("button", { name: "More actions" }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Download" }).click();
+  expect((await download).suggestedFilename()).toBe("landscape.png");
+  expect(reads).toBe(0);
+
+  await page.goto("/#/files/Media/silence.wav");
+  const sound = page.getByRole("region", { name: "File preview" }).locator("audio");
+  await expect(sound).toBeVisible();
+  await expect.poll(() => sound.evaluate((audio: HTMLAudioElement) => audio.duration)).toBeCloseTo(0.1, 2);
+
+  await page.goto("/#/files/Media/data.bin");
+  await expect(page.getByText("This file is not plain text, so Eva cannot show it.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "File preview" })).toHaveCount(0);
+
+  // The browser holds the whole file, so a very large one keeps the message.
+  await page.route("**/api/files?path=Media%2Flandscape.png", (route) =>
+    route.fulfill({
+      json: {
+        kind: "unreadable",
+        path: "Media/landscape.png",
+        size: 60 * 1024 * 1024,
+        reason: "This file is larger than 1 MB, so Eva does not show it.",
+        downloadable: true,
+      },
+    }),
+  );
+  await page.goto("/#/files/Media/landscape.png");
+  await expect(page.getByText("This file is larger than 1 MB, so Eva does not show it.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "File preview" })).toHaveCount(0);
+});
+
+test("Files: Copy contents puts a text file or an image on the clipboard, and a sound has no such item (issue 738)", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await logIn(page);
+  await page.goto("/#/files/Notes/settings.json");
+  const file = page.getByRole("region", { name: "File text" });
+  await chooseFileAction(page, "Copy contents");
+  await expect(file.getByRole("status").filter({ hasText: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('{"theme":"dark","size":2}');
+  // The text box of the editor copies by itself.
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await file.getByRole("button", { name: "Cancel" }).click();
+
+  await page.goto("/#/files/Media/landscape.png");
+  const preview = page.getByRole("region", { name: "File preview" });
+  await expect(preview.getByRole("img", { name: "landscape.png" })).toBeVisible();
+  await preview.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Copy contents" }).click();
+  await expect(preview.getByRole("status").filter({ hasText: "Copied" })).toBeVisible();
+  const types = await page.evaluate(async () => (await navigator.clipboard.read()).flatMap((item) => item.types));
+  expect(types).toContain("image/png");
+
+  await page.goto("/#/files/Media/silence.wav");
+  const sound = page.getByRole("region", { name: "File preview" });
+  await expect(sound.locator("audio")).toBeVisible();
+  await sound.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Download" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
 });
 
 test("on a special day, EVE greets with that day's eyes, and the tab icon wears them", async ({ page }) => {

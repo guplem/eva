@@ -24,6 +24,9 @@ import type {
 } from "../../core/remote-access/device-logins.ts";
 import type { TailnetSnapshot } from "../../core/remote-access/remote-access.ts";
 import { changedFields } from "../../core/schedules/schedule-definitions.ts";
+import { maxWriteBytes } from "../../core/widgets/widget-data.ts";
+import { widgetInputValueSchema } from "../../core/widgets/widget-list.ts";
+import { widgetPolicy, widgetTheme } from "../../core/widgets/widget-policy.ts";
 import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
@@ -297,6 +300,24 @@ const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
+const widgetAddSchema = z.object({ repository: z.string().min(1).max(2_000) });
+/** The page's colour scheme and the contract colours, as its browser computes them. The core keeps only plain colours. */
+const widgetFramesSchema = z.object({
+  scheme: z.enum(["light", "dark"]),
+  colors: z.record(z.string().max(40), z.string().max(200)).default({}),
+  keep: z.array(z.string().max(100)).max(100).default([]),
+});
+const widgetReleaseSchema = z.object({ tokens: z.array(z.string().max(100)).max(100) });
+const widgetApproveSchema = z.object({
+  commit: z.string().min(1).max(100),
+  values: z.record(z.string().max(100), widgetInputValueSchema),
+  /** True after a format conflict: each input with a conflict gets read access only (#692). */
+  readOnly: z.boolean().optional(),
+});
+const widgetEnabledSchema = z.object({ enabled: z.boolean() });
+const widgetMoveSchema = z.object({ direction: z.enum(["up", "down"]) });
+/** The core refuses a larger write too; this check stops it before Eva reads the body. */
+const maxWidgetWriteBytes = maxWriteBytes;
 /** The login cookies live a year; the person logs out to end them. */
 const cookieMaxAgeSeconds = 365 * 24 * 60 * 60;
 const tokenCookie = "eva_token";
@@ -347,9 +368,11 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
     // such as a new clone or a setup report, so allow Bun's maximum.
     idleTimeout: options.idleTimeoutSeconds ?? 255,
     fetch: async (request, bunServer) => {
+      const url = new URL(request.url);
+      // Before the login check: a widget has no cookie, and its token is its access (#691).
+      if (url.pathname.startsWith("/widgets/")) return widgetRoute(request, url, options);
       const siteRefusal = guardSite(request, options);
       if (siteRefusal !== null) return siteRefusal;
-      const url = new URL(request.url);
       if (url.pathname === "/api/login" || url.pathname === "/api/logout") return session(request, url, options);
       if (url.pathname === "/api/login/device" || url.pathname.startsWith("/api/login/device/"))
         return deviceLogin(request, url, options);
@@ -400,6 +423,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         const deviceToken = hasValidToken(request, options.token) ? null : cookieValue(request, deviceCookie);
         return (
           (await devices(request, url, options.eva, pageApprover)) ??
+          (await widgetsApi(request, url, options)) ??
           (await route(request, url, options.eva, deviceToken))
         );
       } catch (error) {
@@ -459,15 +483,20 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
   };
 }
 
-/** Host, Origin and Tailscale identity checks. Returns a refusal, or null to go on. */
-function guardSite(request: Request, options: LocalApiOptions): Response | null {
+/**
+ * Host, Origin and Tailscale identity checks. Returns a refusal, or null to go on.
+ * `widgetRoute`: a sandboxed widget has no origin, so its requests carry `Origin: null`. Only the
+ * widget routes take it; every other route, the device login too, keeps the refusal.
+ */
+function guardSite(request: Request, options: LocalApiOptions, widgetRoute = false): Response | null {
   const host = hostNameOf(request.headers.get("host"));
   if (host === null || !allowedHostNames(options).has(host)) return json({ error: "Unknown host." }, 403);
 
   // The whole origin must match, port included: a page on another local port shares the
   // host name and the SameSite cookie, but it is another site.
   const origin = request.headers.get("origin");
-  if (origin !== null && safeHost(origin)?.toLowerCase() !== request.headers.get("host")?.toLowerCase()) {
+  const ownOrigin = origin !== null && safeHost(origin)?.toLowerCase() === request.headers.get("host")?.toLowerCase();
+  if (origin !== null && !ownOrigin && !(widgetRoute && origin === "null")) {
     return json({ error: "Requests from other sites are refused." }, 403);
   }
 
@@ -605,6 +634,127 @@ async function devices(
     return new Response(null, { status: 204 });
   }
   return null;
+}
+
+/** A token of `Widgets.frames`: 32 random bytes in base64url. */
+const widgetTokenPattern = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * The files of a widget (#691), at `/widgets/<token>/<path>`. The token is the access: a sandboxed
+ * frame has no cookie. Each answer carries the policy of the approved record and no referrer, and
+ * never a redirect, which would drop the path of the policy.
+ */
+async function widgetRoute(request: Request, url: URL, options: LocalApiOptions): Promise<Response> {
+  const refusal = guardSite(request, options, true);
+  if (refusal !== null) return refusal;
+  const widgets = options.eva.widgets;
+  const [token = "", ...encoded] = url.pathname.slice("/widgets/".length).split("/");
+  const host = request.headers.get("host") ?? "";
+  const origin = `${request.headers.get("x-forwarded-proto") === "https" ? "https" : "http"}://${host}`;
+  const answer = (status: number, body: BodyInit | null = null, contentType?: string): Response => {
+    const headers = new Headers({
+      "content-security-policy": widgetPolicy(`${origin}/widgets/${token}/`, origin, widgets?.hostsOf(token) ?? []),
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff",
+      "cache-control": "no-store",
+      // The frame's origin is `null`: its own scripts and reads are requests from another origin.
+      "access-control-allow-origin": "null",
+      vary: "Origin",
+    });
+    if (contentType !== undefined) headers.set("content-type", contentType);
+    return new Response(request.method === "HEAD" ? null : body, { status, headers });
+  };
+  if (widgets === null || !widgetTokenPattern.test(token)) return answer(404);
+  // A widget opened as a page of its own would show the person's data outside Eva.
+  if (request.headers.get("sec-fetch-dest") === "document") return answer(403);
+  if (request.method === "OPTIONS") {
+    if (!widgets.isLive(token)) return answer(404);
+    const preflight = answer(204);
+    preflight.headers.set("access-control-allow-methods", "GET, PUT, DELETE");
+    preflight.headers.set("access-control-allow-headers", "content-type");
+    preflight.headers.set("access-control-max-age", "600");
+    return preflight;
+  }
+  try {
+    const path = encoded.map((part) => decodeURIComponent(part)).join("/");
+    // A dead token reads no body, and a body stops at the limit, also one with no length or a chunked one.
+    if (request.method === "PUT" && !widgets.isLive(token)) return answer(404);
+    let body: Uint8Array | null = null;
+    if (request.method === "PUT") {
+      body = await cappedBody(request, maxWidgetWriteBytes);
+      if (body === null) return answer(413);
+    }
+    const served = await widgets.serve(token, path, request.method, body);
+    if (served === null) return answer(404);
+    // A file read gives a Buffer, which a Response takes as it is.
+    const content = served.body === undefined ? null : (served.body as string | Uint8Array<ArrayBuffer>);
+    return answer(served.status, content, served.contentType);
+  } catch (error) {
+    if (error instanceof URIError) return answer(400);
+    options.logger?.log("error", "A widget request failed.", {
+      reason: options.eva.redact(error instanceof Error ? error.message : String(error)),
+    });
+    return answer(500);
+  }
+}
+
+/** The body of a request, or null when it is longer than `limit`. It reads no more than `limit` and one chunk. */
+async function cappedBody(request: Request, limit: number): Promise<Uint8Array | null> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(declared) || declared > limit) return null;
+  if (request.body === null) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+/**
+ * The widget list of the settings and the cards of the grid (#691). An id is `<owner>/<name>`.
+ * Returns null for any other path.
+ */
+async function widgetsApi(request: Request, url: URL, options: LocalApiOptions): Promise<Response | null> {
+  const parts = url.pathname.split("/").filter((part) => part.length > 0);
+  if (parts[0] !== "api" || parts[1] !== "widgets") return null;
+  const widgets = options.eva.widgets;
+  if (widgets === null) return json({ error: "No vault is configured." }, 409);
+  const method = request.method;
+  const ownHosts = [...allowedHostNames(options)];
+  if (parts.length === 2 && method === "GET") return json(widgets.list());
+  if (parts.length === 2 && method === "POST")
+    return json(widgets.add(widgetAddSchema.parse(await request.json()).repository), 201);
+  if (parts.length === 3 && parts[2] === "check" && method === "POST") return json(await widgets.reviewAll(ownHosts));
+  if (parts.length === 3 && parts[2] === "frames" && method === "POST") {
+    const { scheme, colors, keep } = widgetFramesSchema.parse(await request.json());
+    return json(widgets.frames(widgetTheme(scheme, colors), keep));
+  }
+  if (parts.length === 4 && parts[2] === "frames" && parts[3] === "release" && method === "POST") {
+    widgets.release(widgetReleaseSchema.parse(await request.json()).tokens);
+    return new Response(null, { status: 204 });
+  }
+  if (parts.length < 4 || parts.length > 5) return json({ error: "Not found." }, 404);
+  const id = `${decodeURIComponent(parts[2] ?? "")}/${decodeURIComponent(parts[3] ?? "")}`.toLowerCase();
+  const action = parts[4];
+  if (action === undefined && method === "DELETE") return json(widgets.remove(id));
+  if (action === "review" && method === "GET") return json(await widgets.review(id, ownHosts));
+  if (action === "approve" && method === "POST") {
+    const { commit, values, readOnly } = widgetApproveSchema.parse(await request.json());
+    return json(await widgets.approve(id, commit, values, ownHosts, readOnly === true));
+  }
+  if (action === "enabled" && method === "PUT")
+    return json(widgets.setEnabled(id, widgetEnabledSchema.parse(await request.json()).enabled));
+  if (action === "move" && method === "POST")
+    return json(widgets.move(id, widgetMoveSchema.parse(await request.json()).direction));
+  return json({ error: "Not found." }, 404);
 }
 
 // A device login has the same control as the token: the owner chose this in #137.
@@ -1247,7 +1397,8 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
   if (
     isEvaError(error, "session_not_found") ||
     isEvaError(error, "project_not_found") ||
-    isEvaError(error, "file_not_found")
+    isEvaError(error, "file_not_found") ||
+    isEvaError(error, "widget_not_found")
   )
     return json(body, 404);
   if (
@@ -1256,7 +1407,8 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
     isEvaError(error, "project_invalid") ||
     isEvaError(error, "title_invalid") ||
     isEvaError(error, "menu_item_invalid") ||
-    isEvaError(error, "approval_invalid")
+    isEvaError(error, "approval_invalid") ||
+    isEvaError(error, "widget_invalid")
   )
     return json(body, 400);
   if (isEvaError(error, "vault_password_invalid") || isEvaError(error, "vault_password_wrong")) return json(body, 400);

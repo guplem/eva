@@ -61,6 +61,8 @@ import type {
 } from "../../../core/vault/vault-sync.ts";
 import type { UndoPreview } from "../../../core/vault/vault-snapshots.ts";
 import type { VaultSecretsStatus } from "../../../core/vault/vault-encryption.ts";
+import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
+import type { WidgetFrame, WidgetItem, WidgetReview } from "../../../core/widgets/widgets.ts";
 import type { ContextPart } from "../../../shared/chat-context.ts";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { QuestionAnswers, SessionEvent } from "../../../shared/events.ts";
@@ -81,6 +83,7 @@ export type { ComposerMenuItems, SavedPrompt, TextAction };
 
 export type { PersonalFactsView };
 export type { VaultSecretsStatus };
+export type { WidgetFrame, WidgetInputValue, WidgetItem, WidgetReview };
 /** Where the person is, for scripts: a recent point from a phone, or the home place. */
 export type CurrentPlaceView = CurrentPlace;
 
@@ -540,6 +543,33 @@ export const api = {
   /** Says that the person saw the card with these fields. A card that changed meanwhile answers 409. */
   confirmScheduleCard: (card: ScheduleCard): Promise<void> =>
     request("POST", `/api/schedule-cards/${encodeURIComponent(card.scheduleId)}`, { fields: card.fields }),
+  /** The widgets of the settings list (#691). Fast: it reads no network. */
+  widgets: (): Promise<WidgetItem[]> => request("GET", "/api/widgets", undefined, { limit: quickRead }),
+  /** Reads each manifest again, so the list shows each problem. Slow: it reads GitHub. */
+  checkWidgets: (): Promise<WidgetItem[]> => request("POST", "/api/widgets/check"),
+  addWidget: (repository: string): Promise<WidgetItem[]> => request("POST", "/api/widgets", { repository }),
+  reviewWidget: (id: string): Promise<WidgetReview> => request("GET", `/api/widgets/${widgetPath(id)}/review`),
+  approveWidget: (
+    id: string,
+    commit: string,
+    values: Readonly<Record<string, WidgetInputValue>>,
+    readOnly = false,
+  ): Promise<WidgetItem[]> =>
+    request("POST", `/api/widgets/${widgetPath(id)}/approve`, { commit, values, ...(readOnly ? { readOnly } : {}) }),
+  setWidgetEnabled: (id: string, enabled: boolean): Promise<WidgetItem[]> =>
+    request("PUT", `/api/widgets/${widgetPath(id)}/enabled`, { enabled }),
+  moveWidget: (id: string, direction: "up" | "down"): Promise<WidgetItem[]> =>
+    request("POST", `/api/widgets/${widgetPath(id)}/move`, { direction }),
+  removeWidget: (id: string): Promise<WidgetItem[]> => request("DELETE", `/api/widgets/${widgetPath(id)}`),
+  /** The cards of the home grid, each with a token. A token in `keep` that still works stays. */
+  widgetFrames: (
+    scheme: "light" | "dark",
+    colors: Readonly<Record<string, string>>,
+    keep: readonly string[],
+  ): Promise<WidgetFrame[]> => request("POST", "/api/widgets/frames", { scheme, colors, keep }, { limit: quickRead }),
+  /** Ends the tokens of a page that closes; keepalive, so it goes out as the page goes. */
+  releaseWidgetFrames: (tokens: readonly string[]): Promise<void> =>
+    request("POST", "/api/widgets/frames/release", { tokens }, { keepalive: true }),
 };
 
 /** The browser's socket to Eva's event route, and its timers. */
@@ -567,4 +597,9 @@ export function subscribeToEvents(
     (event) => onEvent(event as SessionEvent | ScheduleCard | DeviceLoginEvent | UnsentTextEvent),
     onConnectionChange,
   );
+}
+
+/** The path of a widget id, `owner/name`, with each part escaped. */
+function widgetPath(id: string): string {
+  return id.split("/").map(encodeURIComponent).join("/");
 }

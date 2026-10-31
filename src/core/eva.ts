@@ -188,6 +188,12 @@ import { changelogEntries, type ChangelogEntry } from "./updates/release-policy.
 import { publishedReleaseNotes } from "./updates/self-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
+import { baseWidgets } from "./widgets/base-widgets.ts";
+import type { WidgetAddress } from "./widgets/widget-address.ts";
+import { WidgetApprovals } from "./widgets/widget-approvals.ts";
+import { WidgetCopies } from "./widgets/widget-copies.ts";
+import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format-writer.ts";
+import { Widgets } from "./widgets/widgets.ts";
 
 /** The person's facts as the web page reads them. */
 export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
@@ -285,6 +291,8 @@ export interface EvaOptions {
   >;
   /** Where Eva reads the latest version of each tool; a test points it at a fake server. */
   readonly toolLatestSources?: LatestVersionSources;
+  /** The git address of a widget; a test points it at a local remote. Default: its GitHub address. */
+  readonly widgetRemote?: (address: WidgetAddress) => string;
 }
 
 /** The tools that Eva installs and updates from the Updates page, by their program name. */
@@ -433,6 +441,8 @@ export class Eva {
   readonly encryption: VaultEncryption;
   /** The vault's secret files on this machine, or null with no vault (#707). */
   private readonly vaultSecrets: VaultSecrets | null;
+  /** The widgets of the home page (#691). Null when no vault is configured. */
+  readonly widgets: Widgets | null;
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
   private readonly githubLogin: GitHubBrowserLogin;
@@ -585,6 +595,8 @@ export class Eva {
         this.noticeVaultAhead();
         this.noticeVaultSecrets();
         this.noticeTemplateParts();
+        // A pull can bring a widget list that another computer changed. `syncFormats` never throws.
+        if (this.role() === "hub") void this.widgets?.syncFormats();
         // A full disk or a reserved file name must not stop the sync step.
         try {
           this.exchangeMachineReports();
@@ -660,6 +672,7 @@ export class Eva {
       pull: () => this.vault.pull(),
       save: () => this.vault.save(),
       snapshot: (ref) => this.vault.snapshot(ref),
+      changedFiles: (before, after) => this.vault.changedFiles(before, after),
     };
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
     this.trustStore = new TrustStore(options.paths.trust);
@@ -728,6 +741,9 @@ export class Eva {
           timeZone: options.config.timeZone ?? "UTC",
           mcpServers: this.assistantMcpServers(),
           projects: () => this.projects(),
+          // Read at each call: the widgets exist only after the session manager.
+          widgetLines: () => this.widgets?.formats.promptLines() ?? [],
+          checkWidgetData: (paths) => this.widgets?.formats.check(paths) ?? [],
           ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         project: new ProjectPreparer({
@@ -773,6 +789,36 @@ export class Eva {
       ...(options.githubWrite === undefined ? {} : { githubWrite: options.githubWrite }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
+
+    this.widgets =
+      vaultPath === null
+        ? null
+        : new Widgets({
+            vaultPath,
+            approvals: new WidgetApprovals(options.paths.widgetApprovals),
+            copies: new WidgetCopies({
+              folder: options.paths.widgetsFolder,
+              runner: options.runner,
+              environment: ownGitEnvironment,
+              ...(options.widgetRemote === undefined ? {} : { remoteOf: options.widgetRemote }),
+            }),
+            projects: () => this.projects(),
+            baseWidgets,
+            location: () => this.locations.newest(),
+            exclusive: (work) => this.vault.exclusive(work),
+            redact: (text) => redactor.redact(text),
+            now: options.now,
+            formats: {
+              record: new DataFormatRecord(options.paths.dataFormats),
+              isHub: () => this.role() === "hub",
+              notify: (edited) => {
+                this.alerts.notify("data_format_edited", "warn", dataFormatEditedMessage(edited));
+              },
+              log: (reason) => options.logger?.log("warn", "Eva could not write the data formats.", { reason }),
+              // With sync off, Eva takes no snapshot, so a write during a turn changes no undo.
+              vaultBusy: () => options.config.sync.enabled && this.vaultTurnRunning(),
+            },
+          });
 
     this.vaultSetup = new VaultSetup({
       paths: options.paths,

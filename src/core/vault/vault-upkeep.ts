@@ -159,6 +159,12 @@ export class VaultUpkeep {
     if (this.options.syncEnabled()) await this.options.vaultSync?.snapshot(ref);
   }
 
+  /** The files that an answer changed, between its two snapshots. With sync off, Eva takes no snapshot. */
+  async changedFiles(before: string, after: string): Promise<readonly string[] | null> {
+    if (!this.options.syncEnabled()) return null;
+    return (await this.options.vaultSync?.changedFiles(before, after)) ?? null;
+  }
+
   /** What an undo of these answers would do now, for the question before a retry. */
   async undoPreview(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
     // With sync off, Eva runs no git step of her own, so a retry asks nothing.

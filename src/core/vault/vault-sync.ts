@@ -348,6 +348,23 @@ export class VaultSync {
     });
   }
 
+  /**
+   * The files that exist after an answer and changed since the snapshot before it, for the check
+   * of widget data (#692). Null when a snapshot is missing, such as one that failed.
+   */
+  changedFiles(before: string, after: string): Promise<string[] | null> {
+    return this.serialize(async () => {
+      const listed = await this.git(["for-each-ref", "--format=%(refname)", before, after], localTimeoutMs);
+      const refs = new Set(listed.stdout.split("\n").map((line) => line.trim()));
+      if (listed.exitCode !== 0 || !refs.has(before) || !refs.has(after)) return null;
+      const diff = await this.git(["diff-tree", "-r", "-z", "--no-renames", before, after], localTimeoutMs);
+      if (diff.exitCode !== 0) return null;
+      return parseDiffTree(diff.stdout)
+        .filter((change) => change.afterOid !== null)
+        .map((change) => change.path);
+    });
+  }
+
   /** What an undo of these answers, oldest first, would do now. */
   undoPreview(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
     return this.serialize(async () => previewOf(await this.undoPlan(answers)));

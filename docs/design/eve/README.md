@@ -272,6 +272,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 ![Computer](screenshots/new-computer-light.webp) ![Phone](screenshots/new-phone-light.webp)
 
 - EVE greets with happy eyes instead of a blank page.
+- The widgets that the person turned on show in a grid below the greeting, in sandboxed frames. A corner button opens one in full screen.
 - Suggestions show what Eva does well: notes, calendar, projects and reminders. The calendar shows only when Google is set up.
 - With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks.
 - The engine and the model show in the composer, and change there. The header shows the mode.

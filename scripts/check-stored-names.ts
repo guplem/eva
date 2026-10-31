@@ -33,6 +33,9 @@ import { projectFrontMatterKeys } from "../src/core/projects/project-catalog.ts"
 import { projectStatuses } from "../src/shared/project-statuses.ts";
 import { cliCommands, switches, valueOptions } from "../src/frontends/cli/arguments.ts";
 import { commands as telegramCommands } from "../src/frontends/telegram/telegram-bot.ts";
+import { approvalsFileSchema } from "../src/core/widgets/widget-approvals.ts";
+import { dataFormatRecordSchema } from "../src/core/widgets/data-format-writer.ts";
+import { widgetListVersion, type widgetEntrySchema } from "../src/core/widgets/widget-list.ts";
 
 const snapshotPath = join(import.meta.dir, "stored-names.txt");
 const snapshotFile = "scripts/stored-names.txt";
@@ -127,6 +130,11 @@ const deviceFields = Object.keys({ hash: true, label: true, createdAt: true } sa
   true
 >);
 
+// The inputs of an entry are a record of the person's values, which the zod walk cannot list.
+const widgetEntryFields = Object.keys({ repository: true, enabled: true, inputs: true } satisfies Record<
+  keyof z.infer<typeof widgetEntrySchema>,
+  true
+>);
 /** The key of a name, without its value and its array marks, as the settings name it. */
 function settingKeyOf(name: string): string {
   return name.split("=")[0]?.replaceAll("[]", "") ?? name;
@@ -177,6 +185,14 @@ export function currentNames(): string[] {
     ...[...projectFrontMatterKeys, ...projectStatuses.map((status) => `status=${status}`)].map(
       (name) => `vault Projects/*/AGENTS.md ${name}`,
     ),
+    ...[
+      "version",
+      `version=${String(widgetListVersion)}`,
+      "widgets",
+      ...widgetEntryFields.map((field) => `widgets[].${field}`),
+    ].map((name) => `vault .eva/widgets.json ${name}`),
+    ...schemaNames(approvalsFileSchema).map((name) => `machine state/widget-approvals.json ${name}`),
+    ...schemaNames(dataFormatRecordSchema).map((name) => `machine state/data-formats.json ${name}`),
     ...schemaNames(oldLocationFileSchema).map((name) => `machine state/location.json ${name}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
     ...telegramCommands.map((entry) => `typed telegram /${entry.command}`),

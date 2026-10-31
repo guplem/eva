@@ -116,6 +116,12 @@ export interface HomePaths {
   readonly githubAccount: string;
   readonly logsFolder: string;
   readonly enginesFolder: string;
+  /** The read-only copy of each widget (#691), one folder for each, never in the vault. */
+  readonly widgetsFolder: string;
+  /** The permissions that the person approved for each widget on this computer. */
+  readonly widgetApprovals: string;
+  /** The hash of each `DATA_FORMAT.md` that this hub wrote into the vault (#692). */
+  readonly dataFormats: string;
 }
 
 export function homePaths(root: string): HomePaths {
@@ -145,6 +151,9 @@ export function homePaths(root: string): HomePaths {
     githubAccount: join(stateFolder, "github-account.json"),
     logsFolder: join(root, "logs"),
     enginesFolder: join(root, "engines"),
+    widgetsFolder: join(root, "widgets"),
+    widgetApprovals: join(stateFolder, "widget-approvals.json"),
+    dataFormats: join(stateFolder, "data-formats.json"),
   };
 }
 

@@ -66,6 +66,8 @@ export interface PreparedTurn {
 
 export interface TurnOutcome {
   readonly finished: boolean;
+  /** Adds a note of the mode to the turn that ended, such as a data file that breaks a widget's format (#692). */
+  readonly addNote: (text: string) => void;
 }
 
 /**
@@ -1425,7 +1427,23 @@ ${engineText}`,
         { startSnapshot, endSnapshot },
       );
 
-    return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
+    return preparer.afterTurn(this.get(sessionId), {
+      finished: finished !== null,
+      addNote: (text) => this.addNoteToLastTurn(sessionId, text),
+    });
+  }
+
+  /** The record keeps the note, so a reload shows it; the notice reaches the front ends that are open now. */
+  private addNoteToLastTurn(sessionId: string, text: string): void {
+    const current = this.options.store.get(sessionId);
+    const last = current?.turns.at(-1);
+    if (current === undefined || last === undefined) return;
+    const note = this.options.redactor.redact(text);
+    this.options.store.save({
+      ...current,
+      turns: [...current.turns.slice(0, -1), { ...last, notes: [...last.notes, note] }],
+    });
+    this.emit(sessionId, { kind: "notice", text: note });
   }
 
   /**

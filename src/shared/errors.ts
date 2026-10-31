@@ -55,7 +55,15 @@ export type EvaErrorCode =
   /** The vault has no key yet, so it has no password to type (#707). */
   | "vault_key_missing"
   /** An encrypted vault file that does not decrypt, such as one that someone changed (#707). */
-  | "vault_file_unreadable";
+  | "vault_file_unreadable"
+  /** A widget address, input or manifest that Eva cannot use (#691). */
+  | "widget_invalid"
+  /** No widget of the list has this id. */
+  | "widget_not_found"
+  /** The widget has no approved record on this computer, or its record no longer matches the vault. */
+  | "widget_needs_approval"
+  /** A written data format of the widget conflicts with the format of its folder (#692). */
+  | "widget_format_conflict";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

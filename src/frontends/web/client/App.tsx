@@ -56,6 +56,7 @@ import { useIsPhone } from "./ChatHeader.tsx";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
+import { noticeReconnect } from "./widget-frames.ts";
 import { isLongHide } from "./event-stream.ts";
 import { shownProblems, withPendingHides, type ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
@@ -450,6 +451,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       // A device that slept missed the changes of the unsent texts. A failed read keeps the copies of the tab.
       if (connected) unsentTexts.sync().catch(() => undefined);
       if (connected) void recover();
+      // An Eva restart ends the widget tokens: each grid asks for new ones (#691).
+      if (connected) noticeReconnect();
       // The server closes the socket of a removed device. A WebSocket never sees the 401 that follows,
       // so ask over HTTP: a 401 there shows the login page and ends the retries.
       else void refreshSessions();

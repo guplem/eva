@@ -279,6 +279,26 @@ describe("VaultSync undo of an answer", () => {
   });
 });
 
+describe("VaultSync changed files of an answer", () => {
+  test("lists the files that an answer added or changed, not the ones it deleted", async () => {
+    const sync = createSync();
+    await runAnswer(sync, "chat", 0, () => {
+      sandbox.write(vault, "Notes/Plan.md", "A new plan.\n");
+      sandbox.write(vault, "Life/Habits/walk.json", "{}\n");
+      rmSync(join(vault, "Notes/Old.md"));
+    });
+    const { before, after } = answer("chat", 0);
+    expect(await sync.changedFiles(before, after)).toEqual(["Life/Habits/walk.json", "Notes/Plan.md"]);
+  });
+
+  test("gives null when a snapshot is missing", async () => {
+    const sync = createSync();
+    expect(await sync.snapshot(turnSnapshotRef("chat", 0, "before"))).toBe(true);
+    const { before, after } = answer("chat", 0);
+    expect(await sync.changedFiles(before, after)).toBeNull();
+  });
+});
+
 describe("snapshot helpers", () => {
   test("a snapshot message keeps its left-out files, and a bad one lists none", () => {
     const files = [{ path: "Scratch/a.txt", size: 3, changedAt: 1000 }];

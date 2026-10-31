@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { checkDataSchema, checkManifest, checkWidget } from "../../../../src/core/widgets/widget-contract.ts";
+import {
+  checkData,
+  checkDataSchema,
+  checkManifest,
+  checkWidget,
+} from "../../../../src/core/widgets/widget-contract.ts";
 
 const manifest = {
   contract: 1,
@@ -180,5 +185,37 @@ describe("checkWidget", () => {
       "schemas/habits.json": schema({ qty: { type: "number" } }),
     };
     expect(checkWidget((path) => files[path] ?? null).schemas[0]).toContain('"qty"');
+  });
+});
+
+describe("checkData", () => {
+  const habit = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    required: ["name", "checks"],
+    properties: {
+      name: { type: "string" },
+      checks: {
+        type: "array",
+        items: { type: "object", required: ["date"], properties: { date: { type: "string", format: "date" } } },
+      },
+    },
+  };
+
+  test("passes a file that fits, with fields of another widget", () => {
+    expect(checkData({ name: "Walk", checks: [{ date: "2026-01-01" }], place: "Park" }, habit)).toEqual([]);
+  });
+
+  test("says which field is missing or wrong", () => {
+    expect(checkData({ checks: [{ date: "yesterday" }] }, habit)).toEqual([
+      'the field "name" is missing',
+      'the field "checks.0.date" must match format "date"',
+    ]);
+    expect(checkData([], habit)).toEqual(["the file must be object"]);
+  });
+
+  test("passes any file for a schema that does not compile", () => {
+    expect(checkData({}, { type: "object", properties: { name: { type: "nothing" } } })).toEqual([]);
+    expect(checkData({}, null)).toEqual([]);
   });
 });

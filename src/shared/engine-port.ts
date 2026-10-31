@@ -63,6 +63,16 @@ export interface McpServerSpec {
   readonly environment: Readonly<Record<string, string>>;
 }
 
+/** The file wall of a Project chat (#711). */
+export interface FileWall {
+  /** The clone folder of a chat in a clone, or the project folder of a specialist chat. */
+  readonly area: string;
+  /** The vault, each extra project root and Eva's instance folder: no tool and no shell command opens them, but the area. */
+  readonly closed: readonly string[];
+  /** Folders inside a closed one that a shell command may still read, such as the git login that a push needs. */
+  readonly readable: readonly string[];
+}
+
 export interface TurnRequest {
   readonly mode: TurnMode;
   readonly history: TurnHistory;
@@ -102,6 +112,11 @@ export interface TurnRequest {
    * specialist works in the vault, where Eva owns the sync (#703). Eva's own callbacks keep working.
    */
   readonly folderHooks: boolean;
+  /**
+   * Project mode: the chat's own folder, which its file tools and its shell may use, and the folders
+   * that the shell may not read, such as the vault (#711). Null: no wall, as for the Assistant.
+   */
+  readonly fileWall: FileWall | null;
   /** The whole environment of the engine process (lesson 96). */
   readonly environment: Readonly<Record<string, string>>;
   readonly requestApproval: (request: ApprovalRequest) => Promise<ApprovalAnswer>;
@@ -135,3 +150,6 @@ export interface CarryHistoryInput {
   /** The environment of the engine's turns, which names its config folder. */
   readonly environment: Readonly<Record<string, string>>;
 }
+
+/** The closed folders of every Project chat's wall, and the folders inside them that a shell may read (#711). */
+export type WallRoots = Pick<FileWall, "closed" | "readable">;

@@ -50,6 +50,7 @@ async function turn(prompt: string, history: TurnHistory): Promise<EngineEventPa
     trusted: true,
     harnessMemory: false,
     folderHooks: false,
+    fileWall: null,
     environment,
     requestApproval: () => Promise.resolve("deny"),
     askQuestions: () => Promise.resolve("declined"),

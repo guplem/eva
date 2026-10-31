@@ -10,6 +10,7 @@ import {
   type EffortLevel,
   type EngineName,
   type EnginePort,
+  type FileWall,
   type McpServerSpec,
   type ModelAlias,
   type QuestionsOutcome,
@@ -61,6 +62,8 @@ export interface PreparedTurn {
   readonly harnessMemory: boolean;
   /** False turns off the hooks of the folder and of the harness config (#703). */
   readonly folderHooks: boolean;
+  /** Project mode: the chat's own folder and the folders that stay closed (#711). */
+  readonly fileWall: FileWall | null;
   readonly environment: Readonly<Record<string, string>>;
 }
 
@@ -1302,6 +1305,7 @@ ${engineText}`,
         trusted: prepared.trusted,
         harnessMemory: prepared.harnessMemory,
         folderHooks: prepared.folderHooks,
+        fileWall: prepared.fileWall,
         environment: prepared.environment,
         requestApproval: async (request) =>
           (await this.requestApproval(sessionId, request.toolName, request.summary, null, controller.signal)) ===

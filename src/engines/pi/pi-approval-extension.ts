@@ -6,7 +6,8 @@
  *
  * Each tool call emits one `extension_ui_request` with `method: "confirm"`, the title below,
  * and a JSON `message` of `{ toolName, toolCallId, input }`. A `false` or a cancel blocks the
- * tool, and the model sees the reason. An `abort` dismisses an open dialog through the signal.
+ * tool, and the model sees the reason. A confirm carries no reason back, so one reason covers both a
+ * person's no and the file wall of a Project chat (#711). An `abort` dismisses an open dialog through the signal.
  */
 export const approvalTitle = "eva-approval";
 
@@ -15,7 +16,9 @@ export const approvalExtensionSource = `export default function evaApproval(pi) 
     if (!context.hasUI) return { block: true, reason: "No client is connected to approve this action." };
     const request = JSON.stringify({ toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
     const allowed = await context.ui.confirm("${approvalTitle}", request, { signal: context.signal });
-    return allowed ? undefined : { block: true, reason: "The person did not allow this action." };
+    return allowed
+      ? undefined
+      : { block: true, reason: "This action was not allowed: the person said no, or a path is outside this chat's folder." };
   });
 }
 `;

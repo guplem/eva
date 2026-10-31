@@ -18,6 +18,7 @@ import {
   type CloneOriginStore,
   type TrustStore,
 } from "../projects/clones.ts";
+import type { WallRoots } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { withCloneMentions } from "../projects/clone-files.ts";
 import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
@@ -45,6 +46,8 @@ export interface ProjectPreparerOptions {
   readonly isSyncing?: (cloneFolder: string) => boolean;
   /** The vault, read at each turn, for the files that a message mentions (#706). Without it, mentions stay as they are. */
   readonly vaultPath?: () => string | null;
+  /** The folders that the chat may not open, read at each turn (#711). */
+  readonly wallRoots: () => WallRoots;
 }
 
 export class ProjectPreparer implements TurnPreparer {
@@ -66,6 +69,7 @@ export class ProjectPreparer implements TurnPreparer {
       // As in a session that the person opens by hand.
       harnessMemory: true,
       folderHooks: true,
+      fileWall: { area: session.startFolder, ...this.options.wallRoots() },
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };
   }

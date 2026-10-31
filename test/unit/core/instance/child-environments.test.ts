@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import {
   engineEnvironment,
   gitEnvironment,
   gitEnvironmentWithToken,
+  projectWallRoots,
 } from "../../../../src/core/instance/child-environments.ts";
 import { homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
 
@@ -56,5 +57,21 @@ describe("the commit identity of an instance's git", () => {
     expect(config).toContain('email = "1234+example-user@users.noreply.github.com"');
     // A variable would beat a name that the person sets in one clone with `git config user.name`.
     expect(environment["GIT_AUTHOR_NAME"]).toBeUndefined();
+  });
+});
+
+describe("projectWallRoots (#711)", () => {
+  test("closes Eva's folder, but keeps readable each file that the agent's git, gh and PATH name", () => {
+    const environment = engineEnvironment({ paths, processEnvironment: { PATH: "/usr/bin" }, evaCommand: ["eva"] }, {});
+    const wall = projectWallRoots(paths, "/srv/vault", ["/srv/projects"]);
+    expect(wall.closed).toEqual(["/srv/vault", "/srv/projects", paths.root]);
+    const readable = (path: string): boolean => wall.readable.some((folder) => path.startsWith(folder));
+    expect(readable(environment["GIT_CONFIG_GLOBAL"] ?? "")).toBe(true);
+    expect(readable(join(environment["GH_CONFIG_DIR"] ?? "", "hosts.yml"))).toBe(true);
+    expect(readable(join((environment["PATH"] ?? "").split(delimiter)[0] ?? "", "eva"))).toBe(true);
+    expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", "shell-snapshots", "s.sh"))).toBe(true);
+    // Claude Code's login and every chat's history stay closed.
+    expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", ".credentials.json"))).toBe(false);
+    expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", "projects"))).toBe(false);
   });
 });

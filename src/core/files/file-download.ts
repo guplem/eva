@@ -8,7 +8,8 @@
 import { closeSync, fstatSync, openSync, readSync, readdirSync, realpathSync, statSync, constants } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
-import { errorCode, isGitData, isInside, noWait, resolveInVault, textOf } from "./file-browser.ts";
+import { isInside } from "../../shared/path-area.ts";
+import { errorCode, isGitData, noWait, resolveInVault, textOf } from "./file-browser.ts";
 import { isEncryptedOnDisk, secretMatcherOf, type SecretPaths } from "./secret-paths.ts";
 
 export interface VaultDownload {

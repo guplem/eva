@@ -205,8 +205,21 @@ export async function landTree(
         )
       : pullRequestOf(open);
   if (pull.autoMerge) return { kind: "pull request", url: pull.url };
+  const method = await mergeMethodOf(write, slug, rules.list);
+  if (open !== undefined) {
+    // GitHub refuses auto-merge on a pull request that can merge now, such as one whose CI passed
+    // while the setting was off. "clean" means that every rule of the branch passes.
+    const state = textField(
+      await githubCall(write, "GET", `repos/${slug}/pulls/${String(pull.number)}`),
+      "mergeable_state",
+    );
+    if (state === "clean") {
+      await githubCall(write, "PUT", `repos/${slug}/pulls/${String(pull.number)}/merge`, { merge_method: method });
+      return { kind: "commit" };
+    }
+  }
   try {
-    await enableAutoMerge(write, slug, pull.nodeId, rules.list);
+    await enableAutoMerge(write, pull.nodeId, method);
   } catch (error) {
     if (!isEvaError(error, "github_failed")) throw error;
     throw new EvaError(
@@ -239,6 +252,7 @@ async function branchRules(write: GithubWrite, slug: string, branch: string): Pr
 }
 
 interface OpenPullRequest {
+  readonly number: number;
   readonly url: string;
   readonly nodeId: string;
   readonly autoMerge: boolean;
@@ -276,9 +290,10 @@ async function openPullRequest(
 function pullRequestOf(value: unknown): OpenPullRequest {
   const url = textField(value, "html_url");
   const nodeId = textField(value, "node_id");
-  if (url === null || nodeId === null) throw unreadable();
+  const number = asRecord(value)?.["number"];
+  if (url === null || nodeId === null || typeof number !== "number") throw unreadable();
   const autoMerge = asRecord(value)?.["auto_merge"];
-  return { url, nodeId, autoMerge: autoMerge !== null && autoMerge !== undefined };
+  return { number, url, nodeId, autoMerge: autoMerge !== null && autoMerge !== undefined };
 }
 
 const autoMergeMutation =
@@ -290,17 +305,13 @@ const mergeMethods = [
   { name: "rebase", setting: "allow_rebase_merge" },
 ] as const;
 
+type MergeMethod = (typeof mergeMethods)[number]["name"];
+
 /**
- * REST cannot turn on auto-merge, so this is the GraphQL call that `gh pr merge --auto` makes. The
- * method is the first one that the repository settings and the rules allow, in the order that Eva's
- * own merges use.
+ * The first merge method that the repository settings and the rules allow, in the order that Eva's
+ * own merges use. With none, GitHub's refusal of "merge" names the reason.
  */
-async function enableAutoMerge(
-  write: GithubWrite,
-  slug: string,
-  pullRequestId: string,
-  rules: readonly unknown[],
-): Promise<void> {
+async function mergeMethodOf(write: GithubWrite, slug: string, rules: readonly unknown[]): Promise<MergeMethod> {
   const settings = asRecord(await githubCall(write, "GET", `repos/${slug}`));
   const linear = rules.some((rule) => textField(rule, "type") === "required_linear_history");
   const allowedByRules = rules.flatMap((rule) =>
@@ -308,17 +319,21 @@ async function enableAutoMerge(
       ? [listOf(asRecord(asRecord(rule)?.["parameters"])?.["allowed_merge_methods"])]
       : [],
   );
-  const method =
+  return (
     mergeMethods.find(
       ({ name, setting }) =>
         settings?.[setting] !== false &&
         !(linear && name === "merge") &&
         allowedByRules.every((allowed) => allowed.length === 0 || allowed.includes(name)),
-    )?.name ?? "merge";
-  const mergeMethod = method.toUpperCase();
+    )?.name ?? "merge"
+  );
+}
+
+/** REST cannot turn on auto-merge, so this is the GraphQL call that `gh pr merge --auto` makes. */
+async function enableAutoMerge(write: GithubWrite, pullRequestId: string, method: MergeMethod): Promise<void> {
   const answer = await githubCall(write, "POST", "graphql", {
     query: autoMergeMutation,
-    variables: { pullRequestId, mergeMethod },
+    variables: { pullRequestId, mergeMethod: method.toUpperCase() },
   });
   // GraphQL answers 200 with a list of errors.
   const errors = listOf(asRecord(answer)?.["errors"]);

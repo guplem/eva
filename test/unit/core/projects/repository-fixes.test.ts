@@ -258,6 +258,29 @@ describe("runDirectFixes on a branch that requires checks", () => {
     expect(second.calls.filter((call) => call.method !== "GET" && !call.path.endsWith("/git/blobs"))).toEqual([]);
   });
 
+  test("a reused pull request that can merge now merges at once, since auto-merge refuses it", async () => {
+    const first = fakeWrite({ ...commitReads, ...rulesetChecks, ...pullRequest });
+    await runDirectFixes("owner/app", [skill], first.write);
+    const ref = created(first.calls, "repos/owner/app/git/refs") as { ref: string };
+    const branch = ref.ref.slice("refs/heads/".length);
+    const second = fakeWrite({
+      ...commitReads,
+      ...rulesetChecks,
+      [`GET repos/owner/app/pulls?head=owner:${encodeURIComponent(branch)}&state=open`]: ok([
+        { number: 7, node_id: "PR_7", html_url: "https://github.com/owner/app/pull/7", auto_merge: null },
+      ]),
+      "GET repos/owner/app/pulls/7": ok({ number: 7, mergeable_state: "clean" }),
+    });
+    const outcome = await runDirectFixes("owner/app", [skill], second.write);
+    expect(outcome).toEqual({ fixed: ["Skill a"], failed: [], notes: [] });
+    expect(second.calls).toContainEqual({
+      method: "PUT",
+      path: "repos/owner/app/pulls/7/merge",
+      body: { merge_method: "merge" },
+    });
+    expect(created(second.calls, "graphql")).toBeUndefined();
+  });
+
   test("an old branch of Eva with no open pull request moves to the new commit", async () => {
     const { write, calls } = fakeWrite({
       ...commitReads,

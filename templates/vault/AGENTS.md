@@ -94,7 +94,7 @@ repos:
 
 A project is one of two types:
 
-- **Software:** work in repositories, such as an app, a website or a widget. The text under the front matter describes the project for the person and for you, and names the repository to read first. The rules for the code live in each repository's own `AGENTS.md`. The project's notes sit beside the file.
+- **Software:** work in repositories, such as an app, a website or a widget. The text under the front matter describes the project for the person and for you. It names the repository to read first. The rules for the code live in each repository's own `AGENTS.md`. The project's notes sit beside the file.
 - **Specialist:** a chat with its own rules and memory, such as a gym coach. The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. A specialist has no repository and no clone.
 
 `Projects/<id>/repos/clone-<n>/` holds a clone of the project: one folder for each repository, such as `repos/clone-0/<repo>/`. Git ignores those clones: each repository is its own git repository. Never edit a clone as part of note work.

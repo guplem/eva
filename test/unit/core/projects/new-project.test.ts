@@ -115,7 +115,7 @@ describe("createProject", () => {
         "",
         "# Coach",
         "",
-        "This specialist is new. Ask the person what it does, then write its rules in this file.",
+        "This specialist is new. Ask the person what it does. Then write its rules in this file, under the title. Keep the front matter as it is.",
         "",
       ].join("\n"),
     );

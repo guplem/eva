@@ -78,7 +78,9 @@ export interface NewProjectResult {
 }
 
 /** The first rules of a specialist: the agent learns its job at the person's first message. */
-const newSpecialistLine = "This specialist is new. Ask the person what it does, then write its rules in this file.";
+// The front matter holds the type, so a rewrite that drops it would turn the specialist into software.
+const newSpecialistLine =
+  "This specialist is new. Ask the person what it does. Then write its rules in this file, under the title. Keep the front matter as it is.";
 
 /** GitHub keeps at most 350 characters of a description, on one line. */
 const repositoryDescriptionLimit = 350;

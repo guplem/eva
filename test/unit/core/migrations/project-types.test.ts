@@ -78,11 +78,25 @@ describe("describeProjectTypes (vault, #703)", () => {
     expect(text.replaceAll("\r\n", "")).not.toContain("\n");
   });
 
-  test("a text that the person changed stays as it is", () => {
-    const edited = oldSection.replace("says what an agent must know", "holds what I want");
-    writeFileSync(map, edited);
-    expect(migrate().kind).toBe("done");
-    expect(readFileSync(map, "utf-8")).toBe(edited);
+  test("a text that the person changed stays as it is, in the example or in the paragraph", () => {
+    for (const edited of [
+      oldSection.replace("says what an agent must know", "holds what I want"),
+      oldSection.replace("status: active # idea, active, paused or closed", "status: active"),
+    ]) {
+      writeFileSync(map, edited);
+      rmSync(join(vault, ".eva"), { recursive: true, force: true });
+      expect(migrate()).toMatchObject({ kind: "done", applied: [describeProjectTypes.id] });
+      expect(readFileSync(map, "utf-8")).toBe(edited);
+    }
+  });
+
+  test("the new text is the template's text, so a new vault and a migrated vault read the same", () => {
+    writeFileSync(map, oldSection);
+    migrate();
+    const migrated = readFileSync(map, "utf-8");
+    const template = readFileSync(join(import.meta.dir, "../../../../templates/vault/AGENTS.md"), "utf-8");
+    const typesOf = (text: string): string => text.slice(text.indexOf("A project is one of two types:"));
+    expect(typesOf(template).startsWith(typesOf(migrated).split("\n\n`Projects/")[0] ?? "")).toBe(true);
   });
 
   test("a vault with no map has nothing to change", () => {

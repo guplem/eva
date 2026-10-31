@@ -237,11 +237,14 @@ A request from Eva's own computer can come from any program there, so only the t
   - **Fix** on an item that a command can fix runs it on GitHub at once. Press **Refresh** to see the item turn green. Any other **Fix** opens a chat with the request.
   - **Fix all** runs every fix that a command can do. Then it opens one chat for the rest, when something is left.
 - **Specialists:** a specialist is a project that you chat with directly, such as a gym coach. It has its own rules and memory. Its `AGENTS.md` has `type: specialist` in the front matter.
-  - The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. A new specialist asks you what it does at your first message, then writes its rules there.
+  - The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. At your first message, a new specialist asks what it does. Then it writes its rules into this file.
   - A chat with a specialist starts in its project folder. It reads only the project's `AGENTS.md`, not the vault's, and gets no prompt or skill of Eva's. So it does not know that it runs inside your vault.
   - Eva syncs the vault around each of its turns, so a file that it writes reaches your other computers. Its hooks and Claude Code's own memory are off: it keeps its memory in its folder.
   - It has no clones and no repository. A fork or a retry stays in its folder. A retry can undo the files that the chat changed, as in a chat with Eva. It takes no files and no `@` mentions.
-  - A specialist must be in the vault's `Projects/` folder. The type changes in **Details**, only while the project has no chats and no clones.
+  - A specialist must be in the vault's `Projects/` folder. The type changes in **Details**, only while the project has no chats and no clones. The project page shows a warning for a specialist outside the vault, with `repos`, or with a clone on this computer.
+  - In Telegram, the chat list names it "Specialist". A file that you send to its chat gets the answer that this chat takes no files.
+  - A specialist runs with your own permission mode, as a project chat does, but its folder is in your vault. Retry with undo takes back what it changed.
+  - Limits: the agent can still open a vault file when it knows the path. A script of a specialist cannot use a secret file of the vault: run that step yourself, or give the value in the chat.
 - **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, but no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
 - **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
   - All its work is on GitHub.

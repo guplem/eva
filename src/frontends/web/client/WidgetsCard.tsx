@@ -16,6 +16,7 @@ import {
   missingInputs,
   ownValue,
   permissionLines,
+  promptLine,
   sentValues,
   type FormValues,
 } from "./widget-form.ts";
@@ -310,6 +311,7 @@ function WidgetActivation({
 }): ReactElement {
   const [review, setReview] = useState<WidgetReview | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<string | null>(null);
   const [values, setValues] = useState<FormValues>({});
   const [picking, setPicking] = useState<{
     readonly id: string;
@@ -339,18 +341,22 @@ function WidgetActivation({
   const missing = manifest === null ? [] : missingInputs(manifest, values);
   const set = (id: string, value: WidgetInputValue | undefined): void => setValues((old) => ({ ...old, [id]: value }));
 
-  const approve = async (): Promise<void> => {
+  const approve = async (readOnly = false): Promise<void> => {
     if (review === null || manifest === null || missing.length > 0) return;
     setSaving(true);
     setProblem(null);
+    setConflict(null);
     try {
-      onApproved(await api.approveWidget(item.id, review.commit, sentValues(manifest, values)));
+      onApproved(await api.approveWidget(item.id, review.commit, sentValues(manifest, values), readOnly));
     } catch (error) {
-      setProblem(errorText(error));
+      // A conflict of the data formats has a way out: the widget can turn on with read access only (#692).
+      if (error instanceof ApiError && error.code === "widget_format_conflict") setConflict(error.message);
+      else setProblem(errorText(error));
     } finally {
       setSaving(false);
     }
   };
+  const line = manifest === null ? null : promptLine(manifest, values);
 
   return (
     <>
@@ -407,8 +413,18 @@ function WidgetActivation({
                 again.
               </span>
             </div>
+            {line !== null && (
+              <div className="field">
+                <span className="field-label">What this widget tells Eva</span>
+                <span className="widget-picked">{line}</span>
+                <span className="field-hint">
+                  Eva adds this line to her prompt in each new chat, so she saves your data where the widget reads it.
+                </span>
+              </div>
+            )}
             {missing.length > 0 && <div className="callout warning">Fill in: {missing.join(", ")}.</div>}
             {problem !== null && <div className="callout danger">{problem}</div>}
+            {conflict !== null && <div className="callout warning">{conflict}</div>}
             <div className="button-row">
               <button
                 type="button"
@@ -420,6 +436,16 @@ function WidgetActivation({
                 {saving && <ButtonSpinner />}
                 Approve and turn on
               </button>
+              {conflict !== null && (
+                <button
+                  type="button"
+                  className="ghost"
+                  aria-disabled={saving ? "true" : undefined}
+                  onClick={() => void approve(true)}
+                >
+                  Turn on with read access only
+                </button>
+              )}
             </div>
             {saving && <ProgressBar label="Installing the widget" />}
           </div>

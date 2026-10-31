@@ -77,6 +77,25 @@ export function permissionLines(manifest: WidgetManifest, values: FormValues): P
   return [...places, ...location, ...hosts];
 }
 
+/**
+ * The line that Eva adds to her prompt for this widget (#692), as the person approves it: the
+ * manifest's line with the form's values, or the default line of a widget with data. The core
+ * builds the real line from the approved record.
+ */
+export function promptLine(manifest: WidgetManifest, values: FormValues): string | null {
+  const sent = sentValues(manifest, values);
+  if (manifest.prompt !== undefined)
+    return manifest.prompt.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, (_, id: string) => {
+      const value = ownValue(sent, id);
+      return value === undefined ? "(not set)" : String(value);
+    });
+  const places = manifest.inputs.flatMap((input) => {
+    const value = ownValue(sent, input.id);
+    return (input.type === "folder" || input.type === "file") && typeof value === "string" ? [value] : [];
+  });
+  return places.length === 0 ? null : `${manifest.name} data lives in ${places.join(" and ")}.`;
+}
+
 /** True for an entry of the vault picker that a widget may reach, by its path from the vault root. */
 export function isPickable(path: string): boolean {
   const segments = path.split("/");

@@ -7,6 +7,7 @@ import {
   missingInputs,
   ownValue,
   permissionLines,
+  promptLine,
   sentValues,
 } from "../../../../../src/frontends/web/client/widget-form.ts";
 
@@ -84,5 +85,19 @@ describe("the activation form", () => {
     for (const path of [".eva", "Scratch", "Life/About me.md", "Projects/2026-01-01-0900-app/repos", "Notes/.git"]) {
       expect(isPickable(path)).toBe(false);
     }
+  });
+});
+
+describe("promptLine", () => {
+  test("fills the manifest's line with the values, and names an empty one", () => {
+    const withLine = { ...manifest, prompt: "Habits live in {habits}, titled {title}, by {nobody}." };
+    expect(promptLine(withLine, { habits: " Life/Habits ", title: "Mine" })).toBe(
+      "Habits live in Life/Habits, titled Mine, by (not set).",
+    );
+  });
+
+  test("gives the default line of a widget with data and no line, and nothing for one with no data", () => {
+    expect(promptLine(manifest, { habits: "Life/Habits" })).toBe("Habits data lives in Life/Habits.");
+    expect(promptLine(manifest, {})).toBeNull();
   });
 });

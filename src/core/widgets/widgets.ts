@@ -12,7 +12,14 @@ import { EvaError } from "../../shared/errors.ts";
 import type { Project } from "../projects/project-catalog.ts";
 import type { LastLocation } from "../vault/about-me.ts";
 import { widgetAddress, type WidgetAddress } from "./widget-address.ts";
-import type { ApprovedPath, WidgetApproval, WidgetApprovals } from "./widget-approvals.ts";
+import {
+  configOf,
+  matches,
+  ownValue,
+  type ApprovedPath,
+  type WidgetApproval,
+  type WidgetApprovals,
+} from "./widget-approvals.ts";
 import { checkManifest, checkWidget, manifestPath, type WidgetInput, type WidgetManifest } from "./widget-contract.ts";
 import type { WidgetCopies } from "./widget-copies.ts";
 import { answerData, placeOf, type WidgetAnswer } from "./widget-data.ts";
@@ -541,31 +548,6 @@ export class Widgets {
   }
 }
 
-/**
- * True when the approval still fits the vault entry: each folder or file input has the approved
- * path, and an input that the person left empty is still empty. A value that grants nothing,
- * such as a text, may change in the vault.
- */
-export function matches(record: WidgetApproval | null, entry: WidgetEntry): boolean {
-  if (record === null) return false;
-  return record.paths.every((approved) => {
-    const value = ownValue(entry.inputs, approved.input);
-    const path = typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-    return path === approved.path;
-  });
-}
-
-/** `config.json`: the values of the vault, with each path from the record. */
-function configOf(record: WidgetApproval, entry: WidgetEntry): Record<string, WidgetInputValue> {
-  const paths = Object.fromEntries(
-    record.paths.flatMap((approved) => (approved.path === null ? [] : [[approved.input, approved.path] as const])),
-  );
-  const values = Object.fromEntries(
-    Object.entries(entry.inputs).filter(([key]) => !record.paths.some((approved) => approved.input === key)),
-  );
-  return { ...values, ...paths };
-}
-
 /** The location of the contract: no source, so a widget does not learn which device sent it. */
 function locationOf(location: LastLocation | null): Omit<LastLocation, "source"> | null {
   if (location === null) return null;
@@ -575,9 +557,4 @@ function locationOf(location: LastLocation | null): Omit<LastLocation, "source">
 
 function json(value: unknown): WidgetAnswer {
   return { status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify(value) };
-}
-
-/** The value of a key of the record itself: an input id such as `constructor` must not read `Object.prototype`. */
-function ownValue<Value>(record: Readonly<Record<string, Value>>, key: string): Value | undefined {
-  return Object.hasOwn(record, key) ? record[key] : undefined;
 }

@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { widgetAddress } from "./widget-address.ts";
+import type { WidgetEntry, WidgetInputValue } from "./widget-list.ts";
 
 export const approvalsVersion = 1;
 
@@ -45,6 +46,36 @@ export const approvalsFileSchema = z.object({
 
 export type ApprovedPath = z.infer<typeof approvedPathSchema>;
 export type WidgetApproval = z.infer<typeof approvalSchema>;
+
+/**
+ * True when the approval still fits the vault entry: each folder or file input has the approved
+ * path, and an input that the person left empty is still empty. A value that grants nothing,
+ * such as a text, may change in the vault.
+ */
+export function matches(record: WidgetApproval | null, entry: WidgetEntry): boolean {
+  if (record === null) return false;
+  return record.paths.every((approved) => {
+    const value = ownValue(entry.inputs, approved.input);
+    const path = typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+    return path === approved.path;
+  });
+}
+
+/** `config.json`: the values of the vault, with each path from the record. */
+export function configOf(record: WidgetApproval, entry: WidgetEntry): Record<string, WidgetInputValue> {
+  const paths = Object.fromEntries(
+    record.paths.flatMap((approved) => (approved.path === null ? [] : [[approved.input, approved.path] as const])),
+  );
+  const values = Object.fromEntries(
+    Object.entries(entry.inputs).filter(([key]) => !record.paths.some((approved) => approved.input === key)),
+  );
+  return { ...values, ...paths };
+}
+
+/** The value of a key of the record itself: an input id such as `constructor` must not read `Object.prototype`. */
+export function ownValue<Value>(record: Readonly<Record<string, Value>>, key: string): Value | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
 
 /** The approved records, read once and kept in memory. Only this Eva writes the file. */
 export class WidgetApprovals {

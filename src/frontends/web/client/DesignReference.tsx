@@ -156,6 +156,7 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
           <span className="pill dot ok">Online</span>
           <span className="pill dot warn">Waiting</span>
           <span className="pill dot failed">Stopped</span>
+          <span className="pill dot live">In use</span>
           <span className="pill dot idle">Idle</span>
         </div>
       );

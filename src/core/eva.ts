@@ -693,6 +693,7 @@ export class Eva {
           now: options.now,
           timeZone: options.config.timeZone ?? "UTC",
           mcpServers: this.assistantMcpServers(),
+          projects: () => this.projects(),
           ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         project: new ProjectPreparer({

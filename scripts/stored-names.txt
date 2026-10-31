@@ -375,3 +375,15 @@ vault Life/About-me.md sleep
 vault Life/About-me.md units
 vault Life/About-me.md weekStart
 vault Life/About-me.md work
+vault Projects/*/AGENTS.md created
+vault Projects/*/AGENTS.md legacy_id
+vault Projects/*/AGENTS.md repo_types
+vault Projects/*/AGENTS.md repos
+vault Projects/*/AGENTS.md status
+vault Projects/*/AGENTS.md status=active
+vault Projects/*/AGENTS.md status=closed
+vault Projects/*/AGENTS.md status=idea
+vault Projects/*/AGENTS.md status=in-use
+vault Projects/*/AGENTS.md status=paused
+vault Projects/*/AGENTS.md tags
+vault Projects/*/AGENTS.md type

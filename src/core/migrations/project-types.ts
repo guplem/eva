@@ -10,9 +10,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Migration } from "./migration-runner.ts";
 
-const oldExample = "status: active # idea, active, paused or closed\nrepos:";
-const newExample =
-  "status: active # idea, active, paused or closed\ntype: software # software or specialist. No type means software\nrepos:";
+/** The status line of the example, before and after the `in-use` status (#690). The type goes after either. */
+const statusLines = [
+  "status: active # idea, active, paused or closed",
+  "status: active # idea, active, in-use, paused or closed",
+];
+const typeLine = "type: software # software or specialist. No type means software";
 
 const oldText =
   "The text under the front matter says what an agent must know about the project. The project's notes sit beside it.";
@@ -34,12 +37,11 @@ export const describeProjectTypes: Migration = {
     const text = readFileSync(path, "utf-8");
     const newline = text.includes("\r\n") ? "\r\n" : "\n";
     const inStyle = (value: string): string => value.replaceAll("\n", newline);
+    const oldExample = statusLines.map((line) => inStyle(`${line}\nrepos:`)).find((example) => text.includes(example));
     // Both parts or neither: one alone would show a key that the text does not explain.
-    if (!text.includes(inStyle(oldExample)) || !text.includes(inStyle(oldText))) return "done";
-    context.write(
-      path,
-      text.replace(inStyle(oldExample), inStyle(newExample)).replace(inStyle(oldText), inStyle(newText)),
-    );
+    if (oldExample === undefined || !text.includes(inStyle(oldText))) return "done";
+    const newExample = oldExample.replace(inStyle("\nrepos:"), inStyle(`\n${typeLine}\nrepos:`));
+    context.write(path, text.replace(oldExample, newExample).replace(inStyle(oldText), inStyle(newText)));
     return "done";
   },
 };

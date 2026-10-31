@@ -1751,7 +1751,7 @@ repos:
     );
     expect(await describeProjects(options, "#MONEY")).toStartWith("2025-02-01-0900-tax-report");
     expect(await describeProjects(options, "sorter")).toBe(
-      "2024-01-01-0900-photo-sorter  ?  photo-sorter\n  ⚠ status must be idea, active, paused or closed",
+      "2024-01-01-0900-photo-sorter  ?  photo-sorter\n  ⚠ status must be idea, active, in-use, paused or closed",
     );
   });
 

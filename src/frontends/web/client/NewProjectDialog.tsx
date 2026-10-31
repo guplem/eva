@@ -13,7 +13,8 @@ import {
 } from "../../../core/projects/repository-catalog.ts";
 import type { RepositoryVisibility } from "../../../core/vault/github-repositories.ts";
 import { repositoryNotes, stepProblems, unavailableSteps, unavailableTypes } from "./new-project-form.ts";
-import { splitWords, statusChoices, statusOf } from "./ProjectDetailsEditor.tsx";
+import { splitWords } from "./ProjectDetailsEditor.tsx";
+import { statusChoices, statusOf } from "./project-format.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { dialogBackdropClass } from "./Dialog.tsx";

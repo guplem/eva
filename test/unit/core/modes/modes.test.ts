@@ -7,6 +7,7 @@ import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migrat
 import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
 import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
+import { discoverProjects } from "../../../../src/core/projects/project-catalog.ts";
 import { CloneOriginStore, TrustStore } from "../../../../src/core/projects/clones.ts";
 import type { PrepareAnswer } from "../../../../src/core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../../src/core/sessions/session-store.ts";
@@ -97,7 +98,16 @@ function assistant(runner: ProcessRunner, sync = new FakeSync(), logged: string[
     environment: { PATH: "/bin" },
     now: () => new Date("2026-10-14T10:30:00Z"),
     timeZone: "Europe/Madrid",
+    projects: () => discoverProjects({ vaultPath: vault, extraRoots: [] }),
   });
+}
+
+function addProject(id: string, status: string, body: string): void {
+  mkdirSync(join(vault, "Projects", id), { recursive: true });
+  writeFileSync(
+    join(vault, "Projects", id, "AGENTS.md"),
+    `---\ncreated: 2025-01-01T09:00\nstatus: ${status}\n---\n${body}`,
+  );
 }
 
 const silentRunner = new FakeRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
@@ -177,6 +187,41 @@ describe("Assistant mode", () => {
       folderHooks: false,
       environment: { PATH: "/bin" },
     });
+  });
+
+  test("the prompt lists the projects that the person develops and uses after the rules (#690)", async () => {
+    addProject("2025-01-01-0900-website", "active", "# Website\n\nThe person's site.\n");
+    addProject("2025-02-01-0900-recipes", "in-use", "# Recipes\n");
+    addProject("2025-03-01-0900-old", "closed", "# Old\n");
+    const prompt = (await assistant(silentRunner).prepare(session())).appendSystemPrompt ?? "";
+    expect(prompt).toStartWith("Base rules.\n\n# You are Eva\n\n# The person's projects\n\n");
+    expect(prompt).toContain("- Website (`2025-01-01-0900-website`): The person's site.\n");
+    expect(prompt).toContain("- Recipes (`2025-02-01-0900-recipes`)\n");
+    expect(prompt).not.toContain("2025-03-01-0900-old");
+  });
+
+  test("the projects stay fixed for a chat while Eva runs, and a new chat gets the change (#690)", async () => {
+    addProject("2025-01-01-0900-website", "active", "# Website\n");
+    const preparer = assistant(silentRunner);
+    const first = await preparer.prepare(session());
+    addProject("2025-02-01-0900-recipes", "in-use", "# Recipes\n");
+    addProject("2025-01-01-0900-website", "paused", "# Website\n");
+    expect((await preparer.prepare(session())).appendSystemPrompt).toBe(first.appendSystemPrompt);
+    const projectsPart = async (id: string): Promise<string | null | undefined> =>
+      (await preparer.describe(session({ id }))).parts.find((part) => part.title === "Your projects")?.text;
+    expect(await projectsPart("s1")).toContain("Website");
+    const next = (await preparer.prepare(session({ id: "s2" }))).appendSystemPrompt ?? "";
+    expect(next).toContain("Recipes");
+    expect(next).not.toContain("Website");
+    expect(await projectsPart("s2")).toContain("Recipes");
+    expect(await projectsPart("s3")).toContain("Recipes");
+  });
+
+  test("with no project that the person develops or uses, the prompt and the details have no projects part", async () => {
+    addProject("2025-01-01-0900-someday", "idea", "# Someday\n");
+    const preparer = assistant(silentRunner);
+    expect((await preparer.prepare(session())).appendSystemPrompt).toBe("Base rules.\n\n# You are Eva\n");
+    expect((await preparer.describe(session())).parts.map((part) => part.title)).not.toContain("Your projects");
   });
 
   test("before the hub migrates the vault, the prompt adds the sections that left the built-in prompt", async () => {

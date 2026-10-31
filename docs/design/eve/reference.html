@@ -2460,7 +2460,7 @@
       /* Projects */
       const projects = [
         ["example-app", "Active", "ok", ["web", "client"], "2 clones · 3 chats", ""],
-        ["family-recipes", "Idea", "idle", ["personal"], "No clones yet", ""],
+        ["family-recipes", "In use", "live", ["personal"], "No clones yet", ""],
         ["personal-blog", "Active", "ok", ["writing"], "1 clone · 1 chat", "warn"],
         ["home-automation", "Paused", "warn", ["home", "iot"], "1 clone", ""],
         ["thesis-data", "Closed", "idle", ["study"], "Archived", ""],
@@ -2469,7 +2469,7 @@
         active = 0,
       ) => `<div class="lst"><div class="lh"><h2>Projects</h2><span class="btn pri sm">${I("plus")} New</span></div>
   <div class="search">${I("search")} Search projects</div>
-  <div class="row" style="flex-wrap:wrap;gap:6px;padding:0 4px"><span class="chip on">Active</span><span class="chip">Idea</span><span class="chip">Paused</span><span class="chip">Closed</span><span class="chip">#web</span></div>
+  <div class="row" style="flex-wrap:wrap;gap:6px;padding:0 4px"><span class="chip on">Current</span><span class="chip">Active</span><span class="chip">In use</span><span class="chip">Idea</span><span class="chip">Paused</span><span class="chip">Closed</span><span class="chip">#web</span></div>
   ${projects.map(([n, s, k, t, c, w], i) => `<div class="prj ${i === active ? "on" : ""}"><div class="row"><b class="grow ell">${n}</b><span class="st ${k}">${s}</span></div><div class="row small muted">${c}${w ? `<span class="grow"></span><span class="st warn" style="padding:1px 8px">1 warning</span>` : ""}</div><div class="tags">${t.map((x) => `<span class="tag">#${x}</span>`).join("")}</div></div>`).join("")}</div>`;
       const cloneCard = (
         name,
@@ -2498,7 +2498,8 @@
         desc: "Each project lives in Projects/, with its clones in repos/. Here the person searches, filters and opens them.",
         imp: [
           "The status and tag filters are one-tap chips, not drop-down menus.",
-          "The status has a colour and a shape: active, idea, paused or closed.",
+          "The status has a colour and a shape: active, in use, idea, paused or closed.",
+          "The list opens with the Current filter: the projects that the person develops or uses.",
           "Each clone shows its branch and whether it has changes that are not pushed.",
           "The chats of each clone are inside its card.",
         ],
@@ -2506,7 +2507,7 @@
         phone: phone({
           on: "projects",
           head: `<div class="hd big"><h1 class="grow">Projects</h1><span class="ic f">${I("plus")}</span></div>`,
-          body: `<div class="sc"><div class="col"><div class="search">${I("search")} Search projects</div><div class="row" style="gap:6px;flex-wrap:wrap"><span class="chip on">Active</span><span class="chip">Idea</span><span class="chip">Paused</span><span class="chip">Closed</span></div>
+          body: `<div class="sc"><div class="col"><div class="search">${I("search")} Search projects</div><div class="row" style="gap:6px;flex-wrap:wrap"><span class="chip on">Current</span><span class="chip">Active</span><span class="chip">In use</span><span class="chip">Idea</span><span class="chip">Paused</span><span class="chip">Closed</span></div>
       ${projects
         .slice(0, 4)
         .map(

@@ -70,6 +70,20 @@ describe("describeProjectTypes (vault, #703)", () => {
     expect(text).toEndWith("`Projects/<id>/repos/clone-<n>/` holds a clone of the project.\n");
   });
 
+  test("a map made after the in-use status (#690) gets the type too", () => {
+    const withInUse = oldSection.replace(
+      "status: active # idea, active, paused or closed",
+      "status: active # idea, active, in-use, paused or closed",
+    );
+    writeFileSync(map, withInUse);
+    migrate();
+    const text = readFileSync(map, "utf-8");
+    expect(text).toContain(
+      "status: active # idea, active, in-use, paused or closed\ntype: software # software or specialist. No type means software\nrepos:",
+    );
+    expect(text).toContain("A project is one of two types:");
+  });
+
   test("keeps Windows line ends", () => {
     writeFileSync(map, oldSection.replaceAll("\n", "\r\n"));
     migrate();

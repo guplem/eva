@@ -29,6 +29,8 @@ import { commitChange } from "../src/core/updates/release-version.ts";
 import { oldLocationFileSchema } from "../src/core/location/last-location.ts";
 import { templateRecordFormatVersion, type RecordedPart } from "../src/core/vault/template-alignment.ts";
 import { aboutMeHeaderKeys, lastLocationKey, type LastLocation } from "../src/core/vault/about-me.ts";
+import { projectFrontMatterKeys } from "../src/core/projects/project-catalog.ts";
+import { projectStatuses } from "../src/shared/project-statuses.ts";
 import { cliCommands, switches, valueOptions } from "../src/frontends/cli/arguments.ts";
 import { commands as telegramCommands } from "../src/frontends/telegram/telegram-bot.ts";
 
@@ -171,6 +173,9 @@ export function currentNames(): string[] {
     ...aboutMeHeaderKeys.map((key) => `vault Life/About-me.md ${key}`),
     ...[...lastLocationFields, "source=telegram", "source=web"].map(
       (field) => `vault Life/About-me.md ${lastLocationKey}.${field}`,
+    ),
+    ...[...projectFrontMatterKeys, ...projectStatuses.map((status) => `status=${status}`)].map(
+      (name) => `vault Projects/*/AGENTS.md ${name}`,
     ),
     ...schemaNames(oldLocationFileSchema).map((name) => `machine state/location.json ${name}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),

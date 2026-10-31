@@ -109,7 +109,7 @@ export const commands: readonly { command: string; description: string }[] = [
   { command: "chats", description: "Continue a chat from the web app or the terminal here" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
-  { command: "projects", description: "Search the projects: /projects [words] [status:active] [#tag]" },
+  { command: "projects", description: "Search the projects: /projects [words] [status:current] [#tag]" },
   { command: "schedules", description: "List the schedules" },
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },

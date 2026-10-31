@@ -1,9 +1,10 @@
 /** The words and colours of the project pages. */
+import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 import type { Project } from "./api.ts";
 import type { ProjectType } from "../../../core/projects/project-catalog.ts";
 
-/** The colour of a status pill: `--ok`, `--warn` or the muted chip. */
-export type PillTone = "ok" | "warn" | "idle";
+/** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */
+export type PillTone = "ok" | "warn" | "live" | "idle";
 
 export interface Pill {
   readonly text: string;
@@ -15,20 +16,46 @@ export function countOf(count: number, word: string): string {
   return `${String(count)} ${word}${count === 1 ? "" : "s"}`;
 }
 
-/** Active is green, paused is amber, and an idea or a closed project is grey. */
+/** The word for each status, the same on the pill, the filter chip and the details form. */
+export const statusLabels: Readonly<Record<ProjectStatus, string>> = {
+  idea: "Idea",
+  active: "Active",
+  "in-use": "In use",
+  paused: "Paused",
+  closed: "Closed",
+};
+
+const statusTones: Readonly<Record<ProjectStatus, PillTone>> = {
+  idea: "idle",
+  active: "ok",
+  "in-use": "live",
+  paused: "warn",
+  closed: "idle",
+};
+
+/** The choices of a status field: None, then each status. */
+export const statusChoices: readonly { readonly value: string; readonly label: string }[] = [
+  { value: "", label: "None" },
+  ...projectStatuses.map((status) => ({ value: status, label: statusLabels[status] })),
+];
+
+/** The status of a choice of `statusChoices`, or null for None and for any other value. */
+export function statusOf(value: string): ProjectStatus | null {
+  return projectStatuses.find((status) => status === value) ?? null;
+}
+
+/** The status filter chips of the Projects page. "Current" is the projects that the person develops or uses now (#690). */
+export const statusChips: readonly { readonly value: ProjectStatusFilter; readonly text: string }[] = [
+  { value: "current", text: "Current" },
+  ...(["active", "in-use", "idea", "paused", "closed"] as const).map((status) => ({
+    value: status,
+    text: statusLabels[status],
+  })),
+];
+
+/** Active is green, in use has the accent colour, paused is amber, and an idea or a closed project is grey. */
 export function statusPill(status: Project["frontMatter"]["status"]): Pill | null {
-  switch (status) {
-    case "active":
-      return { text: "Active", tone: "ok" };
-    case "idea":
-      return { text: "Idea", tone: "idle" };
-    case "paused":
-      return { text: "Paused", tone: "warn" };
-    case "closed":
-      return { text: "Closed", tone: "idle" };
-    case null:
-      return null;
-  }
+  return status === null ? null : { text: statusLabels[status], tone: statusTones[status] };
 }
 
 /** "2 clones · 3 chats", for the project card. A specialist has no clones (#703). */

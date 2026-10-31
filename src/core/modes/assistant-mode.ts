@@ -11,11 +11,13 @@ import type { McpServerSpec } from "../../shared/engine-port.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { ContextPart } from "../../shared/chat-context.ts";
+import type { Project } from "../projects/project-catalog.ts";
 import type { ModeContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 import { moveAssistantPersonality, withMovedSections } from "../migrations/assistant-rules-move.ts";
 import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 import { aboutMeProblemNote, readAboutMe } from "../vault/about-me.ts";
+import { projectsBlock } from "./projects-block.ts";
 import { VaultTurns, type VaultSyncPort } from "./vault-turns.ts";
 
 export interface AssistantPreparerOptions {
@@ -35,16 +37,25 @@ export interface AssistantPreparerOptions {
   readonly timeZone: string;
   /** The MCP servers of every Assistant turn, such as the Google tools. */
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
+  /** The projects of the vault and of the extra roots, read at the first turn of each chat (#690). */
+  readonly projects: () => readonly Project[];
   /** Where pskill's error output goes. */
   readonly logger?: Logger;
 }
 
 const pskillTimeoutMs = 30_000;
 
+/** The parts of the appended prompt that Eva reads from the vault at the first turn of a chat. */
+interface KeptPrompt {
+  readonly rules: string;
+  /** Null when no project is active or in use. */
+  readonly projects: string | null;
+}
+
 export class AssistantPreparer implements TurnPreparer {
   private readonly options: AssistantPreparerOptions;
   /** The appended prompt of each session, read at its first turn. */
-  private readonly promptBySession: Map<string, string>;
+  private readonly promptBySession: Map<string, KeptPrompt>;
   private readonly vaultTurns: VaultTurns;
 
   constructor(options: AssistantPreparerOptions) {
@@ -60,16 +71,19 @@ export class AssistantPreparer implements TurnPreparer {
       // An answer from an agent with no identity is worse than an error (lesson 11).
       throw new EvaError("vault_not_found", `${personalRulesPath} is missing, so Eva has no assistant rules.`);
     }
-    // Fixed for the session, even when the agent edits .eva/assistant.md in it (lesson 115), so the
-    // appended text stays byte-identical and the prompt cache holds (lesson 40). A restart reads it again.
-    const appendSystemPrompt =
-      this.promptBySession.get(session.id) ?? `${this.options.basePrompt}\n\n${this.personalRules(personalRulesPath)}`;
-    this.promptBySession.set(session.id, appendSystemPrompt);
+    // Fixed for the session, even when the agent edits .eva/assistant.md or a project's status in it
+    // (lesson 115), so the appended text stays byte-identical and the prompt cache holds (lesson 40).
+    // A restart reads it again.
+    const kept = this.promptBySession.get(session.id) ?? {
+      rules: this.personalRules(personalRulesPath),
+      projects: projectsBlock(this.options.projects()),
+    };
+    this.promptBySession.set(session.id, kept);
     return {
       startFolder: session.startFolder,
       projectFolder: null,
       // The time goes in the message, never in the prompt (lesson 40).
-      appendSystemPrompt,
+      appendSystemPrompt: this.appendedPrompt(kept),
       messagePrefix: this.messagePrefix(),
       pluginFolders: this.pluginFolders(),
       mcpServers: this.options.mcpServers,
@@ -85,16 +99,11 @@ export class AssistantPreparer implements TurnPreparer {
   describe(session: SessionRecord): Promise<ModeContext> {
     const rulesPath = join(this.options.vaultPath, ".eva", "assistant.md");
     const kept = this.promptBySession.get(session.id);
-    const prefix = `${this.options.basePrompt}\n\n`;
     // A file that Eva cannot read must not break the whole details, so this read never throws.
     const onDisk = readTextTolerant(rulesPath);
-    // A running chat keeps the rules of its first turn since Eva started, even when the file changed.
-    const rules =
-      kept?.startsWith(prefix) === true
-        ? kept.slice(prefix.length)
-        : onDisk === null
-          ? null
-          : this.withPersonality(onDisk);
+    // A running chat keeps the rules and the projects of its first turn since Eva started, even when they changed.
+    const rules = kept?.rules ?? (onDisk === null ? null : this.withPersonality(onDisk));
+    const projects = kept === undefined ? projectsBlock(this.options.projects()) : kept.projects;
     const parts: ContextPart[] = [
       { group: "prompt", title: "Eva's prompt", source: null, text: this.options.basePrompt, note: null },
       {
@@ -109,6 +118,17 @@ export class AssistantPreparer implements TurnPreparer {
             ? "Eva cannot read the file."
             : null,
       },
+      ...(projects === null
+        ? []
+        : [
+            {
+              group: "prompt" as const,
+              title: "Your projects",
+              source: null,
+              text: projects,
+              note: "Eva lists the projects with the status Active or In use at the start of each chat. A change shows in the next chat.",
+            },
+          ]),
       {
         group: "message",
         title: "Before each message",
@@ -128,6 +148,12 @@ export class AssistantPreparer implements TurnPreparer {
         environment: this.options.environment,
       },
     });
+  }
+
+  /** Eva's prompt, the person's rules, and then the projects, so the person's rules stay next to Eva's. */
+  private appendedPrompt(kept: KeptPrompt): string {
+    const head = `${this.options.basePrompt}\n\n${kept.rules}`;
+    return kept.projects === null ? head : `${head.trimEnd()}\n\n${kept.projects}`;
   }
 
   /** The vault's `.eva/` folder gives the assistant skills, when it is a plugin. */

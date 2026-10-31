@@ -22,7 +22,7 @@ Run these on the computer where Eva runs. Seven commands need Eva to run: `statu
 | `eva chat --project <id>`         | Talks to a project's coding agent, or to a specialist. `--clone <name>` picks the copy of the code, such as `clone-0`, when it has no open chat.                                    |
 | `eva chat --model <model>`        | Picks the model: `smart`, `balanced` or `fast`. Without it, the model from the settings.                                                                                            |
 | `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                                                                                                            |
-| `eva projects [words]`            | Searches your projects. `status:active` and `tag:work` filter them.                                                                                                                 |
+| `eva projects [words]`            | Searches your projects. `status:active`, `status:current` and `tag:work` filter them.                                                                                               |
 | `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code, or the specialist does it.                                                                              |
 | `eva sync`                        | Gets other computers' notes, then saves and pushes this computer's notes.                                                                                                           |
 | `eva update [version] [--check]`  | Installs what the policy allows, or the version given. `--check` only looks.                                                                                                        |
@@ -233,6 +233,9 @@ A request from Eva's own computer can come from any program there, so only the t
   - Pick **Private** or **Public**. A widget is public by default. A private vibe-coded repository uses the CI minutes of your GitHub account, and some guards of the standard need a paid plan. A private widget has no GitHub Pages demo on a free plan.
   - Tick **Create a Google Drive folder** to get a folder in your Drive. It needs the Drive access "Read and change", in **Settings > Connections > Google**.
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
+- **Status:** each project has one status. **Active** is a project that you develop. **In use** is a project that you use now, such as a project that makes the week's menus. The other statuses are **Idea**, **Paused** and **Closed**.
+  - The Projects page opens with the **Current** filter: the active and in-use projects. Tap a status to see only that status. In the search, in `eva projects` and in Telegram's `/projects`, type `status:in-use`, `status:current` or `status:any`.
+  - Each new chat with Eva gets a list of your active and in-use projects, with the title, the folder name and the description. So Eva knows them without a search. A changed status shows in the next new chat. A project chat gets no list.
 - **Repository setup:** open it from the project page. It checks each repository by its type. A repository with no type, such as one that you added by hand, shows no report: pick its type first.
   - **Fix** on an item that a command can fix runs it on GitHub at once. Press **Refresh** to see the item turn green. Any other **Fix** opens a chat with the request.
   - **Fix all** runs every fix that a command can do. Then it opens one chat for the rest, when something is left.

@@ -19,6 +19,15 @@ In this text, "Eva" means you, and also the program that runs you. When Eva save
 
 Each project is a folder in `Projects/`, named `YYYY-MM-DD-HHmm-name` after its creation time. Its `AGENTS.md` starts with front matter: `status`, `type`, `repos`, and more. Find a project by its folder name and front matter. Never invent a project id: take it from the folder name.
 
+The `status` is one of these:
+
+- `idea`: the person may start it some day.
+- `active`: the person develops it now.
+- `in-use`: the person uses it now, such as a project that makes the week's menus.
+- `paused` or `closed`: the person does not work on it now.
+
+When the person has active or in-use projects, a list of them comes after the person's rules. Eva makes it at the start of the chat, so it can be older than a status that changed in this chat. With no list, no project is active or in use.
+
 A project is a software project or a specialist (`type: specialist`). No type means software.
 
 - **Software:** never edit a project's code from here. Code work happens in a Project chat in one of the project's clones (`Projects/<id>/repos/clone-<n>/`), where the project's own rules and tools apply.

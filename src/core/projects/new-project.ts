@@ -8,6 +8,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
+import type { ProjectType } from "./project-catalog.ts";
 import type { ProjectStatus } from "../../shared/project-statuses.ts";
 import type { RepositoryVisibility } from "../vault/github-repositories.ts";
 import { applyProjectDetails, setRepositoryType } from "./project-file.ts";
@@ -30,6 +31,8 @@ export interface NewProjectInput {
   readonly repository: NewRepository | null;
   /** True creates a Google Drive folder named after the title. */
   readonly drive: boolean;
+  /** A specialist gets no repository and no Drive folder, but a chat (#703). */
+  readonly type: ProjectType;
 }
 
 export interface NewProjectOptions {
@@ -47,9 +50,14 @@ export interface NewProjectSteps {
   readonly createDriveFolder: (name: string) => Promise<string>;
   /** Applies the setup of the type to the new repository, once the project file names it. */
   readonly setUpRepository: (projectId: string, url: string, type: RepositoryTypeName) => Promise<NewProjectSetup>;
+  /** Opens the first chat of a new specialist, and gives its id. */
+  readonly startChat: (projectId: string) => Promise<string>;
 }
 
 export type NewProjectStep = { readonly url: string } | { readonly problem: string };
+
+/** The first chat of a new specialist, or why it could not start. */
+export type NewProjectChat = { readonly sessionId: string } | { readonly problem: string };
 
 /** What the setup of a new repository did. */
 export interface NewProjectSetup {
@@ -66,7 +74,14 @@ export interface NewProjectResult {
   readonly drive: NewProjectStep | null;
   /** Null when Eva created no repository. */
   readonly setup: NewProjectSetup | null;
+  /** Null for a software project. */
+  readonly chat: NewProjectChat | null;
 }
+
+/** The first rules of a specialist: the agent learns its job at the person's first message. */
+// The front matter holds the type, so a rewrite that drops it would turn the specialist into software.
+const newSpecialistLine =
+  "This specialist is new. Ask the person what it does. Then write its rules in this file, under the title. Keep the front matter as it is.";
 
 /** GitHub keeps at most 350 characters of a description, on one line. */
 const repositoryDescriptionLimit = 350;
@@ -80,6 +95,9 @@ export async function createProject(
   const title = input.name.trim();
   const description = input.description.replaceAll("\r\n", "\n").trim();
   const projectId = formatProjectId(options.wallClock, title);
+  // A specialist saves its work in the vault, so it gets no clone and no repository (#703).
+  if (input.type === "specialist" && (input.repository !== null || input.drive))
+    throw new EvaError("project_invalid", "A specialist has no repository and no Drive folder.");
   const textWith = (results: { repository: string | null; driveFolder: string | null }): string =>
     projectText(options.wallClock, title, description, input, results);
   // A bad title or tag fails here, before the folder or a step exists.
@@ -122,7 +140,17 @@ export async function createProject(
     repository === null || type === undefined
       ? null
       : await setUp(() => steps.setUpRepository(projectId, repository, type));
-  return { projectId, github, drive, setup };
+  const chat = input.type === "specialist" ? await startChat(() => steps.startChat(projectId)) : null;
+  return { projectId, github, drive, setup, chat };
+}
+
+async function startChat(step: () => Promise<string>): Promise<NewProjectChat> {
+  try {
+    return { sessionId: await step() };
+  } catch (error) {
+    if (isEvaError(error)) return { problem: error.message };
+    throw error;
+  }
 }
 
 async function setUp(step: () => Promise<NewProjectSetup>): Promise<NewProjectSetup> {
@@ -164,6 +192,7 @@ function projectText(
     note ?? "",
     // A list item, so the catalog never reads the link as the description.
     results.driveFolder === null ? "" : `- Google Drive folder: ${results.driveFolder}`,
+    input.type === "specialist" ? newSpecialistLine : "",
   ];
   const body = parts.filter((part) => part !== "").join("\n\n");
   return applyProjectDetails(`---\ncreated: ${wallClock}\n---\n\n${body}\n`, {
@@ -171,5 +200,6 @@ function projectText(
     status: input.status,
     tags: input.tags,
     repos: results.repository === null ? [] : [results.repository],
+    type: input.type,
   });
 }

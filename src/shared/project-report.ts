@@ -11,7 +11,8 @@ export interface ProjectReport {
   /** The Project chat that did the work. */
   readonly projectSessionId: string;
   readonly request: string;
-  readonly clone: string;
+  /** Null for a specialist, which works in its project folder (#703). An older Eva reads only text. */
+  readonly clone: string | null;
   readonly repositories: {
     readonly name: string;
     readonly branch: string | null;
@@ -32,13 +33,14 @@ export function reportHeadline(report: ProjectReport): string {
     : `Eva finished the work in ${report.projectTitle}`;
 }
 
-/** Where the work ran: the clone, then each repository with its branch and pull request. */
+/** Where the work ran: the clone, then each repository with its branch and pull request, or the specialist. */
 export function reportPlace(report: ProjectReport): string {
   const repositories = report.repositories.map(
     ({ name, branch, pullRequest }) =>
       `${name}${branch === null ? "" : ` on ${branch}`}${pullRequest === null ? "" : `, PR #${String(pullRequest)}`}`,
   );
-  return [report.clone, ...repositories].join(" · ");
+  const parts = report.clone === null ? repositories : [report.clone, ...repositories];
+  return parts.length === 0 ? "specialist" : parts.join(" · ");
 }
 
 /** The paragraphs of the result, without the ones that are only a heading, such as "## Summary". */

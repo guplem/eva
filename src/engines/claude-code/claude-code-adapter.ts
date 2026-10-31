@@ -211,7 +211,13 @@ export function buildQueryOptions(
     options.settingSources = ["user", "project", "local"];
     const hidden =
       request.projectFolder === null ? {} : { claudeMdExcludes: hiddenInstructionPatterns(request.projectFolder) };
-    if (request.projectFolder !== null) options.settings = hidden;
+    // `disableAllHooks` covers the hooks of settings files and plugins, not the SDK's own callbacks.
+    const switches = {
+      ...(request.folderHooks ? {} : { disableAllHooks: true }),
+      ...(request.harnessMemory ? {} : { autoMemoryEnabled: false }),
+    };
+    if (request.projectFolder !== null || Object.keys(switches).length > 0)
+      options.settings = { ...hidden, ...switches };
     if (!request.trusted) {
       // An untrusted clone's own settings could allow every tool and skip the person's approval.
       options.settingSources = ["user"];
@@ -219,7 +225,7 @@ export function buildQueryOptions(
       const instructions = instructionFilesText(request.startFolder, request.projectFolder);
       if (instructions !== null) options.systemPrompt = { type: "preset", preset: "claude_code", append: instructions };
       // The `user` source reads no file above the project today. The exclusions still guard it, in case it ever does.
-      options.settings = { disableAllHooks: true, ...hidden };
+      options.settings = { disableAllHooks: true, ...hidden, ...switches };
       options.strictMcpConfig = true;
     }
     // A bypass would let an untrusted clone's own text run any tool with no question.

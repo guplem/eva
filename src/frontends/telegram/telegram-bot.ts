@@ -19,6 +19,7 @@ import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.
 
 import { modelAliases, modelTierName, type ModelAlias } from "../../shared/engine-port.ts";
 import { isEvaError } from "../../shared/errors.ts";
+import { chatKind } from "../../shared/chat-kind.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { reportText } from "../../shared/project-report.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
@@ -481,7 +482,12 @@ export class TelegramBot {
       return;
     }
     // Before the download: a file that cannot be kept must not leave Telegram, nor start a chat.
-    if (!(chat?.mode === "project" && chat.clone !== null) && this.options.eva.status().vaultPath === null) {
+    // A saved file would give a specialist a vault path, so its chat takes none (#703).
+    if (chat !== null && chatKind(chat) === "specialist") {
+      await this.send(chatId, topicId, "This chat takes no files.");
+      return;
+    }
+    if (!(chat !== null && chatKind(chat) === "project") && this.options.eva.status().vaultPath === null) {
       await this.send(chatId, topicId, "No vault is configured, so Eva cannot keep the file.");
       return;
     }

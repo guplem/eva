@@ -11,6 +11,7 @@ import {
   repoTypesWarning,
   statusListText,
   titleHeading,
+  type ProjectType,
 } from "./project-catalog.ts";
 import type { ProjectStatus } from "../../shared/project-statuses.ts";
 
@@ -24,6 +25,8 @@ export interface ProjectDetails {
   readonly status: ProjectStatus | null;
   readonly tags: readonly string[];
   readonly repos: readonly string[];
+  /** Absent keeps the type, as from an older page. Software, the default, removes the key (#703). */
+  readonly type?: ProjectType | undefined;
 }
 
 /** The text of a project file with these details. Throws `project_invalid` for a bad value or file. */
@@ -44,6 +47,9 @@ export function applyProjectDetails(text: string, details: ProjectDetails): stri
     ...(details.status === current.status ? {} : { status: details.status }),
     ...changedList("tags", current.tags, details.tags, (tag) => tag.replace(/^#/, ""), "A tag"),
     ...changedRepos(current.repos, current.repoTypes, details.repos),
+    ...(details.type === undefined || details.type === current.type
+      ? {}
+      : { type: details.type === "software" ? null : details.type }),
   });
   const body = withTitle(withoutBom.slice(match[0].length), title, eol);
   let head = frontMatter === null ? match[0] : `---${eol}${frontMatter.replaceAll("\n", eol)}${eol}---${eol}`;
@@ -94,6 +100,7 @@ interface FrontMatterChanges {
   readonly tags?: readonly string[];
   readonly repos?: readonly string[];
   readonly repo_types?: Readonly<Record<string, string>> | null;
+  readonly type?: ProjectType | null;
 }
 
 /** A value of the front matter: text, a list, or a map such as `repo_types`. */
@@ -241,6 +248,7 @@ export function projectFileOf(text: string): ProjectFile {
           status: frontMatter.status,
           tags: frontMatter.tags,
           repos: frontMatter.repos,
+          type: frontMatter.type,
           created: frontMatter.created,
         };
   return { text, version: fileVersion(text), details };

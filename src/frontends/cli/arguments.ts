@@ -57,7 +57,7 @@ Commands:
   doctor            Check the tools that Eva uses
   status            Show the engines, the vault sync and the sessions
   chat              Talk to Eva in this terminal
-      --project <id> [--clone <name>]   a Project chat instead of an Assistant chat
+      --project <id> [--clone <name>]   a Project chat instead of an Assistant chat (no clone for a specialist)
       --model <smart|balanced|fast>     without it, the model from the settings
       --engine <claude-code|pi>
   projects [words]  Search the projects
@@ -65,7 +65,7 @@ Commands:
       status:current                             only active and in-use projects
       status:any                                 projects with any status
       tag:<tag>                                  only projects with this tag ("#<tag>" needs the quotes)
-  work <project> <request>  Give work to a project: a Project chat in a free clone runs it
+  work <project> <request>  Give work to a project: a Project chat in a free clone, or the specialist, runs it
   service install   Start Eva by herself, and again after a crash (systemd on Linux, a start at logon on Windows)
   supervise         Run Eva, and start her again after a crash (the Windows start at logon runs this)
   update [version]  Install what the update policy allows, or a newer version, then restart Eva

@@ -94,6 +94,8 @@ export class ModelCalls {
         pluginFolders: [],
         mcpServers: {},
         trusted: false,
+        harnessMemory: false,
+        folderHooks: false,
         environment: this.options.environment,
         requestApproval: () => Promise.resolve("deny"),
         askQuestions: () => Promise.resolve("declined"),

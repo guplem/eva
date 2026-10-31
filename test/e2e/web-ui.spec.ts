@@ -1651,6 +1651,40 @@ test("New project: the form creates a project and opens its page", async ({ page
   await expect(page.locator("main")).toContainText("Made from the form.");
 });
 
+test("New project: a specialist opens its first chat, and its page lists its chats with no clone (#703)", async ({
+  page,
+}, testInfo) => {
+  const name = `Coach ${testInfo.project.name}`;
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await form.getByLabel("Project type").selectOption("specialist");
+  // A specialist keeps its work in the vault, so the form offers no repository and no Drive folder.
+  await expect(form.getByLabel(/Create a GitHub repository/)).toHaveCount(0);
+  await expect(form.getByLabel(/Create a Google Drive folder/)).toHaveCount(0);
+  await form.getByLabel("Name").fill(name);
+  await form.getByRole("button", { name: "Create project" }).click();
+  await expect(form).toHaveCount(0);
+  const header = page.locator(".main-header");
+  await expect(header.getByText("Specialist", { exact: true })).toBeVisible();
+  await expect(header).not.toContainText("clone-");
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Plan my training week");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText("Plan my training week");
+  await page.getByRole("button", { name: name, exact: true }).first().click();
+  const main = page.locator("main");
+  await expect(main.getByRole("heading", { name: "Chats" })).toBeVisible();
+  await expect(main.getByRole("heading", { name: "Clones" })).toHaveCount(0);
+  await expect(main.getByRole("button", { name: "Repository setup" })).toHaveCount(0);
+  await expect(main.locator(".clone-chat")).toHaveCount(1);
+  // A phone shows the list as its own page.
+  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
+  const card = page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: new RegExp(name) });
+  await expect(card).toContainText("Specialist · 1 chat");
+});
+
 test("New project: a failed read of the settings turns the steps off and says so", async ({ page }) => {
   await logIn(page);
   await openProjects(page);

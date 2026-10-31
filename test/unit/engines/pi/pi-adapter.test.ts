@@ -46,6 +46,8 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     pluginFolders: ["/demo-vault/.eva"],
     mcpServers: {},
     trusted: true,
+    harnessMemory: true,
+    folderHooks: true,
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
     askQuestions: () => Promise.resolve("declined"),
@@ -148,6 +150,17 @@ describe("buildPiArguments", () => {
     expect(
       buildPiArguments({ ...project, trusted: false }, { ...inputs, promptFile: null, contextExtensionFile: filter }),
     ).toEqual([...base, "-e", filter, "--no-extensions"]);
+  });
+
+  test("a specialist chat loads none of its folder's extensions, and keeps Eva's filter (#703)", () => {
+    const specialist = request({ mode: "project", appendSystemPrompt: null, pluginFolders: [], folderHooks: false });
+    const filter = "/eva/pi/eva-context-extension.ts";
+    expect(buildPiArguments(specialist, { ...inputs, promptFile: null, contextExtensionFile: filter })).toEqual([
+      ...base,
+      "-e",
+      filter,
+      "--no-extensions",
+    ]);
   });
 
   test("a turn with MCP servers also loads Eva's MCP bridge", () => {

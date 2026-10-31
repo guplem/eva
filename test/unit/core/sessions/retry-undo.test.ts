@@ -65,8 +65,14 @@ describe("answersToUndo", () => {
     expect(named(answersToUndo([moved], "heir", 1))).toEqual(["gone/1", "heir/0"]);
   });
 
-  test("a Project chat, or a turn that does not exist, undoes nothing", () => {
-    const project = chat("project", ["10:01"], { mode: "project" });
+  test("a specialist chat works in the vault, so its retry undoes its answers too (#703)", () => {
+    const coach = chat("coach", ["10:01", "10:02"], { mode: "project", startFolder: "/vault/Projects/coach" });
+    const assistant = chat("assistant", ["10:03"]);
+    expect(named(answersToUndo([coach, assistant], "coach", 0))).toEqual(["coach/0", "coach/1"]);
+  });
+
+  test("a chat in a clone, or a turn that does not exist, undoes nothing", () => {
+    const project = chat("project", ["10:01"], { mode: "project", clone: "clone-0" });
     expect(answersToUndo([project], "project", 0)).toEqual([]);
     expect(answersToUndo([chat("root", ["10:01"])], "root", 4)).toEqual([]);
     expect(answersToUndo([], "missing", 0)).toEqual([]);

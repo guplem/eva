@@ -6,6 +6,7 @@ import { moveAssistantPersonality } from "../../../../src/core/migrations/assist
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
 import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
 import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
+import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
 import { discoverProjects } from "../../../../src/core/projects/project-catalog.ts";
 import { CloneOriginStore, TrustStore } from "../../../../src/core/projects/clones.ts";
 import type { PrepareAnswer } from "../../../../src/core/sessions/session-manager.ts";
@@ -182,6 +183,8 @@ describe("Assistant mode", () => {
       pluginFolders: [join(vault, ".eva")],
       mcpServers: { google: { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: {} } },
       trusted: true,
+      harnessMemory: false,
+      folderHooks: false,
       environment: { PATH: "/bin" },
     });
   });
@@ -339,6 +342,77 @@ describe("Assistant mode", () => {
   });
 });
 
+describe("Specialist mode (#703)", () => {
+  const coachId = "2025-03-02-1015-coach";
+
+  function specialist(sync = new FakeSync()): SpecialistPreparer {
+    return new SpecialistPreparer({ vaultSync: sync, environment: { PATH: "/bin" } });
+  }
+
+  function coachSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
+    const folder = join(vault, "Projects", coachId);
+    return session({ mode: "project", startFolder: folder, projectId: coachId, clone: null, ...overrides });
+  }
+
+  test("the project folder as start folder, with no Eva prompt, no hooks and no harness memory", async () => {
+    const sync = new FakeSync();
+    const folder = join(vault, "Projects", coachId);
+    const prepared = await specialist(sync).prepare(coachSession());
+    expect(prepared).toEqual({
+      startFolder: folder,
+      // The engine hides each instruction file above the specialist, such as the vault's map (#702).
+      projectFolder: folder,
+      appendSystemPrompt: null,
+      messagePrefix: null,
+      pluginFolders: [],
+      mcpServers: {},
+      trusted: true,
+      harnessMemory: false,
+      folderHooks: false,
+      // Git stops above the specialist, so a git command there never finds the vault's repository.
+      environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: join(vault, "Projects") },
+    });
+  });
+
+  test("syncs the vault around each turn, as Assistant mode does", async () => {
+    const sync = new FakeSync();
+    const preparer = specialist(sync);
+    await preparer.prepare(coachSession());
+    expect(sync.calls).toEqual(["pull", "snapshot refs/eva/turns/s1/0/before"]);
+    expect(await preparer.afterTurn(coachSession(), { finished: true })).toBeNull();
+    expect(sync.calls.slice(2)).toEqual(["snapshot refs/eva/turns/s1/0/after", "save"]);
+  });
+
+  test("a chat whose project is no specialist any more takes no message, and touches no file", async () => {
+    const sync = new FakeSync();
+    const preparer = new SpecialistPreparer({
+      vaultSync: sync,
+      environment: { PATH: "/bin" },
+      isSpecialist: () => false,
+    });
+    const caught = await preparer.prepare(coachSession()).catch((error: unknown) => error);
+    expect(isEvaError(caught, "project_invalid")).toBe(true);
+    expect(sync.calls).toEqual([]);
+  });
+
+  test("describes no part of Eva's, and changes nothing", async () => {
+    const sync = new FakeSync();
+    const folder = join(vault, "Projects", coachId);
+    expect(await specialist(sync).describe(coachSession())).toEqual({
+      parts: [],
+      engine: {
+        mode: "project",
+        startFolder: folder,
+        projectFolder: folder,
+        trusted: true,
+        pluginFolders: [],
+        environment: { PATH: "/bin" },
+      },
+    });
+    expect(sync.calls).toEqual([]);
+  });
+});
+
 describe("Project mode", () => {
   const originalUrl = "https://github.com/owner/example-app.git";
   // The repository folder inside the clone folder, as Eva makes them: `clone-0/example-app/`.
@@ -418,6 +492,8 @@ describe("Project mode", () => {
       pluginFolders: [],
       mcpServers: {},
       trusted: true,
+      harnessMemory: true,
+      folderHooks: true,
       // Git stops at the folder of the clones, so a git command in the clone folder never reads the vault.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: sandbox.root },
     });

@@ -143,6 +143,15 @@ describe("describeClaudeContext above and below the start folder", () => {
     // Without the project source, Claude Code reads no nested file.
     expect(nested(false)).toEqual([]);
   });
+
+  test("a specialist chat lists its own rules, and no folder of it as a repository (#703)", () => {
+    const coach = join(vault, "Projects", "2025-03-02-1015-coach");
+    write(join(coach, "AGENTS.md"), "Coach rules.");
+    write(join(coach, "memory", "AGENTS.md"), "How to keep the log.");
+    const parts = context(input({ mode: "project", startFolder: coach, projectFolder: coach }));
+    expect(parts.filter((part) => part.note?.includes("works in this repository") === true)).toEqual([]);
+    expect(parts.map((part) => part.text)).toContain("Coach rules.");
+  });
 });
 
 describe("describeClaudeContext, second review", () => {

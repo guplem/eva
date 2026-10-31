@@ -160,6 +160,8 @@ const projectDetailsSchema = z.object({
   status: z.enum(projectStatuses).nullable(),
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
+  /** An older page sends none, which keeps the type (#703). */
+  type: z.enum(["software", "specialist"]).optional(),
 });
 const repositoryTypeNames = repositoryCatalog.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
 const repositoryTypeSchema = z.object({ repository: z.string().min(1).max(2_000), type: z.enum(repositoryTypeNames) });
@@ -180,6 +182,8 @@ const newProjectSchema = z
     github: z.boolean().optional(),
     repository: z.object({ type: z.enum(repositoryTypeNames), visibility: z.enum(["private", "public"]) }).nullish(),
     drive: z.boolean(),
+    /** An older page sends none: a software project, as before specialists (#703). */
+    type: z.enum(["software", "specialist"]).default("software"),
   })
   .transform(({ github, repository, ...rest }) => ({
     ...rest,

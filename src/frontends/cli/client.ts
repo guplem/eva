@@ -165,10 +165,12 @@ export async function startProjectWork(
     }),
   });
   if (!response.ok) throw await refusalOf(response);
-  const started = (await response.json()) as { sessionId: string; clone: string };
+  const started = (await response.json()) as { sessionId: string; clone: string | null };
+  // A specialist works in its own folder, with no clone (#703).
+  const place = started.clone === null ? "with the specialist" : `in clone ${started.clone}`;
   return input.reportToSessionId === null
-    ? `Started the work in clone ${started.clone}, chat ${started.sessionId}.`
-    : `Started the work in clone ${started.clone}, chat ${started.sessionId}. Its result arrives in this chat as a new message when it ends.`;
+    ? `Started the work ${place}, chat ${started.sessionId}.`
+    : `Started the work ${place}, chat ${started.sessionId}. Its result arrives in this chat as a new message when it ends.`;
 }
 
 /** Which machine is the hub, from this machine's view. */

@@ -1,6 +1,7 @@
 /**
  * The vault sync of a running Eva: "sync now", the idle sweep, the timed pull, and the log
- * lines and alert of a sync problem. No step runs under an Assistant turn (lessons 22, 30).
+ * lines and alert of a sync problem. No step runs under the turn of a chat in the vault: an
+ * Assistant or specialist turn (lessons 22, 30). "Assistant turn" below covers both.
  */
 import { EvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
@@ -41,8 +42,8 @@ export interface VaultUpkeepOptions {
   readonly now: () => Date;
   /** The `sync.enabled` setting. Off stops the automatic steps, never a request from the person. */
   readonly syncEnabled: () => boolean;
-  /** True while an Assistant chat runs a turn. */
-  readonly assistantBusy: () => boolean;
+  /** True while a chat in the vault runs a turn: an Assistant chat or a specialist chat (#703). */
+  readonly vaultTurnRunning: () => boolean;
   readonly reportProblem: (problem: AlertProblem | null) => void;
   /** Runs after each sync step, such as the check for a vault record from a newer Eva. */
   readonly afterSync?: () => void;
@@ -102,11 +103,11 @@ export class VaultUpkeep {
   async syncNow(): Promise<SyncNowState> {
     const vaultSync = this.options.vaultSync;
     if (vaultSync === null) return { ...noVaultState, skipReason: "no_vault" };
-    if (this.options.assistantBusy())
+    if (this.options.vaultTurnRunning())
       return {
         ...vaultSync.currentState,
         status: "skipped",
-        lastError: "Eva is working in an Assistant chat. Sync again when it ends.",
+        lastError: "Eva is working in an Assistant or specialist chat. Sync again when it ends.",
         skipReason: "assistant_busy",
       };
     this.lastPullAt = this.options.now();
@@ -127,12 +128,12 @@ export class VaultUpkeep {
   async resolve(path: string, choice: ConflictChoice): Promise<ConflictResolution> {
     const vaultSync = this.options.vaultSync;
     if (vaultSync === null) return { state: noVaultState, conflicts: [], found: false };
-    if (this.options.assistantBusy())
+    if (this.options.vaultTurnRunning())
       return {
         state: {
           ...vaultSync.currentState,
           status: "skipped",
-          lastError: "Eva is working in an Assistant chat. Pick again when it ends.",
+          lastError: "Eva is working in an Assistant or specialist chat. Pick again when it ends.",
         },
         conflicts: [],
         found: false,
@@ -168,10 +169,10 @@ export class VaultUpkeep {
   async undo(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
     const vaultSync = this.options.vaultSync;
     if (vaultSync === null || !this.options.syncEnabled()) return emptyUndo;
-    if (this.options.assistantBusy()) throw busyUndo();
+    if (this.options.vaultTurnRunning()) throw busyUndo();
     await this.pull();
     // A turn can start during the pull.
-    if (this.options.assistantBusy()) throw busyUndo();
+    if (this.options.vaultTurnRunning()) throw busyUndo();
     const result = await vaultSync.undo(answers);
     this.options.logger?.log("info", "A retry undid the file changes of its answers.", {
       restored: result.restore.length,
@@ -190,7 +191,7 @@ export class VaultUpkeep {
   /** Saves changes made outside a turn. It never runs during an Assistant turn (lessons 22, 30). */
   async sweep(): Promise<VaultSyncState["status"]> {
     const vaultSync = this.options.vaultSync;
-    if (vaultSync === null || this.sweeping || this.options.assistantBusy()) return "skipped";
+    if (vaultSync === null || this.sweeping || this.options.vaultTurnRunning()) return "skipped";
     this.sweeping = true;
     try {
       return this.logSyncState(await vaultSync.save()).status;
@@ -207,7 +208,7 @@ export class VaultUpkeep {
     const now = this.options.now();
     if (this.lastPullAt !== null && now.getTime() - this.lastPullAt.getTime() < minutes * 60_000) return;
     // A pull never changes the files under a running Assistant turn (lessons 22, 30).
-    if (this.options.assistantBusy()) return;
+    if (this.options.vaultTurnRunning()) return;
     this.lastPullAt = now;
     await this.pullThenAfterFetch(vaultSync, true);
   }
@@ -217,7 +218,7 @@ export class VaultUpkeep {
     const freshBefore = vaultSync.freshPulls;
     const state = this.logSyncState(await vaultSync.pull(), "pull");
     // An Assistant turn can start while git fetches.
-    if (syncEnabled && state.status === "ok" && vaultSync.freshPulls > freshBefore && !this.options.assistantBusy())
+    if (syncEnabled && state.status === "ok" && vaultSync.freshPulls > freshBefore && !this.options.vaultTurnRunning())
       this.options.afterFetch?.();
     return state;
   }
@@ -259,5 +260,5 @@ export class VaultUpkeep {
 }
 
 function busyUndo(): EvaError {
-  return new EvaError("session_busy", "Eva is working in an Assistant chat. Retry again when it ends.");
+  return new EvaError("session_busy", "Eva is working in an Assistant or specialist chat. Retry again when it ends.");
 }

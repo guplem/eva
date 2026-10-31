@@ -1007,6 +1007,28 @@ describe("/chats: every chat of the instance (#9)", () => {
     ]);
   });
 
+  test("names the kind of each chat: a chat in a clone and a specialist chat (#703)", () => {
+    const project = (title: string, clone?: string): string =>
+      eva.sessions.createSession({
+        mode: "project",
+        engine: "claude-code",
+        model: "opus",
+        startFolder: "/vault/Projects/2026-01-01-0000-coach",
+        source: "web",
+        projectId: "2026-01-01-0000-coach",
+        title,
+        ...(clone === undefined ? {} : { clone }),
+      }).id;
+    const coach = project("Plan the week");
+    const app = project("Fix the login", "clone-0");
+    const bot = createBot();
+    telegram.sendText(owner, "/chats");
+    return settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick a chat"))).then(() => {
+      expect(chatButtons()).toContainEqual({ text: "Specialist: Plan the week", callback_data: `o:${coach}` });
+      expect(chatButtons()).toContainEqual({ text: "Project: Fix the login", callback_data: `o:${app}` });
+    });
+  });
+
   test("leaves out the archived chats, as the chat list of the web app does (issue 388)", async () => {
     const kept = await webChat("Plan the garden");
     eva.sessions.setArchived(await webChat("Write the letter"), true);
@@ -2536,6 +2558,24 @@ describe("files (lessons 72, 74, 124)", () => {
     telegram.sendFile(owner, "document", new Uint8Array([6]), { fileName: "late.pdf", topicId: 500 });
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Eva closed this chat")));
     expect(readdirSync(join(cloneFolder, ".mentions"))).toHaveLength(1);
+  });
+
+  test("a file in the topic of a specialist chat gets an answer, and leaves Telegram not at all (#703)", async () => {
+    const chat = eva.sessions.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: join(vault(), "Projects", "2026-01-01-0000-coach"),
+      source: "web",
+      projectId: "2026-01-01-0000-coach",
+    });
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${chat.id}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
+    telegram.sendFile(owner, "document", new Uint8Array([4, 5]), { fileName: "plan.pdf", topicId: 500 });
+    await settle(bot, () => telegram.sentTexts().includes("This chat takes no files."));
+    expect(telegram.callsTo("getFile")).toEqual([]);
+    expect(engine.requests).toEqual([]);
   });
 
   test("an audio file is saved like a document", async () => {

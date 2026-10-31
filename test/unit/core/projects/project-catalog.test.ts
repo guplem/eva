@@ -7,6 +7,9 @@ import {
   parseFrontMatter,
   parseProjectQuery,
   searchProjects,
+  specialistClonesWarning,
+  specialistOutsideWarning,
+  specialistReposWarning,
   titleHeading,
 } from "../../../../src/core/projects/project-catalog.ts";
 
@@ -38,9 +41,19 @@ describe("parseFrontMatter", () => {
       tags: ["work", "tool"],
       legacyId: "P93",
       repoTypes: {},
+      type: "software",
       extra: { custom: "kept" },
     });
     expect(result.warnings).toEqual([]);
+  });
+
+  test("reads the project type: no type is software, and an unknown type warns (#703)", () => {
+    const front = "created: 2025-03-02T10:15\nstatus: active";
+    expect(parseFrontMatter(`---\n${front}\ntype: specialist\n---\n`).frontMatter?.type).toBe("specialist");
+    expect(parseFrontMatter(`---\n${front}\ntype: software\n---\n`).frontMatter?.extra).toEqual({});
+    const unknown = parseFrontMatter(`---\n${front}\ntype: robot\n---\n`);
+    expect(unknown.frontMatter?.type).toBe("software");
+    expect(unknown.warnings).toEqual(["type must be software or specialist"]);
   });
 
   test("accepts Windows line endings", () => {
@@ -215,6 +228,34 @@ describe("discoverProjects", () => {
       ["2025-03-02-1015-example-app", "Projects/2025-03-02-1015-example-app"],
       ["2026-01-01-0000-outside", null],
     ]);
+  });
+
+  test("a specialist with repositories, or outside the vault, warns (#703)", () => {
+    addProject("2025-03-02-1015-coach", "created: 2025-03-02T10:15\nstatus: active\ntype: specialist");
+    addProject(
+      "2025-03-03-1015-trainer",
+      "created: 2025-03-03T10:15\nstatus: active\ntype: specialist\nrepos:\n  - https://github.com/owner/app",
+    );
+    const extra = join(vault, "elsewhere");
+    mkdirSync(join(extra, "2026-01-01-0000-outside"), { recursive: true });
+    writeFileSync(
+      join(extra, "2026-01-01-0000-outside", "AGENTS.md"),
+      "---\ncreated: 2026-01-01T00:00\nstatus: idea\ntype: specialist\n---\n",
+    );
+    const warnings = Object.fromEntries(
+      discoverProjects({ vaultPath: vault, extraRoots: [extra] }).map((project) => [project.id, project.warnings]),
+    );
+    expect(warnings).toEqual({
+      "2025-03-02-1015-coach": [],
+      "2025-03-03-1015-trainer": [specialistReposWarning],
+      "2026-01-01-0000-outside": [specialistOutsideWarning],
+    });
+  });
+
+  test("a specialist with a clone on this machine warns, as another machine can change the type (#703)", () => {
+    addProject("2025-03-02-1015-coach", "created: 2025-03-02T10:15\nstatus: active\ntype: specialist");
+    mkdirSync(join(vault, "Projects", "2025-03-02-1015-coach", "repos", "clone-0"), { recursive: true });
+    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.warnings).toEqual([specialistClonesWarning]);
   });
 
   test("a vault with no Projects folder has no projects", () => {

@@ -413,8 +413,9 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
     args.push("--no-extensions");
     if (inputs.promptFile !== null) args.push("--append-system-prompt", inputs.promptFile);
     for (const folder of request.pluginFolders) args.push("--skill", join(folder, "skills"));
-  } else if (!request.trusted) {
-    // Project mode on an untrusted clone: none of the clone's own extensions.
+  } else if (!request.trusted || !request.folderHooks) {
+    // Project mode on an untrusted clone, or a specialist: none of the folder's own extensions.
+    // pi keeps no memory of its own, so `harnessMemory` changes nothing here.
     args.push("--no-extensions");
   }
   return args;

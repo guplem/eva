@@ -223,6 +223,7 @@ The machine check is a meta-schema: [`widgets/meta-schema-v1.json`](widgets/meta
 
 - Never use an inline script or an inline style. Eva's Content Security Policy blocks them. Put the code in a `.js` file, and the styles in a `.css` file.
 - Never rely on `localStorage`. Eva shows a widget in a sandboxed frame with no origin, which cannot use it.
+- Never rely on a form submit, also `<form method="dialog">`. The sandbox blocks it. Handle each button with a `click` listener.
 - Keep the fields that you do not know, as [Data formats](#data-formats) says.
 - Call only the hosts of the manifest. Eva blocks the others.
 - Use only relative paths for the contract paths, such as `fetch("config.json")`, never `fetch("/config.json")`.

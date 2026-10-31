@@ -95,3 +95,57 @@ describe("isPatternInsideArea (#711)", () => {
     expect(isPatternInsideArea(area, join(area, "src", "*.ts"), area)).toBe(true);
   });
 });
+
+describe("isInsideArea, after the review of #711", () => {
+  test("a `..` after a link goes up from the link's target, as the system does", () => {
+    mkdirSync(join(outside, "deep"), { recursive: true });
+    writeFileSync(join(outside, "secret.md"), "");
+    if (!link(join(outside, "deep"), join(area, "link"))) return;
+    expect(isInsideArea(area, "link/../secret.md", area)).toBe(false);
+    expect(isInsideArea(area, "src/../link/../secret.md", area)).toBe(false);
+  });
+
+  test("a `..` after a part that does not exist, or after a dangling link, is refused", () => {
+    expect(isInsideArea(area, "gone/../src/a.ts", area)).toBe(false);
+    try {
+      symlinkSync(join(outside, "nothing", "here"), join(area, "dang"));
+    } catch {
+      return;
+    }
+    expect(isInsideArea(area, "dang/../x", area)).toBe(false);
+  });
+
+  test("a path that a tool expands, such as `~` for the home folder or `file://`, is refused", () => {
+    expect(isInsideArea(area, "~/notes.md", area)).toBe(false);
+    expect(isInsideArea(area, "~", area)).toBe(false);
+    expect(isInsideArea(area, `file://${join(outside, "plan.md")}`, area)).toBe(false);
+    // pi drops a leading `@`, so the path after it decides.
+    expect(isInsideArea(area, `@${join(outside, "plan.md")}`, area)).toBe(false);
+    expect(isInsideArea(area, "@src/a.ts", area)).toBe(true);
+  });
+});
+
+describe("isPatternInsideArea, after the review of #711", () => {
+  test("a `..` that a brace, an extglob or a character class builds is refused", () => {
+    expect(isPatternInsideArea(area, ".{.,}/out/*", area)).toBe(false);
+    expect(isPatternInsideArea(area, "{.,x}{.,y}/out/*", area)).toBe(false);
+    expect(isPatternInsideArea(area, "+(.)/out/*", area)).toBe(false);
+    expect(isPatternInsideArea(area, "@(..)/x", area)).toBe(false);
+    expect(isPatternInsideArea(area, "[.][.]/x", area)).toBe(false);
+  });
+
+  test("the common patterns of a project still pass", () => {
+    expect(isPatternInsideArea(area, "**/*.{ts,tsx}", area)).toBe(true);
+    expect(isPatternInsideArea(area, "src/*.[jt]s", area)).toBe(true);
+    expect(isPatternInsideArea(area, ".github/**/*.yml", area)).toBe(true);
+  });
+});
+
+describe("isPatternInsideArea braces (#711)", () => {
+  test("nested braces and a brace with no comma are read as a glob reads them", () => {
+    expect(isPatternInsideArea(area, "src/{a,{b,c}}.ts", area)).toBe(true);
+    expect(isPatternInsideArea(area, "src/{a,{b,../c}}.ts", area)).toBe(false);
+    expect(isPatternInsideArea(area, "src/{x}/*.ts", area)).toBe(true);
+    expect(isPatternInsideArea(area, "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}{o,p}{q,r}/*", area)).toBe(false);
+  });
+});

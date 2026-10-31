@@ -6,6 +6,7 @@
  */
 import { join } from "node:path";
 import { z } from "zod";
+import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
 import { widgetAddress } from "./widget-address.ts";
@@ -45,13 +46,20 @@ export function readWidgetList(vaultPath: string): WidgetEntry[] {
 
 /**
  * Replaces the entries with `next`, in its order. Each kept entry keeps its unknown keys, and the
- * file keeps its own, so a later Eva or another tool loses nothing. A bad entry stays at the end.
+ * file keeps its own, so a later Eva or another tool loses nothing. An entry that Eva cannot read
+ * stays at the end. A second entry of one widget goes: a removed widget must not come back.
+ * Throws `widget_invalid` for a file that Eva cannot read at all, so a write never drops the list.
  */
 export function writeWidgetList(vaultPath: string, next: readonly WidgetEntry[]): void {
   assertVaultWritable(vaultPath);
-  const { file, entries } = readRaw(vaultPath);
+  const { file, entries, readable } = readRaw(vaultPath);
+  if (!readable)
+    throw new EvaError(
+      "widget_invalid",
+      "Eva cannot read .eva/widgets.json in the vault, so she does not change it. Fix the file, or ask Eva to.",
+    );
   const rawById = new Map(entries.flatMap(({ raw, entry }) => (entry === null ? [] : [[entry.id, raw] as const])));
-  const unreadable = entries.flatMap(({ raw, entry }) => (entry === null ? [raw] : []));
+  const unreadable = entries.flatMap(({ raw, entry, duplicate }) => (entry === null && !duplicate ? [raw] : []));
   const widgets = [
     ...next.map((entry) => ({
       ...(rawById.get(entry.id) ?? {}),
@@ -67,21 +75,31 @@ export function writeWidgetList(vaultPath: string, next: readonly WidgetEntry[])
 
 interface RawList {
   readonly file: JsonObject;
-  readonly entries: readonly { readonly raw: unknown; readonly entry: WidgetEntry | null }[];
+  readonly entries: readonly {
+    readonly raw: unknown;
+    readonly entry: WidgetEntry | null;
+    readonly duplicate: boolean;
+  }[];
+  /** False for a file that exists but is not a JSON object with a `widgets` list. */
+  readonly readable: boolean;
 }
 
 function readRaw(vaultPath: string): RawList {
   const read = readJsonTolerant(widgetListPath(vaultPath));
   const file = read.ok && isObject(read.value) ? read.value : {};
+  const readable = read.ok
+    ? isObject(read.value) && (file["widgets"] === undefined || Array.isArray(file["widgets"]))
+    : read.reason === "missing";
   const list = Array.isArray(file["widgets"]) ? (file["widgets"] as unknown[]) : [];
   const seen = new Set<string>();
   const entries = list.map((raw) => {
     const entry = entryOf(raw);
-    if (entry === null || seen.has(entry.id)) return { raw, entry: null };
+    if (entry === null) return { raw, entry: null, duplicate: false };
+    if (seen.has(entry.id)) return { raw, entry: null, duplicate: true };
     seen.add(entry.id);
-    return { raw, entry };
+    return { raw, entry, duplicate: false };
   });
-  return { file, entries };
+  return { file, entries, readable };
 }
 
 function entryOf(raw: unknown): WidgetEntry | null {

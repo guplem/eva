@@ -81,6 +81,29 @@ describe("writeWidgetList", () => {
     });
   });
 
+  test("never writes over a file that it cannot read, and drops a second entry of one widget", () => {
+    const entry = {
+      id: "example-owner/habits",
+      repository: "https://github.com/example-owner/habits",
+      enabled: false,
+      inputs: {},
+    };
+    for (const broken of ["{ not json", "[]", '{"widgets": "no list"}']) {
+      writeRaw(broken);
+      expect(() => writeWidgetList(vault, [entry])).toThrow("cannot read .eva/widgets.json");
+      expect(readFileSync(widgetListPath(vault), "utf-8")).toBe(broken);
+    }
+    writeRaw({
+      version: 1,
+      widgets: [
+        { repository: "example-owner/habits", enabled: false, inputs: {} },
+        { repository: "https://github.com/example-owner/HABITS", enabled: true, inputs: {} },
+      ],
+    });
+    writeWidgetList(vault, []);
+    expect(readWidgetList(vault)).toEqual([]);
+  });
+
   test("creates the file, and drops a removed entry", () => {
     writeWidgetList(vault, [
       { id: "example-owner/habits", repository: "https://github.com/example-owner/habits", enabled: false, inputs: {} },

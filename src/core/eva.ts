@@ -178,6 +178,11 @@ import { changelogEntries, type ChangelogEntry } from "./updates/release-policy.
 import { publishedReleaseNotes } from "./updates/self-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
+import { baseWidgets } from "./widgets/base-widgets.ts";
+import type { WidgetAddress } from "./widgets/widget-address.ts";
+import { WidgetApprovals } from "./widgets/widget-approvals.ts";
+import { WidgetCopies } from "./widgets/widget-copies.ts";
+import { Widgets } from "./widgets/widgets.ts";
 
 /** The person's facts as the web page reads them. */
 export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
@@ -275,6 +280,8 @@ export interface EvaOptions {
   >;
   /** Where Eva reads the latest version of each tool; a test points it at a fake server. */
   readonly toolLatestSources?: LatestVersionSources;
+  /** The git address of a widget; a test points it at a local remote. Default: its GitHub address. */
+  readonly widgetRemote?: (address: WidgetAddress) => string;
 }
 
 /** The tools that Eva installs and updates from the Updates page, by their program name. */
@@ -419,6 +426,8 @@ export class Eva {
   readonly transcribe: Transcribe | null;
   /** The web UI's device logins, which the Telegram bot confirms. */
   readonly deviceLogins: DeviceLogins;
+  /** The widgets of the home page (#691). Null when no vault is configured. */
+  readonly widgets: Widgets | null;
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
   private readonly githubLogin: GitHubBrowserLogin;
@@ -727,6 +736,26 @@ export class Eva {
       ...(options.githubWrite === undefined ? {} : { githubWrite: options.githubWrite }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
+
+    this.widgets =
+      vaultPath === null
+        ? null
+        : new Widgets({
+            vaultPath,
+            approvals: new WidgetApprovals(options.paths.widgetApprovals),
+            copies: new WidgetCopies({
+              folder: options.paths.widgetsFolder,
+              runner: options.runner,
+              environment: ownGitEnvironment,
+              ...(options.widgetRemote === undefined ? {} : { remoteOf: options.widgetRemote }),
+            }),
+            projects: () => this.projects(),
+            baseWidgets,
+            location: () => this.locations.newest(),
+            exclusive: (work) => this.vault.exclusive(work),
+            redact: (text) => redactor.redact(text),
+            now: options.now,
+          });
 
     this.vaultSetup = new VaultSetup({
       paths: options.paths,

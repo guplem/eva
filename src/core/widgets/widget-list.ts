@@ -16,17 +16,11 @@ export const widgetListVersion = 1;
 export const widgetInputValueSchema = z.union([z.string().max(10_000), z.number(), z.boolean()]);
 export type WidgetInputValue = z.infer<typeof widgetInputValueSchema>;
 
-/** The stored names of one entry. The reader keeps every other key as it is. */
+/** The stored names of one entry, for the stored-name check. The reader keeps every other key as it is. */
 export const widgetEntrySchema = z.object({
   repository: z.string(),
   enabled: z.boolean(),
   inputs: z.record(z.string(), widgetInputValueSchema),
-});
-
-/** The stored names of the file, for the stored-name check. */
-export const widgetListSchema = z.object({
-  version: z.literal(widgetListVersion),
-  widgets: z.array(widgetEntrySchema),
 });
 
 export interface WidgetEntry {

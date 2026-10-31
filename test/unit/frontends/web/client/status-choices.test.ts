@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { projectStatuses } from "../../../../../src/shared/project-statuses.ts";
-import { statusChoices, statusOf } from "../../../../../src/frontends/web/client/ProjectDetailsEditor.tsx";
+import { statusChoices, statusOf } from "../../../../../src/frontends/web/client/project-format.ts";
 
 describe("the status choices", () => {
   test("offer None and each status of the catalog, so a new status reaches the form (#690)", () => {

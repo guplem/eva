@@ -41,6 +41,7 @@ import {
   uncleanExitMessage,
   updateProblem,
   relayedProblem,
+  shellWallProblem,
   vaultAheadProblem,
   lastLocationProblem,
   lastLocationWriteProblem,
@@ -228,6 +229,8 @@ export interface EvaOptions {
   readonly config: EvaConfig;
   readonly secrets: EvaSecrets;
   readonly engines: readonly EnginePort[];
+  /** Why the shell of a Project chat has no wall on this computer, or null when it has one (#711). */
+  readonly shellWallGap?: () => string | null;
   readonly runner: ProcessRunner;
   /** The environment Eva started with. Child processes only get its allowlisted part. */
   readonly processEnvironment: EnvironmentMap;
@@ -1312,6 +1315,9 @@ export class Eva {
     if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
+    // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
+    if (this.options.engines.some((engine) => engine.name === "claude-code"))
+      this.alerts.report("shell_wall", shellWallProblem(this.options.shellWallGap?.() ?? null));
   }
 
   /**

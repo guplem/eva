@@ -2898,6 +2898,20 @@ describe("migrations (#119)", () => {
     expect(await instance.checkForUpdate()).toMatchObject({ target: "0.3.0", heldBack: "1.0.0" });
   });
 
+  test("a computer where the shell of a Project chat has no wall says so at start, with why (#711)", () => {
+    const instance = start(
+      new FakeEngine(),
+      {},
+      { shellWallGap: () => "Claude Code's shell sandbox needs bubblewrap." },
+    );
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    expect(alerts.find((alert) => alert.key === "shell_wall")?.message).toContain("bubblewrap");
+  });
+
   test("a failed migration at start sends an alert with its id and the error", () => {
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
     const alerts = collectAlerts(instance);

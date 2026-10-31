@@ -67,6 +67,19 @@ export function vaultSyncProblem(
   }
 }
 
+/**
+ * The shell of a Project chat has no wall on this computer (#711). A chat does not stop for it:
+ * its file tools stay inside its own folder.
+ */
+export function shellWallProblem(gap: string | null): AlertProblem | null {
+  if (gap === null) return null;
+  return {
+    level: "warn",
+    message: `The shell of a Project chat can read the whole vault on this computer. ${gap} The file tools of each chat stay inside its own folder.`,
+    resolvedMessage: "The shell of each Project chat stays inside its own folder on this computer.",
+  };
+}
+
 /** A laptop that wakes up with no network fails a check or two; only a long failure needs the owner. */
 export const updateCheckAlertMs = 2 * 60 * 60_000;
 

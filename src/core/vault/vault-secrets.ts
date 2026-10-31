@@ -12,6 +12,7 @@ import { basename, join } from "node:path";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { defaultSecretPatterns, readSecretFiles, SecretMatcher } from "./secret-files.ts";
+import { writeSecretAttributes } from "./secret-attributes.ts";
 import { activeSecretPatterns, type SecretPolicy } from "./secret-policy.ts";
 import { readMachineSecrets, readSignedState, readVaultKey, writeMachineSecrets } from "./secret-state.ts";
 import { encryptedState, encryptFile, hasEncryptedShape, keyFingerprint } from "./vault-crypto.ts";
@@ -59,7 +60,9 @@ export class VaultSecrets {
   }
 
   round(): PrepareFile {
-    const { key, keyChanged, policy } = this.state();
+    const { key, keyChanged, policy, removed } = this.state();
+    // Before any file of the round, so the commit that brings an encrypted file also marks it.
+    writeSecretAttributes(this.options.vaultPath, policy.active, removed);
     const matcher = new SecretMatcher(policy.active);
     return (relativePath) => {
       const path = join(this.options.vaultPath, relativePath);
@@ -88,6 +91,8 @@ export class VaultSecrets {
     key: ReturnType<typeof readVaultKey>;
     keyChanged: boolean;
     policy: SecretPolicy;
+    /** The patterns that a signed removal took out. */
+    removed: ReadonlySet<string>;
   } {
     const key = readVaultKey(this.options.vaultPath);
     const machine = readMachineSecrets(this.options.machineStatePath);
@@ -108,7 +113,8 @@ export class VaultSecrets {
       applied: [...policy.active],
     };
     if (JSON.stringify(next) !== JSON.stringify(machine)) writeMachineSecrets(this.options.machineStatePath, next);
-    return { key, keyChanged, policy };
+    const removed = new Set(signed?.known.filter((pattern) => !policy.active.includes(pattern)) ?? []);
+    return { key, keyChanged, policy, removed };
   }
 }
 

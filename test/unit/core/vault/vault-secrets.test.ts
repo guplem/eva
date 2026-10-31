@@ -120,3 +120,29 @@ describe("preparing the vault's files for a commit (#707)", () => {
     expect(secrets().policy().waiting).toEqual(["Life/Health/**"]);
   });
 });
+
+describe("the vault's .gitattributes (#707)", () => {
+  const attributes = (): string => new TextDecoder().decode(read(".gitattributes"));
+
+  test("each active pattern gets a line that stops git from merging or changing it, in Eva's block", async () => {
+    await withKey();
+    write(".gitattributes", "*.png binary\n");
+    secrets().prepare("Notes/a.md");
+    const text = attributes();
+    expect(text).toStartWith("*.png binary\n");
+    expect(text).toContain("# Eva: encrypted files. Eva writes this block.\n");
+    expect(text).toContain("*.pem -diff -merge -text\n");
+    expect(text).toContain(".env.local -diff -merge -text\n");
+    // A second round changes nothing.
+    secrets().prepare("Notes/a.md");
+    expect(attributes()).toBe(text);
+  });
+
+  test("a line that a newer Eva wrote stays, so two versions never fight over the block", async () => {
+    await withKey();
+    secrets().prepare("Notes/a.md");
+    write(".gitattributes", attributes().replace("*.pem -diff", "*.newer -diff -merge -text\n*.pem -diff"));
+    secrets().prepare("Notes/a.md");
+    expect(attributes()).toContain("*.newer -diff -merge -text\n");
+  });
+});

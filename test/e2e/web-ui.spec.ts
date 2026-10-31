@@ -6135,7 +6135,7 @@ test("Settings: this tab unlocks, and a default secret pattern waits before it s
   await logInAsDevice(page);
   await page.goto("/#/settings/vault/encrypted-files");
   const card = page.getByRole("region", { name: "Encrypted files" });
-  await card.getByLabel("Vault password").fill(vaultPassword);
+  await card.getByLabel("Vault password", { exact: true }).fill(vaultPassword);
   await card.getByRole("button", { name: "Unlock" }).click();
   await expect(card.getByText("This tab is unlocked")).toBeVisible();
 
@@ -6148,7 +6148,8 @@ test("Settings: this tab unlocks, and a default secret pattern waits before it s
   await card.getByRole("button", { name: "Save the list" }).click();
   await expect(card.getByText("These patterns still apply")).toHaveCount(0);
   await card.getByRole("button", { name: "Lock" }).click();
-  await expect(card.getByLabel("Vault password")).toBeVisible();
+  // The unlocked view also has a "New vault password" field, so only the exact label waits for the locked view.
+  await expect(card.getByLabel("Vault password", { exact: true })).toBeVisible();
 });
 
 test("Files: an encrypted file shows a lock, opens with the vault password, saves and locks again (#707)", async ({

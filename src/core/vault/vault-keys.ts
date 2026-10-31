@@ -73,6 +73,11 @@ export class VaultKeys {
     if (deviceToken !== null) this.unlocked.delete(hashText(deviceToken));
   }
 
+  /** Forgets every device's key, such as after a new key: the old one opens nothing any more. */
+  lockAll(): void {
+    this.unlocked.clear();
+  }
+
   isUnlocked(deviceToken: string | null, secret: string | null): boolean {
     try {
       this.keyFor(deviceToken, secret);

@@ -13,9 +13,15 @@ import { writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { defaultSecretPatterns, readSecretFiles, SecretMatcher } from "./secret-files.ts";
 import { writeSecretAttributes } from "./secret-attributes.ts";
-import { activeSecretPatterns, type SecretPolicy } from "./secret-policy.ts";
-import { readMachineSecrets, readSignedState, readVaultKey, writeMachineSecrets } from "./secret-state.ts";
-import { encryptedState, encryptFile, hasEncryptedShape, keyFingerprint } from "./vault-crypto.ts";
+import { activeSecretPatterns, type SecretPolicy, type SecretPolicyInput } from "./secret-policy.ts";
+import {
+  readMachineSecrets,
+  readSignedState,
+  readVaultKey,
+  writeMachineSecrets,
+  type MachineSecrets,
+} from "./secret-state.ts";
+import { encryptedState, encryptFile, hasEncryptedShape, keyFingerprint, type VaultKeyFile } from "./vault-crypto.ts";
 import type { PrepareFile, WithheldReason } from "./vault-sync.ts";
 
 /** The defaults that a release took out. They apply until the person confirms each removal. */
@@ -87,12 +93,15 @@ export class VaultSecrets {
     };
   }
 
-  private state(): {
-    key: ReturnType<typeof readVaultKey>;
+  /**
+   * What the policy reads now: the key, whether it changed since this machine pinned it, this
+   * machine's memory, and the policy's input. It writes nothing.
+   */
+  inputs(): {
+    key: VaultKeyFile | null;
     keyChanged: boolean;
-    policy: SecretPolicy;
-    /** The patterns that a signed removal took out. */
-    removed: ReadonlySet<string>;
+    machine: MachineSecrets;
+    input: SecretPolicyInput;
   } {
     const key = readVaultKey(this.options.vaultPath);
     const machine = readMachineSecrets(this.options.machineStatePath);
@@ -100,13 +109,39 @@ export class VaultSecrets {
     // The first key that this machine sees is the vault's. Another one later is the person's to confirm.
     const keyChanged = machine.fingerprint !== null && fingerprint !== null && fingerprint !== machine.fingerprint;
     const signed = key === null || keyChanged ? null : readSignedState(this.options.vaultPath, key, machine.sequence);
-    const policy = activeSecretPatterns({
+    const input = {
       defaults: defaultSecretPatterns,
       retired: retiredSecretPatterns,
       changes: readSecretFiles(this.options.vaultPath),
       signed,
       applied: machine.applied,
-    });
+    };
+    return { key, keyChanged, machine, input };
+  }
+
+  /** Pins the vault's current key on this machine: the person confirmed a key that changed. */
+  pinKey(fingerprint: string): void {
+    const machine = readMachineSecrets(this.options.machineStatePath);
+    writeMachineSecrets(this.options.machineStatePath, { ...machine, fingerprint });
+  }
+
+  /** Records the sequence of a record that this machine signed itself. */
+  acceptSequence(sequence: number): void {
+    const machine = readMachineSecrets(this.options.machineStatePath);
+    writeMachineSecrets(this.options.machineStatePath, { ...machine, sequence: Math.max(machine.sequence, sequence) });
+  }
+
+  private state(): {
+    key: VaultKeyFile | null;
+    keyChanged: boolean;
+    policy: SecretPolicy;
+    /** The patterns that a signed removal took out. */
+    removed: ReadonlySet<string>;
+  } {
+    const { key, keyChanged, machine, input } = this.inputs();
+    const fingerprint = key === null ? null : keyFingerprint(key);
+    const { signed } = input;
+    const policy = activeSecretPatterns(input);
     const next = {
       fingerprint: machine.fingerprint ?? fingerprint,
       sequence: Math.max(machine.sequence, signed?.sequence ?? 0),

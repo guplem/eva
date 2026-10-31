@@ -44,6 +44,15 @@ export function forgetUnlockSecret(store: UnlockStorage | null = storage()): voi
   } catch {
     // Nothing to do: the core forgets the key at the lock.
   }
+  for (const listener of [...forgotten]) listener();
+}
+
+const forgotten = new Set<() => void>();
+
+/** Runs `listener` each time this tab forgets its unlock, such as to drop a draft of decrypted text. */
+export function onUnlockForgotten(listener: () => void): () => void {
+  forgotten.add(listener);
+  return () => forgotten.delete(listener);
 }
 
 /** The header of each request that may decrypt. Empty while this tab holds no secret. */

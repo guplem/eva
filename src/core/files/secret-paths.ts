@@ -15,10 +15,11 @@ export interface SecretPaths {
 }
 
 /**
- * A plain env file, such as `.env` or `.env.production`. The vault keeps it plain, so a program can
- * read it. It can still hold a password with no token shape that the redactor knows, so no page shows it.
+ * A plain env file, such as `.env` or `.env.production`, and a `secret.json`, which the old list hid.
+ * The vault keeps them plain, so a program can read them. They can still hold a password with no
+ * token shape that the redactor knows, so no page shows them.
  */
-const envName = /^\.env(\..*)?$|\.env$/;
+const plainSecretName = /^\.env(\..*)?$|\.env$|^secret\.json$/;
 
 /** The vault's secret files now, plus each plain env file. Build it once for a walk of many files. */
 export function secretMatcherOf(vaultPath: string): SecretPaths {
@@ -35,7 +36,7 @@ export function secretMatcherOf(vaultPath: string): SecretPaths {
   return {
     matches: (path) =>
       // Windows drops trailing dots and spaces, so `.env.` opens `.env`.
-      matcher.matches(path) || envName.test((path.split("/").pop() ?? "").toLowerCase().replace(/[. ]+$/, "")),
+      matcher.matches(path) || plainSecretName.test((path.split("/").pop() ?? "").toLowerCase().replace(/[. ]+$/, "")),
   };
 }
 

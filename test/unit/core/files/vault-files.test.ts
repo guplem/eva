@@ -272,3 +272,12 @@ describe("security review", () => {
     },
   );
 });
+
+describe("names that the old list hid (review of #707)", () => {
+  test("a plain secret.json and a plain .env stay out of Telegram", () => {
+    write("Notes/secret.json", '{"a": 1}');
+    write("Notes/.env", "PORT=3000\n");
+    expect(resolveSendableFile(vault, "Notes/secret.json")).toMatchObject({ ok: false });
+    expect(resolveSendableFile(vault, "Notes/.env")).toMatchObject({ ok: false });
+  });
+});

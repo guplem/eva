@@ -281,9 +281,9 @@ function NewVault({
         }}
       />
       {problem !== null && (
-        <span role="alert" className="callout danger">
+        <div role="alert" className="callout danger">
           {problem}
-        </span>
+        </div>
       )}
       {hasToken && (
         <label className="field">

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   forgetUnlockSecret,
   keepUnlockSecret,
+  onUnlockForgotten,
   unlockHeaders,
   unlockSecret,
   type UnlockStorage,
@@ -44,5 +45,19 @@ describe("the unlock secret of a tab (#707)", () => {
     forgetUnlockSecret(broken);
     expect(unlockSecret(broken)).toBeNull();
     expect(unlockHeaders(null)).toEqual({});
+  });
+});
+
+describe("what goes when the tab forgets its unlock (review of #707)", () => {
+  test("each listener hears it, so a draft of decrypted text goes too", () => {
+    const store = memory();
+    let heard = 0;
+    const stop = onUnlockForgotten(() => (heard += 1));
+    keepUnlockSecret("abc", store);
+    forgetUnlockSecret(store);
+    expect(heard).toBe(1);
+    stop();
+    forgetUnlockSecret(store);
+    expect(heard).toBe(1);
   });
 });

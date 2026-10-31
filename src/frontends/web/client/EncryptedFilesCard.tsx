@@ -316,7 +316,8 @@ function PasswordChanges({
         label="Password of the new key"
         submitLabel="Make a new key"
         onSubmit={async (password) => {
-          if (!window.confirm("Make a new key? Every device must unlock again.")) return;
+          // A throw keeps the typed password in the form, so a second try needs no typing.
+          if (!window.confirm("Make a new key? Every device must unlock again.")) throw new Error("Nothing changed.");
           await onNewKey(password);
         }}
       />

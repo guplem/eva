@@ -6165,6 +6165,8 @@ test("Files: an encrypted file shows a lock, opens with the vault password, save
   await file.getByRole("button", { name: "Edit" }).click();
   await file.getByLabel(`Text of ${path}`).fill("API_KEY=new-value\n");
   await file.getByRole("button", { name: "Save" }).click();
+  // The editor closes only when the save lands: a Lock before that would ask about the unsaved text.
+  await expect(file.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
   await expect(file).toContainText("API_KEY=new-value");
   expect(await (await page.request.get(`/api/files?path=${path}`)).text()).not.toContain("new-value");
 

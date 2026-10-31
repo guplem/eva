@@ -32,6 +32,7 @@ import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { UnlockVaultForm } from "./VaultPasswordForms.tsx";
+import { forgetUnlockSecret, onUnlockForgotten } from "./vault-unlock.ts";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -528,6 +529,12 @@ function EncryptedFile({
     [path],
   );
 
+  const showLocked = (): void => {
+    // The core forgot this device's key, such as after 8 hours: the tab forgets its secret and drafts too.
+    forgetUnlockSecret();
+    setOpened({ state: "locked", hasKey: true });
+  };
+
   const open = useCallback(async (): Promise<void> => {
     try {
       const status = await api.vaultSecrets();
@@ -536,11 +543,13 @@ function EncryptedFile({
         return;
       }
       const file = await api.openEncryptedFile(path);
+      if (file.kind === "text") encryptedPaths.add(path);
       setOpened(
         file.kind === "text" ? { state: "text", file: textFile(file.text, file.version) } : { state: "binary" },
       );
     } catch (caught) {
-      setOpened({ state: "failed", reason: caught instanceof Error ? caught.message : String(caught) });
+      if (caught instanceof ApiError && caught.code === "vault_locked") showLocked();
+      else setOpened({ state: "failed", reason: caught instanceof Error ? caught.message : String(caught) });
     }
   }, [path, textFile]);
 
@@ -548,8 +557,8 @@ function EncryptedFile({
     void open();
   }, [open]);
 
-  const lock = async (): Promise<void> => {
-    drafts.delete(path);
+  const lock = async (unsaved: boolean): Promise<void> => {
+    if (unsaved && !window.confirm("Lock this tab? Your changes to this file are lost.")) return;
     setOpened({ state: "loading" });
     try {
       const status = await api.lockVault();
@@ -596,7 +605,7 @@ function EncryptedFile({
           <span className="files-size">({sizeWords(size)})</span>
         </div>
         <DownloadButton path={path} folder={false} fetchFile={download} />
-        <button className="ghost" onClick={() => void lock()}>
+        <button className="ghost" onClick={() => void lock(false)}>
           <Icon name="lock" />
           Lock
         </button>
@@ -613,7 +622,8 @@ function EncryptedFile({
       return source.load();
     },
     download,
-    items: [{ label: "Lock encrypted files", icon: "lock", onChoose: () => void lock() }],
+    items: (unsaved) => [{ label: "Lock encrypted files", icon: "lock", onChoose: () => void lock(unsaved) }],
+    onLocked: showLocked,
   };
   return (
     <FilePreview
@@ -844,6 +854,12 @@ interface Draft {
  * or Back keeps the edit, and the file opens in its editor again.
  */
 const drafts = new Map<string, Draft>();
+
+/** The encrypted files that this tab opened as text: their drafts go when the tab forgets its unlock (#707). */
+const encryptedPaths = new Set<string>();
+onUnlockForgotten(() => {
+  for (const path of encryptedPaths) drafts.delete(path);
+});
 let leaveGuard = false;
 
 /** A browser text area gives LF only, so a Windows file must not look changed. */
@@ -887,7 +903,9 @@ interface FileSource {
   readonly save: (version: string, text: string) => Promise<BrowsedPath>;
   readonly download: FetchFile;
   /** More items of the file's menu, such as Lock. */
-  readonly items?: readonly MenuItem[];
+  readonly items?: (unsaved: boolean) => readonly MenuItem[];
+  /** The core forgot the unlock of this device: the page asks for the password again. */
+  readonly onLocked?: () => void;
 }
 
 const plainSource = (path: string): FileSource => ({
@@ -941,7 +959,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
     });
   }
   items.push({ label: "Download", icon: "download", onChoose: () => void download.start() });
-  items.push(...(files.items ?? []));
+  items.push(...(files.items?.(unsaved) ?? []));
   // A phone and the one folder view show no folder columns, so the file fills the page already.
   if (!isPhone && !oneFolder) {
     items.push({
@@ -962,6 +980,10 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
       return true;
     } catch (caught) {
       const changed = caught instanceof ApiError && caught.code === "file_changed";
+      if (caught instanceof ApiError && caught.code === "vault_locked" && files.onLocked !== undefined) {
+        files.onLocked();
+        return false;
+      }
       setProblem({ text: caught instanceof Error ? caught.message : String(caught), changed });
       return false;
     } finally {

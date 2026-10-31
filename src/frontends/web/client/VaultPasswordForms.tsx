@@ -1,11 +1,11 @@
 /**
  * Asks for the vault password, so this tab can open the vault's encrypted files (#707). The Files
- * page and Settings use it. Each unlock holds for this tab only, for 8 hours at most.
+ * page and Settings use it. Each unlock holds for this device's tab only, for 8 hours at most.
  */
-import { useState, type ReactElement, type SyntheticEvent } from "react";
+import { useId, useState, type ReactElement, type SyntheticEvent } from "react";
 import { minimumPasswordLength, newPasswordProblem } from "../../../shared/vault-unlock.ts";
 import { api } from "./api.ts";
-import { ButtonSpinner } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 
 export function UnlockVaultForm({
   hasKey,
@@ -17,6 +17,8 @@ export function UnlockVaultForm({
   const [password, setPassword] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Two forms can show at once, so each one names its own field and hint.
+  const id = useId();
   if (!hasKey)
     return (
       <div role="status" className="callout">
@@ -39,27 +41,32 @@ export function UnlockVaultForm({
   };
   return (
     <form className="unlock-form" onSubmit={(event) => void submit(event)}>
-      <label htmlFor="vault-password">Vault password</label>
+      <label htmlFor={`${id}-password`}>Vault password</label>
       <div className="inline-form">
         <input
-          id="vault-password"
+          id={`${id}-password`}
           type="password"
           autoComplete="current-password"
+          aria-describedby={`${id}-hint`}
           value={password}
           onChange={(event) => {
             setPassword(event.target.value);
             setProblem(null);
           }}
         />
-        <button className="primary" type="submit" disabled={busy || password === ""}>
+        <button className="primary" type="submit" aria-busy={busy} disabled={busy || password === ""}>
+          {busy && <ButtonSpinner />}
           Unlock
         </button>
       </div>
-      <small className="field-hint">This tab can then open encrypted files for 8 hours, until you lock it.</small>
+      {busy && <ProgressBar label="Eva checks the password…" />}
+      <small id={`${id}-hint`} className="field-hint">
+        This tab can then open encrypted files for 8 hours, until you lock it.
+      </small>
       {problem !== null && (
-        <span role="alert" className="callout danger">
+        <div role="alert" className="callout danger">
           {problem}
-        </span>
+        </div>
       )}
     </form>
   );
@@ -114,16 +121,17 @@ export function NewPasswordForm({
         }}
       />
       {problem !== null && (
-        <span role="alert" className="callout danger">
+        <div role="alert" className="callout danger">
           {problem}
-        </span>
+        </div>
       )}
       <div className="button-row">
-        <button className="primary" type="submit" disabled={busy || password === "" || again === ""}>
+        <button className="primary" type="submit" aria-busy={busy} disabled={busy || password === "" || again === ""}>
           {busy && <ButtonSpinner />}
           {submitLabel}
         </button>
       </div>
+      {busy && <ProgressBar label="Eva makes the key…" />}
     </form>
   );
 }
@@ -142,6 +150,7 @@ export function NewPasswordFields({
   readonly onPassword: (password: string) => void;
   readonly onAgain: (again: string) => void;
 }): ReactElement {
+  const hint = useId();
   return (
     <>
       <label className="field">
@@ -149,6 +158,7 @@ export function NewPasswordFields({
         <input
           type="password"
           autoComplete="new-password"
+          aria-describedby={hint}
           value={password}
           onChange={(event) => onPassword(event.target.value)}
         />
@@ -158,11 +168,12 @@ export function NewPasswordFields({
         <input
           type="password"
           autoComplete="new-password"
+          aria-describedby={hint}
           value={again}
           onChange={(event) => onAgain(event.target.value)}
         />
       </label>
-      <small className="field-hint">
+      <small id={hint} className="field-hint">
         At least {minimumPasswordLength} characters. Eva encrypts your secret files with it. Nobody can recover a lost
         password: keep it in a password manager.
       </small>

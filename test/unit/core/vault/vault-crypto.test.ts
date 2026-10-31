@@ -157,3 +157,11 @@ describe("vault keys (#707)", () => {
     expect(verifyRecord(record, "not base64 !", file)).toBe(false);
   });
 });
+
+describe("the same password from any device (review of #707)", () => {
+  test("outer spaces and the Unicode form of a letter do not change the password", async () => {
+    const file = await createVaultKey("  contraseña segura larga  ", { logN: 10 });
+    expect(await unlockVaultKey(file, "contraseña segura larga")).toBeDefined();
+    expect(await unlockVaultKey(file, "contraseña segura larga".normalize("NFD"))).toBeDefined();
+  });
+});

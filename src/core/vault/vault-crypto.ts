@@ -251,7 +251,7 @@ function headerOf(bytes: Uint8Array): { version: number; fingerprint: string; bo
 
 function checkPassword(password: string): void {
   // Characters as a person sees them, so a password of emoji or accents counts right.
-  const length = [...new Intl.Segmenter().segment(password)].length;
+  const length = [...new Intl.Segmenter().segment(password.trim())].length;
   if (length < minimumPasswordLength)
     throw new EvaError(
       "vault_password_invalid",
@@ -333,7 +333,8 @@ function passwordKey(password: string, kdf: VaultKeyFile["kdf"]): Promise<Buffer
   const maxmem = 256 * rounds * kdf.r;
   return new Promise((resolve, reject) => {
     scrypt(
-      password.normalize("NFC"),
+      // Each device types the same password: a terminal trims it, and a phone writes a letter in another form.
+      password.normalize("NFC").trim(),
       Buffer.from(kdf.salt, "base64"),
       32,
       { N: rounds, r: kdf.r, p: kdf.p, maxmem },

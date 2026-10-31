@@ -19,6 +19,7 @@ export const helpTargets = {
   "logging-in": { page: "reference", slug: "logging-in-to-the-web-page" },
   "set-up-google": { page: "reference", slug: "set-up-google" },
   "vault-sync": { page: "reference", slug: "vault-sync" },
+  "encrypted-files": { page: "reference", slug: "encrypted-files" },
   "several-computers": { page: "reference", slug: "several-computers" },
   updates: { page: "reference", slug: "updates" },
   notifications: { page: "reference", slug: "notifications-on-a-device" },
@@ -36,6 +37,7 @@ export const cardHelp: Readonly<Partial<Record<string, HelpTopic>>> = {
   pi: "log-in-to-your-ai",
   "vault-folder": "pick-your-vault",
   "vault-sync": "vault-sync",
+  "encrypted-files": "encrypted-files",
   // The guide explains the GitHub login as the first part of picking the vault.
   github: "pick-your-vault",
   telegram: "connect-telegram",

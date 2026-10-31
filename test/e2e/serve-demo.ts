@@ -9,7 +9,7 @@ import { Eva } from "../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
 import { templateParts } from "../../src/core/vault/vault-template.ts";
-import { createVaultKey } from "../../src/core/vault/vault-crypto.ts";
+import { createVaultKey, encryptFile } from "../../src/core/vault/vault-crypto.ts";
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../src/shared/process-runner.ts";
 import { evaRepository } from "../../src/shared/version.ts";
@@ -73,14 +73,16 @@ for (const run of ["desktop", "phone"]) {
   sandbox.write(vault, `Notes/${run}-draft.md`, "# Draft\n");
 }
 sandbox.write(vault, "Notes/settings.json", '{"theme":"dark","size":2}');
-// A secret file, which Eva encrypts once the vault has a password (#707).
-for (const run of ["desktop", "phone"]) sandbox.write(vault, `Private/${run}.secrets`, "API_KEY=demo-value\n");
 // The vault has a key, so the demo shows no "no password" notice. The tests unlock it with this password.
-sandbox.write(
-  vault,
-  ".eva/vault-key.json",
-  `${JSON.stringify(await createVaultKey("a long demo password", { logN: 10 }), null, 2)}\n`,
-);
+const vaultKey = await createVaultKey("a long demo password", { logN: 10 });
+sandbox.write(vault, ".eva/vault-key.json", `${JSON.stringify(vaultKey, null, 2)}\n`);
+// A secret file of each browser run, encrypted, as Eva leaves it (#707).
+for (const run of ["desktop", "phone"])
+  sandbox.write(
+    vault,
+    `Private/${run}.secrets`,
+    new TextDecoder().decode(encryptFile(new TextEncoder().encode("API_KEY=demo-value\n"), vaultKey)),
+  );
 // The message box menu shows the examples that each vault gets (issue 661).
 for (const path of [".eva/settings/text-actions/Polish.md", ".eva/settings/saved-prompts/Summary.md"]) {
   sandbox.write(vault, path, templateParts[path] ?? "");

@@ -6718,10 +6718,16 @@ test("Files: an image and a sound show on the page, and another file that is not
   await expect(picture).toBeVisible();
   await expect.poll(() => picture.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(160);
   await expect(preview.getByText("857 B")).toBeVisible();
+  // The page holds the bytes already, so Download does not read them again.
+  let reads = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/files/download")) reads += 1;
+  });
   await preview.getByRole("button", { name: "More actions" }).click();
   const download = page.waitForEvent("download");
   await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Download" }).click();
   expect((await download).suggestedFilename()).toBe("landscape.png");
+  expect(reads).toBe(0);
 
   await page.goto("/#/files/Media/silence.wav");
   const sound = page.getByRole("region", { name: "File preview" }).locator("audio");

@@ -457,7 +457,17 @@ function Column({
   // A file that Eva may not download, such as a secrets file, never shows either.
   const media = shown.kind === "unreadable" && shown.downloadable ? mediaOf(path) : null;
   if (shown.kind === "unreadable" && media !== null && shown.size <= maxMediaBytes)
-    return <MediaPreview key={path} path={path} size={shown.size} media={media} large={large} onLarge={onLarge} />;
+    // The size is in the key, so a file that changes on disk shows its new bytes.
+    return (
+      <MediaPreview
+        key={`${path}:${String(shown.size)}`}
+        path={path}
+        size={shown.size}
+        media={media}
+        large={large}
+        onLarge={onLarge}
+      />
+    );
   if (shown.kind === "unreadable")
     return (
       <div className="files-pane files-preview">

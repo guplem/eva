@@ -5,7 +5,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api } from "./api.ts";
-import { DownloadWait, useDownload } from "./DownloadButton.tsx";
+import { DownloadWait, saveBlob, useDownload } from "./DownloadButton.tsx";
 import { FileBar } from "./FileBar.tsx";
 import type { Media } from "./file-kinds.ts";
 import { ProgressBar } from "./Loading.tsx";
@@ -15,7 +15,7 @@ export const maxMediaBytes = 50 * 1024 * 1024;
 
 type Bytes =
   | { readonly state: "loading"; readonly share: number | null }
-  | { readonly state: "shown"; readonly address: string }
+  | { readonly state: "shown"; readonly address: string; readonly blob: Blob }
   | { readonly state: "failed"; readonly reason: string };
 
 export function MediaPreview({
@@ -37,19 +37,23 @@ export function MediaPreview({
   useEffect(() => {
     let current = true;
     let address: string | null = null;
+    // A person who flicks through a folder of photos must not pull each one in full.
+    const reading = new AbortController();
     api
-      .downloadFile(path, (share) => current && setBytes({ state: "loading", share }))
+      .downloadFile(path, (share) => current && setBytes({ state: "loading", share }), reading.signal)
       .then(({ blob }) => {
         if (!current) return;
         // The route sends every file as plain bytes, so the type comes from the name.
-        address = URL.createObjectURL(new Blob([blob], { type: media.type }));
-        setBytes({ state: "shown", address });
+        const typed = new Blob([blob], { type: media.type });
+        address = URL.createObjectURL(typed);
+        setBytes({ state: "shown", address, blob: typed });
       })
       .catch((caught: unknown) => {
         if (current) setBytes({ state: "failed", reason: caught instanceof Error ? caught.message : String(caught) });
       });
     return () => {
       current = false;
+      reading.abort();
       if (address !== null) URL.revokeObjectURL(address);
     };
   }, [path, media.type]);
@@ -61,7 +65,15 @@ export function MediaPreview({
         size={size}
         large={large}
         onLarge={onLarge}
-        items={[{ label: "Download", icon: "download", onChoose: () => void download.start() }]}
+        items={[
+          {
+            label: "Download",
+            icon: "download",
+            onChoose: () =>
+              // The page holds the bytes already, so a phone does not read them twice.
+              bytes.state === "shown" ? saveBlob(name, bytes.blob) : void download.start(),
+          },
+        ]}
       />
       <div className="files-wait">
         <DownloadWait download={download} folder={false} />

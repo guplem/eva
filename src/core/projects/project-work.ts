@@ -617,12 +617,17 @@ export class ProjectWork {
       problems.length === 0
         ? ""
         : `\n\nEva tried these commands herself, and GitHub refused them:\n\n${problems.map((problem) => `- ${problem}`).join("\n")}`;
+    // The chat hides the report, so it names each pull request, for the person and for the agent.
+    const opened =
+      outcome.notes.length === 0
+        ? ""
+        : `\n\nEva already opened these pull requests. Leave their files as they are:\n\n${outcome.notes.map((note) => `- ${note}`).join("\n")}`;
     return {
       result: {
         fixed: outcome.fixed,
         problems,
         notes: outcome.notes,
-        chatRequest: request === null ? null : request + refused,
+        chatRequest: request === null ? null : request + refused + opened,
       },
       needsChanges: forChat.some((item) => item.directFix === undefined && item.light !== "grey"),
       report,

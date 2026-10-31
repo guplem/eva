@@ -16,7 +16,7 @@ import type { PermissionContext } from "../../../src/shared/permissions.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGh } from "../../support/fake-gh.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
-import { fakeGithub } from "../../support/fake-github.ts";
+import { fakeGithub, fakeGithubWrite } from "../../support/fake-github.ts";
 import type { GithubRequest } from "../../../src/core/projects/repository-facts.ts";
 import type { SetupReport } from "../../../src/core/projects/repository-setup.ts";
 import { FakeTelegram } from "../../support/fake-telegram.ts";
@@ -281,6 +281,45 @@ describe("repository setup", () => {
         (error: unknown) => (error instanceof Error ? error.message : ""),
       );
       expect(unknown).toContain("does not list");
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("a chat after Fix all names the pull request that Eva opened, so it opens no second one", async () => {
+    const projectId = "2025-04-01-0900-other-app";
+    const url = "https://github.com/owner/other-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - ${url}\nrepo_types:\n  ${url}: vibe-coded\n---\n`,
+    );
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: fakeGh(systemProcessRunner),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubRequest: fakeGithub({
+        "guplem/eva": {
+          files: { ...referenceFiles, ".agents/skills/write-commit/SKILL.md": "# Commits\n" },
+          labels: [],
+        },
+        "owner/other-app": { files: {}, labels: [] },
+      }),
+      githubWrite: fakeGithubWrite({ requiredChecks: true }),
+    });
+    try {
+      const all = await instance.fixRepository(projectId, url, null);
+      const note =
+        "Skill write-commit: Eva opened the pull request https://github.com/owner/other-app/pull/1. It merges by itself when CI passes.";
+      expect(all.notes).toEqual([note]);
+      expect(all.chatRequest).toContain(
+        `Eva already opened these pull requests. Leave their files as they are:\n\n- ${note}`,
+      );
     } finally {
       instance.stop();
     }

@@ -84,6 +84,9 @@ export function answerData(
   // A file input has the path `data/<input>` alone; a folder input always has a name after it.
   if (isFolder !== (rest !== null)) return notFound;
   if (isFolder && method === "GET" && rest === indexFile) return listFolder(vaultPath, approved);
+  // On a file system that ignores case, `INDEX.json` is the hidden file of the person at `index.json`.
+  const isIndex = isFolder && rest?.toLowerCase() === indexFile;
+  if (isIndex && method === "GET") return notFound;
   const path = isFolder ? `${approved.path}/${rest ?? ""}` : approved.path;
   const segments = openPath(path);
   // The approved place itself must still pass: the record names it, but the rules may be newer.
@@ -95,7 +98,7 @@ export function answerData(
   if (!isWritableName(name) || (approved.files !== null && !matchesFiles(approved.files, name))) return refused;
   // A folder input never writes over the list that Eva gives at its `index.json`. A secrets file is
   // never a widget's data: Eva does not read one, so no widget writes or deletes one either.
-  if ((isFolder && rest === indexFile) || looksLikeSecretsFile(name)) return refused;
+  if (isIndex || looksLikeSecretsFile(name)) return refused;
   // A file input may write a file that does not exist yet, in the folder that holds it.
   const depthOfPlace = isFolder ? (openPath(approved.path) ?? []).length : segments.length - 1;
   return method === "PUT"
@@ -169,7 +172,7 @@ function listFolder(vaultPath: string, approved: OpenApprovedPath): WidgetAnswer
 
 function listedFile(inner: readonly string[], name: string, pattern: string | null): boolean {
   // The list itself answers at `index.json`, so a file of that name in the folder stays hidden.
-  if (inner.length === 1 && name === indexFile) return false;
+  if (inner.length === 1 && name.toLowerCase() === indexFile) return false;
   if (isDataFormatFile(name) || looksLikeSecretsFile(name)) return false;
   return pattern === null || matchesFiles(pattern, name);
 }

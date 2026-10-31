@@ -124,6 +124,7 @@ describe("answerData reads", () => {
       "walk.json/",
       "a\\b.json",
       "%2e%2e/About me.md",
+      "INDEX.json",
       "",
     ]) {
       expect({ rest, status: answerData(vault, habits, rest, "GET", null).status }).toEqual({ rest, status: 404 });
@@ -236,6 +237,8 @@ describe("answerData writes", () => {
     }
     const anyName: ApprovedPath = { ...habits, files: null };
     expect(answerData(vault, anyName, "AGENTS.md", "PUT", body("# Rules")).status).toBe(403);
+    expect(answerData(vault, habits, "INDEX.json", "PUT", body([])).status).toBe(403);
+    expect(answerData(vault, habits, "Index.json", "DELETE", null).status).toBe(403);
     expect(answerData(vault, anyName, ".eva.json", "PUT", body({})).status).toBe(404);
     expect(answerData(vault, anyName, "x.yaml", "PUT", body("a: 1")).status).toBe(204);
     expect(answerData(vault, habits, "walk.json", "POST", body({})).status).toBe(405);

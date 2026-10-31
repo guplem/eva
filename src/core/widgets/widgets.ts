@@ -22,7 +22,7 @@ import {
 } from "./widget-approvals.ts";
 import { checkManifest, checkWidget, manifestPath, type WidgetInput, type WidgetManifest } from "./widget-contract.ts";
 import type { WidgetCopies } from "./widget-copies.ts";
-import { answerData, type WidgetAnswer } from "./widget-data.ts";
+import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
 import { isPlainName } from "./widget-places.ts";
@@ -780,32 +780,25 @@ export class Widgets {
     const live = this.liveSession(token);
     if (live === null) return null;
     const { session, record, entry, address } = live;
-    const [first, second] = path.split("/");
+    const [first] = path.split("/");
     // Without case: on a file system that ignores case, `Data/` or `Config.json` would read the mock files of the copy.
     const contract = (first ?? "").toLowerCase();
-    if (first === "data") {
-      const approved = record.paths.find((candidate) => candidate.input === second);
-      const value = approved?.path ?? null;
-      if (approved === undefined || value === null || second === undefined) return { status: 404 };
-      const prefix = `data/${second}`;
-      const rest = path === prefix ? null : path.startsWith(`${prefix}/`) ? path.slice(prefix.length + 1) : undefined;
-      if (rest === undefined) return { status: 404 };
-      const open = { ...approved, path: value };
-      if (method === "GET" || method === "HEAD") return answerData(this.options.vaultPath, open, rest, "GET", null);
-      const schema =
-        method === "PUT" && approved.schema !== null
-          ? installedSchema(this.options.copies, address, approved.schema)
-          : null;
-      const write = body === null ? null : { body, schema, redact: this.options.redact };
-      return this.options.exclusive(() => {
-        const answer = answerData(this.options.vaultPath, open, rest, method, write);
-        if (method === "PUT" && answer.status === 204) this.formats.wrote(rest === null ? value : `${value}/${rest}`);
-        return answer;
+    if (first === "data")
+      return answerDataPath({
+        vaultPath: this.options.vaultPath,
+        paths: record.paths,
+        path,
+        method,
+        body,
+        schemaOf: (schema) => installedSchema(this.options.copies, address, schema),
+        exclusive: this.options.exclusive,
+        redact: this.options.redact,
+        wrote: (written) => this.formats.wrote(written),
       });
-    }
     if (method !== "GET" && method !== "HEAD") return { status: 405 };
-    if (path === "config.json") return json(configOf(record, entry));
-    if (path === "eva/location.json") return json(record.location ? locationOf(this.options.location()) : null);
+    if (path === "config.json") return jsonAnswer(configOf(record, entry));
+    if (path === "eva/location.json")
+      return jsonAnswer(record.location ? contractLocation(this.options.location()) : null);
     if (path === "eva/theme.css")
       return { status: 200, contentType: "text/css; charset=utf-8", body: themeCss(session.theme) };
     if (contract === "eva" || contract === "data" || path.toLowerCase() === "config.json" || path === "")
@@ -894,13 +887,6 @@ export class Widgets {
   }
 }
 
-/** The location of the contract: no source, so a widget does not learn which device sent it. */
-function locationOf(location: LastLocation | null): Omit<LastLocation, "source"> | null {
-  if (location === null) return null;
-  const { latitude, longitude, accuracy, at } = location;
-  return { latitude, longitude, accuracy, at };
-}
-
 /** The warning of a conflict: each folder and field, and what the person can do. */
 function conflictText(manifest: WidgetManifest, conflicts: ReadonlyMap<string, readonly FormatConflict[]>): string {
   const lines = [...conflicts].map(([input, found]) => {
@@ -911,8 +897,4 @@ function conflictText(manifest: WidgetManifest, conflicts: ReadonlyMap<string, r
   return oneLine(
     `${manifest.name} does not fit the data that the folder holds already. ${lines.join(" ")} Turn it on with read access only, or pick another folder.`,
   );
-}
-
-function json(value: unknown): WidgetAnswer {
-  return { status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify(value) };
 }

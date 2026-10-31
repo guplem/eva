@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { isEncryptedOnDisk, secretMatcherOf, type SecretPaths } from "../files/secret-paths.ts";
+import type { LastLocation } from "../vault/about-me.ts";
 import type { ApprovedPath } from "./widget-approvals.ts";
 import { checkData } from "./widget-contract.ts";
 import { isDataFormatFile, isPlainName, isWritableName, matchesFiles, openPath } from "./widget-places.ts";
@@ -38,6 +39,57 @@ export interface DataWrite {
   /** The JSON Schema of the input, parsed, or null: it tells which fields the widget knows. */
   readonly schema: unknown;
   readonly redact: (text: string) => string;
+}
+
+export interface DataPathOptions {
+  readonly vaultPath: string;
+  readonly paths: readonly ApprovedPath[];
+  /** The decoded path after the token, which starts with `data/`. */
+  readonly path: string;
+  readonly method: string;
+  readonly body: Uint8Array | null;
+  /** The parsed schema of a written input, by its path in the widget, or null. */
+  readonly schemaOf: (schema: string) => unknown;
+  readonly exclusive: <Result>(work: () => Result) => Promise<Result>;
+  readonly redact: (text: string) => string;
+  /** Hears each file that a write changed, by its vault path. */
+  readonly wrote: (path: string) => void;
+}
+
+/**
+ * The answer of a `data/<input>` path: a read at once, and a write between two sync steps. The
+ * installed widget and the preview of a clone (#693) answer their data paths the same way.
+ */
+export async function answerDataPath(options: DataPathOptions): Promise<WidgetAnswer> {
+  const { path, method } = options;
+  const second = path.split("/")[1];
+  const approved = options.paths.find((candidate) => candidate.input === second);
+  const value = approved?.path ?? null;
+  if (approved === undefined || value === null || second === undefined) return { status: 404 };
+  const prefix = `data/${second}`;
+  const rest = path === prefix ? null : path.startsWith(`${prefix}/`) ? path.slice(prefix.length + 1) : undefined;
+  if (rest === undefined) return { status: 404 };
+  const open = { ...approved, path: value };
+  if (method === "GET" || method === "HEAD") return answerData(options.vaultPath, open, rest, "GET", null);
+  const schema = method === "PUT" && approved.schema !== null ? options.schemaOf(approved.schema) : null;
+  const body = options.body;
+  const write = body === null ? null : { body, schema, redact: options.redact };
+  return options.exclusive(() => {
+    const answer = answerData(options.vaultPath, open, rest, method, write);
+    if (method === "PUT" && answer.status === 204) options.wrote(rest === null ? value : `${value}/${rest}`);
+    return answer;
+  });
+}
+
+export function jsonAnswer(value: unknown): WidgetAnswer {
+  return { status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify(value) };
+}
+
+/** The location of the contract: no source, so a widget does not learn which device sent it. */
+export function contractLocation(location: LastLocation | null): Omit<LastLocation, "source"> | null {
+  if (location === null) return null;
+  const { latitude, longitude, accuracy, at } = location;
+  return { latitude, longitude, accuracy, at };
 }
 
 /** A write is at most 5 MB: a data file of a widget is small. */

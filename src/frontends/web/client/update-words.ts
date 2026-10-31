@@ -33,6 +33,7 @@ export function releaseDay(publishedAt: string | null, now: Date): string {
 export function releasePage(version: string): string {
   return `https://github.com/${evaRepository}/releases/tag/v${version}`;
 }
+
 /** The newer releases, newest first, then the installed version. */
 export function versionRows(update: UpdateStatus, now: Date): VersionRow[] {
   const newer = update.releases.map((release) => ({

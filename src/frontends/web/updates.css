@@ -166,10 +166,11 @@ label.version-row {
   outline-offset: 2px;
 }
 
-/* The changes toggle sits above the row link, so a tap on it opens the changes in place. */
+/* The changes toggle sits above the row link, so a tap on it opens the changes in place. It keeps to its own width, so the rest of the row stays a link. */
 .version-row:has(> .row-link) .update-changes {
   position: relative;
   z-index: 1;
+  justify-self: start;
 }
 
 .release-page {

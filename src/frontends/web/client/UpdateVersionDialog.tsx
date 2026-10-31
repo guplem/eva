@@ -143,7 +143,13 @@ export function VersionRowText(props: {
         <span className="version-number">v{props.version}</span>
       ) : (
         // The link covers its row, so a tap anywhere on the release opens it.
-        <a className="version-number row-link" href={props.href} target="_blank" rel="noreferrer">
+        <a
+          className="version-number row-link"
+          href={props.href}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`v${props.version} on GitHub, in a new tab`}
+        >
           v{props.version}
         </a>
       )}

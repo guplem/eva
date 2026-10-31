@@ -65,6 +65,7 @@ describe("VaultUpkeep undo of answers", () => {
     await upkeep.save();
 
     expect(await upkeep.undoPreview(answers)).toEqual({ restore: ["plan.md"], changed: [], notKept: [], answers: 1 });
+    expect(await upkeep.changedFiles(answers[0]?.before ?? "", answers[0]?.after ?? "")).toEqual(["plan.md"]);
     expect((await upkeep.undo(answers)).restore).toEqual(["plan.md"]);
     expect(sandbox.git(sandbox.remote, "show", "main:plan.md")).toBe("first");
     await upkeep.deleteSnapshots("chat");
@@ -90,6 +91,7 @@ describe("VaultUpkeep undo of answers", () => {
     await upkeep.deleteSnapshots("chat");
     expect(await upkeep.undoPreview(answers)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
     expect(await upkeep.undo(answers)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
+    expect(await upkeep.changedFiles("a", "b")).toBeNull();
   });
 });
 
@@ -131,6 +133,7 @@ test("with sync off, a retry asks nothing and undoes nothing", async () => {
   const none = { restore: [], changed: [], notKept: [], answers: 0 };
   expect(await upkeep.undoPreview(answers)).toEqual(none);
   expect(await upkeep.undo(answers)).toEqual(none);
+  expect(await upkeep.changedFiles(answers[0]?.before ?? "", answers[0]?.after ?? "")).toBeNull();
   expect(sandbox.git(vault, "status", "--porcelain")).toContain("plan.md");
   // With sync off, no new snapshot either.
   await upkeep.snapshot("refs/eva/turns/chat/1/before");

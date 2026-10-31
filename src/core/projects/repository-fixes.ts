@@ -3,9 +3,18 @@
  * same login and admin rights that the report already needs (#681). A fix that GitHub refuses
  * fails with GitHub's reason, and the other fixes still run.
  */
+import { createHash } from "node:crypto";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
-import { asRecord, ghApi, listOf, parseJson, textField, type GithubAnswer } from "./repository-facts.ts";
+import {
+  asRecord,
+  ghApi,
+  listOf,
+  parseJson,
+  readRequiredChecks,
+  textField,
+  type GithubAnswer,
+} from "./repository-facts.ts";
 import type { DirectFix } from "./repository-setup.ts";
 
 export type GithubMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -30,9 +39,12 @@ export interface FixOutcome {
   /** The labels of the items that Eva fixed. */
   readonly fixed: readonly string[];
   readonly failed: readonly { readonly label: string; readonly reason: string }[];
+  /** One line for the person about a fixed item that is not on the branch yet, such as a pull request. */
+  readonly notes: readonly string[];
 }
 
 const commitMessage = "chore: copy the agent skills of the vibe-coded standard";
+const skillsTopic = "agent-skills";
 const copiesAtOnce = 4;
 /** One page holds every label of a reference repository. */
 const labelPage = "?per_page=100";
@@ -44,10 +56,15 @@ const labelPage = "?per_page=100";
 export async function runDirectFixes(slug: string, items: readonly FixItem[], write: GithubWrite): Promise<FixOutcome> {
   const fixed: string[] = [];
   const failed: { label: string; reason: string }[] = [];
-  const record = async (labels: readonly string[], fix: () => Promise<void>): Promise<void> => {
+  const notes: string[] = [];
+  const record = async (labels: readonly string[], fix: () => Promise<Landing | undefined>): Promise<void> => {
     try {
-      await fix();
+      const landing = await fix();
       fixed.push(...labels);
+      if (landing?.kind === "pull request")
+        notes.push(
+          `${labels.join(", ")}: Eva opened the pull request ${landing.url}. It merges by itself when CI passes.`,
+        );
     } catch (error) {
       if (!isEvaError(error, "github_failed")) throw error;
       failed.push(...labels.map((label) => ({ label, reason: error.message })));
@@ -59,7 +76,7 @@ export async function runDirectFixes(slug: string, items: readonly FixItem[], wr
     if (directFix.kind === "api") {
       if (directFix.last !== true) await runCall(label, directFix);
     } else if (directFix.kind === "labels") {
-      await record([label], () => copyLabels(slug, directFix, write));
+      await record([label], () => copyLabels(slug, directFix, write).then(() => undefined));
     }
   }
   const files = items.flatMap((item) => (item.directFix.kind === "files" ? [{ ...item, fix: item.directFix }] : []));
@@ -79,7 +96,7 @@ export async function runDirectFixes(slug: string, items: readonly FixItem[], wr
   for (const { label, directFix } of items) {
     if (directFix.kind === "api" && directFix.last === true) await runCall(label, directFix);
   }
-  return { fixed, failed };
+  return { fixed, failed, notes };
 }
 
 async function copyLabels(
@@ -101,7 +118,7 @@ async function copyLabels(
 }
 
 /**
- * Copies each file from its source repository and deletes the others, in one commit on the branch.
+ * Copies each file from its source repository and deletes the others, in one change of the branch.
  * A blob's SHA depends only on its content, so the copy keeps the SHA that the report compares.
  */
 async function commitFiles(
@@ -109,7 +126,7 @@ async function commitFiles(
   branch: string,
   fixes: readonly Extract<DirectFix, { kind: "files" }>[],
   write: GithubWrite,
-): Promise<void> {
+): Promise<Landing> {
   const head = await branchHead(write, slug, branch);
   const copies = fixes.flatMap((fix) =>
     Object.entries(fix.files).map(([path, sha]) => ({ source: fix.source, path, sha })),
@@ -128,7 +145,145 @@ async function commitFiles(
   }
   const tree: TreeEntry[] = copies.map(({ path, sha }) => ({ path, mode: "100644", type: "blob", sha }));
   for (const fix of fixes) for (const path of fix.remove) tree.push({ path, mode: "100644", type: "blob", sha: null });
-  await commitTree(write, slug, branch, head, tree, commitMessage);
+  const sources = [...new Set(fixes.map((fix) => fix.source))].join(", ");
+  return landTree(write, slug, branch, head, tree, {
+    message: commitMessage,
+    body: `Eva copies the agent skills of the vibe-coded standard from ${sources}. Auto-merge merges this pull request when CI passes.`,
+    topic: skillsTopic,
+  });
+}
+
+/** A change of files that `landTree` puts on a branch. */
+export interface TreeChange {
+  /** The commit message, and the title of a pull request. */
+  readonly message: string;
+  /** The description of a pull request. */
+  readonly body: string;
+  /** A short name for the branch of a pull request, such as `agent-skills`. */
+  readonly topic: string;
+}
+
+/** How a change reached the branch: a commit on it, or a pull request with auto-merge. */
+export type Landing = { readonly kind: "commit" } | { readonly kind: "pull request"; readonly url: string };
+
+/**
+ * Puts a change of files on a branch. A branch that requires checks refuses a commit with none, so
+ * the change goes through a pull request with auto-merge: it merges only when CI passes (#717).
+ * Any other branch gets the commit straight away.
+ */
+export async function landTree(
+  write: GithubWrite,
+  slug: string,
+  branch: string,
+  head: string,
+  tree: readonly TreeEntry[],
+  change: TreeChange,
+): Promise<Landing> {
+  if (!(await requiresChecks(write, slug, branch))) {
+    await commitTree(write, slug, branch, head, tree, change.message);
+    return { kind: "commit" };
+  }
+  // The same change gets the same branch, so a second Fix finds the pull request of the first.
+  const digest = createHash("sha256")
+    .update(JSON.stringify({ message: change.message, tree }))
+    .digest("hex");
+  const name = `eva/${change.topic}-${digest.slice(0, 8)}`;
+  const commit = await makeCommit(write, slug, head, tree, change.message);
+  const pull = await openPullRequest(write, slug, branch, name, commit, change);
+  if (pull.autoMerge) return { kind: "pull request", url: pull.url };
+  try {
+    await enableAutoMerge(write, slug, pull.nodeId);
+  } catch (error) {
+    if (!isEvaError(error, "github_failed")) throw error;
+    throw new EvaError(
+      "github_failed",
+      `Eva opened the pull request ${pull.url}, but GitHub refused auto-merge: ${error.message}`,
+      { cause: error },
+    );
+  }
+  return { kind: "pull request", url: pull.url };
+}
+
+/** Unreadable rules count as none: a refused commit then names GitHub's reason. */
+async function requiresChecks(write: GithubWrite, slug: string, branch: string): Promise<boolean> {
+  const read = async (path: string): Promise<unknown> => {
+    const answer = await write("GET", path);
+    return answer.status >= 200 && answer.status < 300 ? parseJson(answer.body) : null;
+  };
+  const encoded = encodeURIComponent(branch);
+  const [rules, info] = await Promise.all([
+    read(`repos/${slug}/rules/branches/${encoded}`),
+    read(`repos/${slug}/branches/${encoded}`),
+  ]);
+  return readRequiredChecks(rules, info) === true;
+}
+
+interface OpenPullRequest {
+  readonly url: string;
+  readonly nodeId: string;
+  readonly autoMerge: boolean;
+}
+
+/** A new branch at the commit and a pull request from it; or Eva's open pull request of that branch. */
+async function openPullRequest(
+  write: GithubWrite,
+  slug: string,
+  base: string,
+  name: string,
+  commit: string,
+  change: TreeChange,
+): Promise<OpenPullRequest> {
+  const ref = await write("POST", `repos/${slug}/git/refs`, { ref: `refs/heads/${name}`, sha: commit });
+  if (ref.status === 422) {
+    const owner = slug.split("/")[0] ?? "";
+    const open = listOf(
+      await githubCall(write, "GET", `repos/${slug}/pulls?head=${owner}:${encodeURIComponent(name)}&state=open`),
+    )[0];
+    if (open !== undefined) return pullRequestOf(open);
+  } else {
+    checked(ref);
+  }
+  return pullRequestOf(
+    await githubCall(write, "POST", `repos/${slug}/pulls`, {
+      title: change.message,
+      head: name,
+      base,
+      body: change.body,
+    }),
+  );
+}
+
+function pullRequestOf(value: unknown): OpenPullRequest {
+  const url = textField(value, "html_url");
+  const nodeId = textField(value, "node_id");
+  if (url === null || nodeId === null) throw unreadable();
+  const autoMerge = asRecord(value)?.["auto_merge"];
+  return { url, nodeId, autoMerge: autoMerge !== null && autoMerge !== undefined };
+}
+
+const autoMergeMutation =
+  "mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: $mergeMethod }) { clientMutationId } }";
+
+/**
+ * REST cannot turn on auto-merge, so this is the GraphQL call that `gh pr merge --auto` makes. The
+ * method is the first one that the repository allows, in the order that Eva's own merges use.
+ */
+async function enableAutoMerge(write: GithubWrite, slug: string, pullRequestId: string): Promise<void> {
+  const settings = asRecord(await githubCall(write, "GET", `repos/${slug}`));
+  const mergeMethod =
+    settings?.["allow_merge_commit"] !== false
+      ? "MERGE"
+      : settings["allow_squash_merge"] !== false
+        ? "SQUASH"
+        : "REBASE";
+  const answer = await githubCall(write, "POST", "graphql", {
+    query: autoMergeMutation,
+    variables: { pullRequestId, mergeMethod },
+  });
+  // GraphQL answers 200 with a list of errors.
+  const errors = listOf(asRecord(answer)?.["errors"]);
+  if (errors.length > 0)
+    throw new EvaError("github_failed", errors.map((error) => textField(error, "message") ?? "").join(" "));
 }
 
 /** One entry of a Git tree: a blob by its SHA, null to delete the path, or its text. */
@@ -155,6 +310,18 @@ export async function commitTree(
   tree: readonly TreeEntry[],
   message: string,
 ): Promise<void> {
+  const commit = await makeCommit(write, slug, head, tree, message);
+  await githubCall(write, "PATCH", `repos/${slug}/git/refs/heads/${encodeURIComponent(branch)}`, { sha: commit });
+}
+
+/** One commit on top of `head` that changes these entries of its tree, on no branch yet. Its SHA. */
+async function makeCommit(
+  write: GithubWrite,
+  slug: string,
+  head: string,
+  tree: readonly TreeEntry[],
+  message: string,
+): Promise<string> {
   const address = `repos/${slug}/git`;
   const base = textField(asRecord(await githubCall(write, "GET", `${address}/commits/${head}`))?.["tree"], "sha");
   if (base === null) throw unreadable();
@@ -165,7 +332,7 @@ export async function commitTree(
     "sha",
   );
   if (commit === null) throw unreadable();
-  await githubCall(write, "PATCH", `${address}/refs/heads/${encodeURIComponent(branch)}`, { sha: commit });
+  return commit;
 }
 
 /** The parsed body of a 2xx answer. Throws `github_failed` with GitHub's message for any other. */
@@ -175,7 +342,10 @@ export async function githubCall(
   path: string,
   body?: unknown,
 ): Promise<unknown> {
-  const answer = await write(method, path, body);
+  return checked(await write(method, path, body));
+}
+
+function checked(answer: GithubAnswer): unknown {
   const parsed = parseJson(answer.body);
   if (answer.status >= 200 && answer.status < 300) return parsed;
   const message = textField(parsed, "message");

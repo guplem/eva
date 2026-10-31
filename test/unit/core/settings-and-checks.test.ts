@@ -262,6 +262,7 @@ describe("repository setup", () => {
       expect(await instance.fixRepository(projectId, url, null)).toEqual({
         fixed: ["Dependabot alerts"],
         problems: [],
+        notes: [],
         chatRequest: null,
       });
       expect(calls).toEqual(["PUT repos/owner/other-app/vulnerability-alerts"]);

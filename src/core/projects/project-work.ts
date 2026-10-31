@@ -135,6 +135,8 @@ export interface RepositoryFixResult {
   readonly fixed: readonly string[];
   /** One sentence for each direct fix that failed. */
   readonly problems: readonly string[];
+  /** One line for each fix that is not on the branch yet, such as a pull request that waits for CI. */
+  readonly notes: readonly string[];
   /** The request for a chat: the items that need one, and the failed direct fixes. Null: none. */
   readonly chatRequest: string | null;
 }
@@ -616,7 +618,12 @@ export class ProjectWork {
         ? ""
         : `\n\nEva tried these commands herself, and GitHub refused them:\n\n${problems.map((problem) => `- ${problem}`).join("\n")}`;
     return {
-      result: { fixed: outcome.fixed, problems, chatRequest: request === null ? null : request + refused },
+      result: {
+        fixed: outcome.fixed,
+        problems,
+        notes: outcome.notes,
+        chatRequest: request === null ? null : request + refused,
+      },
       needsChanges: forChat.some((item) => item.directFix === undefined && item.light !== "grey"),
       report,
     };

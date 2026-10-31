@@ -12,14 +12,7 @@ import { EvaError } from "../../shared/errors.ts";
 import type { Project } from "../projects/project-catalog.ts";
 import type { LastLocation } from "../vault/about-me.ts";
 import { widgetAddress, type WidgetAddress } from "./widget-address.ts";
-import {
-  configOf,
-  matches,
-  ownValue,
-  type ApprovedPath,
-  type WidgetApproval,
-  type WidgetApprovals,
-} from "./widget-approvals.ts";
+import { configOf, matches, type ApprovedPath, type WidgetApproval, type WidgetApprovals } from "./widget-approvals.ts";
 import { checkManifest, manifestPath, type WidgetInput, type WidgetManifest } from "./widget-contract.ts";
 import type { WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
@@ -176,7 +169,7 @@ export class Widgets {
   /** The data formats of the approved widgets: the prompt lines and the checks read them. */
   readonly formats: WidgetFormats;
   /** The widgets whose copy switches to a new commit now: their files wait. */
-  private readonly installing: Set<string>;
+  private readonly installing: Map<string, number>;
   private checking: Promise<void> | null;
   private readonly previews: WidgetPreviews;
   /** The widgets whose last update check failed: since when, and why. */
@@ -186,7 +179,7 @@ export class Widgets {
     this.options = options;
     this.sessions = new Map();
     this.reviews = new Map();
-    this.installing = new Set();
+    this.installing = new Map();
     this.checking = null;
     this.failures = new Map();
     this.formats = new WidgetFormats({
@@ -405,25 +398,13 @@ export class Widgets {
     const manifest = reviewed.manifest;
     if (manifest === null) throw new EvaError("widget_invalid", reviewed.problems.join(" "));
     const kept = this.checkValues(manifest.inputs, values);
-    const paths = manifest.inputs.flatMap((input): ApprovedPath[] =>
-      input.type === "folder" || input.type === "file"
-        ? [
-            {
-              input: input.id,
-              type: input.type,
-              path: typeof ownValue(kept, input.id) === "string" ? (ownValue(kept, input.id) as string) : null,
-              access: input.access ?? "read",
-              files: input.files ?? null,
-              schema: input.schema ?? null,
-            },
-          ]
-        : [],
-    );
-    const hosts = manifest.hosts.map((host) => {
+    for (const host of manifest.hosts) {
       const hostCheck = checkHost(host.url, ownHosts);
       if (!hostCheck.ok) throw new EvaError("widget_invalid", hostCheck.reason);
-      return hostCheck.origin;
-    });
+    }
+    // The same rule turns a manifest into a grant for an approval, an update and a preview.
+    const { grant } = grantChange(null, manifest, kept, new Set(), new Set());
+    const paths = grant.paths;
     // Before the install: the copy must keep the approved commit while the approval can still fail.
     const conflicts = this.formats.conflictsOf(id, manifest.name, paths, await this.schemasAt(address, commit, paths));
     // Reading is always allowed. Only a write that conflicts needs the person's choice.
@@ -435,22 +416,15 @@ export class Widgets {
     const approvedPaths = paths.map((approved): ApprovedPath =>
       conflicts.has(approved.input) ? { ...approved, access: "read", schema: null } : approved,
     );
-    this.installing.add(id);
-    try {
-      await this.options.copies.install(address, commit);
-    } finally {
-      this.installing.delete(id);
-    }
+    await this.installCopy(address, commit);
     this.options.approvals.save(id, {
       repository: address.url,
       commit,
       name: manifest.name,
       size: manifest.size,
       entry: manifest.entry,
+      ...grant,
       paths: approvedPaths,
-      location: manifest.inputs.some((input) => input.type === "eva-location"),
-      hosts,
-      prompt: manifest.prompt ?? null,
       approvedAt: this.options.now().toISOString(),
     });
     this.revoke(id);
@@ -510,6 +484,11 @@ export class Widgets {
     for (const { id } of updates.state.waiting()) {
       const entry = entries.find((each) => each.id === id);
       if (entry === undefined || !checked(entry)) this.clearWaiting(id, true);
+    }
+    // A widget with no check has no failed check either.
+    for (const id of [...this.failures.keys()]) {
+      const entry = entries.find((each) => each.id === id);
+      if (entry === undefined || !checked(entry)) this.checkFailed(id, null);
     }
     await Promise.all(
       entries.map(async (entry) => {
@@ -574,6 +553,8 @@ export class Widgets {
       }
     }
     const notes = await this.notesOf(address, record.commit, commit);
+    // An approval or a removal during the check answered this commit already.
+    if (!this.unchanged(record)) return;
     const old = state?.waiting ?? null;
     if (old !== null) updates.dismiss(updateKey(id, old.commit));
     const waiting: WaitingUpdate = {
@@ -588,6 +569,51 @@ export class Widgets {
   }
 
   /**
+   * True while the approval and the vault entry are the ones that a check read. A check takes a
+   * while: the person may approve again, or remove the widget, meanwhile, and the person wins.
+   */
+  private unchanged(record: WidgetApproval): boolean {
+    const id = widgetAddress(record.repository)?.id ?? "";
+    const now = this.options.approvals.get(id);
+    const entry = readWidgetList(this.options.vaultPath).find((each) => each.id === id);
+    return (
+      now?.commit === record.commit &&
+      now.approvedAt === record.approvedAt &&
+      entry !== undefined &&
+      matches(now, entry)
+    );
+  }
+
+  /**
+   * Checks out a commit while the widget's files wait. `after` runs before the files answer again,
+   * and says whether the install stands. A failed checkout goes back to the approved commit, so a
+   * widget never runs from a mix of two commits.
+   */
+  private async installCopy(
+    address: WidgetAddress,
+    commit: string,
+    after: () => Promise<boolean> = () => Promise.resolve(true),
+  ): Promise<boolean> {
+    // A count, not a flag: an approval and an update of one widget can both wait for the copy.
+    this.installing.set(address.id, (this.installing.get(address.id) ?? 0) + 1);
+    try {
+      try {
+        await this.options.copies.install(address, commit);
+      } catch (error) {
+        const approved = this.options.approvals.get(address.id)?.commit;
+        if (approved !== undefined && approved !== commit)
+          await this.options.copies.install(address, approved).catch(() => undefined);
+        throw error;
+      }
+      return await after();
+    } finally {
+      const left = (this.installing.get(address.id) ?? 1) - 1;
+      if (left === 0) this.installing.delete(address.id);
+      else this.installing.set(address.id, left);
+    }
+  }
+
+  /**
    * Installs an update that asks for nothing new. The copy switches whole, and the record gets the
    * new commit only after the files are in place. The tokens of the old commit stop, so the grid
    * loads the new version at its next ask.
@@ -599,30 +625,15 @@ export class Widgets {
     grant: WidgetGrant,
     commit: string,
   ): Promise<void> {
-    // The check took a while: the person may have approved again, or removed the widget, meanwhile.
-    const unchanged = (): boolean => {
+    if (!this.unchanged(record)) return;
+    const installed = await this.installCopy(address, commit, async () => {
+      if (this.unchanged(record)) return true;
+      // The person's own approval wins: the copy goes back to its commit.
       const now = this.options.approvals.get(address.id);
-      const entry = readWidgetList(this.options.vaultPath).find((each) => each.id === address.id);
-      return (
-        now?.commit === record.commit &&
-        now.approvedAt === record.approvedAt &&
-        entry !== undefined &&
-        matches(now, entry)
-      );
-    };
-    if (!unchanged()) return;
-    this.installing.add(address.id);
-    try {
-      await this.options.copies.install(address, commit);
-      if (!unchanged()) {
-        // The person's own approval wins: the copy goes back to its commit.
-        const now = this.options.approvals.get(address.id);
-        if (now !== null) await this.options.copies.install(address, now.commit);
-        return;
-      }
-    } finally {
-      this.installing.delete(address.id);
-    }
+      if (now !== null) await this.options.copies.install(address, now.commit);
+      return false;
+    });
+    if (!installed) return;
     this.options.approvals.save(address.id, {
       ...record,
       ...grant,
@@ -721,7 +732,8 @@ export class Widgets {
     return {
       level: "warn",
       message: oneLine(lines.join(" ")),
-      resolvedMessage: `The widget ${name} is up to date.`,
+      // True for an approval and for a refusal: the hub sees only that the notice went.
+      resolvedMessage: `The update of the widget ${name} no longer waits.`,
     };
   }
 

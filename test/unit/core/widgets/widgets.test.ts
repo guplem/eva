@@ -712,6 +712,12 @@ describe("the updates", () => {
     await widgets.checkUpdates(true);
     expect(reported.at(-1)).toEqual({ key: `widget_check:${habitsId}`, message: null });
     expect(widgets.list()[0]?.checkProblem).toBeNull();
+    // A widget that the person turns off has no failed check either.
+    broken = true;
+    await widgets.checkUpdates(true);
+    widgets.setEnabled(habitsId, false);
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.checkProblem).toBeNull();
   });
 
   test("a widget that is off gets no check, and its waiting update goes", async () => {

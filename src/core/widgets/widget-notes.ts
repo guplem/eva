@@ -38,9 +38,11 @@ export async function releaseNotes(github: GithubRequest, slug: string, from: st
   const lines =
     newer.length > 0
       ? newer.map((release) => {
-          const title = release.name ?? release.tag_name ?? "";
-          // Only the marks of a Markdown heading go: "#12" names an issue.
-          const body = oneLine((release.body ?? "").replace(/^#+\s*/gm, ""));
+          // GitHub gives an empty name to a release with no title.
+          const named = (release.name ?? "").trim();
+          const title = named !== "" ? named : (release.tag_name ?? "");
+          // Only the marks of a Markdown heading go, with their space: "#12" names an issue.
+          const body = oneLine((release.body ?? "").replace(/^#{1,6}\s+/gm, ""));
           return body === "" ? title : `${title}: ${body}`;
         })
       : (compare.commits ?? [])

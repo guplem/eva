@@ -186,6 +186,12 @@ export class WidgetCopies {
   }
 }
 
+/** The text of a file answer, or null for any answer but a file. */
+export function answerText(answer: WidgetAnswer): string | null {
+  if (answer.status !== 200 || answer.body === undefined) return null;
+  return typeof answer.body === "string" ? answer.body : Buffer.from(answer.body).toString("utf-8");
+}
+
 /**
  * Answers a file of a folder, by its path from the folder. Never a hidden name, such as `.git/`,
  * and never a link: a link could leave the folder. The preview of a clone uses it too.

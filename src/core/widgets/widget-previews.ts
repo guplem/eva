@@ -24,7 +24,7 @@ import { widgetAddress, type WidgetAddress } from "./widget-address.ts";
 import { approvalSchema, configOf, matches, type ApprovedPath, type WidgetApprovals } from "./widget-approvals.ts";
 import { grantChange, readOnlyFallbacks, type WidgetGrant } from "./widget-changes.ts";
 import { checkManifest, manifestPath, type WidgetManifest } from "./widget-contract.ts";
-import { serveFolderFile, type WidgetCopies } from "./widget-copies.ts";
+import { answerText, serveFolderFile, type WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, widgetInputValueSchema, type WidgetInputValue } from "./widget-list.ts";
@@ -448,9 +448,7 @@ interface Base {
 
 /** The text of a file of a folder, with the checks of a served file, or null. */
 function readFolderText(folder: string, path: string): string | null {
-  const answer = serveFolderFile(folder, path);
-  if (answer.status !== 200 || answer.body === undefined) return null;
-  return typeof answer.body === "string" ? answer.body : Buffer.from(answer.body).toString("utf-8");
+  return answerText(serveFolderFile(folder, path));
 }
 
 function parsed(text: string | null): unknown {
@@ -463,16 +461,13 @@ function parsed(text: string | null): unknown {
 }
 
 function installedHash(copies: WidgetCopies, address: WidgetAddress, path: string): string | null {
-  const answer = copies.serveFile(address, path);
-  if (answer.status !== 200 || answer.body === undefined) return null;
-  return contentHash(typeof answer.body === "string" ? answer.body : Buffer.from(answer.body).toString("utf-8"));
+  const text = answerText(copies.serveFile(address, path));
+  return text === null ? null : contentHash(text);
 }
 
 function installedManifest(copies: WidgetCopies, address: WidgetAddress): WidgetManifest | null {
-  const answer = copies.serveFile(address, manifestPath);
-  if (answer.status !== 200 || answer.body === undefined) return null;
-  const text = typeof answer.body === "string" ? answer.body : Buffer.from(answer.body).toString("utf-8");
-  return checkManifest(text).manifest;
+  const text = answerText(copies.serveFile(address, manifestPath));
+  return text === null ? null : checkManifest(text).manifest;
 }
 
 function schemaHashes(grant: WidgetGrant, read: (path: string) => string | null): Record<string, string> {

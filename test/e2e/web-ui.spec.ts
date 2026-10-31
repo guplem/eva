@@ -6749,6 +6749,41 @@ test("Files: an image and a sound show on the page, and another file that is not
   await expect(page.getByRole("region", { name: "File preview" })).toHaveCount(0);
 });
 
+test("Files: Copy contents puts a text file or an image on the clipboard, and a sound has no such item (issue 738)", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await logIn(page);
+  await page.goto("/#/files/Notes/settings.json");
+  const file = page.getByRole("region", { name: "File text" });
+  await chooseFileAction(page, "Copy contents");
+  await expect(file.getByRole("status").filter({ hasText: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('{"theme":"dark","size":2}');
+  // The text box of the editor copies by itself.
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await file.getByRole("button", { name: "Cancel" }).click();
+
+  await page.goto("/#/files/Media/landscape.png");
+  const preview = page.getByRole("region", { name: "File preview" });
+  await expect(preview.getByRole("img", { name: "landscape.png" })).toBeVisible();
+  await preview.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Copy contents" }).click();
+  await expect(preview.getByRole("status").filter({ hasText: "Copied" })).toBeVisible();
+  const types = await page.evaluate(async () => (await navigator.clipboard.read()).flatMap((item) => item.types));
+  expect(types).toContain("image/png");
+
+  await page.goto("/#/files/Media/silence.wav");
+  const sound = page.getByRole("region", { name: "File preview" });
+  await expect(sound.locator("audio")).toBeVisible();
+  await sound.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Download" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
+});
+
 test("on a special day, EVE greets with that day's eyes, and the tab icon wears them", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-12-25T12:00:00"));
   await logIn(page);

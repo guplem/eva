@@ -1,11 +1,14 @@
 /**
  * The bar above an open file on the Files page, for a text file and for an image, a sound or a
  * film: the size, the actions of the file, the button that makes the file large, and its menu.
+ * The menu can also copy the file (issue 738).
  */
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { readAppearance } from "./appearance.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { useIsPhone } from "./ChatHeader.tsx";
+import { copiedMs } from "./CopyButton.tsx";
+import { useShowError } from "./error-toast.tsx";
 import { sizeWords } from "./file-paths.ts";
 import { Icon } from "./icons.tsx";
 import { MoreMenu, type MenuItem } from "./Menu.tsx";
@@ -15,13 +18,16 @@ export function FileBar({
   large,
   onLarge,
   items,
+  copy = null,
   children,
 }: {
   readonly size: number;
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
-  /** The menu items of this file. The bar adds the large item at the end. */
+  /** The menu items of this file. The bar adds the copy item and the large item after them. */
   readonly items: readonly MenuItem[];
+  /** Puts the file on the clipboard, or null for a file that the clipboard cannot hold. */
+  readonly copy?: (() => Promise<void>) | null;
   /** The actions that show in the bar, such as Edit. */
   readonly children?: ReactNode;
 }): ReactElement {
@@ -36,6 +42,14 @@ export function FileBar({
     return () => window.removeEventListener("keydown", onKey);
   }, [large, onLarge]);
 
+  const [copied, setCopied] = useState(false);
+  const showError = useShowError();
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), copiedMs);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   const isPhone = useIsPhone();
   /** The Appearance setting changes on the Settings page, so the file reads it once, as it opens. */
   const [oneFolder] = useState(() => readAppearance().filesView === "single");
@@ -44,7 +58,21 @@ export function FileBar({
   const largeLabel = large ? "Make the file small" : "Make the file large";
   const largeIcon = large ? "shrink" : "expand";
   const largeItem: MenuItem = { label: largeLabel, icon: largeIcon, onChoose: () => onLarge(!large) };
-  const allItems = canLarge ? [...items, largeItem] : items;
+  const copyItem: MenuItem | null =
+    copy === null
+      ? null
+      : {
+          label: "Copy contents",
+          icon: "copy",
+          onChoose: () => {
+            setCopied(false);
+            copy().then(
+              () => setCopied(true),
+              (caught: unknown) => showError(caught),
+            );
+          },
+        };
+  const allItems = [...items, ...(copyItem === null ? [] : [copyItem]), ...(canLarge ? [largeItem] : [])];
   return (
     <div className="files-file-bar">
       <span className="files-size">{sizeWords(size)}</span>
@@ -59,6 +87,11 @@ export function FileBar({
           >
             <Icon name={largeIcon} />
           </button>
+        )}
+        {copied && (
+          <span role="status" className="files-size">
+            <Icon name="check" /> Copied
+          </span>
         )}
         {children}
         <MoreMenu items={allItems} label="File actions" />

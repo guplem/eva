@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry, type SearchResult } from "./api.ts";
 import { readAppearance } from "./appearance.ts";
 import { ColumnDivider } from "./ColumnDivider.tsx";
+import { copyText } from "./CopyButton.tsx";
 import { FileBar } from "./FileBar.tsx";
 import { DownloadButton, DownloadWait, useDownload } from "./DownloadButton.tsx";
 import { useShowError } from "./error-toast.tsx";
@@ -792,7 +793,14 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
 
   return (
     <section className="files-pane files-preview files-file" aria-label="File text">
-      <FileBar size={file.size} large={large} onLarge={onLarge} items={items}>
+      <FileBar
+        size={file.size}
+        large={large}
+        onLarge={onLarge}
+        items={items}
+        // The text area of the editor copies by itself.
+        copy={draft === null ? () => copyText(file.text) : null}
+      >
         {draft === null ? (
           <>
             {saved && (

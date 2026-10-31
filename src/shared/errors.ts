@@ -48,6 +48,8 @@ export type EvaErrorCode =
   | "vault_password_invalid"
   /** A vault password that does not unlock the vault's key (#707). */
   | "vault_password_wrong"
+  /** The vault's key file is broken, or someone changed it (#707). */
+  | "vault_key_invalid"
   /** An encrypted vault file that does not decrypt, such as one that someone changed (#707). */
   | "vault_file_unreadable";
 

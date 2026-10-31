@@ -1148,7 +1148,7 @@ describe("VaultSync stops a plain secret before the push (#707)", () => {
     const pushed = sandbox.git(sandbox.remote, "show", "main:deploy/id.key");
     expect(pushed).toStartWith(encryptedFileLine);
     // No commit on the remote holds the plain text.
-    expect(sandbox.git(sandbox.remote, "log", "-p", "main")).not.toContain("PRIVATE");
+    expect(remoteVersions("deploy/id.key").join("\n")).not.toContain("PRIVATE");
   });
 });
 
@@ -1187,3 +1187,59 @@ describe("VaultSync.encryptSecrets (#707)", () => {
     expect(readFileSync(join(vault, "deploy/old.key"), "utf8")).toStartWith(encryptedFileLine);
   });
 });
+
+describe("VaultSync checks every unpushed commit for a plain secret (review of #707)", () => {
+  async function keyedSync(): Promise<VaultSync> {
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "key");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    return new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+  }
+
+  test("a plain secret in an earlier commit never reaches the remote, though HEAD holds it encrypted", async () => {
+    const sync = await keyedSync();
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "agent");
+    // A later edit: Eva's own commit then holds the file encrypted, on top of the plain one.
+    sandbox.write(vault, "deploy/id.key", "PRIVATE 2\n");
+    expect((await sync.save()).status).toBe("ok");
+    expect(remoteVersions("deploy/id.key").join("\n")).not.toContain("PRIVATE");
+    expect(sandbox.git(sandbox.remote, "show", "main:deploy/id.key")).toStartWith(encryptedFileLine);
+  });
+
+  test("a plain secret behind a conflict with the remote is taken back before the merge, so the sync never sticks", async () => {
+    const sync = await keyedSync();
+    const other = sandbox.clone("other-707");
+    sandbox.write(other, "Notes/plan.md", "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    sandbox.write(vault, "Notes/plan.md", "mine\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "agent");
+    await sync.save();
+    expect(remoteVersions("deploy/id.key").join("\n")).not.toContain("PRIVATE");
+    expect(sync.currentState.lastError ?? "").not.toContain("plain text");
+  });
+});
+
+/** The text of a file in each commit of the remote that holds it, so no `-diff` attribute hides it. */
+function remoteVersions(path: string): string[] {
+  return sandbox
+    .git(sandbox.remote, "rev-list", "--all")
+    .split("\n")
+    .filter((sha) => sha !== "")
+    .map((sha) => Bun.spawnSync(["git", "show", `${sha}:${path}`], { cwd: sandbox.remote, env: gitEnvironment }))
+    .filter((shown) => shown.exitCode === 0)
+    .map((shown) => shown.stdout.toString());
+}

@@ -511,6 +511,8 @@ export class VaultSync {
     // A rebase needs a clean index, so the other notes stay committed here until a person picks a version.
     const unmerged = unmergedPaths(entries);
     if (unmerged.length > 0) return this.reportConflictMarkers(unmerged);
+    // Before the rebase: a merge with the remote would make the unpushed commits impossible to take back.
+    if (!(await this.encryptUnpushedSecrets(branch))) return this.state;
     await this.pushWithRetry(branch);
     return this.state;
   }
@@ -934,6 +936,13 @@ export class VaultSync {
     const secrets = this.options.secrets;
     if (secrets === undefined) return true;
     const plain = await this.plainUnpushedSecrets(branch, secrets);
+    if (plain === null) {
+      this.update({
+        status: "error",
+        lastError: "Eva could not check the unpushed commits for secrets, so she did not push.",
+      });
+      return false;
+    }
     if (plain.length === 0) return true;
     const stop = (detail: string): false => {
       this.update({
@@ -947,26 +956,38 @@ export class VaultSync {
     const reset = await this.git(["reset", "-q", "--soft", `origin/${branch}`], localTimeoutMs);
     if (reset.exitCode !== 0) return stop("Eva did not push.");
     if (!(await this.commitChanges(await this.statusEntries()))) return false;
-    if ((await this.plainUnpushedSecrets(branch, secrets)).length > 0) return stop("Eva did not push.");
+    if ((await this.plainUnpushedSecrets(branch, secrets))?.length !== 0) return stop("Eva did not push.");
     return true;
   }
 
+  /**
+   * Each plain secret file in any unpushed commit, not only in HEAD: a push sends every commit, and
+   * a later commit can hold the same file encrypted. Null when git cannot say, so the push waits.
+   */
   private async plainUnpushedSecrets(
     branch: string,
     secrets: NonNullable<VaultSyncOptions["secrets"]>,
-  ): Promise<string[]> {
-    const changed = await this.git(
-      ["diff", "--name-only", "--no-renames", "-z", `origin/${branch}`, "HEAD"],
-      localTimeoutMs,
-    );
-    if (changed.exitCode !== 0) return [];
-    const plain: string[] = [];
-    for (const path of changed.stdout.split("\0").filter((name) => name !== "")) {
-      const blob = await this.git(["show", `HEAD:${path}`], localTimeoutMs);
-      // A deleted file is in no commit of HEAD.
-      if (blob.exitCode === 0 && secrets.isPlainSecret(path, new TextEncoder().encode(blob.stdout))) plain.push(path);
+  ): Promise<string[] | null> {
+    // Before the first push, the remote has no branch yet, so every commit is unpushed.
+    const remoteKnown =
+      (await this.git(["rev-parse", "--verify", "--quiet", `origin/${branch}`], localTimeoutMs)).exitCode === 0;
+    const commits = await this.git(["rev-list", remoteKnown ? `origin/${branch}..HEAD` : "HEAD"], localTimeoutMs);
+    if (commits.exitCode !== 0) return null;
+    const plain = new Set<string>();
+    for (const commit of commits.stdout.split("\n").filter((sha) => sha !== "")) {
+      // `-m` lists a merge's files against each parent, so a merge hides nothing either.
+      const changed = await this.git(
+        ["diff-tree", "-r", "-m", "--no-commit-id", "--name-only", "--no-renames", "-z", commit],
+        localTimeoutMs,
+      );
+      if (changed.exitCode !== 0) return null;
+      for (const path of new Set(changed.stdout.split("\0").filter((name) => name !== ""))) {
+        const blob = await this.git(["show", `${commit}:${path}`], localTimeoutMs);
+        // A deleted file is in no tree of that commit.
+        if (blob.exitCode === 0 && secrets.isPlainSecret(path, new TextEncoder().encode(blob.stdout))) plain.add(path);
+      }
     }
-    return plain;
+    return [...plain];
   }
 
   /**

@@ -35,6 +35,8 @@ export function RepositorySetup({
   readonly onFix: (request: string) => void;
 }): ReactElement {
   const [reports, setReports] = useState<SetupReport[] | Loading>({ state: "loading" });
+  // The cards go away while the reports load again after a Fix, so the messages of each Fix live here.
+  const [messages, setMessages] = useState<Readonly<Record<string, FixMessages>>>({});
 
   const load = useCallback(async (): Promise<void> => {
     setReports({ state: "loading" });
@@ -55,7 +57,14 @@ export function RepositorySetup({
       <div className="main-header">
         <BackButton label="Back" onClick={onBack} />
         <h1>{title} · Repository setup</h1>
-        <button className="outline" onClick={() => void load()} disabled={loading}>
+        <button
+          className="outline"
+          onClick={() => {
+            setMessages({});
+            void load();
+          }}
+          disabled={loading}
+        >
           <Icon name="restart" />
           Refresh
         </button>
@@ -69,6 +78,10 @@ export function RepositorySetup({
                 key={`${String(index)}-${report.repositoryUrl}`}
                 projectId={projectId}
                 report={report}
+                messages={messages[report.repositoryUrl] ?? noMessages}
+                onMessages={(next) => {
+                  setMessages((current) => ({ ...current, [report.repositoryUrl]: next }));
+                }}
                 onFix={onFix}
                 onTypeChanged={() => void load()}
               />
@@ -88,34 +101,44 @@ export function RepositorySetup({
   );
 }
 
+/** What the last Fix of a repository says: the fixes that failed, and the pull requests it opened. */
+interface FixMessages {
+  readonly problems: readonly string[];
+  readonly notes: readonly string[];
+}
+
+const noMessages: FixMessages = { problems: [], notes: [] };
+
 interface ReportCardProps {
   readonly projectId: string;
   readonly report: SetupReport;
+  readonly messages: FixMessages;
+  readonly onMessages: (messages: FixMessages) => void;
   readonly onFix: (request: string) => void;
   /** Reads the reports again, for the new type. */
   readonly onTypeChanged: () => void;
 }
 
-function ReportCard({ projectId, report, onFix, onTypeChanged }: ReportCardProps): ReactElement {
+function ReportCard({ projectId, report, messages, onMessages, onFix, onTypeChanged }: ReportCardProps): ReactElement {
   const summary = reportSummary(report);
   // The item whose direct fix runs, "all" for Fix all, or null.
   const [running, setRunning] = useState<string | null>(null);
-  const [problems, setProblems] = useState<readonly string[]>([]);
+  const { problems, notes } = messages;
   const canFixDirectly = report.sections.some((section) => section.items.some(hasDirectFix));
 
   /** Runs the direct fixes, then opens one chat for the rest, or reads the report again. */
   const fix = async (key: string, items: readonly string[] | null): Promise<void> => {
     setRunning(key);
-    setProblems([]);
+    onMessages(noMessages);
     try {
       const result = await api.fixRepository(projectId, report.repositoryUrl, items);
       if (result.chatRequest !== null) onFix(result.chatRequest);
       else {
-        setProblems(result.problems);
+        onMessages({ problems: result.problems, notes: result.notes });
         onTypeChanged();
       }
     } catch (caught) {
-      setProblems([caught instanceof Error ? caught.message : String(caught)]);
+      onMessages({ problems: [caught instanceof Error ? caught.message : String(caught)], notes: [] });
     } finally {
       setRunning(null);
     }
@@ -158,6 +181,13 @@ function ReportCard({ projectId, report, onFix, onTypeChanged }: ReportCardProps
         <div className="callout danger" role="status">
           {problems.map((problem) => (
             <p key={problem}>{problem}</p>
+          ))}
+        </div>
+      )}
+      {notes.length > 0 && (
+        <div className="callout" role="status">
+          {notes.map((note) => (
+            <p key={note}>{note}</p>
           ))}
         </div>
       )}

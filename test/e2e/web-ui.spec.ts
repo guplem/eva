@@ -1899,6 +1899,13 @@ test("Project mode: the repository setup shows each item's light; Fix runs a dir
   await skill.getByRole("button", { name: "Fix Skill write-commit now" }).click();
   await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
   report = page.getByRole("region", { name: "example-owner/example-app" });
+  // The demo branch requires checks, so the copy waits in a pull request with auto-merge.
+  await expect(
+    report.getByText(
+      "Skill write-commit: Eva opened the pull request https://github.com/example-owner/example-app/pull/1.",
+      { exact: false },
+    ),
+  ).toBeVisible();
   // Git hooks depend on the project's stack, so a coding agent adds them.
   const hooks = report.locator(".setup-item", { hasText: "Git hooks" });
   await hooks.getByRole("button", { name: "Fix Git hooks in a new chat" }).click();

@@ -339,7 +339,8 @@ const eva = new Eva({
       labels: ["bug"],
     },
   }),
-  githubWrite: fakeGithubWrite(),
+  // The demo branch requires checks, so a file fix shows its pull request (#717).
+  githubWrite: fakeGithubWrite({ requiredChecks: true }),
   widgetRemote: () => habitsWidget.remote,
 });
 const habitsWidgetId = "example-owner/habits-widget";

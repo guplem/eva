@@ -75,8 +75,8 @@ export function shellWallProblem(gap: string | null): AlertProblem | null {
   if (gap === null) return null;
   return {
     level: "warn",
-    message: `The shell of a Project chat can read the whole vault on this computer. ${gap} The file tools of each chat stay inside its own folder.`,
-    resolvedMessage: "The shell of each Project chat stays inside its own folder on this computer.",
+    message: `The shell of a Project chat can read the vault and Eva's own folder on this computer. ${gap} The file tools of each chat stay out of them.`,
+    resolvedMessage: "The shell of each Project chat stays out of the vault and Eva's own folder on this computer.",
   };
 }
 

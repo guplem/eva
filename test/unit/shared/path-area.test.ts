@@ -2,11 +2,19 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isInsideArea, isPatternInsideArea } from "../../../src/shared/path-area.ts";
+import { isProtectedInArea, wallRefusesPath, wallRefusesPattern } from "../../../src/shared/path-area.ts";
 
 let root: string;
 let area: string;
 let outside: string;
+
+/** Inside: the wall that closes the whole test folder lets the path or the pattern through. */
+function isInsideArea(folder: string, requested: string, cwd: string): boolean {
+  return !wallRefusesPath({ area: folder, closed: [root] }, requested, cwd);
+}
+function isPatternInsideArea(folder: string, pattern: string, cwd: string): boolean {
+  return !wallRefusesPattern({ area: folder, closed: [root] }, pattern, cwd);
+}
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "eva-area-"));
@@ -144,8 +152,56 @@ describe("isPatternInsideArea, after the review of #711", () => {
 describe("isPatternInsideArea braces (#711)", () => {
   test("nested braces and a brace with no comma are read as a glob reads them", () => {
     expect(isPatternInsideArea(area, "src/{a,{b,c}}.ts", area)).toBe(true);
-    expect(isPatternInsideArea(area, "src/{a,{b,../c}}.ts", area)).toBe(false);
+    expect(isPatternInsideArea(area, "src/{a,{b,../../../c}}.ts", area)).toBe(false);
     expect(isPatternInsideArea(area, "src/{x}/*.ts", area)).toBe(true);
     expect(isPatternInsideArea(area, "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}{o,p}{q,r}/*", area)).toBe(false);
+  });
+});
+
+describe("the wall: what a Project chat may not open (review of #711)", () => {
+  const wall = (): { area: string; closed: string[] } => ({ area, closed: [root] });
+
+  test("refuses the closed folders and each folder that holds one, and nothing else", () => {
+    expect(wallRefusesPath(wall(), join(outside, "plan.md"), area)).toBe(true);
+    expect(wallRefusesPath(wall(), "../../Notes/plan.md", area)).toBe(true);
+    // A search from a folder above the vault would reach into it.
+    expect(wallRefusesPath(wall(), join(root, ".."), area)).toBe(true);
+    expect(wallRefusesPath(wall(), "/", area)).toBe(true);
+    // The chat's own folder, and the files of the machine, stay open.
+    expect(wallRefusesPath(wall(), "src/a.ts", area)).toBe(false);
+    expect(wallRefusesPath(wall(), join(tmpdir(), "x.txt"), area)).toBe(false);
+  });
+
+  test("refuses a path that a tool expands, such as `$HOME` or `%USERPROFILE%`", () => {
+    expect(wallRefusesPath(wall(), "$HOME/x", area)).toBe(true);
+    expect(wallRefusesPath(wall(), "${HOME}/x", area)).toBe(true);
+    expect(wallRefusesPath(wall(), "%USERPROFILE%\\x", area)).toBe(true);
+    expect(wallRefusesPath(wall(), "~/x", area)).toBe(true);
+  });
+
+  test("a pattern refuses a search from a folder that holds the vault", () => {
+    expect(wallRefusesPattern(wall(), join(root, "..", "**", "*.md"), area)).toBe(true);
+    expect(wallRefusesPattern(wall(), "../**", area)).toBe(true);
+    expect(wallRefusesPattern(wall(), "src/*/../../../x", area)).toBe(true);
+    expect(wallRefusesPattern(wall(), "/*", area)).toBe(true);
+    expect(wallRefusesPattern(wall(), "/**/AGENTS.md", area)).toBe(true);
+    expect(wallRefusesPattern(wall(), "**/*.{ts,tsx}", area)).toBe(false);
+    const other = mkdtempSync(join(tmpdir(), "eva-other-"));
+    try {
+      expect(wallRefusesPattern(wall(), join(other, "*.log"), area)).toBe(false);
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
+  test("a write to the folder's own settings, its MCP servers or a git folder is refused", () => {
+    expect(isProtectedInArea(area, ".claude/settings.local.json", area)).toBe(true);
+    expect(isProtectedInArea(area, ".mcp.json", area)).toBe(true);
+    expect(isProtectedInArea(area, ".pi/extensions/x.ts", area)).toBe(true);
+    expect(isProtectedInArea(area, "example-app/.git/config", area)).toBe(true);
+    expect(isProtectedInArea(area, "example-app/.git/hooks/pre-commit", area)).toBe(true);
+    // A repository's own settings are the repository's content: Claude Code reads only the start folder's.
+    expect(isProtectedInArea(area, "example-app/.claude/settings.json", area)).toBe(false);
+    expect(isProtectedInArea(area, "src/a.ts", area)).toBe(false);
   });
 });

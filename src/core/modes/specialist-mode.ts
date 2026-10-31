@@ -6,6 +6,7 @@
  * hooks and the harness's own memory: the specialist keeps its memory in its folder.
  */
 import { dirname } from "node:path";
+import type { WallRoots } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import type { ModeContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
@@ -20,8 +21,8 @@ export interface SpecialistPreparerOptions {
    * another machine would otherwise run a trusted chat at the root of a software project.
    */
   readonly isSpecialist?: (projectId: string) => boolean;
-  /** The vault and each extra project root, read at each turn: the shell of the chat reads none of them (#711). */
-  readonly closedRoots?: () => readonly string[];
+  /** The folders that the chat may not open, read at each turn (#711). */
+  readonly wallRoots?: () => WallRoots;
 }
 
 export class SpecialistPreparer implements TurnPreparer {
@@ -52,7 +53,7 @@ export class SpecialistPreparer implements TurnPreparer {
       trusted: true,
       harnessMemory: false,
       folderHooks: false,
-      fileWall: { area: session.startFolder, closed: this.options.closedRoots?.() ?? [] },
+      fileWall: { area: session.startFolder, ...(this.options.wallRoots?.() ?? { closed: [], readable: [] }) },
       // The project folder is no repository: without the ceiling, git there would read the vault.
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };

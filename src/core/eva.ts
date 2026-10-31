@@ -6,7 +6,7 @@ import { googleClientIdProblem } from "./google/google-client.ts";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
-import type { EngineName, EnginePort, McpServerSpec } from "../shared/engine-port.ts";
+import type { EngineName, EnginePort, McpServerSpec, WallRoots } from "../shared/engine-port.ts";
 import type { EnginePermissions } from "../shared/permissions.ts";
 import { chatKind } from "../shared/chat-kind.ts";
 import {
@@ -759,7 +759,7 @@ export class Eva {
           // Read at each restore: the project work exists only after the session manager.
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
-          closedRoots: () => this.closedRoots(),
+          wallRoots: () => this.wallRoots(),
         }),
         specialist: new SpecialistPreparer({
           vaultSync,
@@ -767,7 +767,7 @@ export class Eva {
           // A project that is gone keeps its chat's refusal to the engine: its folder no longer exists.
           isSpecialist: (projectId) =>
             this.projects().find((project) => project.id === projectId)?.frontMatter.type !== "software",
-          closedRoots: () => this.closedRoots(),
+          wallRoots: () => this.wallRoots(),
         }),
       },
       now: options.now,
@@ -2437,10 +2437,20 @@ export class Eva {
     return ahead.version ?? "newest";
   }
 
-  /** The folders that the shell of a Project chat may not read, but its own folder (#711). */
-  private closedRoots(): string[] {
+  /**
+   * The folders that a Project chat may not open, but its own folder (#711). Eva's instance folder
+   * holds her logins and secrets. The gh login inside it stays readable, so a push still works.
+   */
+  private wallRoots(): WallRoots {
     const vaultPath = this.options.config.vaultPath;
-    return [...(vaultPath === null ? [] : [vaultPath]), ...this.options.config.projectRoots];
+    return {
+      closed: [
+        ...(vaultPath === null ? [] : [vaultPath]),
+        ...this.options.config.projectRoots,
+        this.options.paths.root,
+      ],
+      readable: [engineFolders(this.options.paths).gh],
+    };
   }
   private noticeVaultAhead(): void {
     const vaultPath = this.options.config.vaultPath;

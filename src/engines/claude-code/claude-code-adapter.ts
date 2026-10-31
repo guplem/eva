@@ -669,8 +669,6 @@ function recordOf(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-/** The tool name of the sandbox's question about a network host. */
-const sandboxNetworkTool = "SandboxNetworkAccess";
 async function decidePermission(
   request: TurnRequest,
   toolName: string,
@@ -678,8 +676,6 @@ async function decidePermission(
 ): Promise<ApprovalAnswer> {
   // A model call has no tools; a tool that still appears gets no question, because nobody waits for one.
   if (request.mode === "model-call") return "deny";
-  // The sandbox asks about each host that no rule names. The wall closes files, never the network (#711).
-  if (toolName === sandboxNetworkTool && request.fileWall !== null) return "allow";
   const summary = summarizeToolCall(toolName, input);
   if (request.mode === "project" || asksThePerson(toolName, input)) {
     return request.requestApproval({ requestId: "", toolName, summary });

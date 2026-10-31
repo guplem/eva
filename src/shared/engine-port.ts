@@ -67,8 +67,10 @@ export interface McpServerSpec {
 export interface FileWall {
   /** The clone folder of a chat in a clone, or the project folder of a specialist chat. */
   readonly area: string;
-  /** The vault and each extra project root: the shell reads none of them, but the area. */
+  /** The vault, each extra project root and Eva's instance folder: no tool and no shell command opens them, but the area. */
   readonly closed: readonly string[];
+  /** Folders inside a closed one that a shell command may still read, such as the git login that a push needs. */
+  readonly readable: readonly string[];
 }
 
 export interface TurnRequest {
@@ -148,3 +150,6 @@ export interface CarryHistoryInput {
   /** The environment of the engine's turns, which names its config folder. */
   readonly environment: Readonly<Record<string, string>>;
 }
+
+/** The closed folders of every Project chat's wall, and the folders inside them that a shell may read (#711). */
+export type WallRoots = Pick<FileWall, "closed" | "readable">;

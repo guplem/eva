@@ -11,16 +11,34 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallbackMatcher, HookEvent } from "@anthropic-ai/claude-agent-sdk";
 import type { FileWall } from "../../shared/engine-port.ts";
-import { isInsideArea, isPatternInsideArea } from "../../shared/path-area.ts";
+import { wallRefusesCall } from "../../shared/path-area.ts";
 
 /** What the agent reads when Eva refuses a path. It names no vault: the chat must not know of one. */
 export const outsideMessage = "This path is outside this chat's folder.";
 
 /**
- * The folders of the home folder where tools keep their caches, such as npm and pip. The whole home
- * folder stays closed for writes: the default vault lives in it, and a deny inside an allow wins.
+ * The caches in the home folder where tools such as npm, pip and cargo keep downloads. Only the
+ * caches: a `bin` folder beside one, such as `~/.cargo/bin`, holds programs that run outside the
+ * sandbox later. The whole home folder stays closed for writes: the default vault lives in it.
  */
-const toolCaches = [".cache", ".npm", ".bun", ".cargo", ".gradle", ".m2", ".pnpm-store", ".yarn", "go"];
+const toolCaches = [
+  ".cache/pip",
+  ".cache/uv",
+  ".cache/yarn",
+  ".cache/go-build",
+  ".cache/node-gyp",
+  ".npm/_cacache",
+  ".bun/install/cache",
+  ".cargo/registry",
+  ".cargo/git",
+  "go/pkg/mod",
+  ".gradle/caches",
+  ".m2/repository",
+  ".pnpm-store",
+];
+
+/** The names of this computer and of the tailnet, where Eva's own API listens. */
+const evaHosts = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "*.ts.net"];
 
 /**
  * The hosts of git and of the package managers. The wall closes files, never the network, but the
@@ -42,32 +60,18 @@ const developmentHosts = [
   "repo.maven.apache.org",
 ];
 
-/** The tools whose arguments name a file or a folder, and the fields that name it. */
-const pathFields: Readonly<Record<string, readonly string[]>> = {
-  Read: ["file_path"],
-  Write: ["file_path"],
-  Edit: ["file_path"],
-  MultiEdit: ["file_path"],
-  NotebookEdit: ["notebook_path"],
-  Glob: ["path"],
-  // Grep also takes `file_path`, which it reads as `path`.
-  Grep: ["path", "file_path"],
-};
+/** The fields that hold a file pattern, by tool. A `..` or an absolute start could lead out. */
+const patternKeys: Readonly<Record<string, readonly string[]>> = { Glob: ["pattern"], Grep: ["glob"] };
 
-/** The fields that hold a file pattern, which a `..` or an absolute start could lead out. */
-const patternFields: Readonly<Record<string, readonly string[]>> = { Glob: ["pattern"], Grep: ["glob"] };
+/** The tools that write a file. A write to the folder's own settings could run code at the next turn. */
+const writeTools = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
-/** True when a file tool call names a path or a pattern outside the chat's folder. */
-export function isOutsideWall(wall: FileWall, startFolder: string, toolName: string, input: unknown): boolean {
-  const fields = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
-  const named = (keys: readonly string[] | undefined): string[] =>
-    (keys ?? [])
-      .map((key) => fields[key])
-      .filter((value): value is string => typeof value === "string" && value !== "");
-  return (
-    named(pathFields[toolName]).some((path) => !isInsideArea(wall.area, path, startFolder)) ||
-    named(patternFields[toolName]).some((pattern) => !isPatternInsideArea(wall.area, pattern, startFolder))
-  );
+/** True when a tool call names a path or a pattern that the wall closes. */
+export function isOutsideWall(wall: FileWall, cwd: string, toolName: string, input: unknown): boolean {
+  return wallRefusesCall(wall, cwd, input, {
+    patternKeys: patternKeys[toolName] ?? [],
+    write: writeTools.has(toolName),
+  });
 }
 
 export function fileWallHooks(wall: FileWall, startFolder: string): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
@@ -78,7 +82,8 @@ export function fileWallHooks(wall: FileWall, startFolder: string): Partial<Reco
           (input) => {
             if (
               input.hook_event_name !== "PreToolUse" ||
-              !isOutsideWall(wall, startFolder, input.tool_name, input.tool_input)
+              // A relative path starts where the tool runs, which the hook input names.
+              !isOutsideWall(wall, input.cwd || startFolder, input.tool_name, input.tool_input)
             )
               return Promise.resolve({});
             return Promise.resolve({
@@ -105,10 +110,12 @@ export function fileWallSandbox(wall: FileWall): Record<string, unknown> {
     allowUnsandboxedCommands: false,
     // Each Bash call keeps the approval of its permission mode, as before the wall.
     autoAllowBashIfSandboxed: false,
-    network: { allowedDomains: [...developmentHosts] },
+    // Eva's own API listens on this computer and on the tailnet: a command must reach neither.
+    network: { allowedDomains: [...developmentHosts], deniedDomains: [...evaHosts] },
     filesystem: {
       denyRead: [...wall.closed],
-      allowRead: [wall.area],
+      // The chat's folder, and the git login that a push needs, though the instance folder is closed.
+      allowRead: [wall.area, ...wall.readable],
       allowWrite: [wall.area, tmpdir(), ...toolCaches.map((cache) => join(homedir(), cache))],
     },
   };

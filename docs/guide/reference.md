@@ -262,12 +262,14 @@ A request from Eva's own computer can come from any program there, so only the t
   - A specialist must be in the vault's `Projects/` folder. The type changes in **Details**, only while the project has no chats and no clones. The project page shows a warning for a specialist outside the vault, with `repos`, or with a clone on this computer.
   - In Telegram, the chat list names it "Specialist". A file that you send to its chat gets the answer that this chat takes no files.
   - A specialist runs with your own permission mode, as a project chat does, but its folder is in your vault. Retry with undo takes back what it changed.
-  - It reads and writes its own folder only: see **The file wall** below.
+  - It cannot open the rest of the vault: see **The file wall** below.
 - **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, but no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
-- **The file wall:** a project chat reads and writes only its own folder: a chat in a clone its clone folder, and a specialist its project folder. So a chat in a clone cannot read the project's notes or its other clones: mention a file to give it a copy.
-  - Eva refuses each file tool outside the folder, in every permission mode. The agent reads "This path is outside this chat's folder."
-  - Claude Code runs each shell command in its sandbox, with the vault and each extra project folder closed. A command writes only to the chat's folder, the temporary folder and the caches of tools such as npm. The network stays open.
-  - The sandbox needs `bubblewrap` and `socat` on Linux. Eva has no sandbox to turn on for native Windows, and pi has none. There, the shell can still read the whole vault, and a notice says so. The file tools stay walled.
+- **The file wall:** a project chat opens its own folder, but not the vault, your other project folders or Eva's own folder. Its own folder is its clone folder, or a specialist's project folder. So a chat in a clone cannot read the project's notes or its other clones: mention a file to give it a copy. The other files of the computer stay open.
+  - Eva refuses each file tool that names a closed folder, in every permission mode. The agent reads "This path is outside this chat's folder."
+  - A file tool may not write the chat folder's own `.claude` or `.pi` settings, its `.mcp.json`, or a `.git` folder. Such a file could run code at the next turn.
+  - Claude Code runs each shell command in its sandbox, with the same folders closed. Only the git login stays readable, so `git push` works. A command writes only to the chat's folder, the temporary folder and the caches of tools such as npm. A command cannot reach Eva's own address on this computer or on the tailnet.
+  - In Auto mode, Claude Code's safety check decides about a network host that is not a common one, such as GitHub or npm.
+  - The sandbox needs `bubblewrap` and `socat` on Linux. Eva has no sandbox to turn on for native Windows, and pi has none. There, the shell can still read the vault, and a notice says so. The file tools stay walled.
   - An Assistant chat reads the whole vault, as before.
 - **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
   - All its work is on GitHub.

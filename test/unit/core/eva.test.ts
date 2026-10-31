@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
-import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
+import { defaultConfig, engineFolders, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
 import { templateParts } from "../../../src/core/vault/vault-template.ts";
 import { turnSnapshotRef } from "../../../src/core/vault/vault-snapshots.ts";
 import type { SessionRecord } from "../../../src/core/sessions/session-store.ts";
@@ -1227,7 +1227,11 @@ describe("Eva", () => {
         trusted: true,
         harnessMemory: false,
         folderHooks: false,
-        fileWall: { area: coachFolder(), closed: [vault] },
+        fileWall: {
+          area: coachFolder(),
+          closed: [vault, homePaths(home).root],
+          readable: [engineFolders(homePaths(home)).gh],
+        },
       });
       expect(sandbox.git(sandbox.remote, "show", `main:Projects/${coachId}/log.md`)).toBe("Monday: legs.");
     });

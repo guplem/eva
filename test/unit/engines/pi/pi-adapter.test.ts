@@ -758,7 +758,7 @@ describe("the file wall of a pi Project chat (#711)", () => {
           mode: "project",
           appendSystemPrompt: null,
           startFolder: cwd,
-          fileWall: { area, closed: [folder] },
+          fileWall: { area, closed: [folder], readable: [] },
         }),
       ),
     );
@@ -775,6 +775,9 @@ describe("the file wall of a pi Project chat (#711)", () => {
     expect(await answer("grep", { pattern: "x", path: folder }, area, area)).toBe(false);
     expect(await answer("read", { path: "src/a.ts" }, area, area)).toBe(true);
     expect(await answer("edit", { path: join(area, "a.ts") }, area, area)).toBe(true);
+    // A write to the folder's own pi settings could run code at the next turn. A read of them is fine.
+    expect(await answer("write", { path: ".pi/extensions/x.ts" }, area, area)).toBe(false);
+    expect(await answer("read", { path: ".pi/settings.json" }, area, area)).toBe(true);
     // pi has no shell wall: the status says so.
     expect(await answer("bash", { command: "cat ../../AGENTS.md" }, area, area)).toBe(true);
   });

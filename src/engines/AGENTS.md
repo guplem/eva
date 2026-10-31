@@ -9,4 +9,4 @@
 
 # File wall
 
-- Keep each Project chat's file tools inside `request.fileWall.area`, in every permission mode, through `src/shared/path-area.ts` (#711). Name no vault in the refusal.
+- Keep each Project chat's file tools out of `request.fileWall.closed`, but inside its `area`, in every permission mode, through `src/shared/path-area.ts` (#711). Name no vault in the refusal.

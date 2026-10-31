@@ -43,7 +43,13 @@ export type EvaErrorCode =
   /** A person stopped a question with Ctrl+C, or its input ended. */
   | "prompt_stopped"
   /** The running Eva refused a request of the CLI, and her answer named no code. */
-  | "request_failed";
+  | "request_failed"
+  /** A vault password that is too short to set (#707). */
+  | "vault_password_invalid"
+  /** A vault password that does not unlock the vault's key (#707). */
+  | "vault_password_wrong"
+  /** An encrypted vault file that does not decrypt, such as one that someone changed (#707). */
+  | "vault_file_unreadable";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

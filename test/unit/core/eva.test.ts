@@ -1258,9 +1258,12 @@ describe("Eva", () => {
       const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
       await instance.sessions.send(chat.id, "Write a plan.");
       expect(await instance.retryUndoPreview(chat.id, 0)).toMatchObject({ restore: [`Projects/${coachId}/plan.md`] });
+      // A file that the chat did not change stays.
+      sandbox.write(vault, "Notes/other.md", "Kept.\n");
       await instance.retryChat(chat.id, 0, "undo");
       await instance.idle();
       expect(existsSync(join(coachFolder(), "plan.md"))).toBe(false);
+      expect(readFileSync(join(vault, "Notes", "other.md"), "utf8")).toBe("Kept.\n");
     });
 
     test("a chat goes on from a summary in a new chat of the same specialist, with no git state", async () => {
@@ -1319,6 +1322,16 @@ describe("Eva", () => {
       expect(() => instance.saveProjectFile(coachId, back.version, edited)).toThrow("has chats");
     });
 
+    test("a type changed by hand stops a specialist chat, so it never runs at the root of a software project", async () => {
+      const engine = new FakeEngine();
+      const instance = start(engine);
+      const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      writeFileSync(join(coachFolder(), "AGENTS.md"), "---\ncreated: 2025-03-02T10:15\nstatus: active\n---\n# Coach\n");
+      await instance.sessions.send(chat.id, "hi");
+      expect(engine.requests).toEqual([]);
+      expect(instance.sessions.get(chat.id).turns[0]?.failure).toContain("no specialist any more");
+    });
+
     test("project work on a specialist waits for the asking turn, so two vault turns never overlap", async () => {
       let release: () => void = () => undefined;
       const engine = new FakeEngine(async function* (request) {
@@ -1331,9 +1344,16 @@ describe("Eva", () => {
       const turn = instance.sessions.send(asking.id, "plan it");
       await waitFor(() => engine.requests.length === 1);
       // The Assistant runs `eva work` inside its own turn, which goes on after the command returns.
-      await instance.startProjectWork({ projectId: coachId, request: "Plan the week.", reportToSessionId: asking.id });
+      const work = await instance.startProjectWork({
+        projectId: coachId,
+        request: "Plan the week.",
+        reportToSessionId: asking.id,
+      });
       await Bun.sleep(50);
       expect(engine.requests.map((request) => request.mode)).toEqual(["assistant"]);
+      // The waiting chat holds its request, so a delete cannot lose the work or its report.
+      expect(instance.sessions.isActive(work.id)).toBe(true);
+      expect(() => instance.sessions.delete(work.id)).toThrow();
       release();
       await turn;
       await waitFor(() => engine.requests.some((request) => request.mode === "project"));

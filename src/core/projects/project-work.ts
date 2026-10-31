@@ -444,9 +444,7 @@ export class ProjectWork {
       });
     this.options.inBackground("Project work", async () => {
       try {
-        // The asking Assistant turn goes on after `eva work` returns. A specialist works in the vault
-        // too, so its turn waits: two vault turns would pull and save under each other (lesson 30).
-        if (clone === null && input.reportToSessionId !== null) await untilIdle(sessions, input.reportToSessionId);
+        // At once, so the chat is busy and cannot go. A specialist's turn itself waits for the asking turn.
         await sessions.send(session.id, input.request);
       } finally {
         if (clone !== null) this.reservedClones.delete(clone.path);
@@ -631,6 +629,7 @@ export class ProjectWork {
    */
   async setUpRepository(projectId: string, url: string): Promise<NewProjectSetup> {
     const project = this.project(projectId);
+    if (project.frontMatter.type === "specialist") throw noClones();
     const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
     const slug = githubSlug(url);
     if (type?.afterCreate !== undefined && slug !== null) {
@@ -1120,26 +1119,6 @@ export class ProjectWork {
   }
 }
 
-/**
- * A model can wrap the message in a code fence or quotes, or add a label. The first line is the
- * subject, and a body may follow it.
- */
-/** Resolves once the chat runs no turn, queued turn or follow-up. */
-function untilIdle(sessions: SessionManager, sessionId: string): Promise<void> {
-  return new Promise((resolve) => {
-    const stop = sessions.onIdle((idle) => {
-      if (idle !== sessionId) return;
-      stop();
-      resolve();
-    });
-    // After the listener: the turn could end between a check and the subscription.
-    if (!sessions.isBusy(sessionId)) {
-      stop();
-      resolve();
-    }
-  });
-}
-
 /** A specialist saves its work in the vault, so it never gets a clone (#703). */
 function noClones(): EvaError {
   return new EvaError(
@@ -1148,6 +1127,10 @@ function noClones(): EvaError {
   );
 }
 
+/**
+ * A model can wrap the message in a code fence or quotes, or add a label. The first line is the
+ * subject, and a body may follow it.
+ */
 function cleanCommitMessage(text: string): string | null {
   const lines = text
     .trim()

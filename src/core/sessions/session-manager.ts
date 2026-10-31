@@ -1247,6 +1247,7 @@ export class SessionManager {
     let engineRan = false;
     try {
       releaseFolder = await this.takeFolder(session, controller.signal);
+      await this.waitForAskingTurn(session, controller.signal);
       this.lastActivity.set(sessionId, this.options.now().getTime());
       // After the wait: the other turn may itself run up to the time-out.
       timeout = setTimeout(() => {
@@ -1425,6 +1426,35 @@ ${engineText}`,
       );
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
+  }
+
+  /**
+   * A specialist chat that does work for an Assistant chat works in the vault too, and `eva work`
+   * returns while the asking turn still runs. So the specialist's turn waits until that turn ends:
+   * two vault turns would pull and save under each other (#703, lesson 30). The chat is busy while
+   * it waits, so it cannot go, and a message to it waits in its queue.
+   */
+  private async waitForAskingTurn(session: SessionRecord, signal: AbortSignal): Promise<void> {
+    const asking = session.reportsTo;
+    if (asking === null || chatKind(session) !== "specialist" || !this.isTurnRunning(asking)) return;
+    this.emit(session.id, {
+      kind: "notice",
+      text: "This chat starts when the chat that gave it the work ends its turn.",
+    });
+    await new Promise<void>((resolve) => {
+      const done = (): void => {
+        stop();
+        signal.removeEventListener("abort", done);
+        resolve();
+      };
+      const stop = this.subscribe((event) => {
+        if (event.sessionId === asking && (event.kind === "turn_finished" || event.kind === "turn_failed")) done();
+      });
+      signal.addEventListener("abort", done, { once: true });
+      // After the listener: the turn could end between the check above and the subscription.
+      if (signal.aborted || !this.isTurnRunning(asking)) done();
+    });
+    if (signal.aborted) throw new Error("The turn stopped while it waited for the chat that gave it the work.");
   }
 
   private preparerOf(session: SessionRecord): TurnPreparer {

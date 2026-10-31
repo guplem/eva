@@ -338,6 +338,18 @@ describe("Specialist mode (#703)", () => {
     expect(sync.calls.slice(2)).toEqual(["snapshot refs/eva/turns/s1/0/after", "save"]);
   });
 
+  test("a chat whose project is no specialist any more takes no message, and touches no file", async () => {
+    const sync = new FakeSync();
+    const preparer = new SpecialistPreparer({
+      vaultSync: sync,
+      environment: { PATH: "/bin" },
+      isSpecialist: () => false,
+    });
+    const caught = await preparer.prepare(coachSession()).catch((error: unknown) => error);
+    expect(isEvaError(caught, "project_invalid")).toBe(true);
+    expect(sync.calls).toEqual([]);
+  });
+
   test("describes no part of Eva's, and changes nothing", async () => {
     const sync = new FakeSync();
     const folder = join(vault, "Projects", coachId);

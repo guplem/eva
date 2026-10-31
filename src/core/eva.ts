@@ -699,7 +699,13 @@ export class Eva {
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
         }),
-        specialist: new SpecialistPreparer({ vaultSync, environment: agentEnvironment }),
+        specialist: new SpecialistPreparer({
+          vaultSync,
+          environment: agentEnvironment,
+          // A project that is gone keeps its chat's refusal to the engine: its folder no longer exists.
+          isSpecialist: (projectId) =>
+            this.projects().find((project) => project.id === projectId)?.frontMatter.type !== "software",
+        }),
       },
       now: options.now,
       newId: () => crypto.randomUUID(),

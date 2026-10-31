@@ -92,3 +92,36 @@ describe("unlocked vault keys (#707)", () => {
     expect(isEvaError(await failure(() => keys().unlock("phone-token", password)), "vault_key_missing")).toBe(true);
   });
 });
+
+describe("unlocked vault keys, after the review of #707", () => {
+  test("wrong tries at once each count, and every device shares the limit", async () => {
+    const store = keys();
+    const tries = await Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        failure(() =>
+          store.unlock(index % 2 === 0 ? "phone-token" : "laptop-token", `wrong password ${String(index)}`),
+        ),
+      ),
+    );
+    expect(tries.filter((error) => isEvaError(error, "rate_limited")).length).toBeGreaterThan(0);
+    expect(isEvaError(await failure(() => store.unlock("laptop-token", password)), "rate_limited")).toBe(true);
+  });
+
+  test("a key that changed in the vault after the unlock opens nothing", async () => {
+    const store = keys();
+    const secret = await store.unlock("phone-token", password);
+    writeVaultKey(vault, await createVaultKey("another long password", { logN: 10 }));
+    expect(isEvaError(await failure(() => store.keyFor("phone-token", secret)), "vault_locked")).toBe(true);
+  });
+
+  test("two tabs of one device each keep their own unlock, and Lock ends both", async () => {
+    const store = keys();
+    const first = await store.unlock("phone-token", password);
+    const second = await store.unlock("phone-token", password);
+    expect(store.isUnlocked("phone-token", first)).toBe(true);
+    expect(store.isUnlocked("phone-token", second)).toBe(true);
+    store.lock("phone-token");
+    expect(store.isUnlocked("phone-token", first)).toBe(false);
+    expect(store.isUnlocked("phone-token", second)).toBe(false);
+  });
+});

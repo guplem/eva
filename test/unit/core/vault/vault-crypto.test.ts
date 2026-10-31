@@ -69,6 +69,9 @@ describe("vault keys (#707)", () => {
       expect(isEvaError(await failure(() => unlockVaultKey(changed, password)))).toBe(true);
     for (const broken of [
       { ...file, kdf: { ...file.kdf, logN: 40 } },
+      // 2^19 rounds would hold 512 MB, and a long salt only costs time: a changed file asks for neither.
+      { ...file, kdf: { ...file.kdf, logN: 19 } },
+      { ...file, kdf: { ...file.kdf, salt: Buffer.alloc(65).toString("base64") } },
       { ...file, publicKey: "short" },
       { ...file, wrappedPrivateKey: "" },
     ])

@@ -66,27 +66,28 @@ export function decryptRemovedFiles(
 }
 
 /**
- * Encrypts each encrypted file again, to a new key. A file that the old key does not open stays as
- * it is, and its path comes back, so the person hears of it.
+ * Encrypts each encrypted file again, to a new key. When the old key does not open one of them,
+ * nothing changes, and the paths come back, so the person hears of them.
  */
 export function encryptAgain(
   vaultPath: string,
   unlocked: UnlockedVaultKey,
   next: Pick<VaultKeyFile, "publicKey" | "signingKey">,
 ): { moved: string[]; unreadable: string[] } {
-  const moved: string[] = [];
+  const planned: { readonly path: string; readonly text: string }[] = [];
   const unreadable: string[] = [];
   for (const relativePath of encryptedFiles(vaultPath)) {
-    const path = join(vaultPath, relativePath);
     try {
-      const plain = decryptFile(new Uint8Array(readFileSync(path)), unlocked);
-      writeFileAtomic(path, new TextDecoder().decode(encryptFile(plain, next)));
-      moved.push(relativePath);
+      const plain = decryptFile(new Uint8Array(readFileSync(join(vaultPath, relativePath))), unlocked);
+      planned.push({ path: relativePath, text: new TextDecoder().decode(encryptFile(plain, next)) });
     } catch {
       unreadable.push(relativePath);
     }
   }
-  return { moved, unreadable };
+  // All or nothing: a file left on the old key would open with no password once the old key goes.
+  if (unreadable.length > 0) return { moved: [], unreadable };
+  for (const { path, text } of planned) writeFileAtomic(join(vaultPath, path), text);
+  return { moved: planned.map(({ path }) => path), unreadable };
 }
 
 /** Each regular file of the vault with Eva's header, outside git's folder, the clones and Scratch. */

@@ -2,9 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { readVaultKey } from "../../../../src/core/vault/secret-state.ts";
+import { readVaultKey, writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
 import { VaultEncryption } from "../../../../src/core/vault/vault-encryption.ts";
-import { encryptedState, keyFingerprint } from "../../../../src/core/vault/vault-crypto.ts";
+import {
+  createVaultKey,
+  encryptedState,
+  encryptFile,
+  keyFingerprint,
+} from "../../../../src/core/vault/vault-crypto.ts";
 import { VaultKeys } from "../../../../src/core/vault/vault-keys.ts";
 import { VaultSecrets } from "../../../../src/core/vault/vault-secrets.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -70,17 +75,17 @@ describe("the vault password (#707)", () => {
   test("a new password makes the vault's key once, pins it, and saves the vault", async () => {
     const service = encryption();
     expect(service.status(null, null)).toMatchObject({ hasKey: false, unlocked: false });
-    await service.setPassword(password);
+    await service.setPassword(token, password);
     const key = readVaultKey(vault);
     expect(key).not.toBeNull();
     expect(secrets.inputs().machine.fingerprint).toBe(keyFingerprint(key ?? { publicKey: "", signingKey: "" }));
     expect(saves).toBe(1);
-    expect(isEvaError(await failure(() => service.setPassword(password)), "vault_key_invalid")).toBe(true);
+    expect(isEvaError(await failure(() => service.setPassword(token, password)), "vault_key_invalid")).toBe(true);
   });
 
   test("a device unlocks, reads and saves an encrypted file, and Lock forgets it", async () => {
     const service = encryption();
-    await service.setPassword(password);
+    await service.setPassword(token, password);
     write("deploy/id.key", "OLD\n");
     await service.setPatterns({ added: [], off: [] });
     expect(encryptedState(new TextEncoder().encode(read("deploy/id.key")))).toBe("encrypted");
@@ -99,7 +104,7 @@ describe("the vault password (#707)", () => {
 
   test("a new password keeps every file readable; a new key moves each file to it", async () => {
     const service = encryption();
-    await service.setPassword(password);
+    await service.setPassword(token, password);
     write("deploy/id.key", "KEY\n");
     await service.setPatterns({ added: [], off: [] });
     let secret = await service.unlock(token, password);
@@ -121,7 +126,7 @@ describe("the vault password (#707)", () => {
 describe("the person's patterns and a confirmed removal (#707)", () => {
   test("an added pattern encrypts its files at once", async () => {
     const service = encryption();
-    await service.setPassword(password);
+    await service.setPassword(token, password);
     write("Life/Health/blood.md", "Results.\n");
     await service.setPatterns({ added: ["Life/Health/**"], off: [] });
     expect(read(".eva/secret-files")).toContain("Life/Health/**");
@@ -130,7 +135,7 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
 
   test("a default turned off waits; only a confirmation from an unlocked device decrypts its files", async () => {
     const service = encryption();
-    await service.setPassword(password);
+    await service.setPassword(token, password);
     write("deploy/id.key", "KEY\n");
     await service.setPatterns({ added: [], off: [] });
     await service.setPatterns({ added: [], off: ["*.key"] });
@@ -147,7 +152,7 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
 
   test("a key that changed on another machine waits until the person types its password here", async () => {
     const service = encryption();
-    await service.setPassword(password);
+    await service.setPassword(token, password);
     // Another machine made a new key; this machine still pins the old one.
     const fresh = new VaultEncryption({
       vaultPath: () => vault,
@@ -167,5 +172,63 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
     const mine = await service.unlock(token, "the other machine's password");
     await service.acceptKey(token, mine);
     expect(service.status(token, mine).keyChanged).toBe(false);
+  });
+});
+
+describe("a key file that an agent changes (review of #707)", () => {
+  test("a save from a device unlocked with the old key is refused, and the new key needs its own password", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write("deploy/id.key", "KEY\n");
+    await service.setPatterns({ added: [], off: [] });
+    const secret = await service.unlock(token, password);
+    const version = (service.readFile(token, secret, "deploy/id.key") as { version: string }).version;
+    // An agent swaps in a key of its own.
+    writeVaultKey(vault, await createVaultKey("the agent's own password", { logN: 10 }));
+    expect(await failure(() => service.saveFile(token, secret, "deploy/id.key", "NEW\n", version))).not.toBeNull();
+    expect(isEvaError(await failure(() => service.acceptKey(token, secret)), "vault_locked")).toBe(true);
+    expect(service.status(null, null).keyChanged).toBe(true);
+  });
+
+  test("a broken key file is never replaced by a new password, so its files stay recoverable", async () => {
+    const service = encryption();
+    write(".eva/vault-key.json", '{"version": 2, "publicKey": "from a newer Eva"}\n');
+    expect(isEvaError(await failure(() => service.setPassword(token, password)), "vault_key_invalid")).toBe(true);
+    expect(read(".eva/vault-key.json")).toContain("from a newer Eva");
+  });
+
+  test("only a device sets the first password, never the local API token", async () => {
+    const service = encryption();
+    expect(isEvaError(await failure(() => service.setPassword(null, password)), "vault_locked")).toBe(true);
+    expect(readVaultKey(vault)).toBeNull();
+  });
+
+  test("a new key changes nothing when a file does not open with the old key, and the old password then fails", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const other = await createVaultKey("another long password", { logN: 10 });
+    write("deploy/foreign.key", new TextDecoder().decode(encryptFile(new TextEncoder().encode("X\n"), other)));
+    const before = read(".eva/vault-key.json");
+    let secret = await service.unlock(token, password);
+    expect(
+      isEvaError(await failure(() => service.newKey(token, secret, "a third long password")), "vault_file_unreadable"),
+    ).toBe(true);
+    expect(read(".eva/vault-key.json")).toBe(before);
+    rmSync(join(vault, "deploy/foreign.key"));
+    secret = await service.unlock(token, password);
+    await service.newKey(token, secret, "a third long password");
+    expect(isEvaError(await failure(() => service.unlock(token, password)), "vault_password_wrong")).toBe(true);
+  });
+});
+
+describe("a key file that goes away (review of #707)", () => {
+  test("a computer that knew a key never makes a second one, so the old files stay recoverable", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    rmSync(join(vault, ".eva", "vault-key.json"));
+    const refused = await failure(() => service.setPassword(token, "a brand new password"));
+    expect(isEvaError(refused, "vault_key_invalid")).toBe(true);
+    expect(refused instanceof Error ? refused.message : "").toContain("Restore .eva/vault-key.json");
+    expect(readVaultKey(vault)).toBeNull();
   });
 });

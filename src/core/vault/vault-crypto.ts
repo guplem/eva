@@ -35,7 +35,9 @@ const formatVersion = 1;
 /** Eva's own `scrypt` cost: 2^17 rounds, about 128 MB of memory. */
 const defaultCost = { logN: 17 };
 /** A key file that asks for more could hang Eva or run her out of memory. */
-const highestLogN = 20;
+const highestLogN = 18;
+/** A salt longer than this protects nothing more. */
+const longestSalt = 64;
 
 export interface VaultKeyFile {
   readonly version: 1;
@@ -292,7 +294,8 @@ function checkKeyFile(typed: VaultKeyFile): void {
     logN <= highestLogN &&
     kdf.r === 8 &&
     kdf.p === 1 &&
-    raw(kdf.salt) >= 16;
+    raw(kdf.salt) >= 16 &&
+    raw(kdf.salt) <= longestSalt;
   if (!valid) throw invalidKey();
 }
 

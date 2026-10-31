@@ -4,6 +4,7 @@
  * password, make a new key, and accept a key that changed on another machine. Each change of the
  * vault runs between two steps of the vault sync, so it never races a commit.
  */
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -16,7 +17,7 @@ import {
 } from "./encrypted-files.ts";
 import { defaultSecretPatterns, SecretMatcher, secretFilesPath, type SecretFilesChanges } from "./secret-files.ts";
 import { activeSecretPatterns, signedPayload } from "./secret-policy.ts";
-import { readVaultKey, writeSignedState, writeVaultKey } from "./secret-state.ts";
+import { readVaultKey, vaultKeyPath, writeSignedState, writeVaultKey } from "./secret-state.ts";
 import { createVaultKey, keyFingerprint, rewrapVaultKey, unlockVaultKey } from "./vault-crypto.ts";
 import type { VaultKeys } from "./vault-keys.ts";
 import type { VaultSecrets } from "./vault-secrets.ts";
@@ -79,13 +80,27 @@ export class VaultEncryption {
   }
 
   /** Makes the vault's key. Only after a pull, so two machines never make two keys. */
-  async setPassword(password: string): Promise<void> {
+  async setPassword(deviceToken: string | null, password: string): Promise<void> {
+    // The token alone must not choose the password: an agent can read the token.
+    this.options.keys.checkDevice(deviceToken);
     const vaultPath = this.vaultPath();
     const file = await createVaultKey(password, this.options.cost);
     await this.options.vault.pull();
     await this.options.vault.exclusive(() => {
-      if (readVaultKey(vaultPath) !== null)
-        throw new EvaError("vault_key_invalid", "This vault has a password already. Change it in Settings.");
+      // A broken file, or one from a newer Eva, still holds the only copy of a key: never write over it.
+      if (existsSync(join(vaultPath, vaultKeyPath)))
+        throw new EvaError(
+          "vault_key_invalid",
+          readVaultKey(vaultPath) === null
+            ? "The vault's key file is broken, or a newer Eva wrote it. Restore .eva/vault-key.json from an older commit, or update Eva."
+            : "This vault has a password already. Change it in Settings.",
+        );
+      // A key that went away is a key that git still holds: a second one would split the files in two.
+      if (this.secrets().inputs().machine.fingerprint !== null)
+        throw new EvaError(
+          "vault_key_invalid",
+          "The vault's key file is gone, but this computer used a key before. Restore .eva/vault-key.json from an older commit.",
+        );
       writeVaultKey(vaultPath, file);
       this.secrets().pinKey(keyFingerprint(file));
     });
@@ -111,9 +126,11 @@ export class VaultEncryption {
     text: string,
     version: string,
   ): Promise<void> {
-    this.options.keys.keyFor(deviceToken, secret);
     const vaultPath = this.vaultPath();
     await this.options.vault.exclusive(() => {
+      // The unlocked key is the vault's key now, and the machine trusts it: so the text goes to the person's key.
+      this.options.keys.keyFor(deviceToken, secret);
+      this.refuseChangedKey();
       const key = this.currentKey(vaultPath);
       saveEncryptedFile(vaultPath, relativePath, text, version, key);
     });
@@ -178,14 +195,23 @@ export class VaultEncryption {
    * when the old password leaked. Every device locks: the old key opens nothing any more.
    */
   async newKey(deviceToken: string | null, secret: string | null, password: string): Promise<void> {
-    const unlocked = this.options.keys.keyFor(deviceToken, secret);
+    this.options.keys.keyFor(deviceToken, secret);
     const vaultPath = this.vaultPath();
     const next = await createVaultKey(password, this.options.cost);
     const nextUnlocked = await unlockVaultKey(next, password);
+    // Another machine may have pushed a file on the old key: it must move to the new key too.
+    await this.options.vault.pull();
     await this.options.vault.exclusive(() => {
+      const unlocked = this.options.keys.keyFor(deviceToken, secret);
+      this.refuseChangedKey();
       const secrets = this.secrets();
       const { machine, input } = secrets.inputs();
-      encryptAgain(vaultPath, unlocked, next);
+      const { unreadable } = encryptAgain(vaultPath, unlocked, next);
+      if (unreadable.length > 0)
+        throw new EvaError(
+          "vault_file_unreadable",
+          `The vault's key does not open ${unreadable.join(", ")}, so Eva made no new key. Restore each file from an older commit, or delete it.`,
+        );
       writeVaultKey(vaultPath, next);
       secrets.pinKey(keyFingerprint(next));
       if (input.signed !== null) {
@@ -209,6 +235,11 @@ export class VaultEncryption {
     await this.persist();
   }
 
+  /** A key that changed and that the person did not confirm here may be an agent's: give it nothing. */
+  private refuseChangedKey(): void {
+    if (this.secrets().inputs().keyChanged)
+      throw new EvaError("vault_key_invalid", "The vault's key changed. Confirm it in Settings first.");
+  }
   /** Encrypts the files that a change made secret at once, then commits and pushes when sync is on. */
   private async persist(): Promise<void> {
     await this.options.vault.encryptSecrets();

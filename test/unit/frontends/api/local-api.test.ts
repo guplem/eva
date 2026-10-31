@@ -686,9 +686,12 @@ describe("device login", () => {
     const vaultPath = eva.status().vaultPath ?? "";
     writeFileSync(join(vaultPath, ".env.local"), "API_KEY=sk-example\n");
     const password = { password: "correct horse battery" };
-    expect((await call("/api/vault/secrets/password", { method: "POST", body: password })).status).toBe(200);
-    expect(readFileSync(join(vaultPath, ".env.local"), "utf8")).not.toContain("sk-example");
     const device = { cookie, "content-type": "application/json" };
+    // The token cannot choose the password either.
+    expect((await call("/api/vault/secrets/password", { method: "POST", body: password })).status).toBe(403);
+    const set = await call("/api/vault/secrets/password", { method: "POST", body: password, headers: device });
+    expect(set.status).toBe(200);
+    expect(readFileSync(join(vaultPath, ".env.local"), "utf8")).not.toContain("sk-example");
     // The local API token can neither unlock nor read: an agent can read that token.
     const byToken = await call("/api/vault/secrets/unlock", { method: "POST", body: password });
     expect(byToken.status).toBe(403);

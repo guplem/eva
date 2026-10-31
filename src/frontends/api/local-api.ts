@@ -1366,7 +1366,7 @@ async function secretsRoute(request: Request, url: URL, eva: Eva, deviceToken: s
   const noStore = (body: unknown): Response => Response.json(body, { headers: { "cache-control": "no-store" } });
   if (method === "GET" && path === "/api/vault/secrets") return noStore(encryption.status(deviceToken, secret));
   if (method === "POST" && path === "/api/vault/secrets/password") {
-    await encryption.setPassword(passwordSchema.parse(await request.json()).password);
+    await encryption.setPassword(deviceToken, passwordSchema.parse(await request.json()).password);
     return noStore(encryption.status(deviceToken, secret));
   }
   if (method === "POST" && path === "/api/vault/secrets/unlock")

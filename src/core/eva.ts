@@ -42,6 +42,7 @@ import {
   updateProblem,
   relayedProblem,
   vaultAheadProblem,
+  vaultSecretsProblems,
   lastLocationProblem,
   lastLocationWriteProblem,
 } from "./alerts/problem-rules.ts";
@@ -576,6 +577,7 @@ export class Eva {
       },
       afterSync: () => {
         this.noticeVaultAhead();
+        this.noticeVaultSecrets();
         this.noticeTemplateParts();
         // A full disk or a reserved file name must not stop the sync step.
         try {
@@ -1290,6 +1292,7 @@ export class Eva {
     if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
+    this.noticeVaultSecrets();
   }
 
   /**
@@ -2363,6 +2366,14 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return;
     this.alerts.report("vault_ahead", vaultAheadProblem(vaultAhead(vaultPath), this.machine, evaVersion));
+  }
+
+  /** The problems of the vault's encryption, after each sync step (#707). */
+  private noticeVaultSecrets(): void {
+    if (this.options.config.vaultPath === null) return;
+    const { hasKey, keyChanged } = this.encryption.status(null, null);
+    const problems = vaultSecretsProblems({ hasKey, keyChanged, withheld: this.vault.currentState.withheldFiles });
+    for (const [key, problem] of Object.entries(problems)) this.alerts.report(key, problem);
   }
 
   /**

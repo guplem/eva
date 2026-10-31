@@ -19,6 +19,7 @@ import { fakeGithub, fakeGithubWrite } from "../../support/fake-github.ts";
 import { widgetTemplate } from "../../../src/core/widgets/widget-template.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
+import { testVaultKeyText } from "../../support/vault-key.ts";
 
 let sandbox: GitSandbox;
 let vault: string;
@@ -74,6 +75,7 @@ beforeEach(() => {
   sandbox = createGitSandbox();
   vault = sandbox.clone("vault");
   sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
+  sandbox.write(vault, ".eva/vault-key.json", testVaultKeyText);
   sandbox.git(vault, "add", "-A");
   sandbox.git(vault, "commit", "-q", "-m", "eva files");
   sandbox.git(vault, "push", "-q", "origin", "main");

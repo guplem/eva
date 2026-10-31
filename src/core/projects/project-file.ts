@@ -9,9 +9,13 @@ import {
   frontMatterPattern,
   parseFrontMatter,
   repoTypesWarning,
+  statusListText,
   titleHeading,
-  type ProjectStatus,
 } from "./project-catalog.ts";
+import type { ProjectStatus } from "../../shared/project-statuses.ts";
+
+/** The statuses in the comment after `status:` before `in-use` (#690). */
+const oldStatusList = "idea, active, paused or closed";
 
 export interface ProjectDetails {
   /** An empty title removes the heading, so the list shows the folder name. */
@@ -147,6 +151,8 @@ function editFrontMatter(source: string, changes: FrontMatterChanges): string | 
     // A changed value keeps the comment after it, such as `status: active # idea, active, ...`.
     if (typeof value === "string" && isScalar(old)) {
       old.value = value;
+      // The vault template wrote the old list of statuses. A comment that the person wrote stays.
+      if (key === "status" && old.comment?.trim() === oldStatusList) old.comment = ` ${statusListText}`;
       continue;
     }
     const node = document.createNode(value);

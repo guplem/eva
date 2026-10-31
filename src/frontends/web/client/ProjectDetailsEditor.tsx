@@ -11,14 +11,7 @@ import { BackButton } from "./MainNav.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, SelectField } from "./SettingsParts.tsx";
-
-export const statusChoices = [
-  { value: "", label: "None" },
-  { value: "idea", label: "Idea" },
-  { value: "active", label: "Active" },
-  { value: "paused", label: "Paused" },
-  { value: "closed", label: "Closed" },
-] as const;
+import { statusChoices, statusOf } from "./project-format.ts";
 
 const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
 
@@ -309,10 +302,6 @@ function ListField({ name, heading, icon, hint, values, draft, onDraft, onChange
 /** A tag or repository has no space, so a space or a comma separates two of them. */
 export function splitWords(text: string): string[] {
   return text.split(/[\s,]+/).filter((word) => word.length > 0);
-}
-
-export function statusOf(value: string): ProjectDetails["status"] {
-  return value === "idea" || value === "active" || value === "paused" || value === "closed" ? value : null;
 }
 
 function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {

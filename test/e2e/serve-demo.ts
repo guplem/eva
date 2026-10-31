@@ -47,6 +47,12 @@ sandbox.write(
   "Projects/2019-03-old-tool/AGENTS.md",
   "---\ncreated: 2019-03\nstatus: closed\ntags: [legacy]\n---\n# Old tool\n",
 );
+// A project that the person uses, not one that they develop (#690).
+sandbox.write(
+  vault,
+  "Projects/2024-09-01-0900-family-recipes/AGENTS.md",
+  "---\ncreated: 2024-09-01T09:00\nstatus: in-use\ntags: [home]\n---\n# Family recipes\n\nThe recipes and the menus of each week.\n",
+);
 sandbox.write(
   vault,
   "Projects/2024-06-01-0900-broken-notes/AGENTS.md",

@@ -85,11 +85,13 @@ Each project is a folder `Projects/YYYY-MM-DD-HHmm-name/`, named after its creat
 ```yaml
 ---
 created: 2026-01-31T09:15
-status: active # idea, active, paused or closed
+status: active # idea, active, in-use, paused or closed
 repos:
   - https://github.com/example/example-app
 ---
 ```
+
+`active` is a project that the person develops. `in-use` is a project that the person uses now, such as a project that makes the week's menus.
 
 The text under the front matter says what an agent must know about the project. The project's notes sit beside it.
 

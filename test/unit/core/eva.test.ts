@@ -131,6 +131,29 @@ describe("Eva", () => {
     expect(instance.status().vaultAutoSync).toBe(true);
   });
 
+  test("an Assistant chat knows the projects that the person develops and uses, also in an extra root (#690)", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-recipes/AGENTS.md",
+      "---\ncreated: 2025-03-02T10:15\nstatus: in-use\n---\n# Recipes\n\nThe menus of each week.\n",
+    );
+    const extraRoot = join(sandbox.root, "extra-projects");
+    mkdirSync(join(extraRoot, "2025-04-01-0900-website"), { recursive: true });
+    writeFileSync(
+      join(extraRoot, "2025-04-01-0900-website", "AGENTS.md"),
+      "---\ncreated: 2025-04-01T09:00\nstatus: active\n---\n# Website\n",
+    );
+    const engine = new FakeEngine();
+    const instance = start(engine, { projectRoots: [extraRoot] });
+    const session = instance.createAssistantSession({ source: "cli" });
+    await instance.sessions.send(session.id, "What should I cook?");
+    const prompt = engine.requests[0]?.appendSystemPrompt ?? "";
+    expect(prompt).toContain("- Recipes (`2025-03-02-1015-recipes`): The menus of each week.");
+    expect(prompt).toContain(
+      `- Website (\`2025-04-01-0900-website\`, in \`${join(extraRoot, "2025-04-01-0900-website")}\`)`,
+    );
+  });
+
   test("a retry with undo restores the files of the retried answers and pushes the undo (#525)", async () => {
     // Only the first two answers write: the new answer of the retry writes nothing.
     const engine = new FakeEngine((request, turnNumber) => {

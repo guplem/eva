@@ -53,7 +53,16 @@ describe("parseFrontMatter", () => {
     const result = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: dreaming\nrepos: nope\n---\n");
     expect(result.frontMatter?.status).toBeNull();
     expect(result.frontMatter?.repos).toEqual([]);
-    expect(result.warnings).toEqual(["status must be idea, active, paused or closed", "repos must be a list of URLs"]);
+    expect(result.warnings).toEqual([
+      "status must be idea, active, in-use, paused or closed",
+      "repos must be a list of URLs",
+    ]);
+  });
+
+  test("reads in-use: a project that the person uses now (#690)", () => {
+    const result = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: in-use\n---\n");
+    expect(result.frontMatter?.status).toBe("in-use");
+    expect(result.warnings).toEqual([]);
   });
 
   test("reports a file with no front matter, or broken YAML", () => {
@@ -242,6 +251,22 @@ describe("searchProjects", () => {
     ]);
   });
 
+  test("the current filter shows the projects that the person develops or uses (#690)", () => {
+    addProject("2024-01-01-0900-photo-sorter", "created: 2024-01-01T09:00\nstatus: closed");
+    addProject("2025-02-01-0900-recipes", "created: 2025-02-01T09:00\nstatus: in-use");
+    addProject("2026-05-01-0900-website", "created: 2026-05-01T09:00\nstatus: active");
+    addProject("2026-06-01-0900-someday", "created: 2026-06-01T09:00\nstatus: idea");
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+
+    expect(searchProjects(projects, { status: "current" }).map((project) => project.id)).toEqual([
+      "2026-05-01-0900-website",
+      "2025-02-01-0900-recipes",
+    ]);
+    expect(searchProjects(projects, { status: "in-use" }).map((project) => project.id)).toEqual([
+      "2025-02-01-0900-recipes",
+    ]);
+  });
+
   test("the words also match the tags, and the tag filter ignores case", () => {
     addProject("2025-02-01-0900-tax-report", "created: 2025-02-01T09:00\nstatus: active\ntags: [Life]", "\n# Taxes\n");
     addProject("2026-05-01-0900-photo-booth", "created: 2026-05-01T09:00\nstatus: active\ntags: [hobby]");
@@ -272,6 +297,8 @@ describe("parseProjectQuery", () => {
   test("status:any removes the status filter, and an unknown status stays a search word", () => {
     expect(parseProjectQuery("status:any taxes")).toEqual({ text: "taxes" });
     expect(parseProjectQuery("status:dreaming")).toEqual({ text: "status:dreaming" });
+    expect(parseProjectQuery("status:In-Use menus")).toEqual({ text: "menus", status: "in-use" });
+    expect(parseProjectQuery("status:current")).toEqual({ text: "", status: "current" });
     expect(parseProjectQuery("  ")).toEqual({ text: "" });
   });
 });

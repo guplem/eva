@@ -1890,25 +1890,33 @@ test("Project mode: the repository setup shows each item's light; Fix runs a dir
 test("the status chips hide a closed project until a tap clears the filter", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  const active = page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" });
-  await expect(active).toHaveAttribute("aria-pressed", "true");
+  const current = page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Current" });
+  await expect(current).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
-  await active.click();
-  await expect(active).toHaveAttribute("aria-pressed", "false");
+  // Current shows the projects that the person develops and the ones in use (#690).
+  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Family recipes/ }).getByText("In use", { exact: true })).toBeVisible();
+  await current.click();
+  await expect(current).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Closed" }).click();
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+  await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "In use" }).click();
+  await expect(page.getByRole("button", { name: /Family recipes/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
   // A status word typed in the search wins over the chip.
-  await active.click();
   await page.getByLabel("Search projects").fill("status:closed");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await page.getByLabel("Search projects").fill("status:in-use");
+  await expect(page.getByRole("button", { name: /Family recipes/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
 });
 
 test("the tag chips show only the projects with that tag", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" }).click();
+  await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Current" }).click();
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
   const web = page.getByRole("group", { name: "Tag" }).getByRole("button", { name: "#web" });
   await web.click();
@@ -5326,7 +5334,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   const run = test.info().project.name;
   await logIn(page);
   await openProjects(page);
-  await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" }).click();
+  await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Current" }).click();
   await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();
@@ -5336,7 +5344,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(page.getByRole("region", { name: "Whole file" })).toHaveClass(/\bcard\b/);
 
   await page.getByLabel("Title").fill(`Renamed ${run}`);
-  await page.getByLabel("Project status").selectOption("active");
+  await page.getByLabel("Project status").selectOption("in-use");
   await page.getByLabel("Add a tag").fill("ideas");
   await page.getByRole("button", { name: "Add the tag" }).click();
   await page.getByLabel("Add a repository").fill("https://github.com/example-owner/draft");
@@ -5348,7 +5356,8 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(saveDetails.getByText("Saved", { exact: true })).toBeVisible();
   await expect(saveDetails).not.toHaveClass(/\bdone\b/, { timeout: 5000 });
   const file = page.getByLabel("AGENTS.md");
-  await expect(file).toHaveValue(/status: active # idea, active, paused or closed/);
+  // The demo file has the old list of statuses, and a save of the status writes the new list (#690).
+  await expect(file).toHaveValue(/status: in-use # idea, active, in-use, paused or closed/);
   await expect(file).toHaveValue(/# Renamed/);
 
   if (run === "phone") {

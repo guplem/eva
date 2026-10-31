@@ -8,7 +8,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
-import type { ProjectStatus } from "./project-catalog.ts";
+import type { ProjectStatus } from "../../shared/project-statuses.ts";
 import type { RepositoryVisibility } from "../vault/github-repositories.ts";
 import { applyProjectDetails, setRepositoryType } from "./project-file.ts";
 import { formatProjectId, projectSlug } from "./project-id.ts";

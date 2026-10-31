@@ -1760,7 +1760,7 @@ describe("approvals and commands", () => {
     await settle(bot, () => telegram.sentTexts().length >= 2);
     expect(telegram.sentTexts()).toEqual([
       "2025-02-01-0900-tax-report  active  Taxes  #life",
-      "2024-01-01-0900-photo-sorter  ?  photo-sorter  #life\n  ⚠ status must be idea, active, paused or closed",
+      "2024-01-01-0900-photo-sorter  ?  photo-sorter  #life\n  ⚠ status must be idea, active, in-use, paused or closed",
     ]);
   });
 

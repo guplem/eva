@@ -22,8 +22,8 @@ import { BackButton } from "./MainNav.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
-import { ProjectsInUse } from "./MentionPicker.tsx";
-import { projectsInUse } from "./mentions.ts";
+import { BusyProjects } from "./MentionPicker.tsx";
+import { busyProjects } from "./mentions.ts";
 import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf, newChatPageId } from "./navigation.ts";
 import { goTo, replaceAddress } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -112,7 +112,7 @@ export function AssistantView({
   const isRunning = (sessionId: string): boolean =>
     sessionId in live.steps || sessions.some((session) => session.id === sessionId && session.running);
   // The @ search shows first the projects with a Project chat that runs now (issue 657).
-  const inUse = projectsInUse(sessions, (sessionId) => sessionId in live.steps);
+  const busy = busyProjects(sessions, (sessionId) => sessionId in live.steps);
   // Any root chat, and the chats list first, so a switch between the lists keeps the open chat.
   // True while the page shows a new chat before its first message. The chat exists only once it is sent.
   const drafting = selectedId === newChatPageId;
@@ -311,7 +311,7 @@ export function AssistantView({
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
-        <ProjectsInUse.Provider value={inUse}>
+        <BusyProjects.Provider value={busy}>
           {notices}
           {selected === undefined ? (
             <NewChatDraft
@@ -354,7 +354,7 @@ export function AssistantView({
               />
             </>
           )}
-        </ProjectsInUse.Provider>
+        </BusyProjects.Provider>
       </main>
       {/* The inspector is about one chat, so a new chat draft has none. */}
       {selected !== undefined && <ChatPanel shown={panelShown} {...chat} />}

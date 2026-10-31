@@ -7,6 +7,7 @@ import { Fragment, type CSSProperties, type ReactElement, type ReactNode } from 
 import { Icon } from "./icons.tsx";
 import { destinations, notificationCenter, type Destination } from "./navigation.ts";
 import { settingsSections } from "./settings-routes.ts";
+import { statusChips } from "./project-format.ts";
 
 /**
  * A pill bar with the sentence of the wait. A known share (0 to 1) fills the bar and shows the
@@ -422,14 +423,14 @@ function ProjectListSkeleton(): ReactElement {
         {...copies(".project-search")}
       />
       <div className="filter-chips">
-        {["Active", "Idea", "Paused", "Closed"].map((status, index) => (
+        {statusChips.map((chip, index) => (
           <button
-            key={status}
+            key={chip.value}
             className="filter-chip skeleton-ghost"
             disabled
             {...(index === 0 ? copies(".filter-chip") : {})}
           >
-            {status}
+            {chip.text}
           </button>
         ))}
       </div>

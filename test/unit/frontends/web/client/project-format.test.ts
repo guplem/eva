@@ -25,6 +25,7 @@ describe("countOf", () => {
 describe("statusPill", () => {
   test("gives each status its word and its colour", () => {
     expect(statusPill("active")).toEqual({ text: "Active", tone: "ok" });
+    expect(statusPill("in-use")).toEqual({ text: "In use", tone: "live" });
     expect(statusPill("idea")).toEqual({ text: "Idea", tone: "idle" });
     expect(statusPill("paused")).toEqual({ text: "Paused", tone: "warn" });
     expect(statusPill("closed")).toEqual({ text: "Closed", tone: "idle" });

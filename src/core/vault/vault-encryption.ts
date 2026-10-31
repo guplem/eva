@@ -175,6 +175,11 @@ export class VaultEncryption {
    */
   async setPatterns(deviceToken: string | null, secret: string | null, changes: SecretFilesChanges): Promise<void> {
     const vaultPath = this.vaultPath();
+    if (changes.added.some((pattern) => pattern.trim().startsWith("!")))
+      throw new EvaError(
+        "config_invalid",
+        "To stop a default pattern, turn off its switch. A line with ! is not a pattern here.",
+      );
     const added = changes.added
       .map((pattern) => pattern.trim())
       .filter((pattern) => pattern !== "" && !pattern.startsWith("!"));

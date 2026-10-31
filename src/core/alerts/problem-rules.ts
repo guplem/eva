@@ -120,9 +120,13 @@ export function vaultSecretsProblems(input: {
   };
 }
 
-/** The news of the defaults that an update added: Eva encrypted their files at once. */
-export function newSecretDefaultsNews(patterns: readonly string[]): string {
-  return `This version of Eva encrypts more secret files by default: ${patterns.join(", ")}. Eva encrypted the files of the vault that match them. Settings, on the Vault page, lists every pattern and its switch.`;
+/** The news of the defaults that an update added, with each file that Eva encrypted for them at once. */
+export function newSecretDefaultsNews(patterns: readonly string[], files: readonly string[]): string {
+  const encrypted =
+    files.length === 0
+      ? "No file of the vault matches them yet."
+      : `Eva encrypted these files of the vault: ${files.join(", ")}.`;
+  return `This version of Eva encrypts more secret files by default: ${patterns.join(", ")}. ${encrypted} Settings, on the Vault page, lists every pattern and its switch.`;
 }
 
 /** A laptop that wakes up with no network fails a check or two; only a long failure needs the owner. */

@@ -156,6 +156,8 @@ import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
 import { VaultEncryption } from "./vault/vault-encryption.ts";
 import { VaultKeys } from "./vault/vault-keys.ts";
 import { VaultSecrets } from "./vault/vault-secrets.ts";
+import { filesFreedBy } from "./vault/encrypted-files.ts";
+import { SecretMatcher } from "./vault/secret-files.ts";
 import type { UndoPreview } from "./vault/vault-snapshots.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
@@ -2394,7 +2396,11 @@ export class Eva {
     const problems = vaultSecretsProblems({ hasKey, keyChanged, withheld: this.vault.currentState.withheldFiles });
     for (const [key, problem] of Object.entries(problems)) this.alerts.report(key, problem);
     const added = this.vaultSecrets?.takeNewDefaults() ?? [];
-    if (added.length > 0) this.alerts.notify("vault_new_secret_defaults", "news", newSecretDefaultsNews(added));
+    if (added.length > 0) {
+      // The round that took the new defaults encrypted their files, so each one carries Eva's header now.
+      const files = filesFreedBy(this.options.config.vaultPath, new SecretMatcher(added), new SecretMatcher([]));
+      this.alerts.notify("vault_new_secret_defaults", "news", newSecretDefaultsNews(added, files));
+    }
   }
 
   /**

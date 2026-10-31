@@ -343,10 +343,15 @@ describe("vaultSecretsProblems (#707)", () => {
 });
 
 describe("newSecretDefaultsNews (#707)", () => {
-  test("names each new pattern, and where to see its files", () => {
-    const news = newSecretDefaultsNews(["*.pfx", ".netrc"]);
+  test("names each new pattern and each file that Eva encrypted for it", () => {
+    const news = newSecretDefaultsNews(["*.pfx", ".netrc"], ["certs/me.pfx"]);
     expect(news).toContain("*.pfx");
     expect(news).toContain(".netrc");
+    expect(news).toContain("certs/me.pfx");
     expect(news).toContain("Settings");
+  });
+
+  test("says so when no file of the vault matches them", () => {
+    expect(newSecretDefaultsNews(["*.pfx"], [])).toContain("No file of the vault matches them yet.");
   });
 });

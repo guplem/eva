@@ -362,3 +362,13 @@ describe("a copy of an encrypted file under a freed name (second review of #707)
     expect(read("deploy/old.key")).not.toContain("Results.");
   });
 });
+
+describe("a line with ! in the person's patterns (second review of #707)", () => {
+  test("is refused with a word on the switches, never dropped in silence", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const refused = await failure(() => service.setPatterns(null, null, { added: ["!*.key"], off: [] }));
+    expect(isEvaError(refused, "config_invalid")).toBe(true);
+    expect(refused instanceof Error ? refused.message : "").toContain("switch");
+  });
+});

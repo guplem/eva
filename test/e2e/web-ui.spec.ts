@@ -6250,6 +6250,31 @@ test("Files: a drag of a divider resizes only the column at its left (issue 626)
   await expectWidth(vault, usual);
 });
 
+test("Files: a quick button makes the file large or small, and the large file hides the search and favorites (issue 733)", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows the file alone already.");
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  const file = page.getByRole("region", { name: "File text" });
+  const vaultList = page.getByRole("list", { name: "Contents of Vault" });
+  const search = page.getByRole("searchbox", { name: "Search the vault" });
+  // A favorite makes the bar show, so the test can see it hide.
+  await page.getByRole("button", { name: "Add to favorites" }).click();
+  const favorites = page.getByRole("navigation", { name: "Favorites" });
+  await expect(favorites).toBeVisible();
+  await expect(search).toBeVisible();
+  await file.getByRole("button", { name: "Make the file large" }).click();
+  await expect(vaultList).toBeHidden();
+  await expect(search).toBeHidden();
+  await expect(favorites).toBeHidden();
+  await file.getByRole("button", { name: "Make the file small" }).click();
+  await expect(vaultList).toBeVisible();
+  await expect(search).toBeVisible();
+  await expect(favorites).toBeVisible();
+  await page.getByRole("button", { name: "Remove from favorites" }).click();
+});
+
 test("Files: the one folder view, the large file and a phone show no divider (issue 626)", async ({
   page,
 }, testInfo) => {

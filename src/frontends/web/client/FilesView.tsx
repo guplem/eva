@@ -220,37 +220,40 @@ export function FilesView(): ReactElement {
             <DownloadButton key={path} path={path} folder={true} />
           )}
         </div>
-        <div className="files-search">
-          {/* A button must not sit in a label, so only the icon and the text box share the label. */}
-          <div className="search-field">
-            <label className="files-search-text">
-              <Icon name="search" />
-              <input
-                type="search"
-                aria-label="Search the vault"
-                placeholder="Search the vault"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="choice-chip files-search-inside"
-              aria-label="Search inside files"
-              aria-pressed={inside}
-              data-tooltip="Also search the text of each file"
-              onClick={() => setInside((on) => !on)}
-            >
-              {inside && <Icon name="check" className="choice-tick" />}
-              Inside files
-            </button>
+        {/* The large file gets the whole page, so the search and the favorites step aside. */}
+        {!large && (
+          <div className="files-search">
+            {/* A button must not sit in a label, so only the icon and the text box share the label. */}
+            <div className="search-field">
+              <label className="files-search-text">
+                <Icon name="search" />
+                <input
+                  type="search"
+                  aria-label="Search the vault"
+                  placeholder="Search the vault"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="choice-chip files-search-inside"
+                aria-label="Search inside files"
+                aria-pressed={inside}
+                data-tooltip="Also search the text of each file"
+                onClick={() => setInside((on) => !on)}
+              >
+                {inside && <Icon name="check" className="choice-tick" />}
+                Inside files
+              </button>
+            </div>
           </div>
-        </div>
+        )}
         {query.trim() !== "" ? (
           <SearchResults query={query.trim()} inside={inside} smart={smart} />
         ) : (
           <>
-            <FavoriteBar favorites={favorites} openPath={shownPath} smart={smart} onChange={setFavorites} />
+            {!large && <FavoriteBar favorites={favorites} openPath={shownPath} smart={smart} onChange={setFavorites} />}
             <div className="files-columns" ref={columns}>
               {crumbs.map((crumb, index) => (
                 <Column
@@ -768,13 +771,10 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
   }
   items.push({ label: "Download", icon: "download", onChoose: () => void download.start() });
   // A phone and the one folder view show no folder columns, so the file fills the page already.
-  if (!isPhone && !oneFolder) {
-    items.push({
-      label: large ? "Make the file small" : "Make the file large",
-      icon: large ? "shrink" : "expand",
-      onChoose: () => onLarge(!large),
-    });
-  }
+  const canLarge = !isPhone && !oneFolder;
+  const largeLabel = large ? "Make the file small" : "Make the file large";
+  const largeIcon = large ? "shrink" : "expand";
+  if (canLarge) items.push({ label: largeLabel, icon: largeIcon, onChoose: () => onLarge(!large) });
 
   const save = async (): Promise<boolean> => {
     if (draft === null) return false;
@@ -810,6 +810,17 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
       <div className="files-file-bar">
         <span className="files-size">{sizeWords(file.size)}</span>
         <div className="files-file-actions">
+          {/* The menu has the same item, but a person makes the file large often, so it is one tap away. */}
+          {canLarge && (
+            <button
+              className="icon-button"
+              aria-label={largeLabel}
+              data-tooltip={largeLabel}
+              onClick={() => onLarge(!large)}
+            >
+              <Icon name={largeIcon} />
+            </button>
+          )}
           {draft === null ? (
             <>
               {saved && (

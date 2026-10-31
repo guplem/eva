@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { api, type ChangelogEntry } from "./api.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { errorText } from "./SettingsParts.tsx";
-import { releaseDay } from "./update-words.ts";
+import { releaseDay, releasePage } from "./update-words.ts";
 import { VersionRowText } from "./UpdateVersionDialog.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
@@ -69,6 +69,7 @@ export function ChangelogDialog({ onClose }: { readonly onClose: () => void }): 
                   version={entry.version}
                   day={releaseDay(entry.publishedAt, now)}
                   headline={entry.headline ?? "No listed changes."}
+                  href={releasePage(entry.version)}
                 />
                 {entry.installed && <span className="status-pill ok">Installed</span>}
                 {entry.headline !== null && (

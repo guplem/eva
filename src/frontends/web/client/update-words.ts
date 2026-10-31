@@ -1,4 +1,5 @@
 /** The words and the face of the Updates page, apart from the components so that unit tests reach them. */
+import { evaRepository } from "../../../shared/version.ts";
 import { describeUpdate, downloadShare } from "../../cli/client.ts";
 import type { UpdateStatus } from "./api.ts";
 import { chatGroup, chatTime } from "./chat-list.ts";
@@ -28,6 +29,10 @@ export function releaseDay(publishedAt: string | null, now: Date): string {
   return chatGroup(at, now) === "Today" ? "Today" : chatTime(at, now);
 }
 
+/** The GitHub page of one release, with its full notes and the link of each pull request. */
+export function releasePage(version: string): string {
+  return `https://github.com/${evaRepository}/releases/tag/v${version}`;
+}
 /** The newer releases, newest first, then the installed version. */
 export function versionRows(update: UpdateStatus, now: Date): VersionRow[] {
   const newer = update.releases.map((release) => ({

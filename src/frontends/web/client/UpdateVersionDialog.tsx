@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import { majorUpdateWarning, policyMovesOn } from "../../cli/client.ts";
 import { Icon } from "./icons.tsx";
-import { installLabel, restartNote, versionRows } from "./update-words.ts";
+import { installLabel, releasePage, restartNote, versionRows } from "./update-words.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -108,6 +108,9 @@ export function UpdateVersionDialog(props: {
               <summary>Every change up to v{chosen.version}</summary>
               <div className="release-summary">{chosen.summary}</div>
             </details>
+            <a className="release-page" href={releasePage(chosen.version)} target="_blank" rel="noreferrer">
+              See v{chosen.version} on GitHub
+            </a>
           </>
         )}
         <div className="update-version-actions">
@@ -127,10 +130,23 @@ export function UpdateVersionDialog(props: {
   );
 }
 
-export function VersionRowText(props: { version: string; day: string; headline: string }): ReactElement {
+export function VersionRowText(props: {
+  version: string;
+  day: string;
+  headline: string;
+  /** The page that a tap on the row opens, or none when a tap picks the row. */
+  href?: string;
+}): ReactElement {
   return (
     <>
-      <span className="version-number">v{props.version}</span>
+      {props.href === undefined ? (
+        <span className="version-number">v{props.version}</span>
+      ) : (
+        // The link covers its row, so a tap anywhere on the release opens it.
+        <a className="version-number row-link" href={props.href} target="_blank" rel="noreferrer">
+          v{props.version}
+        </a>
+      )}
       <span className="version-day">{props.day}</span>
       <span className="version-headline">{props.headline}</span>
     </>

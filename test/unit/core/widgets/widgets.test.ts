@@ -435,6 +435,18 @@ describe("the grid", () => {
     expect(widgets.list()[0]?.state).toBe("approve");
   });
 
+  test("a base widget on in the vault with no approval here shows its own name", () => {
+    writeWidgetList(vault, [
+      {
+        id: "example-owner/base-widget",
+        repository: "https://github.com/example-owner/base-widget",
+        enabled: true,
+        inputs: {},
+      },
+    ]);
+    expect(widgets.frames(theme, [])[0]?.name).toBe("Base");
+  });
+
   test("keeps a working token, renews an old one, and releases tokens", async () => {
     const token = await approveHabits();
     const [frame] = widgets.frames(theme, [token]);

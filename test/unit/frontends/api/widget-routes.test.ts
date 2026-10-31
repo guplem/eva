@@ -7,7 +7,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
-import type { BaseWidget } from "../../../../src/core/widgets/base-widgets.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -42,10 +41,11 @@ let vault: string;
 let eva: Eva;
 let api: LocalApi;
 
-function evaWith(
-  vaultPath: string | null,
-  shipped: { baseWidgets?: readonly BaseWidget[] } = { baseWidgets: [] },
-): Eva {
+/**
+ * An Eva of the test home. The base widgets would share the one local remote, so she has none,
+ * unless `withBaseWidgets` keeps the ones that ship with Eva.
+ */
+function evaWith(vaultPath: string | null, withBaseWidgets = false): Eva {
   return new Eva({
     paths: homePaths(home),
     config: { ...defaultConfig, vaultPath, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
@@ -56,8 +56,7 @@ function evaWith(
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
     widgetRemote: () => sandbox.remote,
-    // The base widgets would share the one local remote, and the list counts each widget.
-    ...shipped,
+    ...(withBaseWidgets ? {} : { baseWidgets: [] }),
     // The notes of an update come from GitHub: a test reaches no network.
     githubRequest: () => Promise.resolve({ status: 404, body: "" }),
   });
@@ -152,7 +151,7 @@ describe("the widget list", () => {
   });
 
   test("a new Eva lists the habits and weather widgets that ship with her, off", () => {
-    const shipped = evaWith(vault, {});
+    const shipped = evaWith(vault, true);
     try {
       expect(shipped.widgets?.list().map((item) => [item.name, item.state, item.sources])).toEqual([
         ["Habits", "off", ["base"]],

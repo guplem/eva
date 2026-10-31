@@ -175,9 +175,15 @@ export class Widgets {
   private readonly previews: WidgetPreviews;
   /** The widgets whose last update check failed: since when, and why. */
   private readonly failures: Map<string, { readonly since: number; readonly reason: string }>;
+  /** Each base widget's address, with the name that shows before Eva reads its manifest. */
+  private readonly base: readonly { readonly address: WidgetAddress; readonly name: string }[];
 
   constructor(options: WidgetsOptions) {
     this.options = options;
+    this.base = options.baseWidgets.flatMap(({ url, name }) => {
+      const address = widgetAddress(url);
+      return address === null ? [] : [{ address, name }];
+    });
     this.sessions = new Map();
     this.reviews = new Map();
     this.installing = new Map();
@@ -233,7 +239,7 @@ export class Widgets {
     const entries = readWidgetList(this.options.vaultPath);
     const listed = new Set(entries.map((entry) => entry.id));
     const projects = new Set(this.projectAddresses().map((address) => address.id));
-    const base = new Map(this.baseAddresses().map(({ address, name }) => [address.id, name]));
+    const base = new Set(this.base.map((widget) => widget.address.id));
     return this.allAddresses(entries).map(({ address, entry }) => {
       const record = this.options.approvals.get(address.id);
       const reviewed = this.reviews.get(address.id)?.review;
@@ -246,8 +252,7 @@ export class Widgets {
         id: address.id,
         repository: address.url,
         owner: address.owner,
-        // Before a review, a base widget shows its own name, such as "Habits", not its repository name.
-        name: this.options.redact(record?.name ?? reviewed?.manifest?.name ?? base.get(address.id) ?? address.name),
+        name: this.options.redact(record?.name ?? reviewed?.manifest?.name ?? this.fallbackName(address)),
         sources,
         state: entry?.enabled !== true ? "off" : matches(record, entry) ? "on" : "approve",
         size: record?.size ?? reviewed?.manifest?.size ?? null,
@@ -836,7 +841,8 @@ export class Widgets {
       .filter((entry) => entry.enabled)
       .map((entry) => {
         const record = this.options.approvals.get(entry.id);
-        const name = widgetAddress(entry.repository)?.name ?? entry.id;
+        const address = widgetAddress(entry.repository);
+        const name = address === null ? entry.id : this.fallbackName(address);
         if (record === null || !matches(record, entry))
           return {
             id: entry.id,
@@ -976,7 +982,7 @@ export class Widgets {
       all.push({ address, entry });
     };
     for (const entry of entries) add(widgetAddress(entry.repository), entry);
-    for (const address of [...this.projectAddresses(), ...this.baseAddresses().map((base) => base.address)]) {
+    for (const address of [...this.projectAddresses(), ...this.base.map((widget) => widget.address)]) {
       add(address, null);
     }
     return all;
@@ -992,11 +998,9 @@ export class Widgets {
     );
   }
 
-  private baseAddresses(): { address: WidgetAddress; name: string }[] {
-    return this.options.baseWidgets.flatMap(({ url, name }) => {
-      const address = widgetAddress(url);
-      return address === null ? [] : [{ address, name }];
-    });
+  /** The name of a widget before Eva reads its manifest: a base widget's own name, else its repository's. */
+  private fallbackName(address: WidgetAddress): string {
+    return this.base.find((widget) => widget.address.id === address.id)?.name ?? address.name;
   }
 }
 

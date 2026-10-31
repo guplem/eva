@@ -141,8 +141,10 @@ label.version-row {
   border-radius: var(--radius-input);
 }
 
-.version-row:has(> .row-link):hover {
-  background: var(--soft);
+@media (hover: hover) and (pointer: fine) {
+  .version-row:has(> .row-link):hover {
+    background: var(--soft);
+  }
 }
 
 .row-link {

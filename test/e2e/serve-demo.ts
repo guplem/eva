@@ -122,9 +122,24 @@ for (const [path, text] of Object.entries(habitsWidgetFiles)) {
   if (path.startsWith("data/habits/") && path !== "data/habits/index.json")
     sandbox.write(vault, `Life/Habits/${path.slice("data/habits/".length)}`, text);
 }
+// A widget project of the same widget, with one clone, so its page shows Preview (#693).
+const widgetProject = "Projects/2026-01-01-0900-habits-widget";
+sandbox.write(
+  vault,
+  `${widgetProject}/AGENTS.md`,
+  `---\ncreated: 2026-01-01T09:00\nstatus: active\nrepos:\n  - https://github.com/example-owner/habits-widget\nrepo_types:\n  https://github.com/example-owner/habits-widget: widget\n---\n# Habits widget\n\nThe habits of the home page.\n`,
+);
+sandbox.write(vault, ".gitignore", "Projects/*/repos/\n");
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");
+mkdirSync(join(vault, widgetProject, "repos", "clone-0"), { recursive: true });
+habitsWidget.git(join(vault, widgetProject, "repos", "clone-0"), "clone", "-q", habitsWidget.remote, "habits-widget");
+// A change that is not pushed: the preview shows it, and the installed widget does not.
+writeFileSync(
+  join(vault, widgetProject, "repos", "clone-0", "habits-widget", "config.json"),
+  `${JSON.stringify({ title: "Mock habits", habits: "Life/Habits" }, null, 2)}\n`,
+);
 
 const writtenNotes = new Set<string>();
 const engine = new FakeEngine(async function* (request, turnNumber) {

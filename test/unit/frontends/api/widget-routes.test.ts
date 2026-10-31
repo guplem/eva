@@ -52,6 +52,8 @@ function evaWith(vaultPath: string | null): Eva {
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
     widgetRemote: () => sandbox.remote,
+    // The notes of an update come from GitHub: a test reaches no network.
+    githubRequest: () => Promise.resolve({ status: 404, body: "" }),
   });
 }
 
@@ -156,6 +158,29 @@ describe("the widget list", () => {
     expect(existsSync(join(vault, "Life/Habits/walk.json"))).toBe(true);
   });
 
+  test("checks for updates at once, raises a notice for a new permission, and keeps the old version on a refusal", async () => {
+    await approvedSrc();
+    const work = sandbox.clone("again");
+    sandbox.write(
+      work,
+      "eva-widget.json",
+      JSON.stringify({ ...manifest, hosts: [...manifest.hosts, { url: "https://rain.example.com", why: "Rain." }] }),
+    );
+    sandbox.git(work, "commit", "-q", "-am", "feat: rain");
+    sandbox.git(work, "push", "-q", "origin", "main");
+    const checked = (await (await call("/api/widgets/updates", { method: "POST" })).json()) as {
+      update: { permissions: string[] } | null;
+    }[];
+    expect(checked[0]?.update?.permissions).toEqual(["Send requests to https://rain.example.com."]);
+    expect(eva.status().problems.join(" ")).toContain("https://rain.example.com");
+    const refused = (await (await call(`/api/widgets/${id}/refuse`, { method: "POST" })).json()) as {
+      update: unknown;
+    }[];
+    expect(refused[0]?.update).toBeNull();
+    expect(eva.status().problems.join(" ")).not.toContain("https://rain.example.com");
+    expect((await call(`/api/widgets/${id}/refuse`, { method: "POST" })).status).toBe(400);
+  });
+
   test("approves with read access only, for a conflict of the data format", async () => {
     await call("/api/widgets", { method: "POST", body: { repository: "Example-Owner/Habits" } });
     const review = (await (await call(`/api/widgets/${id}/review`)).json()) as { commit: string };
@@ -214,6 +239,41 @@ describe("the widget list", () => {
       });
       expect({ path, status: response.status }).toEqual({ path, status: 403 });
     }
+  });
+});
+
+describe("the preview of a clone", () => {
+  test("serves a change that is not pushed, in a frame with the widget policy, and asks before My data", async () => {
+    const project = "2026-01-01-0900-habits";
+    const projectFolder = join(vault, "Projects", project);
+    mkdirSync(join(projectFolder, "repos", "clone-0"), { recursive: true });
+    writeFileSync(
+      join(projectFolder, "AGENTS.md"),
+      `---\ncreated: 2026-01-01T09:00\nstatus: active\nrepos:\n  - https://github.com/example-owner/habits\nrepo_types:\n  https://github.com/example-owner/habits: widget\n---\n\n# Habits\n`,
+    );
+    sandbox.git(join(projectFolder, "repos", "clone-0"), "clone", "-q", sandbox.remote, "habits");
+    writeFileSync(join(projectFolder, "repos", "clone-0", "habits", "index.html"), "<p>not pushed</p>");
+    const place = { project, clone: "clone-0", repository: "habits", scheme: "dark", colors: {} };
+    const preview = (await (
+      await call("/api/widgets/preview", { method: "POST", body: { ...place, mode: "example" } })
+    ).json()) as { src: string; problems: string[] };
+    expect(preview.problems).toEqual([]);
+    const page = await frameCall(preview.src);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toBe("<p>not pushed</p>");
+    expect(page.headers.get("content-security-policy") ?? "").toContain("https://api.example.com");
+    const mine = (await (
+      await call("/api/widgets/preview", { method: "POST", body: { ...place, mode: "mine" } })
+    ).json()) as { src: string | null; ask: { digest: string } | null };
+    expect(mine.src).toBeNull();
+    const approved = await call("/api/widgets/preview/approve", {
+      method: "POST",
+      body: { ...place, digest: mine.ask?.digest, values: { habits: "Life/Habits" } },
+    });
+    const shown = (await approved.json()) as { src: string };
+    expect((await frameCall(shown.src.replace(/index\.html$/, "config.json"))).status).toBe(200);
+    // The approval of a preview stays apart from the vault list.
+    expect(existsSync(join(vault, ".eva/widgets.json"))).toBe(false);
   });
 });
 

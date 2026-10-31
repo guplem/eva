@@ -4,7 +4,8 @@
  * shows the way to start (issue 392).
  */
 import { useState, type ReactElement } from "react";
-import type { CloneDetails, Project, RepositoryDetails, SessionRecord } from "./api.ts";
+import type { CloneDetails, PreviewPlace, Project, RepositoryDetails, SessionRecord } from "./api.ts";
+import { WidgetPreviewDialog } from "./WidgetPreviewDialog.tsx";
 import { Icon } from "./icons.tsx";
 import {
   canPush,
@@ -15,6 +16,7 @@ import {
   repositoryWebUrl,
   statusPill,
   syncPills,
+  widgetRepositoryNames,
   type Pill,
 } from "./project-format.ts";
 import { chatTime, type ChatState } from "./chat-list.ts";
@@ -93,6 +95,9 @@ export function ProjectPage({
   const behind =
     clones?.flatMap((clone) => clone.repositories).filter((repository) => (repository.behind ?? 0) > 0).length ?? 0;
   const specialist = project.frontMatter.type === "specialist";
+  const widgetRepositories = widgetRepositoryNames(project);
+  // One object for the open preview, so the dialog loads once and not at each render.
+  const [preview, setPreview] = useState<PreviewPlace | null>(null);
   return (
     <>
       <div className="main-header">
@@ -175,9 +180,14 @@ export function ProjectPage({
             onPull={onPull}
             onPush={onPush}
             specialist={specialist}
+            widgetRepositories={widgetRepositories}
+            onPreview={(clone, repository) =>
+              setPreview({ project: project.id, clone: clone.name, repository: repository.name })
+            }
           />
         )}
       </div>
+      {preview !== null && <WidgetPreviewDialog place={preview} onClose={() => setPreview(null)} />}
     </>
   );
 }
@@ -236,6 +246,8 @@ function ClonesSection({
   onPull,
   onPush,
   specialist,
+  widgetRepositories,
+  onPreview,
 }: Pick<
   ProjectPageProps,
   | "clones"
@@ -258,6 +270,9 @@ function ClonesSection({
   readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
   /** A specialist shows its old clones only so that they can go: it makes no new one. */
   readonly specialist: boolean;
+  /** The folder names of the widget repositories: each gets a Preview button (#693). */
+  readonly widgetRepositories: ReadonlySet<string>;
+  readonly onPreview: (clone: CloneDetails, repository: RepositoryDetails) => void;
 }): ReactElement {
   return (
     <section className="clones-section" aria-labelledby="clones-heading">
@@ -295,6 +310,8 @@ function ClonesSection({
                 syncBusy={syncWork !== null}
                 onPull={(repository) => onPull(clone, repository)}
                 onPush={(repository) => onPush(clone, repository)}
+                widgetRepositories={widgetRepositories}
+                onPreview={(repository) => onPreview(clone, repository)}
               />
             ))}
 
@@ -402,6 +419,8 @@ interface CloneCardProps {
   readonly syncBusy: boolean;
   readonly onPull: (repository: RepositoryDetails) => void;
   readonly onPush: (repository: RepositoryDetails) => void;
+  readonly widgetRepositories: ReadonlySet<string>;
+  readonly onPreview: (repository: RepositoryDetails) => void;
 }
 
 /** A clone holds every repository of the project (issue 521), so the card has one row for each. */
@@ -417,6 +436,8 @@ function CloneCard({
   syncBusy,
   onPull,
   onPush,
+  widgetRepositories,
+  onPreview,
 }: CloneCardProps): ReactElement {
   const [deleting, setDeleting] = useState(false);
   // On the head only: a chat row has its own menu, and a right click there must not open two.
@@ -452,6 +473,7 @@ function CloneCard({
           busy={pulling !== null || syncBusy}
           onPull={() => onPull(repository)}
           onPush={() => onPush(repository)}
+          onPreview={widgetRepositories.has(repository.name) ? () => onPreview(repository) : null}
         />
       ))}
       {chats.map((chat) => (
@@ -474,12 +496,15 @@ function RepositoryRow({
   busy,
   onPull,
   onPush,
+  onPreview,
 }: {
   readonly repository: RepositoryDetails;
   /** A pull runs, so the buttons wait. */
   readonly busy: boolean;
   readonly onPull: () => void;
   readonly onPush: () => void;
+  /** Null for a repository that is not a widget. */
+  readonly onPreview: (() => void) | null;
 }): ReactElement {
   return (
     <div className="clone-repository" aria-label={`Repository ${repository.name}`}>
@@ -495,8 +520,13 @@ function RepositoryRow({
           <StatusPill key={pill.text} pill={pill} />
         ))}
       </div>
-      {((repository.behind ?? 0) > 0 || canPush(repository)) && (
+      {((repository.behind ?? 0) > 0 || canPush(repository) || onPreview !== null) && (
         <div className="button-row">
+          {onPreview !== null && (
+            <button className="soft small" onClick={onPreview}>
+              <Icon name="eye" /> Preview
+            </button>
+          )}
           {(repository.behind ?? 0) > 0 && (
             <button className="soft small" disabled={busy} onClick={onPull}>
               <Icon name="download" /> Pull

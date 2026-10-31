@@ -110,4 +110,17 @@ describe("WidgetCopies", () => {
     copies.remove(address);
     expect(existsSync(copies.folderOf(address))).toBe(false);
   });
+
+  test("the light check names the newest commit with no download", async () => {
+    const first = commit({ "eva-widget.json": "{}" }, "one");
+    expect(await copies.newestCommit(address)).toBe(first);
+    expect(existsSync(copies.folderOf(address))).toBe(false);
+    const broken = new WidgetCopies({
+      folder,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      remoteOf: () => join(folder, "no-such-remote"),
+    });
+    expect(isEvaError(await broken.newestCommit(address).catch((error: unknown) => error), "git_failed")).toBe(true);
+  });
 });

@@ -49,7 +49,12 @@ export interface LiveSettingsOptions {
 }
 
 /** Settings that apply at once; any other change waits for a restart. */
-const liveSettingKeys: readonly string[] = ["updates", "sync.pullIntervalMinutes", "trust.trustedRepositoryOwners"];
+const liveSettingKeys: readonly string[] = [
+  "updates",
+  "sync.pullIntervalMinutes",
+  "widgets.checkIntervalMinutes",
+  "trust.trustedRepositoryOwners",
+];
 
 export class LiveSettings {
   private readonly options: LiveSettingsOptions;

@@ -610,6 +610,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     if (action === "pick_version") setConflictsOpen(true);
     else if (action === "choose_template_version") goTo(settingsHash({ section: "vault", item: "template-alignment" }));
     else if (action === "open_claude_login") goTo(settingsHash({ section: "engines", item: "claude-code" }));
+    else if (action === "review_widget_update") goTo(settingsHash({ section: "personalize", item: "widgets" }));
     else openDestination(action === "open_schedules" ? "schedules" : "settings");
   };
   const hideProblem = (key: string): void => {

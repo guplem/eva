@@ -136,3 +136,25 @@ test("Personalize lists the widget, on, with its repository and owner", async ({
   await expect(list).toContainText("example-owner/habits-widget");
   await expect(list).toContainText("On");
 });
+
+test("Preview on a clone shows a change that is not pushed, with example data first, then my data", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByLabel("Search projects").fill("habits widget");
+  await page.getByRole("button", { name: /Habits widget/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Habits widget" })).toBeVisible();
+  await page.locator('[aria-label="Repository habits-widget"]').getByRole("button", { name: "Preview" }).click();
+  const dialog = page.getByRole("dialog", { name: /Preview of/ });
+  await expect(dialog.getByRole("button", { name: "Example data" })).toHaveAttribute("aria-pressed", "true");
+  const widget = dialog.frameLocator("iframe");
+  // The clone's config.json has a title that is not pushed.
+  await expect(widget.locator(".widget-title")).toHaveText("Mock habits");
+  await dialog.getByRole("button", { name: "My data" }).click();
+  // The widget is set up in Eva and the clone adds no permission: it shows the person's data at once.
+  await expect(widget.locator('.widget[data-ready="true"]')).toBeVisible();
+  await expect(widget.locator(".widget-title")).not.toHaveText("Mock habits");
+  await dialog.getByRole("button", { name: "Example data" }).click();
+  await expect(widget.locator(".widget-title")).toHaveText("Mock habits");
+});

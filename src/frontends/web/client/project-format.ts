@@ -2,6 +2,7 @@
 import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 import type { Project } from "./api.ts";
 import type { ProjectType } from "../../../core/projects/project-catalog.ts";
+import { repositoryName } from "../../../core/projects/repository-name.ts";
 
 /** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */
 export type PillTone = "ok" | "warn" | "live" | "idle";
@@ -185,4 +186,13 @@ export function syncPills(ahead: number | null, behind: number | null): Pill[] {
 /** Whether a clone has something for its Push button: a change to commit, or a commit to push. */
 export function canPush(clone: { readonly changes: number | null; readonly ahead: number | null }): boolean {
   return (clone.changes ?? 0) > 0 || (clone.ahead ?? 0) > 0;
+}
+
+/**
+ * The folder names of the widget repositories of a project, as a clone names its folders (#693):
+ * the last part of the address, with no `.git`. Each of these repositories gets a preview.
+ */
+export function widgetRepositoryNames(project: Pick<Project, "frontMatter">): Set<string> {
+  const { repos, repoTypes } = project.frontMatter;
+  return new Set(repos.filter((url) => repoTypes[url] === "widget").map(repositoryName));
 }

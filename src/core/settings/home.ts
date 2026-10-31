@@ -122,6 +122,10 @@ export interface HomePaths {
   readonly widgetApprovals: string;
   /** The hash of each `DATA_FORMAT.md` that this hub wrote into the vault (#692). */
   readonly dataFormats: string;
+  /** The update checks of the widgets on this computer, and each update that waits for the person (#693). */
+  readonly widgetUpdates: string;
+  /** What the person approved for the preview of each clone (#693), apart from the approved records. */
+  readonly widgetPreviews: string;
 }
 
 export function homePaths(root: string): HomePaths {
@@ -154,6 +158,8 @@ export function homePaths(root: string): HomePaths {
     widgetsFolder: join(root, "widgets"),
     widgetApprovals: join(stateFolder, "widget-approvals.json"),
     dataFormats: join(stateFolder, "data-formats.json"),
+    widgetUpdates: join(stateFolder, "widget-updates.json"),
+    widgetPreviews: join(stateFolder, "widget-previews.json"),
   };
 }
 
@@ -285,6 +291,12 @@ export const configSchema = z.object({
       install: z.enum(["patch", "minor", "major"]).default("minor"),
     })
     .default({ frequency: "daily", install: "minor" }),
+  widgets: z
+    .object({
+      /** Minutes between two update checks of the person's own widgets (#693). Every other widget: once a day. */
+      checkIntervalMinutes: z.number().int().min(5).default(30),
+    })
+    .default({ checkIntervalMinutes: 30 }),
   engines: z
     .preprocess(
       withOldEngineSettings,

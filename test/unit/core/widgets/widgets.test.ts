@@ -6,6 +6,8 @@ import type { Project } from "../../../../src/core/projects/project-catalog.ts";
 import type { LastLocation } from "../../../../src/core/vault/about-me.ts";
 import { WidgetApprovals } from "../../../../src/core/widgets/widget-approvals.ts";
 import { WidgetCopies } from "../../../../src/core/widgets/widget-copies.ts";
+import { WidgetUpdates } from "../../../../src/core/widgets/widget-updates.ts";
+import type { GithubRequest } from "../../../../src/core/projects/repository-facts.ts";
 import { readWidgetList, widgetListPath, writeWidgetList } from "../../../../src/core/widgets/widget-list.ts";
 import { widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
 import { Widgets, type WidgetsOptions } from "../../../../src/core/widgets/widgets.ts";
@@ -180,6 +182,8 @@ describe("the list", () => {
         state: "off",
         size: null,
         problems: null,
+        update: null,
+        checkProblem: null,
       },
       expect.objectContaining({ id: "example-owner/project-widget", sources: ["project"], state: "off" }),
       expect.objectContaining({ id: "example-owner/base-widget", sources: ["base"], state: "off" }),
@@ -547,5 +551,211 @@ describe("the widget routes", () => {
       JSON.stringify({ ...manifest, hosts: [{ url: "https://evil.example.com", why: "x" }] }),
     );
     expect(widgets.hostsOf(token)).toEqual(["https://api.example.com"]);
+  });
+});
+
+describe("the updates", () => {
+  let reported: { key: string; message: string | null }[];
+  let dismissed: string[];
+  let ownMinutes: number;
+
+  function withUpdates(github?: GithubRequest): void {
+    reported = [];
+    dismissed = [];
+    ownMinutes = 30;
+    options = {
+      ...options,
+      updates: {
+        state: new WidgetUpdates(join(folder, "state", "widget-updates.json")),
+        ownMinutes: () => ownMinutes,
+        report: (key, problem) => reported.push({ key, message: problem?.message ?? null }),
+        dismiss: (key) => dismissed.push(key),
+        log: () => undefined,
+        ...(github === undefined ? {} : { github }),
+      },
+    };
+    widgets = new Widgets(options);
+  }
+
+  function opened(): string[] {
+    return reported.filter((each) => each.message !== null).map((each) => each.key);
+  }
+
+  test("an update with no new permission installs by itself, and the grid loads it", async () => {
+    withUpdates();
+    const token = await approveHabits();
+    const second = commit({ "index.html": "<p>two</p>" });
+    await widgets.checkUpdates(true);
+    expect(options.approvals.get(habitsId)?.commit).toBe(second);
+    expect(widgets.isLive(token)).toBe(false);
+    const next = widgets.frames(theme, [token])[0]?.token ?? "";
+    expect(text((await widgets.serve(next, "index.html", "GET", null))?.body)).toBe("<p>two</p>");
+    expect(opened()).toEqual([]);
+  });
+
+  test("an update with a new host waits: the old version runs, and one notice names the host", async () => {
+    withUpdates((path) =>
+      Promise.resolve(
+        path.includes("/compare/")
+          ? { status: 200, body: JSON.stringify({ commits: [{ commit: { message: "feat: show the rain" } }] }) }
+          : { status: 200, body: "[]" },
+      ),
+    );
+    const token = await approveHabits();
+    const first = options.approvals.get(habitsId)?.commit;
+    const second = commit({
+      "eva-widget.json": JSON.stringify({
+        ...manifest,
+        hosts: [...manifest.hosts, { url: "https://rain.example.com", why: "The rain." }],
+      }),
+      "index.html": "<p>two</p>",
+    });
+    await widgets.checkUpdates(true);
+    expect(options.approvals.get(habitsId)?.commit).toBe(first);
+    expect(widgets.isLive(token)).toBe(true);
+    expect(text((await widgets.serve(token, "index.html", "GET", null))?.body)).toBe("<p>habits</p>");
+    const item = widgets.list()[0];
+    expect(item?.update).toEqual({
+      commit: second,
+      permissions: ["Send requests to https://rain.example.com."],
+      reasons: [],
+      notes: ["feat: show the rain"],
+    });
+    expect(opened()).toEqual([`widget_update:${habitsId}:${second.slice(0, 12)}`]);
+    expect(reported[0]?.message).toContain("https://rain.example.com");
+    expect(reported[0]?.message).toContain("feat: show the rain");
+    // A second check finds the same commit: the notice stays one.
+    await widgets.checkUpdates(true);
+    expect(new Set(opened()).size).toBe(1);
+    // The approval installs the update and ends the notice.
+    const review = await widgets.review(habitsId, ownHosts);
+    expect(review.added).toEqual(["Send requests to https://rain.example.com."]);
+    await widgets.approve(habitsId, review.commit, { habits: "Life/Habits" }, ownHosts);
+    expect(options.approvals.get(habitsId)?.commit).toBe(second);
+    expect(widgets.list()[0]?.update).toBeNull();
+    expect(reported.at(-1)).toEqual({ key: `widget_update:${habitsId}:${second.slice(0, 12)}`, message: null });
+  });
+
+  test("a refusal keeps the old version, and only a newer commit asks again", async () => {
+    withUpdates();
+    await approveHabits();
+    const first = options.approvals.get(habitsId)?.commit;
+    const asks = (url: string): string => JSON.stringify({ ...manifest, hosts: [{ url, why: "x" }] });
+    const second = commit({ "eva-widget.json": asks("https://two.example.com") });
+    await widgets.checkUpdates(true);
+    widgets.refuseUpdate(habitsId);
+    expect(dismissed).toContain(`widget_update:${habitsId}:${second.slice(0, 12)}`);
+    expect(widgets.list()[0]?.update).toBeNull();
+    reported = [];
+    await widgets.checkUpdates(true);
+    expect(opened()).toEqual([]);
+    expect(options.approvals.get(habitsId)?.commit).toBe(first);
+    const third = commit({ "eva-widget.json": asks("https://three.example.com") });
+    await widgets.checkUpdates(true);
+    expect(opened()).toEqual([`widget_update:${habitsId}:${third.slice(0, 12)}`]);
+    expect(() => widgets.refuseUpdate("example-owner/base-widget")).toThrow("No update");
+  });
+
+  test("an update that adds a required input, or whose manifest fails, waits and says why", async () => {
+    withUpdates();
+    await approveHabits();
+    const extra = {
+      id: "goal",
+      type: "number",
+      label: "Daily goal",
+      description: "The goal.",
+      why: "The widget shows it.",
+      required: true,
+    };
+    commit({ "eva-widget.json": JSON.stringify({ ...manifest, inputs: [...manifest.inputs, extra] }) });
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.update).toMatchObject({ permissions: [], reasons: ["Daily goal needs a value."] });
+    commit({ "eva-widget.json": JSON.stringify({ ...manifest, contract: 2 }) });
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.update?.reasons.join(" ")).toContain("Update Eva");
+  });
+
+  test("a new schema text is a new permission", async () => {
+    withUpdates();
+    await approveHabits();
+    commit({
+      "schemas/habits.json": JSON.stringify({ ...habitSchema, properties: { ...habitSchema.properties, note: {} } }),
+    });
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.update?.permissions).toEqual([
+      "Write the folder Life/Habits in a new data format (schemas/habits.json).",
+    ]);
+  });
+
+  test("a check that fails for a day opens a notice, and a check that works closes it", async () => {
+    let broken = false;
+    options = {
+      ...options,
+      copies: new WidgetCopies({
+        folder: join(folder, "widgets"),
+        runner: systemProcessRunner,
+        environment: gitEnvironment,
+        remoteOf: () => (broken ? join(folder, "no-such-remote") : sandbox.remote),
+      }),
+    };
+    withUpdates();
+    await approveHabits();
+    broken = true;
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.checkProblem).toContain("Eva cannot read");
+    expect(opened()).toEqual([]);
+    now = new Date(now.getTime() + 25 * 60 * 60_000);
+    await widgets.checkUpdates(true);
+    expect(opened()).toEqual([`widget_check:${habitsId}`]);
+    expect(reported.at(-1)?.message).toContain("since yesterday");
+    broken = false;
+    await widgets.checkUpdates(true);
+    expect(reported.at(-1)).toEqual({ key: `widget_check:${habitsId}`, message: null });
+    expect(widgets.list()[0]?.checkProblem).toBeNull();
+    // A widget that the person turns off has no failed check either.
+    broken = true;
+    await widgets.checkUpdates(true);
+    widgets.setEnabled(habitsId, false);
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.checkProblem).toBeNull();
+  });
+
+  test("a widget that is off gets no check, and its waiting update goes", async () => {
+    withUpdates();
+    await approveHabits();
+    commit({
+      "eva-widget.json": JSON.stringify({ ...manifest, hosts: [{ url: "https://two.example.com", why: "x" }] }),
+    });
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.update).not.toBeNull();
+    widgets.setEnabled(habitsId, false);
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.update).toBeNull();
+    expect(dismissed.some((key) => key.startsWith(`widget_update:${habitsId}:`))).toBe(true);
+  });
+
+  test("the person's own widgets are due after the set minutes, every other widget after a day", async () => {
+    withUpdates();
+    await approveHabits();
+    const before = options.approvals.get(habitsId)?.commit;
+    await widgets.checkUpdates();
+    const second = commit({ "index.html": "<p>two</p>" });
+    now = new Date(now.getTime() + 60 * 60_000);
+    await widgets.checkUpdates();
+    expect(options.approvals.get(habitsId)?.commit).toBe(before);
+    projects = [
+      project(["https://github.com/example-owner/habits"], { "https://github.com/example-owner/habits": "widget" }),
+    ];
+    ownMinutes = 120;
+    await widgets.checkUpdates();
+    expect(options.approvals.get(habitsId)?.commit).toBe(before);
+    ownMinutes = 30;
+    await widgets.checkUpdates();
+    expect(options.approvals.get(habitsId)?.commit).toBe(second);
+    const third = commit({ "index.html": "<p>three</p>" });
+    projects = [];
+    now = new Date(now.getTime() + 25 * 60 * 60_000);
+    await widgets.checkUpdates();
+    expect(options.approvals.get(habitsId)?.commit).toBe(third);
   });
 });

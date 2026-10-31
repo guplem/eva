@@ -45,19 +45,20 @@ Eva keeps her settings in two places, and her tokens in a third:
 
 In the vault:
 
-| Setting                     | Default        | What it does                                                                               |
-| --------------------------- | -------------- | ------------------------------------------------------------------------------------------ |
-| `timeZone`                  | Asked at setup | The time zone of the reminders, and of the time in each message.                           |
-| `sync.pullIntervalMinutes`  | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn. |
-| `sync.sweepSeconds`         | `60`           | Seconds between two saves of changed notes.                                                |
-| `updates.frequency`         | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                            |
-| `updates.install`           | `minor`        | What Eva installs by herself: see [Updates](#updates).                                     |
-| `engines.default`           | `claude-code`  | The engine of a new chat: `claude-code` or `pi`.                                           |
-| `engines.defaultModel`      | `opus`         | The model of a new chat: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).            |
-| `engines.defaultEffort`     | `medium`       | The effort of a new chat: `low`, `medium`, `high`, `xhigh` or `max`.                       |
-| `engines.pi.models.<model>` | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default.     |
-| `google.email`              | `null`         | The Google account. The Google login sets it.                                              |
-| `voice.language`            | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                       |
+| Setting                        | Default        | What it does                                                                                  |
+| ------------------------------ | -------------- | --------------------------------------------------------------------------------------------- |
+| `timeZone`                     | Asked at setup | The time zone of the reminders, and of the time in each message.                              |
+| `sync.pullIntervalMinutes`     | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.    |
+| `sync.sweepSeconds`            | `60`           | Seconds between two saves of changed notes.                                                   |
+| `updates.frequency`            | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                               |
+| `updates.install`              | `minor`        | What Eva installs by herself: see [Updates](#updates).                                        |
+| `widgets.checkIntervalMinutes` | `30`           | Minutes between two update checks of your own widgets, 5 at least. Other widgets: once a day. |
+| `engines.default`              | `claude-code`  | The engine of a new chat: `claude-code` or `pi`.                                              |
+| `engines.defaultModel`         | `opus`         | The model of a new chat: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).               |
+| `engines.defaultEffort`        | `medium`       | The effort of a new chat: `low`, `medium`, `high`, `xhigh` or `max`.                          |
+| `engines.pi.models.<model>`    | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default.        |
+| `google.email`                 | `null`         | The Google account. The Google login sets it.                                                 |
+| `voice.language`               | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                          |
 
 On this computer:
 
@@ -335,6 +336,9 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Two widgets can share a folder. When one names a field with another type than the other, Eva warns you. Then turn the second widget on with read access only, or pick another folder.
   - After each answer, Eva checks the data files that it changed. A file that does not fit a widget goes back to the agent to fix. When the fix fails, the chat says which file and which field.
   - A widget is code from its author. Turn on only a widget whose author you trust.
+  - Eva keeps each widget up to date. A new version that asks for nothing new installs by itself. A new version that asks for more waits: the old version keeps running, and Eva sends you a notice with what is new. In the list, press **Review the update** to approve it, or **Keep this version**.
+  - Eva checks your own widgets every 30 minutes, and every other widget once a day. Change it in **Widget updates**, or press **Check for updates** to check now.
+  - On a widget project, **Preview** on a clone shows the widget as the clone holds it, with no push. **Example data** shows its mock files. **My data** shows your vault, and asks first for anything that the installed widget does not have.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
 - **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. The audio never leaves the computer.
   On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt install libgomp1` on Ubuntu.

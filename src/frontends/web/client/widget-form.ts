@@ -106,3 +106,30 @@ export function isPickable(path: string): boolean {
 export function ownValue<Value>(record: Readonly<Record<string, Value>>, key: string): Value | undefined {
   return Object.hasOwn(record, key) ? record[key] : undefined;
 }
+
+/** The minutes of the update check choices (#693). The core refuses less than 5. */
+const checkMinutes: readonly number[] = [5, 15, 30, 60, 120, 360, 720, 1440];
+
+/** The choices of "Check my widgets every". A value set by hand, such as 45, shows too. */
+export function checkChoices(current: number): { value: string; label: string }[] {
+  const minutes = checkMinutes.includes(current) ? checkMinutes : [...checkMinutes, current].sort((a, b) => a - b);
+  return minutes.map((value) => ({ value: String(value), label: intervalLabel(value) }));
+}
+
+function intervalLabel(minutes: number): string {
+  if (minutes % 60 !== 0) return `${String(minutes)} minutes`;
+  const hours = minutes / 60;
+  if (hours % 24 === 0) return hours === 24 ? "1 day" : `${String(hours / 24)} days`;
+  return hours === 1 ? "1 hour" : `${String(hours)} hours`;
+}
+
+/** The note after "Check for updates". A failed check comes first: the person must know it. */
+export function updateCheckNote(waiting: number, failed = 0): string {
+  const waits =
+    waiting === 0 ? null : waiting === 1 ? "An update waits for you." : `${String(waiting)} updates wait for you.`;
+  if (failed > 0)
+    return [`Eva could not check ${failed === 1 ? "1 widget" : `${String(failed)} widgets`}. The list says why.`, waits]
+      .filter((part) => part !== null)
+      .join(" ");
+  return waits ?? "Each widget is up to date, or its update installed.";
+}

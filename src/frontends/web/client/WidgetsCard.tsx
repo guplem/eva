@@ -8,14 +8,13 @@ import { api, ApiError, type WidgetInputValue, type WidgetItem, type WidgetRevie
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
-import { Card, ChoiceChips, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
-import { VaultPicker } from "./VaultPicker.tsx";
+import { Card, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
+import { WidgetInputs, WidgetPermissions } from "./WidgetInputs.tsx";
 import {
-  formInputs,
+  checkChoices,
+  updateCheckNote,
   initialValues,
   missingInputs,
-  ownValue,
-  permissionLines,
   promptLine,
   sentValues,
   type FormValues,
@@ -43,6 +42,7 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
   const [adding, setAdding] = useState(false);
   const [activating, setActivating] = useState<WidgetItem | null>(null);
   const [removing, setRemoving] = useState<WidgetItem | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   useEffect(() => {
     let current = true;
@@ -103,90 +103,137 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
     }
   };
 
+  const checkUpdates = async (): Promise<void> => {
+    setCheckingUpdates(true);
+    await run(async () => {
+      const checked = await api.checkWidgetUpdates();
+      notify(
+        updateCheckNote(
+          checked.filter((item) => item.update !== null).length,
+          checked.filter((item) => item.checkProblem !== null).length,
+        ),
+      );
+      return checked;
+    });
+    setCheckingUpdates(false);
+  };
+
   if (noVault) return null;
   return (
-    <Card
-      item="widgets"
-      title="Widgets"
-      description="Widgets show on Eva's home page, in a grid. Each one does nothing until you turn it on and approve what it may do on this computer. The list, the order and the inputs live in your vault, in .eva/widgets.json."
-    >
-      <form className="inline-form" onSubmit={(event) => void add(event)}>
-        <label className="field grow">
-          <span className="field-label">Add a widget</span>
-          <input
-            value={address}
-            placeholder="https://github.com/owner/name"
-            autoComplete="off"
-            onChange={(event) => setAddress(event.target.value)}
-          />
-          <span className="field-hint">The address of the widget's GitHub repository.</span>
-        </label>
-        <button
-          className="primary"
-          type="submit"
-          aria-busy={adding}
-          aria-disabled={address.trim() === "" ? "true" : undefined}
-        >
-          {adding && <ButtonSpinner />}
-          Add
-        </button>
-      </form>
-      {adding && <ProgressBar label="Adding the widget" />}
-      {items === null && <ProgressBar label="Opening the widget list" />}
-      {checking && <ProgressBar label="Reading the manifest of each widget" />}
-      {items !== null && items.length === 0 && <p className="empty">No widget yet.</p>}
-      {items !== null && items.length > 0 && (
-        <ul className="widget-list" aria-label="Widgets">
-          {items.map((item, index) => (
-            <WidgetRow
-              key={item.id}
-              item={item}
-              first={index === 0}
-              last={index === items.length - 1}
-              onTurnOn={() => void turnOn(item)}
-              onTurnOff={() => void run(() => api.setWidgetEnabled(item.id, false))}
-              onApprove={() => setActivating(item)}
-              onMove={(direction) => void run(() => api.moveWidget(item.id, direction))}
-              onRemove={() => setRemoving(item)}
+    <>
+      <Card
+        item="widgets"
+        title="Widgets"
+        description="Widgets show on Eva's home page, in a grid. Each one does nothing until you turn it on and approve what it may do on this computer. The list, the order and the inputs live in your vault, in .eva/widgets.json."
+      >
+        <form className="inline-form" onSubmit={(event) => void add(event)}>
+          <label className="field grow">
+            <span className="field-label">Add a widget</span>
+            <input
+              value={address}
+              placeholder="https://github.com/owner/name"
+              autoComplete="off"
+              onChange={(event) => setAddress(event.target.value)}
             />
-          ))}
-        </ul>
-      )}
-      {activating !== null && (
-        <WidgetActivation
-          item={activating}
-          onClose={() => setActivating(null)}
-          onApproved={(next) => {
-            setActivating(null);
-            setItems(next);
-            notify(`${activating.name} is on. It shows on the home page.`);
-          }}
+            <span className="field-hint">The address of the widget's GitHub repository.</span>
+          </label>
+          <button
+            className="primary"
+            type="submit"
+            aria-busy={adding}
+            aria-disabled={address.trim() === "" ? "true" : undefined}
+          >
+            {adding && <ButtonSpinner />}
+            Add
+          </button>
+        </form>
+        {adding && <ProgressBar label="Adding the widget" />}
+        {items === null && <ProgressBar label="Opening the widget list" />}
+        {checking && <ProgressBar label="Reading the manifest of each widget" />}
+        {items !== null && items.length === 0 && <p className="empty">No widget yet.</p>}
+        {items !== null && items.length > 0 && (
+          <ul className="widget-list" aria-label="Widgets">
+            {items.map((item, index) => (
+              <WidgetRow
+                key={item.id}
+                item={item}
+                first={index === 0}
+                last={index === items.length - 1}
+                onTurnOn={() => void turnOn(item)}
+                onTurnOff={() => void run(() => api.setWidgetEnabled(item.id, false))}
+                onApprove={() => setActivating(item)}
+                onRefuse={() => void run(() => api.refuseWidgetUpdate(item.id))}
+                onMove={(direction) => void run(() => api.moveWidget(item.id, direction))}
+                onRemove={() => setRemoving(item)}
+              />
+            ))}
+          </ul>
+        )}
+        {activating !== null && (
+          <WidgetActivation
+            item={activating}
+            onClose={() => setActivating(null)}
+            onApproved={(next) => {
+              setActivating(null);
+              setItems(next);
+              notify(
+                activating.update !== null
+                  ? `${activating.name} is up to date.`
+                  : `${activating.name} is on. It shows on the home page.`,
+              );
+            }}
+          />
+        )}
+        {removing !== null && (
+          <Dialog label={`Remove ${removing.name}`} closeLabel="Cancel" onClose={() => setRemoving(null)}>
+            <h2>Remove {removing.name}?</h2>
+            <p>
+              Its permissions and its copy on this computer go, and it leaves your list. Your data in the vault stays.
+              {removing.sources.includes("project") && " Your widget project stays in the list, off."}
+            </p>
+            <div className="button-row">
+              <button
+                type="button"
+                className="danger"
+                onClick={() => {
+                  const target = removing;
+                  setRemoving(null);
+                  void run(() => api.removeWidget(target.id));
+                }}
+              >
+                <Icon name="trash" />
+                Remove
+              </button>
+            </div>
+          </Dialog>
+        )}
+      </Card>
+      <Card
+        item="widget-updates"
+        title="Widget updates"
+        description="Eva installs a new version of a widget by herself when it asks for nothing new. When it asks for more, the old version keeps running, and Eva asks you first. Each computer checks its own widgets."
+      >
+        <SelectField
+          label="Check my widgets every"
+          value={String(context.settings.config.widgets.checkIntervalMinutes)}
+          choices={checkChoices(context.settings.config.widgets.checkIntervalMinutes)}
+          hint="Your own widgets: the widget projects of your vault. Eva checks every other widget once a day."
+          onChange={(value) => void context.saveNow({ widgets: { checkIntervalMinutes: Number(value) } })}
         />
-      )}
-      {removing !== null && (
-        <Dialog label={`Remove ${removing.name}`} closeLabel="Cancel" onClose={() => setRemoving(null)}>
-          <h2>Remove {removing.name}?</h2>
-          <p>
-            Its permissions and its copy on this computer go, and it leaves your list. Your data in the vault stays.
-            {removing.sources.includes("project") && " Your widget project stays in the list, off."}
-          </p>
-          <div className="button-row">
-            <button
-              type="button"
-              className="danger"
-              onClick={() => {
-                const target = removing;
-                setRemoving(null);
-                void run(() => api.removeWidget(target.id));
-              }}
-            >
-              <Icon name="trash" />
-              Remove
-            </button>
-          </div>
-        </Dialog>
-      )}
-    </Card>
+        <div className="button-row">
+          <button
+            type="button"
+            aria-busy={checkingUpdates}
+            aria-disabled={checkingUpdates ? "true" : undefined}
+            onClick={() => !checkingUpdates && void checkUpdates()}
+          >
+            {checkingUpdates && <ButtonSpinner />}
+            Check for updates
+          </button>
+        </div>
+        {checkingUpdates && <ProgressBar label="Checking each widget for a new version" />}
+      </Card>
+    </>
   );
 }
 
@@ -197,6 +244,7 @@ function WidgetRow({
   onTurnOn,
   onTurnOff,
   onApprove,
+  onRefuse,
   onMove,
   onRemove,
 }: {
@@ -206,6 +254,7 @@ function WidgetRow({
   readonly onTurnOn: () => void;
   readonly onTurnOff: () => void;
   readonly onApprove: () => void;
+  readonly onRefuse: () => void;
   readonly onMove: (direction: "up" | "down") => void;
   readonly onRemove: () => void;
 }): ReactElement {
@@ -239,6 +288,39 @@ function WidgetRow({
               <li key={problem}>{problem}</li>
             ))}
           </ul>
+        </div>
+      )}
+      {item.checkProblem !== null && (
+        <div className="callout warning">
+          Eva could not check this widget for updates: {item.checkProblem} The installed version keeps running.
+        </div>
+      )}
+      {item.update !== null && (
+        <div className="callout warning">
+          An update waits. The old version keeps running until you approve it.
+          <ul>
+            {[...item.update.permissions, ...item.update.reasons].map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          {item.update.notes.length > 0 && (
+            <>
+              What changed:
+              <ul>
+                {item.update.notes.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="button-row">
+            <button type="button" className="primary" onClick={onApprove}>
+              Review the update
+            </button>
+            <button type="button" className="ghost" onClick={onRefuse}>
+              Keep this version
+            </button>
+          </div>
         </div>
       )}
       <div className="button-row">
@@ -313,11 +395,6 @@ function WidgetActivation({
   const [problem, setProblem] = useState<string | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
   const [values, setValues] = useState<FormValues>({});
-  const [picking, setPicking] = useState<{
-    readonly id: string;
-    readonly kind: "folder" | "file";
-    readonly writes: boolean;
-  } | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -361,11 +438,16 @@ function WidgetActivation({
     }
   };
   const line = manifest === null ? null : promptLine(manifest, values);
+  // An update of an installed widget: the dialog names what is new since the approved version.
+  const updating = review !== null && review.installed !== null && review.installed !== review.commit;
+  const verb = updating ? "Update" : "Turn on";
 
   return (
     <>
-      <Dialog label={`Turn on ${item.name}`} closeLabel="Cancel" closeDisabled={saving} onClose={onClose}>
-        <h2>Turn on {manifest?.name ?? item.name}</h2>
+      <Dialog label={`${verb} ${item.name}`} closeLabel="Cancel" closeDisabled={saving} onClose={onClose}>
+        <h2>
+          {verb} {manifest?.name ?? item.name}
+        </h2>
         <p className="field-hint">
           A widget is code from its author, {item.owner}, at{" "}
           <a href={item.repository} target="_blank" rel="noreferrer">
@@ -386,37 +468,24 @@ function WidgetActivation({
         )}
         {manifest !== null && (
           <div className="widget-activation">
-            {formInputs(manifest).map((input) => (
-              <InputField
-                key={input.id}
-                input={input}
-                value={ownValue(values, input.id)}
-                onChange={(value) => set(input.id, value)}
-                onPick={(kind) => setPicking({ id: input.id, kind, writes: input.access === "write" })}
-              />
-            ))}
-            <div className="field">
-              <span className="field-label">What this widget may do</span>
-              {permissionLines(manifest, values).length === 0 ? (
-                <span className="field-hint">Nothing: it only shows its own page.</span>
-              ) : (
-                <ul className="widget-permissions">
-                  {permissionLines(manifest, values).map((line) => (
-                    <li key={line.text}>
-                      <Icon name={line.icon} />
-                      <span>
-                        <strong>{line.text}</strong>
-                        <span className="field-hint">{line.why}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <span className="field-hint">
-                It reaches only these places and hosts. A change of the widget gives it nothing until you approve it
-                again.
-              </span>
-            </div>
+            {updating && review.added !== null && (
+              <div className="callout warning">
+                {review.added.length === 0 ? (
+                  "This version asks for nothing new."
+                ) : (
+                  <>
+                    New in this version:
+                    <ul>
+                      {review.added.map((added) => (
+                        <li key={added}>{added}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
+            <WidgetInputs manifest={manifest} values={values} onChange={set} />
+            <WidgetPermissions manifest={manifest} values={values} />
             {line !== null && (
               <div className="field">
                 <span className="field-label">What this widget tells Eva</span>
@@ -438,7 +507,7 @@ function WidgetActivation({
                 onClick={() => void approve()}
               >
                 {saving && <ButtonSpinner />}
-                Approve and turn on
+                {updating ? "Approve and update" : "Approve and turn on"}
               </button>
               {conflict !== null && (
                 <button
@@ -456,107 +525,6 @@ function WidgetActivation({
         )}
         {manifest === null && problem !== null && <div className="callout danger">{problem}</div>}
       </Dialog>
-      {picking !== null && (
-        <VaultPicker
-          label={picking.kind === "folder" ? "Pick a folder" : "Pick a file"}
-          newFile={picking.writes}
-          kind={picking.kind}
-          start={folderOf(ownValue(values, picking.id), picking.kind)}
-          onClose={() => setPicking(null)}
-          onPick={(path) => {
-            set(picking.id, path);
-            setPicking(null);
-          }}
-        />
-      )}
     </>
-  );
-}
-
-/** The folder where the picker opens: the current folder, or the folder of the current file. */
-function folderOf(value: WidgetInputValue | undefined, kind: "folder" | "file"): string {
-  if (typeof value !== "string" || value.trim() === "") return "";
-  const path = value.trim();
-  if (kind === "folder") return path;
-  return path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-}
-
-function InputField({
-  input,
-  value,
-  onChange,
-  onPick,
-}: {
-  readonly input: ReturnType<typeof formInputs>[number];
-  readonly value: WidgetInputValue | undefined;
-  readonly onChange: (value: WidgetInputValue | undefined) => void;
-  readonly onPick: (kind: "folder" | "file") => void;
-}): ReactElement {
-  const label = input.required ? `${input.label} (required)` : input.label;
-  const hint = (
-    <>
-      {input.description} <em>Why: {input.why}</em>
-    </>
-  );
-  if (input.type === "folder" || input.type === "file") {
-    const kind = input.type;
-    return (
-      <div className="field">
-        <span className="field-label">{label}</span>
-        <div className="inline-form">
-          <span className="widget-picked">{typeof value === "string" && value !== "" ? value : "Nothing picked"}</span>
-          <button type="button" className="ghost" onClick={() => onPick(kind)}>
-            <Icon name={kind === "folder" ? "folder" : "file"} />
-            {kind === "folder" ? "Pick a folder" : "Pick a file"}
-          </button>
-        </div>
-        <span className="field-hint">{hint}</span>
-      </div>
-    );
-  }
-  if (input.type === "choice") {
-    const choices = [
-      { value: "", label: "None" },
-      ...(input.choices ?? []).map((choice) => ({ value: choice, label: choice })),
-    ];
-    return (
-      <SelectField
-        label={label}
-        value={typeof value === "string" ? value : ""}
-        choices={choices}
-        hint={hint}
-        onChange={(picked) => onChange(picked === "" ? undefined : picked)}
-      />
-    );
-  }
-  if (input.type === "boolean") {
-    return (
-      <ChoiceChips
-        label={label}
-        value={value === true ? "yes" : value === false ? "no" : ""}
-        choices={[
-          { value: "yes", label: "Yes" },
-          { value: "no", label: "No" },
-        ]}
-        hint={`${input.description} Why: ${input.why}`}
-        onChange={(picked) => onChange(picked === "yes")}
-      />
-    );
-  }
-  return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      <input
-        type={input.type === "number" ? "number" : input.type === "url" ? "url" : "text"}
-        value={value === undefined || typeof value === "boolean" ? "" : String(value)}
-        autoComplete="off"
-        onChange={(event) => {
-          const text = event.target.value;
-          if (input.type !== "number") onChange(text);
-          else onChange(text.trim() === "" || !Number.isFinite(Number(text)) ? undefined : Number(text));
-        }}
-      />
-      <span className="field-hint">{hint}</span>
-    </label>
   );
 }

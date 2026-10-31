@@ -234,6 +234,27 @@ The machine check is a meta-schema: [`widgets/meta-schema-v1.json`](widgets/meta
 - A host must be a public `https` address. Eva refuses her own names, this computer, the local network and the tailnet.
 - A sandbox and a policy do not block every channel, such as WebRTC. A check by name also cannot see a public name that points to a private address. So a widget is code from its author: turn on only a widget whose author you trust.
 
+### Updates
+
+Permissions decide an update, not a version. Eva reads no version of a widget. Releases of the widget repository stay as notes for the person.
+
+- Eva checks the newest commit of the default branch with `git ls-remote`, which downloads no code. Each computer checks its own copies.
+- The person's own widgets, the widget projects of the vault, are checked at the interval of `widgets.checkIntervalMinutes`: 30 minutes by default. Every other widget is checked once a day. **Check for updates** checks every widget at once.
+- A permission is each folder or file with its access, the location, each host, the prompt line and the text of each schema.
+- An update with no new permission installs by itself. The home page shows it soon after.
+- Any other update waits, and the old version keeps running. An update also waits when its manifest fails, it follows a newer contract, it adds a required input, or a schema conflicts with another widget of the same folder. Eva says why.
+- Eva sends one notice for each waiting commit, with the new permissions and the release notes since the installed commit. With no release notes, it shows the commit subjects. A computer that is not the hub sends the notice through the hub, with its own name.
+- After a refusal, the old version stays. Eva asks again only for a newer commit.
+
+### Preview from a clone
+
+A widget project shows **Preview** on each clone. The preview shows the widget from the clone's folder as it is, with no push and no merge.
+
+- **Example data**, the default, answers the contract paths with the mock files of the clone, as GitHub Pages does. A write fails.
+- **My data** answers them from the person's vault, and a write changes the real vault. A widget that is set up in Eva keeps its values and its approval: Eva asks only for what the clone adds. A widget that is not set up asks for each permission.
+- What the person approves in a preview stays on the computer, apart from the approved widget, until the clone goes. The installed widget gets it only when its `main` asks for it and the person approves that update.
+- The preview runs with the same frame, token path and policy as an installed widget. It never serves a hidden file, such as `.git/` or `.env`, a link, or a file that git ignores.
+
 ## Outside Eva: the demo
 
 A browser blocks `fetch` on `file://`, so a double-click on `index.html` does not work. Run the widget with one command, such as `npx serve`, or open its GitHub Pages demo. GitHub Pages is on for each widget, and shows the newest `main`.

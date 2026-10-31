@@ -17,6 +17,7 @@ export const sharedSettingKeys: readonly string[] = [
   "sync.sweepSeconds",
   "sync.pullIntervalMinutes",
   "updates",
+  "widgets.checkIntervalMinutes",
   "engines.default",
   "engines.defaultModel",
   "engines.defaultEffort",

@@ -16,7 +16,7 @@ import { mergeFormats, type FormatConflict } from "./data-formats.ts";
 import { widgetAddress, type WidgetAddress } from "./widget-address.ts";
 import { configOf, matches, type ApprovedPath, type WidgetApprovals } from "./widget-approvals.ts";
 import { checkData } from "./widget-contract.ts";
-import type { WidgetCopies } from "./widget-copies.ts";
+import { answerText, type WidgetCopies } from "./widget-copies.ts";
 import { parseData, readVaultData } from "./widget-data.ts";
 import { readWidgetList } from "./widget-list.ts";
 import { folded, isWritableName, matchesFiles } from "./widget-places.ts";
@@ -211,12 +211,10 @@ export function installedSchema(
   address: WidgetAddress,
   path: string,
 ): unknown {
-  const answer = copies.serveFile(address, path);
-  if (answer.status !== 200 || answer.body === undefined) return null;
+  const text = answerText(copies.serveFile(address, path));
+  if (text === null) return null;
   try {
-    return JSON.parse(
-      typeof answer.body === "string" ? answer.body : Buffer.from(answer.body).toString("utf-8"),
-    ) as unknown;
+    return JSON.parse(text) as unknown;
   } catch {
     return null;
   }

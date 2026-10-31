@@ -26,13 +26,13 @@ import {
   listClones,
   listRepositories,
   readGitState,
-  repositoryName,
   type Clone,
   type CloneDetails,
   type CloneOriginStore,
   type CloneRepository,
   type RepositoryBranch,
 } from "./clones.ts";
+import { repositoryName } from "./repository-name.ts";
 import {
   commitAndPush,
   describeChanges,

@@ -13,6 +13,7 @@ import {
   repositoryWebUrl,
   statusPill,
   syncPills,
+  widgetRepositoryNames,
 } from "../../../../../src/frontends/web/client/project-format.ts";
 
 describe("countOf", () => {
@@ -201,5 +202,19 @@ describe("removedRepositoriesHint", () => {
     expect(removedRepositoriesHint([app, docs], [])).toBe(
       "Save to remove github.com/example/example-app and github.com/example/example-docs. Their clones stay in the project.",
     );
+  });
+});
+
+describe("widgetRepositoryNames", () => {
+  test("names the folder of each widget repository, as a clone does", () => {
+    const frontMatter = {
+      repos: ["https://github.com/example/habits.git", "https://github.com/example/example-app", "git@host:o/w/"],
+      repoTypes: {
+        "https://github.com/example/habits.git": "widget",
+        "https://github.com/example/example-app": "standard",
+        "git@host:o/w/": "widget",
+      },
+    };
+    expect([...widgetRepositoryNames({ frontMatter } as unknown as Project)]).toEqual(["habits", "w"]);
   });
 });

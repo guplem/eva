@@ -513,6 +513,17 @@ describe("settings", () => {
   test("an invalid update is refused and nothing is saved", () => {
     expect(() => eva.updateSettings({ port: 5 })).toThrow("port");
   });
+
+  test("the widget check interval lives in the vault and applies with no restart", () => {
+    expect(eva.publicSettings().config.widgets.checkIntervalMinutes).toBe(30);
+    expect(eva.updateSettings({ widgets: { checkIntervalMinutes: 120 } })).toEqual({
+      saved: true,
+      restartNeeded: false,
+    });
+    const saved = JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8")) as { widgets?: unknown };
+    expect(saved.widgets).toEqual({ checkIntervalMinutes: 120 });
+    expect(() => eva.updateSettings({ widgets: { checkIntervalMinutes: 2 } })).toThrow("checkIntervalMinutes");
+  });
 });
 
 describe("runCheck", () => {

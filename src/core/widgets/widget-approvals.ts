@@ -67,7 +67,10 @@ export function matches(record: WidgetApproval | null, entry: WidgetEntry): bool
 }
 
 /** `config.json`: the values of the vault, with each path from the record. */
-export function configOf(record: WidgetApproval, entry: WidgetEntry): Record<string, WidgetInputValue> {
+export function configOf(
+  record: Pick<WidgetApproval, "paths">,
+  entry: Pick<WidgetEntry, "inputs">,
+): Record<string, WidgetInputValue> {
   const paths = Object.fromEntries(
     record.paths.flatMap((approved) => (approved.path === null ? [] : [[approved.input, approved.path] as const])),
   );

@@ -6,8 +6,12 @@ import { themeVariables } from "../../../core/widgets/widget-policy.ts";
 
 export type WidgetSize = "small" | "medium" | "large";
 
-/** The page asks for its tokens again this often while it is in view. A token lives 6 hours. */
-export const frameRefreshMs = 30 * 60_000;
+/**
+ * The page asks for its tokens again this often while it is in view. A token lives 6 hours. The
+ * ask is local and keeps each working token, so only a widget with a new installed commit (#693)
+ * gets a new token, and its frame loads the new version.
+ */
+export const frameRefreshMs = 60_000;
 
 /** The light or dark mode that the page shows: the person's choice, or else the system's. */
 export function pageScheme(dataTheme: string | null, systemDark: boolean): "light" | "dark" {

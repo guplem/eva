@@ -22,10 +22,11 @@ import {
 } from "./widget-approvals.ts";
 import { checkManifest, checkWidget, manifestPath, type WidgetInput, type WidgetManifest } from "./widget-contract.ts";
 import type { WidgetCopies } from "./widget-copies.ts";
-import { answerData, placeOf, type WidgetAnswer } from "./widget-data.ts";
+import { answerData, type WidgetAnswer } from "./widget-data.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
-import { isPlainName, isWritableName } from "./widget-places.ts";
+import { isPlainName } from "./widget-places.ts";
+import { checkValues } from "./widget-values.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
 import type { DataFormatRecord } from "./data-format-writer.ts";
 import type { FormatConflict } from "./data-formats.ts";
@@ -839,47 +840,7 @@ export class Widgets {
     inputs: readonly WidgetInput[],
     values: Readonly<Record<string, WidgetInputValue>>,
   ): Record<string, WidgetInputValue> {
-    const kept: Record<string, WidgetInputValue> = {};
-    for (const input of inputs) {
-      if (input.type === "eva-location") continue;
-      const value = ownValue(values, input.id);
-      const empty = value === undefined || (typeof value === "string" && value.trim() === "");
-      if (empty) {
-        if (input.required) throw new EvaError("widget_invalid", `${input.label} needs a value.`);
-        continue;
-      }
-      const problem = this.valueProblem(input, value);
-      if (problem !== null) throw new EvaError("widget_invalid", `${input.label}: ${problem}`);
-      kept[input.id] = typeof value === "string" ? value.trim() : value;
-    }
-    return kept;
-  }
-
-  private valueProblem(input: WidgetInput, value: WidgetInputValue): string | null {
-    switch (input.type) {
-      case "folder":
-      case "file": {
-        if (typeof value !== "string") return "pick a place of the vault.";
-        const path = value.trim();
-        const place = placeOf(this.options.vaultPath, path);
-        if (place === null) return "a widget may not reach this place.";
-        if (input.type === "folder") return place === "folder" ? null : "pick a folder that exists.";
-        if (place === "folder") return "pick a file, not a folder.";
-        if (input.access === "write" && !isWritableName(path.split("/").at(-1) ?? ""))
-          return "a widget writes only a JSON or YAML file that is not a rule file.";
-        return place === "file" || input.access === "write" ? null : "pick a file that exists.";
-      }
-      case "number":
-        return typeof value === "number" && Number.isFinite(value) ? null : "give a number.";
-      case "boolean":
-        return typeof value === "boolean" ? null : "give yes or no.";
-      case "choice":
-        return typeof value === "string" && (input.choices ?? []).includes(value) ? null : "pick one of the choices.";
-      case "url":
-        return typeof value === "string" && /^https?:\/\/\S+$/i.test(value.trim()) ? null : "give a web address.";
-      default:
-        return typeof value === "string" ? null : "give a text.";
-    }
+    return checkValues(this.options.vaultPath, inputs, values);
   }
 
   private saveEntry(address: WidgetAddress, change: Pick<WidgetEntry, "enabled" | "inputs">): void {

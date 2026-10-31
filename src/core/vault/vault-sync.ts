@@ -29,8 +29,26 @@ import {
 
 export type VaultSyncStatus = "ok" | "offline" | "conflict" | "error" | "skipped";
 
-/** Why a file stays out of the commit: it looks like a secret, or it is over the size limit. */
-export type WithheldReason = "secret" | "too_large";
+/**
+ * Why a file stays out of the commit. A stored and sent name: the Settings page and the terminal map
+ * each one. The last four come from the encryption of the vault's secret files (#707).
+ */
+export type WithheldReason =
+  /** It looks like a secret: a known token shape, or a link with a secret name. */
+  | "secret"
+  /** It is over the size limit. */
+  | "too_large"
+  /** A secret file, but the vault has no password yet. */
+  | "no_vault_key"
+  /** A secret file, but the vault's key changed on another machine. */
+  | "vault_key_changed"
+  /** It keeps Eva's header, but someone changed its encrypted text. */
+  | "not_decryptable"
+  /** A plain `.env` that holds a token. */
+  | "env_has_secret";
+
+/** Decides one file of a round of the secret files: null to commit it as it is now, or why it stays out. */
+export type PrepareFile = (relativePath: string) => WithheldReason | null;
 
 export interface WithheldFile {
   readonly path: string;
@@ -90,6 +108,8 @@ export interface VaultSyncOptions {
   readonly logger?: Logger;
   /** Hides secrets in `lastError`: git names the remote, and a remote address can hold a token. */
   readonly redact?: (text: string) => string;
+  /** Encrypts the secret files before each commit and each snapshot (#707). Without it, Eva encrypts nothing. */
+  readonly secrets?: { round(): PrepareFile };
 }
 
 const networkTimeoutMs = 60_000;
@@ -262,10 +282,12 @@ export class VaultSync {
     return this.serialize(async () => {
       const leftOut = new Map<string, LeftOutFile>();
       const paths: string[] = [];
+      // A snapshot holds a secret only encrypted, as a commit does (#707).
+      const prepare = this.options.secrets?.round() ?? null;
       for (const { path } of await this.statusEntries()) {
         // A folder entry is a repository inside the vault, which a commit does not take either.
         if (path.endsWith("/")) continue;
-        if (!this.isScratchFile(path) && this.withheldReason(path) === null) paths.push(path);
+        if (!this.isScratchFile(path) && this.withheldReason(path, prepare) === null) paths.push(path);
         else this.addLeftOut(leftOut, path);
       }
       for (const path of this.scratchFiles()) this.addLeftOut(leftOut, path);
@@ -783,6 +805,7 @@ export class VaultSync {
     const withheld: WithheldFile[] = [];
     const kept: string[] = [];
     let stagedScratch = false;
+    const prepare = this.options.secrets?.round() ?? null;
     for (const { code, path } of entries) {
       if (unmerged.includes(path)) continue;
       if (this.isScratchFile(path)) {
@@ -790,7 +813,7 @@ export class VaultSync {
         if (!code.startsWith(" ") && !code.startsWith("?")) stagedScratch = true;
         continue;
       }
-      const reason = this.withheldReason(path);
+      const reason = this.withheldReason(path, prepare);
       if (reason === null) kept.push(path);
       else withheld.push({ path, reason });
     }
@@ -1017,15 +1040,19 @@ export class VaultSync {
 
   /**
    * A file over the size limit stays out of the commit everywhere. A file outside a project
-   * folder that holds a secret stays out too.
+   * folder that holds a secret stays out too. Before both checks, the round of the secret files
+   * encrypts a secret file in place, or says why it stays out (#707). A project folder has no
+   * exception any more: its secrets reach the vault only encrypted.
    */
-  private withheldReason(relativePath: string): WithheldReason | null {
+  private withheldReason(relativePath: string, prepare: PrepareFile | null): WithheldReason | null {
+    const prepared = prepare?.(relativePath) ?? null;
+    if (prepared !== null) return prepared;
     const absolutePath = join(this.options.vaultPath, relativePath);
     try {
       const info = statSync(absolutePath);
       if (!info.isFile()) return null;
       if (info.size > maxCommittedFileBytes) return "too_large";
-      if (relativePath.startsWith("Projects/") || info.size > maxScannedFileBytes) return null;
+      if (info.size > maxScannedFileBytes) return null;
       return containsSecretPattern(readFileSync(absolutePath, "utf-8")) ? "secret" : null;
     } catch {
       return null;

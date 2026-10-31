@@ -3,6 +3,9 @@ import { chmodSync, existsSync, readFileSync, rmSync, utimesSync, writeFileSync 
 import { join } from "node:path";
 import { gitEnvironmentWithToken } from "../../../../src/core/instance/child-environments.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
+import { VaultSecrets } from "../../../../src/core/vault/vault-secrets.ts";
+import { writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
+import { createVaultKey, encryptedFileLine, type VaultKeyFile } from "../../../../src/core/vault/vault-crypto.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import type { Logger } from "../../../../src/shared/logger.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -182,11 +185,11 @@ describe("VaultSync.save", () => {
     expect(existsSync(join(vault, "Toolbox/keys.md"))).toBe(true);
   });
 
-  test("lets a project folder keep its own secret (the owner's vault rule)", async () => {
+  test("a project folder keeps no plain secret any more: its secrets reach the vault only encrypted (#707)", async () => {
     sandbox.write(vault, "Projects/2025-01-01-1200-app/.env", "TOKEN=ghp_" + "b".repeat(36) + "\n");
     const state = await createSync(vault).save();
-    expect(state.withheldFiles).toEqual([]);
-    expect(remoteFiles()).toContain("Projects/2025-01-01-1200-app/.env");
+    expect(state.withheldFiles).toEqual([{ path: "Projects/2025-01-01-1200-app/.env", reason: "secret" }]);
+    expect(remoteFiles()).not.toContain("Projects/2025-01-01-1200-app/.env");
   });
 
   test("reports a conflict, keeps the local commit, and never discards a change", async () => {
@@ -1067,5 +1070,58 @@ describe("VaultSync conflict second review fixes", () => {
     expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# A draft here\n");
     // The pull left the remote's commits out of the files, so a hub claim must not trust it (#529).
     expect(sync.freshPulls).toBe(0);
+  });
+});
+
+describe("VaultSync and the secret files (#707)", () => {
+  async function secretSync(): Promise<{ sync: VaultSync; key: VaultKeyFile }> {
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    const secrets = new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") });
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets,
+    });
+    return { sync, key };
+  }
+
+  test("a .env.local reaches the remote only encrypted, and a plain .env stays plain", async () => {
+    const { sync } = await secretSync();
+    sandbox.write(vault, "Projects/2025-03-02-1015-coach/.env.local", "API_KEY=sk-example\n");
+    sandbox.write(vault, "Projects/2025-03-02-1015-coach/.env", "PORT=3000\n");
+    const state = await sync.save();
+    expect(state.withheldFiles).toEqual([]);
+    const remote = (path: string): string => sandbox.git(sandbox.remote, "show", `main:${path}`);
+    expect(remote("Projects/2025-03-02-1015-coach/.env.local")).toStartWith(encryptedFileLine);
+    expect(remote("Projects/2025-03-02-1015-coach/.env.local")).not.toContain("sk-example");
+    expect(remote("Projects/2025-03-02-1015-coach/.env")).toBe("PORT=3000");
+  });
+
+  test("a snapshot holds a secret file only encrypted", async () => {
+    const { sync } = await secretSync();
+    sandbox.write(vault, "Toolbox/server.pem", "PRIVATE KEY\n");
+    expect(await sync.snapshot("refs/eva/turns/s1/0/before")).toBe(true);
+    const kept = sandbox.git(vault, "show", "refs/eva/turns/s1/0/before:Toolbox/server.pem");
+    expect(kept).toStartWith(encryptedFileLine);
+    expect(kept).not.toContain("PRIVATE KEY");
+  });
+
+  test("with no key yet, a secret file stays out of the commit, plain, and says why", async () => {
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+    sandbox.write(vault, "Toolbox/server.pem", "PRIVATE KEY\n");
+    sandbox.write(vault, "Notes/a.md", "A note.\n");
+    const state = await sync.save();
+    expect(state.withheldFiles).toEqual([{ path: "Toolbox/server.pem", reason: "no_vault_key" }]);
+    expect(remoteFiles()).toContain("Notes/a.md");
+    expect(remoteFiles()).not.toContain("Toolbox/server.pem");
   });
 });

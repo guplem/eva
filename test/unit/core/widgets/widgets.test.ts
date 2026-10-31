@@ -235,6 +235,14 @@ describe("the review and the approval", () => {
     expect((await widgets.review(habitsId, ownHosts)).problems).toEqual(["eva-widget.json is not valid JSON."]);
   });
 
+  test("a page that the widget route cannot serve is a problem", async () => {
+    for (const entry of ["data/app.html", "Eva/app.html", ".hidden.html"]) {
+      commit({ "eva-widget.json": JSON.stringify({ ...manifest, entry }), [entry]: "<p>x</p>" });
+      const review = await widgets.review(habitsId, ownHosts);
+      expect(review.problems.some((problem) => problem.startsWith("Eva cannot serve the page"))).toBe(true);
+    }
+  });
+
   test("a failed read shows its reason in the list", async () => {
     options = {
       ...options,

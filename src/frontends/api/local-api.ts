@@ -653,9 +653,13 @@ async function widgetRoute(request: Request, url: URL, options: LocalApiOptions)
   }
   try {
     const path = encoded.map((part) => decodeURIComponent(part)).join("/");
-    const length = Number(request.headers.get("content-length") ?? "0");
-    if (request.method === "PUT" && length > maxWidgetWriteBytes) return answer(413);
-    const body = request.method === "PUT" ? new Uint8Array(await request.arrayBuffer()) : null;
+    // A dead token reads no body, and a body stops at the limit, also one with no length or a chunked one.
+    if (!widgets.isLive(token)) return answer(404);
+    let body: Uint8Array | null = null;
+    if (request.method === "PUT") {
+      body = await cappedBody(request, maxWidgetWriteBytes);
+      if (body === null) return answer(413);
+    }
     const served = await widgets.serve(token, path, request.method, body);
     if (served === null) return answer(404);
     // A file read gives a Buffer, which a Response takes as it is.
@@ -670,6 +674,26 @@ async function widgetRoute(request: Request, url: URL, options: LocalApiOptions)
   }
 }
 
+/** The body of a request, or null when it is longer than `limit`. It reads no more than `limit` and one chunk. */
+async function cappedBody(request: Request, limit: number): Promise<Uint8Array | null> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(declared) || declared > limit) return null;
+  if (request.body === null) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
 /**
  * The widget list of the settings and the cards of the grid (#691). An id is `<owner>/<name>`.
  * Returns null for any other path.

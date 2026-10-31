@@ -220,6 +220,31 @@ describe("the widget files", () => {
     expect(await (await frameCall(`${base}eva/theme.css`)).text()).toContain("--bg: #000000;");
   });
 
+  test("stop a body at the limit, also with no length, and read none for a dead token", async () => {
+    const src = await approvedSrc();
+    const base = src.replace(/index\.html$/, "");
+    const chunk = new Uint8Array(1024 * 1024).fill(32);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let index = 0; index < 6; index += 1) controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+    const chunked = await fetch(`${api.url}${base}data/habits/big.json`, {
+      method: "PUT",
+      headers: { origin: "null" },
+      body: stream,
+    });
+    expect(chunked.status).toBe(413);
+    const dead = await frameCall(`/widgets/${"b".repeat(43)}/data/habits/x.json`, "PUT", "{}");
+    expect(dead.status).toBe(404);
+    const empty = await fetch(`${api.url}${base}data/habits/empty.json`, {
+      method: "PUT",
+      headers: { origin: "null" },
+    });
+    expect(empty.status).toBe(400);
+  });
+
   test("refuse a page of its own, another site, an unknown host and an unknown token", async () => {
     const src = await approvedSrc();
     expect((await frameCall(src, "GET", undefined, { "sec-fetch-dest": "document" })).status).toBe(403);

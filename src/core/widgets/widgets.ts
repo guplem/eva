@@ -18,7 +18,7 @@ import type { WidgetCopies } from "./widget-copies.ts";
 import { answerData, placeOf, type WidgetAnswer } from "./widget-data.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
-import { isWritableName } from "./widget-places.ts";
+import { isPlainName, isWritableName } from "./widget-places.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
 
 export interface WidgetsOptions {
@@ -167,6 +167,12 @@ export class Widgets {
       }
       if ((await this.options.copies.readAt(address, commit, manifest.entry)) === null)
         problems.push(`The page ${manifest.entry} of the manifest is missing.`);
+      // The widget route answers `data/` and `eva/` itself, and never serves a hidden file.
+      const [top = ""] = manifest.entry.split("/");
+      if (!manifest.entry.split("/").every(isPlainName) || ["data", "eva"].includes(top.toLowerCase()))
+        problems.push(
+          `Eva cannot serve the page ${manifest.entry}. Put the page outside data/ and eva/, with no hidden name.`,
+        );
     }
     const entry = readWidgetList(this.options.vaultPath).find((candidate) => candidate.id === id);
     const review: WidgetReview = {
@@ -362,9 +368,10 @@ export class Widgets {
     return this.liveSession(token) !== null;
   }
 
-  /** The approved hosts of a live token, for the policy of its answers. */
+  /** The approved hosts of a token, for the policy of its answers. It reads no vault file: each answer needs it. */
   hostsOf(token: string): readonly string[] {
-    return this.liveSession(token)?.record.hosts ?? [];
+    const session = this.sessions.get(token);
+    return session === undefined ? [] : (this.options.approvals.get(session.id)?.hosts ?? []);
   }
 
   /**
@@ -374,7 +381,7 @@ export class Widgets {
   async serve(token: string, path: string, method: string, body: Uint8Array | null): Promise<WidgetAnswer | null> {
     const live = this.liveSession(token);
     if (live === null) return null;
-    const { session, record, entry } = live;
+    const { session, record, entry, address } = live;
     const [first, second] = path.split("/");
     // Without case: on a file system that ignores case, `Data/` or `Config.json` would read the mock files of the copy.
     const contract = (first ?? "").toLowerCase();
@@ -387,7 +394,7 @@ export class Widgets {
       if (rest === undefined) return { status: 404 };
       const open = { ...approved, path: value };
       if (method === "GET" || method === "HEAD") return answerData(this.options.vaultPath, open, rest, "GET", null);
-      const schema = method === "PUT" ? this.schemaOf(this.known(session.id), approved) : null;
+      const schema = method === "PUT" ? this.schemaOf(address, approved) : null;
       const write = body === null ? null : { body, schema, redact: this.options.redact };
       return this.options.exclusive(() => answerData(this.options.vaultPath, open, rest, method, write));
     }
@@ -398,26 +405,28 @@ export class Widgets {
       return { status: 200, contentType: "text/css; charset=utf-8", body: themeCss(session.theme) };
     if (contract === "eva" || contract === "data" || path.toLowerCase() === "config.json" || path === "")
       return { status: 404 };
-    return this.options.copies.serveFile(this.known(session.id), path);
+    return this.options.copies.serveFile(address, path);
   }
 
-  private liveSession(
-    token: string,
-  ): { readonly session: FrameSession; readonly record: WidgetApproval; readonly entry: WidgetEntry } | null {
+  private liveSession(token: string): {
+    readonly session: FrameSession;
+    readonly record: WidgetApproval;
+    readonly entry: WidgetEntry;
+    readonly address: WidgetAddress;
+  } | null {
     const session = this.sessions.get(token);
     if (session === undefined) return null;
     const record = this.options.approvals.get(session.id);
-    const entry = readWidgetList(this.options.vaultPath).find((candidate) => candidate.id === session.id);
-    if (
-      session.expiresAt <= this.options.now().getTime() ||
-      record?.commit !== session.commit ||
-      entry?.enabled !== true ||
-      !matches(record, entry)
-    ) {
+    if (session.expiresAt <= this.options.now().getTime() || record?.commit !== session.commit) {
       this.sessions.delete(token);
       return null;
     }
-    return { session, record, entry };
+    // A failed read of the vault list, such as during a sync, refuses this request only: the
+    // token stays, so the widget works again at its next request. Off and remove end it in `revoke`.
+    const entry = readWidgetList(this.options.vaultPath).find((candidate) => candidate.id === session.id);
+    const address = widgetAddress(record.repository);
+    if (entry?.enabled !== true || !matches(record, entry) || address === null) return null;
+    return { session, record, entry, address };
   }
 
   /** The schema of a written input, from the installed copy, so Eva knows which fields the widget knows. */

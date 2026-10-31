@@ -240,7 +240,6 @@ describe("runDirectFixes on a branch that requires checks", () => {
     const second = fakeWrite({
       ...commitReads,
       ...rulesetChecks,
-      "POST repos/owner/app/git/refs": { status: 422, body: '{"message":"Reference already exists"}' },
       [`GET repos/owner/app/pulls?head=owner:${encodeURIComponent(branch)}&state=open`]: ok([
         {
           number: 7,
@@ -255,11 +254,11 @@ describe("runDirectFixes on a branch that requires checks", () => {
     expect(outcome.notes).toEqual([
       "Skill a: Eva opened the pull request https://github.com/owner/app/pull/7. It merges by itself when CI passes.",
     ]);
-    expect(created(second.calls, "repos/owner/app/pulls")).toBeUndefined();
-    expect(created(second.calls, "graphql")).toBeUndefined();
+    // Eva makes no commit for a change that already waits in a pull request.
+    expect(second.calls.filter((call) => call.method !== "GET" && !call.path.endsWith("/git/blobs"))).toEqual([]);
   });
 
-  test("a branch of Eva with no open pull request gets a new one", async () => {
+  test("an old branch of Eva with no open pull request moves to the new commit", async () => {
     const { write, calls } = fakeWrite({
       ...commitReads,
       ...rulesetChecks,
@@ -268,8 +267,50 @@ describe("runDirectFixes on a branch that requires checks", () => {
     });
     const outcome = await runDirectFixes("owner/app", [skill], write);
     expect(outcome.fixed).toEqual(["Skill a"]);
+    const ref = created(calls, "repos/owner/app/git/refs") as { ref: string };
+    expect(calls).toContainEqual({
+      method: "PATCH",
+      path: `repos/owner/app/git/${ref.ref.replace("refs/heads/eva/", "refs/heads/eva%2F")}`,
+      body: { sha: "commit", force: true },
+    });
     expect(created(calls, "repos/owner/app/pulls")).toBeDefined();
     expect(created(calls, "graphql")).toBeDefined();
+  });
+
+  test("a branch that GitHub refuses for another reason fails with GitHub's reason", async () => {
+    const { write } = fakeWrite({
+      ...commitReads,
+      ...rulesetChecks,
+      ...pullRequest,
+      "POST repos/owner/app/git/refs": { status: 422, body: '{"message":"Reference update failed"}' },
+    });
+    const outcome = await runDirectFixes("owner/app", [skill], write);
+    expect(outcome.failed).toEqual([
+      { label: "Skill a", reason: "GitHub refused it (HTTP 422): Reference update failed" },
+    ]);
+  });
+
+  test("auto-merge keeps to the merge methods that the ruleset allows", async () => {
+    const linear = fakeWrite({
+      ...commitReads,
+      ...pullRequest,
+      "GET repos/owner/app/rules/branches/main": ok([
+        { type: "required_status_checks" },
+        { type: "required_linear_history" },
+      ]),
+    });
+    await runDirectFixes("owner/app", [skill], linear.write);
+    expect(created(linear.calls, "graphql")).toMatchObject({ variables: { mergeMethod: "SQUASH" } });
+    const rebaseOnly = fakeWrite({
+      ...commitReads,
+      ...pullRequest,
+      "GET repos/owner/app/rules/branches/main": ok([
+        { type: "required_status_checks" },
+        { type: "pull_request", parameters: { allowed_merge_methods: ["rebase"] } },
+      ]),
+    });
+    await runDirectFixes("owner/app", [skill], rebaseOnly.write);
+    expect(created(rebaseOnly.calls, "graphql")).toMatchObject({ variables: { mergeMethod: "REBASE" } });
   });
 
   test("a classic branch protection with required checks also gets a pull request", async () => {

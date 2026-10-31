@@ -179,7 +179,8 @@ export async function landTree(
   tree: readonly TreeEntry[],
   change: TreeChange,
 ): Promise<Landing> {
-  if (!(await requiresChecks(write, slug, branch))) {
+  const rules = await branchRules(write, slug, branch);
+  if (!rules.requiresChecks) {
     await commitTree(write, slug, branch, head, tree, change.message);
     return { kind: "commit" };
   }
@@ -188,11 +189,24 @@ export async function landTree(
     .update(JSON.stringify({ message: change.message, tree }))
     .digest("hex");
   const name = `eva/${change.topic}-${digest.slice(0, 8)}`;
-  const commit = await makeCommit(write, slug, head, tree, change.message);
-  const pull = await openPullRequest(write, slug, branch, name, commit, change);
+  const owner = slug.split("/")[0] ?? "";
+  const open = listOf(
+    await githubCall(write, "GET", `repos/${slug}/pulls?head=${owner}:${encodeURIComponent(name)}&state=open`),
+  )[0];
+  const pull =
+    open === undefined
+      ? await openPullRequest(
+          write,
+          slug,
+          branch,
+          name,
+          await makeCommit(write, slug, head, tree, change.message),
+          change,
+        )
+      : pullRequestOf(open);
   if (pull.autoMerge) return { kind: "pull request", url: pull.url };
   try {
-    await enableAutoMerge(write, slug, pull.nodeId);
+    await enableAutoMerge(write, slug, pull.nodeId, rules.list);
   } catch (error) {
     if (!isEvaError(error, "github_failed")) throw error;
     throw new EvaError(
@@ -204,8 +218,14 @@ export async function landTree(
   return { kind: "pull request", url: pull.url };
 }
 
+interface BranchRules {
+  readonly requiresChecks: boolean;
+  /** Each rule of the rulesets on the branch. */
+  readonly list: readonly unknown[];
+}
+
 /** Unreadable rules count as none: a refused commit then names GitHub's reason. */
-async function requiresChecks(write: GithubWrite, slug: string, branch: string): Promise<boolean> {
+async function branchRules(write: GithubWrite, slug: string, branch: string): Promise<BranchRules> {
   const read = async (path: string): Promise<unknown> => {
     const answer = await write("GET", path);
     return answer.status >= 200 && answer.status < 300 ? parseJson(answer.body) : null;
@@ -215,7 +235,7 @@ async function requiresChecks(write: GithubWrite, slug: string, branch: string):
     read(`repos/${slug}/rules/branches/${encoded}`),
     read(`repos/${slug}/branches/${encoded}`),
   ]);
-  return readRequiredChecks(rules, info) === true;
+  return { requiresChecks: readRequiredChecks(rules, info) === true, list: listOf(rules) };
 }
 
 interface OpenPullRequest {
@@ -224,7 +244,7 @@ interface OpenPullRequest {
   readonly autoMerge: boolean;
 }
 
-/** A new branch at the commit and a pull request from it; or Eva's open pull request of that branch. */
+/** A branch of Eva at the commit, and a pull request from it. */
 async function openPullRequest(
   write: GithubWrite,
   slug: string,
@@ -234,12 +254,12 @@ async function openPullRequest(
   change: TreeChange,
 ): Promise<OpenPullRequest> {
   const ref = await write("POST", `repos/${slug}/git/refs`, { ref: `refs/heads/${name}`, sha: commit });
-  if (ref.status === 422) {
-    const owner = slug.split("/")[0] ?? "";
-    const open = listOf(
-      await githubCall(write, "GET", `repos/${slug}/pulls?head=${owner}:${encodeURIComponent(name)}&state=open`),
-    )[0];
-    if (open !== undefined) return pullRequestOf(open);
+  if (ref.status === 422 && textField(parseJson(ref.body), "message") === "Reference already exists") {
+    // A closed pull request left Eva's branch behind. No open pull request uses it, so it moves.
+    await githubCall(write, "PATCH", `repos/${slug}/git/refs/heads/${encodeURIComponent(name)}`, {
+      sha: commit,
+      force: true,
+    });
   } else {
     checked(ref);
   }
@@ -264,18 +284,38 @@ function pullRequestOf(value: unknown): OpenPullRequest {
 const autoMergeMutation =
   "mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: $mergeMethod }) { clientMutationId } }";
 
+const mergeMethods = [
+  { name: "merge", setting: "allow_merge_commit" },
+  { name: "squash", setting: "allow_squash_merge" },
+  { name: "rebase", setting: "allow_rebase_merge" },
+] as const;
+
 /**
  * REST cannot turn on auto-merge, so this is the GraphQL call that `gh pr merge --auto` makes. The
- * method is the first one that the repository allows, in the order that Eva's own merges use.
+ * method is the first one that the repository settings and the rules allow, in the order that Eva's
+ * own merges use.
  */
-async function enableAutoMerge(write: GithubWrite, slug: string, pullRequestId: string): Promise<void> {
+async function enableAutoMerge(
+  write: GithubWrite,
+  slug: string,
+  pullRequestId: string,
+  rules: readonly unknown[],
+): Promise<void> {
   const settings = asRecord(await githubCall(write, "GET", `repos/${slug}`));
-  const mergeMethod =
-    settings?.["allow_merge_commit"] !== false
-      ? "MERGE"
-      : settings["allow_squash_merge"] !== false
-        ? "SQUASH"
-        : "REBASE";
+  const linear = rules.some((rule) => textField(rule, "type") === "required_linear_history");
+  const allowedByRules = rules.flatMap((rule) =>
+    textField(rule, "type") === "pull_request"
+      ? [listOf(asRecord(asRecord(rule)?.["parameters"])?.["allowed_merge_methods"])]
+      : [],
+  );
+  const method =
+    mergeMethods.find(
+      ({ name, setting }) =>
+        settings?.[setting] !== false &&
+        !(linear && name === "merge") &&
+        allowedByRules.every((allowed) => allowed.length === 0 || allowed.includes(name)),
+    )?.name ?? "merge";
+  const mergeMethod = method.toUpperCase();
   const answer = await githubCall(write, "POST", "graphql", {
     query: autoMergeMutation,
     variables: { pullRequestId, mergeMethod },

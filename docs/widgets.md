@@ -6,6 +6,8 @@ A widget is plain, standard web code: HTML, JavaScript and CSS, with no framewor
 
 The template of a new widget is [`templates/widget/`](../templates/widget/). Eva copies it to each new widget repository. Each Eva release updates the template and this document together.
 
+The two widgets that ship with Eva are full examples: [`guplem/eva-widget-habits`](https://github.com/guplem/eva-widget-habits) writes vault data, and [`guplem/eva-widget-weather`](https://github.com/guplem/eva-widget-weather) reads the location and calls a host.
+
 ## Contents
 
 - [The files of a widget](#the-files-of-a-widget)
@@ -221,6 +223,7 @@ The machine check is a meta-schema: [`widgets/meta-schema-v1.json`](widgets/meta
 
 - Never use an inline script or an inline style. Eva's Content Security Policy blocks them. Put the code in a `.js` file, and the styles in a `.css` file.
 - Never rely on `localStorage`. Eva shows a widget in a sandboxed frame with no origin, which cannot use it.
+- Never rely on a form submit, also `<form method="dialog">`. The sandbox blocks it. Handle each button with a `click` listener.
 - Keep the fields that you do not know, as [Data formats](#data-formats) says.
 - Call only the hosts of the manifest. Eva blocks the others.
 - Use only relative paths for the contract paths, such as `fetch("config.json")`, never `fetch("/config.json")`.
@@ -278,7 +281,7 @@ A browser blocks `fetch` on `file://`, so a double-click on `index.html` does no
 
 ## Example: a habits widget
 
-This widget shows the person's habits and checks a habit for today. The base habits widget of Eva uses the same data format.
+This widget shows the person's habits and checks a habit for today. The [base habits widget](https://github.com/guplem/eva-widget-habits) of Eva uses the same data format.
 
 The person picks a folder, such as `Life/Habits/`. The folder has one file for each habit, such as `meditate.json`. The file name is the habit name in lower case, with ASCII letters, digits and hyphens only. The name `index` is not allowed.
 

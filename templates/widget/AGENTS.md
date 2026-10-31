@@ -13,6 +13,7 @@ This repository is a widget for Eva's home page: a small web page that Eva shows
 
 - Never use an inline script or an inline style. Eva's Content Security Policy blocks them.
 - Never rely on `localStorage`.
+- Never rely on a form submit, also `<form method="dialog">`: Eva's sandbox blocks it. Handle each button with a `click` listener.
 - When the widget changes a data file, keep the fields that it does not know.
 - Each input that the widget writes has a JSON Schema in `schemas/`. Its field names follow the naming rules of the contract.
 - A pull request that adds or widens a permission of `eva-widget.json` says so in its body: a new input, a write access, the location, or a host.

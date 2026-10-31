@@ -41,9 +41,13 @@ let vault: string;
 let eva: Eva;
 let api: LocalApi;
 
-function evaWith(vaultPath: string | null): Eva {
+/**
+ * An Eva of the test home. The base widgets would share the one local remote, so she has none,
+ * unless `withBaseWidgets` keeps the ones that ship with Eva.
+ */
+function evaWith(vaultPath: string | null, withBaseWidgets = false, at = home): Eva {
   return new Eva({
-    paths: homePaths(home),
+    paths: homePaths(at),
     config: { ...defaultConfig, vaultPath, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
     secrets: {},
     engines: [new FakeEngine((request) => FakeEngine.answer(request, "answer"))],
@@ -52,6 +56,7 @@ function evaWith(vaultPath: string | null): Eva {
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
     widgetRemote: () => sandbox.remote,
+    ...(withBaseWidgets ? {} : { baseWidgets: [] }),
     // The notes of an update come from GitHub: a test reaches no network.
     githubRequest: () => Promise.resolve({ status: 404, body: "" }),
   });
@@ -143,6 +148,21 @@ afterEach(async () => {
 describe("the widget list", () => {
   test("needs the login, like every API route", async () => {
     expect((await call("/api/widgets", { headers: {} })).status).toBe(401);
+  });
+
+  test("a new Eva lists the habits and weather widgets that ship with her, off", () => {
+    // A home and a vault of its own: one core for each home.
+    const own = join(home, "shipped");
+    mkdirSync(join(own, "vault", ".eva"), { recursive: true });
+    const shipped = evaWith(join(own, "vault"), true, own);
+    try {
+      expect(shipped.widgets?.list().map((item) => [item.name, item.state, item.sources])).toEqual([
+        ["Habits", "off", ["base"]],
+        ["Weather", "off", ["base"]],
+      ]);
+    } finally {
+      shipped.stop();
+    }
   });
 
   test("adds, checks, approves, moves, turns off and removes a widget", async () => {

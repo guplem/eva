@@ -375,6 +375,8 @@ const eva = new Eva({
   // The demo branch requires checks, so a file fix shows its pull request (#717).
   githubWrite: fakeGithubWrite({ requiredChecks: true }),
   widgetRemote: () => habitsWidget.remote,
+  // Every widget address leads to the one local remote, so a base widget would show the habits template.
+  baseWidgets: [],
 });
 const habitsWidgetId = "example-owner/habits-widget";
 const demoHosts = ["127.0.0.1", "localhost"];

@@ -416,7 +416,7 @@ function WidgetActivation({
             {line !== null && (
               <div className="field">
                 <span className="field-label">What this widget tells Eva</span>
-                <span className="widget-picked">{line}</span>
+                <span>{line}</span>
                 <span className="field-hint">
                   Eva adds this line to her prompt in each new chat, so she saves your data where the widget reads it.
                 </span>

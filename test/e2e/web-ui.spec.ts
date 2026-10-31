@@ -6038,6 +6038,45 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
   await expect(list("Vault").getByRole("link", { name: ".git" })).toHaveCount(0);
 });
 
+test("Files: an encrypted file shows a lock, opens with the vault password, saves and locks again (#707)", async ({
+  page,
+}, testInfo) => {
+  const path = `Private/${testInfo.project.name}.secrets`;
+  // Only a device's own login decrypts, so this browser logs in as a device, with a login link.
+  const link = (await (
+    await page.request.post("/api/devices/link", { headers: { authorization: `Bearer ${token}` }, data: {} })
+  ).json()) as { secret: string };
+  expect((await page.request.post("/api/login/link", { data: { secret: link.secret } })).ok()).toBe(true);
+  const password = "a long demo password";
+  const status = (await (await page.request.get("/api/vault/secrets")).json()) as { hasKey: boolean };
+  // The other browser run may have set it already.
+  if (!status.hasKey)
+    expect((await page.request.post("/api/vault/secrets/password", { data: { password } })).ok()).toBe(true);
+  // The secret file never shows its text before the unlock, not even to a raw request.
+  expect(await (await page.request.get(`/api/files?path=${path}`)).text()).not.toContain("demo-value");
+
+  await page.goto(`/#/files/${path}`);
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
+  await page.getByLabel("Vault password").fill("a wrong password");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByLabel("Vault password").fill(password);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file).toContainText("API_KEY=demo-value");
+
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByLabel(`Text of ${path}`).fill("API_KEY=new-value\n");
+  await file.getByRole("button", { name: "Save" }).click();
+  await expect(file).toContainText("API_KEY=new-value");
+  expect(await (await page.request.get(`/api/files?path=${path}`)).text()).not.toContain("new-value");
+
+  await chooseFileAction(page, "Lock encrypted files");
+  await expect(page.getByLabel("Vault password")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
+});
+
 test("Files: a wide screen shows each folder of the path as a column, and the file can fill the page (issue 308)", async ({
   page,
 }, testInfo) => {

@@ -124,7 +124,7 @@ export class VaultEncryption {
    * Writes the person's patterns. An added pattern encrypts its files at the save that follows. A
    * default turned off, or a pattern taken out, waits for a confirmation from an unlocked device.
    */
-  async setPatterns(changes: SecretFilesChanges): Promise<VaultSecretsStatus> {
+  async setPatterns(changes: SecretFilesChanges): Promise<void> {
     const vaultPath = this.vaultPath();
     const lines = [
       "# The secret files of this vault: Eva encrypts each one. Settings writes this file.",
@@ -136,7 +136,6 @@ export class VaultEncryption {
       writeFileAtomic(join(vaultPath, secretFilesPath), `${lines.join("\n")}\n`);
     });
     await this.persist();
-    return this.status(null, null);
   }
 
   /** Signs every removal that waits, decrypts the files that they freed, and saves. Gives those paths. */

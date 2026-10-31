@@ -11,7 +11,7 @@ import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry, type Se
 import { readAppearance } from "./appearance.ts";
 import { useIsPhone } from "./ChatHeader.tsx";
 import { ColumnDivider } from "./ColumnDivider.tsx";
-import { DownloadButton, DownloadWait, useDownload } from "./DownloadButton.tsx";
+import { DownloadButton, DownloadWait, useDownload, type FetchFile } from "./DownloadButton.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
 import {
@@ -31,6 +31,7 @@ import { MoreMenu, type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
+import { UnlockVaultForm } from "./UnlockVaultForm.tsx";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -453,11 +454,15 @@ function Column({
   if (!isLast) return null;
   if (shown.kind === "encrypted")
     return (
-      <div className="files-pane files-preview">
-        <div role="status" className="callout">
-          This file is encrypted. <span className="files-size">({sizeWords(shown.size)})</span>
-        </div>
-      </div>
+      <EncryptedFile
+        key={path}
+        path={path}
+        size={shown.size}
+        large={large}
+        onLarge={onLarge}
+        wrap={wrap}
+        onWrap={onWrap}
+      />
     );
   if (shown.kind === "unreadable")
     return (
@@ -478,6 +483,149 @@ function Column({
       wrap={wrap}
       onWrap={onWrap}
       onSaved={onSaved}
+    />
+  );
+}
+
+type Opened =
+  | { readonly state: "loading" }
+  | { readonly state: "locked"; readonly hasKey: boolean }
+  | { readonly state: "failed"; readonly reason: string }
+  | { readonly state: "text"; readonly file: ShownFile }
+  | { readonly state: "binary" };
+
+/**
+ * A file that the vault keeps encrypted (#707). This tab opens it after an unlock with the vault
+ * password. The text stays in this page only: no list, cache or event holds it.
+ */
+function EncryptedFile({
+  path,
+  size,
+  large,
+  onLarge,
+  wrap,
+  onWrap,
+}: {
+  readonly path: string;
+  readonly size: number;
+  readonly large: boolean;
+  readonly onLarge: (large: boolean) => void;
+  readonly wrap: boolean;
+  readonly onWrap: (wrap: boolean) => void;
+}): ReactElement {
+  const [opened, setOpened] = useState<Opened>({ state: "loading" });
+  const name = path.split("/").pop() ?? "file";
+
+  const textFile = useCallback(
+    (text: string, version: string): ShownFile => ({
+      kind: "file",
+      path,
+      size: new Blob([text]).size,
+      text,
+      version,
+      editable: true,
+    }),
+    [path],
+  );
+
+  const open = useCallback(async (): Promise<void> => {
+    try {
+      const status = await api.vaultSecrets();
+      if (!status.unlocked) {
+        setOpened({ state: "locked", hasKey: status.hasKey });
+        return;
+      }
+      const file = await api.openEncryptedFile(path);
+      setOpened(
+        file.kind === "text" ? { state: "text", file: textFile(file.text, file.version) } : { state: "binary" },
+      );
+    } catch (caught) {
+      setOpened({ state: "failed", reason: caught instanceof Error ? caught.message : String(caught) });
+    }
+  }, [path, textFile]);
+
+  useEffect(() => {
+    void open();
+  }, [open]);
+
+  const lock = async (): Promise<void> => {
+    drafts.delete(path);
+    setOpened({ state: "loading" });
+    try {
+      const status = await api.lockVault();
+      setOpened({ state: "locked", hasKey: status.hasKey });
+    } catch (caught) {
+      setOpened({ state: "failed", reason: caught instanceof Error ? caught.message : String(caught) });
+    }
+  };
+
+  const download: FetchFile = async () => {
+    const file = await api.openEncryptedFile(path);
+    return file.kind === "text" ? { name, blob: new Blob([file.text], { type: "text/plain" }) } : file;
+  };
+
+  if (opened.state === "loading")
+    return (
+      <div className="files-pane files-preview">
+        <ListSkeleton label="Opening the encrypted file…" rows={3} shape="files" />
+      </div>
+    );
+  if (opened.state === "failed")
+    return (
+      <div className="files-pane files-preview">
+        <div role="alert" className="callout danger callout-action">
+          <span>{opened.reason}</span>
+          <button onClick={() => void open()}>Try again</button>
+        </div>
+      </div>
+    );
+  if (opened.state === "locked")
+    return (
+      <div className="files-pane files-preview">
+        <div role="status" className="callout">
+          <Icon name="lock" /> This file is encrypted. <span className="files-size">({sizeWords(size)})</span>
+        </div>
+        <UnlockVaultForm hasKey={opened.hasKey} onUnlocked={() => void open()} />
+      </div>
+    );
+  if (opened.state === "binary")
+    return (
+      <div className="files-pane files-preview">
+        <div role="status" className="callout">
+          <Icon name="lock" /> This encrypted file is not text, so it opens as a download.{" "}
+          <span className="files-size">({sizeWords(size)})</span>
+        </div>
+        <DownloadButton path={path} folder={false} fetchFile={download} />
+        <button className="ghost" onClick={() => void lock()}>
+          <Icon name="lock" />
+          Lock
+        </button>
+      </div>
+    );
+  const source: FileSource = {
+    load: async () => {
+      const file = await api.openEncryptedFile(path);
+      if (file.kind !== "text") throw new Error("This file is no longer text.");
+      return textFile(file.text, file.version);
+    },
+    save: async (version, text) => {
+      await api.saveEncryptedFile(path, version, text);
+      return source.load();
+    },
+    download,
+    items: [{ label: "Lock encrypted files", icon: "lock", onChoose: () => void lock() }],
+  };
+  return (
+    <FilePreview
+      file={opened.file}
+      large={large}
+      onLarge={onLarge}
+      wrap={wrap}
+      onWrap={onWrap}
+      onSaved={(saved) => {
+        if (saved.kind === "file") setOpened({ state: "text", file: saved });
+      }}
+      source={source}
     />
   );
 }
@@ -729,9 +877,27 @@ interface FilePreviewProps {
   readonly wrap: boolean;
   readonly onWrap: (wrap: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
+  /** Where the text comes from and goes to, for a file that is not a plain vault file. */
+  readonly source?: FileSource;
 }
 
-function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePreviewProps): ReactElement {
+/** The routes of a file that the vault keeps encrypted (#707). Each one needs this tab's unlock. */
+interface FileSource {
+  readonly load: () => Promise<BrowsedPath>;
+  readonly save: (version: string, text: string) => Promise<BrowsedPath>;
+  readonly download: FetchFile;
+  /** More items of the file's menu, such as Lock. */
+  readonly items?: readonly MenuItem[];
+}
+
+const plainSource = (path: string): FileSource => ({
+  load: () => api.files(path),
+  save: (version, text) => api.saveFile(path, version, text),
+  download: (onShare) => api.downloadFile(path, onShare),
+});
+
+function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: FilePreviewProps): ReactElement {
+  const files = source ?? plainSource(file.path);
   const [plain, setPlain] = useState(false);
   /** The edit, or null outside the editor. */
   const [draft, setDraftState] = useState<Draft | null>(() => drafts.get(file.path) ?? null);
@@ -758,7 +924,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
 
   const unsaved = draft !== null && !sameText(draft.text, file.text);
 
-  const download = useDownload(file.path);
+  const download = useDownload(file.path, files.download);
   const isPhone = useIsPhone();
   /** The Appearance setting changes on the Settings page, so the file reads it once, as it opens. */
   const [oneFolder] = useState(() => readAppearance().filesView === "single");
@@ -775,6 +941,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
     });
   }
   items.push({ label: "Download", icon: "download", onChoose: () => void download.start() });
+  items.push(...(files.items ?? []));
   // A phone and the one folder view show no folder columns, so the file fills the page already.
   if (!isPhone && !oneFolder) {
     items.push({
@@ -789,7 +956,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
     setBusy(true);
     setProblem(null);
     try {
-      onSaved(await api.saveFile(file.path, draft.version, draft.text));
+      onSaved(await files.save(draft.version, draft.text));
       setDraft(null);
       setSaved(true);
       return true;
@@ -805,7 +972,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePrevie
   const loadAgain = async (): Promise<void> => {
     setProblem(null);
     try {
-      const answer = await api.files(file.path);
+      const answer = await files.load();
       onSaved(answer);
       if (answer.kind === "file") setDraft({ text: answer.text, version: answer.version }, answer.text);
     } catch (caught) {

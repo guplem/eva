@@ -38,22 +38,26 @@ export async function request<Body>(
   method: string,
   path: string,
   body?: unknown,
-  options: { readonly keepalive?: boolean; readonly limit?: { readonly ms: number; readonly message: string } } = {},
+  options: {
+    readonly keepalive?: boolean;
+    readonly limit?: { readonly ms: number; readonly message: string };
+    readonly headers?: Readonly<Record<string, string>>;
+  } = {},
 ): Promise<Body> {
   // A Blob, such as a voice note, goes as it is.
   const sent =
     body === undefined
       ? {}
       : body instanceof Blob
-        ? { headers: { "content-type": body.type }, body }
-        : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
-  const { limit, ...fetchOptions } = options;
+        ? { contentType: body.type, body }
+        : { contentType: "application/json", body: JSON.stringify(body) };
+  const { limit, headers, ...fetchOptions } = options;
   const run = async (signal?: AbortSignal): Promise<Body> => {
     const response = await fetch(path, {
       method,
       credentials: "same-origin",
-      headers: {},
-      ...sent,
+      headers: { ...headers, ...(sent.contentType === undefined ? {} : { "content-type": sent.contentType }) },
+      ...(sent.body === undefined ? {} : { body: sent.body }),
       ...fetchOptions,
       ...(signal === undefined ? {} : { signal }),
     });

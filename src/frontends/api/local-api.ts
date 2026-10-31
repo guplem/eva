@@ -32,6 +32,7 @@ import { serviceWorkerScript } from "../web/service-worker-script.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
+import { unlockHeader } from "../../shared/unlock-header.ts";
 import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
 
 export interface LocalApiOptions {
@@ -1350,9 +1351,6 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
 }
 
-/** The header that carries the secret that a device's page got at its unlock (#707). */
-export const unlockHeader = "x-eva-unlock";
-
 /**
  * The routes of the vault's encryption (#707). Only a device's own request decrypts: a request
  * with the local API token has no device token. A decrypted text is never redacted, logged or put
@@ -1377,13 +1375,15 @@ async function secretsRoute(request: Request, url: URL, eva: Eva, deviceToken: s
     encryption.lock(deviceToken);
     return noStore(encryption.status(deviceToken, null));
   }
-  if (method === "PUT" && path === "/api/vault/secrets/patterns")
-    return noStore(await encryption.setPatterns(secretPatternsSchema.parse(await request.json())));
+  if (method === "PUT" && path === "/api/vault/secrets/patterns") {
+    await encryption.setPatterns(secretPatternsSchema.parse(await request.json()));
+    return noStore(encryption.status(deviceToken, secret));
+  }
   if (method === "POST" && path === "/api/vault/secrets/confirm")
     return noStore({ decrypted: await encryption.confirmRemovals(deviceToken, secret) });
   if (method === "POST" && path === "/api/vault/secrets/change-password") {
     await encryption.changePassword(deviceToken, secret, passwordSchema.parse(await request.json()).password);
-    return noStore(encryption.status(deviceToken, null));
+    return noStore(encryption.status(deviceToken, secret));
   }
   if (method === "POST" && path === "/api/vault/secrets/new-key") {
     await encryption.newKey(deviceToken, secret, passwordSchema.parse(await request.json()).password);

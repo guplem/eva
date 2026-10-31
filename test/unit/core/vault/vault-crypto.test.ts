@@ -7,7 +7,9 @@ import {
   isEncryptedFile,
   keyFingerprint,
   rewrapVaultKey,
+  signRecord,
   unlockVaultKey,
+  verifyRecord,
   type VaultKeyFile,
 } from "../../../../src/core/vault/vault-crypto.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -98,8 +100,21 @@ describe("vault keys (#707)", () => {
     );
   });
 
-  test("each key has its own fingerprint", () => {
-    expect(keyFingerprint(keyFile())).not.toBe(keyFingerprint(keyFile()));
-    expect(keyFingerprint(keyFile())).toMatch(/^[0-9a-f]{16}$/);
+  test("each key has its own fingerprint, which covers both public keys", () => {
+    const file = keyFile();
+    expect(keyFingerprint(file)).not.toBe(keyFingerprint(keyFile()));
+    expect(keyFingerprint(file)).toMatch(/^[0-9a-f]{16}$/);
+    // An agent that swaps only the signing key must not keep the fingerprint.
+    expect(keyFingerprint({ ...file, signingKey: keyFile().signingKey })).not.toBe(keyFingerprint(file));
+  });
+
+  test("an unlocked key signs a record, and any machine checks it with the plain public key", () => {
+    const file = keyFile();
+    const record = '{"removed":["*.key"]}';
+    const signature = signRecord(record, unlockVaultKey(file, password));
+    expect(verifyRecord(record, signature, file)).toBe(true);
+    expect(verifyRecord('{"removed":["*.pem"]}', signature, file)).toBe(false);
+    expect(verifyRecord(record, signature, keyFile())).toBe(false);
+    expect(verifyRecord(record, "not base64 !", file)).toBe(false);
   });
 });

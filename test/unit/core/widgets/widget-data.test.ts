@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { OpenApprovedPath as ApprovedPath } from "../../../../src/core/widgets/widget-data.ts";
@@ -158,6 +167,22 @@ describe("answerData reads", () => {
     expect(answerData(vault, linked, "walk.json", "GET", null).status).toBe(404);
     expect(answerData(vault, linked, "new.json", "PUT", body({ name: "x" })).status).toBe(404);
   });
+});
+
+test("never reaches a file of another place through a hard link", () => {
+  try {
+    linkSync(join(vault, "Life/About me.md"), join(vault, "Life/Habits/facts.json"));
+  } catch {
+    return; // A system that cannot make the link cannot follow one either.
+  }
+  expect(answerData(vault, habits, "facts.json", "GET", null).status).toBe(404);
+  expect(JSON.parse(text(answerData(vault, habits, "index.json", "GET", null)))).toEqual([
+    "2026/run.json",
+    "walk.json",
+  ]);
+  expect(answerData(vault, habits, "facts.json", "PUT", body({ name: "x" })).status).toBe(403);
+  expect(answerData(vault, habits, "facts.json", "DELETE", null).status).toBe(403);
+  expect(read("Life/About me.md")).toBe("# About me\n");
 });
 
 describe("answerData writes", () => {

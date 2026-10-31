@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   isClosedPlace,
+  isDataFormatFile,
   isPlainName,
   isWritableName,
   matchesFiles,
@@ -64,6 +65,20 @@ describe("pathSegments and openPath", () => {
     expect(isClosedPlace([])).toBe(true);
     expect(isClosedPlace([""])).toBe(true);
   });
+});
+
+test("folds a name as Windows does, so a look-alike never opens a closed place or a rule file", () => {
+  expect(openPath("ſcratch/note.md")).toBeNull();
+  expect(openPath("Life/About me.md".normalize("NFD"))).toBeNull();
+  expect(isWritableName("ＡGENTS.json")).toBe(true);
+  expect(isWritableName("ＡGENTS.md")).toBe(false);
+  expect(isDataFormatFile("DATA_FORMAT.MD")).toBe(true);
+  expect(isDataFormatFile("data.md")).toBe(false);
+});
+
+test("refuses a device name of Windows", () => {
+  for (const name of ["NUL", "nul.json", "COM1.json", "lpt9", "AUX.yaml", "con"]) expect(isPlainName(name)).toBe(false);
+  expect(isPlainName("console.json")).toBe(true);
 });
 
 describe("isWritableName", () => {

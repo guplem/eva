@@ -16,6 +16,16 @@ const refusedCharacters = /[\\:%<>"|?*]/;
 const controlCharacter = /\p{Cc}/u;
 /** A short 8.3 name of Windows, such as `ABOUTM~1.MD`, names a long file by another name. */
 const shortName = /~\d/;
+/** A device name of Windows, such as `NUL` or `COM1.json`, opens a device, not a file. */
+const deviceName = /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\..*)?$/i;
+
+/**
+ * A name as a file system that ignores case can read it. Windows folds `ſ` to `S` and the Kelvin
+ * sign to `K`, so Eva folds both ways, after the compatibility form of Unicode.
+ */
+function folded(name: string): string {
+  return name.normalize("NFKC").toUpperCase().toLowerCase();
+}
 
 /** The segments of a path, or null when one segment is not a plain name. */
 export function pathSegments(path: string): string[] | null {
@@ -36,6 +46,7 @@ export function isPlainName(name: string): boolean {
     !name.endsWith(" ") &&
     !refusedCharacters.test(name) &&
     !controlCharacter.test(name) &&
+    !deviceName.test(name) &&
     !shortName.test(name)
   );
 }
@@ -46,7 +57,7 @@ export function isPlainName(name: string): boolean {
  * `isPlainName` already. Eva compares without case, as the vault sync does for `Scratch`.
  */
 export function isClosedPlace(segments: readonly string[]): boolean {
-  const lower = segments.map((segment) => segment.toLowerCase());
+  const lower = segments.map(folded);
   if (lower.length === 0 || (lower.length === 1 && lower[0] === "")) return true;
   if (lower[0] === "scratch") return true;
   if (lower[0] === "projects" && lower[2] === "repos") return true;
@@ -61,7 +72,7 @@ export function openPath(path: string): string[] | null {
 
 /** True for a file name that a widget may write: a JSON or YAML file that no agent reads as rules. */
 export function isWritableName(name: string): boolean {
-  return isPlainName(name) && dataExtensions.test(name) && !ruleFiles.has(name.toLowerCase());
+  return isPlainName(name) && dataExtensions.test(name) && !ruleFiles.has(folded(name));
 }
 
 /** True when a file name matches a `files` pattern of the manifest: `*` is any text, `?` one character. */
@@ -75,4 +86,9 @@ export function matchesFiles(pattern: string, name: string): boolean {
     .join("");
   // Without case, as Eva compares every other name.
   return new RegExp(`^${source}$`, "i").test(name);
+}
+
+/** True for the data format of a folder (#692): it is for agents, never a data file of a widget. */
+export function isDataFormatFile(name: string): boolean {
+  return folded(name) === "data_format.md";
 }

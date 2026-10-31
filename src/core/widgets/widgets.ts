@@ -175,7 +175,7 @@ export class Widgets {
       owner: address.owner,
       commit,
       manifest: problems.length === 0 ? manifest : null,
-      problems,
+      problems: problems.map((problem) => this.options.redact(problem)),
       values: entry?.inputs ?? {},
     };
     this.reviews.set(id, { review, at: this.options.now().getTime() });
@@ -376,6 +376,8 @@ export class Widgets {
     if (live === null) return null;
     const { session, record, entry } = live;
     const [first, second] = path.split("/");
+    // Without case: on a file system that ignores case, `Data/` or `Config.json` would read the mock files of the copy.
+    const contract = (first ?? "").toLowerCase();
     if (first === "data") {
       const approved = record.paths.find((candidate) => candidate.input === second);
       const value = approved?.path ?? null;
@@ -394,7 +396,8 @@ export class Widgets {
     if (path === "eva/location.json") return json(record.location ? locationOf(this.options.location()) : null);
     if (path === "eva/theme.css")
       return { status: 200, contentType: "text/css; charset=utf-8", body: themeCss(session.theme) };
-    if (first === "eva" || path === "") return { status: 404 };
+    if (contract === "eva" || contract === "data" || path.toLowerCase() === "config.json" || path === "")
+      return { status: 404 };
     return this.options.copies.serveFile(this.known(session.id), path);
   }
 

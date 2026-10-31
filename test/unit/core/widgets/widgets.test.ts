@@ -449,6 +449,9 @@ describe("the widget routes", () => {
     expect(css).toMatchObject({ status: 200, contentType: "text/css; charset=utf-8" });
     expect(text(css?.body)).toContain("color-scheme: dark");
     expect((await widgets.serve(token, "eva/other.json", "GET", null))?.status).toBe(404);
+    for (const path of ["Config.json", "DATA/habits/index.json", "Eva/theme.css", "data"]) {
+      expect({ path, status: (await widgets.serve(token, path, "GET", null))?.status }).toEqual({ path, status: 404 });
+    }
     expect((await widgets.serve(token, "data/other/x.json", "GET", null))?.status).toBe(404);
     expect((await widgets.serve(token, "data/habitsx", "GET", null))?.status).toBe(404);
     expect((await widgets.serve(token, "data", "GET", null))?.status).toBe(404);

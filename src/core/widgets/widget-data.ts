@@ -10,7 +10,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { looksLikeSecretsFile } from "../files/vault-files.ts";
 import type { ApprovedPath } from "./widget-approvals.ts";
-import { isPlainName, isWritableName, matchesFiles, openPath } from "./widget-places.ts";
+import { isDataFormatFile, isPlainName, isWritableName, matchesFiles, openPath } from "./widget-places.ts";
 
 /** An approved path with a value: an empty input reaches nothing. */
 export type OpenApprovedPath = ApprovedPath & { readonly path: string };
@@ -34,8 +34,6 @@ export const maxWriteBytes = 5 * 1024 * 1024;
 const maxReadBytes = 50 * 1024 * 1024;
 /** A folder with more files is not a widget's data: the list stops there. */
 const maxListed = 10_000;
-/** The data format of a folder (#692), for agents: never a data file. */
-const dataFormatFile = "data_format.md";
 const indexFile = "index.json";
 
 const contentTypes: Readonly<Record<string, string>> = {
@@ -95,9 +93,10 @@ const refused: WidgetAnswer = { status: 403 };
 
 function readData(vaultPath: string, segments: readonly string[]): WidgetAnswer {
   const stats = walk(vaultPath, segments);
-  if (!stats?.isFile()) return notFound;
+  // A hard link can name a file of another place, such as `Life/About me.md`, from inside the folder.
+  if (!stats?.isFile() || stats.nlink > 1) return notFound;
   const name = segments.at(-1) ?? "";
-  if (looksLikeSecretsFile(name) || name.toLowerCase() === dataFormatFile) return notFound;
+  if (looksLikeSecretsFile(name) || isDataFormatFile(name)) return notFound;
   if (stats.size > maxReadBytes) return { status: 413 };
   return { status: 200, contentType: contentTypeOf(name), body: readFileSync(join(vaultPath, ...segments)) };
 }
@@ -144,7 +143,8 @@ function listFolder(vaultPath: string, approved: OpenApprovedPath): WidgetAnswer
       const entryStats = lstatOrNull(join(vaultPath, ...segments, ...inner));
       if (entryStats === null || entryStats.isSymbolicLink()) continue;
       if (entryStats.isDirectory()) visit(inner);
-      else if (entryStats.isFile() && listedFile(inner, entry, approved.files)) names.push(inner.join("/"));
+      else if (entryStats.isFile() && entryStats.nlink === 1 && listedFile(inner, entry, approved.files))
+        names.push(inner.join("/"));
     }
   };
   visit([]);
@@ -154,7 +154,7 @@ function listFolder(vaultPath: string, approved: OpenApprovedPath): WidgetAnswer
 function listedFile(inner: readonly string[], name: string, pattern: string | null): boolean {
   // The list itself answers at `index.json`, so a file of that name in the folder stays hidden.
   if (inner.length === 1 && name === indexFile) return false;
-  if (name.toLowerCase() === dataFormatFile || looksLikeSecretsFile(name)) return false;
+  if (isDataFormatFile(name) || looksLikeSecretsFile(name)) return false;
   return pattern === null || matchesFiles(pattern, name);
 }
 
@@ -178,7 +178,7 @@ function writeData(
   const name = segments.at(-1) ?? "";
   const target = join(vaultPath, ...segments);
   const current = lstatOrNull(target);
-  if (current !== null && !current.isFile()) return refused;
+  if (current !== null && (!current.isFile() || current.nlink > 1)) return refused;
   const yaml = /\.ya?ml$/i.test(name);
   const text = Buffer.from(write.body).toString("utf-8");
   const next = parseData(text, yaml);
@@ -202,6 +202,7 @@ function deleteData(vaultPath: string, segments: readonly string[], depthOfPlace
   if (walk(vaultPath, segments.slice(0, depthOfPlace)) === null) return notFound;
   const stats = walk(vaultPath, segments);
   if (!stats?.isFile()) return notFound;
+  if (stats.nlink > 1) return refused;
   rmSync(join(vaultPath, ...segments));
   return { status: 204 };
 }

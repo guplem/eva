@@ -1169,4 +1169,21 @@ describe("VaultSync.encryptSecrets (#707)", () => {
     expect(readFileSync(join(vault, "deploy/id.key"), "utf8")).toStartWith(encryptedFileLine);
     expect(sandbox.git(vault, "rev-parse", "HEAD")).toBe(headBefore);
   });
+
+  test("also encrypts a plain secret file that a commit already holds, such as one from before the password", async () => {
+    sandbox.write(vault, "deploy/old.key", "OLD PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "before the password");
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+    await sync.encryptSecrets();
+    expect(readFileSync(join(vault, "deploy/old.key"), "utf8")).toStartWith(encryptedFileLine);
+  });
 });

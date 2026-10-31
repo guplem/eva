@@ -285,8 +285,13 @@ export class VaultSync {
     return this.serialize(async () => {
       const prepare = this.options.secrets?.round();
       if (prepare === undefined) return;
-      for (const { path } of await this.statusEntries())
-        if (!path.endsWith("/") && !this.isScratchFile(path)) prepare(path);
+      // A commit can hold a plain secret from before the password or a new pattern, so the tracked files count too.
+      const tracked = await this.git(["ls-files", "-z"], localTimeoutMs);
+      const paths = new Set([
+        ...(await this.statusEntries()).map((entry) => entry.path),
+        ...(tracked.exitCode === 0 ? tracked.stdout.split("\0").filter((path) => path.length > 0) : []),
+      ]);
+      for (const path of paths) if (!path.endsWith("/") && !this.isScratchFile(path)) prepare(path);
     });
   }
 

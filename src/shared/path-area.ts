@@ -92,7 +92,10 @@ export function isProtectedInArea(area: string, requested: string, cwd: string):
 function realOf(requested: string, cwd: string): string | null {
   const asked = toolPath(requested);
   if (asked === null) return null;
-  return walk(isAbsolute(asked) ? asked : `${cwd}${sep}${asked}`, linkHops)?.path ?? null;
+  // On Windows, `\x` starts at the root of the tool's own drive, not of Eva's.
+  const drive =
+    process.platform === "win32" && /^[\\/](?![\\/])/.test(asked) ? (/^[A-Za-z]:/.exec(cwd)?.[0] ?? "") : "";
+  return walk(isAbsolute(asked) ? `${drive}${asked}` : `${cwd}${sep}${asked}`, linkHops)?.path ?? null;
 }
 
 function realFolder(folder: string): string | null {

@@ -55,6 +55,7 @@ let sandboxes: Record<string, GitSandbox>;
 let folder: string;
 let vault: string;
 let hub: boolean;
+let busy: boolean;
 let notices: string[][];
 let logged: string[];
 let widgets: Widgets;
@@ -95,6 +96,8 @@ function dataFormat(path = "Life/Habits/DATA_FORMAT.md"): string {
 async function approve(id: string, values: Record<string, string>, readOnly = false): Promise<void> {
   const review = await widgets.review(id, ownHosts);
   await widgets.approve(id, review.commit, values, ownHosts, readOnly);
+  // The approval writes the formats in the background.
+  await widgets.syncFormats();
 }
 
 async function failure(work: () => Promise<unknown>): Promise<unknown> {
@@ -120,6 +123,7 @@ beforeEach(() => {
   vaultFile("Life/Training/run.json", JSON.stringify({ name: "Run" }));
   mkdirSync(join(vault, ".eva"), { recursive: true });
   hub = true;
+  busy = false;
   notices = [];
   logged = [];
   widgets = new Widgets({
@@ -142,6 +146,7 @@ beforeEach(() => {
       isHub: () => hub,
       notify: (edited) => notices.push([...edited]),
       log: (reason) => logged.push(reason),
+      vaultBusy: () => busy,
     },
   });
   widgets.add("https://github.com/example-owner/habits");
@@ -196,6 +201,62 @@ describe("the data format file", () => {
     expect(write?.status).toBe(403);
   });
 
+  test("a widget in a subfolder conflicts with a widget of the folder above, and its file lists both", async () => {
+    vaultFile("Life/Habits/Sport/run.json", "{}");
+    await approve(habitsId, { habits: "Life/Habits" });
+    training({ properties: { name: { type: "number" } } });
+    const error = await failure(() => approve(trainingId, { training: "Life/Habits/Sport" }));
+    expect(isEvaError(error, "widget_format_conflict")).toBe(true);
+    training({ properties: { place: { type: "string" } } });
+    await approve(trainingId, { training: "Life/Habits/Sport" });
+    const sport = dataFormat("Life/Habits/Sport/DATA_FORMAT.md");
+    expect(sport).toContain("Habits (`example-owner/habits`)");
+    expect(sport).toContain("| `place` |");
+    expect(dataFormat()).not.toContain("| `place` |");
+  });
+
+  test("a widget that only reads is never refused: its conflicting fields leave the format", async () => {
+    await approve(habitsId, { habits: "Life/Habits" });
+    publish("training", {
+      "eva-widget.json": JSON.stringify({
+        contract: 1,
+        name: "Training",
+        size: "small",
+        inputs: [folderInput("training", "read")],
+      }),
+      "schemas/training.json": JSON.stringify({ ...schemaHeader, properties: { name: { type: "number" } } }),
+      "index.html": "<p>training</p>",
+    });
+    await approve(trainingId, { training: "Life/Habits" });
+    expect(widgets.list().find((item) => item.id === trainingId)?.state).toBe("on");
+    expect(dataFormat()).not.toContain("Training");
+  });
+
+  test("two inputs of one widget in one folder with another type conflict", async () => {
+    publish("training", {
+      "eva-widget.json": JSON.stringify({
+        contract: 1,
+        name: "Training",
+        size: "small",
+        inputs: [folderInput("training"), { ...folderInput("other"), schema: "schemas/other.json" }],
+      }),
+      "schemas/training.json": JSON.stringify({ ...schemaHeader, properties: { value: { type: "number" } } }),
+      "schemas/other.json": JSON.stringify({ ...schemaHeader, properties: { value: { type: "string" } } }),
+      "index.html": "<p>training</p>",
+    });
+    const error = await failure(() => approve(trainingId, { training: "Life/Training", other: "Life/Training" }));
+    expect(isEvaError(error, "widget_format_conflict")).toBe(true);
+  });
+
+  test("waits while a chat runs a turn in the vault", async () => {
+    busy = true;
+    await approve(habitsId, { habits: "Life/Habits" });
+    expect(existsSync(join(vault, "Life/Habits/DATA_FORMAT.md"))).toBe(false);
+    busy = false;
+    await widgets.syncFormats();
+    expect(existsSync(join(vault, "Life/Habits/DATA_FORMAT.md"))).toBe(true);
+  });
+
   test("the same widget in another folder has no conflict", async () => {
     training({ properties: { name: { type: "number" } } });
     await approve(habitsId, { habits: "Life/Habits" });
@@ -244,6 +305,12 @@ describe("the prompt lines", () => {
     ]);
     widgets.setEnabled(habitsId, false);
     expect(widgets.formats.promptLines()).toHaveLength(1);
+  });
+
+  test("name a DATA_FORMAT.md only when the folder has one", async () => {
+    hub = false;
+    await approve(trainingId, { training: "Life/Training" });
+    expect(widgets.formats.promptLines()).toEqual(["- Training: Training data lives in Life/Training."]);
   });
 
   test("fill an unknown placeholder with a note", async () => {

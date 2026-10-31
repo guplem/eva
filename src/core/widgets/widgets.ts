@@ -52,6 +52,8 @@ export interface WidgetsOptions {
     /** Tells the person once that Eva wrote over an edit of these files. */
     readonly notify: (edited: readonly string[]) => void;
     readonly log: (reason: string) => void;
+    /** True while an Assistant or specialist chat runs a turn in the vault. */
+    readonly vaultBusy: () => boolean;
   };
 }
 
@@ -290,8 +292,11 @@ export class Widgets {
     });
     // Before the install: the copy must keep the approved commit while the approval can still fail.
     const conflicts = this.formats.conflictsOf(id, manifest.name, paths, await this.schemasAt(address, commit, paths));
-    if (conflicts.size > 0 && !readOnly)
-      throw new EvaError("widget_format_conflict", conflictText(manifest, conflicts));
+    // Reading is always allowed. Only a write that conflicts needs the person's choice.
+    const written = new Map(
+      [...conflicts].filter(([input]) => paths.some((each) => each.input === input && each.access === "write")),
+    );
+    if (written.size > 0 && !readOnly) throw new EvaError("widget_format_conflict", conflictText(manifest, written));
     // Read access only: the widget then sets no format, so the folder keeps the other widgets' fields.
     const approvedPaths = paths.map((approved): ApprovedPath =>
       conflicts.has(approved.input) ? { ...approved, access: "read", schema: null } : approved,
@@ -311,12 +316,17 @@ export class Widgets {
     });
     this.revoke(id);
     this.saveEntry(address, { enabled: true, inputs: kept });
-    await this.syncFormats();
+    // In the background: a vault sync step can hold the vault for a while, and the approval is done.
+    void this.syncFormats();
     return this.list();
   }
 
-  /** Writes the data formats again. A failure waits for the next sync step, which tries again. */
+  /**
+   * Writes the data formats again. It waits for no running Assistant turn: a write then would land
+   * in the turn's snapshots. The next sync step tries again, as it does after a failure.
+   */
   async syncFormats(): Promise<void> {
+    if (this.options.formats?.vaultBusy() === true) return;
     try {
       await this.formats.sync();
     } catch (error) {

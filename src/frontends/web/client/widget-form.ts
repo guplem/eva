@@ -5,6 +5,7 @@
 import type { WidgetInput, WidgetManifest } from "../../../core/widgets/widget-contract.ts";
 import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
 import { isClosedPlace, isPlainName } from "../../../core/widgets/widget-places.ts";
+import { defaultPrompt, filledPrompt, type PromptPlace } from "../../../core/widgets/widget-prompt.ts";
 import type { IconName } from "./icons.tsx";
 
 export type FormValues = Readonly<Record<string, WidgetInputValue | undefined>>;
@@ -84,16 +85,15 @@ export function permissionLines(manifest: WidgetManifest, values: FormValues): P
  */
 export function promptLine(manifest: WidgetManifest, values: FormValues): string | null {
   const sent = sentValues(manifest, values);
-  if (manifest.prompt !== undefined)
-    return manifest.prompt.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, (_, id: string) => {
-      const value = ownValue(sent, id);
-      return value === undefined ? "(not set)" : String(value);
-    });
-  const places = manifest.inputs.flatMap((input) => {
+  if (manifest.prompt !== undefined) return filledPrompt(manifest.prompt, sent);
+  const places = manifest.inputs.flatMap((input): PromptPlace[] => {
     const value = ownValue(sent, input.id);
-    return (input.type === "folder" || input.type === "file") && typeof value === "string" ? [value] : [];
+    if ((input.type !== "folder" && input.type !== "file") || typeof value !== "string") return [];
+    // The hub writes a DATA_FORMAT.md for an input with a schema, in its folder.
+    const folder = input.type === "folder" ? value : value.includes("/") ? value.slice(0, value.lastIndexOf("/")) : "";
+    return [{ path: value, formatFolder: input.schema === undefined || folder === "" ? null : folder }];
   });
-  return places.length === 0 ? null : `${manifest.name} data lives in ${places.join(" and ")}.`;
+  return defaultPrompt(manifest.name, places);
 }
 
 /** True for an entry of the vault picker that a widget may reach, by its path from the vault root. */

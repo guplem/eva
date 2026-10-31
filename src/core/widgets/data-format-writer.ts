@@ -107,7 +107,7 @@ export function writeDataFormats(
 /** The one notice after Eva wrote over an edit. */
 export function dataFormatEditedMessage(edited: readonly string[]): string {
   const files = edited.join(", ");
-  return `The format of a widget folder changed, so Eva wrote ${files} again. Someone had edited it, and the vault history keeps that version. Write your notes in the AGENTS.md or the README.md of the folder.`;
+  return `The format of a widget folder changed, so Eva wrote ${files} again. Someone had edited it. The vault history keeps the version of the last sync. Write your notes in the AGENTS.md or the README.md of the folder.`;
 }
 
 function lstatOrNull(path: string): Stats | null {

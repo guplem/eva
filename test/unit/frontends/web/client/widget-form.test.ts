@@ -99,5 +99,14 @@ describe("promptLine", () => {
   test("gives the default line of a widget with data and no line, and nothing for one with no data", () => {
     expect(promptLine(manifest, { habits: "Life/Habits" })).toBe("Habits data lives in Life/Habits.");
     expect(promptLine(manifest, {})).toBeNull();
+    const withSchema: WidgetManifest = {
+      ...manifest,
+      inputs: manifest.inputs.map((input) =>
+        input.type === "folder" || input.type === "file" ? { ...input, schema: "schemas/x.json" } : input,
+      ),
+    };
+    expect(promptLine(withSchema, { habits: "Life/Habits", notes: "Notes/a.md" })).toBe(
+      "Habits data lives in Life/Habits. Read Life/Habits/DATA_FORMAT.md before you write. Habits data lives in Notes/a.md. Read Notes/DATA_FORMAT.md before you write.",
+    );
   });
 });

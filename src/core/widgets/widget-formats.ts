@@ -7,9 +7,10 @@
  * and each schema from the installed copy of the approved commit. A widget that is off keeps its
  * fields; a removed widget has no record, so its fields go.
  */
-import { posix } from "node:path";
+import { existsSync } from "node:fs";
+import { join, posix } from "node:path";
 import { contentHash } from "../vault/template-alignment.ts";
-import { dataFormatText, type DataFormatUse } from "./data-format-file.ts";
+import { dataFormatFileName, dataFormatText, type DataFormatUse } from "./data-format-file.ts";
 import { writeDataFormats, type DataFormatRecord, type FormatWrite } from "./data-format-writer.ts";
 import { mergeFormats, type FormatConflict } from "./data-formats.ts";
 import { widgetAddress, type WidgetAddress } from "./widget-address.ts";
@@ -19,6 +20,7 @@ import type { WidgetCopies } from "./widget-copies.ts";
 import { parseData, readVaultData } from "./widget-data.ts";
 import { readWidgetList } from "./widget-list.ts";
 import { isWritableName, matchesFiles } from "./widget-places.ts";
+import { defaultPrompt, filledPrompt, oneLine, type PromptPlace } from "./widget-prompt.ts";
 
 /** One input with a schema, in the folder of its `DATA_FORMAT.md`. */
 export interface FolderUse extends DataFormatUse {
@@ -64,7 +66,14 @@ export class WidgetFormats {
         const schema = installedSchema(this.options.copies, address, approved.schema);
         if (schema === null) return [];
         return [
-          { widget: entry.id, name: record.name, input: approved.input, access: approved.access, schema, ...place },
+          {
+            widget: entry.id,
+            name: oneLine(record.name),
+            input: approved.input,
+            access: approved.access,
+            schema,
+            ...place,
+          },
         ];
       });
     });
@@ -80,17 +89,21 @@ export class WidgetFormats {
     paths: readonly ApprovedPath[],
     schemas: ReadonlyMap<string, unknown>,
   ): Map<string, FormatConflict[]> {
-    const others = this.uses().filter((use) => use.widget !== id);
+    // The new widget's own inputs count too: two of them can share a folder.
+    const known: FolderUse[] = this.uses().filter((use) => use.widget !== id);
     const found = new Map<string, FormatConflict[]>();
     for (const approved of paths) {
       const place = placeOfInput(approved);
       const schema = approved.schema === null ? undefined : schemas.get(approved.schema);
       if (place === null || schema === undefined) continue;
-      const before = others.filter((use) => use.folder === place.folder);
+      const use: FolderUse = { widget: id, name, input: approved.input, access: approved.access, schema, ...place };
+      // A folder and its subfolder share the files of the subfolder.
+      const before = known.filter((other) => overlaps(other, use));
       const base = mergeFormats(before).conflicts.length;
-      // The folder's own conflicts come first; the rest are the new widget's.
-      const conflicts = mergeFormats([...before, { widget: id, name, schema }]).conflicts.slice(base);
+      // The conflicts of the places before come first; the rest are the new input's.
+      const conflicts = mergeFormats([...before, use]).conflicts.slice(base);
       if (conflicts.length > 0) found.set(approved.input, conflicts);
+      known.push(use);
     }
     return found;
   }
@@ -99,13 +112,17 @@ export class WidgetFormats {
   async sync(): Promise<FormatWrite | null> {
     const record = this.options.record;
     if (record === null || !this.options.isHub()) return null;
-    const byFolder = new Map<string, FolderUse[]>();
-    for (const use of this.uses()) {
-      // The vault root holds the rules of the vault, not data.
-      if (use.folder === "") continue;
-      byFolder.set(use.folder, [...(byFolder.get(use.folder) ?? []), use]);
-    }
-    const folders = [...byFolder].map(([folder, uses]) => ({ folder, text: dataFormatText(folder, uses) }));
+    const uses = this.uses();
+    // The vault root holds the rules of the vault, not data.
+    const folders = [...new Set(uses.map((use) => use.folder))]
+      .filter((folder) => folder !== "")
+      .map((folder) => ({
+        folder,
+        text: dataFormatText(
+          folder,
+          uses.filter((use) => readsFolder(use, folder)),
+        ),
+      }));
     const result = await this.options.exclusive(() => writeDataFormats(this.options.vaultPath, folders, record));
     if (result.edited.length > 0) this.options.notify(result.edited);
     return result;
@@ -113,21 +130,26 @@ export class WidgetFormats {
 
   /**
    * One line for the Assistant prompt for each widget that is on: the manifest's line with the
-   * person's values, or a default line for a widget with data and no line of its own.
+   * person's values, or a default line for a widget with data and no line of its own. The default
+   * line names a `DATA_FORMAT.md` only when the folder has one.
    */
   promptLines(): string[] {
-    const formatFolders = new Set(this.uses().map((use) => use.folder));
     return readWidgetList(this.options.vaultPath).flatMap((entry) => {
       const record = this.options.approvals.get(entry.id);
       if (!entry.enabled || record === null || !matches(record, entry)) return [];
-      const values = configOf(record, entry);
+      const places = record.paths.flatMap((approved): PromptPlace[] => {
+        const place = placeOfInput(approved);
+        if (place === null || approved.path === null) return [];
+        const hasFormat =
+          place.folder !== "" &&
+          existsSync(join(this.options.vaultPath, ...place.folder.split("/"), dataFormatFileName));
+        return [{ path: approved.path, formatFolder: hasFormat ? place.folder : null }];
+      });
       const line =
         record.prompt === null
-          ? defaultLine(record.name, record.paths, formatFolders)
-          : record.prompt.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, (_, id: string) =>
-              Object.hasOwn(values, id) ? String(values[id]) : "(not set)",
-            );
-      return line === null ? [] : [`- ${record.name}: ${line.replace(/\s+/g, " ").trim()}`];
+          ? defaultPrompt(record.name, places)
+          : filledPrompt(record.prompt, configOf(record, entry));
+      return line === null ? [] : [`- ${oneLine(record.name)}: ${line}`];
     });
   }
 
@@ -197,19 +219,35 @@ export function placeOfInput(approved: ApprovedPath): Pick<FolderUse, "folder" |
   return { folder: folder === "." ? "" : folder, files: posix.basename(approved.path), single: true };
 }
 
-function covers(use: FolderUse, path: string): boolean {
-  const name = posix.basename(path);
-  if (use.single) return path === (use.folder === "" ? name : `${use.folder}/${name}`) && name === use.files;
-  return path.startsWith(`${use.folder}/`) && (use.files === null || matchesFiles(use.files, name));
+type Place = Pick<FolderUse, "folder" | "files" | "single">;
+
+/** True for a file of `folder` with this name that the use reads. Without case, as Eva compares names. */
+function coversFile(use: Place, folder: string, name: string): boolean {
+  if (use.single) return same(use.folder, folder) && same(use.files ?? "", name);
+  return within(folder, use.folder) && (use.files === null || matchesFiles(use.files, name));
 }
 
-function defaultLine(name: string, paths: readonly ApprovedPath[], formatFolders: ReadonlySet<string>): string | null {
-  const parts = paths.flatMap((approved) => {
-    const place = placeOfInput(approved);
-    if (place === null || approved.path === null) return [];
-    const read = place.folder !== "" && formatFolders.has(place.folder);
-    const where = `${name} data lives in ${approved.path}.`;
-    return [read ? `${where} Read ${place.folder}/DATA_FORMAT.md before you write.` : where];
-  });
-  return parts.length === 0 ? null : parts.join(" ");
+function covers(use: Place, path: string): boolean {
+  const folder = posix.dirname(path);
+  return coversFile(use, folder === "." ? "" : folder, posix.basename(path));
+}
+
+/** True when two places can hold the same file: the same folder, a folder and its subfolder, or a file of a folder. */
+function overlaps(first: Place, second: Place): boolean {
+  if (first.single) return coversFile(second, first.folder, first.files ?? "");
+  if (second.single) return coversFile(first, second.folder, second.files ?? "");
+  return within(first.folder, second.folder) || within(second.folder, first.folder);
+}
+
+/** True when the use reads files in `folder`: its own folder, or a folder above it. */
+function readsFolder(use: Place, folder: string): boolean {
+  return same(use.folder, folder) || (!use.single && within(folder, use.folder));
+}
+
+function within(child: string, parent: string): boolean {
+  return same(child, parent) || parent === "" || child.toLowerCase().startsWith(`${parent.toLowerCase()}/`);
+}
+
+function same(first: string, second: string): boolean {
+  return first.toLowerCase() === second.toLowerCase();
 }

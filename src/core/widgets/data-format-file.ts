@@ -134,7 +134,8 @@ function leafValue(field: MergedField): unknown {
   if (field.format === "time") return "09:30:00";
   if (field.format === "email") return "name@example.com";
   if (field.format === "uri") return "https://example.com";
-  const type = field.types?.[0] ?? "string";
+  // A real value over null, so an agent that copies the example writes data.
+  const type = field.types?.find((each) => each !== "null") ?? field.types?.[0] ?? "string";
   if (type === "number" || type === "integer") return 1;
   if (type === "boolean") return true;
   if (type === "null") return null;

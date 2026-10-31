@@ -781,6 +781,7 @@ export class Eva {
                 this.alerts.notify("data_format_edited", "warn", dataFormatEditedMessage(edited));
               },
               log: (reason) => options.logger?.log("warn", "Eva could not write the data formats.", { reason }),
+              vaultBusy: () => this.vaultTurnRunning(),
             },
           });
 

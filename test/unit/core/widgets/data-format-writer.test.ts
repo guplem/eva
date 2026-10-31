@@ -40,7 +40,7 @@ afterEach(() => {
 describe("dataFormatEditedMessage", () => {
   test("names each file, and where the old version and the notes go", () => {
     expect(dataFormatEditedMessage(["Life/Habits/DATA_FORMAT.md"])).toBe(
-      "The format of a widget folder changed, so Eva wrote Life/Habits/DATA_FORMAT.md again. Someone had edited it, and the vault history keeps that version. Write your notes in the AGENTS.md or the README.md of the folder.",
+      "The format of a widget folder changed, so Eva wrote Life/Habits/DATA_FORMAT.md again. Someone had edited it. The vault history keeps the version of the last sync. Write your notes in the AGENTS.md or the README.md of the folder.",
     );
   });
 });

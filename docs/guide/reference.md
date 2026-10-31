@@ -133,7 +133,22 @@ Eva saves the vault to GitHub by herself. [Settings](#settings) gives the defaul
 - She gets other computers' notes before each chat turn, and at the interval in `sync.pullIntervalMinutes`.
 - She saves and pushes after each turn, and at the interval in `sync.sweepSeconds` when something changed.
 - **Sync now:** the **Sync now** button in **Settings > Vault and sync**, `/sync` in Telegram, or `eva sync`.
-- **Files that Eva does not save:** a file that looks like a secret (outside `Projects/`), and any file over 50 MB, because GitHub refuses files over 100 MB. `eva status` and the Settings page name them.
+- **Files that Eva does not save:** a file that holds a secret but is not a secret file, such as a `.env` with a token, and any file over 50 MB, because GitHub refuses files over 100 MB. `eva status` and the Settings page name them.
+- **Encrypted files:** Eva encrypts each secret file before she saves it, such as `.env.local`, a `.pem` or a `.key` file. Your vault remote never gets its plain text. See [Encrypted files](#encrypted-files).
+
+### Encrypted files
+
+Your vault can hold secrets, such as API keys, but only encrypted. Eva encrypts each secret file before each save, in place, under the same name. An agent that opens it sees only her first line: "Encrypted by Eva. Open this file in Eva's Files page to read it."
+
+- **The vault password.** Setup asks for it twice, for a new vault. For an existing vault, set it in **Settings > Vault and sync > Encrypted files**. It needs at least 12 characters. Nobody can recover it: keep it in a password manager. Until the vault has a password, Eva keeps each secret file on this computer and saves none of them.
+- **Which files.** The defaults are `.env.local`, `.env.*.local`, `.env.secrets`, `*.secrets`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `.npmrc`, `.pypirc`, `.netrc`, `secrets.json`, `credentials.json` and `client_secret*.json`. A plain `.env` and `.env.example` stay plain: keep only values that are safe to share in them. A plain `.env` with a key or a token stays out of each save, and the phone says so.
+  - The Settings card shows each default with a switch, and your own patterns, in `.gitignore` syntax, such as `Life/Health/**`. Eva keeps your changes in `.eva/secret-files` in the vault.
+  - A new pattern encrypts its files at once. A pattern that you take out keeps its files encrypted until you confirm it from an unlocked device. Then Eva decrypts them, and your vault remote gets their plain text.
+  - Eva never encrypts `.eva/`, any `AGENTS.md`, `.gitignore` or `.gitattributes`, so the Assistant always works.
+- **Read a file.** Open it in **Files** on the web page and type the vault password. This browser tab can then open encrypted files for 8 hours, until you press **Lock**, or until Eva restarts. Eva decrypts only for a device that logged in with a code or a link, never with the token. Telegram never shows an encrypted file.
+- **Change the password** in the Settings card. When the old password leaked, press **Make a new key** instead. Eva encrypts every file again, and each device must unlock again. Old commits still open with the old password.
+- **A key that changed on another computer** stops new encryption on this one. The phone asks you to confirm it in Settings. Do not confirm a key that you did not make.
+- **Before an update of this feature,** a secret may already sit in old commits of the vault, on its remote and on each computer. Change such a secret. Update Eva on every computer that shares the vault.
 
 ### Vault conflicts
 
@@ -290,11 +305,11 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Change them in **Settings > Personalize > Message box menu**, or ask Eva to. Each one is a Markdown file in the vault, in `.eva/settings/text-actions/` or `.eva/settings/saved-prompts/`. The file name is the name in the menu.
   - A text action can start with a `model:` line between two `---` lines: `haiku` (Fast), `sonnet` (Balanced) or `opus` (Smart). With no such line, it uses the fast model.
   - Eva brings Polish and Summary as examples, once. If you delete one, it stays deleted.
-- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and does not show a secrets file, such as `.env`. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `Scratch/received/` in the vault. Git never saves `Scratch/`, and Eva deletes its files after a week.
+- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and a plain `.env` file. An encrypted file shows a lock: type the vault password to open it. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `Scratch/received/` in the vault. Git never saves `Scratch/`, and Eva deletes its files after a week.
   - **In a project chat in a clone,** a file that you send goes into the clone's `.mentions/` folder, outside every repository.
   - To give such a chat a vault file, such as a design or the notes of a meeting, type `@` in the web app and pick the file. Eva puts a copy in `.mentions/` too.
   - The chat gets the name of the copy, never the vault path.
-  - Eva refuses a secrets file, a file that holds a secret, a folder, and a file in a clone of a project.
+  - Eva refuses a secret file, an encrypted file, a file that holds a secret, a folder, and a file in a clone of a project.
   - When a file that you mention is gone, Eva does not send the message, and says which file is gone.
 - **Favorites.** Tap the star on a file or a folder in **Files** to make it a favorite. Your favorites show first on the Files page, so one tap opens them. Eva keeps them in `.eva/favorites.json` in the vault, so each computer shows the same ones.
 - **Your location.** Share your live location with Eva's bot in Telegram, or open **Settings > Access > Your location** and allow a device to send its location while Eva is open. Eva keeps only the last location, as `lastLocation` in the header of `Life/About me.md`, so each computer sees it. The hub writes it at most once every 15 minutes, and only after a move of more than 50 m, or when the stored point is more than 6 hours old. So a day in one place makes only a few vault commits. Scripts such as a weather forecast use it. When your phone sent nothing in the last day, they use the home place of `Life/About me.md`.

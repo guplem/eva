@@ -15,12 +15,13 @@ import { existsSync } from "node:fs";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
-import { listClones, repositoryName } from "../projects/clones.ts";
+import { listClones } from "../projects/clones.ts";
+import { repositoryName } from "../projects/repository-name.ts";
 import type { Project } from "../projects/project-catalog.ts";
 import type { LastLocation } from "../vault/about-me.ts";
 import { contentHash } from "../vault/template-alignment.ts";
 import { widgetAddress, type WidgetAddress } from "./widget-address.ts";
-import { approvalSchema, configOf, matches, type WidgetApprovals } from "./widget-approvals.ts";
+import { approvalSchema, configOf, matches, type ApprovedPath, type WidgetApprovals } from "./widget-approvals.ts";
 import { grantChange, readOnlyFallbacks, type WidgetGrant } from "./widget-changes.ts";
 import { checkManifest, manifestPath, type WidgetManifest } from "./widget-contract.ts";
 import { serveFolderFile, type WidgetCopies } from "./widget-copies.ts";
@@ -137,6 +138,13 @@ export interface WidgetPreviewsOptions {
   readonly now: () => Date;
   /** Hears each vault file that a preview wrote, as the data formats do for an installed widget. */
   readonly wrote: (path: string) => void;
+  /** The warning when a written schema conflicts with the data of another widget, or null. */
+  readonly formatConflict: (
+    id: string,
+    manifest: WidgetManifest,
+    paths: readonly ApprovedPath[],
+    schemas: ReadonlyMap<string, unknown>,
+  ) => string | null;
 }
 
 interface PreviewSession {
@@ -151,6 +159,13 @@ interface PreviewSession {
   /** "mine" on the approval of a set-up widget: the record and commit that it stands on. */
   readonly record: { readonly id: string; readonly commit: string } | null;
   readonly expiresAt: number;
+  /**
+   * Each written schema as it was at the open, parsed: an agent that edits a schema afterwards
+   * changes no write check. A changed schema needs a new open, which compares it again.
+   */
+  readonly schemas: ReadonlyMap<string, unknown>;
+  /** The answer of `git check-ignore` for each path, for the life of the token. */
+  readonly ignored: Map<string, boolean>;
 }
 
 /** A preview is a moment of work: its token ends after an hour, or when the page closes. */
@@ -222,6 +237,12 @@ export class WidgetPreviews {
       if (!hostCheck.ok) throw new EvaError("widget_invalid", hostCheck.reason);
     }
     const { grant } = grantChange(null, manifest, kept, new Set(), new Set());
+    // "My data" writes the real vault, so a write must fit the data of the other widgets (#692).
+    const schemas = new Map<string, unknown>();
+    for (const path of grant.paths)
+      if (path.schema !== null) schemas.set(path.schema, parsed(readFolderText(folder, path.schema)));
+    const conflict = this.options.formatConflict(address?.id ?? folder, manifest, grant.paths, schemas);
+    if (conflict !== null) throw new EvaError("widget_format_conflict", conflict);
     this.options.grants.save({
       folder,
       repository: address?.url ?? "",
@@ -271,7 +292,7 @@ export class WidgetPreviews {
         path,
         method,
         body,
-        schemaOf: (schema) => parsed(readFolderText(session.folder, schema)),
+        schemaOf: (schema) => session.schemas.get(schema) ?? null,
         exclusive: this.options.exclusive,
         redact: this.options.redact,
         wrote: this.options.wrote,
@@ -351,11 +372,17 @@ export class WidgetPreviews {
     };
   }
 
-  private start(session: Omit<PreviewSession, "expiresAt">): { readonly src: string; readonly token: string } {
+  private start(session: Omit<PreviewSession, "expiresAt" | "schemas" | "ignored">): {
+    readonly src: string;
+    readonly token: string;
+  } {
     const now = this.options.now().getTime();
     for (const [token, each] of this.sessions) if (each.expiresAt <= now) this.sessions.delete(token);
     const token = randomBytes(32).toString("base64url");
-    this.sessions.set(token, { ...session, expiresAt: now + previewLifeMs });
+    const schemas = new Map<string, unknown>();
+    for (const path of session.grant?.paths ?? [])
+      if (path.schema !== null) schemas.set(path.schema, parsed(readFolderText(session.folder, path.schema)));
+    this.sessions.set(token, { ...session, expiresAt: now + previewLifeMs, schemas, ignored: new Map() });
     return { src: `/widgets/${token}/${session.manifest.entry}`, token };
   }
 
@@ -382,7 +409,13 @@ export class WidgetPreviews {
   private async file(session: PreviewSession, path: string): Promise<WidgetAnswer> {
     const answer = serveFolderFile(session.folder, path);
     if (answer.status !== 200) return answer;
-    return (await this.options.copies.ignoredIn(session.folder, path)) ? { status: 404 } : answer;
+    // One git process for each path of the token, not for each request.
+    let ignored = session.ignored.get(path);
+    if (ignored === undefined) {
+      ignored = await this.options.copies.ignoredIn(session.folder, path);
+      session.ignored.set(path, ignored);
+    }
+    return ignored ? { status: 404 } : answer;
   }
 
   /** The clone's repository folder, from the list of clones, never from a name: a name cannot point outside it. */

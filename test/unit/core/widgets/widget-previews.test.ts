@@ -246,6 +246,60 @@ describe("the preview of a clone", () => {
     ).toBe(true);
   });
 
+  test("a write that conflicts with another widget's data cannot get My data", async () => {
+    widgets.add(url);
+    const review = await widgets.review(id, ownHosts);
+    await widgets.approve(id, review.commit, { habits: "Life/Habits" }, ownHosts);
+    // A clone of another widget that names a field of the folder with another type.
+    const other = "https://github.com/example-owner/other";
+    const projectPath = join(vault, "Projects", place.project);
+    options = {
+      ...options,
+      projects: () =>
+        [
+          { id: place.project, path: projectPath, frontMatter: { repos: [other], repoTypes: { [other]: "widget" } } },
+        ] as unknown as Project[],
+    };
+    widgets = new Widgets(options);
+    // The folder name of the clone is the repository name.
+    sandbox.git(dirname(clone), "clone", "-q", sandbox.remote, "other");
+    const otherClone = join(dirname(clone), "other");
+    write(
+      otherClone,
+      "schemas/habits.json",
+      JSON.stringify({ ...JSON.parse(schema), properties: { name: { type: "number" } } }),
+    );
+    const otherPlace = { ...place, repository: "other" };
+    const asked = await widgets.preview(otherPlace, "mine", theme, ownHosts);
+    const error = await failure(() =>
+      widgets.approvePreview(otherPlace, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts),
+    );
+    expect(isEvaError(error, "widget_format_conflict")).toBe(true);
+  });
+
+  test("a write checks the schema of the open, not a schema that an agent changed since", async () => {
+    const asked = await widgets.preview(place, "mine", theme, ownHosts);
+    const token =
+      (await widgets.approvePreview(place, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
+        .token ?? "";
+    const strict = JSON.parse(schema) as { properties: Record<string, unknown> };
+    write(
+      clone,
+      "schemas/habits.json",
+      JSON.stringify({
+        ...strict,
+        properties: { ...strict.properties, streak: { type: "number" } },
+        required: ["streak"],
+      }),
+    );
+    const put = await widgets.serve(token, "data/habits/walk.json", "PUT", Buffer.from('{"name":"Walk"}'));
+    expect(put?.status).toBe(204);
+    // A new open sees the change, and asks again.
+    expect((await widgets.preview(place, "mine", theme, ownHosts)).ask?.added).toEqual([
+      "Write the folder Life/Habits in a new data format (schemas/habits.json).",
+    ]);
+  });
+
   test("the grant and the token go when the clone goes", async () => {
     const asked = await widgets.preview(place, "mine", theme, ownHosts);
     const approved = await widgets.approvePreview(

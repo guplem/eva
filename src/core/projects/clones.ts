@@ -10,6 +10,7 @@ import { dirname, join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
+import { repositoryName } from "./repository-name.ts";
 
 const gitTimeoutMs = 20_000;
 
@@ -29,13 +30,6 @@ export interface Clone {
 
 const cloneTimeoutMs = 10 * 60_000;
 const cloneNamePattern = /^clone-(\d+)$/;
-
-/** The repository part of a git URL or path: `https://github.com/o/app.git` → `app`. */
-export function repositoryName(url: string): string {
-  const trimmed = url.replace(/[\\/]+$/, "").replace(/\.git$/, "");
-  const parts = trimmed.split(/[\\/:]/);
-  return parts[parts.length - 1] ?? trimmed;
-}
 
 /** The first free `clone-<n>` folder name in the project's `repos/` folder. */
 export function cloneFolderName(projectPath: string): string {

@@ -2,6 +2,7 @@
 import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 import type { Project } from "./api.ts";
 import type { ProjectType } from "../../../core/projects/project-catalog.ts";
+import { repositoryName } from "../../../core/projects/repository-name.ts";
 
 /** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */
 export type PillTone = "ok" | "warn" | "live" | "idle";
@@ -193,12 +194,5 @@ export function canPush(clone: { readonly changes: number | null; readonly ahead
  */
 export function widgetRepositoryNames(project: Pick<Project, "frontMatter">): Set<string> {
   const { repos, repoTypes } = project.frontMatter;
-  return new Set(
-    repos
-      .filter((url) => repoTypes[url] === "widget")
-      .map((url) => {
-        const trimmed = url.replace(/[\\/]+$/, "").replace(/\.git$/, "");
-        return trimmed.split(/[\\/:]/).at(-1) ?? trimmed;
-      }),
-  );
+  return new Set(repos.filter((url) => repoTypes[url] === "widget").map(repositoryName));
 }

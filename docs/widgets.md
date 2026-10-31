@@ -6,6 +6,8 @@ A widget is plain, standard web code: HTML, JavaScript and CSS, with no framewor
 
 The template of a new widget is [`templates/widget/`](../templates/widget/). Eva copies it to each new widget repository. Each Eva release updates the template and this document together.
 
+The two widgets that ship with Eva are full examples: [`guplem/eva-widget-habits`](https://github.com/guplem/eva-widget-habits) writes vault data, and [`guplem/eva-widget-weather`](https://github.com/guplem/eva-widget-weather) reads the location and calls a host.
+
 ## Contents
 
 - [The files of a widget](#the-files-of-a-widget)
@@ -278,7 +280,7 @@ A browser blocks `fetch` on `file://`, so a double-click on `index.html` does no
 
 ## Example: a habits widget
 
-This widget shows the person's habits and checks a habit for today. The base habits widget of Eva uses the same data format.
+This widget shows the person's habits and checks a habit for today. The [base habits widget](https://github.com/guplem/eva-widget-habits) of Eva uses the same data format.
 
 The person picks a folder, such as `Life/Habits/`. The folder has one file for each habit, such as `meditate.json`. The file name is the habit name in lower case, with ASCII letters, digits and hyphens only. The name `index` is not allowed.
 

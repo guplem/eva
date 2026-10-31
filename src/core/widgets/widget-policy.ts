@@ -33,17 +33,46 @@ export interface WidgetTheme {
 }
 
 /**
- * A colour as a browser computes it, such as `oklch(0.97 0.008 245.1)` or `#f1f6fb`. No `:`, so
- * no `url(https:...)`; no `;`, braces, quotes or backslash, so a value never leaves its declaration.
+ * A colour as a browser computes it, such as `oklch(0.97 0.008 245.1)` or `#f1f6fb`: only these
+ * characters, only the words of a colour function, and no `//` or `/*`. So a value never loads a
+ * file, such as `url(//host/x)`, and never leaves its declaration.
  */
-const colourValue = /^[#a-zA-Z0-9 ().,%/*+-]{1,120}$/;
+const colourCharacters = /^[#a-zA-Z0-9 ().,%/*+-]{1,120}$/;
+const colourWords: ReadonlySet<string> = new Set([
+  "oklch",
+  "oklab",
+  "lch",
+  "lab",
+  "rgb",
+  "rgba",
+  "hsl",
+  "hsla",
+  "hwb",
+  "color",
+  "srgb",
+  "calc",
+  "min",
+  "max",
+  "clamp",
+  "none",
+  "transparent",
+  "deg",
+]);
+
+function isColour(value: string): boolean {
+  if (!colourCharacters.test(value) || value.includes("//") || value.includes("/*") || value.includes("*/"))
+    return false;
+  // A hex colour and a number hold letters too, such as `#ffaa00` or `0.5e-3`: only the words count.
+  const words = value.replace(/#[0-9a-f]+/gi, " ").match(/[a-z]+/gi) ?? [];
+  return words.every((word) => colourWords.has(word.toLowerCase()) || /^e$/i.test(word));
+}
 
 /** The theme of a page, with each value that is not a plain colour left out. */
 export function widgetTheme(scheme: "light" | "dark", colors: Readonly<Record<string, string>>): WidgetTheme {
   const kept: Partial<Record<ThemeVariable, string>> = {};
   for (const name of themeVariables) {
     const value = colors[name]?.trim();
-    if (value !== undefined && colourValue.test(value)) kept[name] = value;
+    if (value !== undefined && isColour(value)) kept[name] = value;
   }
   return { scheme, colors: kept };
 }

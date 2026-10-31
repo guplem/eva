@@ -6,6 +6,8 @@ describe("widgetTheme and themeCss", () => {
     const theme = widgetTheme("dark", {
       "--bg": "oklch(0.16 0.02 245.1)",
       "--accent": " #2aa8ff ",
+      "--panel": "rgb(255 255 255 / 0.5)",
+      "--chip": "transparent",
       "--soft": "oklch(0.945 calc(0.164 * 0.25) 245.1)",
       "--other": "red",
     });
@@ -13,12 +15,14 @@ describe("widgetTheme and themeCss", () => {
       scheme: "dark",
       colors: {
         "--bg": "oklch(0.16 0.02 245.1)",
+        "--panel": "rgb(255 255 255 / 0.5)",
+        "--chip": "transparent",
         "--accent": "#2aa8ff",
         "--soft": "oklch(0.945 calc(0.164 * 0.25) 245.1)",
       },
     });
     expect(themeCss(theme)).toBe(
-      ":root {\n  color-scheme: dark;\n  --bg: oklch(0.16 0.02 245.1);\n  --accent: #2aa8ff;\n  --soft: oklch(0.945 calc(0.164 * 0.25) 245.1);\n}\n",
+      ":root {\n  color-scheme: dark;\n  --bg: oklch(0.16 0.02 245.1);\n  --panel: rgb(255 255 255 / 0.5);\n  --chip: transparent;\n  --accent: #2aa8ff;\n  --soft: oklch(0.945 calc(0.164 * 0.25) 245.1);\n}\n",
     );
   });
 
@@ -30,6 +34,9 @@ describe("widgetTheme and themeCss", () => {
       "--chip": "red\\",
       "--muted": "x".repeat(121),
       "--ok": "",
+      "--ok-bg": "url(//evil.example/a)",
+      "--warn": "red /* x",
+      "--warn-bg": "expression(1)",
     });
     expect(theme.colors).toEqual({});
     expect(themeCss(theme)).toBe(":root {\n  color-scheme: light;\n\n}\n");

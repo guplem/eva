@@ -61,3 +61,12 @@ describe("what goes when the tab forgets its unlock (review of #707)", () => {
     expect(heard).toBe(1);
   });
 });
+
+describe("the tab's own store (#707)", () => {
+  test("a place with no sessionStorage, such as a test or an old browser, keeps no secret and does not crash", () => {
+    keepUnlockSecret("abc");
+    expect(unlockSecret()).toBeNull();
+    expect(unlockHeaders()).toEqual({});
+    forgetUnlockSecret();
+  });
+});

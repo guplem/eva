@@ -48,6 +48,16 @@ export class VaultSecrets {
     return this.round()(relativePath);
   }
 
+  /**
+   * True for a committed file that the list matches and that is not encrypted in Eva's exact shape.
+   * A file that a removal decrypted no longer matches, so it is plain on purpose.
+   */
+  isPlainSecret(relativePath: string, bytes: Uint8Array): boolean {
+    if (!new SecretMatcher(this.policy().active).matches(relativePath)) return false;
+    const state = encryptedState(bytes);
+    return state === "plain" || (state === "encrypted" && !hasEncryptedShape(bytes));
+  }
+
   round(): PrepareFile {
     const { key, keyChanged, policy } = this.state();
     const matcher = new SecretMatcher(policy.active);

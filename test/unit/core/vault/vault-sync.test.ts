@@ -1125,3 +1125,29 @@ describe("VaultSync and the secret files (#707)", () => {
     expect(remoteFiles()).not.toContain("Toolbox/server.pem");
   });
 });
+
+describe("VaultSync stops a plain secret before the push (#707)", () => {
+  test("an agent's own commit of a plain secret is made again, encrypted, before the push", async () => {
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "key");
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+    // An agent commits a plain secret by itself, before Eva's next save.
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "agent");
+    const state = await sync.save();
+    expect(state.status).toBe("ok");
+    const pushed = sandbox.git(sandbox.remote, "show", "main:deploy/id.key");
+    expect(pushed).toStartWith(encryptedFileLine);
+    // No commit on the remote holds the plain text.
+    expect(sandbox.git(sandbox.remote, "log", "-p", "main")).not.toContain("PRIVATE");
+  });
+});

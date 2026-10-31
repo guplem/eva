@@ -109,7 +109,11 @@ export interface VaultSyncOptions {
   /** Hides secrets in `lastError`: git names the remote, and a remote address can hold a token. */
   readonly redact?: (text: string) => string;
   /** Encrypts the secret files before each commit and each snapshot (#707). Without it, Eva encrypts nothing. */
-  readonly secrets?: { round(): PrepareFile };
+  readonly secrets?: {
+    round(): PrepareFile;
+    /** True for a file of a commit that holds a secret in plain text, which must never reach the remote. */
+    isPlainSecret(relativePath: string, bytes: Uint8Array): boolean;
+  };
 }
 
 const networkTimeoutMs = 60_000;
@@ -888,6 +892,7 @@ export class VaultSync {
         this.update({ status: "ok", lastError: null });
         return;
       }
+      if (!(await this.encryptUnpushedSecrets(branch))) return;
       const pushed = await this.git(["push", "-q", "origin", `HEAD:${branch}`], networkTimeoutMs);
       if (pushed.exitCode === 0) {
         this.update({ status: "ok", lastError: null, lastPushAt: this.options.now() });
@@ -896,6 +901,52 @@ export class VaultSync {
       pushError = firstLine(pushed);
     }
     this.update({ status: "error", lastError: `The push failed ${String(maxPushAttempts)} times: ${pushError}` });
+  }
+
+  /**
+   * An agent can commit a plain secret by itself, and Eva's own `git add` reads the files again after
+   * she encrypts them (#707). So before a push, each file of the unpushed commits that the list
+   * matches must be encrypted. When one is plain, Eva takes back the unpushed commits, keeps their
+   * files, and commits them again: the new commit encrypts them. An unpushed merge cannot be taken
+   * back that way, so then she stops the push and says why. False when the push must not run.
+   */
+  private async encryptUnpushedSecrets(branch: string): Promise<boolean> {
+    const secrets = this.options.secrets;
+    if (secrets === undefined) return true;
+    const plain = await this.plainUnpushedSecrets(branch, secrets);
+    if (plain.length === 0) return true;
+    const stop = (detail: string): false => {
+      this.update({
+        status: "error",
+        lastError: `A commit that is not pushed yet holds ${plain.join(", ")} in plain text. ${detail}`,
+      });
+      return false;
+    };
+    if (await this.hasUnpushedMerge(branch))
+      return stop("Eva did not push. Remove the file from that commit, or ask for help.");
+    const reset = await this.git(["reset", "-q", "--soft", `origin/${branch}`], localTimeoutMs);
+    if (reset.exitCode !== 0) return stop("Eva did not push.");
+    if (!(await this.commitChanges(await this.statusEntries()))) return false;
+    if ((await this.plainUnpushedSecrets(branch, secrets)).length > 0) return stop("Eva did not push.");
+    return true;
+  }
+
+  private async plainUnpushedSecrets(
+    branch: string,
+    secrets: NonNullable<VaultSyncOptions["secrets"]>,
+  ): Promise<string[]> {
+    const changed = await this.git(
+      ["diff", "--name-only", "--no-renames", "-z", `origin/${branch}`, "HEAD"],
+      localTimeoutMs,
+    );
+    if (changed.exitCode !== 0) return [];
+    const plain: string[] = [];
+    for (const path of changed.stdout.split("\0").filter((name) => name !== "")) {
+      const blob = await this.git(["show", `HEAD:${path}`], localTimeoutMs);
+      // A deleted file is in no commit of HEAD.
+      if (blob.exitCode === 0 && secrets.isPlainSecret(path, new TextEncoder().encode(blob.stdout))) plain.push(path);
+    }
+    return plain;
   }
 
   /**

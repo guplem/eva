@@ -101,7 +101,7 @@ In the terminal, setup first logs in to GitHub:
 2. Open [github.com/login/device](https://github.com/login/device) on any device, and enter the code. Press **Authorize**.
 3. Setup lists your 15 most recent repositories. Then:
    - **To use a vault that you have,** type its number or its name, such as `vault`. Eva clones it (makes a copy on this computer).
-   - **To start a new vault,** type `0`, and answer the questions about you. Then type a name for its private repository, such as `vault`. Eva creates it from her template.
+   - **To start a new vault,** type `0`, and answer the questions about you. Type a vault password twice: Eva encrypts your secret files with it, and nobody can recover it. Then type a name for its private repository, such as `vault`. Eva creates it from her template.
    - **For no vault now,** press Enter.
 
 On the page, open **Connect GitHub** and press **Log in with GitHub**. Enter the code on GitHub. Then pick or create the vault in **Set up your vault**. To use a token instead, press **Paste a token instead**.
@@ -199,7 +199,7 @@ Then run [the install command](#1-run-the-install-command) over SSH.
 3. Add that folder to your `PATH`. On Linux, run `export PATH="$HOME/.local/bin:$PATH"`. On Windows, add it in the user environment variables, and open PowerShell again.
 4. Run `eva setup` in that terminal. The service keeps the `PATH` of setup, and finds uv and the harnesses through it.
 
-**From a script.** Give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup still installs Claude Code, pi, uv and gh; add `EVA_INSTALL_ENGINES="no"` to skip them. With pi, leave out `EVA_CLAUDE_TOKEN`, and add `EVA_ENGINE="pi"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and never waits for a device code.
+**From a script.** Give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup still installs Claude Code, pi, uv and gh; add `EVA_INSTALL_ENGINES="no"` to skip them. With pi, leave out `EVA_CLAUDE_TOKEN`, and add `EVA_ENGINE="pi"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and never waits for a device code. A new vault needs `EVA_VAULT_PASSWORD`, of at least 12 characters.
 
 ```bash
 EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault" EVA_GITHUB_TOKEN="..." EVA_CLAUDE_TOKEN="..." EVA_TELEGRAM_BOT_TOKEN="..." eva setup --non-interactive

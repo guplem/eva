@@ -12,6 +12,8 @@ import {
   updateProblem,
   vaultErrorAlertSteps,
   vaultOfflineAlertMs,
+  newSecretDefaultsNews,
+  vaultSecretsProblems,
   vaultSyncProblem,
 } from "../../../../src/core/alerts/problem-rules.ts";
 import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
@@ -297,5 +299,59 @@ describe("lastLocationProblem", () => {
     expect(lastLocationProblem("nothing")).toBeNull();
     expect(lastLocationProblem("not_due")).toBeNull();
     expect(lastLocationProblem("waiting")).toBe("keep");
+  });
+});
+
+describe("vaultSecretsProblems (#707)", () => {
+  const none = { hasKey: true, keyChanged: false, withheld: [] };
+
+  test("a vault with a key and no held-back secret has no problem", () => {
+    expect(vaultSecretsProblems(none)).toEqual({
+      vault_password: null,
+      vault_key_changed: null,
+      vault_secret_files: null,
+    });
+  });
+
+  test("a vault with no password says that old commits still hold plain secrets, and that every machine needs the update", () => {
+    const message = vaultSecretsProblems({ ...none, hasKey: false }).vault_password?.message ?? "";
+    expect(message).toContain("Settings");
+    expect(message).toContain("old commits");
+    expect(message).toContain("every computer");
+  });
+
+  test("a changed key asks the person, and says not to confirm a key that they did not make", () => {
+    const message = vaultSecretsProblems({ ...none, keyChanged: true }).vault_key_changed?.message ?? "";
+    expect(message).toContain("did not make");
+  });
+
+  test("a file that does not decrypt and a plain .env with a token each name the file and the fix", () => {
+    const message =
+      vaultSecretsProblems({
+        ...none,
+        withheld: [
+          { path: "Notes/id.pem", reason: "not_decryptable" },
+          { path: "Projects/x/.env", reason: "env_has_secret" },
+          { path: "big.bin", reason: "too_large" },
+        ],
+      }).vault_secret_files?.message ?? "";
+    expect(message).toContain("Notes/id.pem");
+    expect(message).toContain("Projects/x/.env");
+    expect(message).toContain(".env.local");
+    expect(message).not.toContain("big.bin");
+  });
+});
+
+describe("newSecretDefaultsNews (#707)", () => {
+  test("names each new pattern and each file that Eva encrypted for it", () => {
+    const news = newSecretDefaultsNews(["*.pfx", ".netrc"], ["certs/me.pfx"]);
+    expect(news).toContain("*.pfx");
+    expect(news).toContain(".netrc");
+    expect(news).toContain("certs/me.pfx");
+    expect(news).toContain("Settings");
+  });
+
+  test("says so when no file of the vault matches them", () => {
+    expect(newSecretDefaultsNews(["*.pfx"], [])).toContain("No file of the vault matches them yet.");
   });
 });

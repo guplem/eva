@@ -12,12 +12,18 @@ interface Download {
   readonly problem: string | null;
 }
 
+/** Gets the bytes to save. An encrypted file comes from its own route, with this tab's unlock (#707). */
+export type FetchFile = (onShare: (share: number) => void) => Promise<{ name: string; blob: Blob }>;
+
 /**
  * Saves a file, or a folder as one zip, on the person's device. A browser saves one file per
  * link, so a folder needs the zip. The zip has no compression, so Eva builds it fast. A menu
  * closes as the download starts, so the state lives here and the caller shows `DownloadWait`.
  */
-export function useDownload(path: string): Download {
+export function useDownload(
+  path: string,
+  fetchFile: FetchFile = (onShare) => api.downloadFile(path, onShare),
+): Download {
   const [share, setShare] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -27,7 +33,7 @@ export function useDownload(path: string): Download {
     setShare(null);
     setProblem(null);
     try {
-      const { name, blob } = await api.downloadFile(path, setShare);
+      const { name, blob } = await fetchFile(setShare);
       saveBlob(name, blob);
     } catch (caught) {
       setProblem(caught instanceof Error ? caught.message : String(caught));
@@ -73,12 +79,14 @@ export function DownloadButton({
   path,
   folder,
   label,
+  fetchFile,
 }: {
   readonly path: string;
   readonly folder: boolean;
   readonly label?: string;
+  readonly fetchFile?: FetchFile;
 }): ReactElement {
-  const download = useDownload(path);
+  const download = useDownload(path, fetchFile);
   const named = label !== undefined;
   return (
     <div className={named ? "files-download named-download" : "files-download"}>

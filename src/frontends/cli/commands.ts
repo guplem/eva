@@ -54,7 +54,13 @@ import {
 import { hub, link, runningClient, settings, sync, update } from "./local-commands.ts";
 import { runNetworkSetup } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
-import { runSetup, setupEnvironmentNames, type SetupOptions, type SetupQuestion } from "./setup.ts";
+import {
+  hiddenSetupQuestions,
+  runSetup,
+  setupEnvironmentNames,
+  type SetupOptions,
+  type SetupQuestion,
+} from "./setup.ts";
 import { doneLine, questionText, stepLines } from "./setup-output.ts";
 import { startAndLetIn, type AccountChoice, type FinishPlace } from "./setup-start.ts";
 
@@ -303,7 +309,8 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
       result = await runSetup({
         ...setupOptions,
         interactive: true,
-        ask: (_key, question) => ask(question),
+        // The vault password never shows: an agent can read the screen and the scrollback.
+        ask: (key, question) => prompt(questionText(question), { hidden: hiddenSetupQuestions.has(key) }),
         afterEssentials: start(true, ask, () => ""),
       });
     });

@@ -66,10 +66,18 @@ function answerFor(address: string, fake: FakeRepository, path: string, raw: boo
 /**
  * A fake GitHub API that takes every direct fix: it answers the reads of a commit with made-up
  * SHAs, and every change with 204. It changes nothing, so a report stays the same.
+ * `requiredChecks`: each branch requires checks, so a file fix opens a pull request (#717).
  */
-export function fakeGithubWrite(): GithubWrite {
+export function fakeGithubWrite(options: { readonly requiredChecks?: boolean } = {}): GithubWrite {
   return (method, path) => {
     const ok = (body: unknown): Promise<GithubAnswer> => Promise.resolve({ status: 200, body: JSON.stringify(body) });
+    if (options.requiredChecks === true) {
+      if (method === "GET" && path.includes("/rules/branches/")) return ok([{ type: "required_status_checks" }]);
+      const pulls = /^repos\/([^/]+\/[^/]+)\/pulls$/.exec(path);
+      if (method === "POST" && pulls !== null)
+        return ok({ number: 1, node_id: "PR_1", html_url: `https://github.com/${pulls[1] ?? ""}/pull/1` });
+      if (method === "POST" && path === "graphql") return ok({ data: {} });
+    }
     if (method === "GET" && path.includes("/git/ref/heads/")) return ok({ object: { sha: "head" } });
     if (method === "GET" && path.includes("/git/commits/")) return ok({ tree: { sha: "tree" } });
     if (method === "GET" && path.includes("/git/blobs/")) return ok({ content: "", encoding: "base64" });

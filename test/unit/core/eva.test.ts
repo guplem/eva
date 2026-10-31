@@ -19,6 +19,7 @@ import { fakeGithub, fakeGithubWrite } from "../../support/fake-github.ts";
 import { widgetTemplate } from "../../../src/core/widgets/widget-template.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
+import { testVaultKeyText } from "../../support/vault-key.ts";
 
 let sandbox: GitSandbox;
 let vault: string;
@@ -74,6 +75,7 @@ beforeEach(() => {
   sandbox = createGitSandbox();
   vault = sandbox.clone("vault");
   sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
+  sandbox.write(vault, ".eva/vault-key.json", testVaultKeyText);
   sandbox.git(vault, "add", "-A");
   sandbox.git(vault, "commit", "-q", "-m", "eva files");
   sandbox.git(vault, "push", "-q", "origin", "main");
@@ -3450,5 +3452,19 @@ describe("the person's place (#371)", () => {
     expect(aboutMe()).toContain("lastLocation");
     const after = sandbox.git(vault, "show", `${turnSnapshotRef(session.id, 0, "after")}:Life/About me.md`);
     expect(after).toContain("lastLocation");
+  });
+});
+
+describe("the vault's secret files at start (#707)", () => {
+  test("a secret file that a commit holds in plain text is encrypted at start, such as after an update", async () => {
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "before the update");
+    const instance = start(new FakeEngine());
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await waitFor(() => readFileSync(join(vault, "deploy/id.key"), "utf8").startsWith("Encrypted by Eva."));
   });
 });

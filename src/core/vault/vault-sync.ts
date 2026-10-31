@@ -9,6 +9,7 @@ import type { Logger } from "../../shared/logger.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
+import { plainSecretsIn } from "./plain-secrets.ts";
 import { scratchFolderName } from "../files/vault-files.ts";
 import {
   changedLeftOut,
@@ -29,8 +30,28 @@ import {
 
 export type VaultSyncStatus = "ok" | "offline" | "conflict" | "error" | "skipped";
 
-/** Why a file stays out of the commit: it looks like a secret, or it is over the size limit. */
-export type WithheldReason = "secret" | "too_large";
+/**
+ * Why a file stays out of the commit. A stored and sent name: the Settings page and the terminal map
+ * each one. The last four come from the encryption of the vault's secret files (#707).
+ */
+export type WithheldReason =
+  /** It looks like a secret: a known token shape, or a link with a secret name. */
+  | "secret"
+  /** It is over the size limit. */
+  | "too_large"
+  /** A secret file, but the vault has no password yet. */
+  | "no_vault_key"
+  /** A secret file, but the vault's key changed on another machine. */
+  | "vault_key_changed"
+  /** It keeps Eva's header, but someone changed its encrypted text. */
+  | "not_decryptable"
+  /** A plain `.env` that holds a token. */
+  | "env_has_secret"
+  /** A secret file that Eva could not read, such as one that another program holds open. */
+  | "unreadable";
+
+/** Decides one file of a round of the secret files: null to commit it as it is now, or why it stays out. */
+export type PrepareFile = (relativePath: string) => WithheldReason | null;
 
 export interface WithheldFile {
   readonly path: string;
@@ -90,6 +111,12 @@ export interface VaultSyncOptions {
   readonly logger?: Logger;
   /** Hides secrets in `lastError`: git names the remote, and a remote address can hold a token. */
   readonly redact?: (text: string) => string;
+  /** Encrypts the secret files before each commit and each snapshot (#707). Without it, Eva encrypts nothing. */
+  readonly secrets?: {
+    round(): PrepareFile;
+    /** True for a file of a commit that holds a secret in plain text, which must never reach the remote. */
+    isPlainSecret(relativePath: string, bytes: Uint8Array): boolean;
+  };
 }
 
 const networkTimeoutMs = 60_000;
@@ -254,6 +281,24 @@ export class VaultSync {
   }
 
   /**
+   * Encrypts each plain secret file now, with no commit, such as when the person adds a pattern
+   * (#707). A plain secret file is always a change, since each commit holds it only encrypted.
+   */
+  encryptSecrets(): Promise<void> {
+    return this.serialize(async () => {
+      const prepare = this.options.secrets?.round();
+      if (prepare === undefined) return;
+      // A commit can hold a plain secret from before the password or a new pattern, so the tracked files count too.
+      const tracked = await this.git(["ls-files", "-z"], localTimeoutMs);
+      const paths = new Set([
+        ...(await this.statusEntries()).map((entry) => entry.path),
+        ...(tracked.exitCode === 0 ? tracked.stdout.split("\0").filter((path) => path.length > 0) : []),
+      ]);
+      for (const path of paths) if (!path.endsWith("/") && !this.isScratchFile(path)) prepare(path);
+    });
+  }
+
+  /**
    * Saves the files of the vault as a commit with no parent under `ref`, for the undo of a retry
    * (#525). A temporary index builds the tree, so the real index never changes. Scratch and
    * withheld files stay out, as in a commit; the message lists them. False when git failed.
@@ -262,10 +307,12 @@ export class VaultSync {
     return this.serialize(async () => {
       const leftOut = new Map<string, LeftOutFile>();
       const paths: string[] = [];
+      // A snapshot holds a secret only encrypted, as a commit does (#707).
+      const prepare = this.options.secrets?.round() ?? null;
       for (const { path } of await this.statusEntries()) {
         // A folder entry is a repository inside the vault, which a commit does not take either.
         if (path.endsWith("/")) continue;
-        if (!this.isScratchFile(path) && this.withheldReason(path) === null) paths.push(path);
+        if (!this.isScratchFile(path) && this.withheldReason(path, prepare) === null) paths.push(path);
         else this.addLeftOut(leftOut, path);
       }
       for (const path of this.scratchFiles()) this.addLeftOut(leftOut, path);
@@ -484,6 +531,8 @@ export class VaultSync {
     // A rebase needs a clean index, so the other notes stay committed here until a person picks a version.
     const unmerged = unmergedPaths(entries);
     if (unmerged.length > 0) return this.reportConflictMarkers(unmerged);
+    // Before the rebase: a merge with the remote would make the unpushed commits impossible to take back.
+    if (!(await this.encryptUnpushedSecrets(branch))) return this.state;
     await this.pushWithRetry(branch);
     return this.state;
   }
@@ -795,7 +844,10 @@ export class VaultSync {
   }
 
   /** Returns false when the commit failed; true when it committed or had nothing to commit. */
-  private async commitChanges(entries: readonly StatusEntry[], retried = false): Promise<boolean> {
+  private async commitChanges(given: readonly StatusEntry[], retried = false): Promise<boolean> {
+    const prepare = this.options.secrets?.round() ?? null;
+    // The round can write .gitattributes, so the status is read again after it starts.
+    const entries = prepare === null ? given : await this.statusEntries();
     const unmerged = unmergedPaths(entries);
     const withheld: WithheldFile[] = [];
     const kept: string[] = [];
@@ -807,7 +859,7 @@ export class VaultSync {
         if (!code.startsWith(" ") && !code.startsWith("?")) stagedScratch = true;
         continue;
       }
-      const reason = this.withheldReason(path);
+      const reason = this.withheldReason(path, prepare);
       if (reason === null) kept.push(path);
       else withheld.push({ path, reason });
     }
@@ -882,6 +934,7 @@ export class VaultSync {
         this.update({ status: "ok", lastError: null });
         return;
       }
+      if (!(await this.encryptUnpushedSecrets(branch))) return;
       const pushed = await this.git(["push", "-q", "origin", `HEAD:${branch}`], networkTimeoutMs);
       if (pushed.exitCode === 0) {
         this.update({ status: "ok", lastError: null, lastPushAt: this.options.now() });
@@ -890,6 +943,75 @@ export class VaultSync {
       pushError = firstLine(pushed);
     }
     this.update({ status: "error", lastError: `The push failed ${String(maxPushAttempts)} times: ${pushError}` });
+  }
+
+  /**
+   * An agent can commit a plain secret by itself, and Eva's own `git add` reads the files again after
+   * she encrypts them (#707). So before a push, each file of the unpushed commits that the list
+   * matches must be encrypted. When one is plain, Eva takes back the unpushed commits, keeps their
+   * files, and commits them again: the new commit encrypts them. An unpushed merge cannot be taken
+   * back that way, so then she stops the push and says why. False when the push must not run.
+   */
+  private async encryptUnpushedSecrets(branch: string): Promise<boolean> {
+    const secrets = this.options.secrets;
+    if (secrets === undefined) return true;
+    const plain = await this.plainUnpushedSecrets(branch, secrets);
+    if (plain === null) {
+      this.update({
+        status: "error",
+        lastError: "Eva could not check the unpushed commits for secrets, so she did not push.",
+      });
+      return false;
+    }
+    if (plain.length === 0) return true;
+    const stop = (detail: string): false => {
+      this.update({
+        status: "error",
+        lastError: `A commit that is not pushed yet holds ${plain.join(", ")} in plain text. ${detail}`,
+      });
+      return false;
+    };
+    if (await this.hasUnpushedMerge(branch))
+      return stop("Eva did not push. Remove the file from that commit, or ask for help.");
+    // Before the first push there is no remote commit to go back to, so the branch starts again.
+    const reset = (await this.remoteBranchKnown(branch))
+      ? await this.git(["reset", "-q", "--soft", `origin/${branch}`], localTimeoutMs)
+      : await this.git(["update-ref", "-d", "HEAD"], localTimeoutMs);
+    if (reset.exitCode !== 0) return stop("Eva did not push.");
+    if (!(await this.commitChanges(await this.statusEntries()))) return false;
+    if ((await this.plainUnpushedSecrets(branch, secrets))?.length !== 0) return stop("Eva did not push.");
+    return true;
+  }
+
+  private async remoteBranchKnown(branch: string): Promise<boolean> {
+    return (await this.git(["rev-parse", "--verify", "--quiet", `origin/${branch}`], localTimeoutMs)).exitCode === 0;
+  }
+
+  /**
+   * Each plain secret file in any unpushed commit, not only in HEAD: a push sends every commit, and
+   * a later commit can hold the same file encrypted. Null when git cannot say, so the push waits.
+   */
+  private async plainUnpushedSecrets(
+    branch: string,
+    secrets: NonNullable<VaultSyncOptions["secrets"]>,
+  ): Promise<string[] | null> {
+    // Before the first push, the remote has no branch yet, so every commit is unpushed.
+    const remoteKnown = await this.remoteBranchKnown(branch);
+    return plainSecretsIn(
+      (args) => this.git(args, localTimeoutMs),
+      remoteKnown ? `origin/${branch}..HEAD` : "HEAD",
+      (path, bytes) => secrets.isPlainSecret(path, bytes),
+      // A file that the remote holds as it is, such as one that a merge brings in, leaks nothing new.
+      (commit, path) =>
+        remoteKnown ? this.sameBlob(`${commit}:${path}`, `origin/${branch}:${path}`) : Promise.resolve(false),
+    );
+  }
+
+  private async sameBlob(first: string, second: string): Promise<boolean> {
+    const ids = await Promise.all(
+      [first, second].map((name) => this.git(["rev-parse", "--verify", "--quiet", name], localTimeoutMs)),
+    );
+    return ids.every((id) => id.exitCode === 0) && ids[0]?.stdout.trim() === ids[1]?.stdout.trim();
   }
 
   /**
@@ -1034,15 +1156,19 @@ export class VaultSync {
 
   /**
    * A file over the size limit stays out of the commit everywhere. A file outside a project
-   * folder that holds a secret stays out too.
+   * folder that holds a secret stays out too. Before both checks, the round of the secret files
+   * encrypts a secret file in place, or says why it stays out (#707). A project folder has no
+   * exception any more: its secrets reach the vault only encrypted.
    */
-  private withheldReason(relativePath: string): WithheldReason | null {
+  private withheldReason(relativePath: string, prepare: PrepareFile | null): WithheldReason | null {
+    const prepared = prepare?.(relativePath) ?? null;
+    if (prepared !== null) return prepared;
     const absolutePath = join(this.options.vaultPath, relativePath);
     try {
       const info = statSync(absolutePath);
       if (!info.isFile()) return null;
       if (info.size > maxCommittedFileBytes) return "too_large";
-      if (relativePath.startsWith("Projects/") || info.size > maxScannedFileBytes) return null;
+      if (info.size > maxScannedFileBytes) return null;
       return containsSecretPattern(readFileSync(absolutePath, "utf-8")) ? "secret" : null;
     } catch {
       return null;

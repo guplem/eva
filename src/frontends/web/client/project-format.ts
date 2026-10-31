@@ -85,6 +85,18 @@ export function repositoryLabel(url: string): string {
 }
 
 /**
+ * A note for the repositories that the form removed but did not save yet, or null. It shows only
+ * after a Remove press, so the person reads it next to the action and not as a rule of the field.
+ */
+export function removedRepositoriesHint(saved: readonly string[], current: readonly string[]): string | null {
+  const removed = saved.filter((url) => !current.includes(url)).map(repositoryLabel);
+  if (removed.length === 0) return null;
+  const names = removed.length === 1 ? removed[0] : `${removed.slice(0, -1).join(", ")} and ${removed.at(-1)}`;
+  const whose = removed.length === 1 ? "Its" : "Their";
+  return `Save to remove ${names}. ${whose} clones stay in the project.`;
+}
+
+/**
  * The web page of a hosted repository, such as `https://github.com/example/example-app`, or null for
  * a local path or an address that Eva cannot read. An SSH address has no web page of its own, so the
  * link guesses the host's HTTPS page, without the SSH port.

@@ -6,7 +6,9 @@
 import { closeSync, constants, fstatSync, openSync, readSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { maxShownBytes, noWait, projectTitleIn, textOf } from "./file-browser.ts";
-import { isClonePath, looksLikeSecretsFile } from "./vault-files.ts";
+import { encryptedState } from "../vault/vault-crypto.ts";
+import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
+import { isClonePath } from "./vault-files.ts";
 
 export interface SearchMatch {
   /** The forward-slash path from the vault root. */
@@ -49,6 +51,7 @@ export function searchVault(
   const needle = query.trim().toLowerCase();
   if (needle === "") return { matches: [], complete: true };
   const root = realpathSync(vaultPath);
+  const secrets = secretMatcherOf(root);
   const matches: SearchMatch[] = [];
   const budget = { entries: maxVisitedEntries, bytes: maxReadBytes };
   const queue: string[] = [""];
@@ -57,16 +60,17 @@ export function searchVault(
       budget.entries -= 1;
       if (budget.entries < 0) return { matches, complete: false };
       const path = folder === "" ? entry.name : `${folder}/${entry.name}`;
+      const secret = entry.kind === "file" && secrets.matches(path);
       if (options.shareable === true) {
         if (entry.kind === "folder" && isClonePath(path)) continue;
-        if (entry.kind === "file" && looksLikeSecretsFile(entry.name)) continue;
+        if (entry.kind === "file" && (secret || isEncryptedOnDisk(join(root, path)))) continue;
       }
       const match = entry.kind === "folder" ? folderMatch(root, path, entry.name, needle) : null;
       const found =
         match ??
         (entry.name.toLowerCase().includes(needle)
           ? { path, name: entry.name, kind: entry.kind }
-          : entry.kind === "file" && options.contents
+          : entry.kind === "file" && options.contents && !secret
             ? textMatch(join(root, path), path, entry.name, needle, budget, redact)
             : null);
       if (found !== null) matches.push(found);
@@ -113,7 +117,6 @@ function textMatch(
   budget: { bytes: number },
   redact: (text: string) => string,
 ): SearchMatch | null {
-  if (looksLikeSecretsFile(name)) return null;
   let text: string | null;
   try {
     const handle = openSync(file, constants.O_RDONLY | noWait);
@@ -122,7 +125,10 @@ function textMatch(
       if (!stats.isFile() || stats.size > maxShownBytes || stats.size > budget.bytes) return null;
       budget.bytes -= stats.size;
       const bytes = Buffer.alloc(stats.size);
-      text = textOf(bytes.subarray(0, readSync(handle, bytes, 0, stats.size, 0)));
+      const read = bytes.subarray(0, readSync(handle, bytes, 0, stats.size, 0));
+      // An encrypted file holds no words of its own, and any name can hold one, such as a conflict copy.
+      if (encryptedState(read) !== "plain") return null;
+      text = textOf(read);
     } finally {
       closeSync(handle);
     }

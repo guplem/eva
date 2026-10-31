@@ -47,6 +47,7 @@ describe("runDirectFixes", () => {
     expect(outcome).toEqual({
       fixed: ["Auto-merge"],
       failed: [{ label: "Dependabot alerts", reason: "GitHub refused it (HTTP 403): Must have admin rights" }],
+      notes: [],
     });
   });
 
@@ -147,7 +148,7 @@ describe("runDirectFixes", () => {
       ],
       write,
     );
-    expect(outcome).toEqual({ fixed: ["Skill a", "Skill b"], failed: [] });
+    expect(outcome).toEqual({ fixed: ["Skill a", "Skill b"], failed: [], notes: [] });
     const posted = (path: string): unknown => calls.find((call) => call.path === path && call.method !== "GET")?.body;
     expect(calls.filter((call) => call.path === "repos/owner/app/git/blobs")).toHaveLength(2);
     expect(posted("repos/owner/app/git/trees")).toEqual({
@@ -174,7 +175,206 @@ describe("runDirectFixes", () => {
     const { write } = fakeWrite({ "GET repos/owner/app/git/ref/heads/main": { status: 404, body: "" } });
     const fix = { kind: "files", source: "guplem/eva", branch: "main", files: {}, remove: [] } as const;
     const outcome = await runDirectFixes("owner/app", [{ label: "Skill a", directFix: fix }], write);
-    expect(outcome).toEqual({ fixed: [], failed: [{ label: "Skill a", reason: "GitHub refused it (HTTP 404)." }] });
+    expect(outcome).toEqual({
+      fixed: [],
+      failed: [{ label: "Skill a", reason: "GitHub refused it (HTTP 404)." }],
+      notes: [],
+    });
+  });
+});
+
+describe("runDirectFixes on a branch that requires checks", () => {
+  const skill = {
+    label: "Skill a",
+    directFix: {
+      kind: "files",
+      source: "guplem/eva",
+      branch: "main",
+      files: { ".agents/skills/a/SKILL.md": "sha-a" },
+      remove: [],
+    },
+  } as const;
+  const commitReads: Readonly<Record<string, GithubAnswer>> = {
+    "GET repos/owner/app/git/ref/heads/main": ok({ object: { sha: "head" } }),
+    "GET repos/owner/app/git/commits/head": ok({ tree: { sha: "base" } }),
+    "POST repos/owner/app/git/trees": ok({ sha: "tree" }),
+    "POST repos/owner/app/git/commits": ok({ sha: "commit" }),
+  };
+  const rulesetChecks = { "GET repos/owner/app/rules/branches/main": ok([{ type: "required_status_checks" }]) };
+  const pullRequest = {
+    "POST repos/owner/app/pulls": ok({ number: 7, node_id: "PR_7", html_url: "https://github.com/owner/app/pull/7" }),
+    "POST graphql": ok({ data: { enablePullRequestAutoMerge: { clientMutationId: null } } }),
+  };
+  const created = (calls: readonly Call[], path: string): unknown =>
+    calls.find((call) => call.method === "POST" && call.path === path)?.body;
+
+  test("opens a pull request with auto-merge, and leaves the branch as it is", async () => {
+    const { write, calls } = fakeWrite({ ...commitReads, ...rulesetChecks, ...pullRequest });
+    const outcome = await runDirectFixes("owner/app", [skill], write);
+    expect(outcome).toEqual({
+      fixed: ["Skill a"],
+      failed: [],
+      notes: [
+        "Skill a: Eva opened the pull request https://github.com/owner/app/pull/7. It merges by itself when CI passes.",
+      ],
+    });
+    expect(calls.some((call) => call.method === "PATCH" && call.path === "repos/owner/app/git/refs/heads/main")).toBe(
+      false,
+    );
+    const ref = created(calls, "repos/owner/app/git/refs") as { ref: string; sha: string };
+    expect(ref.sha).toBe("commit");
+    expect(ref.ref).toMatch(/^refs\/heads\/eva\/agent-skills-[0-9a-f]{8}$/);
+    expect(created(calls, "repos/owner/app/pulls")).toMatchObject({
+      title: "chore: copy the agent skills of the vibe-coded standard",
+      head: ref.ref.slice("refs/heads/".length),
+      base: "main",
+    });
+    expect(created(calls, "graphql")).toMatchObject({ variables: { pullRequestId: "PR_7", mergeMethod: "MERGE" } });
+  });
+
+  test("the same change gets the same branch, so a second Fix reuses the open pull request", async () => {
+    const first = fakeWrite({ ...commitReads, ...rulesetChecks, ...pullRequest });
+    await runDirectFixes("owner/app", [skill], first.write);
+    const ref = created(first.calls, "repos/owner/app/git/refs") as { ref: string };
+    const branch = ref.ref.slice("refs/heads/".length);
+    const second = fakeWrite({
+      ...commitReads,
+      ...rulesetChecks,
+      [`GET repos/owner/app/pulls?head=owner:${encodeURIComponent(branch)}&state=open`]: ok([
+        {
+          number: 7,
+          node_id: "PR_7",
+          html_url: "https://github.com/owner/app/pull/7",
+          auto_merge: { merge_method: "merge" },
+        },
+      ]),
+    });
+    const outcome = await runDirectFixes("owner/app", [skill], second.write);
+    expect(outcome.fixed).toEqual(["Skill a"]);
+    expect(outcome.notes).toEqual([
+      "Skill a: Eva opened the pull request https://github.com/owner/app/pull/7. It merges by itself when CI passes.",
+    ]);
+    // Eva makes no commit for a change that already waits in a pull request.
+    expect(second.calls.filter((call) => call.method !== "GET" && !call.path.endsWith("/git/blobs"))).toEqual([]);
+  });
+
+  test("a reused pull request that can merge now merges at once, since auto-merge refuses it", async () => {
+    const first = fakeWrite({ ...commitReads, ...rulesetChecks, ...pullRequest });
+    await runDirectFixes("owner/app", [skill], first.write);
+    const ref = created(first.calls, "repos/owner/app/git/refs") as { ref: string };
+    const branch = ref.ref.slice("refs/heads/".length);
+    const second = fakeWrite({
+      ...commitReads,
+      ...rulesetChecks,
+      [`GET repos/owner/app/pulls?head=owner:${encodeURIComponent(branch)}&state=open`]: ok([
+        { number: 7, node_id: "PR_7", html_url: "https://github.com/owner/app/pull/7", auto_merge: null },
+      ]),
+      "GET repos/owner/app/pulls/7": ok({ number: 7, mergeable_state: "clean" }),
+    });
+    const outcome = await runDirectFixes("owner/app", [skill], second.write);
+    expect(outcome).toEqual({ fixed: ["Skill a"], failed: [], notes: [] });
+    expect(second.calls).toContainEqual({
+      method: "PUT",
+      path: "repos/owner/app/pulls/7/merge",
+      body: { merge_method: "merge" },
+    });
+    expect(created(second.calls, "graphql")).toBeUndefined();
+  });
+
+  test("an old branch of Eva with no open pull request moves to the new commit", async () => {
+    const { write, calls } = fakeWrite({
+      ...commitReads,
+      ...rulesetChecks,
+      ...pullRequest,
+      "POST repos/owner/app/git/refs": { status: 422, body: '{"message":"Reference already exists"}' },
+    });
+    const outcome = await runDirectFixes("owner/app", [skill], write);
+    expect(outcome.fixed).toEqual(["Skill a"]);
+    const ref = created(calls, "repos/owner/app/git/refs") as { ref: string };
+    expect(calls).toContainEqual({
+      method: "PATCH",
+      path: `repos/owner/app/git/${ref.ref.replace("refs/heads/eva/", "refs/heads/eva%2F")}`,
+      body: { sha: "commit", force: true },
+    });
+    expect(created(calls, "repos/owner/app/pulls")).toBeDefined();
+    expect(created(calls, "graphql")).toBeDefined();
+  });
+
+  test("a branch that GitHub refuses for another reason fails with GitHub's reason", async () => {
+    const { write } = fakeWrite({
+      ...commitReads,
+      ...rulesetChecks,
+      ...pullRequest,
+      "POST repos/owner/app/git/refs": { status: 422, body: '{"message":"Reference update failed"}' },
+    });
+    const outcome = await runDirectFixes("owner/app", [skill], write);
+    expect(outcome.failed).toEqual([
+      { label: "Skill a", reason: "GitHub refused it (HTTP 422): Reference update failed" },
+    ]);
+  });
+
+  test("auto-merge keeps to the merge methods that the ruleset allows", async () => {
+    const linear = fakeWrite({
+      ...commitReads,
+      ...pullRequest,
+      "GET repos/owner/app/rules/branches/main": ok([
+        { type: "required_status_checks" },
+        { type: "required_linear_history" },
+      ]),
+    });
+    await runDirectFixes("owner/app", [skill], linear.write);
+    expect(created(linear.calls, "graphql")).toMatchObject({ variables: { mergeMethod: "SQUASH" } });
+    const rebaseOnly = fakeWrite({
+      ...commitReads,
+      ...pullRequest,
+      "GET repos/owner/app/rules/branches/main": ok([
+        { type: "required_status_checks" },
+        { type: "pull_request", parameters: { allowed_merge_methods: ["rebase"] } },
+      ]),
+    });
+    await runDirectFixes("owner/app", [skill], rebaseOnly.write);
+    expect(created(rebaseOnly.calls, "graphql")).toMatchObject({ variables: { mergeMethod: "REBASE" } });
+  });
+
+  test("a classic branch protection with required checks also gets a pull request", async () => {
+    const { write, calls } = fakeWrite({
+      ...commitReads,
+      ...pullRequest,
+      "GET repos/owner/app/branches/main": ok({
+        protection: { required_status_checks: { enforcement_level: "everyone", contexts: ["test"] } },
+      }),
+    });
+    await runDirectFixes("owner/app", [skill], write);
+    expect(created(calls, "repos/owner/app/pulls")).toBeDefined();
+  });
+
+  test("auto-merge takes a merge method that the repository allows", async () => {
+    const { write, calls } = fakeWrite({
+      ...commitReads,
+      ...rulesetChecks,
+      ...pullRequest,
+      "GET repos/owner/app": ok({ allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: true }),
+    });
+    await runDirectFixes("owner/app", [skill], write);
+    expect(created(calls, "graphql")).toMatchObject({ variables: { mergeMethod: "SQUASH" } });
+  });
+
+  test("a refused auto-merge fails the fix with the pull request and GitHub's reason", async () => {
+    const { write } = fakeWrite({
+      ...commitReads,
+      ...rulesetChecks,
+      ...pullRequest,
+      "POST graphql": ok({ errors: [{ message: "Auto merge is not allowed for this repository" }] }),
+    });
+    const outcome = await runDirectFixes("owner/app", [skill], write);
+    expect(outcome.fixed).toEqual([]);
+    expect(outcome.failed).toEqual([
+      {
+        label: "Skill a",
+        reason:
+          "Eva opened the pull request https://github.com/owner/app/pull/7, but GitHub refused auto-merge: Auto merge is not allowed for this repository",
+      },
+    ]);
   });
 });
 

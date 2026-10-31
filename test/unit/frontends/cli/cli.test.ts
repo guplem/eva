@@ -56,6 +56,8 @@ import {
   type SetupQuestion,
 } from "../../../../src/frontends/cli/setup.ts";
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
+import { readVaultKey } from "../../../../src/core/vault/secret-state.ts";
+import { unlockVaultKey } from "../../../../src/core/vault/vault-crypto.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
 import { fakeGh } from "../../../support/fake-gh.ts";
@@ -409,6 +411,8 @@ describe("runSetup", () => {
       command[0] === "git" ? systemProcessRunner.run(command, options) : okRunner.run(command, options),
   };
 
+  const vaultPassword = "a long vault password";
+
   async function setup(
     answers: Partial<Record<SetupQuestion, string | string[]>>,
     extra: {
@@ -422,7 +426,9 @@ describe("runSetup", () => {
     } = {},
   ): Promise<void> {
     const queues = Object.fromEntries(
-      Object.entries(answers).map(([key, value]) => [key, Array.isArray(value) ? [...value] : [value]]),
+      Object.entries({ vaultPassword: vaultPassword, vaultPasswordAgain: vaultPassword, ...answers }).map(
+        ([key, value]) => [key, Array.isArray(value) ? [...value] : [value]],
+      ),
     ) as Partial<Record<SetupQuestion, string[]>>;
     await runSetup({
       paths: homePaths(home),
@@ -1478,6 +1484,41 @@ describe("runSetup", () => {
     expect(githubApi.created).toEqual(["vault"]);
     const pushed = Bun.spawnSync(["git", "log", "--format=%s", "main"], { cwd: bare, env: gitEnvironment });
     expect(pushed.stdout.toString()).toContain("Start the vault");
+  });
+
+  test("a new vault asks for its password twice, asks again after a mistake, and keeps the key (#707)", async () => {
+    const lines: string[] = [];
+    const vault = join(home, "with-key");
+    await setup(
+      {
+        githubToken: "",
+        vault,
+        createVault: "y",
+        vaultPassword: ["a long vault password", vaultPassword],
+        vaultPasswordAgain: ["a long vault passw0rd", vaultPassword],
+      },
+      { runner: gitRunner, lines },
+    );
+    expect(lines.join("\n")).toContain("The two passwords are not the same.");
+    expect(lines.join("\n")).toContain("Nobody can recover a lost password");
+    const key = readVaultKey(vault);
+    expect(key).not.toBeNull();
+    if (key !== null) expect(await unlockVaultKey(key, vaultPassword)).toBeDefined();
+  });
+
+  test("a script with a short vault password stops setup and makes no vault (#707)", async () => {
+    const vault = join(home, "short");
+    let caught: unknown = null;
+    try {
+      await setup(
+        { githubToken: "", vault, createVault: "y", vaultPassword: "short", vaultPasswordAgain: "short" },
+        { interactive: false, runner: gitRunner },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "vault_password_invalid")).toBe(true);
+    expect(existsSync(join(vault, ".git"))).toBe(false);
   });
 
   test("a new vault with no GitHub login stays local, and a rerun offers the push again", async () => {

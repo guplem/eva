@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname } from "node:path";
 
 /** Writes a file through a temporary file and a rename, so a reader never sees half a file. */
-export function writeFileAtomic(path: string, content: string): void {
+export function writeFileAtomic(path: string, content: string | Uint8Array): void {
   mkdirSync(dirname(path), { recursive: true });
   const temporaryPath = `${path}.${String(process.pid)}.${String(Date.now())}.tmp`;
   writeFileSync(temporaryPath, content, { encoding: "utf-8", mode: 0o600 });

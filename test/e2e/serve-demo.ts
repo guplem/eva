@@ -9,6 +9,7 @@ import { Eva } from "../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
 import { templateParts } from "../../src/core/vault/vault-template.ts";
+import { createVaultKey, encryptFile } from "../../src/core/vault/vault-crypto.ts";
 import { widgetTemplate } from "../../src/core/widgets/widget-template.ts";
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../src/shared/process-runner.ts";
@@ -78,6 +79,18 @@ mkdirSync(join(vault, "Media"), { recursive: true });
 writeFileSync(join(vault, "Media/landscape.png"), readFileSync(join(import.meta.dir, "demo-landscape.png")));
 writeFileSync(join(vault, "Media/silence.wav"), silentWave());
 writeFileSync(join(vault, "Media/data.bin"), new Uint8Array([0, 159, 146, 150, 255, 0, 1]));
+// The vault has a key, so the demo shows no "no password" notice. The tests unlock it with this password.
+const vaultKey = await createVaultKey("a long demo password", { logN: 10 });
+sandbox.write(vault, ".eva/vault-key.json", `${JSON.stringify(vaultKey, null, 2)}\n`);
+// A secret file of each browser run, encrypted, as Eva leaves it (#707).
+for (const run of ["desktop", "phone"])
+  sandbox.write(
+    vault,
+    `Private/${run}.secrets`,
+    new TextDecoder().decode(
+      encryptFile(new TextEncoder().encode("API_KEY=demo-value\n"), vaultKey, `Private/${run}.secrets`),
+    ),
+  );
 // The message box menu shows the examples that each vault gets (issue 661).
 for (const path of [".eva/settings/text-actions/Polish.md", ".eva/settings/saved-prompts/Summary.md"]) {
   sandbox.write(vault, path, templateParts[path] ?? "");
@@ -344,7 +357,8 @@ const eva = new Eva({
       labels: ["bug"],
     },
   }),
-  githubWrite: fakeGithubWrite(),
+  // The demo branch requires checks, so a file fix shows its pull request (#717).
+  githubWrite: fakeGithubWrite({ requiredChecks: true }),
   widgetRemote: () => habitsWidget.remote,
 });
 const habitsWidgetId = "example-owner/habits-widget";

@@ -32,8 +32,8 @@ import { startChatAbout } from "./NewChatDraft.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
-import { countOf, projectSummary, shownTags, statusLabels, statusPill, tagsByUse } from "./project-format.ts";
-import { projectStatusFilters, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
+import { countOf, projectSummary, shownTags, statusChips, statusPill, tagsByUse } from "./project-format.ts";
+import { projectStatusFilters } from "../../../shared/project-statuses.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
@@ -64,15 +64,6 @@ interface ProjectViewProps {
  */
 const statusWordPattern = new RegExp(`(^|\\s)status:(${[...projectStatusFilters, "any"].join("|")})(\\s|$)`, "i");
 const tagWordPattern = /(^|\s)(tag:|#)\S/i;
-
-/** "Current" is the projects that the person develops or uses now: `active` or `in-use` (#690). */
-const statusChips: readonly { readonly value: ProjectStatusFilter; readonly text: string }[] = [
-  { value: "current", text: "Current" },
-  ...(["active", "in-use", "idea", "paused", "closed"] as const).map((status) => ({
-    value: status,
-    text: statusLabels[status],
-  })),
-];
 
 /** About three rows of tag chips on a phone. */
 const shortTagListLength = 6;

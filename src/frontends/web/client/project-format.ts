@@ -1,5 +1,5 @@
 /** The words and colours of the project pages. */
-import type { ProjectStatus } from "../../../shared/project-statuses.ts";
+import type { ProjectStatus, ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 import type { Project } from "./api.ts";
 
 /** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */
@@ -31,6 +31,15 @@ const statusTones: Readonly<Record<ProjectStatus, PillTone>> = {
   paused: "warn",
   closed: "idle",
 };
+
+/** The status filter chips of the Projects page. "Current" is the projects that the person develops or uses now (#690). */
+export const statusChips: readonly { readonly value: ProjectStatusFilter; readonly text: string }[] = [
+  { value: "current", text: "Current" },
+  ...(["active", "in-use", "idea", "paused", "closed"] as const).map((status) => ({
+    value: status,
+    text: statusLabels[status],
+  })),
+];
 
 /** Active is green, in use has the accent colour, paused is amber, and an idea or a closed project is grey. */
 export function statusPill(status: Project["frontMatter"]["status"]): Pill | null {

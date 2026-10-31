@@ -747,8 +747,10 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
     return json(widgets.add(widgetAddSchema.parse(await request.json()).repository), 201);
   if (parts.length === 3 && parts[2] === "check" && method === "POST") return json(await widgets.reviewAll(ownHosts));
   // "Check for updates": every widget at once, whatever its interval (#693).
-  if (parts.length === 3 && parts[2] === "updates" && method === "POST")
-    return json(await widgets.checkUpdates(true, ownHosts));
+  if (parts.length === 3 && parts[2] === "updates" && method === "POST") {
+    await widgets.checkUpdates(true, ownHosts);
+    return json(widgets.list());
+  }
   if (parts.length === 3 && parts[2] === "frames" && method === "POST") {
     const { scheme, colors, keep } = widgetFramesSchema.parse(await request.json());
     return json(widgets.frames(widgetTheme(scheme, colors), keep));

@@ -22,13 +22,13 @@ function github(releases: unknown, compareStatus = 200): { request: GithubReques
 describe("releaseNotes", () => {
   test("gives each release since the approved commit, on one line", async () => {
     const { request, paths } = github([
-      { name: "v1.2.0", body: "## Features\n\n* add streaks", published_at: "2026-01-02T09:00:00Z" },
+      { name: "v1.2.0", body: "## Features\n\n* add streaks (#12)", published_at: "2026-01-02T09:00:00Z" },
       { tag_name: "v1.1.1", body: "", published_at: "2026-01-01T10:00:00Z" },
       { name: "draft", body: "x", draft: true, published_at: "2026-01-03T09:00:00Z" },
       { name: "v1.1.0", body: "old", published_at: "2025-12-01T09:00:00Z" },
     ]);
     expect(await releaseNotes(request, "example-owner/habits", from, to)).toEqual([
-      "v1.2.0: Features * add streaks",
+      "v1.2.0: Features * add streaks (#12)",
       "v1.1.1",
     ]);
     expect(paths).toEqual([

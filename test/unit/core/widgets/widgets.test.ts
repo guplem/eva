@@ -183,6 +183,7 @@ describe("the list", () => {
         size: null,
         problems: null,
         update: null,
+        checkProblem: null,
       },
       expect.objectContaining({ id: "example-owner/project-widget", sources: ["project"], state: "off" }),
       expect.objectContaining({ id: "example-owner/base-widget", sources: ["base"], state: "off" }),
@@ -684,6 +685,47 @@ describe("the updates", () => {
     expect(widgets.list()[0]?.update?.permissions).toEqual([
       "Write the folder Life/Habits in a new data format (schemas/habits.json).",
     ]);
+  });
+
+  test("a check that fails for a day opens a notice, and a check that works closes it", async () => {
+    let broken = false;
+    options = {
+      ...options,
+      copies: new WidgetCopies({
+        folder: join(folder, "widgets"),
+        runner: systemProcessRunner,
+        environment: gitEnvironment,
+        remoteOf: () => (broken ? join(folder, "no-such-remote") : sandbox.remote),
+      }),
+    };
+    withUpdates();
+    await approveHabits();
+    broken = true;
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.checkProblem).toContain("Eva cannot read");
+    expect(opened()).toEqual([]);
+    now = new Date(now.getTime() + 25 * 60 * 60_000);
+    await widgets.checkUpdates(true);
+    expect(opened()).toEqual([`widget_check:${habitsId}`]);
+    expect(reported.at(-1)?.message).toContain("since yesterday");
+    broken = false;
+    await widgets.checkUpdates(true);
+    expect(reported.at(-1)).toEqual({ key: `widget_check:${habitsId}`, message: null });
+    expect(widgets.list()[0]?.checkProblem).toBeNull();
+  });
+
+  test("a widget that is off gets no check, and its waiting update goes", async () => {
+    withUpdates();
+    await approveHabits();
+    commit({
+      "eva-widget.json": JSON.stringify({ ...manifest, hosts: [{ url: "https://two.example.com", why: "x" }] }),
+    });
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.update).not.toBeNull();
+    widgets.setEnabled(habitsId, false);
+    await widgets.checkUpdates(true);
+    expect(widgets.list()[0]?.update).toBeNull();
+    expect(dismissed.some((key) => key.startsWith(`widget_update:${habitsId}:`))).toBe(true);
   });
 
   test("the person's own widgets are due after the set minutes, every other widget after a day", async () => {

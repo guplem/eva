@@ -107,7 +107,12 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
     setCheckingUpdates(true);
     await run(async () => {
       const checked = await api.checkWidgetUpdates();
-      notify(updateCheckNote(checked.filter((item) => item.update !== null).length));
+      notify(
+        updateCheckNote(
+          checked.filter((item) => item.update !== null).length,
+          checked.filter((item) => item.checkProblem !== null).length,
+        ),
+      );
       return checked;
     });
     setCheckingUpdates(false);
@@ -283,6 +288,11 @@ function WidgetRow({
               <li key={problem}>{problem}</li>
             ))}
           </ul>
+        </div>
+      )}
+      {item.checkProblem !== null && (
+        <div className="callout warning">
+          Eva could not check this widget for updates: {item.checkProblem} The installed version keeps running.
         </div>
       )}
       {item.update !== null && (

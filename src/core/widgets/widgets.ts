@@ -102,6 +102,8 @@ export interface WidgetItem {
   readonly problems: readonly string[] | null;
   /** The update that waits for the person on this computer, or null. */
   readonly update: WidgetUpdateView | null;
+  /** Why the last update check of this widget failed, or null. */
+  readonly checkProblem: string | null;
 }
 
 /** What the activation shows: the inputs to fill and the permissions to approve, at one commit. */
@@ -177,6 +179,8 @@ export class Widgets {
   private readonly installing: Set<string>;
   private checking: Promise<void> | null;
   private readonly previews: WidgetPreviews;
+  /** The widgets whose last update check failed: since when, and why. */
+  private readonly failures: Map<string, { readonly since: number; readonly reason: string }>;
 
   constructor(options: WidgetsOptions) {
     this.options = options;
@@ -184,6 +188,7 @@ export class Widgets {
     this.reviews = new Map();
     this.installing = new Set();
     this.checking = null;
+    this.failures = new Map();
     this.formats = new WidgetFormats({
       vaultPath: options.vaultPath,
       approvals: options.approvals,
@@ -204,6 +209,7 @@ export class Widgets {
       redact: options.redact,
       now: options.now,
       wrote: (path) => this.formats.wrote(path),
+      formatConflict: (id, manifest, paths, schemas) => this.writeConflict(id, manifest, paths, schemas),
     });
   }
 
@@ -252,6 +258,7 @@ export class Widgets {
         size: record?.size ?? reviewed?.manifest?.size ?? null,
         problems: reviewed === undefined ? null : reviewed.problems.map((problem) => this.options.redact(problem)),
         update: this.waitingOf(address.id),
+        checkProblem: this.failures.get(address.id)?.reason ?? null,
       };
     });
   }
@@ -278,26 +285,31 @@ export class Widgets {
   async review(id: string, ownHosts: readonly string[]): Promise<WidgetReview> {
     const address = this.known(id);
     const commit = await this.options.copies.fetchNewest(address);
-    const review = await this.inspect(address, commit, ownHosts);
+    const { review } = await this.inspect(address, commit, ownHosts);
     this.reviews.set(id, { review, at: this.options.now().getTime() });
     return review;
   }
 
-  /** Checks the manifest, its schemas and its hosts at a fetched commit, and compares it with the approval. */
-  private async inspect(address: WidgetAddress, commit: string, ownHosts: readonly string[]): Promise<WidgetReview> {
+  /**
+   * Checks the manifest, its schemas and its hosts at a fetched commit, and compares it with the
+   * approval. `change` is null with no approval or no valid manifest.
+   */
+  private async inspect(
+    address: WidgetAddress,
+    commit: string,
+    ownHosts: readonly string[],
+  ): Promise<{ readonly review: WidgetReview; readonly change: GrantChange | null }> {
     const id = address.id;
     const check = await inspectFiles((path) => this.options.copies.readAt(address, commit, path), ownHosts);
     const { manifest, problems } = check;
     const entry = readWidgetList(this.options.vaultPath).find((candidate) => candidate.id === id);
     const record = this.options.approvals.get(id);
     const shown = problems.length === 0 ? manifest : null;
-    const added =
+    const change =
       record === null || shown === null
         ? null
-        : (await this.changeOf(address, record, shown, commit, entry?.inputs ?? {})).added.map((line) =>
-            this.options.redact(line),
-          );
-    return {
+        : await this.changeOf(address, record, shown, commit, entry?.inputs ?? {});
+    const review: WidgetReview = {
       id: address.id,
       repository: address.url,
       owner: address.owner,
@@ -306,9 +318,10 @@ export class Widgets {
       problems: problems.map((problem) => this.options.redact(problem)),
       values: entry?.inputs ?? {},
       installed: record?.commit ?? null,
-      added,
+      added: change === null ? null : change.added.map((line) => this.options.redact(line)),
       ...(check.newerContract === true ? { newerContract: true } : {}),
     };
+    return { review, change };
   }
 
   /**
@@ -468,9 +481,9 @@ export class Widgets {
    * widget now. An update with no new permission installs by itself. Any other update waits,
    * and the person gets one notice for each waiting commit. A failed check waits for the next.
    */
-  async checkUpdates(force = false, ownHosts: readonly string[] = defaultOwnHosts): Promise<WidgetItem[]> {
+  async checkUpdates(force = false, ownHosts: readonly string[] = defaultOwnHosts): Promise<void> {
     // Each tick of a minute starts a check: one that runs already is enough.
-    if (this.checking !== null && !force) return this.list();
+    if (this.checking !== null && !force) return;
     const run = (this.checking ?? Promise.resolve()).then(() => this.checkAll(force, ownHosts));
     this.checking = run;
     try {
@@ -478,7 +491,6 @@ export class Widgets {
     } finally {
       if (this.checking === run) this.checking = null;
     }
-    return this.list();
   }
 
   private async checkAll(force: boolean, ownHosts: readonly string[]): Promise<void> {
@@ -489,24 +501,35 @@ export class Widgets {
     const own = new Set(this.projectAddresses().map((address) => address.id));
     const now = this.options.now().getTime();
     const entries = readWidgetList(this.options.vaultPath);
-    // A widget with no approval here has no update: its next approval reads the newest commit.
-    for (const { id } of updates.state.waiting())
-      if (this.options.approvals.get(id) === null) this.clearWaiting(id, true);
+    const checked = (entry: WidgetEntry): boolean => {
+      const record = this.options.approvals.get(entry.id);
+      return entry.enabled && matches(record, entry);
+    };
+    // A widget that is off, gone from the list, or with no fitting approval here has no update:
+    // its next approval reads the newest commit. Its notice goes, so no notice stays with no answer.
+    for (const { id } of updates.state.waiting()) {
+      const entry = entries.find((each) => each.id === id);
+      if (entry === undefined || !checked(entry)) this.clearWaiting(id, true);
+    }
     await Promise.all(
       entries.map(async (entry) => {
         const record = this.options.approvals.get(entry.id);
         const address = record === null ? null : widgetAddress(record.repository);
-        // A widget that waits for an approval on this computer gets the newest commit at that approval.
-        if (record === null || address === null || !matches(record, entry)) return;
+        if (record === null || address === null || !checked(entry)) return;
         const checkedAt = updates.state.get(entry.id)?.checkedAt ?? null;
-        const everyMs = own.has(entry.id) ? Math.max(5, updates.ownMinutes()) * 60_000 : dayMs;
+        const everyMs = own.has(entry.id) ? updates.ownMinutes() * 60_000 : dayMs;
         if (!force && checkedAt !== null && now - Date.parse(checkedAt) < everyMs) return;
         try {
           await this.checkOne(address, record, entry, ownHosts);
+          this.checkFailed(entry.id, null);
         } catch (error) {
-          updates.log(this.options.redact(error instanceof Error ? error.message : String(error)));
+          const reason = this.options.redact(error instanceof Error ? error.message : String(error));
+          updates.log(reason);
+          this.checkFailed(entry.id, reason);
         }
-        updates.state.set(entry.id, address.url, { checkedAt: new Date(now).toISOString() });
+        // A widget that the person removed during the check keeps no state.
+        if (this.options.approvals.get(entry.id) !== null)
+          updates.state.set(entry.id, address.url, { checkedAt: new Date(now).toISOString() });
       }),
     );
     // Each tick renews the notices: a restart, or a reminder, sends them again.
@@ -532,30 +555,19 @@ export class Widgets {
     }
     if (newest === state?.waiting?.commit || newest === state?.refused) return;
     const commit = await this.options.copies.fetchNewest(address);
-    const review = await this.inspect(address, commit, ownHosts);
+    const { review, change } = await this.inspect(address, commit, ownHosts);
     this.reviews.set(id, { review, at: this.options.now().getTime() });
     const reasons = [...review.problems];
-    let change: GrantChange | null = null;
-    if (review.manifest !== null) {
+    if (review.manifest !== null && change !== null) {
       const manifest = review.manifest;
       try {
         this.checkValues(manifest.inputs, entry.inputs);
       } catch (error) {
         reasons.push(error instanceof Error ? error.message : String(error));
       }
-      change = await this.changeOf(address, record, manifest, commit, entry.inputs);
-      const conflicts = this.formats.conflictsOf(
-        id,
-        manifest.name,
-        change.grant.paths,
-        await this.schemasAt(address, commit, change.grant.paths),
-      );
-      const written = new Map(
-        [...conflicts].filter(([input]) =>
-          change?.grant.paths.some((each) => each.input === input && each.access === "write"),
-        ),
-      );
-      if (written.size > 0) reasons.push(conflictText(manifest, written));
+      const schemas = await this.schemasAt(address, commit, change.grant.paths);
+      const conflict = this.writeConflict(id, manifest, change.grant.paths, schemas);
+      if (conflict !== null) reasons.push(conflict);
       if (change.added.length === 0 && reasons.length === 0) {
         await this.installUpdate(address, record, manifest, change.grant, commit);
         return;
@@ -587,9 +599,27 @@ export class Widgets {
     grant: WidgetGrant,
     commit: string,
   ): Promise<void> {
+    // The check took a while: the person may have approved again, or removed the widget, meanwhile.
+    const unchanged = (): boolean => {
+      const now = this.options.approvals.get(address.id);
+      const entry = readWidgetList(this.options.vaultPath).find((each) => each.id === address.id);
+      return (
+        now?.commit === record.commit &&
+        now.approvedAt === record.approvedAt &&
+        entry !== undefined &&
+        matches(now, entry)
+      );
+    };
+    if (!unchanged()) return;
     this.installing.add(address.id);
     try {
       await this.options.copies.install(address, commit);
+      if (!unchanged()) {
+        // The person's own approval wins: the copy goes back to its commit.
+        const now = this.options.approvals.get(address.id);
+        if (now !== null) await this.options.copies.install(address, now.commit);
+        return;
+      }
     } finally {
       this.installing.delete(address.id);
     }
@@ -604,6 +634,32 @@ export class Widgets {
     this.revoke(address.id);
     this.clearWaiting(address.id, true);
     void this.syncFormats();
+  }
+
+  /**
+   * Remembers a failed check, or forgets it after a check that works. A check that fails for a day
+   * opens a problem, so the phone hears that the updates stopped. A short network loss does not.
+   */
+  private checkFailed(id: string, reason: string | null): void {
+    const updates = this.options.updates;
+    if (updates === undefined) return;
+    const key = `widget_check:${id}`;
+    if (reason === null) {
+      if (this.failures.delete(id)) updates.report(key, null);
+      return;
+    }
+    const now = this.options.now().getTime();
+    const since = this.failures.get(id)?.since ?? now;
+    this.failures.set(id, { since, reason });
+    if (now - since < dayMs) return;
+    const name = this.options.redact(this.options.approvals.get(id)?.name ?? id);
+    updates.report(key, {
+      level: "warn",
+      message: oneLine(
+        `Eva cannot check the widget ${name} for updates since yesterday: ${reason} The installed version keeps running.`,
+      ),
+      resolvedMessage: `Eva checks the widget ${name} for updates again.`,
+    });
   }
 
   /** Keeps the installed version, and asks again only for a newer commit than the waiting one. */
@@ -669,6 +725,20 @@ export class Widgets {
     };
   }
 
+  /** The warning of each written input whose format conflicts with its folder (#692), or null. A read never conflicts. */
+  private writeConflict(
+    id: string,
+    manifest: WidgetManifest,
+    paths: readonly ApprovedPath[],
+    schemas: ReadonlyMap<string, unknown>,
+  ): string | null {
+    const conflicts = this.formats.conflictsOf(id, manifest.name, paths, schemas);
+    const written = new Map(
+      [...conflicts].filter(([input]) => paths.some((each) => each.input === input && each.access === "write")),
+    );
+    return written.size === 0 ? null : conflictText(manifest, written);
+  }
+
   /** The schema of each input with a path, read at the commit, by its path in the widget. */
   private async schemasAt(
     address: WidgetAddress,
@@ -705,6 +775,7 @@ export class Widgets {
     this.revoke(id);
     this.reviews.delete(id);
     this.clearWaiting(id, true);
+    this.checkFailed(id, null);
     this.options.updates?.state.remove(id);
     this.options.approvals.remove(id);
     this.options.copies.remove(address);

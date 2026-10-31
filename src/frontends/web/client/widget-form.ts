@@ -123,8 +123,13 @@ function intervalLabel(minutes: number): string {
   return hours === 1 ? "1 hour" : `${String(hours)} hours`;
 }
 
-/** The note after "Check for updates". */
-export function updateCheckNote(waiting: number): string {
-  if (waiting === 0) return "Each widget is up to date, or its update installed.";
-  return waiting === 1 ? "An update waits for you." : `${String(waiting)} updates wait for you.`;
+/** The note after "Check for updates". A failed check comes first: the person must know it. */
+export function updateCheckNote(waiting: number, failed = 0): string {
+  const waits =
+    waiting === 0 ? null : waiting === 1 ? "An update waits for you." : `${String(waiting)} updates wait for you.`;
+  if (failed > 0)
+    return [`Eva could not check ${failed === 1 ? "1 widget" : `${String(failed)} widgets`}. The list says why.`, waits]
+      .filter((part) => part !== null)
+      .join(" ");
+  return waits ?? "Each widget is up to date, or its update installed.";
 }

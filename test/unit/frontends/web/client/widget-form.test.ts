@@ -133,5 +133,7 @@ describe("the update check choices", () => {
     expect(updateCheckNote(0)).toContain("up to date");
     expect(updateCheckNote(1)).toBe("An update waits for you.");
     expect(updateCheckNote(3)).toBe("3 updates wait for you.");
+    expect(updateCheckNote(1, 2)).toBe("Eva could not check 2 widgets. The list says why. An update waits for you.");
+    expect(updateCheckNote(0, 1)).toBe("Eva could not check 1 widget. The list says why.");
   });
 });

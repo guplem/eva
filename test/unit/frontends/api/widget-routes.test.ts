@@ -156,6 +156,21 @@ describe("the widget list", () => {
     expect(existsSync(join(vault, "Life/Habits/walk.json"))).toBe(true);
   });
 
+  test("approves with read access only, for a conflict of the data format", async () => {
+    await call("/api/widgets", { method: "POST", body: { repository: "Example-Owner/Habits" } });
+    const review = (await (await call(`/api/widgets/${id}/review`)).json()) as { commit: string };
+    const approved = await call(`/api/widgets/${id}/approve`, {
+      method: "POST",
+      body: { commit: review.commit, values: { habits: "Life/Habits" }, readOnly: true },
+    });
+    expect(approved.status).toBe(200);
+    const bad = await call(`/api/widgets/${id}/approve`, {
+      method: "POST",
+      body: { commit: review.commit, values: {}, readOnly: "yes" },
+    });
+    expect(bad.status).toBe(400);
+  });
+
   test("answers each refusal with its status and code", async () => {
     const bad = await call("/api/widgets", { method: "POST", body: { repository: "not an address" } });
     expect(bad.status).toBe(400);

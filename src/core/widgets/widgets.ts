@@ -27,6 +27,9 @@ import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
 import { isPlainName, isWritableName } from "./widget-places.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
+import type { DataFormatRecord } from "./data-format-writer.ts";
+import type { FormatConflict } from "./data-formats.ts";
+import { installedSchema, WidgetFormats } from "./widget-formats.ts";
 
 export interface WidgetsOptions {
   readonly vaultPath: string;
@@ -41,6 +44,15 @@ export interface WidgetsOptions {
   readonly exclusive: <Result>(work: () => Result) => Promise<Result>;
   readonly redact: (text: string) => string;
   readonly now: () => Date;
+  /** The data formats (#692). Without them, this Eva writes no `DATA_FORMAT.md`. */
+  readonly formats?: {
+    readonly record: DataFormatRecord;
+    /** Only the hub writes the files. */
+    readonly isHub: () => boolean;
+    /** Tells the person once that Eva wrote over an edit of these files. */
+    readonly notify: (edited: readonly string[]) => void;
+    readonly log: (reason: string) => void;
+  };
 }
 
 export type WidgetSource = "list" | "project" | "base";
@@ -101,11 +113,22 @@ export class Widgets {
   private readonly options: WidgetsOptions;
   private readonly sessions: Map<string, FrameSession>;
   private readonly reviews: Map<string, { readonly review: WidgetReview; readonly at: number }>;
+  /** The data formats of the approved widgets: the prompt lines and the checks read them. */
+  readonly formats: WidgetFormats;
 
   constructor(options: WidgetsOptions) {
     this.options = options;
     this.sessions = new Map();
     this.reviews = new Map();
+    this.formats = new WidgetFormats({
+      vaultPath: options.vaultPath,
+      approvals: options.approvals,
+      copies: options.copies,
+      exclusive: options.exclusive,
+      record: options.formats?.record ?? null,
+      isHub: options.formats?.isHub ?? (() => false),
+      notify: options.formats?.notify ?? (() => undefined),
+    });
   }
 
   /** The list of the settings: the vault entries, then each widget project, then each base widget. */
@@ -230,12 +253,15 @@ export class Widgets {
   /**
    * Approves the widget at the reviewed commit with these input values, installs that commit and
    * turns the widget on. Eva checks the manifest again at that commit: the page's copy grants nothing.
+   * A written format that conflicts with the folder's fails, unless `readOnly`: each input with a
+   * conflict then gets read access only (#692).
    */
   async approve(
     id: string,
     commit: string,
     values: Readonly<Record<string, WidgetInputValue>>,
     ownHosts: readonly string[],
+    readOnly = false,
   ): Promise<WidgetItem[]> {
     const address = this.known(id);
     const reviewed = this.reviews.get(id)?.review;
@@ -262,6 +288,14 @@ export class Widgets {
       if (!hostCheck.ok) throw new EvaError("widget_invalid", hostCheck.reason);
       return hostCheck.origin;
     });
+    // Before the install: the copy must keep the approved commit while the approval can still fail.
+    const conflicts = this.formats.conflictsOf(id, manifest.name, paths, await this.schemasAt(address, commit, paths));
+    if (conflicts.size > 0 && !readOnly)
+      throw new EvaError("widget_format_conflict", conflictText(manifest, conflicts));
+    // Read access only: the widget then sets no format, so the folder keeps the other widgets' fields.
+    const approvedPaths = paths.map((approved): ApprovedPath =>
+      conflicts.has(approved.input) ? { ...approved, access: "read", schema: null } : approved,
+    );
     await this.options.copies.install(address, commit);
     this.options.approvals.save(id, {
       repository: address.url,
@@ -269,14 +303,44 @@ export class Widgets {
       name: manifest.name,
       size: manifest.size,
       entry: manifest.entry,
-      paths,
+      paths: approvedPaths,
       location: manifest.inputs.some((input) => input.type === "eva-location"),
       hosts,
+      prompt: manifest.prompt ?? null,
       approvedAt: this.options.now().toISOString(),
     });
     this.revoke(id);
     this.saveEntry(address, { enabled: true, inputs: kept });
+    await this.syncFormats();
     return this.list();
+  }
+
+  /** Writes the data formats again. A failure waits for the next sync step, which tries again. */
+  async syncFormats(): Promise<void> {
+    try {
+      await this.formats.sync();
+    } catch (error) {
+      this.options.formats?.log(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /** The schema of each input with a path, read at the commit, by its path in the widget. */
+  private async schemasAt(
+    address: WidgetAddress,
+    commit: string,
+    paths: readonly ApprovedPath[],
+  ): Promise<Map<string, unknown>> {
+    const schemas = new Map<string, unknown>();
+    for (const approved of paths) {
+      if (approved.schema === null || approved.path === null || schemas.has(approved.schema)) continue;
+      const text = await this.options.copies.readAt(address, commit, approved.schema);
+      try {
+        if (text !== null) schemas.set(approved.schema, JSON.parse(text) as unknown);
+      } catch {
+        // The review refuses a schema that does not parse, so only a changed commit has one.
+      }
+    }
+    return schemas;
   }
 
   /** Turns a widget off, or on again with its approval. With no matching approval, the page must review it. */
@@ -302,6 +366,8 @@ export class Widgets {
       this.options.vaultPath,
       entries.filter((entry) => entry.id !== id),
     );
+    // In the background: the list answers at once, and the formats lose the widget's fields.
+    void this.syncFormats();
     return this.list();
   }
 
@@ -401,9 +467,16 @@ export class Widgets {
       if (rest === undefined) return { status: 404 };
       const open = { ...approved, path: value };
       if (method === "GET" || method === "HEAD") return answerData(this.options.vaultPath, open, rest, "GET", null);
-      const schema = method === "PUT" ? this.schemaOf(address, approved) : null;
+      const schema =
+        method === "PUT" && approved.schema !== null
+          ? installedSchema(this.options.copies, address, approved.schema)
+          : null;
       const write = body === null ? null : { body, schema, redact: this.options.redact };
-      return this.options.exclusive(() => answerData(this.options.vaultPath, open, rest, method, write));
+      return this.options.exclusive(() => {
+        const answer = answerData(this.options.vaultPath, open, rest, method, write);
+        if (method === "PUT" && answer.status === 204) this.formats.wrote(rest === null ? value : `${value}/${rest}`);
+        return answer;
+      });
     }
     if (method !== "GET" && method !== "HEAD") return { status: 405 };
     if (path === "config.json") return json(configOf(record, entry));
@@ -434,20 +507,6 @@ export class Widgets {
     const address = widgetAddress(record.repository);
     if (entry?.enabled !== true || !matches(record, entry) || address === null) return null;
     return { session, record, entry, address };
-  }
-
-  /** The schema of a written input, from the installed copy, so Eva knows which fields the widget knows. */
-  private schemaOf(address: WidgetAddress, approved: ApprovedPath): unknown {
-    if (approved.schema === null) return null;
-    const answer = this.options.copies.serveFile(address, approved.schema);
-    if (answer.status !== 200 || answer.body === undefined) return null;
-    try {
-      return JSON.parse(
-        typeof answer.body === "string" ? answer.body : Buffer.from(answer.body).toString("utf-8"),
-      ) as unknown;
-    } catch {
-      return null;
-    }
   }
 
   private checkValues(
@@ -553,6 +612,16 @@ function locationOf(location: LastLocation | null): Omit<LastLocation, "source">
   if (location === null) return null;
   const { latitude, longitude, accuracy, at } = location;
   return { latitude, longitude, accuracy, at };
+}
+
+/** The warning of a conflict: each folder and field, and what the person can do. */
+function conflictText(manifest: WidgetManifest, conflicts: ReadonlyMap<string, readonly FormatConflict[]>): string {
+  const lines = [...conflicts].map(([input, found]) => {
+    const folder = manifest.inputs.find((candidate) => candidate.id === input)?.label ?? input;
+    const fields = found.map((conflict) => `the field "${conflict.path}" is ${conflict.reason}`).join("; ");
+    return `${folder}: ${fields}.`;
+  });
+  return `${manifest.name} does not fit the data that the folder holds already. ${lines.join(" ")} Turn it on with read access only, or pick another folder.`;
 }
 
 function json(value: unknown): WidgetAnswer {

@@ -36,6 +36,11 @@ export const approvalSchema = z.object({
   location: z.boolean(),
   /** The approved origins, such as `https://api.example.com`. */
   hosts: z.array(z.string()),
+  /**
+   * The manifest's line for the Assistant prompt, as the person saw it (#692). A record from
+   * before the field has none, so its widget gets the default line until the next approval.
+   */
+  prompt: z.string().nullable().default(null),
   approvedAt: z.string(),
 });
 

@@ -120,6 +120,8 @@ export interface HomePaths {
   readonly widgetsFolder: string;
   /** The permissions that the person approved for each widget on this computer. */
   readonly widgetApprovals: string;
+  /** The hash of each `DATA_FORMAT.md` that this hub wrote into the vault (#692). */
+  readonly dataFormats: string;
 }
 
 export function homePaths(root: string): HomePaths {
@@ -151,6 +153,7 @@ export function homePaths(root: string): HomePaths {
     enginesFolder: join(root, "engines"),
     widgetsFolder: join(root, "widgets"),
     widgetApprovals: join(stateFolder, "widget-approvals.json"),
+    dataFormats: join(stateFolder, "data-formats.json"),
   };
 }
 

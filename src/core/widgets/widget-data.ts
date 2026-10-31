@@ -121,6 +121,13 @@ function readData(vaultPath: string, segments: readonly string[]): WidgetAnswer 
   return bytes === null ? notFound : { status: 200, contentType: contentTypeOf(name), body: bytes };
 }
 
+/** The text of a data file at a path from the vault root, by the same rules as a widget read, or null. */
+export function readVaultData(vaultPath: string, path: string): string | null {
+  const segments = openPath(path);
+  const answer = segments === null ? notFound : readData(vaultPath, segments);
+  return answer.status === 200 && answer.body !== undefined ? Buffer.from(answer.body).toString("utf-8") : null;
+}
+
 /**
  * The lstat of the last segment, after a check that no segment from the vault root is a link.
  * Null when a segment is missing or is not what the path needs.
@@ -264,7 +271,7 @@ function readSame(path: string, checked: Stats): Uint8Array | null {
 }
 
 /** The value of a JSON or YAML text, or undefined when it does not parse. */
-function parseData(text: string, yaml: boolean): unknown {
+export function parseData(text: string, yaml: boolean): unknown {
   try {
     return yaml ? (parseYaml(text) as unknown) : (JSON.parse(text) as unknown);
   } catch {

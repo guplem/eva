@@ -293,6 +293,8 @@ const widgetReleaseSchema = z.object({ tokens: z.array(z.string().max(100)).max(
 const widgetApproveSchema = z.object({
   commit: z.string().min(1).max(100),
   values: z.record(z.string().max(100), widgetInputValueSchema),
+  /** True after a format conflict: each input with a conflict gets read access only (#692). */
+  readOnly: z.boolean().optional(),
 });
 const widgetEnabledSchema = z.object({ enabled: z.boolean() });
 const widgetMoveSchema = z.object({ direction: z.enum(["up", "down"]) });
@@ -727,8 +729,8 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
   if (action === undefined && method === "DELETE") return json(widgets.remove(id));
   if (action === "review" && method === "GET") return json(await widgets.review(id, ownHosts));
   if (action === "approve" && method === "POST") {
-    const { commit, values } = widgetApproveSchema.parse(await request.json());
-    return json(await widgets.approve(id, commit, values, ownHosts));
+    const { commit, values, readOnly } = widgetApproveSchema.parse(await request.json());
+    return json(await widgets.approve(id, commit, values, ownHosts, readOnly === true));
   }
   if (action === "enabled" && method === "PUT")
     return json(widgets.setEnabled(id, widgetEnabledSchema.parse(await request.json()).enabled));

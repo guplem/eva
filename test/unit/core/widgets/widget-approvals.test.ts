@@ -25,6 +25,7 @@ const record: WidgetApproval = {
   ],
   location: false,
   hosts: [],
+  prompt: "Habits live in {habits}.",
   approvedAt: "2026-01-01T09:00:00.000Z",
 };
 
@@ -65,5 +66,15 @@ describe("WidgetApprovals", () => {
     const mixed = new WidgetApprovals(join(folder, "mixed.json"));
     expect(mixed.get("example-owner/habits")).toBeNull();
     expect(mixed.get("example-owner/weather")?.name).toBe("Habits");
+  });
+});
+
+describe("the prompt line of a record", () => {
+  test("is null in a record from before the field", () => {
+    const { prompt: _prompt, ...old } = record;
+    writeFileSync(join(folder, "old.json"), JSON.stringify({ version: 1, approvals: [old] }));
+    const read = new WidgetApprovals(join(folder, "old.json")).get("example-owner/habits");
+    expect(read?.prompt).toBeNull();
+    expect(read?.name).toBe("Habits");
   });
 });

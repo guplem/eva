@@ -1906,6 +1906,7 @@ test("Project mode: the repository setup shows each item's light; Fix runs a dir
       { exact: false },
     ),
   ).toBeVisible();
+  await expect(report.getByRole("link", { name: "https://github.com/example-owner/example-app/pull/1" })).toBeVisible();
   // Git hooks depend on the project's stack, so a coding agent adds them.
   const hooks = report.locator(".setup-item", { hasText: "Git hooks" });
   await hooks.getByRole("button", { name: "Fix Git hooks in a new chat" }).click();

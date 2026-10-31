@@ -7,6 +7,8 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { repositoryCatalog } from "../../../core/projects/repository-catalog.ts";
 import { api, type SetupItem, type SetupReport, type SetupSection } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { MarkdownBody } from "./MarkdownBody.tsx";
+import { toWebHtml } from "./web-format.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { BackButton } from "./MainNav.tsx";
 import { Card, StatusIcon } from "./SettingsParts.tsx";
@@ -115,7 +117,7 @@ interface ReportCardProps {
   readonly messages: FixMessages;
   readonly onMessages: (messages: FixMessages) => void;
   readonly onFix: (request: string) => void;
-  /** Reads the reports again, for the new type. */
+  /** Reads the reports again, after a Fix or for a new type. */
   readonly onTypeChanged: () => void;
 }
 
@@ -174,7 +176,17 @@ function ReportCard({ projectId, report, messages, onMessages, onFix, onTypeChan
       description={summary === "" ? undefined : summary}
       aside={fixAll}
     >
-      {report.slug !== null && <TypeChoice projectId={projectId} report={report} onChanged={onTypeChanged} />}
+      {report.slug !== null && (
+        <TypeChoice
+          projectId={projectId}
+          report={report}
+          onChanged={() => {
+            // The messages of the last Fix belong to the report of the old type.
+            onMessages(noMessages);
+            onTypeChanged();
+          }}
+        />
+      )}
       {report.problem !== null && <div className="callout warning">{report.problem}</div>}
       {running !== null && <ProgressBar label="Eva fixes the repository on GitHub…" />}
       {problems.length > 0 && (
@@ -186,9 +198,8 @@ function ReportCard({ projectId, report, messages, onMessages, onFix, onTypeChan
       )}
       {notes.length > 0 && (
         <div className="callout" role="status">
-          {notes.map((note) => (
-            <p key={note}>{note}</p>
-          ))}
+          {/* The shared Markdown view makes each pull request address a link to tap. */}
+          <MarkdownBody html={toWebHtml(notes.join("\n\n"))} className="" copy={false} />
         </div>
       )}
       {report.sections.map((section) => (

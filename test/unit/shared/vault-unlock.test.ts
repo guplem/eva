@@ -8,5 +8,7 @@ describe("a new vault password (#707)", () => {
     expect(newPasswordProblem("🇪🇸🇪🇸🇪🇸🇪🇸🇪🇸🇪🇸", "🇪🇸🇪🇸🇪🇸🇪🇸🇪🇸🇪🇸")).toContain("at least 12");
     expect(newPasswordProblem("a long password", "a long passw0rd")).toBe("The two passwords are not the same.");
     expect(newPasswordProblem("a long password", "a long password")).toBeNull();
+    // The core trims a password, so outer spaces never make two copies differ.
+    expect(newPasswordProblem("a long password ", "a long password")).toBeNull();
   });
 });

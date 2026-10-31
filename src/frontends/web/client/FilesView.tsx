@@ -32,7 +32,7 @@ import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { UnlockVaultForm } from "./VaultPasswordForms.tsx";
-import { forgetUnlockSecret, onUnlockForgotten } from "./vault-unlock.ts";
+import { draftOf, hasEncryptedDraft, keepDraft, moveDrafts, sameText, type Draft } from "./file-drafts.ts";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -530,8 +530,7 @@ function EncryptedFile({
   );
 
   const showLocked = (): void => {
-    // The core forgot this device's key, such as after 8 hours: the tab forgets its secret and drafts too.
-    forgetUnlockSecret();
+    // The core forgot this device's key, such as after 8 hours. A draft stays: only a deliberate lock drops it.
     setOpened({ state: "locked", hasKey: true });
   };
 
@@ -543,7 +542,6 @@ function EncryptedFile({
         return;
       }
       const file = await api.openEncryptedFile(path);
-      if (file.kind === "text") encryptedPaths.add(path);
       setOpened(
         file.kind === "text" ? { state: "text", file: textFile(file.text, file.version) } : { state: "binary" },
       );
@@ -557,8 +555,9 @@ function EncryptedFile({
     void open();
   }, [open]);
 
-  const lock = async (unsaved: boolean): Promise<void> => {
-    if (unsaved && !window.confirm("Lock this tab? Your changes to this file are lost.")) return;
+  const lock = async (): Promise<void> => {
+    if (hasEncryptedDraft() && !window.confirm("Lock this tab? Your unsaved changes to encrypted files are lost."))
+      return;
     setOpened({ state: "loading" });
     try {
       const status = await api.lockVault();
@@ -605,7 +604,7 @@ function EncryptedFile({
           <span className="files-size">({sizeWords(size)})</span>
         </div>
         <DownloadButton path={path} folder={false} fetchFile={download} />
-        <button className="ghost" onClick={() => void lock(false)}>
+        <button className="ghost" onClick={() => void lock()}>
           <Icon name="lock" />
           Lock
         </button>
@@ -622,8 +621,7 @@ function EncryptedFile({
       return source.load();
     },
     download,
-    items: (unsaved) => [{ label: "Lock encrypted files", icon: "lock", onChoose: () => void lock(unsaved) }],
-    onLocked: showLocked,
+    items: [{ label: "Lock encrypted files", icon: "lock", onChoose: () => void lock() }],
   };
   return (
     <FilePreview
@@ -843,49 +841,6 @@ function FileName({ shown, spoken }: { readonly shown: SmartName; readonly spoke
   );
 }
 
-interface Draft {
-  readonly text: string;
-  /** The version that the edit started from, so a save after a change on disk answers `file_changed`. */
-  readonly version: string;
-}
-
-/**
- * The changed drafts by path. They live outside the page, so a tap on another file, another page
- * or Back keeps the edit, and the file opens in its editor again.
- */
-const drafts = new Map<string, Draft>();
-
-/** The encrypted files that this tab opened as text: their drafts go when the tab forgets its unlock (#707). */
-const encryptedPaths = new Set<string>();
-onUnlockForgotten(() => {
-  for (const path of encryptedPaths) drafts.delete(path);
-});
-let leaveGuard = false;
-
-/** A browser text area gives LF only, so a Windows file must not look changed. */
-const sameText = (first: string, second: string): boolean =>
-  first.replaceAll("\r\n", "\n") === second.replaceAll("\r\n", "\n");
-
-function keepDraft(path: string, draft: Draft | null, onDisk: string): void {
-  if (draft === null || sameText(draft.text, onDisk)) drafts.delete(path);
-  else drafts.set(path, draft);
-  if (leaveGuard) return;
-  leaveGuard = true;
-  // A reload or a closed tab would drop the drafts, so the browser asks first.
-  window.addEventListener("beforeunload", (event) => {
-    if (drafts.size > 0) event.preventDefault();
-  });
-}
-
-/** A renamed file or folder takes its drafts, and the drafts of the files inside it, to the new path. */
-function moveDrafts(from: string, to: string): void {
-  for (const [path, draft] of [...drafts]) {
-    if (!isUnder(path, from)) continue;
-    drafts.delete(path);
-    drafts.set(to + path.slice(from.length), draft);
-  }
-}
-
 interface FilePreviewProps {
   readonly file: ShownFile;
   readonly large: boolean;
@@ -903,9 +858,7 @@ interface FileSource {
   readonly save: (version: string, text: string) => Promise<BrowsedPath>;
   readonly download: FetchFile;
   /** More items of the file's menu, such as Lock. */
-  readonly items?: (unsaved: boolean) => readonly MenuItem[];
-  /** The core forgot the unlock of this device: the page asks for the password again. */
-  readonly onLocked?: () => void;
+  readonly items?: readonly MenuItem[];
 }
 
 const plainSource = (path: string): FileSource => ({
@@ -918,13 +871,15 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
   const files = source ?? plainSource(file.path);
   const [plain, setPlain] = useState(false);
   /** The edit, or null outside the editor. */
-  const [draft, setDraftState] = useState<Draft | null>(() => drafts.get(file.path) ?? null);
+  const [draft, setDraftState] = useState<Draft | null>(() => draftOf(file.path) ?? null);
   const [problem, setProblem] = useState<{ readonly text: string; readonly changed: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   /** The editor closes at a save, so its button cannot show the check: the bar says it. */
   const [saved, setSaved] = useState(false);
+  /** True when the core forgot the unlock of an encrypted file that this preview shows (#707). */
+  const [locked, setLocked] = useState(false);
   const setDraft = (next: Draft | null, onDisk = file.text): void => {
-    keepDraft(file.path, next, onDisk);
+    keepDraft(file.path, next === null ? null : { ...next, encrypted: source !== undefined }, onDisk);
     setDraftState(next);
   };
   const view = viewOf(file.path);
@@ -959,7 +914,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
     });
   }
   items.push({ label: "Download", icon: "download", onChoose: () => void download.start() });
-  items.push(...(files.items?.(unsaved) ?? []));
+  items.push(...(files.items ?? []));
   // A phone and the one folder view show no folder columns, so the file fills the page already.
   if (!isPhone && !oneFolder) {
     items.push({
@@ -980,15 +935,22 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
       return true;
     } catch (caught) {
       const changed = caught instanceof ApiError && caught.code === "file_changed";
-      if (caught instanceof ApiError && caught.code === "vault_locked" && files.onLocked !== undefined) {
-        files.onLocked();
-        return false;
-      }
+      if (forgotUnlock(caught)) return false;
       setProblem({ text: caught instanceof Error ? caught.message : String(caught), changed });
       return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  /**
+   * The core forgot this device's unlock, such as after 8 hours, while the person edits an encrypted
+   * file. The edit stays, and the password form shows beside it.
+   */
+  const forgotUnlock = (caught: unknown): boolean => {
+    if (source === undefined || !(caught instanceof ApiError) || caught.code !== "vault_locked") return false;
+    setLocked(true);
+    return true;
   };
 
   const loadAgain = async (): Promise<void> => {
@@ -998,6 +960,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
       onSaved(answer);
       if (answer.kind === "file") setDraft({ text: answer.text, version: answer.version }, answer.text);
     } catch (caught) {
+      if (forgotUnlock(caught)) return;
       setProblem({ text: caught instanceof Error ? caught.message : String(caught), changed: true });
     }
   };
@@ -1046,6 +1009,14 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
       <div className="files-wait">
         <DownloadWait download={download} folder={false} />
       </div>
+      {locked && (
+        <div className="files-problem">
+          <div role="status" className="callout warning">
+            This tab is locked again. Type the vault password, then save again. Your text stays.
+          </div>
+          <UnlockVaultForm hasKey={true} onUnlocked={() => setLocked(false)} />
+        </div>
+      )}
       {problem !== null && (
         <div role="alert" className="callout danger callout-action files-problem">
           <span>{problem.text}</span>

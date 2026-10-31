@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type VaultSecretsStatus } from "./api.ts";
+import { hasEncryptedDraft } from "./file-drafts.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, errorText } from "./SettingsParts.tsx";
@@ -94,7 +95,15 @@ export function EncryptedFilesCard(): ReactElement {
           <UnlockState
             status={status}
             onUnlocked={() => void load()}
-            onLock={() => void act(api.lockVault, "This tab is locked.")}
+            onLock={() => {
+              // A draft of an encrypted file on the Files page goes at the lock.
+              if (
+                hasEncryptedDraft() &&
+                !window.confirm("Lock this tab? Your unsaved changes to encrypted files are lost.")
+              )
+                return;
+              void act(api.lockVault, "This tab is locked.");
+            }}
           />
           <SecretPatterns
             key={`${status.added.join("\n")}|${status.defaults.map((each) => String(each.on)).join()}`}
@@ -131,6 +140,7 @@ function NoPassword({ onSet }: { readonly onSet: (password: string) => Promise<v
         submitLabel="Set the password"
         onSubmit={async (password) => {
           await onSet(password);
+          return true;
         }}
       />
     </>
@@ -306,6 +316,7 @@ function PasswordChanges({
         submitLabel="Change the password"
         onSubmit={async (password) => {
           await onChange(password);
+          return true;
         }}
       />
       <p className="field-hint">
@@ -316,9 +327,10 @@ function PasswordChanges({
         label="Password of the new key"
         submitLabel="Make a new key"
         onSubmit={async (password) => {
-          // A throw keeps the typed password in the form, so a second try needs no typing.
-          if (!window.confirm("Make a new key? Every device must unlock again.")) throw new Error("Nothing changed.");
+          // False keeps the typed password in the form, so a second try needs no typing.
+          if (!window.confirm("Make a new key? Every device must unlock again.")) return false;
           await onNewKey(password);
+          return true;
         }}
       />
     </details>

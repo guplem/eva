@@ -83,7 +83,8 @@ export function NewPasswordForm({
 }: {
   readonly label: string;
   readonly submitLabel: string;
-  readonly onSubmit: (password: string) => Promise<void>;
+  /** True when done. False keeps the typed passwords, such as when the person cancels a question. */
+  readonly onSubmit: (password: string) => Promise<boolean>;
 }): ReactElement {
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
@@ -96,7 +97,7 @@ export function NewPasswordForm({
     if (found !== null) return;
     setBusy(true);
     try {
-      await onSubmit(password);
+      if (!(await onSubmit(password))) return;
       setPassword("");
       setAgain("");
     } catch (caught) {

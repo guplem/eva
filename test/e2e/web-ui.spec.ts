@@ -6170,6 +6170,20 @@ test("Files: an encrypted file shows a lock, opens with the vault password, save
   await expect(file).toContainText("API_KEY=new-value");
   expect(await (await page.request.get(`/api/files?path=${path}`)).text()).not.toContain("new-value");
 
+  // An unsaved edit makes Lock ask first. A no keeps the edit.
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByLabel(`Text of ${path}`).fill("API_KEY=draft-value\n");
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await chooseFileAction(page, "Lock encrypted files");
+  await expect(file.getByLabel(`Text of ${path}`)).toHaveValue("API_KEY=draft-value\n");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await chooseFileAction(page, "Lock encrypted files");
+  await expect(page.getByLabel("Vault password")).toBeVisible();
+  // The decrypted draft went with the lock: the unlock opens the saved text, not the editor.
+  await page.getByLabel("Vault password").fill(password);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(file).toContainText("API_KEY=new-value");
+  await expect(file.getByLabel(`Text of ${path}`)).toHaveCount(0);
   await chooseFileAction(page, "Lock encrypted files");
   await expect(page.getByLabel("Vault password")).toBeVisible();
   await page.reload();

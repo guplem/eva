@@ -52,17 +52,21 @@ describe("drafts of encrypted files (#707)", () => {
 
 describe("the leave guard of the drafts", () => {
   test("asks the browser to stop a reload while a draft waits, and only then", () => {
-    let listener: ((event: { preventDefault: () => void }) => void) | null = null;
+    const caught: { listener?: (event: { preventDefault: () => void }) => void } = {};
     const stand = globalThis as unknown as { window?: unknown };
-    stand.window = { addEventListener: (_type: string, added: typeof listener) => (listener = added) };
+    stand.window = {
+      addEventListener: (_type: string, added: (event: { preventDefault: () => void }) => void) => {
+        caught.listener = added;
+      },
+    };
     try {
       keepDraft("Notes/a.md", { text: "new", version: "1" }, "old");
       let stopped = 0;
       const event = { preventDefault: () => (stopped += 1) };
-      listener?.(event);
+      caught.listener?.(event);
       expect(stopped).toBe(1);
       forgetAllDrafts();
-      listener?.(event);
+      caught.listener?.(event);
       expect(stopped).toBe(1);
     } finally {
       delete stand.window;

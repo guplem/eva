@@ -32,11 +32,32 @@ function refused(reason: string): HostCheck {
   return { ok: false, reason };
 }
 
+/**
+ * The names that a local network or a test gives, such as `nas.lan` or `router.home`, and the
+ * tailnet. None of them is a public host.
+ */
+const privateSuffixes = [
+  ".localhost",
+  ".local",
+  ".localdomain",
+  ".lan",
+  ".home",
+  ".home.arpa",
+  ".internal",
+  ".intranet",
+  ".corp",
+  ".private",
+  ".test",
+  ".example",
+  ".invalid",
+  ".ts.net",
+];
+
 /** A name with one label, such as `router`, is a name of the local network. */
 function isPrivateName(host: string): boolean {
   if (host.startsWith("[")) return false;
   if (!host.includes(".")) return true;
-  return [".localhost", ".local", ".internal", ".home.arpa", ".ts.net"].some((suffix) => host.endsWith(suffix));
+  return privateSuffixes.some((suffix) => host.endsWith(suffix));
 }
 
 /** Loopback, private, link-local, the Tailscale range 100.64.0.0/10, and every other special range. */

@@ -45,6 +45,8 @@ export interface ProjectPreparerOptions {
   readonly isSyncing?: (cloneFolder: string) => boolean;
   /** The vault, read at each turn, for the files that a message mentions (#706). Without it, mentions stay as they are. */
   readonly vaultPath?: () => string | null;
+  /** The vault and each extra project root, read at each turn: the shell of the chat reads none of them (#711). */
+  readonly closedRoots?: () => readonly string[];
 }
 
 export class ProjectPreparer implements TurnPreparer {
@@ -66,6 +68,7 @@ export class ProjectPreparer implements TurnPreparer {
       // As in a session that the person opens by hand.
       harnessMemory: true,
       folderHooks: true,
+      fileWall: { area: session.startFolder, closed: this.options.closedRoots?.() ?? [] },
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };
   }

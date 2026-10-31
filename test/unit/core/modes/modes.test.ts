@@ -201,6 +201,8 @@ describe("Assistant mode", () => {
       trusted: true,
       harnessMemory: false,
       folderHooks: false,
+      // The Assistant keeps the whole vault: the outer level may know the inner ones (#711).
+      fileWall: null,
       environment: { PATH: "/bin" },
     });
   });
@@ -459,6 +461,17 @@ describe("Specialist mode (#703)", () => {
     return new SpecialistPreparer({ vaultSync: sync, environment: { PATH: "/bin" } });
   }
 
+  test("a specialist's wall closes the vault and each extra project root (#711)", async () => {
+    const preparer = new SpecialistPreparer({
+      vaultSync: new FakeSync(),
+      environment: {},
+      closedRoots: () => [vault, "/srv/projects"],
+    });
+    const folder = join(vault, "Projects", coachId);
+    const chat = session({ mode: "project", startFolder: folder, projectId: coachId, clone: null });
+    expect((await preparer.prepare(chat)).fileWall).toEqual({ area: folder, closed: [vault, "/srv/projects"] });
+  });
+
   function coachSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
     const folder = join(vault, "Projects", coachId);
     return session({ mode: "project", startFolder: folder, projectId: coachId, clone: null, ...overrides });
@@ -479,6 +492,8 @@ describe("Specialist mode (#703)", () => {
       trusted: true,
       harnessMemory: false,
       folderHooks: false,
+      // The specialist reads and writes its own folder only (#711).
+      fileWall: { area: folder, closed: [] },
       // Git stops above the specialist, so a git command there never finds the vault's repository.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: join(vault, "Projects") },
     });
@@ -588,6 +603,22 @@ describe("Project mode", () => {
     ).toBe("Read @file:Plan.md");
   });
 
+  test("the file wall closes the vault and each extra project root, read at each turn (#711)", async () => {
+    let roots = [vault];
+    const preparer = new ProjectPreparer({
+      trustStore: new TrustStore(join(sandbox.root, "trust.json")),
+      cloneOrigins: origins,
+      trustedOwners: () => ["owner"],
+      environment: {},
+      readRemote: () => Promise.resolve(null),
+      closedRoots: () => roots,
+    });
+    const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
+    expect((await preparer.prepare(chat, deny)).fileWall).toEqual({ area: cloneFolder, closed: [vault] });
+    roots = [vault, "/srv/projects"];
+    expect((await preparer.prepare(chat, deny)).fileWall?.closed).toEqual([vault, "/srv/projects"]);
+  });
+
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
     const prepared = await project(["owner"]).prepare(
       session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" }),
@@ -604,6 +635,8 @@ describe("Project mode", () => {
       trusted: true,
       harnessMemory: true,
       folderHooks: true,
+      // A chat in a clone reads and writes its clone only (#711).
+      fileWall: { area: cloneFolder, closed: [] },
       // Git stops at the folder of the clones, so a git command in the clone folder never reads the vault.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: sandbox.root },
     });

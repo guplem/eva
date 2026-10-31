@@ -20,6 +20,8 @@ export interface SpecialistPreparerOptions {
    * another machine would otherwise run a trusted chat at the root of a software project.
    */
   readonly isSpecialist?: (projectId: string) => boolean;
+  /** The vault and each extra project root, read at each turn: the shell of the chat reads none of them (#711). */
+  readonly closedRoots?: () => readonly string[];
 }
 
 export class SpecialistPreparer implements TurnPreparer {
@@ -50,6 +52,7 @@ export class SpecialistPreparer implements TurnPreparer {
       trusted: true,
       harnessMemory: false,
       folderHooks: false,
+      fileWall: { area: session.startFolder, closed: this.options.closedRoots?.() ?? [] },
       // The project folder is no repository: without the ceiling, git there would read the vault.
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };

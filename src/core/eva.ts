@@ -722,6 +722,7 @@ export class Eva {
           // Read at each restore: the project work exists only after the session manager.
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
+          closedRoots: () => this.closedRoots(),
         }),
         specialist: new SpecialistPreparer({
           vaultSync,
@@ -729,6 +730,7 @@ export class Eva {
           // A project that is gone keeps its chat's refusal to the engine: its folder no longer exists.
           isSpecialist: (projectId) =>
             this.projects().find((project) => project.id === projectId)?.frontMatter.type !== "software",
+          closedRoots: () => this.closedRoots(),
         }),
       },
       now: options.now,
@@ -2379,6 +2381,11 @@ export class Eva {
     return ahead.version ?? "newest";
   }
 
+  /** The folders that the shell of a Project chat may not read, but its own folder (#711). */
+  private closedRoots(): string[] {
+    const vaultPath = this.options.config.vaultPath;
+    return [...(vaultPath === null ? [] : [vaultPath]), ...this.options.config.projectRoots];
+  }
   private noticeVaultAhead(): void {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return;

@@ -1225,6 +1225,7 @@ describe("Eva", () => {
         trusted: true,
         harnessMemory: false,
         folderHooks: false,
+        fileWall: { area: coachFolder(), closed: [vault] },
       });
       expect(sandbox.git(sandbox.remote, "show", `main:Projects/${coachId}/log.md`)).toBe("Monday: legs.");
     });

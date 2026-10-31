@@ -1,6 +1,7 @@
 /** The words and colours of the project pages. */
 import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 import type { Project } from "./api.ts";
+import type { ProjectType } from "../../../core/projects/project-catalog.ts";
 
 /** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */
 export type PillTone = "ok" | "warn" | "live" | "idle";
@@ -57,8 +58,9 @@ export function statusPill(status: Project["frontMatter"]["status"]): Pill | nul
   return status === null ? null : { text: statusLabels[status], tone: statusTones[status] };
 }
 
-/** "2 clones · 3 chats", for the project card. */
-export function projectSummary(cloneCount: number, chatCount: number): string {
+/** "2 clones · 3 chats", for the project card. A specialist has no clones (#703). */
+export function projectSummary(cloneCount: number, chatCount: number, type: ProjectType = "software"): string {
+  if (type === "specialist") return `Specialist · ${chatCount === 0 ? "No chats yet" : countOf(chatCount, "chat")}`;
   const clones = cloneCount === 0 ? "No clones yet" : countOf(cloneCount, "clone");
   return chatCount === 0 ? clones : `${clones} · ${countOf(chatCount, "chat")}`;
 }

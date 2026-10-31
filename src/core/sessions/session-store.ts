@@ -27,7 +27,11 @@ const projectReportSchema = z.object({
   /** The Project chat that did the work. */
   projectSessionId: z.string(),
   request: z.string(),
-  clone: z.string(),
+  /**
+   * Null for a specialist (#703). An older Eva cannot read it, so it drops every result of that turn
+   * and shows the raw message, until it saves the record.
+   */
+  clone: z.string().nullable(),
   repositories: z.array(
     z.object({ name: z.string(), branch: z.string().nullable(), pullRequest: z.number().int().nullable() }),
   ),

@@ -1724,6 +1724,18 @@ repos:
       reportToSessionId: null,
     });
     expect(started).toMatch(/^Started the work in clone clone-0, chat \S+\.$/);
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-coach/AGENTS.md",
+      "---\ncreated: 2025-03-02T10:15\ntype: specialist\n---\n# Coach\n",
+    );
+    const asked = await startProjectWork(options, {
+      projectId: "2025-03-02-1015-coach",
+      request: "plan the week",
+      reportToSessionId: null,
+    });
+    // A specialist works in its own folder, with no clone (#703).
+    expect(asked).toMatch(/^Started the work with the specialist, chat \S+\.$/);
   });
 
   test("eva projects filters by status and tag, and shows the tags and the warnings", async () => {

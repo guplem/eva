@@ -19,6 +19,7 @@ import {
   type EngineName,
   type ModelAlias,
 } from "../../../shared/engine-port.ts";
+import { chatKind } from "../../../shared/chat-kind.ts";
 import { api, type ChatBlocker, type ComposerMenuItems, type SessionRecord } from "./api.ts";
 import { messageWithFiles, pastedFiles } from "./attachments.ts";
 import {
@@ -288,8 +289,10 @@ export function Composer({
   const showMic = canRecord && isEmpty;
   // A chat in a clone gets a copy of each file in its clone (#706). A Project chat with no clone,
   // such as a specialist chat, keeps its files in the vault, so it takes none here.
-  const inClone = session.mode === "project" && session.id !== undefined && (session.clone ?? null) !== null;
-  const canAttach = session.mode !== "project" || inClone;
+  // A new chat's draft has no clone yet.
+  const kind = chatKind({ mode: session.mode, clone: session.clone ?? null });
+  const inClone = kind === "project" && session.id !== undefined;
+  const canAttach = kind === "assistant" || inClone;
   const mentions = useMentionPicker(canAttach && block === null, box, text, setText, inClone);
   // A file picked during a send that fails would be lost when the box gets its files back.
   const takesFiles = canAttach && block === null && !sending;

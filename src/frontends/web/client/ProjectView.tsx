@@ -37,6 +37,7 @@ import { projectStatusFilters } from "../../../shared/project-statuses.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
+import { chatKind } from "../../../shared/chat-kind.ts";
 
 interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
@@ -71,7 +72,13 @@ const shortTagListLength = 6;
 /** What the main column shows. No page means the list is the page on a phone. */
 type Page =
   | { readonly kind: "project" | "details" | "setup"; readonly project: Project }
-  | { readonly kind: "chat"; readonly project: Project; readonly clone: CloneDetails; readonly chatId: string };
+  | {
+      readonly kind: "chat";
+      readonly project: Project;
+      /** Null for a chat of a specialist, which works in its project folder (#703). */
+      readonly clone: CloneDetails | null;
+      readonly chatId: string;
+    };
 
 function routeOfPage(page: Page | null): ProjectRoute {
   if (page === null) return { kind: "list" };
@@ -200,9 +207,11 @@ export function ProjectView({
   const linkedId = linkedChat?.mode === "project" ? rootIdOf(linkedChat, sessions) : null;
   const linkedProjectId = linkedChat?.projectId ?? null;
   const linkedClone = linkedChat?.clone ?? null;
+  // A specialist chat has no clone, and opens in its project all the same (#703).
+  const linkedSpecialist = linkedChat !== null && chatKind(linkedChat) === "specialist";
   useEffect(() => {
     if (linkedId === null) return;
-    if (linkedProjectId === null || linkedClone === null) {
+    if (linkedProjectId === null || (linkedClone === null && !linkedSpecialist)) {
       showError(new Error("The linked chat has no project or clone."));
       onLinkedChatOpened();
       setRoute({ kind: "list" });
@@ -212,15 +221,19 @@ export function ProjectView({
     const next: ProjectRoute = { kind: "chat", projectId: linkedProjectId, chatId: linkedId };
     onLinkedChatOpened(projectAddressOf(next));
     setRoute(next);
-  }, [linkedId, linkedProjectId, linkedClone, showError, onLinkedChatOpened, clearAction]);
+  }, [linkedId, linkedProjectId, linkedClone, linkedSpecialist, showError, onLinkedChatOpened, clearAction]);
 
   const roots = useMemo(() => rootChats(sessions), [sessions]);
   const chatsOf = useCallback(
     (clone: CloneDetails): SessionRecord[] => roots.filter((session) => session.startFolder === clone.path),
     [roots],
   );
+  const specialistChats = (project: Project): SessionRecord[] =>
+    roots.filter((session) => session.projectId === project.id && chatKind(session) === "specialist");
   // The same rule as the clone cards: a chat counts when its clone folder is still there. A closed chat takes no work.
+  // A type that changed by hand or on another machine can leave chats of both kinds (#703).
   const chatCount = (project: Project): number =>
+    specialistChats(project).length +
     roots.filter(
       (session) =>
         session.projectId === project.id &&
@@ -309,7 +322,12 @@ export function ProjectView({
           show({ kind: wanted.kind, project });
           return;
         }
-        const cloneName = sessionsRef.current.find((session) => session.id === wanted.chatId)?.clone ?? null;
+        const record = sessionsRef.current.find((session) => session.id === wanted.chatId);
+        if (record !== undefined && chatKind(record) === "specialist") {
+          show({ kind: "chat", project, clone: null, chatId: wanted.chatId });
+          return;
+        }
+        const cloneName = record?.clone ?? null;
         // The cards of the open project know the clone, unless it is new, such as the clone of a fork.
         const shown = loadedRef.current;
         const clone =
@@ -339,6 +357,10 @@ export function ProjectView({
       await onChanged();
       // Eva may have made a new clone, and the list counts the chats of the clones that it knows.
       setListVersion((version) => version + 1);
+      if (chat.clone === null) {
+        open({ kind: "chat", project, clone: null, chatId: chat.id });
+        return;
+      }
       const clone = (await api.clones(project.id)).find((candidate) => candidate.name === chat.clone);
       if (clone === undefined) throw new Error("The new chat's clone is not on this computer.");
       open({ kind: "chat", project, clone, chatId: chat.id });
@@ -427,13 +449,16 @@ export function ProjectView({
     await onChanged();
   };
 
-  // The filters may hide the new project, but its page opens all the same.
-  const openCreated = async (projectId: string): Promise<void> => {
+  // The filters may hide the new project, but its page opens all the same. A new specialist opens its first chat.
+  const openCreated = async (projectId: string, chatId: string | null): Promise<void> => {
     setCreating(false);
     setListVersion((version) => version + 1);
     try {
+      if (chatId !== null) await onChanged();
       const created = (await api.projects("", "")).find((candidate) => candidate.id === projectId);
-      if (created !== undefined) open({ kind: "project", project: created });
+      if (created === undefined) return;
+      if (chatId === null) open({ kind: "project", project: created });
+      else open({ kind: "chat", project: created, clone: null, chatId });
     } catch (caught) {
       showError(caught);
     }
@@ -458,6 +483,8 @@ export function ProjectView({
         roots.find((candidate) => candidate.id === page.chatId))
       : undefined;
   const heirChatId = page?.kind === "chat" && chat !== undefined && chat.id !== page.chatId ? chat.id : null;
+  // A specialist chat has no clone, so its header names no repository (#703).
+  const pageRepositories = page?.kind === "chat" ? (page.clone?.repositories ?? []) : [];
   useEffect(() => {
     // The address names the fork that took the place, so a reload opens it. The page itself stays.
     if (heirChatId === null || page?.kind !== "chat") return;
@@ -594,7 +621,10 @@ export function ProjectView({
           ))}
       </nav>
       {creating && (
-        <NewProjectDialog onClose={() => setCreating(false)} onCreated={(projectId) => void openCreated(projectId)} />
+        <NewProjectDialog
+          onClose={() => setCreating(false)}
+          onCreated={(projectId, chatId) => void openCreated(projectId, chatId)}
+        />
       )}
       {sidebarOpen && page !== null && (
         <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />
@@ -630,13 +660,13 @@ export function ProjectView({
                   <button className="crumb" onClick={() => openUp({ kind: "project", project: page.project })}>
                     {page.project.title}
                   </button>
-                  {" › "}
-                  {page.clone.name}
-                  {page.clone.repositories.map((repository) =>
+                  {page.clone !== null && <>{" › "}</>}
+                  {page.clone?.name}
+                  {pageRepositories.map((repository) =>
                     repository.branch === null ? null : (
                       <span key={repository.path} className="crumb-detail">
                         {" · "}
-                        {page.clone.repositories.length > 1 && `${repository.name}: `}
+                        {pageRepositories.length > 1 && `${repository.name}: `}
                         <span className="mono">{repository.branch}</span>
                       </span>
                     ),
@@ -645,16 +675,17 @@ export function ProjectView({
               }
               extra={
                 <>
-                  {page.clone.repositories.map((repository) =>
+                  {pageRepositories.map((repository) =>
                     repository.pullRequest === null ? null : (
                       <span key={repository.path} className="pill idle">
-                        {page.clone.repositories.length > 1 && `${repository.name} `}PR #{repository.pullRequest}
+                        {pageRepositories.length > 1 && `${repository.name} `}PR #{repository.pullRequest}
                       </span>
                     ),
                   )}
                   {/* Eva adds no prompt and no skill here: the chip only says which mode runs. */}
                   <span className="mode-chip soft">
-                    <Icon name="briefcase" /> <span className="mode-chip-label">Project mode</span>
+                    <Icon name="briefcase" />{" "}
+                    <span className="mode-chip-label">{page.clone === null ? "Specialist" : "Project mode"}</span>
                   </span>
                   <BranchesButton tree={tree} shown={branch} states={branchStates} />
                 </>
@@ -692,6 +723,7 @@ export function ProjectView({
             onDetails={() => open({ kind: "details", project: page.project })}
             onSetup={() => open({ kind: "setup", project: page.project })}
             onNewClone={() => void newClone(page.project)}
+            specialistChats={specialistChats(page.project)}
             onOpenChat={(clone, picked, action) => {
               if (action === undefined) clearAction();
               else actionRequest.ask(picked.id, action);
@@ -753,8 +785,13 @@ function ProjectCard({
     [
       { label: "Open", icon: "briefcase", onChoose: () => onOpen("project") },
       { label: "Details", icon: "pen", onChoose: () => onOpen("details") },
-      { label: "Repository setup", icon: "gear", onChoose: () => onOpen("setup") },
-      { label: "New clone", icon: "plus", onChoose: onNewClone },
+      // A specialist has no repository and no clone (#703).
+      ...(project.frontMatter.type === "specialist"
+        ? []
+        : [
+            { label: "Repository setup", icon: "gear" as const, onChoose: () => onOpen("setup") },
+            { label: "New clone", icon: "plus" as const, onChoose: onNewClone },
+          ]),
     ],
     `Actions of “${project.title}”`,
   );
@@ -766,7 +803,7 @@ function ProjectCard({
           <StatusPill pill={statusPill(project.frontMatter.status)} />
         </span>
         <span className="card-row muted">
-          <span>{projectSummary(project.clones.length, chatCount)}</span>
+          <span>{projectSummary(project.clones.length, chatCount, project.frontMatter.type)}</span>
           {unread && <ChatStatePill state="unread" />}
           {project.warnings.length > 0 && (
             <span className="pill warn">{countOf(project.warnings.length, "warning")}</span>

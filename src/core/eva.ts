@@ -8,6 +8,7 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import type { EngineName, EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import type { EnginePermissions } from "../shared/permissions.ts";
+import { chatKind } from "../shared/chat-kind.ts";
 import {
   baseEnvironmentAllowlist,
   buildChildEnvironment,
@@ -82,6 +83,8 @@ import {
 import { claimHub, claimHubIfUnclaimed, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
+import { SpecialistPreparer } from "./modes/specialist-mode.ts";
+import type { VaultSyncPort } from "./modes/vault-turns.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
   CloneOriginStore,
@@ -557,7 +560,7 @@ export class Eva {
       now: options.now,
       // The start value, as the sweep timer reads it: a change of the setting waits for a restart.
       syncEnabled: () => options.config.sync.enabled,
-      assistantBusy: () => this.assistantBusy(),
+      vaultTurnRunning: () => this.vaultTurnRunning(),
       reportProblem: (problem) => {
         this.alerts.report("vault_sync", problem);
       },
@@ -618,6 +621,12 @@ export class Eva {
       },
     });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
+    // An Assistant chat and a specialist chat both work in the vault (#703).
+    const vaultSync: VaultSyncPort = {
+      pull: () => this.vault.pull(),
+      save: () => this.vault.save(),
+      snapshot: (ref) => this.vault.snapshot(ref),
+    };
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
     this.trustStore = new TrustStore(options.paths.trust);
     this.modelCalls = new ModelCalls({
@@ -676,11 +685,7 @@ export class Eva {
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
-          vaultSync: {
-            pull: () => this.vault.pull(),
-            save: () => this.vault.save(),
-            snapshot: (ref) => this.vault.snapshot(ref),
-          },
+          vaultSync,
           beforeEndSnapshot: (sessionId) => this.writeLocationIfDue(sessionId),
           basePrompt: options.basePrompt,
           runner: options.runner,
@@ -701,6 +706,13 @@ export class Eva {
           // Read at each restore: the project work exists only after the session manager.
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
+        }),
+        specialist: new SpecialistPreparer({
+          vaultSync,
+          environment: agentEnvironment,
+          // A project that is gone keeps its chat's refusal to the engine: its folder no longer exists.
+          isSpecialist: (projectId) =>
+            this.projects().find((project) => project.id === projectId)?.frontMatter.type !== "software",
         }),
       },
       now: options.now,
@@ -1119,7 +1131,7 @@ export class Eva {
       await this.vault.exclusive(() => {
         // From here on, a new point needs a new job.
         if (queues) this.locationWriteQueued = false;
-        if (this.assistantBusy(endingTurn)) return;
+        if (this.vaultTurnRunning(endingTurn)) return;
         const problem = lastLocationProblem(this.locations.writeIfDue());
         if (problem !== "keep") this.alerts.report("last_location", problem);
       });
@@ -1628,7 +1640,8 @@ export class Eva {
     source: SessionRecord["source"],
   ): Promise<{ readonly session: SessionRecord; readonly summaryFailure: string | null }> {
     const old = this.sessions.get(sessionId);
-    const gitState = old.mode === "project" ? await this.projectWork.gitState(old.startFolder) : null;
+    // A specialist folder is no repository: git there would read the vault (#703).
+    const gitState = chatKind(old) === "project" ? await this.projectWork.gitState(old.startFolder) : null;
     const summary = await this.chatSummaries.summarize({
       engine: old.engine,
       model: old.modelAlias,
@@ -1659,8 +1672,13 @@ export class Eva {
     return this.projectWork.fork(sessionId, atMessageId, files);
   }
 
-  /** A retry of a turn. A retry of a Project chat can undo the turn's files, or run in a new clone (issue 523). */
-  retryChat(sessionId: string, turnIndex: number, files?: RetryChoice): Promise<BranchResult> {
+  /**
+   * A retry of a turn. A retry of a Project chat can undo the turn's files, or run in a new clone (issue 523).
+   * A specialist works in the vault, so its undo goes through the vault, as for an Assistant chat (#703).
+   */
+  async retryChat(sessionId: string, turnIndex: number, files?: RetryChoice): Promise<BranchResult> {
+    if (files === "undo" && chatKind(this.sessions.get(sessionId)) === "specialist")
+      return { session: await this.retryTurn(sessionId, turnIndex, true), notice: null };
     return this.projectWork.retry(sessionId, turnIndex, files);
   }
 
@@ -1759,8 +1777,11 @@ export class Eva {
     // Eva may have given the clone of a closed chat to another chat (issue 521), so a late file must not land there.
     if (chat?.closed === true)
       throw new EvaError("session_closed", "This chat is closed, because Eva reused its clone. Start a new chat.");
+    // A saved file would give a specialist a vault path, so its chat takes none (#703).
+    if (chat !== null && chatKind(chat) === "specialist")
+      throw new EvaError("file_not_writable", "This chat takes no files.");
     const path =
-      chat?.mode === "project" && chat.clone !== null
+      chat !== null && chatKind(chat) === "project"
         ? saveInClone(chat.startFolder, name, bytes)
         : saveReceivedFile(this.browsedVault(), name, bytes);
     return { path, note: receivedFileNote(path) };
@@ -1772,7 +1793,7 @@ export class Eva {
    */
   checkMessage(sessionId: string, text: string): void {
     const chat = this.sessions.get(sessionId);
-    if (chat.mode === "project" && chat.clone !== null) checkMentions(this.browsedVault(), text);
+    if (chatKind(chat) === "project") checkMentions(this.browsedVault(), text);
   }
 
   /** The favorite files and folders, which the file explorer shows first. */
@@ -1858,6 +1879,7 @@ export class Eva {
             name,
           ),
         setUpRepository: (projectId, url) => this.projectWork.setUpRepository(projectId, url),
+        startChat: async (projectId) => (await this.createProjectSession({ projectId, source: "web" })).id,
       },
     );
   }
@@ -2229,7 +2251,7 @@ export class Eva {
     const now = this.options.now();
     if (this.lastHousekeepingAt !== null && now.getTime() - this.lastHousekeepingAt.getTime() < housekeepingIntervalMs)
       return;
-    if (this.assistantBusy()) return;
+    if (this.vaultTurnRunning()) return;
     this.lastHousekeepingAt = now;
     this.options.removeOldLogs?.();
     const vaultPath = this.options.config.vaultPath;
@@ -2397,11 +2419,14 @@ export class Eva {
     this.reportNameTaken = taken;
   }
 
-  /** `except` is a chat whose turn ends now, so it no longer counts. */
-  private assistantBusy(except?: string): boolean {
+  /**
+   * An Assistant chat and a specialist chat both work in the vault (#703). `except` is a chat whose
+   * turn ends now, so it no longer counts.
+   */
+  private vaultTurnRunning(except?: string): boolean {
     return this.sessions
       .list()
-      .some((session) => session.mode === "assistant" && session.id !== except && this.sessions.isBusy(session.id));
+      .some((session) => chatKind(session) !== "project" && session.id !== except && this.sessions.isBusy(session.id));
   }
 
   /** Runs a task that nobody awaits, and logs its failure instead of losing it (lesson 50). */

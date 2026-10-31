@@ -54,6 +54,8 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     pluginFolders: ["/demo-vault/.eva"],
     mcpServers: {},
     trusted: true,
+    harnessMemory: true,
+    folderHooks: true,
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
     askQuestions: () => Promise.resolve<QuestionsOutcome>("declined"),
@@ -210,6 +212,29 @@ describe("buildQueryOptions", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("a specialist chat turns off the folder's hooks and Claude Code's own memory, and keeps its settings (#703)", () => {
+    const projectFolder = "/demo-vault/Projects/2025-03-02-1015-coach";
+    const options = buildQueryOptions(
+      request({
+        mode: "project",
+        appendSystemPrompt: null,
+        pluginFolders: [],
+        startFolder: projectFolder,
+        projectFolder,
+        harnessMemory: false,
+        folderHooks: false,
+      }),
+      "/bin/claude",
+    );
+    expect(options.settings).toEqual({
+      claudeMdExcludes: hiddenInstructionPatterns(projectFolder),
+      disableAllHooks: true,
+      autoMemoryEnabled: false,
+    });
+    expect(options.settingSources).toEqual(["user", "project", "local"]);
+    expect(options.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
   });
 
   test("Project mode on an untrusted clone turns off its hooks, its settings and its project MCP servers", () => {

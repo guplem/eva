@@ -27,6 +27,7 @@ const input: NewProjectInput = {
   tags: ["work", "#demo"],
   repository: null,
   drive: false,
+  type: "software",
 };
 
 const standard = { type: "standard", visibility: "private" } as const;
@@ -36,6 +37,7 @@ const noSteps: NewProjectSteps = {
   createRepository: () => Promise.reject(new Error("No repository in this test.")),
   createDriveFolder: () => Promise.reject(new Error("No Drive folder in this test.")),
   setUpRepository: () => Promise.reject(new Error("No repository setup in this test.")),
+  startChat: () => Promise.reject(new Error("No chat in this test.")),
 };
 
 function fileOf(projectId: string): string {
@@ -50,7 +52,13 @@ describe("createProject", () => {
       noSteps,
     );
 
-    expect(result).toEqual({ projectId: "2026-10-21-1542-example-app", github: null, drive: null, setup: null });
+    expect(result).toEqual({
+      projectId: "2026-10-21-1542-example-app",
+      github: null,
+      drive: null,
+      setup: null,
+      chat: null,
+    });
     expect(fileOf(result.projectId)).toBe(
       [
         "---",
@@ -76,6 +84,66 @@ describe("createProject", () => {
     });
   });
 
+  test("a specialist gets its type, a line that asks the agent to learn its job, and a chat (#703)", async () => {
+    const started: string[] = [];
+    const result = await createProject(
+      { ...input, name: "Coach", description: "", tags: [], type: "specialist" },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      {
+        ...noSteps,
+        startChat: (projectId) => {
+          started.push(projectId);
+          return Promise.resolve("chat-1");
+        },
+      },
+    );
+    expect(result).toEqual({
+      projectId: "2026-10-21-1542-coach",
+      github: null,
+      drive: null,
+      setup: null,
+      chat: { sessionId: "chat-1" },
+    });
+    expect(started).toEqual(["2026-10-21-1542-coach"]);
+    expect(fileOf(result.projectId)).toBe(
+      [
+        "---",
+        "created: 2026-10-21T15:42",
+        "status: active",
+        "type: specialist",
+        "---",
+        "",
+        "# Coach",
+        "",
+        "This specialist is new. Ask the person what it does. Then write its rules in this file, under the title. Keep the front matter as it is.",
+        "",
+      ].join("\n"),
+    );
+    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.frontMatter.type).toBe("specialist");
+  });
+
+  test("a specialist with a repository or a Drive folder is refused before any folder exists (#703)", async () => {
+    for (const extra of [{ repository: standard }, { drive: true }]) {
+      const caught = await createProject(
+        { ...input, ...extra, type: "specialist" },
+        { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+        noSteps,
+      ).catch((error: unknown) => error);
+      expect(isEvaError(caught, "project_invalid")).toBe(true);
+    }
+    expect(existsSync(projectsFolder())).toBe(false);
+  });
+
+  test("a chat that fails to start keeps the specialist and says why (#703)", async () => {
+    const result = await createProject(
+      { ...input, type: "specialist" },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { ...noSteps, startChat: () => Promise.reject(new EvaError("engine_failed", "No engine is ready.")) },
+    );
+    expect(result.chat).toEqual({ problem: "No engine is ready." });
+    expect(existsSync(join(projectsFolder(), result.projectId, "AGENTS.md"))).toBe(true);
+  });
+
   test("without a description, the file has the title only", async () => {
     const result = await createProject(
       { ...input, description: "  ", tags: [] },
@@ -92,6 +160,7 @@ describe("createProject", () => {
       { ...input, repository: { type: "vibe-coded", visibility: "public" }, drive: true },
       { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
       {
+        ...noSteps,
         setUpRepository: (projectId, url, type) => {
           // The setup reads the project file, so the file names the repository and its type first.
           expect(fileOf(projectId)).toContain(`repo_types:\n  ${url}: ${type}\n`);
@@ -119,6 +188,7 @@ describe("createProject", () => {
       github: { url: "https://github.com/example/example-app" },
       drive: { url: "https://drive.google.com/drive/folders/folder-1" },
       setup: { sessionId: "chat-1", problems: [] },
+      chat: null,
     });
     const text = fileOf(result.projectId);
     expect(text).toContain("repos:\n  - https://github.com/example/example-app\n");
@@ -187,6 +257,7 @@ describe("createProject", () => {
         createRepository: () => Promise.reject(new EvaError("github_failed", "name already exists on this account")),
         createDriveFolder: () => Promise.reject(new EvaError("google_failed", "Turn on Google Drive first.")),
         setUpRepository: () => Promise.reject(new Error("No setup without a repository.")),
+        startChat: () => Promise.reject(new Error("No chat for a software project.")),
       },
     );
 
@@ -195,6 +266,7 @@ describe("createProject", () => {
       github: { problem: "name already exists on this account" },
       drive: { problem: "Turn on Google Drive first." },
       setup: null,
+      chat: null,
     });
     expect(fileOf(result.projectId)).not.toContain("repos:");
   });

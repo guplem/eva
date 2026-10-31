@@ -23,7 +23,7 @@ function createUpkeep(state: { busy: boolean; reports: (AlertProblem | null)[] }
     vaultSync: new VaultSync({ vaultPath: vault, runner: systemProcessRunner, environment: gitEnvironment, now }),
     now,
     syncEnabled: () => true,
-    assistantBusy: () => state.busy,
+    vaultTurnRunning: () => state.busy,
     reportProblem: (problem) => state.reports.push(problem),
   });
 }
@@ -83,7 +83,7 @@ describe("VaultUpkeep undo of answers", () => {
       vaultSync: null,
       now: () => new Date(2026, 9, 14, 12, 0),
       syncEnabled: () => true,
-      assistantBusy: () => false,
+      vaultTurnRunning: () => false,
       reportProblem: () => undefined,
     });
     await upkeep.snapshot("refs/eva/turns/chat/0/before");
@@ -104,7 +104,7 @@ test("an undo refuses when an Assistant turn starts during its pull", async () =
     }),
     now: () => new Date(2026, 9, 14, 12, 0),
     syncEnabled: () => true,
-    assistantBusy: () => (checks += 1) > 1,
+    vaultTurnRunning: () => (checks += 1) > 1,
     reportProblem: () => undefined,
   });
   const caught = await upkeep
@@ -120,7 +120,7 @@ test("with sync off, a retry asks nothing and undoes nothing", async () => {
     vaultSync: new VaultSync({ vaultPath: vault, runner: systemProcessRunner, environment: gitEnvironment, now }),
     now,
     syncEnabled: () => enabled,
-    assistantBusy: () => false,
+    vaultTurnRunning: () => false,
     reportProblem: () => undefined,
   });
   const answers = [{ before: "refs/eva/turns/chat/0/before", after: "refs/eva/turns/chat/0/after" }];
@@ -150,7 +150,7 @@ describe("VaultUpkeep afterFetch (#529)", () => {
       vaultSync: new VaultSync({ vaultPath: vault, runner: systemProcessRunner, environment: gitEnvironment, now }),
       now,
       syncEnabled: () => state.syncEnabled,
-      assistantBusy: () => state.busy,
+      vaultTurnRunning: () => state.busy,
       reportProblem: () => undefined,
       afterFetch: () => {
         state.fetches += 1;
@@ -216,7 +216,7 @@ describe("VaultUpkeep afterFetch (#529)", () => {
       now,
       syncEnabled: () => true,
       // The timed pull asks once before the fetch; each later answer says a turn runs.
-      assistantBusy: () => {
+      vaultTurnRunning: () => {
         const busy = state.busy;
         state.busy = true;
         return busy;
@@ -246,7 +246,7 @@ describe("VaultUpkeep alerts for a sync error (#631)", () => {
       vaultSync: new VaultSync({ vaultPath: vault, runner, environment: gitEnvironment, now }),
       now,
       syncEnabled: () => true,
-      assistantBusy: () => false,
+      vaultTurnRunning: () => false,
       reportProblem: (problem) => state.reports.push(problem),
     });
   }
@@ -290,7 +290,7 @@ describe("VaultUpkeep alerts for a save that fails while pulls work (#631)", () 
       vaultSync: new VaultSync({ vaultPath: vault, runner, environment: gitEnvironment, now }),
       now,
       syncEnabled: () => true,
-      assistantBusy: () => false,
+      vaultTurnRunning: () => false,
       reportProblem: (problem) => state.reports.push(problem),
     });
     sandbox.write(vault, "note.md", "kept\n");

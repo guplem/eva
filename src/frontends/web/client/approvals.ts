@@ -2,6 +2,7 @@
 import type { PendingApproval, SessionEvent, SessionRecord } from "./api.ts";
 import type { ApprovalQuestion, QuestionAnswers } from "../../../shared/events.ts";
 import { toolCategory } from "../../../shared/outward-actions.ts";
+import { chatKind } from "../../../shared/chat-kind.ts";
 
 /** The approvals of the sessions that the page does not show now. They get a notice instead of a card. */
 export function approvalsOutside(
@@ -23,7 +24,7 @@ export function approvalTitle(toolName: string, questions?: readonly ApprovalQue
 /** The clone of a project chat, or the title of an assistant chat. */
 export function approvalPlace(session: Pick<SessionRecord, "mode" | "title" | "clone"> | undefined): string {
   if (session === undefined) return "another chat";
-  return session.mode === "project" && session.clone !== null ? `clone ${session.clone}` : session.title;
+  return session.clone !== null && chatKind(session) === "project" ? `clone ${session.clone}` : session.title;
 }
 
 /** The words before the place, in the line for a request of a chat that is not on screen. */

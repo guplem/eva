@@ -13,6 +13,7 @@ import { keyOf, titleOf } from "./telegram-messages.ts";
 import type { TelegramSender } from "./telegram-sender.ts";
 import { isScheduleTopic, placeOf, targetOf, type BotState } from "./telegram-state.ts";
 import { personWords, reportText } from "../../shared/project-report.ts";
+import { chatKind, chatKindName } from "../../shared/chat-kind.ts";
 
 type Turn = SessionRecord["turns"][number];
 
@@ -93,7 +94,7 @@ export class TelegramChats {
     }
     await this.options.sender.send(chatId, topicId, "Pick a chat to continue it here:", {
       inline_keyboard: chats.map((chat) => [
-        { text: `${chat.mode === "project" ? "Project: " : ""}${chat.title}`, callback_data: `o:${chat.id}` },
+        { text: `${chatLabel(chat)}${chat.title}`, callback_data: `o:${chat.id}` },
       ]),
     });
   }
@@ -363,6 +364,12 @@ function topicName(chatId: number, topicId: number, title: string): string {
 function topicLink(chatId: number, topicId: number): string | null {
   const id = String(chatId);
   return id.startsWith("-100") ? `https://t.me/c/${id.slice(4)}/${String(topicId)}` : null;
+}
+
+/** "Project: " or "Specialist: " before the title. An Assistant chat, the usual one, gets none (#703). */
+function chatLabel(chat: SessionRecord): string {
+  const kind = chatKind(chat);
+  return kind === "assistant" ? "" : `${chatKindName(kind)}: `;
 }
 
 function lastActivityOf(session: SessionRecord): string {

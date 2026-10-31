@@ -86,6 +86,7 @@ Each project is a folder `Projects/YYYY-MM-DD-HHmm-name/`, named after its creat
 ---
 created: 2026-01-31T09:15
 status: active # idea, active, in-use, paused or closed
+type: software # software or specialist. No type means software
 repos:
   - https://github.com/example/example-app
 ---
@@ -93,6 +94,9 @@ repos:
 
 `active` is a project that the person develops. `in-use` is a project that the person uses now, such as a project that makes the week's menus.
 
-The text under the front matter says what an agent must know about the project. The project's notes sit beside it.
+A project is one of two types:
+
+- **Software:** work in repositories, such as an app, a website or a widget. The text under the front matter describes the project for the person and for you. It names the repository to read first. The rules for the code live in each repository's own `AGENTS.md`. The project's notes sit beside the file.
+- **Specialist:** a chat with its own rules and memory, such as a gym coach. The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. A specialist has no repository and no clone.
 
 `Projects/<id>/repos/clone-<n>/` holds a clone of the project: one folder for each repository, such as `repos/clone-0/<repo>/`. Git ignores those clones: each repository is its own git repository. Never edit a clone as part of note work.

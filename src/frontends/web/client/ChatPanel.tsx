@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactElement } from "react";
 import type { ContextPart } from "../../../shared/chat-context.ts";
 import { takesEffort } from "../../../shared/engine-port.ts";
+import { chatKind, chatKindName } from "../../../shared/chat-kind.ts";
 import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { Dialog } from "./Dialog.tsx";
@@ -22,7 +23,6 @@ import {
   latestContext,
   modelNames,
   taskStatus,
-  titleCase,
 } from "./chat-details.ts";
 import { effortName } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
@@ -124,7 +124,8 @@ function ForkButton({
   const owner = tree.find((session) => session.id === point.sessionId);
   const turn = owner?.turns.find((candidate) => candidate.lastMessageId === point.messageId);
   const fork = async (): Promise<void> => {
-    if (owner?.mode === "project" && turn !== undefined) {
+    // A specialist has no clone, so its fork is a branch of the chat (#703).
+    if (owner !== undefined && chatKind(owner) === "project" && turn !== undefined) {
       setChoosing({ kind: "fork", sessionId: point.sessionId, atMessageId: point.messageId, turn });
       return;
     }
@@ -258,7 +259,7 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatP
               </>
             )}
             <dt>Mode</dt>
-            <dd>{titleCase(root.mode)}</dd>
+            <dd>{chatKindName(chatKind(root))}</dd>
             <dt>Answers</dt>
             <dd>
               {tree.reduce((sum, session) => sum + session.turns.length, 0)}

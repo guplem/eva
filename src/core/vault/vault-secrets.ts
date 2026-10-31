@@ -37,9 +37,19 @@ export interface VaultSecretsOptions {
 
 export class VaultSecrets {
   private readonly options: VaultSecretsOptions;
+  /** The defaults that an update of Eva added since the last read, for one notice. */
+  private newDefaults: Set<string>;
 
   constructor(options: VaultSecretsOptions) {
     this.options = options;
+    this.newDefaults = new Set();
+  }
+
+  /** The defaults that an update added and that apply now. Each one comes back once. */
+  takeNewDefaults(): string[] {
+    const taken = [...this.newDefaults];
+    this.newDefaults.clear();
+    return taken;
   }
 
   /** The patterns that apply now, and the removals that wait. */
@@ -144,6 +154,15 @@ export class VaultSecrets {
       sequence: Math.max(machine.sequence, signed?.sequence ?? 0),
       applied: [...policy.active],
     };
+    // A machine's first round applies the whole list, and a pattern that a signed record knows is the person's own choice.
+    if (machine.applied.length > 0)
+      for (const pattern of policy.active)
+        if (
+          defaultSecretPatterns.includes(pattern) &&
+          !machine.applied.includes(pattern) &&
+          !(signed?.known.includes(pattern) ?? false)
+        )
+          this.newDefaults.add(pattern);
     if (JSON.stringify(next) !== JSON.stringify(machine)) writeMachineSecrets(this.options.machineStatePath, next);
     const removed = new Set(signed?.known.filter((pattern) => !policy.active.includes(pattern)) ?? []);
     return { key, keyChanged, policy, removed };

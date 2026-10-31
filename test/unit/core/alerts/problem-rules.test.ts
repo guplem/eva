@@ -12,6 +12,7 @@ import {
   updateProblem,
   vaultErrorAlertSteps,
   vaultOfflineAlertMs,
+  newSecretDefaultsNews,
   vaultSecretsProblems,
   vaultSyncProblem,
 } from "../../../../src/core/alerts/problem-rules.ts";
@@ -338,5 +339,14 @@ describe("vaultSecretsProblems (#707)", () => {
     expect(message).toContain("Projects/x/.env");
     expect(message).toContain(".env.local");
     expect(message).not.toContain("big.bin");
+  });
+});
+
+describe("newSecretDefaultsNews (#707)", () => {
+  test("names each new pattern, and where to see its files", () => {
+    const news = newSecretDefaultsNews(["*.pfx", ".netrc"]);
+    expect(news).toContain("*.pfx");
+    expect(news).toContain(".netrc");
+    expect(news).toContain("Settings");
   });
 });

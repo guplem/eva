@@ -11,7 +11,7 @@ import {
   unlockVaultKey,
   type VaultKeyFile,
 } from "../../../../src/core/vault/vault-crypto.ts";
-import { readMachineSecrets, writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
+import { readMachineSecrets, writeMachineSecrets, writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
 import { VaultSecrets } from "../../../../src/core/vault/vault-secrets.ts";
 
 let root: string;
@@ -144,5 +144,22 @@ describe("the vault's .gitattributes (#707)", () => {
     write(".gitattributes", attributes().replace("*.pem -diff", "*.newer -diff -merge -text\n*.pem -diff"));
     secrets().prepare("Notes/a.md");
     expect(attributes()).toContain("*.newer -diff -merge -text\n");
+  });
+});
+
+describe("a default that an update adds (#707)", () => {
+  test("is new once, on a machine that applied the list before, and never on a machine's first round", async () => {
+    await withKey();
+    const first = secrets();
+    first.round();
+    // The first round of a machine applies the whole list: nothing is news there.
+    expect(first.takeNewDefaults()).toEqual([]);
+    const state = readMachineSecrets(machine);
+    // As if an older Eva had applied every default but `*.pfx`.
+    writeMachineSecrets(machine, { ...state, applied: state.applied.filter((pattern) => pattern !== "*.pfx") });
+    const next = secrets();
+    next.round();
+    expect(next.takeNewDefaults()).toEqual(["*.pfx"]);
+    expect(next.takeNewDefaults()).toEqual([]);
   });
 });

@@ -42,6 +42,7 @@ import {
   updateProblem,
   relayedProblem,
   vaultAheadProblem,
+  newSecretDefaultsNews,
   vaultSecretsProblems,
   lastLocationProblem,
   lastLocationWriteProblem,
@@ -428,6 +429,8 @@ export class Eva {
   readonly deviceLogins: DeviceLogins;
   /** The encryption of the vault's secret files (#707): only a device's own request decrypts. */
   readonly encryption: VaultEncryption;
+  /** The vault's secret files on this machine, or null with no vault (#707). */
+  private readonly vaultSecrets: VaultSecrets | null;
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
   private readonly githubLogin: GitHubBrowserLogin;
@@ -555,6 +558,7 @@ export class Eva {
       vaultPath === null
         ? null
         : new VaultSecrets({ vaultPath, machineStatePath: join(options.paths.stateFolder, "vault-secrets.json") });
+    this.vaultSecrets = vaultSecrets;
     this.vault = new VaultUpkeep({
       vaultSync:
         vaultPath === null
@@ -2374,6 +2378,8 @@ export class Eva {
     const { hasKey, keyChanged } = this.encryption.status(null, null);
     const problems = vaultSecretsProblems({ hasKey, keyChanged, withheld: this.vault.currentState.withheldFiles });
     for (const [key, problem] of Object.entries(problems)) this.alerts.report(key, problem);
+    const added = this.vaultSecrets?.takeNewDefaults() ?? [];
+    if (added.length > 0) this.alerts.notify("vault_new_secret_defaults", "news", newSecretDefaultsNews(added));
   }
 
   /**

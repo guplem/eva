@@ -120,6 +120,11 @@ export function vaultSecretsProblems(input: {
   };
 }
 
+/** The news of the defaults that an update added: Eva encrypted their files at once. */
+export function newSecretDefaultsNews(patterns: readonly string[]): string {
+  return `This version of Eva encrypts more secret files by default: ${patterns.join(", ")}. Eva encrypted the files of the vault that match them. Settings, on the Vault page, lists every pattern and its switch.`;
+}
+
 /** A laptop that wakes up with no network fails a check or two; only a long failure needs the owner. */
 export const updateCheckAlertMs = 2 * 60 * 60_000;
 

@@ -638,6 +638,7 @@ export class Eva {
       pull: () => this.vault.pull(),
       save: () => this.vault.save(),
       snapshot: (ref) => this.vault.snapshot(ref),
+      changedFiles: (before, after) => this.vault.changedFiles(before, after),
     };
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
     this.trustStore = new TrustStore(options.paths.trust);
@@ -706,6 +707,9 @@ export class Eva {
           timeZone: options.config.timeZone ?? "UTC",
           mcpServers: this.assistantMcpServers(),
           projects: () => this.projects(),
+          // Read at each call: the widgets exist only after the session manager.
+          widgetLines: () => this.widgets?.formats.promptLines() ?? [],
+          checkWidgetData: (paths) => this.widgets?.formats.check(paths) ?? [],
           ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         project: new ProjectPreparer({

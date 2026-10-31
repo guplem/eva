@@ -4,12 +4,13 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
-import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
+import { AssistantPreparer, type AssistantPreparerOptions } from "../../../../src/core/modes/assistant-mode.ts";
 import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
+import { widgetsIntro } from "../../../../src/core/modes/widgets-block.ts";
 import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
 import { discoverProjects } from "../../../../src/core/projects/project-catalog.ts";
 import { CloneOriginStore, TrustStore } from "../../../../src/core/projects/clones.ts";
-import type { PrepareAnswer } from "../../../../src/core/sessions/session-manager.ts";
+import type { PrepareAnswer, TurnOutcome } from "../../../../src/core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../../src/core/sessions/session-store.ts";
 import type { VaultSyncState } from "../../../../src/core/vault/vault-sync.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -41,6 +42,13 @@ class FakeSync {
   snapshot(ref: string): Promise<void> {
     this.calls.push(`snapshot ${ref}`);
     return Promise.resolve();
+  }
+  /** The files that the next turn changed, or null for a missing snapshot. */
+  changed: readonly string[] | null = null;
+  readonly asked: string[] = [];
+  changedFiles(before: string, after: string): Promise<readonly string[] | null> {
+    this.asked.push(`${before} ${after}`);
+    return Promise.resolve(this.changed);
   }
 }
 
@@ -87,7 +95,12 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
   };
 }
 
-function assistant(runner: ProcessRunner, sync = new FakeSync(), logged: string[] = []): AssistantPreparer {
+function assistant(
+  runner: ProcessRunner,
+  sync = new FakeSync(),
+  logged: string[] = [],
+  extra: Partial<AssistantPreparerOptions> = {},
+): AssistantPreparer {
   return new AssistantPreparer({
     logger: { log: (_level, message, details) => logged.push(`${message} ${JSON.stringify(details)}`) },
     vaultPath: vault,
@@ -99,6 +112,7 @@ function assistant(runner: ProcessRunner, sync = new FakeSync(), logged: string[
     now: () => new Date("2026-10-14T10:30:00Z"),
     timeZone: "Europe/Madrid",
     projects: () => discoverProjects({ vaultPath: vault, extraRoots: [] }),
+    ...extra,
   });
 }
 
@@ -111,6 +125,8 @@ function addProject(id: string, status: string, body: string): void {
 }
 
 const silentRunner = new FakeRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
+const finishedTurn: TurnOutcome = { finished: true, addNote: () => undefined };
+const stoppedTurn: TurnOutcome = { finished: false, addNote: () => undefined };
 
 beforeEach(() => {
   sandbox = createGitSandbox();
@@ -269,7 +285,7 @@ describe("Assistant mode", () => {
     const earlier = session({ turns: [done as SessionRecord["turns"][number]] });
     await preparer.prepare(earlier);
     // The turn is in the record when its work ends.
-    await preparer.afterTurn(session({ turns: [...earlier.turns, ...earlier.turns] }), { finished: false });
+    await preparer.afterTurn(session({ turns: [...earlier.turns, ...earlier.turns] }), stoppedTurn);
     expect(sync.calls).toEqual([
       "pull",
       "snapshot refs/eva/turns/s1/1/before",
@@ -280,7 +296,7 @@ describe("Assistant mode", () => {
 
   test("after a turn it saves the vault", async () => {
     const sync = new FakeSync();
-    expect(await assistant(silentRunner, sync).afterTurn(session(), { finished: true })).toBeNull();
+    expect(await assistant(silentRunner, sync).afterTurn(session(), finishedTurn)).toBeNull();
     expect(sync.calls).toEqual(["save"]);
   });
 
@@ -292,7 +308,7 @@ describe("Assistant mode", () => {
         JSON.stringify({ hookSpecificOutput: { hookEventName: "Stop", additionalContext: "Continue run r1." } }) + "\n",
       stderr: "",
     }));
-    const followUp = await assistant(runner).afterTurn(session(), { finished: true });
+    const followUp = await assistant(runner).afterTurn(session(), finishedTurn);
     expect(followUp).toBe("Continue run r1.");
     expect(runner.runs[0]?.command).toEqual([
       "uv",
@@ -308,17 +324,17 @@ describe("Assistant mode", () => {
 
   test("pskill's empty answer lets the session stop; broken output is ignored", async () => {
     sandbox.write(vault, ".pskill/pskill.py", "# runner\n");
-    expect(await assistant(silentRunner).afterTurn(session(), { finished: true })).toBeNull();
+    expect(await assistant(silentRunner).afterTurn(session(), finishedTurn)).toBeNull();
     const broken = new FakeRunner(() => ({ exitCode: 0, stdout: "not json", stderr: "oops" }));
     const logged: string[] = [];
-    expect(await assistant(broken, new FakeSync(), logged).afterTurn(session(), { finished: true })).toBeNull();
+    expect(await assistant(broken, new FakeSync(), logged).afterTurn(session(), finishedTurn)).toBeNull();
     // Any stderr is logged, and a pskill that cannot start too.
     expect(logged).toEqual(['pskill wrote to stderr. {"stderr":"oops"}']);
     const missing = new FakeRunner(() => {
       throw new Error("uv is not installed");
     });
     const failures: string[] = [];
-    expect(await assistant(missing, new FakeSync(), failures).afterTurn(session(), { finished: true })).toBeNull();
+    expect(await assistant(missing, new FakeSync(), failures).afterTurn(session(), finishedTurn)).toBeNull();
     expect(failures[0]).toContain("pskill could not run");
   });
 
@@ -330,14 +346,108 @@ describe("Assistant mode", () => {
       stderr: "",
     }));
     const sync = new FakeSync();
-    expect(await assistant(runner, sync).afterTurn(session(), { finished: false })).toBeNull();
+    expect(await assistant(runner, sync).afterTurn(session(), stoppedTurn)).toBeNull();
     expect(sync.calls).toEqual(["save"]);
     expect(runner.runs).toEqual([]);
   });
 
+  test("the prompt gives the widget lines after the projects, fixed for the chat (#692)", async () => {
+    addProject("2025-01-01-0900-website", "active", "# Website\n");
+    let lines = ["- Habits: Habits live in Life/Habits."];
+    const preparer = assistant(silentRunner, new FakeSync(), [], { widgetLines: () => lines });
+    const first = (await preparer.prepare(session())).appendSystemPrompt ?? "";
+    expect(first).toContain("# The person's projects");
+    expect(first).toEndWith(
+      "\n# The person's widgets\n\n" + widgetsIntro + "\n\n- Habits: Habits live in Life/Habits.\n",
+    );
+    lines = ["- Training: Training data lives in Life/Training."];
+    expect((await preparer.prepare(session())).appendSystemPrompt).toBe(first);
+    const widgetsPart = async (id: string): Promise<string | null | undefined> =>
+      (await preparer.describe(session({ id }))).parts.find((part) => part.title === "Your widgets")?.text;
+    expect(await widgetsPart("s1")).toContain("Habits");
+    expect(await widgetsPart("s2")).toContain("Training");
+    expect((await preparer.prepare(session({ id: "s2" }))).appendSystemPrompt).toContain("Life/Training");
+    lines = [];
+    expect((await preparer.describe(session({ id: "s3" }))).parts.map((part) => part.title)).not.toContain(
+      "Your widgets",
+    );
+  });
+
+  test("after a turn that breaks a widget's format, the agent gets the problems, then the chat gets a note (#692)", async () => {
+    const sync = new FakeSync();
+    sync.changed = ["Life/Habits/walk.json"];
+    const checked: (readonly string[])[] = [];
+    const problems = ['Life/Habits/walk.json does not fit the format of Habits: the field "name" is missing.'];
+    const preparer = assistant(silentRunner, sync, [], {
+      checkWidgetData: (paths) => {
+        checked.push(paths);
+        return problems;
+      },
+    });
+    const notes: string[] = [];
+    const outcome: TurnOutcome = { finished: true, addNote: (text) => notes.push(text) };
+    await preparer.prepare(session());
+    const followUp = await preparer.afterTurn(session(), outcome);
+    expect(sync.asked).toEqual(["refs/eva/turns/s1/0/before refs/eva/turns/s1/0/after"]);
+    expect(checked).toEqual([["Life/Habits/walk.json"]]);
+    expect(followUp).toContain(problems[0] ?? "");
+    expect(followUp).toContain("DATA_FORMAT.md");
+    expect(notes).toEqual([]);
+    // The fix turn still breaks the format: Eva says so in the chat, and asks the agent nothing more.
+    await preparer.prepare(session());
+    expect(await preparer.afterTurn(session(), outcome)).toBeNull();
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain(problems[0] ?? "");
+    // A fixed file ends the fix.
+    sync.changed = [];
+    problems.length = 0;
+    await preparer.prepare(session());
+    expect(await preparer.afterTurn(session(), outcome)).toBeNull();
+    expect(notes).toHaveLength(1);
+  });
+
+  test("a stopped turn that breaks a widget's format gets a note, and no follow-up (#692)", async () => {
+    const sync = new FakeSync();
+    sync.changed = ["Life/Habits/walk.json"];
+    const notes: string[] = [];
+    const preparer = assistant(silentRunner, sync, [], { checkWidgetData: () => ["walk.json is not valid JSON."] });
+    await preparer.prepare(session());
+    expect(await preparer.afterTurn(session(), { finished: false, addNote: (text) => notes.push(text) })).toBeNull();
+    expect(notes).toHaveLength(1);
+  });
+
+  test("a turn with a failed snapshot, or no start, skips the check of widget data", async () => {
+    const sync = new FakeSync();
+    let checks = 0;
+    const preparer = assistant(silentRunner, sync, [], {
+      checkWidgetData: () => {
+        checks += 1;
+        return ["broken"];
+      },
+    });
+    expect(await preparer.afterTurn(session(), finishedTurn)).toBeNull();
+    await preparer.prepare(session());
+    expect(await preparer.afterTurn(session(), finishedTurn)).toBeNull();
+    expect(checks).toBe(0);
+  });
+
+  test("a check of widget data that throws never fails the turn", async () => {
+    const sync = new FakeSync();
+    sync.changed = ["Life/Habits/walk.json"];
+    const logged: string[] = [];
+    const preparer = assistant(silentRunner, sync, logged, {
+      checkWidgetData: () => {
+        throw new Error("The disk is gone.");
+      },
+    });
+    await preparer.prepare(session());
+    expect(await preparer.afterTurn(session(), finishedTurn)).toBeNull();
+    expect(logged[0]).toContain("The disk is gone.");
+  });
+
   test("a vault with no pskill runs no check", async () => {
     const runner = new FakeRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
-    await assistant(runner).afterTurn(session(), { finished: true });
+    await assistant(runner).afterTurn(session(), finishedTurn);
     expect(runner.runs).toEqual([]);
   });
 });
@@ -379,7 +489,7 @@ describe("Specialist mode (#703)", () => {
     const preparer = specialist(sync);
     await preparer.prepare(coachSession());
     expect(sync.calls).toEqual(["pull", "snapshot refs/eva/turns/s1/0/before"]);
-    expect(await preparer.afterTurn(coachSession(), { finished: true })).toBeNull();
+    expect(await preparer.afterTurn(coachSession(), finishedTurn)).toBeNull();
     expect(sync.calls.slice(2)).toEqual(["snapshot refs/eva/turns/s1/0/after", "save"]);
   });
 
@@ -765,7 +875,7 @@ describe("Project mode", () => {
   });
 
   test("after a turn nothing happens", async () => {
-    expect(await project(["owner"]).afterTurn(session({ mode: "project" }), { finished: true })).toBeNull();
+    expect(await project(["owner"]).afterTurn(session({ mode: "project" }), finishedTurn)).toBeNull();
   });
 
   test("keeps and brings back the files of the clone (issue 523)", async () => {

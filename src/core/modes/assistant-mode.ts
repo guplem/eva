@@ -18,7 +18,8 @@ import { moveAssistantPersonality, withMovedSections } from "../migrations/assis
 import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 import { aboutMeProblemNote, readAboutMe } from "../vault/about-me.ts";
 import { projectsBlock } from "./projects-block.ts";
-import { VaultTurns, type VaultSyncPort } from "./vault-turns.ts";
+import { VaultTurns, type TurnSnapshots, type VaultSyncPort } from "./vault-turns.ts";
+import { widgetsBlock } from "./widgets-block.ts";
 
 export interface AssistantPreparerOptions {
   readonly vaultPath: string;
@@ -39,6 +40,10 @@ export interface AssistantPreparerOptions {
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
   /** The projects of the vault and of the extra roots, read at the first turn of each chat (#690). */
   readonly projects: () => readonly Project[];
+  /** One line for each widget that is on, read at the first turn of each chat (#692). */
+  readonly widgetLines?: () => readonly string[];
+  /** Checks the data files that a turn changed against the widget schemas: one sentence for each problem. */
+  readonly checkWidgetData?: (paths: readonly string[]) => readonly string[];
   /** Where pskill's error output goes. */
   readonly logger?: Logger;
 }
@@ -50,6 +55,8 @@ interface KeptPrompt {
   readonly rules: string;
   /** Null when no project is active or in use. */
   readonly projects: string | null;
+  /** Null when no widget is on. */
+  readonly widgets: string | null;
 }
 
 export class AssistantPreparer implements TurnPreparer {
@@ -57,11 +64,14 @@ export class AssistantPreparer implements TurnPreparer {
   /** The appended prompt of each session, read at its first turn. */
   private readonly promptBySession: Map<string, KeptPrompt>;
   private readonly vaultTurns: VaultTurns;
+  /** The sessions whose last turn was a fix of widget data that Eva asked for. */
+  private readonly fixingData: Set<string>;
 
   constructor(options: AssistantPreparerOptions) {
     this.options = options;
     this.promptBySession = new Map();
     this.vaultTurns = new VaultTurns(options.vaultSync);
+    this.fixingData = new Set();
   }
 
   async prepare(session: SessionRecord): Promise<PreparedTurn> {
@@ -77,6 +87,7 @@ export class AssistantPreparer implements TurnPreparer {
     const kept = this.promptBySession.get(session.id) ?? {
       rules: this.personalRules(personalRulesPath),
       projects: projectsBlock(this.options.projects()),
+      widgets: this.widgetsBlockNow(),
     };
     this.promptBySession.set(session.id, kept);
     return {
@@ -104,6 +115,7 @@ export class AssistantPreparer implements TurnPreparer {
     // A running chat keeps the rules and the projects of its first turn since Eva started, even when they changed.
     const rules = kept?.rules ?? (onDisk === null ? null : this.withPersonality(onDisk));
     const projects = kept === undefined ? projectsBlock(this.options.projects()) : kept.projects;
+    const widgets = kept === undefined ? this.widgetsBlockNow() : kept.widgets;
     const parts: ContextPart[] = [
       { group: "prompt", title: "Eva's prompt", source: null, text: this.options.basePrompt, note: null },
       {
@@ -129,6 +141,17 @@ export class AssistantPreparer implements TurnPreparer {
               note: "Eva lists the projects with the status Active or In use at the start of each chat. A change shows in the next chat.",
             },
           ]),
+      ...(widgets === null
+        ? []
+        : [
+            {
+              group: "prompt" as const,
+              title: "Your widgets",
+              source: null,
+              text: widgets,
+              note: "Eva lists the widgets that are on at the start of each chat. A change shows in the next chat.",
+            },
+          ]),
       {
         group: "message",
         title: "Before each message",
@@ -150,10 +173,15 @@ export class AssistantPreparer implements TurnPreparer {
     });
   }
 
-  /** Eva's prompt, the person's rules, and then the projects, so the person's rules stay next to Eva's. */
+  /** Eva's prompt, the person's rules, then the projects and the widgets, so the person's rules stay next to Eva's. */
   private appendedPrompt(kept: KeptPrompt): string {
-    const head = `${this.options.basePrompt}\n\n${kept.rules}`;
-    return kept.projects === null ? head : `${head.trimEnd()}\n\n${kept.projects}`;
+    let prompt = `${this.options.basePrompt}\n\n${kept.rules}`;
+    for (const block of [kept.projects, kept.widgets]) if (block !== null) prompt = `${prompt.trimEnd()}\n\n${block}`;
+    return prompt;
+  }
+
+  private widgetsBlockNow(): string | null {
+    return widgetsBlock(this.options.widgetLines?.() ?? []);
   }
 
   /** The vault's `.eva/` folder gives the assistant skills, when it is a plugin. */
@@ -183,10 +211,33 @@ export class AssistantPreparer implements TurnPreparer {
   }
 
   async afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null> {
-    await this.vaultTurns.after(session, () => this.options.beforeEndSnapshot?.(session.id));
+    const snapshots = await this.vaultTurns.after(session, () => this.options.beforeEndSnapshot?.(session.id));
+    const problems = snapshots === null ? [] : await this.widgetDataProblems(snapshots);
+    const fixing = this.fixingData.delete(session.id);
+    if (problems.length > 0) {
+      // One fix by the agent first. A stopped turn gets no follow-up: the person wants the work to end.
+      if (outcome.finished && !fixing) {
+        this.fixingData.add(session.id);
+        return widgetDataFixMessage(problems);
+      }
+      outcome.addNote(widgetDataNote(problems));
+    }
     // A stopped or failed turn must end the work: a usage limit would fail each follow-up again.
     if (!outcome.finished) return null;
     return this.pskillFollowUp(session);
+  }
+
+  /** The problems of the widget data files that the turn changed. A missing snapshot skips the check. */
+  private async widgetDataProblems(snapshots: TurnSnapshots): Promise<readonly string[]> {
+    const check = this.options.checkWidgetData;
+    if (check === undefined) return [];
+    try {
+      const paths = await this.options.vaultSync.changedFiles?.(snapshots.before, snapshots.after);
+      return paths === undefined || paths === null || paths.length === 0 ? [] : check(paths);
+    } catch (error) {
+      this.options.logger?.log("warn", "Eva could not check the widget data of a turn.", { reason: String(error) });
+      return [];
+    }
   }
 
   /** Asks pskill, with the same input its Stop hook receives, whether this session must continue. */
@@ -212,6 +263,20 @@ export class AssistantPreparer implements TurnPreparer {
       return null;
     }
   }
+}
+
+/** The follow-up to the agent: each file and field, so it can fix the file. */
+function widgetDataFixMessage(problems: readonly string[]): string {
+  return [
+    "Eva checked the data files that your last answer changed. These files do not fit the format of a widget, so the widget cannot read them:",
+    ...problems.map((problem) => `- ${problem}`),
+    "Fix each file now. Read the DATA_FORMAT.md of its folder first, write every required field, and keep the fields that you do not know.",
+  ].join("\n");
+}
+
+/** The note in the chat when the fix failed too, or the turn stopped. */
+function widgetDataNote(problems: readonly string[]): string {
+  return `A data file does not fit the format of its widget, so the widget may not show it. ${problems.join(" ")}`;
 }
 
 function readContinueMessage(stdout: string): string | null {

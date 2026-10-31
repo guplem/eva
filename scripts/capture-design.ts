@@ -226,6 +226,8 @@ const scenes: readonly Scene[] = [
     show: async (page) => {
       const id = await newChat(page);
       await page.locator(".greeting, .new-chat").first().waitFor();
+      // The demo approved the habits widget: its frame shows its habits once it is ready (#691).
+      await page.frameLocator(".widget-grid iframe").locator('.widget[data-ready="true"]').waitFor();
       return id;
     },
     // The empty chat would stay in the list of every later capture.

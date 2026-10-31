@@ -12,7 +12,8 @@ import { Icon } from "./icons.tsx";
 import { settingsHash } from "./settings-routes.ts";
 import { contractColours, frameAddress, onReconnect, pageScheme, refreshDue } from "./widget-frames.ts";
 
-function currentScheme(): "light" | "dark" {
+/** The light or dark mode that the page shows now. The clone preview (#693) sends it too. */
+export function currentScheme(): "light" | "dark" {
   return pageScheme(
     document.documentElement.getAttribute("data-theme"),
     window.matchMedia("(prefers-color-scheme: dark)").matches,
@@ -155,12 +156,12 @@ export function WidgetGrid(): ReactElement | null {
  * One frame. `sandbox` with no `allow-same-origin` gives the widget no origin of its own. The
  * frame takes the page's `color-scheme`, so a widget that follows `prefers-color-scheme` follows Eva.
  */
-function WidgetFrameView({
+export function WidgetFrameView({
   frame,
   size,
   scheme,
 }: {
-  readonly frame: WidgetFrame;
+  readonly frame: Pick<WidgetFrame, "name" | "src">;
   readonly size: WidgetFrame["size"] | "full";
   readonly scheme: "light" | "dark";
 }): ReactElement | null {

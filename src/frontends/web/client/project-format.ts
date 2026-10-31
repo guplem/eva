@@ -186,3 +186,19 @@ export function syncPills(ahead: number | null, behind: number | null): Pill[] {
 export function canPush(clone: { readonly changes: number | null; readonly ahead: number | null }): boolean {
   return (clone.changes ?? 0) > 0 || (clone.ahead ?? 0) > 0;
 }
+
+/**
+ * The folder names of the widget repositories of a project, as a clone names its folders (#693):
+ * the last part of the address, with no `.git`. Each of these repositories gets a preview.
+ */
+export function widgetRepositoryNames(project: Pick<Project, "frontMatter">): Set<string> {
+  const { repos, repoTypes } = project.frontMatter;
+  return new Set(
+    repos
+      .filter((url) => repoTypes[url] === "widget")
+      .map((url) => {
+        const trimmed = url.replace(/[\\/]+$/, "").replace(/\.git$/, "");
+        return trimmed.split(/[\\/:]/).at(-1) ?? trimmed;
+      }),
+  );
+}

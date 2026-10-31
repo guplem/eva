@@ -98,6 +98,24 @@ export class WidgetCopies {
     return commit;
   }
 
+  /**
+   * The newest commit of the default branch, from `git ls-remote`: a light check that downloads no
+   * code, so a timed check costs one small request.
+   */
+  async newestCommit(address: WidgetAddress): Promise<string> {
+    mkdirSync(this.options.folder, { recursive: true });
+    const remote = this.options.remoteOf?.(address) ?? `${address.url}.git`;
+    const listed = await this.git(
+      this.options.folder,
+      [...githubCredentialArguments, "ls-remote", "--", remote, "HEAD"],
+      fetchTimeoutMs,
+    );
+    const commit = listed.stdout.split(/\s/)[0] ?? "";
+    if (listed.exitCode !== 0 || !commitPattern.test(commit))
+      throw new EvaError("git_failed", `Eva cannot read ${address.url}. ${failureReason(listed, "git")}`);
+    return commit;
+  }
+
   /** The text of a file at a fetched commit, or null when the commit has no such file. */
   async readAt(address: WidgetAddress, commit: string, path: string): Promise<string | null> {
     if (!commitPattern.test(commit)) return null;
@@ -135,26 +153,7 @@ export class WidgetCopies {
 
   /** Answers a file of the checkout, by its path from the copy root. Never `.git/`, a hidden file or a link. */
   serveFile(address: WidgetAddress, path: string): WidgetAnswer {
-    const segments = path.split("/");
-    if (!segments.every(isPlainName)) return { status: 404 };
-    const root = this.folderOf(address);
-    let stats: Stats | null = null;
-    for (let index = 1; index <= segments.length; index += 1) {
-      try {
-        stats = lstatSync(join(root, ...segments.slice(0, index)));
-      } catch {
-        return { status: 404 };
-      }
-      if (stats.isSymbolicLink() || (index < segments.length && !stats.isDirectory())) return { status: 404 };
-    }
-    if (!stats?.isFile()) return { status: 404 };
-    if (stats.size > maxServedBytes) return { status: 413 };
-    const extension = /\.([^./]+)$/.exec(path)?.[1]?.toLowerCase() ?? "";
-    return {
-      status: 200,
-      contentType: contentTypes[extension] ?? "application/octet-stream",
-      body: readFileSync(join(root, ...segments)),
-    };
+    return serveFolderFile(this.folderOf(address), path);
   }
 
   private oneAtATime<Result>(address: WidgetAddress, work: () => Promise<Result>): Promise<Result> {
@@ -176,4 +175,30 @@ export class WidgetCopies {
       timeoutMs,
     });
   }
+}
+
+/**
+ * Answers a file of a folder, by its path from the folder. Never a hidden name, such as `.git/`,
+ * and never a link: a link could leave the folder. The preview of a clone uses it too.
+ */
+export function serveFolderFile(root: string, path: string): WidgetAnswer {
+  const segments = path.split("/");
+  if (!segments.every(isPlainName)) return { status: 404 };
+  let stats: Stats | null = null;
+  for (let index = 1; index <= segments.length; index += 1) {
+    try {
+      stats = lstatSync(join(root, ...segments.slice(0, index)));
+    } catch {
+      return { status: 404 };
+    }
+    if (stats.isSymbolicLink() || (index < segments.length && !stats.isDirectory())) return { status: 404 };
+  }
+  if (!stats?.isFile()) return { status: 404 };
+  if (stats.size > maxServedBytes) return { status: 413 };
+  const extension = /\.([^./]+)$/.exec(path)?.[1]?.toLowerCase() ?? "";
+  return {
+    status: 200,
+    contentType: contentTypes[extension] ?? "application/octet-stream",
+    body: readFileSync(join(root, ...segments)),
+  };
 }

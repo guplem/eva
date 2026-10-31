@@ -141,6 +141,9 @@
   /* The knob of a toggle stays white in both themes, as in the EVE design. */
   --knob: oklch(1 0 0);
   --knob-shadow: 0 1px 3px oklch(0 0 0 / 0.25);
+  /* The scrollbar is a pill in EVE's shell colour, as quiet as the lines between cards. */
+  --scrollbar-thumb: oklch(0.86 0.02 var(--h));
+  --scrollbar-thumb-hover: oklch(0.74 0.03 var(--h));
 
   --radius-pill: 999px;
   --radius-card: 22px;
@@ -202,6 +205,8 @@
     --send-fill: radial-gradient(circle at 50% 28%, oklch(0.4 0.025 var(--h)), oklch(0.3 0.022 var(--h)) 85%);
     --send-shadow: inset 0 0 0 1px oklch(0.5 0.03 var(--h) / 0.6), 0 6px 14px -6px oklch(0 0 0 / 0.6);
     --send-icon-glow: drop-shadow(0 0 4px var(--glow));
+    --scrollbar-thumb: oklch(0.36 0.025 var(--h));
+    --scrollbar-thumb-hover: oklch(0.48 0.03 var(--h));
     color-scheme: dark;
   }
 }
@@ -241,6 +246,8 @@
   --send-fill: radial-gradient(circle at 50% 28%, oklch(0.4 0.025 var(--h)), oklch(0.3 0.022 var(--h)) 85%);
   --send-shadow: inset 0 0 0 1px oklch(0.5 0.03 var(--h) / 0.6), 0 6px 14px -6px oklch(0 0 0 / 0.6);
   --send-icon-glow: drop-shadow(0 0 4px var(--glow));
+  --scrollbar-thumb: oklch(0.36 0.025 var(--h));
+  --scrollbar-thumb-hover: oklch(0.48 0.03 var(--h));
   color-scheme: dark;
 }
 
@@ -253,6 +260,63 @@ kbd,
 pre,
 samp {
   font-family: var(--mono);
+}
+
+/*
+ * The pearl scrollbar: a pill with no track and no arrow buttons, so it does not cut the page gradient.
+ * A transparent border insets the pill. The track keeps clear of the round corners of each box.
+ * Only a mouse gets it. On a phone, a scrollbar with a size stops floating and takes room.
+ */
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 14px;
+    height: 14px;
+  }
+
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-track:vertical {
+    margin-block: var(--space-4);
+  }
+
+  ::-webkit-scrollbar-track:horizontal {
+    margin-inline: var(--space-4);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    min-width: 40px;
+    min-height: 40px;
+    border: 4px solid transparent;
+    border-radius: var(--radius-pill);
+    background-clip: padding-box;
+    background-color: var(--scrollbar-thumb);
+  }
+
+  /* The pill grows a little under the pointer, so the person sees that it can be grabbed. */
+  ::-webkit-scrollbar-thumb:hover {
+    border-width: 3px;
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    border-width: 3px;
+    background-color: var(--accent);
+  }
+
+  /* Firefox does not read the rules above. Chromium ignores them on a box with these properties. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+  }
 }
 
 /* Compact: smaller text and less space, so more fits on a small screen. */

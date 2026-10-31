@@ -9,6 +9,7 @@ import { Eva } from "../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
 import { templateParts } from "../../src/core/vault/vault-template.ts";
+import { widgetTemplate } from "../../src/core/widgets/widget-template.ts";
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../src/shared/process-runner.ts";
 import { evaRepository } from "../../src/shared/version.ts";
@@ -90,6 +91,19 @@ sandbox.write(
   "Notes/Benachrichtigungseinstellungen-Datenschutzrichtlinien-Zusammenfassung.md",
   "# Zusammenfassung\n",
 );
+// The habits widget of the template, approved for `Life/Habits`, so the home page shows a widget (#691).
+// The demo never reaches the real GitHub: its copy comes from a local remote.
+const habitsWidget = createGitSandbox();
+const habitsWidgetFiles = widgetTemplate({ owner: "example-owner", repository: "habits-widget", title: "Habits" });
+const habitsWidgetWork = habitsWidget.clone("work");
+for (const [path, text] of Object.entries(habitsWidgetFiles)) habitsWidget.write(habitsWidgetWork, path, text);
+habitsWidget.git(habitsWidgetWork, "add", "-A");
+habitsWidget.git(habitsWidgetWork, "commit", "-q", "-m", "widget");
+habitsWidget.git(habitsWidgetWork, "push", "-q", "origin", "main");
+for (const [path, text] of Object.entries(habitsWidgetFiles)) {
+  if (path.startsWith("data/habits/") && path !== "data/habits/index.json")
+    sandbox.write(vault, `Life/Habits/${path.slice("data/habits/".length)}`, text);
+}
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");
@@ -326,7 +340,14 @@ const eva = new Eva({
     },
   }),
   githubWrite: fakeGithubWrite(),
+  widgetRemote: () => habitsWidget.remote,
 });
+const habitsWidgetId = "example-owner/habits-widget";
+const demoHosts = ["127.0.0.1", "localhost"];
+eva.widgets?.add(`https://github.com/${habitsWidgetId}`);
+const habitsReview = await eva.widgets?.review(habitsWidgetId, demoHosts);
+if (habitsReview !== undefined)
+  await eva.widgets?.approve(habitsWidgetId, habitsReview.commit, { habits: "Life/Habits" }, demoHosts);
 // No front end confirms a card here, so each new schedule's card waits for the web UI. A short
 // check keeps the browser tests fast; Eva itself checks every 30 seconds.
 setInterval(() => void eva.schedules?.tick(), 300);

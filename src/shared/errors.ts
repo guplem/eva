@@ -43,7 +43,13 @@ export type EvaErrorCode =
   /** A person stopped a question with Ctrl+C, or its input ended. */
   | "prompt_stopped"
   /** The running Eva refused a request of the CLI, and her answer named no code. */
-  | "request_failed";
+  | "request_failed"
+  /** A widget address, input or manifest that Eva cannot use (#691). */
+  | "widget_invalid"
+  /** No widget of the list has this id. */
+  | "widget_not_found"
+  /** The widget has no approved record on this computer, or its record no longer matches the vault. */
+  | "widget_needs_approval";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

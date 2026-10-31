@@ -7,9 +7,15 @@ import { watchLeaving } from "./leave-guard.ts";
 import { watchLayers } from "./back-layers.ts";
 import { logInWithLink, loginLinkOf } from "./login-link.ts";
 import { sameSettingsPage } from "./settings-routes.ts";
+import { framePolicy } from "./widget-frames.ts";
 
 // Before the first render, so the page never flashes the other theme.
 applyAppearance(readAppearance());
+// Before any frame loads. A policy in a meta tag holds the host of this page, which a static file cannot know.
+const frames = document.createElement("meta");
+frames.httpEquiv = "Content-Security-Policy";
+frames.content = framePolicy(window.location.origin);
+document.head.append(frames);
 startCues();
 
 const link = loginLinkOf(window.location.hash);

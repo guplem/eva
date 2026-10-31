@@ -487,7 +487,7 @@ export class TelegramBot {
       await this.send(chatId, topicId, "This chat takes no files.");
       return;
     }
-    if (!(chat?.mode === "project" && chat.clone !== null) && this.options.eva.status().vaultPath === null) {
+    if (!(chat !== null && chatKind(chat) === "project") && this.options.eva.status().vaultPath === null) {
       await this.send(chatId, topicId, "No vault is configured, so Eva cannot keep the file.");
       return;
     }

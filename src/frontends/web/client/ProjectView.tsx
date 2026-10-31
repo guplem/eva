@@ -236,16 +236,16 @@ export function ProjectView({
   const specialistChats = (project: Project): SessionRecord[] =>
     roots.filter((session) => session.projectId === project.id && chatKind(session) === "specialist");
   // The same rule as the clone cards: a chat counts when its clone folder is still there. A closed chat takes no work.
+  // A type that changed by hand or on another machine can leave chats of both kinds (#703).
   const chatCount = (project: Project): number =>
-    project.frontMatter.type === "specialist"
-      ? specialistChats(project).length
-      : roots.filter(
-          (session) =>
-            session.projectId === project.id &&
-            !session.closed &&
-            session.clone !== null &&
-            project.clones.includes(session.clone),
-        ).length;
+    specialistChats(project).length +
+    roots.filter(
+      (session) =>
+        session.projectId === project.id &&
+        !session.closed &&
+        session.clone !== null &&
+        project.clones.includes(session.clone),
+    ).length;
 
   /** The project whose page must make a new clone once it shows. Stay on unsaved changes makes none. */
   const cloneOnOpen = useRef<Project | null>(null);

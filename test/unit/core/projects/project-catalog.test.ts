@@ -7,6 +7,7 @@ import {
   parseFrontMatter,
   parseProjectQuery,
   searchProjects,
+  specialistClonesWarning,
   specialistOutsideWarning,
   specialistReposWarning,
   titleHeading,
@@ -240,6 +241,12 @@ describe("discoverProjects", () => {
       "2025-03-03-1015-trainer": [specialistReposWarning],
       "2026-01-01-0000-outside": [specialistOutsideWarning],
     });
+  });
+
+  test("a specialist with a clone on this machine warns, as another machine can change the type (#703)", () => {
+    addProject("2025-03-02-1015-coach", "created: 2025-03-02T10:15\nstatus: active\ntype: specialist");
+    mkdirSync(join(vault, "Projects", "2025-03-02-1015-coach", "repos", "clone-0"), { recursive: true });
+    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.warnings).toEqual([specialistClonesWarning]);
   });
 
   test("a vault with no Projects folder has no projects", () => {

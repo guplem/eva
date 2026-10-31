@@ -59,6 +59,12 @@ const knownKeys = new Set(["created", "status", "repos", "tags", "legacy_id", "r
 export const repoTypesWarning = "repo_types must map each repository to its type";
 /** A specialist saves its work in the vault, so it gets no clone (#703). */
 export const specialistReposWarning = "a specialist has no clones, so Eva does not clone its repos";
+/**
+ * The type syncs to every machine, but clones stay on one. A type that changed on another machine
+ * leaves them in the specialist folder, where its chats would see them (#703).
+ */
+export const specialistClonesWarning =
+  "a specialist has no clones, but this computer has some: delete them on the project page";
 /** Only the vault reaches the person's other machines, so a specialist elsewhere gets no chat (#703). */
 export const specialistOutsideWarning = "a specialist must be in the vault's Projects folder, so it has no chat";
 export const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
@@ -219,6 +225,8 @@ function readProject(path: string, name: string, vaultFolder: string | null): Pr
   }
   if (frontMatter.type === "specialist" && frontMatter.repos.length > 0) allWarnings.push(specialistReposWarning);
   if (frontMatter.type === "specialist" && vaultFolder === null) allWarnings.push(specialistOutsideWarning);
+  const clones = listClones(path).map((clone) => clone.name);
+  if (frontMatter.type === "specialist" && clones.length > 0) allWarnings.push(specialistClonesWarning);
   return {
     id: name,
     path,
@@ -227,7 +235,7 @@ function readProject(path: string, name: string, vaultFolder: string | null): Pr
     frontMatter,
     title: readTitle(text) ?? parsedId.slug,
     description: readDescription(text),
-    clones: listClones(path).map((clone) => clone.name),
+    clones,
     warnings: allWarnings,
   };
 }

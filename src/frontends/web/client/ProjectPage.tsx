@@ -147,14 +147,16 @@ export function ProjectPage({
             <span>{error}</span>
           </div>
         )}
-        {specialist ? (
+        {/* A type that changed by hand or on another machine still shows each chat and clone (#703). */}
+        {(specialist || specialistChats.length > 0) && (
           <SpecialistChats
             chats={specialistChats}
             now={now}
             stateOf={stateOf}
             onOpenChat={(chat, action) => onOpenChat(null, chat, action)}
           />
-        ) : (
+        )}
+        {(!specialist || (clones?.length ?? 0) > 0) && (
           <ClonesSection
             clones={clones}
             clonesFailed={clonesFailed}
@@ -172,6 +174,7 @@ export function ProjectPage({
             onPullAll={onPullAll}
             onPull={onPull}
             onPush={onPush}
+            specialist={specialist}
           />
         )}
       </div>
@@ -232,6 +235,7 @@ function ClonesSection({
   onPullAll,
   onPull,
   onPush,
+  specialist,
 }: Pick<
   ProjectPageProps,
   | "clones"
@@ -252,6 +256,8 @@ function ClonesSection({
   /** How many repositories of the clones are behind their remote. */
   readonly behind: number;
   readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
+  /** A specialist shows its old clones only so that they can go: it makes no new one. */
+  readonly specialist: boolean;
 }): ReactElement {
   return (
     <section className="clones-section" aria-labelledby="clones-heading">
@@ -292,7 +298,7 @@ function ClonesSection({
               />
             ))}
 
-            <NewCloneCard first={clones.length === 0 && !clonesFailed} onNewClone={onNewClone} />
+            {!specialist && <NewCloneCard first={clones.length === 0 && !clonesFailed} onNewClone={onNewClone} />}
           </div>
         </>
       )}

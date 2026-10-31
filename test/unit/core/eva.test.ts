@@ -1220,6 +1220,18 @@ describe("Eva", () => {
       expect(isEvaError(retry, "project_invalid")).toBe(true);
       // A fork in the same place is a branch of the chat, as for an Assistant chat.
       expect((await instance.forkChat(chat.id, messageId)).session).toMatchObject({ clone: null, parentId: chat.id });
+      // Every other way to a clone or a repository is refused too, such as a cached page's New clone.
+      const steps: (() => Promise<unknown>)[] = [
+        () => instance.newClone(coachId),
+        () => instance.repositorySetup(coachId),
+        () => instance.fixRepository(coachId, sandbox.remote, null),
+      ];
+      for (const step of steps) {
+        const caught = await Promise.resolve()
+          .then(step)
+          .catch((error: unknown) => error);
+        expect(isEvaError(caught, "project_invalid")).toBe(true);
+      }
       expect(existsSync(join(coachFolder(), "repos"))).toBe(false);
     });
 
@@ -1305,6 +1317,47 @@ describe("Eva", () => {
       // The whole-file editor follows the same rule.
       const edited = back.text.replace("type: specialist\n", "");
       expect(() => instance.saveProjectFile(coachId, back.version, edited)).toThrow("has chats");
+    });
+
+    test("project work on a specialist waits for the asking turn, so two vault turns never overlap", async () => {
+      let release: () => void = () => undefined;
+      const engine = new FakeEngine(async function* (request) {
+        if (request.mode === "assistant" && request.prompt.endsWith("plan it"))
+          await new Promise<void>((resolve) => (release = resolve));
+        yield* FakeEngine.answer(request, "ok");
+      });
+      const instance = start(engine);
+      const asking = instance.createAssistantSession({ source: "web" });
+      const turn = instance.sessions.send(asking.id, "plan it");
+      await waitFor(() => engine.requests.length === 1);
+      // The Assistant runs `eva work` inside its own turn, which goes on after the command returns.
+      await instance.startProjectWork({ projectId: coachId, request: "Plan the week.", reportToSessionId: asking.id });
+      await Bun.sleep(50);
+      expect(engine.requests.map((request) => request.mode)).toEqual(["assistant"]);
+      release();
+      await turn;
+      await waitFor(() => engine.requests.some((request) => request.mode === "project"));
+      await instance.idle();
+    });
+
+    test("a new specialist from the form gets its first chat in its folder", async () => {
+      const instance = start(new FakeEngine());
+      const result = await instance.createProject({
+        name: "Trainer",
+        description: "",
+        status: "active",
+        tags: [],
+        repository: null,
+        drive: false,
+        type: "specialist",
+      });
+      const chat = result.chat !== null && "sessionId" in result.chat ? result.chat.sessionId : "missing";
+      expect(instance.sessions.get(chat)).toMatchObject({
+        mode: "project",
+        clone: null,
+        projectId: result.projectId,
+        startFolder: join(vault, "Projects", result.projectId),
+      });
     });
 
     test("a specialist chat takes no file, so it never learns a vault path", async () => {
@@ -2321,7 +2374,7 @@ describe("Eva alerts", () => {
     const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
     expect(result.found).toBe(false);
     expect(result.state.status).toBe("skipped");
-    expect(result.state.lastError).toContain("in the vault in a chat");
+    expect(result.state.lastError).toContain("an Assistant or specialist chat");
     release();
     await turn;
   });

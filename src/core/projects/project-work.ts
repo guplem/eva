@@ -444,6 +444,9 @@ export class ProjectWork {
       });
     this.options.inBackground("Project work", async () => {
       try {
+        // The asking Assistant turn goes on after `eva work` returns. A specialist works in the vault
+        // too, so its turn waits: two vault turns would pull and save under each other (lesson 30).
+        if (clone === null && input.reportToSessionId !== null) await untilIdle(sessions, input.reportToSessionId);
         await sessions.send(session.id, input.request);
       } finally {
         if (clone !== null) this.reservedClones.delete(clone.path);
@@ -497,6 +500,7 @@ export class ProjectWork {
    */
   async repositorySetup(projectId: string): Promise<SetupReport[]> {
     const project = this.project(projectId);
+    if (project.frontMatter.type === "specialist") throw noClones();
     return this.reports(project, project.frontMatter.repos);
   }
 
@@ -576,7 +580,10 @@ export class ProjectWork {
     repository: string,
     items: readonly string[] | null,
   ): Promise<RepositoryFixResult> {
-    return (await this.runFixes(this.project(projectId), repository, items)).result;
+    const project = this.project(projectId);
+    // A fix can open a chat of the project, which for a specialist would run a GitHub request in the vault.
+    if (project.frontMatter.type === "specialist") throw noClones();
+    return (await this.runFixes(project, repository, items)).result;
   }
 
   private async runFixes(
@@ -939,6 +946,8 @@ export class ProjectWork {
   }
 
   private async cloneInto(project: Project): Promise<Clone> {
+    // Every new clone comes here, so no path, such as a cached page's New clone, clones into a specialist.
+    if (project.frontMatter.type === "specialist") throw noClones();
     if (project.frontMatter.repos.length === 0)
       throw new EvaError("project_not_found", `Project ${project.id} lists no repository to clone.`);
     return createClone({
@@ -1115,9 +1124,28 @@ export class ProjectWork {
  * A model can wrap the message in a code fence or quotes, or add a label. The first line is the
  * subject, and a body may follow it.
  */
+/** Resolves once the chat runs no turn, queued turn or follow-up. */
+function untilIdle(sessions: SessionManager, sessionId: string): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = sessions.onIdle((idle) => {
+      if (idle !== sessionId) return;
+      stop();
+      resolve();
+    });
+    // After the listener: the turn could end between a check and the subscription.
+    if (!sessions.isBusy(sessionId)) {
+      stop();
+      resolve();
+    }
+  });
+}
+
 /** A specialist saves its work in the vault, so it never gets a clone (#703). */
 function noClones(): EvaError {
-  return new EvaError("project_invalid", "A specialist has no clones: its chats work in its own folder.");
+  return new EvaError(
+    "project_invalid",
+    "A specialist has no clones and no repository: its chats work in its own folder.",
+  );
 }
 
 function cleanCommitMessage(text: string): string | null {

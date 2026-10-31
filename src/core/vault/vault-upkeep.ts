@@ -107,7 +107,7 @@ export class VaultUpkeep {
       return {
         ...vaultSync.currentState,
         status: "skipped",
-        lastError: "Eva is working in the vault in a chat. Sync again when it ends.",
+        lastError: "Eva is working in an Assistant or specialist chat. Sync again when it ends.",
         skipReason: "assistant_busy",
       };
     this.lastPullAt = this.options.now();
@@ -133,7 +133,7 @@ export class VaultUpkeep {
         state: {
           ...vaultSync.currentState,
           status: "skipped",
-          lastError: "Eva is working in the vault in a chat. Pick again when it ends.",
+          lastError: "Eva is working in an Assistant or specialist chat. Pick again when it ends.",
         },
         conflicts: [],
         found: false,
@@ -254,5 +254,5 @@ export class VaultUpkeep {
 }
 
 function busyUndo(): EvaError {
-  return new EvaError("session_busy", "Eva is working in the vault in a chat. Retry again when it ends.");
+  return new EvaError("session_busy", "Eva is working in an Assistant or specialist chat. Retry again when it ends.");
 }

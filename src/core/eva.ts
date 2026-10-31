@@ -1727,7 +1727,7 @@ export class Eva {
     if (chat !== null && chatKind(chat) === "specialist")
       throw new EvaError("file_not_writable", "This chat takes no files.");
     const path =
-      chat?.mode === "project" && chat.clone !== null
+      chat !== null && chatKind(chat) === "project"
         ? saveInClone(chat.startFolder, name, bytes)
         : saveReceivedFile(this.browsedVault(), name, bytes);
     return { path, note: receivedFileNote(path) };
@@ -1739,7 +1739,7 @@ export class Eva {
    */
   checkMessage(sessionId: string, text: string): void {
     const chat = this.sessions.get(sessionId);
-    if (chat.mode === "project" && chat.clone !== null) checkMentions(this.browsedVault(), text);
+    if (chatKind(chat) === "project") checkMentions(this.browsedVault(), text);
   }
 
   /** The favorite files and folders, which the file explorer shows first. */

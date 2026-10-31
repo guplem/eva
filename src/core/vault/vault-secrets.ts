@@ -11,7 +11,7 @@ import { closeSync, lstatSync, openSync, readFileSync, readSync, type Stats } fr
 import { basename, join } from "node:path";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
-import { defaultSecretPatterns, readSecretFiles, SecretMatcher } from "./secret-files.ts";
+import { defaultSecretPatterns, readSecretFiles, retiredSecretPatterns, SecretMatcher } from "./secret-files.ts";
 import { writeSecretAttributes } from "./secret-attributes.ts";
 import { activeSecretPatterns, type SecretPolicy, type SecretPolicyInput } from "./secret-policy.ts";
 import {
@@ -23,9 +23,6 @@ import {
 } from "./secret-state.ts";
 import { encryptedState, encryptFile, hasEncryptedShape, keyFingerprint, type VaultKeyFile } from "./vault-crypto.ts";
 import type { PrepareFile, WithheldReason } from "./vault-sync.ts";
-
-/** The defaults that a release took out. They apply until the person confirms each removal. */
-export const retiredSecretPatterns: readonly string[] = [];
 
 /** Base64 adds about a third, and the commit limit is 50 MB: a bigger file stays out. */
 const maxEncryptedBytes = 25 * 1024 * 1024;

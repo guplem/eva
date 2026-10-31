@@ -6,10 +6,10 @@
  * the text of each text file passes through the redactor.
  */
 import { closeSync, fstatSync, openSync, readSync, readdirSync, realpathSync, statSync, constants } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { errorCode, isGitData, isInside, noWait, resolveInVault, textOf } from "./file-browser.ts";
-import { looksLikeSecretsFile } from "./vault-files.ts";
+import { isEncryptedOnDisk, secretMatcherOf, type SecretPaths } from "./secret-paths.ts";
 
 export interface VaultDownload {
   /** The file name that the browser saves. */
@@ -38,14 +38,18 @@ export function downloadVaultPath(
 ): VaultDownload {
   const { root, path, resolved, notFound } = resolveInVault(vaultPath, requested);
   const name = path === "" ? basename(root) : basename(path);
+  const secrets = secretMatcherOf(root);
   try {
     if (statSync(resolved).isDirectory()) {
       const zip = new ZipWriter(limitBytes);
-      addFolder(zip, root, resolved, name, new Set(), redact);
+      addFolder(zip, root, resolved, name, new Set(), secrets, redact);
       return { name: `${name}.zip`, bytes: zip.finish(), zip: true };
     }
-    if (looksLikeSecretsFile(basename(resolved)) || looksLikeSecretsFile(name))
-      throw new EvaError("file_not_downloadable", "This looks like a secrets file, so Eva does not download it.");
+    // The encrypted bytes download from the Files page, which needs the password to open them (#707).
+    if (isEncryptedOnDisk(resolved))
+      throw new EvaError("file_not_downloadable", "This file is encrypted. Open it in the Files page to download it.");
+    if (isSecret(root, secrets, [join(root, path), resolved]))
+      throw new EvaError("file_not_downloadable", "This is a secret file, so Eva does not download it.");
     const file = readWhole(resolved, limitBytes);
     if (file === null) throw notFound;
     return { name, bytes: redacted(file.bytes, redact), zip: false };
@@ -56,6 +60,13 @@ export function downloadVaultPath(
   }
 }
 
+/** A link and its target both count: either path can match the list, and the header marks any name. */
+function isSecret(root: string, secrets: SecretPaths, absolutePaths: readonly string[]): boolean {
+  return absolutePaths.some(
+    (path) => secrets.matches(relative(root, path).split(sep).join("/")) || isEncryptedOnDisk(path),
+  );
+}
+
 /** Folders first, then files, each by name, as the explorer lists them. A folder seen once is skipped, so a link loop ends. */
 function addFolder(
   zip: ZipWriter,
@@ -63,6 +74,7 @@ function addFolder(
   folder: string,
   zipPath: string,
   seen: Set<string>,
+  secrets: SecretPaths,
   redact: (text: string) => string,
 ): void {
   seen.add(folder);
@@ -79,12 +91,12 @@ function addFolder(
     if (!isInside(root, resolved) || isGitData(root, resolved) || seen.has(resolved)) continue;
     const stats = statSync(resolved, { throwIfNoEntry: false });
     if (stats?.isDirectory() === true) folders.push([entry.name, resolved]);
-    else if (stats?.isFile() === true && !looksLikeSecretsFile(entry.name) && !looksLikeSecretsFile(basename(resolved)))
+    else if (stats?.isFile() === true && !isSecret(root, secrets, [join(folder, entry.name), resolved]))
       files.push([entry.name, resolved]);
   }
   const byName = (first: [string, string], second: [string, string]): number => first[0].localeCompare(second[0]);
   for (const [name, resolved] of folders.sort(byName))
-    if (!seen.has(resolved)) addFolder(zip, root, resolved, `${zipPath}/${name}`, seen, redact);
+    if (!seen.has(resolved)) addFolder(zip, root, resolved, `${zipPath}/${name}`, seen, secrets, redact);
   for (const [name, resolved] of files.sort(byName)) {
     let file: { readonly bytes: Uint8Array<ArrayBuffer>; readonly modified: Date } | null;
     try {

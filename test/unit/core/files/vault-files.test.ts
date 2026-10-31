@@ -15,7 +15,6 @@ import { join } from "node:path";
 import {
   cleanScratch,
   isClonePath,
-  looksLikeSecretsFile,
   OfferStore,
   receivedFileNote,
   resolveSendableFile,
@@ -89,8 +88,8 @@ describe("resolveSendableFile (lesson 72)", () => {
   test.each([
     [".git/config", "repository folder"],
     ["Projects/2025-03-02-1015-example-app/repos/example-app-0/notes.md", "repository folder"],
-    ["Projects/2025-03-02-1015-example-app/.env", "secrets file"],
-    ["Projects/2025-03-02-1015-example-app/server.pem", "secrets file"],
+    ["Projects/2025-03-02-1015-example-app/.env.local", "secret file"],
+    ["Projects/2025-03-02-1015-example-app/server.pem", "secret file"],
   ])("%s is refused: %s", (relativePath, reason) => {
     write(relativePath, "x");
     expect(resolveSendableFile(vault, relativePath)).toMatchObject({
@@ -121,10 +120,33 @@ describe("names that Windows and macOS read in another way (review of #716)", ()
     expect(isClonePath("Projects/example-app/notes.md")).toBe(false);
   });
 
-  test("a secrets name with a trailing dot or space still counts, since Windows drops them", () => {
-    expect(looksLikeSecretsFile(".env.")).toBe(true);
-    expect(looksLikeSecretsFile("credentials.json ")).toBe(true);
-    expect(looksLikeSecretsFile("notes.md.")).toBe(false);
+  test.skipIf(process.platform === "win32")(
+    "a secret name with a trailing dot or space still counts, since Windows drops them",
+    () => {
+      write("Notes/.env.local.", "x");
+      write("Notes/credentials.json ", "x");
+      write("Notes/notes.md.", "x");
+      expect(resolveSendableFile(vault, "Notes/.env.local.")).toMatchObject({ ok: false });
+      expect(resolveSendableFile(vault, "Notes/credentials.json ")).toMatchObject({ ok: false });
+      expect(resolveSendableFile(vault, "Notes/notes.md.")).toMatchObject({ ok: true });
+    },
+  );
+
+  test("the person's own pattern and Eva's header both mark a secret, whatever the name (#707)", () => {
+    write(".eva/secret-files", "Private/**\n");
+    write("Private/plan.md", "x");
+    write(
+      "Notes/copy.md",
+      "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n",
+    );
+    expect(resolveSendableFile(vault, "Private/plan.md")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("secret file") as string,
+    });
+    expect(resolveSendableFile(vault, "Notes/copy.md")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("encrypted") as string,
+    });
   });
 
   test.skipIf(process.platform !== "win32")("a colon is refused on Windows, where it opens a file stream", () => {

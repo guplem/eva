@@ -23,7 +23,8 @@ import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { projectTitleOf } from "../projects/project-catalog.ts";
 import { fileVersion, matchFileStyle } from "../projects/project-file.ts";
-import { looksLikeSecretsFile } from "./vault-files.ts";
+import { encryptedState } from "../vault/vault-crypto.ts";
+import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
 
 export interface FileEntry {
   readonly name: string;
@@ -54,7 +55,9 @@ export type BrowsedPath =
       readonly reason: string;
       /** False for a secrets file or a file that Eva may not read: the Download button cannot fetch it either. */
       readonly downloadable: boolean;
-    };
+    }
+  /** A file that Eva encrypted (#707). Only the device's unlock opens it, with the vault password. */
+  | { readonly kind: "encrypted"; readonly path: string; readonly size: number };
 
 /** A phone shows 1 MB of text slowly already, and a project file has the same limit. */
 export const maxShownBytes = 1_000_000;
@@ -73,7 +76,7 @@ export function browseVault(vaultPath: string, requested: string, redact: (text:
   const { root, path, resolved, notFound } = resolveInVault(vaultPath, requested);
   try {
     if (statSync(resolved).isDirectory()) return { kind: "folder", path, entries: listFolder(root, resolved) };
-    return shownFile(path, readFile(path, resolved, notFound), redact);
+    return shownFile(path, readFile(resolved, notFound, isSecretPath(root, path, resolved)), redact);
   } catch (error) {
     if (error instanceof EvaError) throw error;
     if (errorCode(error) === "ENOENT") throw notFound;
@@ -93,11 +96,13 @@ export function saveVaultFile(
   edited: string,
   redact: (text: string) => string,
 ): BrowsedPath {
-  const { path, resolved, notFound } = resolveInVault(vaultPath, requested);
+  const { root, path, resolved, notFound } = resolveInVault(vaultPath, requested);
   try {
     if (statSync(resolved).isDirectory()) throw notWritable("A folder has no text to save.");
-    const before = readFile(path, resolved, notFound);
+    const secret = isSecretPath(root, path, resolved);
+    const before = readFile(resolved, notFound, secret);
     if (before.kind === "unreadable") throw notWritable(before.reason);
+    if (before.kind === "encrypted") throw notWritable("This file is encrypted. Unlock it to change it.");
     if (redact(before.text) !== before.text) throw notWritable(readOnlyReason);
     if (fileVersion(before.text) !== version)
       throw new EvaError("file_changed", "The file changed since you opened it. Load it again, then redo your change.");
@@ -107,7 +112,7 @@ export function saveVaultFile(
     if (Buffer.byteLength(text) > maxShownBytes)
       throw notWritable("The text is larger than 1 MB, so Eva does not save it.");
     if (text !== before.text) replaceText(resolved, text, before.stats);
-    return shownFile(path, readFile(path, resolved, notFound), redact);
+    return shownFile(path, readFile(resolved, notFound, secret), redact);
   } catch (error) {
     if (error instanceof EvaError) throw error;
     if (errorCode(error) === "ENOENT") throw notFound;
@@ -136,8 +141,11 @@ export function renameVaultEntry(vaultPath: string, requested: string, name: str
     .filter((part) => part !== "");
   if (isLayoutEntry([...folderParts, oldName]) || isLayoutEntry([...folderParts, name]))
     throw notWritable("Eva finds her settings and projects by this name, so it stays.");
-  if (looksLikeSecretsFile(oldName) || looksLikeSecretsFile(name))
-    throw notWritable("A secrets file stays out of reach of the page, so Eva does not rename it.");
+  const matcher = secretMatcherOf(root);
+  const toVault = (each: string): string => [...folderParts, each].join("/");
+  // A new name could take a secret out of the list, and so out of its encryption (#707).
+  if (matcher.matches(toVault(oldName)) || matcher.matches(toVault(name)) || isEncryptedOnDisk(join(folder, oldName)))
+    throw notWritable("A secret file stays out of reach of the page, so Eva does not rename it.");
   const newPath = [...parts, name].join("/");
   if (name === oldName) return newPath;
   const source = join(folder, oldName);
@@ -247,11 +255,13 @@ export function resolveInVault(
 
 type ReadFile =
   | { readonly kind: "text"; readonly stats: Stats; readonly text: string }
-  | { readonly kind: "unreadable"; readonly size: number; readonly reason: string; readonly downloadable: boolean };
+  | { readonly kind: "unreadable"; readonly size: number; readonly reason: string; readonly downloadable: boolean }
+  | { readonly kind: "encrypted"; readonly size: number };
 
 function shownFile(path: string, read: ReadFile, redact: (text: string) => string): BrowsedPath {
   if (read.kind === "unreadable")
     return { kind: "unreadable", path, size: read.size, reason: read.reason, downloadable: read.downloadable };
+  if (read.kind === "encrypted") return { kind: "encrypted", path, size: read.size };
   // The byte order mark stays on disk only: a save puts it back.
   const plain = read.text.replace(/^\uFEFF/, "");
   const text = redact(plain);
@@ -269,7 +279,7 @@ function shownFile(path: string, read: ReadFile, redact: (text: string) => strin
  * Reads the open file, never the path again, so a file that changes meanwhile cannot slip past the
  * checks. A named pipe opens without a wait, so it can never block the core.
  */
-function readFile(path: string, resolved: string, notFound: EvaError): ReadFile {
+function readFile(resolved: string, notFound: EvaError, secret: boolean): ReadFile {
   const handle = openSync(resolved, constants.O_RDONLY | noWait);
   try {
     const stats = fstatSync(handle);
@@ -280,8 +290,12 @@ function readFile(path: string, resolved: string, notFound: EvaError): ReadFile 
       reason,
       downloadable,
     });
-    if (looksLikeSecretsFile(basename(resolved)) || looksLikeSecretsFile(basename(path)))
-      return unreadable("This looks like a secrets file, so Eva does not show it.", false);
+    // Any file with Eva's header, whatever its name, such as a conflict copy (#707).
+    const head = Buffer.alloc(Math.min(stats.size, 400));
+    if (encryptedState(head.subarray(0, readSync(handle, head, 0, head.length, 0))) !== "plain")
+      return { kind: "encrypted", size: stats.size };
+    // A secret file that waits for its encryption, such as with no vault password yet.
+    if (secret) return unreadable("This is a secret file. Eva shows it once it is encrypted.", false);
     if (stats.size > maxShownBytes) return unreadable("This file is larger than 1 MB, so Eva does not show it.");
     const bytes = Buffer.alloc(stats.size);
     const read = readSync(handle, bytes, 0, stats.size, 0);
@@ -309,6 +323,12 @@ export function isInside(root: string, resolved: string): boolean {
 }
 
 /** Any part named `.git`, in any case: Windows and macOS read `.GIT` as the same folder. */
+/** True when the list names the file, by the path asked for or by its real path (#707). */
+function isSecretPath(root: string, path: string, resolved: string): boolean {
+  const matcher = secretMatcherOf(root);
+  return matcher.matches(path) || matcher.matches(relative(root, resolved).split(sep).join("/"));
+}
+
 export function isGitData(root: string, resolved: string): boolean {
   return relative(root, resolved)
     .split(sep)

@@ -30,6 +30,9 @@ export const defaultSecretPatterns: readonly string[] = [
   "client_secret*.json",
 ];
 
+/** The defaults that a release took out. They apply until the person confirms each removal. */
+export const retiredSecretPatterns: readonly string[] = [];
+
 /** The vault's file of the person's changes to the list. */
 export const secretFilesPath = ".eva/secret-files";
 

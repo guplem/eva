@@ -451,6 +451,14 @@ function Column({
       </div>
     );
   if (!isLast) return null;
+  if (shown.kind === "encrypted")
+    return (
+      <div className="files-pane files-preview">
+        <div role="status" className="callout">
+          This file is encrypted. <span className="files-size">({sizeWords(shown.size)})</span>
+        </div>
+      </div>
+    );
   if (shown.kind === "unreadable")
     return (
       <div className="files-pane files-preview">

@@ -26,7 +26,9 @@ export interface VaultSteps {
   /** Runs the work between two sync steps. */
   exclusive<Result>(work: () => Result): Promise<Result>;
   pull(): Promise<unknown>;
-  /** Commits, which encrypts the secret files, and pushes. */
+  /** Encrypts each plain secret file now, even with the vault sync off. */
+  encryptSecrets(): Promise<void>;
+  /** Commits and pushes, when the vault sync is on. */
   save(): Promise<unknown>;
 }
 
@@ -87,7 +89,7 @@ export class VaultEncryption {
       writeVaultKey(vaultPath, file);
       this.secrets().pinKey(keyFingerprint(file));
     });
-    await this.options.vault.save();
+    await this.persist();
   }
 
   unlock(deviceToken: string | null, password: string): Promise<string> {
@@ -115,7 +117,7 @@ export class VaultEncryption {
       const key = this.currentKey(vaultPath);
       saveEncryptedFile(vaultPath, relativePath, text, version, key);
     });
-    await this.options.vault.save();
+    await this.persist();
   }
 
   /**
@@ -133,7 +135,7 @@ export class VaultEncryption {
     await this.options.vault.exclusive(() => {
       writeFileAtomic(join(vaultPath, secretFilesPath), `${lines.join("\n")}\n`);
     });
-    await this.options.vault.save();
+    await this.persist();
     return this.status(null, null);
   }
 
@@ -157,7 +159,7 @@ export class VaultEncryption {
       const removed = before.filter((pattern) => !after.includes(pattern));
       return decryptRemovedFiles(vaultPath, new SecretMatcher(removed), new SecretMatcher(after), unlocked);
     });
-    await this.options.vault.save();
+    await this.persist();
     return decrypted;
   }
 
@@ -169,7 +171,7 @@ export class VaultEncryption {
     await this.options.vault.exclusive(() => {
       writeVaultKey(vaultPath, rewrapped);
     });
-    await this.options.vault.save();
+    await this.persist();
   }
 
   /**
@@ -195,7 +197,7 @@ export class VaultEncryption {
       }
     });
     this.options.keys.lockAll();
-    await this.options.vault.save();
+    await this.persist();
   }
 
   /** Pins a key that changed on another machine. The device must have unlocked that key here. */
@@ -205,6 +207,12 @@ export class VaultEncryption {
     await this.options.vault.exclusive(() => {
       this.secrets().pinKey(keyFingerprint(key));
     });
+    await this.persist();
+  }
+
+  /** Encrypts the files that a change made secret at once, then commits and pushes when sync is on. */
+  private async persist(): Promise<void> {
+    await this.options.vault.encryptSecrets();
     await this.options.vault.save();
   }
 

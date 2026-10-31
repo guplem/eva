@@ -32,10 +32,13 @@ function encryption(): VaultEncryption {
     vault: {
       exclusive: (work) => Promise.resolve().then(work),
       pull: () => Promise.resolve(),
-      save: () => {
-        saves += 1;
+      encryptSecrets: () => {
         const prepare = secrets.round();
         for (const path of ["deploy/id.key", "Toolbox/server.pem", "Life/Health/blood.md"]) prepare(path);
+        return Promise.resolve();
+      },
+      save: () => {
+        saves += 1;
         return Promise.resolve();
       },
     },
@@ -153,6 +156,7 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
       vault: {
         exclusive: (work) => Promise.resolve().then(work),
         pull: () => Promise.resolve(),
+        encryptSecrets: () => Promise.resolve(),
         save: () => Promise.resolve(),
       },
       cost: { logN: 10 },

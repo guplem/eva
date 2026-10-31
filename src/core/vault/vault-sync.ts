@@ -278,6 +278,19 @@ export class VaultSync {
   }
 
   /**
+   * Encrypts each plain secret file now, with no commit, such as when the person adds a pattern
+   * (#707). A plain secret file is always a change, since each commit holds it only encrypted.
+   */
+  encryptSecrets(): Promise<void> {
+    return this.serialize(async () => {
+      const prepare = this.options.secrets?.round();
+      if (prepare === undefined) return;
+      for (const { path } of await this.statusEntries())
+        if (!path.endsWith("/") && !this.isScratchFile(path)) prepare(path);
+    });
+  }
+
+  /**
    * Saves the files of the vault as a commit with no parent under `ref`, for the undo of a retry
    * (#525). A temporary index builds the tree, so the real index never changes. Scratch and
    * withheld files stay out, as in a commit; the message lists them. False when git failed.

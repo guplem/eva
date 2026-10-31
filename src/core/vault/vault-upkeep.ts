@@ -149,6 +149,11 @@ export class VaultUpkeep {
     return vaultSync === null ? Promise.resolve().then(work) : vaultSync.exclusive(work);
   }
 
+  /** Encrypts each plain secret file now (#707). With sync off too: the files on disk must not wait. */
+  async encryptSecrets(): Promise<void> {
+    await this.options.vaultSync?.encryptSecrets();
+  }
+
   /** Saves the files of the vault under a hidden ref, before and after an Assistant turn. With sync off, Eva runs no git step of her own. */
   async snapshot(ref: string): Promise<void> {
     if (this.options.syncEnabled()) await this.options.vaultSync?.snapshot(ref);

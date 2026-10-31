@@ -1151,3 +1151,22 @@ describe("VaultSync stops a plain secret before the push (#707)", () => {
     expect(sandbox.git(sandbox.remote, "log", "-p", "main")).not.toContain("PRIVATE");
   });
 });
+
+describe("VaultSync.encryptSecrets (#707)", () => {
+  test("encrypts each plain secret file now, with no commit", async () => {
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    const headBefore = sandbox.git(vault, "rev-parse", "HEAD");
+    await sync.encryptSecrets();
+    expect(readFileSync(join(vault, "deploy/id.key"), "utf8")).toStartWith(encryptedFileLine);
+    expect(sandbox.git(vault, "rev-parse", "HEAD")).toBe(headBefore);
+  });
+});

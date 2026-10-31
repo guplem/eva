@@ -259,6 +259,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },
   {
+    item: "widgets",
+    section: "personalize",
+    title: "Widgets",
+    words: "home page grid habits weather add approve permissions repository turn on off",
+  },
+  {
     item: "composer-menu",
     section: "personalize",
     title: "Message box menu",
@@ -337,6 +343,13 @@ export const settingPlaces: readonly SettingPlace[] = [
     keys: [],
     link: { section: "personalize", item: "composer-menu" },
   },
+  {
+    title: "Widgets, their order and inputs",
+    home: "vault",
+    keys: [],
+    link: { section: "personalize", item: "widgets" },
+  },
+  { title: "Widget permissions", home: "machine", keys: [], link: { section: "personalize", item: "widgets" } },
   { title: "The hub machine", home: "vault", keys: [], link: { section: "access", item: "machine" } },
   { title: "Voice note language", home: "vault", keys: ["voice.language"], link: null },
   { title: "Claude Code login", home: "machine", keys: [], link: { section: "engines", item: "claude-code" } },

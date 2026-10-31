@@ -379,7 +379,11 @@ function readAllowRules(text: FileRead): readonly string[] | "none" | null {
   return rules.length === 0 ? "none" : rules;
 }
 
-function readRequiredChecks(rules: unknown, branchInfo: unknown): boolean | null {
+/**
+ * True when a ruleset or a classic branch protection requires checks before a merge. `rules` is the
+ * answer of `rules/branches/<branch>`, `branchInfo` of `branches/<branch>`; null when unreadable.
+ */
+export function readRequiredChecks(rules: unknown, branchInfo: unknown): boolean | null {
   if (Array.isArray(rules) && rules.some((rule) => textField(rule, "type") === "required_status_checks")) return true;
   const checks = asRecord(asRecord(asRecord(branchInfo)?.["protection"])?.["required_status_checks"]);
   const named =

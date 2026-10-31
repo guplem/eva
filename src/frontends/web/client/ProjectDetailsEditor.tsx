@@ -11,7 +11,7 @@ import { BackButton } from "./MainNav.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, SelectField } from "./SettingsParts.tsx";
-import { statusChoices, statusOf } from "./project-format.ts";
+import { removedRepositoriesHint, statusChoices, statusOf } from "./project-format.ts";
 
 const projectTypeChoices = [
   { value: "software", label: "Software" },
@@ -209,7 +209,7 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
                 name="repository"
                 heading="Repositories"
                 icon="branch"
-                hint="Removing a repository keeps its clones."
+                hint={removedRepositoriesHint(file.details.repos, details.repos)}
                 values={details.repos}
                 draft={repoDraft}
                 onDraft={(draft) => edit(() => setRepoDraft(draft))}
@@ -255,7 +255,8 @@ interface ListFieldProps {
   readonly heading: string;
   /** A round icon at the left of each value. */
   readonly icon?: IconName;
-  readonly hint?: string;
+  /** A note below the values, such as what a Remove does. Null hides it. */
+  readonly hint?: string | null;
   readonly values: readonly string[];
   readonly draft: string;
   readonly onDraft: (draft: string) => void;
@@ -293,7 +294,7 @@ function ListField({ name, heading, icon, hint, values, draft, onDraft, onChange
           ))}
         </ul>
       )}
-      {hint !== undefined && <span className="field-hint">{hint}</span>}
+      {hint !== undefined && hint !== null && <span className="field-hint">{hint}</span>}
       <div className="inline-form">
         <input
           aria-label={`Add a ${name}`}

@@ -311,6 +311,11 @@ const syncMarks: Readonly<Record<VaultSyncState["status"], StepMark>> = {
 const withheldReasons: Readonly<Record<VaultSyncState["withheldFiles"][number]["reason"], string>> = {
   secret: "looks like a secret",
   too_large: "larger than 50 MB",
+  no_vault_key: "a secret file: set a vault password first",
+  vault_key_changed: "a secret file: the vault's key changed",
+  not_decryptable: "encrypted, but someone changed it",
+  env_has_secret: "a .env with a key: move it to .env.local",
+  unreadable: "Eva could not read it: it stays out until she can",
 };
 
 /** The last sync result, a conflict with its picks included, and the files that the secret scan held back. */

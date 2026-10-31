@@ -11,7 +11,10 @@ import { loadConfig, saveConfig, type HomePaths } from "../settings/home.ts";
 import { loadSettings } from "../settings/settings.ts";
 import { createGitHubRepository, listGitHubRepositories, type GitHubRepository } from "./github-repositories.ts";
 import { checkVaultRepository, cloneVault, isAddress, pushNewVault, vaultNeedsPush } from "./vault-clone.ts";
+import { createVaultKey } from "./vault-crypto.ts";
+import { plainSecretsIn } from "./plain-secrets.ts";
 import { createVaultFromTemplate } from "./vault-template.ts";
+import { VaultSecrets } from "./vault-secrets.ts";
 
 export interface VaultSetupOptions {
   readonly paths: HomePaths;
@@ -24,6 +27,8 @@ export interface VaultSetupOptions {
   readonly githubToken: () => string | undefined;
   /** The GitHub API address; a test points it at a fake server. */
   readonly githubApiBaseUrl?: string;
+  /** The scrypt cost of a new vault's key: only a test lowers it. */
+  readonly keyCost?: { readonly logN: number };
 }
 
 export interface NewVaultAnswers {
@@ -34,6 +39,8 @@ export interface NewVaultAnswers {
   readonly topics: readonly string[];
   /** The name of a new private repository, or the address of an empty one. Empty: the vault stays local. */
   readonly repository: string;
+  /** The vault password, which encrypts the vault's secret files (#707). Nobody can recover it. */
+  readonly password: string;
 }
 
 export interface VaultSetupResult {
@@ -45,6 +52,8 @@ export interface VaultSetupResult {
 }
 
 const noToken = "Save a GitHub token first, in the GitHub step.";
+/** Each git step of the check of the history, which reads one commit or one file. */
+const historyCheckMs = 20_000;
 
 export class VaultSetup {
   private readonly options: VaultSetupOptions;
@@ -79,9 +88,12 @@ export class VaultSetup {
   create(answers: NewVaultAnswers): Promise<VaultSetupResult> {
     return this.once(async () => {
       const folder = this.freeFolder();
+      // The key comes before any write, so a password that the core refuses leaves no folder behind.
+      const key = await createVaultKey(answers.password, this.options.keyCost);
       await this.orRemove(folder, () =>
         createVaultFromTemplate({
           folder,
+          key,
           answers: {
             name: answers.name.trim() || "the owner",
             language: answers.language.trim() || "English",
@@ -108,10 +120,36 @@ export class VaultSetup {
       const folder = this.options.savedVaultPath();
       if (folder === null || !(await this.lacksRemote(folder)))
         throw new EvaError("config_invalid", "The vault needs no push: it has a repository, or no commit yet.");
+      // A local vault can be old: its history may hold a secret file from before the encryption.
+      const plain = await this.plainSecretsInHistory(folder);
+      if (plain === null || plain.length > 0)
+        throw new EvaError(
+          "github_failed",
+          plain === null
+            ? "Eva could not check the vault's commits for secrets, so she did not push."
+            : `A commit of the vault holds ${plain.join(", ")} in plain text, so Eva did not push. Ask the Assistant to remove the file from the vault's history.`,
+        );
       const result = await this.pushTo(folder, repository);
       if (result.problem !== null) throw new EvaError("github_failed", result.problem);
       return result;
     });
+  }
+
+  private plainSecretsInHistory(folder: string): Promise<string[] | null> {
+    const secrets = new VaultSecrets({
+      vaultPath: folder,
+      machineStatePath: join(this.options.paths.stateFolder, "vault-secrets.json"),
+    });
+    return plainSecretsIn(
+      (args) =>
+        this.options.runner.run(["git", ...args], {
+          cwd: folder,
+          environment: this.options.gitEnvironment(),
+          timeoutMs: historyCheckMs,
+        }),
+      "HEAD",
+      (path, bytes) => secrets.isPlainSecret(path, bytes),
+    );
   }
 
   /** True for a saved vault with a commit and no remote, which the page offers to push. */

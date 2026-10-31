@@ -75,7 +75,11 @@ export class VaultSecrets {
   round(): PrepareFile {
     const { key, keyChanged, policy, removed } = this.state();
     // Before any file of the round, so the commit that brings an encrypted file also marks it.
-    writeSecretAttributes(this.options.vaultPath, policy.active, removed);
+    try {
+      writeSecretAttributes(this.options.vaultPath, policy.active, removed);
+    } catch {
+      // A .gitattributes that another program holds open waits for the next round: the files still go.
+    }
     const matcher = new SecretMatcher(policy.active);
     return (relativePath) => {
       const path = join(this.options.vaultPath, relativePath);
@@ -88,15 +92,20 @@ export class VaultSecrets {
       const secret = matcher.matches(relativePath);
       // A link is never followed: its target could be Eva's own file, or outside the vault.
       if (!info.isFile()) return secret && info.isSymbolicLink() ? "secret" : null;
-      const state = encryptedState(readHead(path));
-      if (state === "newer") return null;
-      if (state === "encrypted") return hasEncryptedShape(readFileSync(path)) ? null : "not_decryptable";
-      if (!secret) return plainEnvWithSecret(relativePath, path, info.size) ? "env_has_secret" : null;
-      if (key === null) return "no_vault_key";
-      if (keyChanged) return "vault_key_changed";
-      if (info.size > maxEncryptedBytes) return "too_large";
-      writeFileAtomic(path, new TextDecoder().decode(encryptFile(readFileSync(path), key)));
-      return null;
+      // One file that another program holds open, or that goes away now, must not stop the whole commit.
+      try {
+        const state = encryptedState(readHead(path));
+        if (state === "newer") return null;
+        if (state === "encrypted") return hasEncryptedShape(readFileSync(path)) ? null : "not_decryptable";
+        if (!secret) return plainEnvWithSecret(relativePath, path, info.size) ? "env_has_secret" : null;
+        if (key === null) return "no_vault_key";
+        if (keyChanged) return "vault_key_changed";
+        if (info.size > maxEncryptedBytes) return "too_large";
+        writeFileAtomic(path, new TextDecoder().decode(encryptFile(readFileSync(path), key)));
+        return null;
+      } catch {
+        return "unreadable";
+      }
     };
   }
 

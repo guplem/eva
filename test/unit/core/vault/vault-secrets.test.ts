@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -161,5 +162,51 @@ describe("a default that an update adds (#707)", () => {
     next.round();
     expect(next.takeNewDefaults()).toEqual(["*.pfx"]);
     expect(next.takeNewDefaults()).toEqual([]);
+  });
+});
+
+describe("faults of one file or of the block, after the review of #707", () => {
+  const attributes = (): string => new TextDecoder().decode(read(".gitattributes"));
+
+  test("a secret file that Eva cannot read stays out, and the round goes on with the other files", async () => {
+    await withKey();
+    write("deploy/locked.key", "LOCKED\n");
+    write("deploy/id.key", "KEY\n");
+    const real = fs.openSync;
+    const open = spyOn(fs, "openSync").mockImplementation(((path: string, ...rest: unknown[]) => {
+      if (path.endsWith("locked.key")) throw Object.assign(new Error("EBUSY: locked"), { code: "EBUSY" });
+      return (real as (...args: unknown[]) => unknown)(path, ...rest);
+    }) as typeof fs.openSync);
+    try {
+      const prepare = secrets().round();
+      expect(prepare("deploy/locked.key")).toBe("unreadable");
+      expect(prepare("deploy/id.key")).toBeNull();
+    } finally {
+      open.mockRestore();
+    }
+    expect(encryptedState(read("deploy/id.key"))).toBe("encrypted");
+  });
+
+  test("a block with no end line keeps every line of the person", async () => {
+    await withKey();
+    write(".gitattributes", "# Eva: encrypted files. Eva writes this block.\n*.png binary\n*.psd binary\n");
+    secrets().prepare("Notes/a.md");
+    const text = attributes();
+    expect(text).toContain("*.png binary\n");
+    expect(text).toContain("*.psd binary\n");
+    expect(text.split("# Eva: encrypted files. Eva writes this block.").length).toBe(2);
+  });
+
+  test("a folder pattern marks the files inside it, and a pattern with a space or a comment line is left out", async () => {
+    await withKey();
+    write(".eva/secret-files", "Private/\nmy notes.md\n");
+    secrets().prepare("Notes/a.md");
+    write(".gitattributes", attributes().replace("*.pem -diff", "# a note\n*.pem -diff"));
+    secrets().prepare("Notes/a.md");
+    const text = attributes();
+    expect(text).toContain("Private/** -diff -merge -text\n");
+    expect(text).not.toContain("Private/ -diff");
+    expect(text).not.toContain("my -diff");
+    expect(text).not.toContain("# -diff");
   });
 });

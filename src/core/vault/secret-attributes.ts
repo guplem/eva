@@ -25,18 +25,34 @@ export function writeSecretAttributes(
   const lines = text === "" ? [] : text.replace(/\r?\n$/, "").split(/\r?\n/);
   const start = lines.indexOf(startLine);
   const end = start === -1 ? -1 : lines.indexOf(endLine, start);
-  const before = start === -1 ? lines : lines.slice(0, start);
-  const after = start === -1 || end === -1 ? [] : lines.slice(end + 1);
-  const kept = start === -1 || end === -1 ? [] : lines.slice(start + 1, end).map(patternOf);
-  const patterns = [...new Set([...kept, ...active])]
-    .filter((pattern) => pattern !== "" && !removed.has(pattern))
+  // A start line with no end, such as after a hand edit, marks no block: only that line goes.
+  const outside = start === -1 || end === -1 ? lines.filter((line) => line !== startLine) : null;
+  const before = outside ?? lines.slice(0, start);
+  const after = outside === null ? lines.slice(end + 1) : [];
+  // Each pattern as the block writes it, so a kept line and a pattern of the list compare the same.
+  const kept = outside === null ? lines.slice(start + 1, end).map(patternOf) : [];
+  const gone = new Set([...removed].map(attributePath));
+  const patterns = [...new Set([...kept, ...active.map(attributePath)])]
+    .filter((pattern) => isAttributePattern(pattern) && !gone.has(pattern))
     .sort();
   const block = [startLine, ...patterns.map((pattern) => `${pattern} ${attributes}`), endLine];
   const next = [...before, ...block, ...after].join(newline) + newline;
   if (next !== text) writeFileAtomic(path, next);
 }
 
-/** The pattern of one line of the block: the text before its attributes. */
+/** The pattern of one line of the block: the text before its attributes. A comment line has none. */
 function patternOf(line: string): string {
-  return line.trim().split(/\s+/)[0] ?? "";
+  const trimmed = line.trim();
+  if (trimmed.startsWith("#")) return "";
+  return trimmed.split(/\s+/)[0] ?? "";
+}
+
+/** `.gitattributes` splits a line at each space and reads `#` as a comment, so such a pattern cannot go in. */
+function isAttributePattern(pattern: string): boolean {
+  return pattern !== "" && !/\s/.test(pattern) && !pattern.startsWith("#");
+}
+
+/** `.gitattributes` matches no folder, so a folder pattern marks the files inside it. */
+function attributePath(pattern: string): string {
+  return pattern.endsWith("/") ? `${pattern}**` : pattern;
 }

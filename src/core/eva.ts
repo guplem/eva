@@ -1297,6 +1297,21 @@ export class Eva {
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
     this.noticeVaultSecrets();
+    this.encryptVaultSecrets();
+  }
+
+  /**
+   * Encrypts each plain secret file that a commit already holds, such as one that a new default of
+   * this version matches, or one from before the password (#707). The next save commits them.
+   */
+  private encryptVaultSecrets(): void {
+    void this.vault.encryptSecrets().then(
+      () => this.noticeVaultSecrets(),
+      (error: unknown) =>
+        this.options.logger?.log("warn", "Eva could not encrypt the vault's secret files at start.", {
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+    );
   }
 
   /**

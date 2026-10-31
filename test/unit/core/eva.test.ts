@@ -3454,3 +3454,17 @@ describe("the person's place (#371)", () => {
     expect(after).toContain("lastLocation");
   });
 });
+
+describe("the vault's secret files at start (#707)", () => {
+  test("a secret file that a commit holds in plain text is encrypted at start, such as after an update", async () => {
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "before the update");
+    const instance = start(new FakeEngine());
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await waitFor(() => readFileSync(join(vault, "deploy/id.key"), "utf8").startsWith("Encrypted by Eva."));
+  });
+});

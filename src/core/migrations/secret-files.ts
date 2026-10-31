@@ -1,6 +1,7 @@
 /**
  * On 2026-10-31 Eva started to encrypt the secret files of the vault (#707). The vault's `.gitignore`
- * stops ignoring them and the plain `.env` files, so Eva can commit them encrypted, or checked. The
+ * stops ignoring them, so Eva can commit them encrypted. It keeps ignoring the plain `.env` files of
+ * an existing vault outside `Projects/`, since an old one can hold a password that no scan sees. The
  * vault map's secret rule says where a secret lives now. Both files are the person's own text, so
  * this migration replaces only the exact lines that Eva wrote. A block that the person changed
  * stays as it is: its secret files then stay on this computer, which is the safe side.
@@ -30,7 +31,20 @@ const oldIgnoreBlock = [
   "!Projects/**/*.pem",
   "!Projects/**/*.key",
 ].join("\n");
-const newIgnoreBlock = "# Local settings of a tool on this machine.";
+/**
+ * A plain `.env` that this vault ignored before can hold a password with no token shape, which the
+ * scan cannot see. So an existing vault keeps them on each computer. A new vault has no old ones.
+ */
+const newIgnoreBlock = [
+  "# Plain .env files stay on each computer: an old one can hold a password. Eva encrypts the other",
+  "# secret files, such as .env.local. Move a secret to .env.local to sync it.",
+  ".env",
+  "*.env",
+  "!Projects/**/.env",
+  "!Projects/**/*.env",
+  "",
+  "# Local settings of a tool on this machine.",
+].join("\n");
 
 const oldSecretRule =
   "- **Secrets** (keys, passwords) may live only in the folder of the project that uses them. Never copy one into a note outside that folder. One known place for each secret makes it possible to change it later.";

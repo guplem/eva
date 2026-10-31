@@ -6078,25 +6078,39 @@ async function logInAsDevice(page: Page): Promise<void> {
   expect((await page.request.post("/api/login/link", { data: { secret: link.secret } })).ok()).toBe(true);
 }
 
-test("Settings: the vault password is set twice, and a default secret pattern waits before it stops (#707)", async ({
-  page,
-}) => {
+test("Settings: a vault with no password asks for it twice (#707)", async ({ page }) => {
+  await page.route("**/api/vault/secrets", (route) =>
+    route.fulfill({
+      json: { hasKey: false, keyChanged: false, unlocked: false, defaults: [], added: [], waiting: [] },
+    }),
+  );
+  const sent: unknown[] = [];
+  await page.route("**/api/vault/secrets/password", async (route) => {
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: { hasKey: true, keyChanged: false, unlocked: false, defaults: [], added: [], waiting: [] },
+    });
+  });
+  await logIn(page);
+  await page.goto("/#/settings/vault/encrypted-files");
+  const card = page.getByRole("region", { name: "Encrypted files" });
+  await expect(card).toContainText("This vault has no password yet");
+  const form = card.getByRole("form", { name: "New vault password" });
+  await form.getByLabel("New vault password").fill(vaultPassword);
+  await form.getByLabel("The same password again").fill("another long password");
+  await form.getByRole("button", { name: "Set the password" }).click();
+  await expect(form.getByRole("alert")).toHaveText("The two passwords are not the same.");
+  expect(sent).toEqual([]);
+  await form.getByLabel("The same password again").fill(vaultPassword);
+  await form.getByRole("button", { name: "Set the password" }).click();
+  await expect(card.getByRole("status").filter({ hasText: "The vault password is set." })).toBeVisible();
+  expect(sent).toEqual([{ password: vaultPassword }]);
+});
+
+test("Settings: this tab unlocks, and a default secret pattern waits before it stops (#707)", async ({ page }) => {
   await logInAsDevice(page);
   await page.goto("/#/settings/vault/encrypted-files");
   const card = page.getByRole("region", { name: "Encrypted files" });
-  const status = (await (await page.request.get("/api/vault/secrets")).json()) as { hasKey: boolean };
-  // The desktop run sets the password. The phone run finds it set.
-  if (!status.hasKey) {
-    await expect(card).toContainText("This vault has no password yet");
-    const form = card.getByRole("form", { name: "New vault password" });
-    await form.getByLabel("New vault password").fill(vaultPassword);
-    await form.getByLabel("The same password again").fill("another long password");
-    await form.getByRole("button", { name: "Set the password" }).click();
-    await expect(form.getByRole("alert")).toHaveText("The two passwords are not the same.");
-    await form.getByLabel("The same password again").fill(vaultPassword);
-    await form.getByRole("button", { name: "Set the password" }).click();
-    await expect(card.getByRole("status").filter({ hasText: "The vault password is set." })).toBeVisible();
-  }
   await card.getByLabel("Vault password").fill(vaultPassword);
   await card.getByRole("button", { name: "Unlock" }).click();
   await expect(card.getByText("This tab is unlocked")).toBeVisible();
@@ -6118,10 +6132,6 @@ test("Files: an encrypted file shows a lock, opens with the vault password, save
   const path = `Private/${testInfo.project.name}.secrets`;
   await logInAsDevice(page);
   const password = vaultPassword;
-  const status = (await (await page.request.get("/api/vault/secrets")).json()) as { hasKey: boolean };
-  // The other browser run may have set it already.
-  if (!status.hasKey)
-    expect((await page.request.post("/api/vault/secrets/password", { data: { password } })).ok()).toBe(true);
   // The secret file never shows its text before the unlock, not even to a raw request.
   expect(await (await page.request.get(`/api/files?path=${path}`)).text()).not.toContain("demo-value");
 

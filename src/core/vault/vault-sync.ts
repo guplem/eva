@@ -45,7 +45,9 @@ export type WithheldReason =
   /** It keeps Eva's header, but someone changed its encrypted text. */
   | "not_decryptable"
   /** A plain `.env` that holds a token. */
-  | "env_has_secret";
+  | "env_has_secret"
+  /** A secret file that Eva could not read, such as one that another program holds open. */
+  | "unreadable";
 
 /** Decides one file of a round of the secret files: null to commit it as it is now, or why it stays out. */
 export type PrepareFile = (relativePath: string) => WithheldReason | null;

@@ -63,13 +63,16 @@ function migrate(vaultPath: string | null = vault): MigrationRun {
 }
 
 describe("commitSecretFiles (vault, #707)", () => {
-  test("the .gitignore stops ignoring secret files and keeps the person's own lines", () => {
+  test("the .gitignore stops ignoring secret files, keeps ignoring plain .env files, and keeps the person's own lines", () => {
     writeFileSync(join(vault, ".gitignore"), `${oldIgnore}my-notes.tmp\n*.key\n`);
     expect(migrate().kind).toBe("done");
     const text = readFileSync(join(vault, ".gitignore"), "utf-8");
-    for (const line of [".env", "*.env", "*.pem", "!Projects/**/.env", "!Projects/**/*.key"])
+    for (const line of ["*.pem", "!Projects/**/*.pem", "!Projects/**/*.key"])
       expect(text.split("\n")).not.toContain(line);
     expect(text).toContain("Projects/*/repos/");
+    // An old plain .env could hold a password with no token shape: it stays on this computer.
+    for (const line of [".env", "*.env", "!Projects/**/.env", "!Projects/**/*.env"])
+      expect(text.split("\n")).toContain(line);
     expect(text).toContain("settings.local.json");
     expect(text).toContain("Eva encrypts each secret file");
     // A line that the person added after the template's block stays, even one that repeats a template line.
@@ -98,11 +101,14 @@ describe("commitSecretFiles (vault, #707)", () => {
     expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe(`${edited}\n`);
   });
 
-  test("a migrated .gitignore ignores what the template ignores", () => {
+  test("a migrated .gitignore ignores what the template ignores, plus the plain .env files", () => {
     writeFileSync(join(vault, ".gitignore"), `${oldIgnore}\n# Operating system leftovers.\ndesktop.ini\n.DS_Store\n`);
     migrate();
     const lines = (text: string): string[] => text.split("\n").filter((line) => line !== "" && !line.startsWith("#"));
-    expect(lines(readFileSync(join(vault, ".gitignore"), "utf-8"))).toEqual(lines(template(".gitignore")));
+    const envLines = [".env", "*.env", "!Projects/**/.env", "!Projects/**/*.env"];
+    expect(lines(readFileSync(join(vault, ".gitignore"), "utf-8")).filter((line) => !envLines.includes(line))).toEqual(
+      lines(template(".gitignore")),
+    );
   });
 
   test("a vault with no .gitignore and no map has nothing to change", () => {

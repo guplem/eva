@@ -25,14 +25,12 @@ import {
   type KeyObject,
 } from "node:crypto";
 import { EvaError } from "../../shared/errors.ts";
+import { minimumPasswordLength } from "../../shared/vault-unlock.ts";
 
 /** The first line of each encrypted file, so an agent that opens one knows what to tell the person. */
 export const encryptedFileLine = "Encrypted by Eva. Open this file in Eva's Files page to read it.";
 const formatName = "eva-encrypted";
 const formatVersion = 1;
-
-/** The thief of the remote has the wrapped key and can try passwords offline, so a password must be long. */
-export const minimumPasswordLength = 12;
 
 /** Eva's own `scrypt` cost: 2^17 rounds, about 128 MB of memory. */
 const defaultCost = { logN: 17 };

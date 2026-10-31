@@ -32,7 +32,7 @@ import { serviceWorkerScript } from "../web/service-worker-script.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
-import { unlockHeader } from "../../shared/unlock-header.ts";
+import { unlockHeader } from "../../shared/vault-unlock.ts";
 import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
 
 export interface LocalApiOptions {
@@ -216,6 +216,8 @@ const newVaultSchema = z.object({
   notesLanguage: z.string().max(200).default(""),
   topics: z.array(z.string().max(200)).max(50),
   repository: z.string().max(2_000),
+  // A page from before #707 sends none, and the core then says that the password is too short.
+  password: z.string().max(1_000).default(""),
 });
 const claudeLoginSchema = z.object({ code: z.string().min(1).max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });

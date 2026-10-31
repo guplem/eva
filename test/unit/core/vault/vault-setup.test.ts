@@ -9,6 +9,8 @@ import {
   type HomePaths,
 } from "../../../../src/core/settings/home.ts";
 import { VaultSetup } from "../../../../src/core/vault/vault-setup.ts";
+import { readVaultKey } from "../../../../src/core/vault/secret-state.ts";
+import { unlockVaultKey } from "../../../../src/core/vault/vault-crypto.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
@@ -62,6 +64,7 @@ function setup(baseUrl = "http://127.0.0.1:1", token: string | null = "a-token")
     gitEnvironment: () => gitEnvironment,
     githubToken: () => token ?? undefined,
     githubApiBaseUrl: baseUrl,
+    keyCost: { logN: 10 },
   });
 }
 
@@ -72,7 +75,13 @@ async function failure(run: Promise<unknown>): Promise<unknown> {
   );
 }
 
-const answers = { name: "Sam", language: "English", notesLanguage: "", topics: ["work", "music"] };
+const answers = {
+  name: "Sam",
+  language: "English",
+  notesLanguage: "",
+  topics: ["work", "music"],
+  password: "a long vault password",
+};
 
 describe("VaultSetup", () => {
   test("lists the repositories with the saved token, and asks for a token when none is saved", async () => {
@@ -230,5 +239,22 @@ describe("a failed vault setup", () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: file });
     expect(isEvaError(await failure(setup().clone(sandbox.remote)), "vault_not_found")).toBe(true);
     expect(readFileSync(file, "utf8")).toBe("text");
+  });
+});
+
+describe("VaultSetup: the vault password (#707)", () => {
+  test("a new vault starts with its key in its first commit, and the password opens it", async () => {
+    await setup().create({ ...answers, repository: "" });
+    const vault = join(paths.root, "vault");
+    const key = readVaultKey(vault);
+    expect(key).not.toBeNull();
+    if (key !== null) expect(await unlockVaultKey(key, answers.password)).toBeDefined();
+    expect(sandbox.git(vault, "show", "--name-only", "--format=", "HEAD")).toContain(".eva/vault-key.json");
+  });
+
+  test("a short password makes no vault at all", async () => {
+    const refused = await failure(setup().create({ ...answers, password: "short", repository: "" }));
+    expect(isEvaError(refused, "vault_password_invalid")).toBe(true);
+    expect(existsSync(join(paths.root, "vault"))).toBe(false);
   });
 });

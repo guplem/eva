@@ -6,10 +6,12 @@ import { Fragment, useCallback, useEffect, useState, type ReactElement } from "r
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
 import type { NewVaultAnswers } from "../../../core/vault/vault-setup.ts";
 import { vaultFolders, vaultFoldersHint } from "../../../core/vault/vault-folders.ts";
+import { newPasswordProblem } from "../../../shared/vault-unlock.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { ChoiceChips, errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
+import { NewPasswordFields } from "./VaultPasswordForms.tsx";
 
 type Path = "existing" | "new";
 
@@ -198,12 +200,24 @@ function NewVault({
   const [notesLanguage, setNotesLanguage] = useState("English");
   const [topics, setTopics] = useState("");
   const [repository, setRepository] = useState("vault");
+  const [password, setPassword] = useState("");
+  const [again, setAgain] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
   // A save would create the vault and its repository, so the question offers no save.
   const changed =
-    name !== "" || language !== "English" || notesLanguage !== "English" || topics !== "" || repository !== "vault";
+    name !== "" ||
+    language !== "English" ||
+    notesLanguage !== "English" ||
+    topics !== "" ||
+    repository !== "vault" ||
+    password !== "";
   useLeaveGuard(changed && busy === null, null);
   const create = (): void => {
+    const found = newPasswordProblem(password, again);
+    setProblem(found);
+    if (found !== null) return;
     onCreate({
+      password,
       name,
       language,
       notesLanguage,
@@ -253,6 +267,24 @@ function NewVault({
         ))}
       </dl>
       <p className="field-hint">{vaultFoldersHint}</p>
+      <NewPasswordFields
+        label="A vault password"
+        password={password}
+        again={again}
+        onPassword={(value) => {
+          setPassword(value);
+          setProblem(null);
+        }}
+        onAgain={(value) => {
+          setAgain(value);
+          setProblem(null);
+        }}
+      />
+      {problem !== null && (
+        <span role="alert" className="callout danger">
+          {problem}
+        </span>
+      )}
       {hasToken && (
         <label className="field">
           <span className="field-label">Name of the new private repository</span>

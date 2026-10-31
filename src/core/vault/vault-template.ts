@@ -9,6 +9,8 @@ import { writeFileAtomic } from "../../shared/files.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { vaultFolders } from "./vault-folders.ts";
+import { writeVaultKey } from "./secret-state.ts";
+import type { VaultKeyFile } from "./vault-crypto.ts";
 import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" };
 import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
 import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "text" };
@@ -50,6 +52,8 @@ export interface VaultTemplateAnswers {
 export interface NewVaultInputs {
   readonly folder: string;
   readonly answers: VaultTemplateAnswers;
+  /** The vault's key, wrapped with its password, so the first commit holds it (#707). */
+  readonly key: VaultKeyFile;
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
 }
@@ -105,6 +109,7 @@ export async function createVaultFromTemplate(inputs: NewVaultInputs): Promise<v
     mkdirSync(dirname(target), { recursive: true });
     writeFileAtomic(target, content);
   }
+  writeVaultKey(inputs.folder, inputs.key);
   await git(inputs, ["init", "-q", "-b", "main"]);
   await git(inputs, ["add", "-A"]);
   // A machine with no git identity yet still gets its first commit.

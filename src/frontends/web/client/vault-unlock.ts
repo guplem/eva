@@ -3,7 +3,7 @@
  * it, so a device cookie that an agent copies from the disk decrypts nothing. The tab keeps it in
  * `sessionStorage`: it goes when the tab closes, and no other tab or program sees it.
  */
-import { unlockHeader } from "../../../shared/unlock-header.ts";
+import { unlockHeader } from "../../../shared/vault-unlock.ts";
 
 const storageKey = "eva-vault-unlock";
 

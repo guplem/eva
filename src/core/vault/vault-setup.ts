@@ -11,6 +11,7 @@ import { loadConfig, saveConfig, type HomePaths } from "../settings/home.ts";
 import { loadSettings } from "../settings/settings.ts";
 import { createGitHubRepository, listGitHubRepositories, type GitHubRepository } from "./github-repositories.ts";
 import { checkVaultRepository, cloneVault, isAddress, pushNewVault, vaultNeedsPush } from "./vault-clone.ts";
+import { createVaultKey } from "./vault-crypto.ts";
 import { createVaultFromTemplate } from "./vault-template.ts";
 
 export interface VaultSetupOptions {
@@ -24,6 +25,8 @@ export interface VaultSetupOptions {
   readonly githubToken: () => string | undefined;
   /** The GitHub API address; a test points it at a fake server. */
   readonly githubApiBaseUrl?: string;
+  /** The scrypt cost of a new vault's key: only a test lowers it. */
+  readonly keyCost?: { readonly logN: number };
 }
 
 export interface NewVaultAnswers {
@@ -34,6 +37,8 @@ export interface NewVaultAnswers {
   readonly topics: readonly string[];
   /** The name of a new private repository, or the address of an empty one. Empty: the vault stays local. */
   readonly repository: string;
+  /** The vault password, which encrypts the vault's secret files (#707). Nobody can recover it. */
+  readonly password: string;
 }
 
 export interface VaultSetupResult {
@@ -79,9 +84,12 @@ export class VaultSetup {
   create(answers: NewVaultAnswers): Promise<VaultSetupResult> {
     return this.once(async () => {
       const folder = this.freeFolder();
+      // The key comes before any write, so a password that the core refuses leaves no folder behind.
+      const key = await createVaultKey(answers.password, this.options.keyCost);
       await this.orRemove(folder, () =>
         createVaultFromTemplate({
           folder,
+          key,
           answers: {
             name: answers.name.trim() || "the owner",
             language: answers.language.trim() || "English",

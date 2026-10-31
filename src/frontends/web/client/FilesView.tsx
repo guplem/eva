@@ -31,7 +31,7 @@ import { MoreMenu, type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
-import { UnlockVaultForm } from "./UnlockVaultForm.tsx";
+import { UnlockVaultForm } from "./VaultPasswordForms.tsx";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
 import { useBackLayer } from "./back-layer-hook.ts";

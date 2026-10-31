@@ -183,6 +183,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "vault-sync", section: "vault", title: "Vault sync", words: "fetch pull push conflict interval save" },
   { item: "project-folders", section: "vault", title: "Project folders", words: "roots projects extra" },
   {
+    item: "encrypted-files",
+    section: "vault",
+    title: "Encrypted files",
+    words: "secrets password key encrypt decrypt lock unlock env pem patterns",
+  },
+  {
     item: "template-alignment",
     section: "vault",
     title: "Template alignment",

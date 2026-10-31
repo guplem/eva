@@ -679,6 +679,34 @@ describe("device login", () => {
     expect((await call("/api/status", { headers: { cookie: phone } })).status).toBe(401);
     expect((await call("/api/status", { headers: { cookie: laptop } })).status).toBe(200);
   });
+
+  test("only a device that typed the vault password reads an encrypted file, never the local API token (#707)", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const vaultPath = eva.status().vaultPath ?? "";
+    writeFileSync(join(vaultPath, ".env.local"), "API_KEY=sk-example\n");
+    const password = { password: "correct horse battery" };
+    expect((await call("/api/vault/secrets/password", { method: "POST", body: password })).status).toBe(200);
+    expect(readFileSync(join(vaultPath, ".env.local"), "utf8")).not.toContain("sk-example");
+    const device = { cookie, "content-type": "application/json" };
+    // The local API token can neither unlock nor read: an agent can read that token.
+    const byToken = await call("/api/vault/secrets/unlock", { method: "POST", body: password });
+    expect(byToken.status).toBe(403);
+    expect((await json<{ code: string }>(byToken)).code).toBe("vault_locked");
+    const unlocked = await call("/api/vault/secrets/unlock", { method: "POST", body: password, headers: device });
+    const { secret } = await json<{ secret: string }>(unlocked);
+    const path = `/api/files/encrypted?path=${encodeURIComponent(".env.local")}`;
+    const opened = await call(path, { headers: { cookie, "x-eva-unlock": secret } });
+    expect(opened.headers.get("cache-control")).toBe("no-store");
+    expect(await json<{ text: string }>(opened)).toMatchObject({ text: "API_KEY=sk-example\n" });
+    // The device cookie alone, or the token with the page's secret, opens nothing.
+    expect((await call(path, { headers: { cookie } })).status).toBe(403);
+    expect((await call(path, { headers: headers({ "x-eva-unlock": secret }) })).status).toBe(403);
+    const status = await json<{ hasKey: boolean; unlocked: boolean }>(
+      await call("/api/vault/secrets", { headers: { cookie, "x-eva-unlock": secret } }),
+    );
+    expect(status).toMatchObject({ hasKey: true, unlocked: true });
+  });
 });
 
 describe("routes", () => {

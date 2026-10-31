@@ -151,6 +151,9 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
+import { VaultEncryption } from "./vault/vault-encryption.ts";
+import { VaultKeys } from "./vault/vault-keys.ts";
+import { VaultSecrets } from "./vault/vault-secrets.ts";
 import type { UndoPreview } from "./vault/vault-snapshots.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
@@ -422,6 +425,8 @@ export class Eva {
   readonly transcribe: Transcribe | null;
   /** The web UI's device logins, which the Telegram bot confirms. */
   readonly deviceLogins: DeviceLogins;
+  /** The encryption of the vault's secret files (#707): only a device's own request decrypts. */
+  readonly encryption: VaultEncryption;
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
   private readonly githubLogin: GitHubBrowserLogin;
@@ -545,6 +550,10 @@ export class Eva {
     // Only the hub pushes, as only the hub runs Telegram: it relays the problems of the other
     // machines, so a device that also subscribed on a satellite would get each one twice.
     this.alerts.onAlert((alert) => (this.role() === "hub" ? this.pushAlert(alert, "alerts") : undefined));
+    const vaultSecrets =
+      vaultPath === null
+        ? null
+        : new VaultSecrets({ vaultPath, machineStatePath: join(options.paths.stateFolder, "vault-secrets.json") });
     this.vault = new VaultUpkeep({
       vaultSync:
         vaultPath === null
@@ -555,6 +564,7 @@ export class Eva {
               environment: ownGitEnvironment,
               now: options.now,
               redact: (text) => redactor.redact(text),
+              ...(vaultSecrets === null ? {} : { secrets: vaultSecrets }),
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,
@@ -594,6 +604,22 @@ export class Eva {
     // A removed device must not see the start of a reply on its lock screen.
     this.deviceLogins.onForget(() => {
       this.webPush.keepDevices(new Set(this.deviceLogins.list(null).map((device) => device.id)));
+    });
+    this.encryption = new VaultEncryption({
+      vaultPath: () => this.options.config.vaultPath,
+      secrets: () => vaultSecrets,
+      // Each use checks the device again, so a forgotten device's key stops working at once.
+      keys: new VaultKeys({
+        vaultPath: () => this.options.config.vaultPath,
+        now: options.now,
+        isDeviceValid: (token) => this.deviceLogins.isValidToken(token),
+      }),
+      vault: {
+        exclusive: (work) => this.vault.exclusive(work),
+        pull: () => this.vault.pull(),
+        encryptSecrets: () => this.vault.encryptSecrets(),
+        save: () => this.vault.save(),
+      },
     });
     this.checkResults = new Map();
     this.googleLogin = new GoogleLogin({

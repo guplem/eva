@@ -817,12 +817,14 @@ export class VaultSync {
   }
 
   /** Returns false when the commit failed; true when it committed or had nothing to commit. */
-  private async commitChanges(entries: readonly StatusEntry[], retried = false): Promise<boolean> {
+  private async commitChanges(given: readonly StatusEntry[], retried = false): Promise<boolean> {
+    const prepare = this.options.secrets?.round() ?? null;
+    // The round can write .gitattributes, so the status is read again after it starts.
+    const entries = prepare === null ? given : await this.statusEntries();
     const unmerged = unmergedPaths(entries);
     const withheld: WithheldFile[] = [];
     const kept: string[] = [];
     let stagedScratch = false;
-    const prepare = this.options.secrets?.round() ?? null;
     for (const { code, path } of entries) {
       if (unmerged.includes(path)) continue;
       if (this.isScratchFile(path)) {

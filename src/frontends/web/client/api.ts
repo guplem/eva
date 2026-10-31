@@ -145,10 +145,17 @@ export type {
 /**
  * A vault file, or a folder as a zip, with the name that the core gives it. The page reads it
  * before the save, so a failure shows on the page instead of as a broken file. `onShare` gets
- * the part that arrived, from 0 to 1.
+ * the part that arrived, from 0 to 1. A `signal` stops the read when the person leaves the file.
  */
-async function download(path: string, onShare: (share: number) => void): Promise<{ name: string; blob: Blob }> {
-  const response = await fetch(`/api/files/download?path=${encodeURIComponent(path)}`, { credentials: "same-origin" });
+async function download(
+  path: string,
+  onShare: (share: number) => void,
+  signal?: AbortSignal,
+): Promise<{ name: string; blob: Blob }> {
+  const response = await fetch(`/api/files/download?path=${encodeURIComponent(path)}`, {
+    credentials: "same-origin",
+    ...(signal === undefined ? {} : { signal }),
+  });
   if (!response.ok) throw await failureOf(response);
   const total = Number(response.headers.get("content-length") ?? "0");
   const chunks: Uint8Array<ArrayBuffer>[] = [];

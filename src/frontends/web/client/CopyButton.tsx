@@ -4,7 +4,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 
 /** How long a Copy button says "Copied". */
-const copiedMs = 2_000;
+export const copiedMs = 2_000;
 
 /**
  * `name` tells a screen reader what the button copies; "Copied" names itself. A button with
@@ -49,7 +49,7 @@ export function CopyButton({
 }
 
 /** The Clipboard API needs a secure page. A page over plain HTTP uses a hidden text box instead. */
-async function copyText(text: string): Promise<void> {
+export async function copyText(text: string): Promise<void> {
   if (window.isSecureContext && "clipboard" in navigator) {
     await navigator.clipboard.writeText(text);
     return;

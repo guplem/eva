@@ -135,6 +135,8 @@ export interface RepositoryFixResult {
   readonly fixed: readonly string[];
   /** One sentence for each direct fix that failed. */
   readonly problems: readonly string[];
+  /** One line for each fix that is not on the branch yet, such as a pull request that waits for CI. */
+  readonly notes: readonly string[];
   /** The request for a chat: the items that need one, and the failed direct fixes. Null: none. */
   readonly chatRequest: string | null;
 }
@@ -615,8 +617,18 @@ export class ProjectWork {
       problems.length === 0
         ? ""
         : `\n\nEva tried these commands herself, and GitHub refused them:\n\n${problems.map((problem) => `- ${problem}`).join("\n")}`;
+    // The chat hides the report, so it names each pull request, for the person and for the agent.
+    const opened =
+      outcome.notes.length === 0
+        ? ""
+        : `\n\nEva already opened these pull requests. Leave their files as they are:\n\n${outcome.notes.map((note) => `- ${note}`).join("\n")}`;
     return {
-      result: { fixed: outcome.fixed, problems, chatRequest: request === null ? null : request + refused },
+      result: {
+        fixed: outcome.fixed,
+        problems,
+        notes: outcome.notes,
+        chatRequest: request === null ? null : request + refused + opened,
+      },
       needsChanges: forChat.some((item) => item.directFix === undefined && item.light !== "grey"),
       report,
     };
@@ -669,7 +681,8 @@ export class ProjectWork {
     const first = type?.firstChat === undefined || slug === null ? null : type.firstChat(slug);
     const request =
       first === null ? fixes : fixes === null ? first : `${first}\n\nThe setup also left these items:\n\n${fixes}`;
-    if (request === null) return { sessionId: null, problems };
+    // With no chat, the setup messages are the only place that names an open pull request.
+    if (request === null) return { sessionId: null, problems: [...problems, ...result.notes] };
     const session = await this.start({ projectId, request, reportToSessionId: null });
     return { sessionId: session.id, problems };
   }

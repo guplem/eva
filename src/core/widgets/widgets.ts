@@ -175,15 +175,17 @@ export class Widgets {
   private readonly previews: WidgetPreviews;
   /** The widgets whose last update check failed: since when, and why. */
   private readonly failures: Map<string, { readonly since: number; readonly reason: string }>;
-  /** Each base widget's address, with the name that shows before Eva reads its manifest. */
-  private readonly base: readonly { readonly address: WidgetAddress; readonly name: string }[];
+  /** Each base widget by its id: its address, and the name that shows before Eva reads its manifest. */
+  private readonly base: ReadonlyMap<string, { readonly address: WidgetAddress; readonly name: string }>;
 
   constructor(options: WidgetsOptions) {
     this.options = options;
-    this.base = options.baseWidgets.flatMap(({ url, name }) => {
-      const address = widgetAddress(url);
-      return address === null ? [] : [{ address, name }];
-    });
+    this.base = new Map(
+      options.baseWidgets.flatMap(({ url, name }) => {
+        const address = widgetAddress(url);
+        return address === null ? [] : [[address.id, { address, name }] as const];
+      }),
+    );
     this.sessions = new Map();
     this.reviews = new Map();
     this.installing = new Map();
@@ -239,14 +241,13 @@ export class Widgets {
     const entries = readWidgetList(this.options.vaultPath);
     const listed = new Set(entries.map((entry) => entry.id));
     const projects = new Set(this.projectAddresses().map((address) => address.id));
-    const base = new Set(this.base.map((widget) => widget.address.id));
     return this.allAddresses(entries).map(({ address, entry }) => {
       const record = this.options.approvals.get(address.id);
       const reviewed = this.reviews.get(address.id)?.review;
       const sources: WidgetSource[] = [
         ...(listed.has(address.id) ? ["list" as const] : []),
         ...(projects.has(address.id) ? ["project" as const] : []),
-        ...(base.has(address.id) ? ["base" as const] : []),
+        ...(this.base.has(address.id) ? ["base" as const] : []),
       ];
       return {
         id: address.id,
@@ -982,7 +983,7 @@ export class Widgets {
       all.push({ address, entry });
     };
     for (const entry of entries) add(widgetAddress(entry.repository), entry);
-    for (const address of [...this.projectAddresses(), ...this.base.map((widget) => widget.address)]) {
+    for (const address of [...this.projectAddresses(), ...[...this.base.values()].map((widget) => widget.address)]) {
       add(address, null);
     }
     return all;
@@ -1000,7 +1001,7 @@ export class Widgets {
 
   /** The name of a widget before Eva reads its manifest: a base widget's own name, else its repository's. */
   private fallbackName(address: WidgetAddress): string {
-    return this.base.find((widget) => widget.address.id === address.id)?.name ?? address.name;
+    return this.base.get(address.id)?.name ?? address.name;
   }
 }
 

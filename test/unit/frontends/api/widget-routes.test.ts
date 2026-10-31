@@ -45,9 +45,9 @@ let api: LocalApi;
  * An Eva of the test home. The base widgets would share the one local remote, so she has none,
  * unless `withBaseWidgets` keeps the ones that ship with Eva.
  */
-function evaWith(vaultPath: string | null, withBaseWidgets = false): Eva {
+function evaWith(vaultPath: string | null, withBaseWidgets = false, at = home): Eva {
   return new Eva({
-    paths: homePaths(home),
+    paths: homePaths(at),
     config: { ...defaultConfig, vaultPath, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
     secrets: {},
     engines: [new FakeEngine((request) => FakeEngine.answer(request, "answer"))],
@@ -151,7 +151,10 @@ describe("the widget list", () => {
   });
 
   test("a new Eva lists the habits and weather widgets that ship with her, off", () => {
-    const shipped = evaWith(vault, true);
+    // A home and a vault of its own: one core for each home.
+    const own = join(home, "shipped");
+    mkdirSync(join(own, "vault", ".eva"), { recursive: true });
+    const shipped = evaWith(join(own, "vault"), true, own);
     try {
       expect(shipped.widgets?.list().map((item) => [item.name, item.state, item.sources])).toEqual([
         ["Habits", "off", ["base"]],

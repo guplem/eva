@@ -759,3 +759,25 @@ a.files-entry[aria-current="true"] {
 .files-search-line {
   font-family: var(--mono);
 }
+
+/* An image, a sound or a film fits the width of the file and keeps its shape (issue 737). */
+.files-media {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.files-media > img,
+.files-media > video {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-input);
+}
+
+.files-media > audio {
+  width: 100%;
+}
+
+.files-media > .progress {
+  flex: 1;
+}

@@ -6708,6 +6708,47 @@ test("Files: a file and a folder download from their own button, and a failed do
   await expect(page.getByRole("alert").filter({ hasText: "larger than 200 MB" })).toBeVisible();
 });
 
+test("Files: an image and a sound show on the page, and another file that is not text shows why not (issue 737)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.goto("/#/files/Media/landscape.png");
+  const preview = page.getByRole("region", { name: "File preview" });
+  const picture = preview.getByRole("img", { name: "landscape.png" });
+  await expect(picture).toBeVisible();
+  await expect.poll(() => picture.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(160);
+  await expect(preview.getByText("857 B")).toBeVisible();
+  await preview.getByRole("button", { name: "More actions" }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Download" }).click();
+  expect((await download).suggestedFilename()).toBe("landscape.png");
+
+  await page.goto("/#/files/Media/silence.wav");
+  const sound = page.getByRole("region", { name: "File preview" }).locator("audio");
+  await expect(sound).toBeVisible();
+  await expect.poll(() => sound.evaluate((audio: HTMLAudioElement) => audio.duration)).toBeCloseTo(0.1, 2);
+
+  await page.goto("/#/files/Media/data.bin");
+  await expect(page.getByText("This file is not plain text, so Eva cannot show it.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "File preview" })).toHaveCount(0);
+
+  // The browser holds the whole file, so a very large one keeps the message.
+  await page.route("**/api/files?path=Media%2Flandscape.png", (route) =>
+    route.fulfill({
+      json: {
+        kind: "unreadable",
+        path: "Media/landscape.png",
+        size: 60 * 1024 * 1024,
+        reason: "This file is larger than 1 MB, so Eva does not show it.",
+        downloadable: true,
+      },
+    }),
+  );
+  await page.goto("/#/files/Media/landscape.png");
+  await expect(page.getByText("This file is larger than 1 MB, so Eva does not show it.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "File preview" })).toHaveCount(0);
+});
+
 test("on a special day, EVE greets with that day's eyes, and the tab icon wears them", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-12-25T12:00:00"));
   await logIn(page);

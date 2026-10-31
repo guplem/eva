@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fileBadgeOf, nameEnds } from "../../../../../src/frontends/web/client/file-kinds.ts";
+import { fileBadgeOf, mediaOf, nameEnds } from "../../../../../src/frontends/web/client/file-kinds.ts";
 
 describe("fileBadgeOf", () => {
   test("a well-known type gets its own colour", () => {
@@ -41,5 +41,22 @@ describe("nameEnds", () => {
       const { head, tail } = nameEnds(name);
       expect(head + tail).toBe(name);
     }
+  });
+});
+
+describe("mediaOf", () => {
+  test("an image, a sound or a film that a browser shows gets its kind and its type", () => {
+    expect(mediaOf("Drawing/draw_2.JPG")).toEqual({ kind: "image", type: "image/jpeg" });
+    expect(mediaOf("photo.png")).toEqual({ kind: "image", type: "image/png" });
+    expect(mediaOf("voice.m4a")).toEqual({ kind: "audio", type: "audio/mp4" });
+    expect(mediaOf("clip.webm")).toEqual({ kind: "video", type: "video/webm" });
+  });
+
+  test("another file is no media: a PDF, an SVG that shows as text, a HEIC photo or no extension", () => {
+    expect(mediaOf("Report.pdf")).toBeNull();
+    expect(mediaOf("logo.svg")).toBeNull();
+    expect(mediaOf("photo.heic")).toBeNull();
+    expect(mediaOf("Makefile")).toBeNull();
+    expect(mediaOf(".png")).toBeNull();
   });
 });

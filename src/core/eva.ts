@@ -130,7 +130,7 @@ import { discoverProjects, searchProjects, type Project, type ProjectQuery } fro
 import { createProject, type NewProjectInput, type NewProjectResult } from "./projects/new-project.ts";
 import { wallClockOf } from "./schedules/schedule-timing.ts";
 import { createDriveFolder } from "./google/google-drive.ts";
-import type { GithubRequest } from "./projects/repository-facts.ts";
+import { ghApiRequest, type GithubRequest } from "./projects/repository-facts.ts";
 import type { GithubWrite } from "./projects/repository-fixes.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
 import type { RepositoryTypeName } from "./projects/repository-types.ts";
@@ -194,6 +194,7 @@ import { WidgetApprovals } from "./widgets/widget-approvals.ts";
 import { WidgetCopies } from "./widgets/widget-copies.ts";
 import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format-writer.ts";
 import { Widgets } from "./widgets/widgets.ts";
+import { WidgetUpdates } from "./widgets/widget-updates.ts";
 
 /** The person's facts as the web page reads them. */
 export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
@@ -818,6 +819,15 @@ export class Eva {
               // With sync off, Eva takes no snapshot, so a write during a turn changes no undo.
               vaultBusy: () => options.config.sync.enabled && this.vaultTurnRunning(),
             },
+            updates: {
+              state: new WidgetUpdates(options.paths.widgetUpdates),
+              // Read at each check, so a new interval applies with no restart.
+              ownMinutes: () => this.settings.config.widgets.checkIntervalMinutes,
+              report: (key, problem) => this.alerts.report(key, problem),
+              dismiss: (key) => this.alerts.dismiss(key),
+              github: options.githubRequest ?? ghApiRequest(options.runner, ownGitEnvironment),
+              log: (reason) => options.logger?.log("warn", "Eva could not check a widget for updates.", { reason }),
+            },
           });
 
     this.vaultSetup = new VaultSetup({
@@ -988,6 +998,9 @@ export class Eva {
       this.cleanUpIfDue();
       // Apart from the tick: it waits for the sync queue, which a slow push can hold for minutes.
       this.inBackground("The location write", () => this.writeLocationIfDue());
+      // On every computer, not only the hub: each one has its own copies and approvals (#693).
+      const widgets = this.widgets;
+      if (widgets !== null) this.inBackground("The widget update check", () => widgets.checkUpdates());
       this.noticeDefaultEngine();
       // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
       // its download can take minutes, and the next ticks must still fetch the vault.

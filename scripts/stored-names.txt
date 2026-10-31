@@ -93,6 +93,8 @@ machine config.json voice.language
 machine config.json voice.modelPath
 machine config.json voice.vadModelPath
 machine config.json voice.whisperExecutable
+machine config.json widgets
+machine config.json widgets.checkIntervalMinutes
 machine secrets.json claudeOauthToken
 machine secrets.json githubToken
 machine secrets.json googleOauthClientId
@@ -262,6 +264,18 @@ machine state/widget-approvals.json approvals[].size=medium
 machine state/widget-approvals.json approvals[].size=small
 machine state/widget-approvals.json version
 machine state/widget-approvals.json version=1
+machine state/widget-updates.json version
+machine state/widget-updates.json version=1
+machine state/widget-updates.json widgets
+machine state/widget-updates.json widgets[].checkedAt
+machine state/widget-updates.json widgets[].refused
+machine state/widget-updates.json widgets[].repository
+machine state/widget-updates.json widgets[].waiting
+machine state/widget-updates.json widgets[].waiting.commit
+machine state/widget-updates.json widgets[].waiting.foundAt
+machine state/widget-updates.json widgets[].waiting.notes
+machine state/widget-updates.json widgets[].waiting.permissions
+machine state/widget-updates.json widgets[].waiting.reasons
 migration machine 2026-10-18-copy-security-settings-from-vault
 migration machine 2026-10-18-move-shared-settings-to-vault
 migration machine 2026-10-20-google-access-per-service
@@ -374,6 +388,7 @@ vault .eva/settings/settings.json updates.install=major
 vault .eva/settings/settings.json updates.install=minor
 vault .eva/settings/settings.json updates.install=patch
 vault .eva/settings/settings.json voice.language
+vault .eva/settings/settings.json widgets.checkIntervalMinutes
 vault .eva/template.json eva
 vault .eva/template.json parts
 vault .eva/template.json parts{}.installed

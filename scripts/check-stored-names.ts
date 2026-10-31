@@ -35,6 +35,7 @@ import { cliCommands, switches, valueOptions } from "../src/frontends/cli/argume
 import { commands as telegramCommands } from "../src/frontends/telegram/telegram-bot.ts";
 import { approvalsFileSchema } from "../src/core/widgets/widget-approvals.ts";
 import { dataFormatRecordSchema } from "../src/core/widgets/data-format-writer.ts";
+import { widgetUpdatesFileSchema } from "../src/core/widgets/widget-updates.ts";
 import { widgetListVersion, type widgetEntrySchema } from "../src/core/widgets/widget-list.ts";
 
 const snapshotPath = join(import.meta.dir, "stored-names.txt");
@@ -193,6 +194,7 @@ export function currentNames(): string[] {
     ].map((name) => `vault .eva/widgets.json ${name}`),
     ...schemaNames(approvalsFileSchema).map((name) => `machine state/widget-approvals.json ${name}`),
     ...schemaNames(dataFormatRecordSchema).map((name) => `machine state/data-formats.json ${name}`),
+    ...schemaNames(widgetUpdatesFileSchema).map((name) => `machine state/widget-updates.json ${name}`),
     ...schemaNames(oldLocationFileSchema).map((name) => `machine state/location.json ${name}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
     ...telegramCommands.map((entry) => `typed telegram /${entry.command}`),

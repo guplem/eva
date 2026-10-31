@@ -733,6 +733,9 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
   if (parts.length === 2 && method === "POST")
     return json(widgets.add(widgetAddSchema.parse(await request.json()).repository), 201);
   if (parts.length === 3 && parts[2] === "check" && method === "POST") return json(await widgets.reviewAll(ownHosts));
+  // "Check for updates": every widget at once, whatever its interval (#693).
+  if (parts.length === 3 && parts[2] === "updates" && method === "POST")
+    return json(await widgets.checkUpdates(true, ownHosts));
   if (parts.length === 3 && parts[2] === "frames" && method === "POST") {
     const { scheme, colors, keep } = widgetFramesSchema.parse(await request.json());
     return json(widgets.frames(widgetTheme(scheme, colors), keep));
@@ -750,6 +753,7 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
     const { commit, values, readOnly } = widgetApproveSchema.parse(await request.json());
     return json(await widgets.approve(id, commit, values, ownHosts, readOnly === true));
   }
+  if (action === "refuse" && method === "POST") return json(widgets.refuseUpdate(id));
   if (action === "enabled" && method === "PUT")
     return json(widgets.setEnabled(id, widgetEnabledSchema.parse(await request.json()).enabled));
   if (action === "move" && method === "POST")

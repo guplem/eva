@@ -52,6 +52,8 @@ function evaWith(vaultPath: string | null): Eva {
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
     widgetRemote: () => sandbox.remote,
+    // The notes of an update come from GitHub: a test reaches no network.
+    githubRequest: () => Promise.resolve({ status: 404, body: "" }),
   });
 }
 
@@ -154,6 +156,29 @@ describe("the widget list", () => {
     expect((await call(`/api/widgets/${id}`, { method: "DELETE" })).status).toBe(200);
     expect(JSON.parse(readFileSync(join(vault, ".eva/widgets.json"), "utf-8"))).toEqual({ version: 1, widgets: [] });
     expect(existsSync(join(vault, "Life/Habits/walk.json"))).toBe(true);
+  });
+
+  test("checks for updates at once, raises a notice for a new permission, and keeps the old version on a refusal", async () => {
+    await approvedSrc();
+    const work = sandbox.clone("again");
+    sandbox.write(
+      work,
+      "eva-widget.json",
+      JSON.stringify({ ...manifest, hosts: [...manifest.hosts, { url: "https://rain.example.com", why: "Rain." }] }),
+    );
+    sandbox.git(work, "commit", "-q", "-am", "feat: rain");
+    sandbox.git(work, "push", "-q", "origin", "main");
+    const checked = (await (await call("/api/widgets/updates", { method: "POST" })).json()) as {
+      update: { permissions: string[] } | null;
+    }[];
+    expect(checked[0]?.update?.permissions).toEqual(["Send requests to https://rain.example.com."]);
+    expect(eva.status().problems.join(" ")).toContain("https://rain.example.com");
+    const refused = (await (await call(`/api/widgets/${id}/refuse`, { method: "POST" })).json()) as {
+      update: unknown;
+    }[];
+    expect(refused[0]?.update).toBeNull();
+    expect(eva.status().problems.join(" ")).not.toContain("https://rain.example.com");
+    expect((await call(`/api/widgets/${id}/refuse`, { method: "POST" })).status).toBe(400);
   });
 
   test("approves with read access only, for a conflict of the data format", async () => {

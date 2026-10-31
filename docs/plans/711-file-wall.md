@@ -20,3 +20,17 @@ The issue holds the decisions and the assumptions. This plan maps them to the co
 4. Glob and Grep: which arguments name a folder, and must Eva check the files that they return?
 5. pi's file tools and their path arguments.
 6. Where the turn options of a Project chat are built for each engine, and every registration point of a new status item.
+
+## Decisions
+
+The three gap agents answered from the installed SDK (0.3.300) and Eva's code.
+
+- **The file tools:** an SDK `PreToolUse` hook callback refuses a call outside the area. A hook deny comes before the permission mode, so it holds under `bypassPermissions` too. `disableAllHooks` turns off the hooks of settings files and plugins only, so a specialist chat keeps the callback. A call inside the area gets no answer from the hook, and so keeps the behavior of its mode.
+- **The tool fields:** Read, Write and Edit name `file_path`. NotebookEdit names `notebook_path`. Glob names `pattern` and an optional `path`; an absolute pattern replaces `path`. Grep names `path`, and also takes `file_path`. This SDK has no MultiEdit tool.
+- **The path check** lives in `src/shared/path-area.ts`, so both engines and the core use it. It resolves a relative path against the start folder, follows each link of the part that exists, checks a new file by its nearest folder that exists, and folds case on Windows and macOS. A Glob pattern with `..`, or an absolute one outside the area, is refused.
+- **The sandbox writes:** writes are deny by default, and a `denyWrite` inside an `allowWrite` wins. So Eva does not deny the vault for writes: that would close the area too. A sandboxed command writes only to its start folder, the temporary folder and a short list of tool caches in the home folder. The whole home folder stays closed for writes: the default vault lives in it.
+- **The sandbox reads:** `denyRead` holds the vault and each extra project root, and `allowRead` holds the area.
+- **The network:** no setting keeps every host open. A host that no rule names goes to `canUseTool` as `SandboxNetworkAccess` in the default mode. Eva answers it with an allow in a Project chat, so `git push` and package installs work as before. `bypassPermissions` allows it by itself. `auto` asks its classifier.
+- **The switches:** `enabled: true`, `failIfUnavailable: false`, `allowUnsandboxedCommands: false`, `autoAllowBashIfSandboxed: false`.
+- **The status item:** the sandbox reports nothing in the stream. On Linux, Eva looks for `bwrap` and `socat`. On native Windows, the sandbox needs a feature gate and an admin step, so Eva counts it as off. An alert says so, with the reason. A pi chat never has a shell wall: the guide says so.
+- **pi:** the adapter checks `read`, `write`, `edit` and `ls` by `path`, and `find` and `grep` by `path` and their pattern, before it allows a tool call in project mode.

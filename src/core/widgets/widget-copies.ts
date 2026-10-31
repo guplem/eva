@@ -116,6 +116,15 @@ export class WidgetCopies {
     return commit;
   }
 
+  /**
+   * True when git ignores the file in this work folder, such as a `.env` of a clone (#693). A
+   * failed check counts as ignored, so a preview never serves a file that it could not check.
+   */
+  async ignoredIn(folder: string, path: string): Promise<boolean> {
+    const checked = await this.git(folder, ["check-ignore", "-q", "--", path]);
+    return checked.exitCode !== 1;
+  }
+
   /** The text of a file at a fetched commit, or null when the commit has no such file. */
   async readAt(address: WidgetAddress, commit: string, path: string): Promise<string | null> {
     if (!commitPattern.test(commit)) return null;

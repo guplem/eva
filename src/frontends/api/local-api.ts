@@ -314,6 +314,19 @@ const widgetApproveSchema = z.object({
   /** True after a format conflict: each input with a conflict gets read access only (#692). */
   readOnly: z.boolean().optional(),
 });
+/** The preview of a widget from a clone of its project (#693). */
+const widgetPreviewSchema = z.object({
+  project: z.string().min(1).max(200),
+  clone: z.string().min(1).max(100),
+  repository: z.string().min(1).max(200),
+  mode: z.enum(["example", "mine"]),
+  scheme: z.enum(["light", "dark"]),
+  colors: z.record(z.string().max(40), z.string().max(200)).default({}),
+});
+const widgetPreviewApproveSchema = widgetPreviewSchema.omit({ mode: true }).extend({
+  digest: z.string().min(1).max(100),
+  values: z.record(z.string().max(100), widgetInputValueSchema),
+});
 const widgetEnabledSchema = z.object({ enabled: z.boolean() });
 const widgetMoveSchema = z.object({ direction: z.enum(["up", "down"]) });
 /** The core refuses a larger write too; this check stops it before Eva reads the body. */
@@ -739,6 +752,15 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
   if (parts.length === 3 && parts[2] === "frames" && method === "POST") {
     const { scheme, colors, keep } = widgetFramesSchema.parse(await request.json());
     return json(widgets.frames(widgetTheme(scheme, colors), keep));
+  }
+  if (parts.length === 3 && parts[2] === "preview" && method === "POST") {
+    const { mode, scheme, colors, ...place } = widgetPreviewSchema.parse(await request.json());
+    return json(await widgets.preview(place, mode, widgetTheme(scheme, colors), ownHosts));
+  }
+  // A POST of four parts is no widget route of its own: the widget id routes take DELETE only.
+  if (parts.length === 4 && parts[2] === "preview" && parts[3] === "approve" && method === "POST") {
+    const { digest, values, scheme, colors, ...place } = widgetPreviewApproveSchema.parse(await request.json());
+    return json(await widgets.approvePreview(place, digest, values, widgetTheme(scheme, colors), ownHosts));
   }
   if (parts.length === 4 && parts[2] === "frames" && parts[3] === "release" && method === "POST") {
     widgets.release(widgetReleaseSchema.parse(await request.json()).tokens);

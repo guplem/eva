@@ -124,6 +124,8 @@ export interface HomePaths {
   readonly dataFormats: string;
   /** The update checks of the widgets on this computer, and each update that waits for the person (#693). */
   readonly widgetUpdates: string;
+  /** What the person approved for the preview of each clone (#693), apart from the approved records. */
+  readonly widgetPreviews: string;
 }
 
 export function homePaths(root: string): HomePaths {
@@ -157,6 +159,7 @@ export function homePaths(root: string): HomePaths {
     widgetApprovals: join(stateFolder, "widget-approvals.json"),
     dataFormats: join(stateFolder, "data-formats.json"),
     widgetUpdates: join(stateFolder, "widget-updates.json"),
+    widgetPreviews: join(stateFolder, "widget-previews.json"),
   };
 }
 

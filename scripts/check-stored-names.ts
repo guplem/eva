@@ -36,6 +36,7 @@ import { commands as telegramCommands } from "../src/frontends/telegram/telegram
 import { approvalsFileSchema } from "../src/core/widgets/widget-approvals.ts";
 import { dataFormatRecordSchema } from "../src/core/widgets/data-format-writer.ts";
 import { widgetUpdatesFileSchema } from "../src/core/widgets/widget-updates.ts";
+import { previewGrantSchema, widgetPreviewsVersion } from "../src/core/widgets/widget-previews.ts";
 import { widgetListVersion, type widgetEntrySchema } from "../src/core/widgets/widget-list.ts";
 
 const snapshotPath = join(import.meta.dir, "stored-names.txt");
@@ -195,6 +196,15 @@ export function currentNames(): string[] {
     ...schemaNames(approvalsFileSchema).map((name) => `machine state/widget-approvals.json ${name}`),
     ...schemaNames(dataFormatRecordSchema).map((name) => `machine state/data-formats.json ${name}`),
     ...schemaNames(widgetUpdatesFileSchema).map((name) => `machine state/widget-updates.json ${name}`),
+    ...[
+      "version",
+      `version=${String(widgetPreviewsVersion)}`,
+      "previews",
+      // The keys of `values` and `schemas` are input ids and schema paths of a widget, not names of Eva.
+      "previews[].values",
+      "previews[].schemas",
+      ...schemaNames(previewGrantSchema.omit({ values: true, schemas: true })).map((name) => `previews[].${name}`),
+    ].map((name) => `machine state/widget-previews.json ${name}`),
     ...schemaNames(oldLocationFileSchema).map((name) => `machine state/location.json ${name}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
     ...telegramCommands.map((entry) => `typed telegram /${entry.command}`),

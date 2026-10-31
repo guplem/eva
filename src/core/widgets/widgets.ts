@@ -20,13 +20,12 @@ import {
   type WidgetApproval,
   type WidgetApprovals,
 } from "./widget-approvals.ts";
-import { checkManifest, checkWidget, manifestPath, type WidgetInput, type WidgetManifest } from "./widget-contract.ts";
+import { checkManifest, manifestPath, type WidgetInput, type WidgetManifest } from "./widget-contract.ts";
 import type { WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
-import { isPlainName } from "./widget-places.ts";
-import { checkValues } from "./widget-values.ts";
+import { checkValues, inspectFiles } from "./widget-values.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
 import type { DataFormatRecord } from "./data-format-writer.ts";
 import type { FormatConflict } from "./data-formats.ts";
@@ -37,6 +36,13 @@ import type { GithubRequest } from "../projects/repository-facts.ts";
 import { grantChange, readOnlyFallbacks, type GrantChange, type WidgetGrant } from "./widget-changes.ts";
 import { releaseNotes } from "./widget-notes.ts";
 import type { WaitingUpdate, WidgetUpdates } from "./widget-updates.ts";
+import {
+  PreviewGrants,
+  WidgetPreviews,
+  type PreviewMode,
+  type PreviewPlace,
+  type WidgetPreview,
+} from "./widget-previews.ts";
 
 export interface WidgetsOptions {
   readonly vaultPath: string;
@@ -62,6 +68,8 @@ export interface WidgetsOptions {
     /** True while an Assistant or specialist chat runs a turn in the vault. */
     readonly vaultBusy: () => boolean;
   };
+  /** What the person approved for the preview of each clone (#693). Without it, only until a restart. */
+  readonly previewGrants?: PreviewGrants;
   /** The updates (#693). Without them, this Eva checks no update. */
   readonly updates?: {
     readonly state: WidgetUpdates;
@@ -168,6 +176,7 @@ export class Widgets {
   /** The widgets whose copy switches to a new commit now: their files wait. */
   private readonly installing: Set<string>;
   private checking: Promise<void> | null;
+  private readonly previews: WidgetPreviews;
 
   constructor(options: WidgetsOptions) {
     this.options = options;
@@ -184,6 +193,39 @@ export class Widgets {
       isHub: options.formats?.isHub ?? (() => false),
       notify: options.formats?.notify ?? (() => undefined),
     });
+    this.previews = new WidgetPreviews({
+      vaultPath: options.vaultPath,
+      approvals: options.approvals,
+      copies: options.copies,
+      grants: options.previewGrants ?? new PreviewGrants(null),
+      projects: options.projects,
+      location: options.location,
+      exclusive: options.exclusive,
+      redact: options.redact,
+      now: options.now,
+      wrote: (path) => this.formats.wrote(path),
+    });
+  }
+
+  /** Opens the preview of a widget from a clone of its project (#693). */
+  preview(
+    place: PreviewPlace,
+    mode: PreviewMode,
+    theme: WidgetTheme,
+    ownHosts: readonly string[],
+  ): Promise<WidgetPreview> {
+    return this.previews.open(place, mode, theme, ownHosts);
+  }
+
+  /** Approves "My data" for the preview of a clone. The installed widget gets nothing from it. */
+  approvePreview(
+    place: PreviewPlace,
+    digest: string,
+    values: Readonly<Record<string, WidgetInputValue>>,
+    theme: WidgetTheme,
+    ownHosts: readonly string[],
+  ): Promise<WidgetPreview> {
+    return this.previews.approve(place, digest, values, theme, ownHosts);
   }
 
   /** The list of the settings: the vault entries, then each widget project, then each base widget. */
@@ -244,30 +286,8 @@ export class Widgets {
   /** Checks the manifest, its schemas and its hosts at a fetched commit, and compares it with the approval. */
   private async inspect(address: WidgetAddress, commit: string, ownHosts: readonly string[]): Promise<WidgetReview> {
     const id = address.id;
-    const manifestText = await this.options.copies.readAt(address, commit, manifestPath);
-    const parsed = manifestText === null ? null : checkManifest(manifestText);
-    const files = new Map<string, string | null>([[manifestPath, manifestText]]);
-    for (const input of parsed?.manifest?.inputs ?? []) {
-      if (input.schema !== undefined)
-        files.set(input.schema, await this.options.copies.readAt(address, commit, input.schema));
-    }
-    const check = checkWidget((path) => files.get(path) ?? null);
-    const manifest = parsed?.manifest ?? null;
-    const problems = [...check.manifest, ...check.schemas];
-    if (manifest !== null) {
-      for (const host of manifest.hosts) {
-        const hostCheck = checkHost(host.url, ownHosts);
-        if (!hostCheck.ok) problems.push(hostCheck.reason);
-      }
-      if ((await this.options.copies.readAt(address, commit, manifest.entry)) === null)
-        problems.push(`The page ${manifest.entry} of the manifest is missing.`);
-      // The widget route answers `data/` and `eva/` itself, and never serves a hidden file.
-      const [top = ""] = manifest.entry.split("/");
-      if (!manifest.entry.split("/").every(isPlainName) || ["data", "eva"].includes(top.toLowerCase()))
-        problems.push(
-          `Eva cannot serve the page ${manifest.entry}. Put the page outside data/ and eva/, with no hidden name.`,
-        );
-    }
+    const check = await inspectFiles((path) => this.options.copies.readAt(address, commit, path), ownHosts);
+    const { manifest, problems } = check;
     const entry = readWidgetList(this.options.vaultPath).find((candidate) => candidate.id === id);
     const record = this.options.approvals.get(id);
     const shown = problems.length === 0 ? manifest : null;
@@ -462,6 +482,8 @@ export class Widgets {
   }
 
   private async checkAll(force: boolean, ownHosts: readonly string[]): Promise<void> {
+    // What the person approved for a preview goes with its clone.
+    this.previews.prune();
     const updates = this.options.updates;
     if (updates === undefined) return;
     const own = new Set(this.projectAddresses().map((address) => address.id));
@@ -759,15 +781,18 @@ export class Widgets {
   /** Ends the tokens of a page that closes. */
   release(tokens: readonly string[]): void {
     for (const token of tokens) this.sessions.delete(token);
+    this.previews.release(tokens);
   }
 
-  /** True while the token works: its widget is on, approved and unchanged. */
+  /** True while the token works: its widget is on, approved and unchanged, or its preview is open. */
   isLive(token: string): boolean {
+    if (this.previews.has(token)) return this.previews.isLive(token);
     return this.liveSession(token) !== null;
   }
 
   /** The approved hosts of a token, for the policy of its answers. It reads no vault file: each answer needs it. */
   hostsOf(token: string): readonly string[] {
+    if (this.previews.has(token)) return this.previews.hostsOf(token);
     const session = this.sessions.get(token);
     return session === undefined ? [] : (this.options.approvals.get(session.id)?.hosts ?? []);
   }
@@ -777,6 +802,7 @@ export class Widgets {
    * decoded part after the token. A contract path never falls through to the copy's mock files.
    */
   async serve(token: string, path: string, method: string, body: Uint8Array | null): Promise<WidgetAnswer | null> {
+    if (this.previews.has(token)) return this.previews.serve(token, path, method, body);
     const live = this.liveSession(token);
     if (live === null) return null;
     const { session, record, entry, address } = live;

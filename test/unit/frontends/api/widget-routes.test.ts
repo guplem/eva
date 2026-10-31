@@ -242,6 +242,41 @@ describe("the widget list", () => {
   });
 });
 
+describe("the preview of a clone", () => {
+  test("serves a change that is not pushed, in a frame with the widget policy, and asks before My data", async () => {
+    const project = "2026-01-01-0900-habits";
+    const projectFolder = join(vault, "Projects", project);
+    mkdirSync(join(projectFolder, "repos", "clone-0"), { recursive: true });
+    writeFileSync(
+      join(projectFolder, "AGENTS.md"),
+      `---\ncreated: 2026-01-01T09:00\nstatus: active\nrepos:\n  - https://github.com/example-owner/habits\nrepo_types:\n  https://github.com/example-owner/habits: widget\n---\n\n# Habits\n`,
+    );
+    sandbox.git(join(projectFolder, "repos", "clone-0"), "clone", "-q", sandbox.remote, "habits");
+    writeFileSync(join(projectFolder, "repos", "clone-0", "habits", "index.html"), "<p>not pushed</p>");
+    const place = { project, clone: "clone-0", repository: "habits", scheme: "dark", colors: {} };
+    const preview = (await (
+      await call("/api/widgets/preview", { method: "POST", body: { ...place, mode: "example" } })
+    ).json()) as { src: string; problems: string[] };
+    expect(preview.problems).toEqual([]);
+    const page = await frameCall(preview.src);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toBe("<p>not pushed</p>");
+    expect(page.headers.get("content-security-policy") ?? "").toContain("https://api.example.com");
+    const mine = (await (
+      await call("/api/widgets/preview", { method: "POST", body: { ...place, mode: "mine" } })
+    ).json()) as { src: string | null; ask: { digest: string } | null };
+    expect(mine.src).toBeNull();
+    const approved = await call("/api/widgets/preview/approve", {
+      method: "POST",
+      body: { ...place, digest: mine.ask?.digest, values: { habits: "Life/Habits" } },
+    });
+    const shown = (await approved.json()) as { src: string };
+    expect((await frameCall(shown.src.replace(/index\.html$/, "config.json"))).status).toBe(200);
+    // The approval of a preview stays apart from the vault list.
+    expect(existsSync(join(vault, ".eva/widgets.json"))).toBe(false);
+  });
+});
+
 describe("the widget files", () => {
   test("serve the approved widget with its policy, no referrer and no cookie", async () => {
     const src = await approvedSrc();

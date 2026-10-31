@@ -195,6 +195,7 @@ import { WidgetCopies } from "./widgets/widget-copies.ts";
 import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format-writer.ts";
 import { Widgets } from "./widgets/widgets.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
+import { PreviewGrants } from "./widgets/widget-previews.ts";
 
 /** The person's facts as the web page reads them. */
 export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
@@ -819,6 +820,7 @@ export class Eva {
               // With sync off, Eva takes no snapshot, so a write during a turn changes no undo.
               vaultBusy: () => options.config.sync.enabled && this.vaultTurnRunning(),
             },
+            previewGrants: new PreviewGrants(options.paths.widgetPreviews),
             updates: {
               state: new WidgetUpdates(options.paths.widgetUpdates),
               // Read at each check, so a new interval applies with no restart.

@@ -540,6 +540,36 @@ describe("VaultSync.pull", () => {
 });
 
 describe("VaultSync safety", () => {
+  test("runs an edit of Eva's own only between two sync steps (#689)", async () => {
+    const order: string[] = [];
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runner: ProcessRunner = {
+      run: async (command, options) => {
+        if (order.length === 0) {
+          order.push("git starts");
+          await held;
+          order.push("git ends");
+        }
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const sync = createSync(vault, { runner });
+    const pulled = sync.pull();
+    const edited = sync.exclusive(() => {
+      order.push("edit");
+      return "done";
+    });
+    await Bun.sleep(20);
+    expect(order).toEqual(["git starts"]);
+    release();
+    await pulled;
+    expect(await edited).toBe("done");
+    expect(order).toEqual(["git starts", "git ends", "edit"]);
+  });
+
   test("aborts a rebase that a crash left open, logs it, then saves (lesson 22)", async () => {
     stopRebaseOnRemote();
     const logged: string[] = [];

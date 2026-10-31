@@ -26,9 +26,9 @@ import { stepDetailsFileSchema } from "../src/core/sessions/step-details-store.t
 import { configSchema, secretsSchema } from "../src/core/settings/home.ts";
 import { isSharedSettingKey } from "../src/core/settings/settings.ts";
 import { commitChange } from "../src/core/updates/release-version.ts";
-import { storedLocationSchema } from "../src/core/location/last-location.ts";
+import { oldLocationFileSchema } from "../src/core/location/last-location.ts";
 import { templateRecordFormatVersion, type RecordedPart } from "../src/core/vault/template-alignment.ts";
-import { aboutMeHeaderKeys } from "../src/core/vault/about-me.ts";
+import { aboutMeHeaderKeys, lastLocationKey, type LastLocation } from "../src/core/vault/about-me.ts";
 import { cliCommands, switches, valueOptions } from "../src/frontends/cli/arguments.ts";
 import { commands as telegramCommands } from "../src/frontends/telegram/telegram-bot.ts";
 
@@ -113,6 +113,13 @@ const templatePartFields = Object.keys({ installed: true, kept: true, updatedAt:
   keyof RecordedPart,
   true
 >);
+const lastLocationFields = Object.keys({
+  latitude: true,
+  longitude: true,
+  accuracy: true,
+  at: true,
+  source: true,
+} satisfies Record<keyof LastLocation, true>);
 const deviceFields = Object.keys({ hash: true, label: true, createdAt: true } satisfies Record<
   keyof StoredDevice,
   true
@@ -162,7 +169,10 @@ export function currentNames(): string[] {
     ].map((name) => `vault .eva/template.json ${name}`),
     // A line of the snapshot is three words, so the path of the note drops its space.
     ...aboutMeHeaderKeys.map((key) => `vault Life/About-me.md ${key}`),
-    ...schemaNames(storedLocationSchema).map((name) => `machine state/location.json ${name}`),
+    ...[...lastLocationFields, "source=telegram", "source=web"].map(
+      (field) => `vault Life/About-me.md ${lastLocationKey}.${field}`,
+    ),
+    ...schemaNames(oldLocationFileSchema).map((name) => `machine state/location.json ${name}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
     ...telegramCommands.map((entry) => `typed telegram /${entry.command}`),
     ...migrations.map((migration) => `migration ${migration.store} ${migration.id}`),

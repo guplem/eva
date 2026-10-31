@@ -33,9 +33,11 @@ export class VaultTurns {
     await this.vaultSync.snapshot(turnSnapshotRef(session.id, turnIndex, "before"));
   }
 
-  async after(session: SessionRecord): Promise<void> {
+  /** `beforeSnapshot` writes the mode's own edits that waited for the turn, so an undo of the turn undoes them too. */
+  async after(session: SessionRecord, beforeSnapshot?: () => Promise<void> | undefined): Promise<void> {
     const turnIndex = this.turnBySession.get(session.id);
     this.turnBySession.delete(session.id);
+    await beforeSnapshot?.();
     if (turnIndex !== undefined) await this.vaultSync.snapshot(turnSnapshotRef(session.id, turnIndex, "after"));
     await this.vaultSync.save();
   }

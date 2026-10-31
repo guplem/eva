@@ -9,6 +9,7 @@ import type { UpdateStatus } from "../updates/updater.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
 import type { AlertProblem, OpenAlert } from "./alert-center.ts";
 import type { VaultAhead } from "../migrations/migrations.ts";
+import type { LocationWrite } from "../location/last-location.ts";
 
 const dayMs = 24 * 60 * 60_000;
 
@@ -247,4 +248,30 @@ export function relayedProblem(
 /** An error text ends with its own period, and a message puts its own after it. */
 function withoutFinalPeriod(text: string): string {
   return text.replace(/\.+$/, "");
+}
+
+/** The hub cannot save the person's location in `Life/About me.md`. It keeps the point in memory. */
+export function lastLocationProblem(outcome: LocationWrite): AlertProblem | null | "keep" {
+  if (outcome === "waiting") return "keep";
+  if (outcome === "written" || outcome === "nothing" || outcome === "not_due") return null;
+  const why =
+    outcome === "no_note"
+      ? "Life/About me.md is missing"
+      : "Eva cannot set lastLocation in the header of Life/About me.md, as the header is broken or has the key twice";
+  return locationProblem(`${why}. Ask the Assistant to fix the note.`);
+}
+
+/** Eva could not write the note, such as when another program locks it. */
+export function lastLocationWriteProblem(reason: string): AlertProblem {
+  return locationProblem(
+    `Eva could not write Life/About me.md: ${withoutFinalPeriod(reason)}. Close a program that keeps the note open.`,
+  );
+}
+
+function locationProblem(what: string): AlertProblem {
+  return {
+    level: "warn",
+    message: `Eva cannot save your location: ${what} Eva keeps the location until then.`,
+    resolvedMessage: "Eva saves your location in Life/About me.md again.",
+  };
 }

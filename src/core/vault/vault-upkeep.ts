@@ -143,6 +143,12 @@ export class VaultUpkeep {
     return { ...result, state: this.logSyncState(result.state) };
   }
 
+  /** Runs an edit of Eva's own between two sync steps. With no vault sync, it runs at once. */
+  exclusive<Result>(work: () => Result): Promise<Result> {
+    const vaultSync = this.options.vaultSync;
+    return vaultSync === null ? Promise.resolve().then(work) : vaultSync.exclusive(work);
+  }
+
   /** Saves the files of the vault under a hidden ref, before and after an Assistant turn. With sync off, Eva runs no git step of her own. */
   async snapshot(ref: string): Promise<void> {
     if (this.options.syncEnabled()) await this.options.vaultSync?.snapshot(ref);

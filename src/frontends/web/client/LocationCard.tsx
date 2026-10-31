@@ -127,7 +127,7 @@ export function LocationCard({ context }: { readonly context: SettingsContext })
     <Card
       item="location"
       title="Your location"
-      description="Scripts such as a weather forecast use your last location. Eva keeps it on this computer, never in the vault."
+      description="Scripts such as a weather forecast use your last location. Eva keeps it in Life/About me.md, so each computer sees it."
     >
       {state === undefined ? (
         <ProgressBar label="Eva reads your location…" />

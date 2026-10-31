@@ -6,6 +6,8 @@ import {
   engineMissingProblem,
   engineRestartProblem,
   engineUpdateProblem,
+  lastLocationProblem,
+  lastLocationWriteProblem,
   relayedProblem,
   updateProblem,
   vaultErrorAlertSteps,
@@ -276,4 +278,24 @@ test("the relayed update check warning reads as one clear notice (#541)", () => 
   expect(relayedProblem("laptop", "desktop", ".eva/machines/laptop.json", { key: "update", ...problem }).message).toBe(
     "On laptop: Eva could not check for updates for 2 hours or more. The last error: GitHub could not be reached. She tries again within an hour. To try now, open Settings, Updates. Fix it in Eva on laptop, not on desktop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
   );
+});
+
+describe("lastLocationProblem", () => {
+  test("says why the location is not saved, and what to do", () => {
+    expect(JSON.stringify(lastLocationProblem("no_note"))).toContain("Life/About me.md is missing");
+    expect(JSON.stringify(lastLocationProblem("broken_note"))).toContain(
+      "cannot set lastLocation in the header of Life/About me.md",
+    );
+    expect(lastLocationProblem("no_note")).toMatchObject({ level: "warn" });
+    expect(lastLocationWriteProblem("EPERM: operation not permitted.").message).toBe(
+      "Eva cannot save your location: Eva could not write Life/About me.md: EPERM: operation not permitted. Close a program that keeps the note open. Eva keeps the location until then.",
+    );
+  });
+
+  test("clears after a write, and keeps the state while Eva waits", () => {
+    expect(lastLocationProblem("written")).toBeNull();
+    expect(lastLocationProblem("nothing")).toBeNull();
+    expect(lastLocationProblem("not_due")).toBeNull();
+    expect(lastLocationProblem("waiting")).toBe("keep");
+  });
 });

@@ -18,6 +18,11 @@ describe("notificationTopic", () => {
     expect(topic.meaning).toContain("does not run");
   });
 
+  test("explains why Eva cannot save the location (#689)", () => {
+    expect(notificationTopic("last_location").title).toBe("Your location");
+    expect(notificationTopic("last_location").meaning).toContain("Life/About me.md");
+  });
+
   test("picks the topic by the key's kind, never by the id after it", () => {
     expect(notificationTopic("engine_login:pi").title).toBe(notificationTopic("engine_login:claude-code").title);
     expect(notificationTopic("schedule:a").title).toBe("Schedule run");

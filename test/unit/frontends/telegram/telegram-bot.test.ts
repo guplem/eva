@@ -114,6 +114,8 @@ beforeEach(() => {
   sandbox = createGitSandbox();
   const vault = sandbox.clone("vault");
   sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
+  // A shared location goes into this note. With no note, a problem alert would reach the chat.
+  sandbox.write(vault, "Life/About me.md", "---\nname: Alex\n---\n");
   sandbox.git(vault, "add", "-A");
   sandbox.git(vault, "commit", "-q", "-m", "eva");
   sandbox.git(vault, "push", "-q", "origin", "main");
@@ -2598,11 +2600,11 @@ describe("files (lessons 72, 74, 124)", () => {
     telegram.sendMessageWith(owner, { location: { latitude: 41.39, longitude: 2.17, live_period: 3600 } });
     await settle(bot, () => telegram.sentTexts().length === 1);
     expect(telegram.sentTexts()[0]).toContain("while you share it");
-    expect(eva.currentPlace()).toMatchObject({ lat: 41.39, lon: 2.17, source: "telegram" });
+    expect(eva.currentPlace()).toMatchObject({ latitude: 41.39, longitude: 2.17, source: "telegram" });
     // Eva keeps one point every 15 minutes, so the next move counts only after that.
     clock = new Date(clock.getTime() + 16 * 60_000);
     telegram.editMessageWith(owner, { location: { latitude: 41.4, longitude: 2.18, horizontal_accuracy: 12 } });
-    await settle(bot, () => eva.currentPlace()?.lat === 41.4);
+    await settle(bot, () => eva.currentPlace()?.latitude === 41.4);
     expect(telegram.sentTexts()).toHaveLength(1);
     expect(engine.requests).toEqual([]);
   });
@@ -2615,7 +2617,7 @@ describe("files (lessons 72, 74, 124)", () => {
     telegram.sendMessageWith(owner, { location: { latitude: 40.4, longitude: -3.7 } });
     await settle(bot, () => telegram.sentTexts().length === 3);
     expect(telegram.sentTexts()[1]).toBe("Eva cannot read places yet.");
-    expect(eva.currentPlace()).toMatchObject({ lat: 40.4, source: "telegram" });
+    expect(eva.currentPlace()).toMatchObject({ latitude: 40.4, source: "telegram" });
   });
 
   test("a location from a stranger never counts as the person's", async () => {

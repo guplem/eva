@@ -246,6 +246,14 @@ export class VaultSync {
   }
 
   /**
+   * Runs an edit of Eva's own, such as the last location, between two sync steps. A pull or a
+   * save moves and merges the files, so a write during one could get lost.
+   */
+  exclusive<Result>(work: () => Result): Promise<Result> {
+    return this.serialize(() => Promise.resolve().then(work));
+  }
+
+  /**
    * Saves the files of the vault as a commit with no parent under `ref`, for the undo of a retry
    * (#525). A temporary index builds the tree, so the real index never changes. Scratch and
    * withheld files stay out, as in a commit; the message lists them. False when git failed.

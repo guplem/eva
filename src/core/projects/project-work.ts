@@ -681,7 +681,8 @@ export class ProjectWork {
     const first = type?.firstChat === undefined || slug === null ? null : type.firstChat(slug);
     const request =
       first === null ? fixes : fixes === null ? first : `${first}\n\nThe setup also left these items:\n\n${fixes}`;
-    if (request === null) return { sessionId: null, problems };
+    // With no chat, the setup messages are the only place that names an open pull request.
+    if (request === null) return { sessionId: null, problems: [...problems, ...result.notes] };
     const session = await this.start({ projectId, request, reportToSessionId: null });
     return { sessionId: session.id, problems };
   }

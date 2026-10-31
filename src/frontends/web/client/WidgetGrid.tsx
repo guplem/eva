@@ -25,12 +25,16 @@ export function WidgetGrid(): ReactElement | null {
   const [full, setFull] = useState<WidgetFrame | null>(null);
   const tokens = useRef<readonly string[]>([]);
   const askedAt = useRef<number | null>(null);
+  // The number of the newest ask, so an older answer that comes late changes nothing.
+  const latest = useRef(0);
 
   /** `keep`: false after a change of the theme, so each frame loads again with the new colours. */
   const ask = useCallback((keep: boolean): void => {
     const style = getComputedStyle(document.documentElement);
     const shownScheme = currentScheme();
     askedAt.current = Date.now();
+    latest.current += 1;
+    const asked = latest.current;
     api
       .widgetFrames(
         shownScheme,
@@ -38,6 +42,14 @@ export function WidgetGrid(): ReactElement | null {
         keep ? tokens.current : [],
       )
       .then((next) => {
+        // A newer ask started since: its answer wins, or this one would keep tokens that it released.
+        if (asked !== latest.current) {
+          const unused = next.flatMap((frame) =>
+            frame.token === null || tokens.current.includes(frame.token) ? [] : [frame.token],
+          );
+          if (unused.length > 0) void api.releaseWidgetFrames(unused).catch(() => undefined);
+          return;
+        }
         const old = tokens.current.filter((token) => !next.some((frame) => frame.token === token));
         if (old.length > 0) void api.releaseWidgetFrames(old).catch(() => undefined);
         tokens.current = next.flatMap((frame) => (frame.token === null ? [] : [frame.token]));

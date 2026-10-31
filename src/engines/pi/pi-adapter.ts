@@ -465,7 +465,7 @@ function decide(request: TurnRequest, toolName: string, input: Record<string, un
   if (request.mode === "model-call") return Promise.resolve("deny");
   // A Project chat's file tools may not open a closed folder, such as the vault (#711). pi has no shell wall.
   const wall = request.fileWall;
-  const options = { patternKeys: piPatternFields[toolName] ?? [], write: piWriteTools.has(toolName) };
+  const options = { patternKeys: piPatternFields[toolName] ?? [], write: piWriteTools.has(toolName), dropsAt: true };
   if (wall !== null && wallRefusesCall(wall, request.startFolder, input, options)) return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
   if (request.mode === "project" || !asksThePerson(toolName, input)) return Promise.resolve("allow");

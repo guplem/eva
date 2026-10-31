@@ -99,14 +99,14 @@ function realFolder(folder: string): string | null {
 }
 /**
  * The path that a file tool opens, or null for one that it would expand into a place that a check
- * by text cannot follow, such as `~` for the home folder. pi drops a leading `@`.
+ * by text cannot follow, such as `~` for the home folder.
  */
 function toolPath(requested: string): string | null {
-  const path = withoutLongPrefix(requested.startsWith("@") ? requested.slice(1) : requested);
-  // A shell variable or a Windows one names a place that only the tool knows.
-  if (path.startsWith("~") || /^file:/i.test(path) || /\$[A-Za-z_{]/.test(path) || /%[^%\\/]+%/.test(path)) return null;
+  const path = withoutLongPrefix(requested);
+  if (path.startsWith("~") || /^file:/i.test(path)) return null;
   if (process.platform !== "win32") return path;
-  if (hasStream(path)) return null;
+  // A Windows variable names a place that only the tool knows. `D:x` starts at that drive's own current folder.
+  if (/%[^%\\/]+%/.test(path) || /^[A-Za-z]:(?![\\/])/.test(path) || hasStream(path)) return null;
   // Git Bash and pi write `C:\x` as `/c/x`.
   const drive = /^\/([A-Za-z])(\/|$)/.exec(path);
   return drive === null ? path : `${drive[1] ?? ""}:\\${path.slice(3)}`;
@@ -148,7 +148,8 @@ function walk(absolute: string, hops: number): { path: string; exists: boolean }
       continue;
     }
     if (!link) {
-      current = next;
+      // The real name, as the system stores it: Windows opens a short name such as `GUILLE~1` too.
+      current = realpathSync.native(next);
       continue;
     }
     const target = readlinkSync(next);
@@ -234,7 +235,12 @@ export function wallRefusesCall(
   wall: WallFolders,
   cwd: string,
   input: unknown,
-  options: { readonly patternKeys: readonly string[]; readonly write: boolean },
+  options: {
+    readonly patternKeys: readonly string[];
+    readonly write: boolean;
+    /** pi drops a leading `@` from a path. Claude Code opens the name as it is, so the check must too. */
+    readonly dropsAt: boolean;
+  },
 ): boolean {
   const fields = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   const strings = (value: unknown): string[] =>
@@ -242,7 +248,7 @@ export function wallRefusesCall(
   const paths = [
     ...pathKeys.flatMap((key) => strings(fields[key])),
     ...pathListKeys.flatMap((key) => strings(fields[key])),
-  ];
+  ].map((path) => (options.dropsAt && path.startsWith("@") ? path.slice(1) : path));
   return (
     paths.some((path) => wallRefusesPath(wall, path, cwd)) ||
     options.patternKeys

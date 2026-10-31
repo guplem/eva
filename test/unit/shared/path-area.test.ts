@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isProtectedInArea, wallRefusesPath, wallRefusesPattern } from "../../../src/shared/path-area.ts";
+import {
+  isProtectedInArea,
+  wallRefusesCall,
+  wallRefusesPath,
+  wallRefusesPattern,
+} from "../../../src/shared/path-area.ts";
 
 let root: string;
 let area: string;
@@ -127,9 +132,6 @@ describe("isInsideArea, after the review of #711", () => {
     expect(isInsideArea(area, "~/notes.md", area)).toBe(false);
     expect(isInsideArea(area, "~", area)).toBe(false);
     expect(isInsideArea(area, `file://${join(outside, "plan.md")}`, area)).toBe(false);
-    // pi drops a leading `@`, so the path after it decides.
-    expect(isInsideArea(area, `@${join(outside, "plan.md")}`, area)).toBe(false);
-    expect(isInsideArea(area, "@src/a.ts", area)).toBe(true);
   });
 });
 
@@ -172,11 +174,29 @@ describe("the wall: what a Project chat may not open (review of #711)", () => {
     expect(wallRefusesPath(wall(), join(tmpdir(), "x.txt"), area)).toBe(false);
   });
 
-  test("refuses a path that a tool expands, such as `$HOME` or `%USERPROFILE%`", () => {
-    expect(wallRefusesPath(wall(), "$HOME/x", area)).toBe(true);
-    expect(wallRefusesPath(wall(), "${HOME}/x", area)).toBe(true);
-    expect(wallRefusesPath(wall(), "%USERPROFILE%\\x", area)).toBe(true);
+  test("refuses `~`, which a tool expands, and keeps a `$` in a name as plain text", () => {
     expect(wallRefusesPath(wall(), "~/x", area)).toBe(true);
+    // A route file such as `$id.tsx` is a common name. No file tool expands `$HOME`.
+    expect(wallRefusesPath(wall(), "src/$id.tsx", area)).toBe(false);
+    expect(wallRefusesPath(wall(), "$HOME/x", area)).toBe(false);
+  });
+
+  test.skipIf(process.platform !== "win32")(
+    "on Windows, a variable and a path from a drive's own folder are refused",
+    () => {
+      expect(wallRefusesPath(wall(), "%USERPROFILE%\\x", area)).toBe(true);
+      expect(wallRefusesPath(wall(), "C:x", area)).toBe(true);
+    },
+  );
+
+  test("a leading `@` is a name for Claude Code and a prefix for pi, and each engine checks what it opens", () => {
+    if (!link(outside, join(area, "@v"))) return;
+    const options = { patternKeys: [], write: false };
+    expect(wallRefusesCall(wall(), area, { file_path: "@v/plan.md" }, { ...options, dropsAt: false })).toBe(true);
+    expect(wallRefusesCall(wall(), area, { path: `@${join(outside, "plan.md")}` }, { ...options, dropsAt: true })).toBe(
+      true,
+    );
+    expect(wallRefusesCall(wall(), area, { path: "@src/a.ts" }, { ...options, dropsAt: true })).toBe(false);
   });
 
   test("a pattern refuses a search from a folder that holds the vault", () => {

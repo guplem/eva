@@ -169,7 +169,7 @@ describe("the file wall, after the review of #711", () => {
     const options = buildQueryOptions(projectRequest(), "/bin/claude", "auto");
     expect(await decide(options, "mcp__files__read", { path: join(vault, "AGENTS.md") })).toBe("deny");
     expect(await decide(options, "mcp__files__read", { paths: ["src", join(vault, "AGENTS.md")] })).toBe("deny");
-    expect(await decide(options, "Read", { file_path: "$HOME/notes.md" })).toBe("deny");
+    expect(await decide(options, "Read", { file_path: "~/notes.md" })).toBe("deny");
     const answer = await wallHook(options)(
       {
         hook_event_name: "PreToolUse",

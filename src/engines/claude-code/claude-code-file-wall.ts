@@ -71,6 +71,7 @@ export function isOutsideWall(wall: FileWall, cwd: string, toolName: string, inp
   return wallRefusesCall(wall, cwd, input, {
     patternKeys: patternKeys[toolName] ?? [],
     write: writeTools.has(toolName),
+    dropsAt: false,
   });
 }
 

@@ -52,9 +52,12 @@ const contentTypes: Readonly<Record<string, string>> = {
 
 export class WidgetCopies {
   private readonly options: WidgetCopiesOptions;
+  /** The git work of each copy, one step after the other: two fetches in one folder fail on its lock. */
+  private readonly queues: Map<string, Promise<unknown>>;
 
   constructor(options: WidgetCopiesOptions) {
     this.options = options;
+    this.queues = new Map();
   }
 
   folderOf(address: WidgetAddress): string {
@@ -64,7 +67,11 @@ export class WidgetCopies {
   }
 
   /** Fetches the newest commit of the default branch, and returns its name. Nothing is checked out. */
-  async fetchNewest(address: WidgetAddress): Promise<string> {
+  fetchNewest(address: WidgetAddress): Promise<string> {
+    return this.oneAtATime(address, () => this.fetchNow(address));
+  }
+
+  private async fetchNow(address: WidgetAddress): Promise<string> {
     const folder = this.folderOf(address);
     if (!existsSync(join(folder, ".git"))) {
       mkdirSync(folder, { recursive: true });
@@ -99,7 +106,11 @@ export class WidgetCopies {
   }
 
   /** Checks out exactly this fetched commit, and removes every file that it does not hold. */
-  async install(address: WidgetAddress, commit: string): Promise<void> {
+  install(address: WidgetAddress, commit: string): Promise<void> {
+    return this.oneAtATime(address, () => this.installNow(address, commit));
+  }
+
+  private async installNow(address: WidgetAddress, commit: string): Promise<void> {
     if (!commitPattern.test(commit)) throw new EvaError("widget_invalid", "This is not a commit of the widget.");
     const folder = this.folderOf(address);
     const checkout = await this.git(folder, [
@@ -144,6 +155,18 @@ export class WidgetCopies {
       contentType: contentTypes[extension] ?? "application/octet-stream",
       body: readFileSync(join(root, ...segments)),
     };
+  }
+
+  private oneAtATime<Result>(address: WidgetAddress, work: () => Promise<Result>): Promise<Result> {
+    const before = this.queues.get(address.id) ?? Promise.resolve();
+    const run = before.then(work, work);
+    const settled = run.catch(() => undefined);
+    this.queues.set(address.id, settled);
+    // The queue of a copy that waits for nothing goes, so the map does not grow.
+    void settled.then(() => {
+      if (this.queues.get(address.id) === settled) this.queues.delete(address.id);
+    });
+    return run;
   }
 
   private git(cwd: string, args: readonly string[], timeoutMs = gitTimeoutMs): ReturnType<ProcessRunner["run"]> {

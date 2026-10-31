@@ -89,6 +89,14 @@ describe("WidgetCopies", () => {
     expect(copies.serveFile(address, "up/anything").status).toBe(404);
   });
 
+  test("two fetches of one widget at once both work, one after the other", async () => {
+    const first = commit({ "eva-widget.json": "{}" }, "one");
+    const both = await Promise.all([copies.fetchNewest(address), copies.fetchNewest(address)]);
+    expect(both).toEqual([first, first]);
+    await Promise.all([copies.install(address, first), copies.fetchNewest(address)]);
+    expect(copies.serveFile(address, "eva-widget.json").status).toBe(200);
+  });
+
   test("a failed fetch names the address, and a removal leaves no folder", async () => {
     const broken = new WidgetCopies({
       folder,

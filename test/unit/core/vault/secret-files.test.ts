@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   defaultSecretPatterns,
   isNeverEncrypted,
   parseSecretFiles,
+  readSecretFiles,
   SecretMatcher,
 } from "../../../../src/core/vault/secret-files.ts";
 
@@ -57,6 +61,17 @@ describe("the person's patterns (#707)", () => {
       added: ["Life/Health/**", "Notes/bank.md"],
       off: ["*.key"],
     });
+  });
+
+  test("a vault with no file of changes, or an unreadable one, changes nothing", () => {
+    const vault = mkdtempSync(join(tmpdir(), "eva-secret-files-"));
+    try {
+      expect(readSecretFiles(vault)).toEqual({ added: [], off: [] });
+      mkdirSync(join(vault, ".eva", "secret-files"), { recursive: true });
+      expect(readSecretFiles(vault)).toEqual({ added: [], off: [] });
+    } finally {
+      rmSync(vault, { recursive: true, force: true });
+    }
   });
 
   test("a pattern with a slash starts at the vault root, and a folder pattern covers its files", () => {

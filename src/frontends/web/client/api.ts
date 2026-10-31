@@ -547,6 +547,10 @@ export const api = {
   widgets: (): Promise<WidgetItem[]> => request("GET", "/api/widgets", undefined, { limit: quickRead }),
   /** Reads each manifest again, so the list shows each problem. Slow: it reads GitHub. */
   checkWidgets: (): Promise<WidgetItem[]> => request("POST", "/api/widgets/check"),
+  /** Checks every widget for a new commit now, and installs each update that asks for nothing new (#693). */
+  checkWidgetUpdates: (): Promise<WidgetItem[]> => request("POST", "/api/widgets/updates"),
+  /** Keeps the installed version of a widget whose update waits. */
+  refuseWidgetUpdate: (id: string): Promise<WidgetItem[]> => request("POST", `/api/widgets/${widgetPath(id)}/refuse`),
   addWidget: (repository: string): Promise<WidgetItem[]> => request("POST", "/api/widgets", { repository }),
   reviewWidget: (id: string): Promise<WidgetReview> => request("GET", `/api/widgets/${widgetPath(id)}/review`),
   approveWidget: (

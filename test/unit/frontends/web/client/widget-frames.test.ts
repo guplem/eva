@@ -26,7 +26,8 @@ describe("the grid's tokens", () => {
     });
   });
 
-  test("give the size in the address, and ask again after half an hour", () => {
+  test("give the size in the address, and ask again each minute, so an installed update shows soon", () => {
+    expect(frameRefreshMs).toBe(60_000);
     expect(frameAddress("/widgets/abc/index.html", "full")).toBe("/widgets/abc/index.html?size=full");
     expect(refreshDue(null, 0)).toBe(true);
     expect(refreshDue(1_000, 1_000 + frameRefreshMs - 1)).toBe(false);

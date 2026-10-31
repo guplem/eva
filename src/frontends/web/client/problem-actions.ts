@@ -2,7 +2,12 @@
 import type { VaultSyncState } from "./api.ts";
 
 export type ProblemAction =
-  "pick_version" | "open_schedules" | "open_settings" | "choose_template_version" | "open_claude_login";
+  | "pick_version"
+  | "open_schedules"
+  | "open_settings"
+  | "choose_template_version"
+  | "open_claude_login"
+  | "review_widget_update";
 
 export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   pick_version: "Pick a version",
@@ -10,6 +15,7 @@ export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   open_settings: "Open Settings",
   choose_template_version: "Choose a version",
   open_claude_login: "Open Settings",
+  review_widget_update: "Review the update",
 };
 
 const claudeLoginKey = "engine_login:claude-code";
@@ -31,6 +37,7 @@ export function problemAction(key: string, syncStatus: VaultSyncState["status"])
   if (key === "vault_sync" && syncStatus === "conflict") return "pick_version";
   if (key === "template_alignment") return "choose_template_version";
   if (key === claudeLoginKey) return "open_claude_login";
+  if (key.startsWith("widget_update:")) return "review_widget_update";
   return "open_settings";
 }
 

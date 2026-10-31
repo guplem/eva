@@ -271,6 +271,12 @@ export const searchEntries: readonly SearchEntry[] = [
     words: "home page grid habits weather add approve permissions repository turn on off",
   },
   {
+    item: "widget-updates",
+    section: "personalize",
+    title: "Widget updates",
+    words: "widget update new version check interval minutes hours own project install approve refuse",
+  },
+  {
     item: "composer-menu",
     section: "personalize",
     title: "Message box menu",
@@ -356,6 +362,12 @@ export const settingPlaces: readonly SettingPlace[] = [
     link: { section: "personalize", item: "widgets" },
   },
   { title: "Widget permissions", home: "machine", keys: [], link: { section: "personalize", item: "widgets" } },
+  {
+    title: "Widget update checks",
+    home: "vault",
+    keys: ["widgets.checkIntervalMinutes"],
+    link: { section: "personalize", item: "widget-updates" },
+  },
   { title: "The hub machine", home: "vault", keys: [], link: { section: "access", item: "machine" } },
   { title: "Voice note language", home: "vault", keys: ["voice.language"], link: null },
   { title: "Claude Code login", home: "machine", keys: [], link: { section: "engines", item: "claude-code" } },

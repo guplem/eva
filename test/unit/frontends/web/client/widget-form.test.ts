@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { WidgetManifest } from "../../../../../src/core/widgets/widget-contract.ts";
 import {
+  checkChoices,
+  updateCheckNote,
   formInputs,
   initialValues,
   isPickable,
@@ -108,5 +110,28 @@ describe("promptLine", () => {
     expect(promptLine(withSchema, { habits: "Life/Habits", notes: "Notes/a.md" })).toBe(
       "Habits data lives in Life/Habits. Read Life/Habits/DATA_FORMAT.md before you write. Habits data lives in Notes/a.md. Read Notes/DATA_FORMAT.md before you write.",
     );
+  });
+});
+
+describe("the update check choices", () => {
+  test("name each interval, and keep a value set by hand", () => {
+    expect(checkChoices(30).map((choice) => choice.label)).toEqual([
+      "5 minutes",
+      "15 minutes",
+      "30 minutes",
+      "1 hour",
+      "2 hours",
+      "6 hours",
+      "12 hours",
+      "1 day",
+    ]);
+    expect(checkChoices(45).map((choice) => choice.value)).toContain("45");
+    expect(checkChoices(2880).at(-1)).toEqual({ value: "2880", label: "2 days" });
+  });
+
+  test("the note after a check counts the waiting updates", () => {
+    expect(updateCheckNote(0)).toContain("up to date");
+    expect(updateCheckNote(1)).toBe("An update waits for you.");
+    expect(updateCheckNote(3)).toBe("3 updates wait for you.");
   });
 });

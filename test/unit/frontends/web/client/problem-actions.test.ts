@@ -31,6 +31,10 @@ describe("problemAction", () => {
     expect(isOtherMachineProblem("update")).toBe(false);
   });
 
+  test("a widget update that waits opens the widget list, where the person answers it", () => {
+    expect(problemAction("widget_update:example-owner/habits:0123456789ab", "ok")).toBe("review_widget_update");
+  });
+
   test("an expired Claude Code login opens its card, where the person logs in again", () => {
     expect(problemAction("engine_login:claude-code", "ok")).toBe("open_claude_login");
   });

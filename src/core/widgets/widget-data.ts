@@ -4,7 +4,18 @@
  * no step follows a symbolic link: a link could lead to any file of the computer. A write keeps
  * the fields of the file on disk that the widget does not know, so the data of another widget stays.
  */
-import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, type Stats } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  type Stats,
+} from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -35,6 +46,8 @@ const maxReadBytes = 50 * 1024 * 1024;
 /** A folder with more files is not a widget's data: the list stops there. */
 const maxListed = 10_000;
 const indexFile = "index.json";
+/** Windows has no such flag. There the check of the same file stands alone. */
+const noFollow: number = (constants as Partial<typeof constants>).O_NOFOLLOW ?? 0;
 
 const contentTypes: Readonly<Record<string, string>> = {
   json: "application/json; charset=utf-8",
@@ -80,9 +93,11 @@ export function answerData(
   if (approved.access !== "write") return refused;
   const name = segments.at(-1) ?? "";
   if (!isWritableName(name) || (approved.files !== null && !matchesFiles(approved.files, name))) return refused;
-  // A folder input never writes over the list that Eva gives at its `index.json`.
-  if (isFolder && rest === indexFile) return refused;
-  const depthOfPlace = (openPath(approved.path) ?? []).length;
+  // A folder input never writes over the list that Eva gives at its `index.json`. A secrets file is
+  // never a widget's data: Eva does not read one, so no widget writes or deletes one either.
+  if ((isFolder && rest === indexFile) || looksLikeSecretsFile(name)) return refused;
+  // A file input may write a file that does not exist yet, in the folder that holds it.
+  const depthOfPlace = isFolder ? (openPath(approved.path) ?? []).length : segments.length - 1;
   return method === "PUT"
     ? writeData(vaultPath, segments, depthOfPlace, write)
     : deleteData(vaultPath, segments, depthOfPlace);
@@ -98,7 +113,8 @@ function readData(vaultPath: string, segments: readonly string[]): WidgetAnswer 
   const name = segments.at(-1) ?? "";
   if (looksLikeSecretsFile(name) || isDataFormatFile(name)) return notFound;
   if (stats.size > maxReadBytes) return { status: 413 };
-  return { status: 200, contentType: contentTypeOf(name), body: readFileSync(join(vaultPath, ...segments)) };
+  const bytes = readSame(join(vaultPath, ...segments), stats);
+  return bytes === null ? notFound : { status: 200, contentType: contentTypeOf(name), body: bytes };
 }
 
 /**
@@ -167,17 +183,17 @@ function writeData(
   if (write === null) return { status: 400 };
   if (write.body.byteLength > maxWriteBytes) return { status: 413 };
   // The approved place must exist; a folder inside it may be new.
-  const place = walk(vaultPath, segments.slice(0, depthOfPlace));
-  if (place === null || (depthOfPlace < segments.length && !place.isDirectory())) return notFound;
+  if (!isFolderPlace(vaultPath, segments.slice(0, depthOfPlace))) return notFound;
+  const newFolders: string[] = [];
   for (let index = depthOfPlace + 1; index < segments.length; index += 1) {
     const folder = join(vaultPath, ...segments.slice(0, index));
-    const stats = lstatOrNull(folder);
-    if (stats === null) mkdirSync(folder);
+    const stats = newFolders.length > 0 ? null : lstatOrNull(folder);
+    if (stats === null) newFolders.push(folder);
     else if (stats.isSymbolicLink() || !stats.isDirectory()) return refused;
   }
   const name = segments.at(-1) ?? "";
   const target = join(vaultPath, ...segments);
-  const current = lstatOrNull(target);
+  const current = newFolders.length > 0 ? null : lstatOrNull(target);
   if (current !== null && (!current.isFile() || current.nlink > 1)) return refused;
   const yaml = /\.ya?ml$/i.test(name);
   const text = Buffer.from(write.body).toString("utf-8");
@@ -185,7 +201,8 @@ function writeData(
   if (next === undefined) return { status: 400, contentType: "text/plain; charset=utf-8", body: "Not valid data." };
   let content = text;
   if (current !== null) {
-    const before = parseData(readFileSync(target, "utf-8"), yaml);
+    const onDisk = readSame(target, current);
+    const before = onDisk === null ? undefined : parseData(Buffer.from(onDisk).toString("utf-8"), yaml);
     // A file that Eva cannot read keeps the person's text: Eva never writes over what she cannot merge.
     if (before === undefined) return { status: 409 };
     const merged = keepUnknownFields(before, next, write.schema);
@@ -194,17 +211,43 @@ function writeData(
   }
   // The vault sync would push it, and a secret never goes in the vault.
   if (write.redact(content) !== content) return { status: 422 };
+  // Only now: a refused write leaves no new folder behind.
+  for (const folder of newFolders) mkdirSync(folder);
   writeFileAtomic(target, content);
   return { status: 204 };
 }
 
 function deleteData(vaultPath: string, segments: readonly string[], depthOfPlace: number): WidgetAnswer {
-  if (walk(vaultPath, segments.slice(0, depthOfPlace)) === null) return notFound;
+  if (!isFolderPlace(vaultPath, segments.slice(0, depthOfPlace))) return notFound;
   const stats = walk(vaultPath, segments);
   if (!stats?.isFile()) return notFound;
   if (stats.nlink > 1) return refused;
   rmSync(join(vaultPath, ...segments));
   return { status: 204 };
+}
+
+/** True for a folder with no link on the way from the vault root. No segments: the vault root itself. */
+function isFolderPlace(vaultPath: string, segments: readonly string[]): boolean {
+  return segments.length === 0 || walk(vaultPath, segments)?.isDirectory() === true;
+}
+
+/**
+ * The bytes of the file that `checked` describes, or null. The file opens with no link at its
+ * end, and must be the same file as the check found: a link that replaced a folder on the way
+ * since the check leads to another file, which Eva never reads.
+ */
+function readSame(path: string, checked: Stats): Uint8Array | null {
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | noFollow);
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile() || opened.ino !== checked.ino || opened.dev !== checked.dev || opened.nlink > 1) return null;
+    return readFileSync(descriptor);
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+  }
 }
 
 /** The value of a JSON or YAML text, or undefined when it does not parse. */

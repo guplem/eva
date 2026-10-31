@@ -242,6 +242,28 @@ describe("answerData writes", () => {
     expect(answerData(vault, habits, "walk.json", "PUT", null).status).toBe(400);
   });
 
+  test("a file input writes its file when it does not exist yet, also at the vault root", () => {
+    const newDay: ApprovedPath = { ...dayFile, path: "Life/new-day.json" };
+    expect(answerData(vault, newDay, null, "PUT", body({ mood: "fine" })).status).toBe(204);
+    expect(JSON.parse(read("Life/new-day.json"))).toEqual({ mood: "fine" });
+    const atRoot: ApprovedPath = { ...dayFile, path: "day.json" };
+    expect(answerData(vault, atRoot, null, "PUT", body({ mood: "fine" })).status).toBe(204);
+    expect(answerData(vault, atRoot, null, "DELETE", null).status).toBe(204);
+    expect(answerData(vault, { ...dayFile, path: "Gone/day.json" }, null, "PUT", body({})).status).toBe(404);
+  });
+
+  test("never writes or deletes a secrets file, and a refused write makes no folder", () => {
+    const anyName: ApprovedPath = { ...habits, files: null };
+    write("Life/Habits/credentials.json", "{}");
+    for (const rest of ["secrets.json", "credentials.json", "client_secret_1.json"]) {
+      expect({ rest, status: answerData(vault, anyName, rest, "PUT", body({})).status }).toEqual({ rest, status: 403 });
+    }
+    expect(answerData(vault, anyName, "credentials.json", "DELETE", null).status).toBe(403);
+    expect(existsSync(join(vault, "Life/Habits/credentials.json"))).toBe(true);
+    expect(answerData(vault, habits, "a/b/x.json", "PUT", body("{ broken")).status).toBe(400);
+    expect(existsSync(join(vault, "Life/Habits/a"))).toBe(false);
+  });
+
   test("refuses a body that is too large, does not parse, or holds a secret", () => {
     const large = { body: new Uint8Array(maxWriteBytes + 1), schema: null, redact: keep };
     expect(answerData(vault, habits, "walk.json", "PUT", large).status).toBe(413);

@@ -135,6 +135,53 @@ label.version-row {
   grid-row: 3;
 }
 
+/* In the changelog, the version is a link that covers its row, so a tap on the release opens its GitHub page. */
+.version-row:has(> .row-link) {
+  position: relative;
+  border-radius: var(--radius-input);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .version-row:has(> .row-link):hover {
+    background: var(--soft);
+  }
+}
+
+.row-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.row-link:focus-visible {
+  outline: none;
+}
+
+.version-row:has(> .row-link:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The changes toggle sits above the row link, so a tap on it opens the changes in place. It keeps to its own width, so the rest of the row stays a link. */
+.version-row:has(> .row-link) .update-changes {
+  position: relative;
+  z-index: 1;
+  justify-self: start;
+}
+
+.release-page {
+  width: fit-content;
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
 .update-changes summary {
   cursor: pointer;
   width: fit-content;
@@ -185,6 +232,12 @@ label.version-row {
   .update-changes summary {
     /* A list item keeps the arrow that a flex box drops. */
     display: list-item;
+    min-height: var(--touch-target);
+    line-height: var(--touch-target);
+  }
+
+  .release-page {
+    display: block;
     min-height: var(--touch-target);
     line-height: var(--touch-target);
   }

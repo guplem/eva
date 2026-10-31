@@ -210,6 +210,23 @@ describe("answerData writes", () => {
     });
   });
 
+  test("refuses a write that breaks the widget's own schema, with the reason", () => {
+    const strict = {
+      type: "object",
+      required: ["name"],
+      properties: { name: { type: "string" }, checks: { type: "array" } },
+    };
+    const answer = answerData(vault, habits, "run.json", "PUT", { ...body({ checks: {} }), schema: strict });
+    expect(answer.status).toBe(422);
+    expect(text(answer)).toBe(
+      'The file does not fit the format of this widget: the field "name" is missing; the field "checks" must be array.',
+    );
+    expect(existsSync(join(vault, "Life/Habits/run.json"))).toBe(false);
+    expect(
+      answerData(vault, habits, "walk.json", "PUT", { ...body({ name: "Walk", checks: [] }), schema: strict }).status,
+    ).toBe(204);
+  });
+
   test("keeps the body as the widget wrote it when nothing is merged", () => {
     const exact = '{ "name": "Walk",  "checks": [], "streak": 4 }';
     expect(answerData(vault, habits, "walk.json", "PUT", body(exact)).status).toBe(204);

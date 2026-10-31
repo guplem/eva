@@ -139,6 +139,46 @@ export function checkWidget(read: (path: string) => string | null): WidgetCheck 
   return { manifest: [], schemas };
 }
 
+/** The compiled data schemas, by their text: a schema changes only with an approval. */
+const dataValidators = new Map<string, ValidateFunction | null>();
+const maxDataValidators = 200;
+
+/**
+ * Checks the value of one data file against a widget's schema (#692), and gives one sentence for
+ * each problem, with the field. A schema that does not compile passes every file: the check at the
+ * approval refuses such a schema, so only a broken copy has one.
+ */
+export function checkData(value: unknown, schema: unknown): string[] {
+  if (schema === null || typeof schema !== "object") return [];
+  const key = JSON.stringify(schema);
+  let validate = dataValidators.get(key);
+  if (validate === undefined) {
+    try {
+      const ajv = new Ajv2020({ allErrors: true, strict: false });
+      addFormats(ajv);
+      validate = ajv.compile(schema);
+    } catch {
+      validate = null;
+    }
+    if (dataValidators.size >= maxDataValidators) dataValidators.clear();
+    dataValidators.set(key, validate);
+  }
+  if (validate === null || validate(value)) return [];
+  return unique((validate.errors ?? []).flatMap(dataProblem));
+}
+
+function dataProblem(error: ErrorObject): string[] {
+  // An `if` error only says that a `then` failed; the `then` error says what.
+  if (error.keyword === "if") return [];
+  const parent = error.instancePath.split("/").filter((part) => part !== "");
+  if (error.keyword === "required") {
+    const missing = String((error.params as { missingProperty?: unknown }).missingProperty);
+    return [`the field "${[...parent, missing].join(".")}" is missing`];
+  }
+  const where = parent.length === 0 ? "the file" : `the field "${parent.join(".")}"`;
+  return [`${where} ${error.message ?? "is not valid"}`];
+}
+
 function manifestProblem(error: ErrorObject): string[] {
   // An `if` error only says that a `then` failed; the `then` error says what.
   if (error.keyword === "if") return [];

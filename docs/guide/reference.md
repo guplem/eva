@@ -304,6 +304,10 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - A widget reaches only what you approved on this computer. A change of the widget, or of `.eva/widgets.json` by an agent, gives it nothing until you approve it again.
   - The list, the order and the inputs live in `.eva/widgets.json` in the vault. The approvals and a read-only copy of each widget stay on this computer. So another computer shows the same widgets, each with **Approve to show this widget**, until you approve it there.
   - **Turn off** hides a widget and keeps its approval. **Remove** drops its approval and its copy. Your data in the vault stays.
+  - Each folder where a widget keeps data gets a `DATA_FORMAT.md`. Eva writes the whole file: it lists the files, the fields and the widget of each field. Do not edit it. Write your notes in the `AGENTS.md` or the `README.md` of the folder.
+  - **Turn on** also shows the line that the widget adds to Eva's prompt. Each new chat gets it with your real folder. So when you say "today I trained", Eva saves it where the training widget reads it.
+  - Two widgets can share a folder. When one names a field with another type than the other, Eva warns you. Then turn the second widget on with read access only, or pick another folder.
+  - After each answer, Eva checks the data files that it changed. A file that does not fit a widget goes back to the agent to fix. When the fix fails, the chat says which file and which field.
   - A widget is code from its author. Turn on only a widget whose author you trust.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
 - **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. The audio never leaves the computer.

@@ -3522,3 +3522,31 @@ describe("the context of a chat (issue 700)", () => {
     expect((await manager.context(project.id)).map((found) => found.title)).toEqual(["Eva's prompt"]);
   });
 });
+
+describe("a note of the mode after a turn", () => {
+  test("joins the turn that ended, redacted, and goes out as a notice", async () => {
+    const noting: TurnPreparer = {
+      ...preparer,
+      afterTurn: (_session, outcome) => {
+        outcome.addNote("A file does not fit: ghp_abcdefghijklmnopqrstuvwxyz0123456789.");
+        return Promise.resolve(null);
+      },
+    };
+    const redactor = new Redactor();
+    redactor.addSecret("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+    const manager = createManager(new FakeEngine(), { projectPreparer: noting, specialistPreparer: noting, redactor });
+    const sessionId = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: folder,
+      source: "cli",
+    }).id;
+    await manager.send(sessionId, "Hello there");
+    const notes = manager.get(sessionId).turns.at(-1)?.notes ?? [];
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+    const notice = events.find((event) => event.kind === "notice");
+    expect(notice?.kind === "notice" ? notice.text : "").toBe(notes[0] ?? "no note");
+  });
+});

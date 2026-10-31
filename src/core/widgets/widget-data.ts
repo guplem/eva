@@ -21,6 +21,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { looksLikeSecretsFile } from "../files/vault-files.ts";
 import type { ApprovedPath } from "./widget-approvals.ts";
+import { checkData } from "./widget-contract.ts";
 import { isDataFormatFile, isPlainName, isWritableName, matchesFiles, openPath } from "./widget-places.ts";
 
 /** An approved path with a value: an empty input reaches nothing. */
@@ -120,6 +121,13 @@ function readData(vaultPath: string, segments: readonly string[]): WidgetAnswer 
   return bytes === null ? notFound : { status: 200, contentType: contentTypeOf(name), body: bytes };
 }
 
+/** The text of a data file at a path from the vault root, by the same rules as a widget read, or null. */
+export function readVaultData(vaultPath: string, path: string): string | null {
+  const segments = openPath(path);
+  const answer = segments === null ? notFound : readData(vaultPath, segments);
+  return answer.status === 200 && answer.body !== undefined ? Buffer.from(answer.body).toString("utf-8") : null;
+}
+
 /**
  * The lstat of the last segment, after a check that no segment from the vault root is a link.
  * Null when a segment is missing or is not what the path needs.
@@ -203,15 +211,24 @@ function writeData(
   const next = parseData(text, yaml);
   if (next === undefined) return { status: 400, contentType: "text/plain; charset=utf-8", body: "Not valid data." };
   let content = text;
+  let written: unknown = next;
   if (current !== null) {
     const onDisk = readSame(target, current);
     const before = onDisk === null ? undefined : parseData(Buffer.from(onDisk).toString("utf-8"), yaml);
     // A file that Eva cannot read keeps the person's text: Eva never writes over what she cannot merge.
     if (before === undefined) return { status: 409 };
-    const merged = keepUnknownFields(before, next, write.schema);
-    if (JSON.stringify(merged) !== JSON.stringify(next))
-      content = yaml ? stringifyYaml(merged) : `${JSON.stringify(merged, null, 2)}\n`;
+    written = keepUnknownFields(before, next, write.schema);
+    if (JSON.stringify(written) !== JSON.stringify(next))
+      content = yaml ? stringifyYaml(written) : `${JSON.stringify(written, null, 2)}\n`;
   }
+  // Only the writer's own schema (#692): the fields of the other widgets are the agent's to fill.
+  const problems = checkData(written, write.schema);
+  if (problems.length > 0)
+    return {
+      status: 422,
+      contentType: "text/plain; charset=utf-8",
+      body: `The file does not fit the format of this widget: ${problems.join("; ")}.`,
+    };
   // The vault sync would push it, and a secret never goes in the vault.
   if (write.redact(content) !== content) return { status: 422 };
   // Only now: a refused write leaves no new folder behind.
@@ -254,7 +271,7 @@ function readSame(path: string, checked: Stats): Uint8Array | null {
 }
 
 /** The value of a JSON or YAML text, or undefined when it does not parse. */
-function parseData(text: string, yaml: boolean): unknown {
+export function parseData(text: string, yaml: boolean): unknown {
   try {
     return yaml ? (parseYaml(text) as unknown) : (JSON.parse(text) as unknown);
   } catch {

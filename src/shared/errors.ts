@@ -49,7 +49,9 @@ export type EvaErrorCode =
   /** No widget of the list has this id. */
   | "widget_not_found"
   /** The widget has no approved record on this computer, or its record no longer matches the vault. */
-  | "widget_needs_approval";
+  | "widget_needs_approval"
+  /** A written data format of the widget conflicts with the format of its folder (#692). */
+  | "widget_format_conflict";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

@@ -493,7 +493,9 @@ export const api = {
     id: string,
     commit: string,
     values: Readonly<Record<string, WidgetInputValue>>,
-  ): Promise<WidgetItem[]> => request("POST", `/api/widgets/${widgetPath(id)}/approve`, { commit, values }),
+    readOnly = false,
+  ): Promise<WidgetItem[]> =>
+    request("POST", `/api/widgets/${widgetPath(id)}/approve`, { commit, values, ...(readOnly ? { readOnly } : {}) }),
   setWidgetEnabled: (id: string, enabled: boolean): Promise<WidgetItem[]> =>
     request("PUT", `/api/widgets/${widgetPath(id)}/enabled`, { enabled }),
   moveWidget: (id: string, direction: "up" | "down"): Promise<WidgetItem[]> =>

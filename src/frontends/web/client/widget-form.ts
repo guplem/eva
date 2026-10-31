@@ -5,6 +5,7 @@
 import type { WidgetInput, WidgetManifest } from "../../../core/widgets/widget-contract.ts";
 import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
 import { isClosedPlace, isPlainName } from "../../../core/widgets/widget-places.ts";
+import { defaultPrompt, filledPrompt, type PromptPlace } from "../../../core/widgets/widget-prompt.ts";
 import type { IconName } from "./icons.tsx";
 
 export type FormValues = Readonly<Record<string, WidgetInputValue | undefined>>;
@@ -75,6 +76,24 @@ export function permissionLines(manifest: WidgetManifest, values: FormValues): P
     why: host.why,
   }));
   return [...places, ...location, ...hosts];
+}
+
+/**
+ * The line that Eva adds to her prompt for this widget (#692), as the person approves it: the
+ * manifest's line with the form's values, or the default line of a widget with data. The core
+ * builds the real line from the approved record.
+ */
+export function promptLine(manifest: WidgetManifest, values: FormValues): string | null {
+  const sent = sentValues(manifest, values);
+  if (manifest.prompt !== undefined) return filledPrompt(manifest.prompt, sent);
+  const places = manifest.inputs.flatMap((input): PromptPlace[] => {
+    const value = ownValue(sent, input.id);
+    if ((input.type !== "folder" && input.type !== "file") || typeof value !== "string") return [];
+    // The hub writes a DATA_FORMAT.md for an input with a schema, in its folder.
+    const folder = input.type === "folder" ? value : value.includes("/") ? value.slice(0, value.lastIndexOf("/")) : "";
+    return [{ path: value, formatFolder: input.schema === undefined || folder === "" ? null : folder }];
+  });
+  return defaultPrompt(manifest.name, places);
 }
 
 /** True for an entry of the vault picker that a widget may reach, by its path from the vault root. */

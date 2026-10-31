@@ -10,6 +10,7 @@ import { Icon } from "./icons.tsx";
 import { factQuestion, greeting, setupBlock, suggestions, type FactQuestion, type Suggestion } from "./new-chat.ts";
 import { usePersonalFacts, useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
+import { WidgetGrid } from "./WidgetGrid.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { goTo } from "./back-layers.ts";
@@ -47,6 +48,7 @@ export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) =>
         <h2>{day?.greeting ?? greeting(new Date().getHours())}</h2>
         <p>{day?.line ?? "How can I help today?"}</p>
       </div>
+      <WidgetGrid />
       {question !== null && <FactQuestionCard question={question} onPick={onPick} />}
       {shown !== null && (
         <div className="suggestions" role="group" aria-label="Suggestions">

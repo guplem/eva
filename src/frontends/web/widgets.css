@@ -1,0 +1,218 @@
+/*
+ * The widgets of the home page and their list in Personalize (#691). The grid has four columns
+ * on a computer and two on a phone: a small widget takes one, a medium widget two, and a large
+ * widget the whole row. On a phone a large widget is twice as high.
+ */
+.widget-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 168px;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 800px;
+}
+
+.widget-card.card {
+  position: relative;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  grid-column: span 1;
+}
+
+.widget-card.size-medium {
+  grid-column: span 2;
+}
+
+.widget-card.size-large {
+  grid-column: 1 / -1;
+  grid-row: span 2;
+}
+
+@media (min-width: 761px) {
+  .widget-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .widget-card.size-large {
+    grid-row: span 1;
+  }
+}
+
+.widget-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+/* The corner button sits outside the frame, so a tap inside the frame always goes to the widget. */
+.widget-full-button {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  background: var(--panel);
+  color: var(--ink);
+  /* A border, not a shadow: the card clips what is outside it, so a shadow would show cut. */
+  border: 1px solid var(--line);
+}
+
+.widget-card.widget-approve {
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.widget-approve strong {
+  color: var(--ink);
+}
+
+/* Full screen opens inside Eva's page, over the grid. */
+.widget-full {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--bg);
+}
+
+.widget-full .widget-full-button {
+  top: calc(env(safe-area-inset-top, 0px) + var(--space-3));
+  right: var(--space-3);
+}
+
+.widget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.widget-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.widget-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.widget-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.widget-row-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.widget-row-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The up arrow is the back arrow turned a quarter. */
+.widget-move-up {
+  transform: rotate(90deg);
+}
+
+.widget-activation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.widget-picked {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+}
+
+.widget-permissions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.widget-permissions li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.widget-permissions li > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.widget-permissions .icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent-ink);
+}
+
+.vault-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.vault-picker-path {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.vault-picker-place {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vault-picker .files-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The picker's rows are buttons, not links: they take the look of a row of the Files page. */
+button.files-entry {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.files-entry:focus-visible {
+  background: var(--soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button.files-entry:hover {
+    background: var(--soft);
+  }
+}

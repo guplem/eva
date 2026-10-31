@@ -7,9 +7,14 @@ import {
   defaultAssistantRules,
   vaultTemplateFiles,
 } from "../../../../src/core/vault/vault-template.ts";
+import { createVaultKey, type VaultKeyFile } from "../../../../src/core/vault/vault-crypto.ts";
+import { defaultSecretPatterns } from "../../../../src/core/vault/secret-files.ts";
 import { vaultFolders } from "../../../../src/core/vault/vault-folders.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
+
+/** A cheap key: the cost of a real one would only slow the tests. */
+const testKey = (): Promise<VaultKeyFile> => createVaultKey("a long vault password", { logN: 10 });
 
 let folder: string;
 let environment: Record<string, string>;
@@ -86,6 +91,23 @@ describe("the vault template", () => {
     expect(Object.keys(files).some((path) => path.endsWith("CLAUDE.md"))).toBe(false);
   });
 
+  test("the .gitignore ignores no secret file and no plain .env, since Eva commits them encrypted or checked (#707)", () => {
+    const repository = join(folder, "ignore-check");
+    mkdirSync(repository);
+    git(repository, "init", "-q");
+    writeFileSync(join(repository, ".gitignore"), vaultTemplateFiles(answers)[".gitignore"] ?? "");
+    // A sample name for each default, in a note folder and in a project folder.
+    const samples = defaultSecretPatterns.map((pattern) => pattern.replaceAll("*", "example"));
+    const paths = [...samples, ".env", "app.env"].flatMap((name) => [
+      `Life/${name}`,
+      `Projects/2026-01-01-0900-example-app/${name}`,
+    ]);
+    expect(git(repository, "check-ignore", "--no-index", ...paths)).toBe("");
+    expect(
+      git(repository, "check-ignore", "--no-index", "Projects/2026-01-01-0900-example-app/repos/clone-0/.env"),
+    ).not.toBe("");
+  });
+
   test("the agent map lists each top-level folder and tells the agent to grow the vault", () => {
     const map = vaultTemplateFiles(answers)["AGENTS.md"] ?? "";
     for (const folder of [
@@ -121,7 +143,13 @@ describe("the vault template", () => {
 
   test("a new vault is a git repository with one commit, even with no git identity", async () => {
     const vault = join(folder, "vault");
-    await createVaultFromTemplate({ folder: vault, answers, runner: systemProcessRunner, environment });
+    await createVaultFromTemplate({
+      folder: vault,
+      answers,
+      key: await testKey(),
+      runner: systemProcessRunner,
+      environment,
+    });
     expect(readFileSync(join(vault, "Life", "About me.md"), "utf8")).toContain("Alex");
     expect(git(vault, "log", "--format=%an %s")).toBe("Eva Start the vault from Eva's template");
     expect(git(vault, "status", "--porcelain")).toBe("");
@@ -136,6 +164,7 @@ describe("the vault template", () => {
       await createVaultFromTemplate({
         folder: join(folder, "used"),
         answers,
+        key: await testKey(),
         runner: systemProcessRunner,
         environment,
       });
@@ -150,6 +179,7 @@ describe("the vault template", () => {
     const failure = await createVaultFromTemplate({
       folder: join(folder, "other"),
       answers,
+      key: await testKey(),
       runner: failing,
       environment,
     }).then(

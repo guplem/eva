@@ -81,7 +81,9 @@ for (const run of ["desktop", "phone"])
   sandbox.write(
     vault,
     `Private/${run}.secrets`,
-    new TextDecoder().decode(encryptFile(new TextEncoder().encode("API_KEY=demo-value\n"), vaultKey)),
+    new TextDecoder().decode(
+      encryptFile(new TextEncoder().encode("API_KEY=demo-value\n"), vaultKey, `Private/${run}.secrets`),
+    ),
   );
 // The message box menu shows the examples that each vault gets (issue 661).
 for (const path of [".eva/settings/text-actions/Polish.md", ".eva/settings/saved-prompts/Summary.md"]) {

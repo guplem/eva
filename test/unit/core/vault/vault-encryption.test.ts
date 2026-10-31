@@ -219,7 +219,10 @@ describe("a key file that an agent changes (review of #707)", () => {
     const service = encryption();
     await service.setPassword(token, password);
     const other = await createVaultKey("another long password", { logN: 10 });
-    write("deploy/foreign.key", new TextDecoder().decode(encryptFile(new TextEncoder().encode("X\n"), other)));
+    write(
+      "deploy/foreign.key",
+      new TextDecoder().decode(encryptFile(new TextEncoder().encode("X\n"), other, "deploy/foreign.key")),
+    );
     const before = read(".eva/vault-key.json");
     let secret = await service.unlock(token, password);
     expect(
@@ -279,7 +282,10 @@ describe("removals that the person confirms, after the review of #707", () => {
     const service = encryption();
     const secret = await keyRemoved(service);
     const other = await createVaultKey("another long password", { logN: 10 });
-    write("deploy/foreign.key", new TextDecoder().decode(encryptFile(new TextEncoder().encode("X\n"), other)));
+    write(
+      "deploy/foreign.key",
+      new TextDecoder().decode(encryptFile(new TextEncoder().encode("X\n"), other, "deploy/foreign.key")),
+    );
     const files = service.status(token, secret).waitingFiles;
     const refused = await failure(() => service.confirmRemovals(token, secret, { patterns: ["*.key"], files }));
     expect(isEvaError(refused, "vault_file_unreadable")).toBe(true);
@@ -335,5 +341,24 @@ describe("a save of the list after a confirmed removal (second review of #707)",
     await service.setPatterns(token, secret, { added: ["Life/Health/**"], off: ["*.key"] });
     expect(service.status(null, null).waiting).toEqual([]);
     expect(read("deploy/id.key")).toBe("KEY\n");
+  });
+});
+
+describe("a copy of an encrypted file under a freed name (second review of #707)", () => {
+  test("is never decrypted by a removal, and the refusal names it", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write("Life/Health/blood.md", "Results.\n");
+    const secret = await service.unlock(token, password);
+    await service.setPatterns(token, secret, { added: ["Life/Health/**"], off: [] });
+    // An agent copies the encrypted note under a name that a removal frees.
+    write("deploy/old.key", read("Life/Health/blood.md"));
+    await service.setPatterns(token, secret, { added: ["Life/Health/**"], off: ["*.key"] });
+    const files = service.status(token, secret).waitingFiles;
+    expect(files).toEqual(["deploy/old.key"]);
+    const refused = await failure(() => service.confirmRemovals(token, secret, { patterns: ["*.key"], files }));
+    expect(isEvaError(refused, "vault_file_unreadable")).toBe(true);
+    expect(refused instanceof Error ? refused.message : "").toContain("Life/Health/blood.md");
+    expect(read("deploy/old.key")).not.toContain("Results.");
   });
 });

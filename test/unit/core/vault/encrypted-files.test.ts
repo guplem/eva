@@ -31,7 +31,7 @@ function write(path: string, bytes: Uint8Array | string): void {
 }
 
 function writeEncrypted(path: string, plain: string | Uint8Array, file = key): void {
-  write(path, encryptFile(typeof plain === "string" ? new TextEncoder().encode(plain) : plain, file));
+  write(path, encryptFile(typeof plain === "string" ? new TextEncoder().encode(plain) : plain, file, path));
 }
 
 const read = (path: string): Uint8Array => new Uint8Array(readFileSync(join(vault, path)));

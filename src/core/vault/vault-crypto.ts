@@ -188,7 +188,27 @@ export function hasEncryptedShape(bytes: Uint8Array): boolean {
 }
 
 /** The encrypted file: Eva's two lines, then the base64 of the file key, nonce, cipher text and tag. */
-export function encryptFile(plain: Uint8Array, file: Pick<VaultKeyFile, "publicKey" | "signingKey">): Uint8Array {
+/** What an encrypted file holds: its text, and the path that it had when Eva encrypted it. */
+export interface DecryptedFile {
+  /** A forward-slash path from the vault root. A copy under another name still names its first place. */
+  readonly path: string;
+  readonly plain: Uint8Array;
+}
+
+/**
+ * Encrypts a file to the vault's public key, with no password. The path goes inside the encrypted
+ * text, so a copy under another name, such as one that a removal would free, shows where it came from.
+ */
+export function encryptFile(
+  plain: Uint8Array,
+  file: Pick<VaultKeyFile, "publicKey" | "signingKey">,
+  path: string,
+): Uint8Array {
+  const pathBytes = Buffer.from(path, "utf8");
+  if (pathBytes.length > 0xffff) throw new EvaError("vault_file_unreadable", "This path is too long to encrypt.");
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(pathBytes.length);
+  const inner = Buffer.concat([length, pathBytes, plain]);
   const header = headerText(keyFingerprint(file));
   const recipient = publicKeyOf(file.publicKey, x25519Prefix);
   const ephemeral = generateKeyPairSync("x25519");
@@ -198,12 +218,12 @@ export function encryptFile(plain: Uint8Array, file: Pick<VaultKeyFile, "publicK
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
   // The header is authenticated too, so a file cannot claim another key.
   cipher.setAAD(Buffer.from(header, "utf8"));
-  const body = Buffer.concat([ephemeralRaw, nonce, cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
+  const body = Buffer.concat([ephemeralRaw, nonce, cipher.update(inner), cipher.final(), cipher.getAuthTag()]);
   return new TextEncoder().encode(`${header}${wrapLines(body.toString("base64"))}\n`);
 }
 
 /** Throws `vault_file_unreadable` for a file that is not Eva's, or that someone changed. */
-export function decryptFile(bytes: Uint8Array, unlocked: UnlockedVaultKey): Uint8Array {
+export function decryptFile(bytes: Uint8Array, unlocked: UnlockedVaultKey): DecryptedFile {
   const unreadable = (): EvaError =>
     new EvaError("vault_file_unreadable", "This encrypted file does not open. Someone may have changed it.");
   const head = headerOf(bytes);
@@ -220,7 +240,10 @@ export function decryptFile(bytes: Uint8Array, unlocked: UnlockedVaultKey): Uint
     const decipher = createDecipheriv("aes-256-gcm", fileKey(shared, ephemeralRaw, keys), body.subarray(32, 44));
     decipher.setAAD(Buffer.from(headerText(head.fingerprint), "utf8"));
     decipher.setAuthTag(body.subarray(body.length - 16));
-    return new Uint8Array(Buffer.concat([decipher.update(body.subarray(44, body.length - 16)), decipher.final()]));
+    const inner = Buffer.concat([decipher.update(body.subarray(44, body.length - 16)), decipher.final()]);
+    const length = inner.readUInt16BE(0);
+    if (inner.length < 2 + length) throw unreadable();
+    return { path: inner.subarray(2, 2 + length).toString("utf8"), plain: new Uint8Array(inner.subarray(2 + length)) };
   } catch {
     throw unreadable();
   }

@@ -54,13 +54,17 @@ describe("preparing the vault's files for a commit (#707)", () => {
     expect(secrets().prepare("Projects/coach/.env.local")).toBeNull();
     const encrypted = read("Projects/coach/.env.local");
     expect(encryptedState(encrypted)).toBe("encrypted");
-    const plain = decryptFile(encrypted, await unlockVaultKey(key, password));
-    expect(new TextDecoder().decode(plain)).toBe("API_KEY=sk-example\n");
+    const opened = decryptFile(encrypted, await unlockVaultKey(key, password));
+    expect(opened.path).toBe("Projects/coach/.env.local");
+    expect(new TextDecoder().decode(opened.plain)).toBe("API_KEY=sk-example\n");
   });
 
   test("an encrypted file is never encrypted again, so two machines never fight over it", async () => {
     const key = await withKey();
-    write("Toolbox/server.pem", new TextDecoder().decode(encryptFile(new TextEncoder().encode("PEM"), key)));
+    write(
+      "Toolbox/server.pem",
+      new TextDecoder().decode(encryptFile(new TextEncoder().encode("PEM"), key, "Toolbox/server.pem")),
+    );
     const before = read("Toolbox/server.pem");
     expect(secrets().prepare("Toolbox/server.pem")).toBeNull();
     expect(read("Toolbox/server.pem")).toEqual(before);
@@ -68,7 +72,7 @@ describe("preparing the vault's files for a commit (#707)", () => {
 
   test("a file with Eva's header but a changed body stays out of the commit", async () => {
     const key = await withKey();
-    const encrypted = new TextDecoder().decode(encryptFile(new TextEncoder().encode("PEM"), key));
+    const encrypted = new TextDecoder().decode(encryptFile(new TextEncoder().encode("PEM"), key, "Toolbox/server.pem"));
     write("Toolbox/server.pem", `${encrypted}TOKEN=plain\n`);
     expect(secrets().prepare("Toolbox/server.pem")).toBe("not_decryptable");
   });

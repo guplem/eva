@@ -10,7 +10,14 @@ import { isAbsolute, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import type { SecretMatcher } from "./secret-files.ts";
-import { decryptFile, encryptedState, encryptFile, type UnlockedVaultKey, type VaultKeyFile } from "./vault-crypto.ts";
+import {
+  decryptFile,
+  encryptedState,
+  encryptFile,
+  type DecryptedFile,
+  type UnlockedVaultKey,
+  type VaultKeyFile,
+} from "./vault-crypto.ts";
 
 export type OpenedFile =
   | {
@@ -25,7 +32,7 @@ export type OpenedFile =
 export function readEncryptedFile(vaultPath: string, relativePath: string, unlocked: UnlockedVaultKey): OpenedFile {
   const path = encryptedPath(vaultPath, relativePath);
   const bytes = new Uint8Array(readFileSync(path));
-  const plain = decryptFile(bytes, unlocked);
+  const { plain } = decryptFile(bytes, unlocked);
   const text = asText(plain);
   return text === null ? { kind: "binary", bytes: plain } : { kind: "text", text, version: versionOf(bytes) };
 }
@@ -41,7 +48,7 @@ export function saveEncryptedFile(
   const path = encryptedPath(vaultPath, relativePath);
   if (versionOf(new Uint8Array(readFileSync(path))) !== version)
     throw new EvaError("file_changed", "The file changed since you opened it. Open it again.");
-  writeFileAtomic(path, new TextDecoder().decode(encryptFile(new TextEncoder().encode(text), key)));
+  writeFileAtomic(path, new TextDecoder().decode(encryptFile(new TextEncoder().encode(text), key, relativePath)));
 }
 
 /**
@@ -59,20 +66,28 @@ export function filesFreedBy(vaultPath: string, removed: SecretMatcher, active: 
 export function decryptFiles(vaultPath: string, paths: readonly string[], unlocked: UnlockedVaultKey): void {
   const planned: { readonly path: string; readonly bytes: Uint8Array }[] = [];
   const unreadable: string[] = [];
+  const moved: string[] = [];
   for (const relativePath of paths) {
+    let opened: DecryptedFile;
     try {
-      const path = join(vaultPath, relativePath);
-      // The bytes as they are: a binary file, such as a `.p12`, must not pass through a text decoder.
-      planned.push({ path, bytes: decryptFile(new Uint8Array(readFileSync(path)), unlocked) });
+      opened = decryptFile(new Uint8Array(readFileSync(join(vaultPath, relativePath))), unlocked);
     } catch {
       unreadable.push(relativePath);
+      continue;
     }
+    // A copy of another secret under a freed name, such as one that an agent made, stays encrypted.
+    if (opened.path !== relativePath) moved.push(`${relativePath} (encrypted as ${opened.path})`);
+    // The bytes as they are: a binary file, such as a `.p12`, must not pass through a text decoder.
+    else planned.push({ path: join(vaultPath, relativePath), bytes: opened.plain });
   }
-  if (unreadable.length > 0)
-    throw new EvaError(
-      "vault_file_unreadable",
-      `The vault's key does not open ${unreadable.join(", ")}, so Eva decrypted nothing. Restore each file from an older commit, or delete it.`,
-    );
+  const problems = [
+    unreadable.length === 0 ? "" : `The vault's key does not open ${unreadable.join(", ")}.`,
+    moved.length === 0
+      ? ""
+      : `These files were encrypted at another path: ${moved.join(", ")}. Eva decrypts a file only at its own path. Move each one back, or delete it.`,
+  ].filter((part) => part !== "");
+  if (problems.length > 0)
+    throw new EvaError("vault_file_unreadable", `${problems.join(" ")} So Eva decrypted nothing.`);
   for (const { path, bytes } of planned) writeFileAtomic(path, bytes);
 }
 
@@ -91,8 +106,12 @@ export function encryptAgain(
   const unreadable: string[] = [];
   for (const relativePath of encryptedFiles(vaultPath)) {
     try {
-      const plain = decryptFile(new Uint8Array(readFileSync(join(vaultPath, relativePath))), unlocked);
-      planned.push({ path: relativePath, text: new TextDecoder().decode(encryptFile(plain, next)) });
+      // Each file keeps the path that it had, so a copy under another name stays known as one.
+      const opened = decryptFile(new Uint8Array(readFileSync(join(vaultPath, relativePath))), unlocked);
+      planned.push({
+        path: relativePath,
+        text: new TextDecoder().decode(encryptFile(opened.plain, next, opened.path)),
+      });
     } catch {
       unreadable.push(relativePath);
     }

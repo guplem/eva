@@ -81,20 +81,20 @@ describe("vault keys (#707)", () => {
   test("a file encrypts with the public key alone, and decrypts with the unlocked key", async () => {
     const file = await keyFile();
     const plain = text("API_KEY=sk-example-0123456789\n");
-    const encrypted = encryptFile(plain, file);
+    const encrypted = encryptFile(plain, file, "deploy/id.key");
     expect(encryptedState(encrypted)).toBe("encrypted");
     expect(encryptedFingerprint(encrypted)).toBe(keyFingerprint(file));
     expect(hasEncryptedShape(encrypted)).toBe(true);
     expect(plainText(encrypted)).toStartWith(`${encryptedFileLine}\n`);
     expect(plainText(encrypted)).not.toContain("sk-example");
-    expect(decryptFile(encrypted, await unlockVaultKey(file, password))).toEqual(plain);
+    expect(decryptFile(encrypted, await unlockVaultKey(file, password)).plain).toEqual(plain);
     // The same text gives other bytes each time, so Eva never encrypts an encrypted file again.
-    expect(encryptFile(plain, file)).not.toEqual(encrypted);
+    expect(encryptFile(plain, file, "deploy/id.key")).not.toEqual(encrypted);
   });
 
   test("a changed, cut or extended encrypted file does not decrypt", async () => {
     const file = await keyFile();
-    const encrypted = plainText(encryptFile(text("secret"), file));
+    const encrypted = plainText(encryptFile(text("secret"), file, "deploy/id.key"));
     const lines = encrypted.split("\n");
     const flipped = lines.map((line, index) =>
       index === 2 ? line.slice(0, 5) + (line[5] === "A" ? "B" : "A") + line.slice(6) : line,
@@ -108,7 +108,7 @@ describe("vault keys (#707)", () => {
 
   test("a file that claims another key, by its header, does not decrypt", async () => {
     const file = await keyFile();
-    const encrypted = plainText(encryptFile(text("secret"), file));
+    const encrypted = plainText(encryptFile(text("secret"), file, "deploy/id.key"));
     const claimed = encrypted.replace(keyFingerprint(file), "0123456789abcdef");
     const caught = await failure(async () => decryptFile(text(claimed), await unlockVaultKey(file, password)));
     expect(isEvaError(caught, "vault_file_unreadable")).toBe(true);
@@ -116,7 +116,7 @@ describe("vault keys (#707)", () => {
 
   test("Windows line ends and a BOM keep a file encrypted, and a newer format is never touched", async () => {
     const file = await keyFile();
-    const encrypted = plainText(encryptFile(text("secret"), file));
+    const encrypted = plainText(encryptFile(text("secret"), file, "deploy/id.key"));
     const bom = String.fromCharCode(0xfeff);
     expect(encryptedState(text(`${bom}${encrypted.replaceAll("\n", "\r\n")}`))).toBe("encrypted");
     expect(encryptedState(text(`${encryptedFileLine}\neva-encrypted-v2 0123456789abcdef\nxyz\n`))).toBe("newer");
@@ -131,11 +131,11 @@ describe("vault keys (#707)", () => {
 
   test("a new password wraps the same private keys again, so every file still opens", async () => {
     const file = await keyFile();
-    const encrypted = encryptFile(text("secret"), file);
+    const encrypted = encryptFile(text("secret"), file, "deploy/id.key");
     const moved = await rewrapVaultKey(file, await unlockVaultKey(file, password), "a brand new password", cost);
     expect(keyFingerprint(moved)).toBe(keyFingerprint(file));
     const unlocked = await unlockVaultKey(moved, "a brand new password");
-    expect(plainText(decryptFile(encrypted, unlocked))).toBe("secret");
+    expect(plainText(decryptFile(encrypted, unlocked).plain)).toBe("secret");
   });
 
   test("each key has its own fingerprint, which covers both public keys", async () => {
@@ -163,5 +163,16 @@ describe("the same password from any device (review of #707)", () => {
     const file = await createVaultKey("  contraseña segura larga  ", { logN: 10 });
     expect(await unlockVaultKey(file, "contraseña segura larga")).toBeDefined();
     expect(await unlockVaultKey(file, "contraseña segura larga".normalize("NFD"))).toBeDefined();
+  });
+});
+
+describe("the path inside an encrypted file (second review of #707)", () => {
+  test("travels inside the encrypted text, so a copy under another name tells where it came from", async () => {
+    const file = await keyFile();
+    const encrypted = encryptFile(text("secret"), file, "Life/Health/blood.md");
+    expect(plainText(encrypted)).not.toContain("Health");
+    const opened = decryptFile(encrypted, await unlockVaultKey(file, password));
+    expect(opened.path).toBe("Life/Health/blood.md");
+    expect(plainText(opened.plain)).toBe("secret");
   });
 });

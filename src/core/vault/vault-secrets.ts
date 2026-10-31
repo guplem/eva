@@ -101,7 +101,7 @@ export class VaultSecrets {
         if (key === null) return "no_vault_key";
         if (keyChanged) return "vault_key_changed";
         if (info.size > maxEncryptedBytes) return "too_large";
-        writeFileAtomic(path, new TextDecoder().decode(encryptFile(readFileSync(path), key)));
+        writeFileAtomic(path, new TextDecoder().decode(encryptFile(readFileSync(path), key, relativePath)));
         return null;
       } catch {
         return "unreadable";

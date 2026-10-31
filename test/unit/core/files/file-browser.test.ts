@@ -201,6 +201,20 @@ describe("browseVault: files", () => {
       expect(browseVault(vault, path, keep)).toMatchObject({ kind: "unreadable", downloadable: false });
     },
   );
+
+  test("an encrypted file shows as encrypted, whatever its name, and a listed file waits for its encryption (#707)", () => {
+    const encrypted =
+      "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n";
+    write("Notes/copy.md", encrypted);
+    write(".eva/secret-files", "Private/**\n");
+    write("Private/plan.md", "x");
+    expect(browseVault(vault, "Notes/copy.md", keep)).toEqual({
+      kind: "encrypted",
+      path: "Notes/copy.md",
+      size: encrypted.length,
+    });
+    expect(browseVault(vault, "Private/plan.md", keep)).toMatchObject({ kind: "unreadable", downloadable: false });
+  });
 });
 
 describe("browseVault: refusals (lesson 72)", () => {

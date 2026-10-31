@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnvironmentWithToken } from "../../../../src/core/instance/child-environments.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
+import { VaultSecrets } from "../../../../src/core/vault/vault-secrets.ts";
+import { writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
+import { createVaultKey, encryptedFileLine, type VaultKeyFile } from "../../../../src/core/vault/vault-crypto.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import type { Logger } from "../../../../src/shared/logger.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -182,11 +185,11 @@ describe("VaultSync.save", () => {
     expect(existsSync(join(vault, "Toolbox/keys.md"))).toBe(true);
   });
 
-  test("lets a project folder keep its own secret (the owner's vault rule)", async () => {
+  test("a project folder keeps no plain secret any more: its secrets reach the vault only encrypted (#707)", async () => {
     sandbox.write(vault, "Projects/2025-01-01-1200-app/.env", "TOKEN=ghp_" + "b".repeat(36) + "\n");
     const state = await createSync(vault).save();
-    expect(state.withheldFiles).toEqual([]);
-    expect(remoteFiles()).toContain("Projects/2025-01-01-1200-app/.env");
+    expect(state.withheldFiles).toEqual([{ path: "Projects/2025-01-01-1200-app/.env", reason: "secret" }]);
+    expect(remoteFiles()).not.toContain("Projects/2025-01-01-1200-app/.env");
   });
 
   test("reports a conflict, keeps the local commit, and never discards a change", async () => {
@@ -1067,5 +1070,237 @@ describe("VaultSync conflict second review fixes", () => {
     expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# A draft here\n");
     // The pull left the remote's commits out of the files, so a hub claim must not trust it (#529).
     expect(sync.freshPulls).toBe(0);
+  });
+});
+
+describe("VaultSync and the secret files (#707)", () => {
+  async function secretSync(): Promise<{ sync: VaultSync; key: VaultKeyFile }> {
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    const secrets = new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") });
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets,
+    });
+    return { sync, key };
+  }
+
+  test("a .env.local reaches the remote only encrypted, and a plain .env stays plain", async () => {
+    const { sync } = await secretSync();
+    sandbox.write(vault, "Projects/2025-03-02-1015-coach/.env.local", "API_KEY=sk-example\n");
+    sandbox.write(vault, "Projects/2025-03-02-1015-coach/.env", "PORT=3000\n");
+    const state = await sync.save();
+    expect(state.withheldFiles).toEqual([]);
+    const remote = (path: string): string => sandbox.git(sandbox.remote, "show", `main:${path}`);
+    expect(remote("Projects/2025-03-02-1015-coach/.env.local")).toStartWith(encryptedFileLine);
+    expect(remote("Projects/2025-03-02-1015-coach/.env.local")).not.toContain("sk-example");
+    expect(remote("Projects/2025-03-02-1015-coach/.env")).toBe("PORT=3000");
+  });
+
+  test("a snapshot holds a secret file only encrypted", async () => {
+    const { sync } = await secretSync();
+    sandbox.write(vault, "Toolbox/server.pem", "PRIVATE KEY\n");
+    expect(await sync.snapshot("refs/eva/turns/s1/0/before")).toBe(true);
+    const kept = sandbox.git(vault, "show", "refs/eva/turns/s1/0/before:Toolbox/server.pem");
+    expect(kept).toStartWith(encryptedFileLine);
+    expect(kept).not.toContain("PRIVATE KEY");
+  });
+
+  test("with no key yet, a secret file stays out of the commit, plain, and says why", async () => {
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+    sandbox.write(vault, "Toolbox/server.pem", "PRIVATE KEY\n");
+    sandbox.write(vault, "Notes/a.md", "A note.\n");
+    const state = await sync.save();
+    expect(state.withheldFiles).toEqual([{ path: "Toolbox/server.pem", reason: "no_vault_key" }]);
+    expect(remoteFiles()).toContain("Notes/a.md");
+    expect(remoteFiles()).not.toContain("Toolbox/server.pem");
+  });
+});
+
+describe("VaultSync stops a plain secret before the push (#707)", () => {
+  test("an agent's own commit of a plain secret is made again, encrypted, before the push", async () => {
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "key");
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+    // An agent commits a plain secret by itself, before Eva's next save.
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "agent");
+    const state = await sync.save();
+    expect(state.status).toBe("ok");
+    const pushed = sandbox.git(sandbox.remote, "show", "main:deploy/id.key");
+    expect(pushed).toStartWith(encryptedFileLine);
+    // No commit on the remote holds the plain text.
+    expect(remoteVersions("deploy/id.key").join("\n")).not.toContain("PRIVATE");
+  });
+});
+
+describe("VaultSync.encryptSecrets (#707)", () => {
+  test("encrypts each plain secret file now, with no commit", async () => {
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    const headBefore = sandbox.git(vault, "rev-parse", "HEAD");
+    await sync.encryptSecrets();
+    expect(readFileSync(join(vault, "deploy/id.key"), "utf8")).toStartWith(encryptedFileLine);
+    expect(sandbox.git(vault, "rev-parse", "HEAD")).toBe(headBefore);
+  });
+
+  test("also encrypts a plain secret file that a commit already holds, such as one from before the password", async () => {
+    sandbox.write(vault, "deploy/old.key", "OLD PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "before the password");
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+    await sync.encryptSecrets();
+    expect(readFileSync(join(vault, "deploy/old.key"), "utf8")).toStartWith(encryptedFileLine);
+  });
+});
+
+describe("VaultSync checks every unpushed commit for a plain secret (review of #707)", () => {
+  async function keyedSync(): Promise<VaultSync> {
+    const key = await createVaultKey("correct horse battery", { logN: 10 });
+    writeVaultKey(vault, key);
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "key");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    return new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine.json") }),
+    });
+  }
+
+  test("a plain secret in an earlier commit never reaches the remote, though HEAD holds it encrypted", async () => {
+    const sync = await keyedSync();
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "agent");
+    // A later edit: Eva's own commit then holds the file encrypted, on top of the plain one.
+    sandbox.write(vault, "deploy/id.key", "PRIVATE 2\n");
+    expect((await sync.save()).status).toBe("ok");
+    expect(remoteVersions("deploy/id.key").join("\n")).not.toContain("PRIVATE");
+    expect(sandbox.git(sandbox.remote, "show", "main:deploy/id.key")).toStartWith(encryptedFileLine);
+  });
+
+  test("a plain secret behind a conflict with the remote is taken back before the merge, so the sync never sticks", async () => {
+    const sync = await keyedSync();
+    const other = sandbox.clone("other-707");
+    sandbox.write(other, "Notes/plan.md", "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    sandbox.write(vault, "deploy/id.key", "PRIVATE\n");
+    sandbox.write(vault, "Notes/plan.md", "mine\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "agent");
+    await sync.save();
+    expect(remoteVersions("deploy/id.key").join("\n")).not.toContain("PRIVATE");
+    expect(sync.currentState.lastError ?? "").not.toContain("plain text");
+  });
+});
+
+/** The text of a file in each commit of the remote that holds it, so no `-diff` attribute hides it. */
+function remoteVersions(path: string): string[] {
+  return sandbox
+    .git(sandbox.remote, "rev-list", "--all")
+    .split("\n")
+    .filter((sha) => sha !== "")
+    .map((sha) => Bun.spawnSync(["git", "show", `${sha}:${path}`], { cwd: sandbox.remote, env: gitEnvironment }))
+    .filter((shown) => shown.exitCode === 0)
+    .map((shown) => shown.stdout.toString());
+}
+
+describe("the push check, after the second review of #707", () => {
+  test("a plain secret in the very first commit of a vault never reaches an empty remote", async () => {
+    const bare = join(sandbox.root, "empty-707.git");
+    mkdirSync(bare);
+    sandbox.git(bare, "init", "-q", "--bare", "-b", "main");
+    const fresh = join(sandbox.root, "fresh-707");
+    mkdirSync(fresh);
+    sandbox.git(fresh, "init", "-q", "-b", "main");
+    sandbox.git(fresh, "remote", "add", "origin", bare);
+    writeVaultKey(fresh, await createVaultKey("correct horse battery", { logN: 10 }));
+    sandbox.write(fresh, "deploy/id.key", "PRIVATE\n");
+    sandbox.git(fresh, "add", "-A");
+    sandbox.git(
+      fresh,
+      "-c",
+      "user.name=Eva Test",
+      "-c",
+      "user.email=eva-test@example.invalid",
+      "commit",
+      "-q",
+      "-m",
+      "first",
+    );
+    const sync = new VaultSync({
+      vaultPath: fresh,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: fresh, machineStatePath: join(sandbox.root, "machine-707.json") }),
+    });
+    await sync.save();
+    const shown = Bun.spawnSync(["git", "show", "main:deploy/id.key"], { cwd: bare, env: gitEnvironment });
+    expect(shown.stdout.toString()).not.toContain("PRIVATE");
+  });
+
+  test("a plain secret that the remote already holds does not stop the push of a merge", async () => {
+    // An older Eva on another computer pushed a plain file that a default of this version matches.
+    const other = sandbox.clone("other-707b");
+    sandbox.write(other, "deploy/old.key", "OLD\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "older Eva");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    writeVaultKey(vault, await createVaultKey("correct horse battery", { logN: 10 }));
+    sandbox.write(vault, "Notes/mine.md", "mine\n");
+    sandbox.git(vault, "add", ".eva/vault-key.json", "Notes/mine.md");
+    sandbox.git(vault, "commit", "-q", "-m", "mine");
+    sandbox.git(vault, "fetch", "-q", "origin");
+    sandbox.git(vault, "merge", "-q", "--no-edit", "origin/main");
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      secrets: new VaultSecrets({ vaultPath: vault, machineStatePath: join(sandbox.root, "machine-707b.json") }),
+    });
+    const state = await sync.save();
+    expect(state.lastError ?? "").not.toContain("plain text");
+    expect(remoteVersions("Notes/mine.md")).toContain("mine\n");
   });
 });

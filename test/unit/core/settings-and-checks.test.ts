@@ -1500,6 +1500,7 @@ describe("the vault step on the page", () => {
         language: "English",
         notesLanguage: "",
         topics: [],
+        password: "a long vault password",
         repository: `https://x-access-token:${token}@127.0.0.1:1/you/vault.git`,
       });
       expect(result.repository).toBeNull();
@@ -1528,6 +1529,7 @@ describe("the vault step on the page", () => {
         language: "English",
         notesLanguage: "Spanish",
         topics: [],
+        password: "a long vault password",
         repository: "",
       });
       expect(result).toMatchObject({ folder: join(home, "notes"), repository: null });
@@ -1642,6 +1644,7 @@ describe("the commit identity of an Eva", () => {
         language: "English",
         notesLanguage: "Spanish",
         topics: [],
+        password: "a long vault password",
         repository: "",
       });
       expect(sandbox.git(join(home, "notes"), "log", "-1", "--format=%an <%ae>")).toBe(`Example User <${email}>`);

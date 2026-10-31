@@ -3,6 +3,7 @@
  * real process; a test passes its own, so each command runs in a test.
  */
 import { existsSync } from "node:fs";
+import { Writable } from "node:stream";
 import { RemoteAccessWatcher, type RemoteAccess } from "../../core/remote-access/remote-access.ts";
 import { findTailscale, readTailnetAccounts } from "../../core/remote-access/tailscale.ts";
 import { canInstallTailscale, installTailscale } from "../../core/remote-access/tailscale-install.ts";
@@ -35,7 +36,7 @@ export interface CliHost {
   /** True when the output goes to a terminal, not to a file or a pipe. */
   readonly outputIsTerminal: boolean;
   /** Lends a prompt on the console to the work, and closes it after. */
-  readonly withPrompt: (work: (ask: (question: string) => Promise<string>) => Promise<void>) => Promise<void>;
+  readonly withPrompt: (work: (ask: Ask) => Promise<void>) => Promise<void>;
   readonly sleep: (ms: number) => Promise<void>;
   /** True for the single executable that `bun build --compile` makes. */
   readonly standalone: boolean;
@@ -59,13 +60,22 @@ export interface LinePrompt {
   close(): void;
 }
 
+/** `hidden`: the typed answer does not show, such as for the vault password. */
+export interface AskOptions {
+  readonly hidden?: boolean;
+}
+
+export type Ask = (question: string, options?: AskOptions) => Promise<string>;
+
 /**
  * Lends the prompt to the work, and closes it after. Ctrl+C at any moment, or the end of the
  * input, stops the work with `prompt_stopped`, so the command prints one line and no stack (#407).
+ * `mute` stops the echo of the prompt's output while the person types a hidden answer.
  */
 export async function withLinePrompt(
   prompt: LinePrompt,
-  work: (ask: (question: string) => Promise<string>) => Promise<void>,
+  work: (ask: Ask) => Promise<void>,
+  mute: (muted: boolean) => void = () => undefined,
 ): Promise<void> {
   const stoppedError = (): EvaError => new EvaError("prompt_stopped", "Stopped with Ctrl+C.");
   let stop: (error: EvaError) => void = () => undefined;
@@ -76,9 +86,16 @@ export async function withLinePrompt(
   prompt.on("SIGINT", () => {
     stop(stoppedError());
   });
-  const ask = async (question: string): Promise<string> => {
+  const ask: Ask = async (question, options = {}) => {
     try {
-      return await prompt.question(question);
+      // readline writes the question at once, so the mute after it hides only the typed answer.
+      const answer = prompt.question(question);
+      if (options.hidden === true) mute(true);
+      try {
+        return await answer;
+      } finally {
+        if (options.hidden === true) mute(false);
+      }
     } catch (error) {
       throw isClosedPrompt(error) ? stoppedError() : error;
     }
@@ -170,4 +187,38 @@ export function remoteAccessWatcher(
       : null,
     ...(onChange === undefined ? {} : { onChange }),
   });
+}
+
+/** The part of a terminal stream that a prompt's output needs. */
+export interface TerminalOutput {
+  write(text: string): unknown;
+  readonly columns?: number;
+  readonly isTTY?: boolean;
+}
+
+/**
+ * An output for readline that can stop its echo, so a hidden answer never shows on the screen or in
+ * the scrollback, where an agent could read it. It keeps the size of the terminal, as readline needs.
+ */
+export function mutableOutput(target: TerminalOutput): {
+  readonly output: Writable;
+  readonly mute: (muted: boolean) => void;
+} {
+  let muted = false;
+  const output = new Writable({
+    write(chunk: Buffer | string, _encoding, done) {
+      if (!muted) target.write(chunk.toString());
+      done();
+    },
+  });
+  Object.defineProperties(output, {
+    columns: { get: () => target.columns },
+    isTTY: { get: () => target.isTTY },
+  });
+  const mute = (next: boolean): void => {
+    // readline wrote the Enter of the hidden answer while muted, so the line ends here.
+    if (muted && !next) target.write("\n");
+    muted = next;
+  };
+  return { output, mute };
 }

@@ -43,6 +43,8 @@ import {
   relayedProblem,
   shellWallProblem,
   vaultAheadProblem,
+  newSecretDefaultsNews,
+  vaultSecretsProblems,
   lastLocationProblem,
   lastLocationWriteProblem,
 } from "./alerts/problem-rules.ts";
@@ -152,6 +154,11 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
+import { VaultEncryption } from "./vault/vault-encryption.ts";
+import { VaultKeys } from "./vault/vault-keys.ts";
+import { VaultSecrets } from "./vault/vault-secrets.ts";
+import { filesFreedBy } from "./vault/encrypted-files.ts";
+import { SecretMatcher } from "./vault/secret-files.ts";
 import type { UndoPreview } from "./vault/vault-snapshots.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
@@ -433,6 +440,10 @@ export class Eva {
   readonly transcribe: Transcribe | null;
   /** The web UI's device logins, which the Telegram bot confirms. */
   readonly deviceLogins: DeviceLogins;
+  /** The encryption of the vault's secret files (#707): only a device's own request decrypts. */
+  readonly encryption: VaultEncryption;
+  /** The vault's secret files on this machine, or null with no vault (#707). */
+  private readonly vaultSecrets: VaultSecrets | null;
   /** The widgets of the home page (#691). Null when no vault is configured. */
   readonly widgets: Widgets | null;
   private readonly googleLogin: GoogleLogin;
@@ -558,6 +569,11 @@ export class Eva {
     // Only the hub pushes, as only the hub runs Telegram: it relays the problems of the other
     // machines, so a device that also subscribed on a satellite would get each one twice.
     this.alerts.onAlert((alert) => (this.role() === "hub" ? this.pushAlert(alert, "alerts") : undefined));
+    const vaultSecrets =
+      vaultPath === null
+        ? null
+        : new VaultSecrets({ vaultPath, machineStatePath: join(options.paths.stateFolder, "vault-secrets.json") });
+    this.vaultSecrets = vaultSecrets;
     this.vault = new VaultUpkeep({
       vaultSync:
         vaultPath === null
@@ -568,6 +584,7 @@ export class Eva {
               environment: ownGitEnvironment,
               now: options.now,
               redact: (text) => redactor.redact(text),
+              ...(vaultSecrets === null ? {} : { secrets: vaultSecrets }),
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,
@@ -579,6 +596,7 @@ export class Eva {
       },
       afterSync: () => {
         this.noticeVaultAhead();
+        this.noticeVaultSecrets();
         this.noticeTemplateParts();
         // A pull can bring a widget list that another computer changed. `syncFormats` never throws.
         if (this.role() === "hub") void this.widgets?.syncFormats();
@@ -609,6 +627,22 @@ export class Eva {
     // A removed device must not see the start of a reply on its lock screen.
     this.deviceLogins.onForget(() => {
       this.webPush.keepDevices(new Set(this.deviceLogins.list(null).map((device) => device.id)));
+    });
+    this.encryption = new VaultEncryption({
+      vaultPath: () => this.options.config.vaultPath,
+      secrets: () => vaultSecrets,
+      // Each use checks the device again, so a forgotten device's key stops working at once.
+      keys: new VaultKeys({
+        vaultPath: () => this.options.config.vaultPath,
+        now: options.now,
+        isDeviceValid: (token) => this.deviceLogins.isValidToken(token),
+      }),
+      vault: {
+        exclusive: (work) => this.vault.exclusive(work),
+        pull: () => this.vault.pull(),
+        encryptSecrets: () => this.vault.encryptSecrets(),
+        save: () => this.vault.save(),
+      },
     });
     this.checkResults = new Map();
     this.googleLogin = new GoogleLogin({
@@ -1318,6 +1352,22 @@ export class Eva {
     // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
     if (this.options.engines.some((engine) => engine.name === "claude-code"))
       this.alerts.report("shell_wall", shellWallProblem(this.options.shellWallGap?.() ?? null));
+    this.noticeVaultSecrets();
+    this.encryptVaultSecrets();
+  }
+
+  /**
+   * Encrypts each plain secret file that a commit already holds, such as one that a new default of
+   * this version matches, or one from before the password (#707). The next save commits them.
+   */
+  private encryptVaultSecrets(): void {
+    void this.vault.encryptSecrets().then(
+      () => this.noticeVaultSecrets(),
+      (error: unknown) =>
+        this.options.logger?.log("warn", "Eva could not encrypt the vault's secret files at start.", {
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+    );
   }
 
   /**
@@ -2396,6 +2446,20 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return;
     this.alerts.report("vault_ahead", vaultAheadProblem(vaultAhead(vaultPath), this.machine, evaVersion));
+  }
+
+  /** The problems of the vault's encryption, after each sync step (#707). */
+  private noticeVaultSecrets(): void {
+    if (this.options.config.vaultPath === null) return;
+    const { hasKey, keyChanged } = this.encryption.status(null, null);
+    const problems = vaultSecretsProblems({ hasKey, keyChanged, withheld: this.vault.currentState.withheldFiles });
+    for (const [key, problem] of Object.entries(problems)) this.alerts.report(key, problem);
+    const added = this.vaultSecrets?.takeNewDefaults() ?? [];
+    if (added.length > 0) {
+      // The round that took the new defaults encrypted their files, so each one carries Eva's header now.
+      const files = filesFreedBy(this.options.config.vaultPath, new SecretMatcher(added), new SecretMatcher([]));
+      this.alerts.notify("vault_new_secret_defaults", "news", newSecretDefaultsNews(added, files));
+    }
   }
 
   /**

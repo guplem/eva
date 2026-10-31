@@ -44,6 +44,18 @@ export type EvaErrorCode =
   | "prompt_stopped"
   /** The running Eva refused a request of the CLI, and her answer named no code. */
   | "request_failed"
+  /** A vault password that is too short to set (#707). */
+  | "vault_password_invalid"
+  /** A vault password that does not unlock the vault's key (#707). */
+  | "vault_password_wrong"
+  /** The vault's key file is broken, or someone changed it (#707). */
+  | "vault_key_invalid"
+  /** This device has no unlocked vault key, or the request cannot use one (#707). */
+  | "vault_locked"
+  /** The vault has no key yet, so it has no password to type (#707). */
+  | "vault_key_missing"
+  /** An encrypted vault file that does not decrypt, such as one that someone changed (#707). */
+  | "vault_file_unreadable"
   /** A widget address, input or manifest that Eva cannot use (#691). */
   | "widget_invalid"
   /** No widget of the list has this id. */

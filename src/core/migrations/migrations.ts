@@ -25,6 +25,7 @@ import { deleteOldCloneFolders } from "./clone-folders.ts";
 import { modelTiersInConfig, modelTiersInVault } from "./model-tiers.ts";
 import { moveSettingsToFolder } from "./settings-folder.ts";
 import { describeProjectTypes } from "./project-types.ts";
+import { commitSecretFiles } from "./secret-files.ts";
 
 /** Add each new migration here. The runner sorts them by id. */
 export const migrations: readonly Migration[] = [
@@ -40,6 +41,7 @@ export const migrations: readonly Migration[] = [
   modelTiersInConfig,
   moveSettingsToFolder,
   describeProjectTypes,
+  commitSecretFiles,
 ];
 
 export interface VaultAhead {

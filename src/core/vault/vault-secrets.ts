@@ -1,0 +1,197 @@
+/**
+ * Encrypts the vault's secret files before Eva commits them or keeps a snapshot (#707). A round reads
+ * the list, the key and this machine's memory once, then prepares each file:
+ * - a plain secret file is encrypted in place, and the commit takes the encrypted text;
+ * - an encrypted file is committed as it is, and never encrypted again;
+ * - a file that keeps Eva's header but not the shape of her body stays out;
+ * - with no key, or a key that changed, a secret file stays out, plain;
+ * - a plain `.env` with a token stays out: it should hold values that are safe to share.
+ */
+import { closeSync, lstatSync, openSync, readFileSync, readSync, type Stats } from "node:fs";
+import { basename, join } from "node:path";
+import { writeFileAtomic } from "../../shared/files.ts";
+import { containsSecretPattern } from "../../shared/redaction.ts";
+import { defaultSecretPatterns, readSecretFiles, retiredSecretPatterns, SecretMatcher } from "./secret-files.ts";
+import { writeSecretAttributes } from "./secret-attributes.ts";
+import { activeSecretPatterns, type SecretPolicy, type SecretPolicyInput } from "./secret-policy.ts";
+import {
+  readMachineSecrets,
+  readSignedState,
+  readVaultKey,
+  writeMachineSecrets,
+  type MachineSecrets,
+} from "./secret-state.ts";
+import { encryptedState, encryptFile, hasEncryptedShape, keyFingerprint, type VaultKeyFile } from "./vault-crypto.ts";
+import type { PrepareFile, WithheldReason } from "./vault-sync.ts";
+
+/** Base64 adds about a third, and the commit limit is 50 MB: a bigger file stays out. */
+const maxEncryptedBytes = 25 * 1024 * 1024;
+/** A `.env` over this size is not scanned, as the other files of the vault. */
+const maxScannedBytes = 1_000_000;
+
+export interface VaultSecretsOptions {
+  readonly vaultPath: string;
+  /** This machine's own memory, in its state folder: never in the vault. */
+  readonly machineStatePath: string;
+}
+
+export class VaultSecrets {
+  private readonly options: VaultSecretsOptions;
+  /** The defaults that an update of Eva added since the last read, for one notice. */
+  private newDefaults: Set<string>;
+
+  constructor(options: VaultSecretsOptions) {
+    this.options = options;
+    this.newDefaults = new Set();
+  }
+
+  /** The defaults that an update added and that apply now. Each one comes back once. */
+  takeNewDefaults(): string[] {
+    const taken = [...this.newDefaults];
+    this.newDefaults.clear();
+    return taken;
+  }
+
+  /** The patterns that apply now, and the removals that wait. */
+  policy(): SecretPolicy {
+    return this.state().policy;
+  }
+
+  /** One file, in a round of its own. A commit uses `round` to read the state once. */
+  prepare(relativePath: string): WithheldReason | null {
+    return this.round()(relativePath);
+  }
+
+  /**
+   * True for a committed file that the list matches and that is not encrypted in Eva's exact shape.
+   * A file that a removal decrypted no longer matches, so it is plain on purpose.
+   */
+  isPlainSecret(relativePath: string, bytes: Uint8Array): boolean {
+    if (!new SecretMatcher(this.policy().active).matches(relativePath)) return false;
+    const state = encryptedState(bytes);
+    return state === "plain" || (state === "encrypted" && !hasEncryptedShape(bytes));
+  }
+
+  round(): PrepareFile {
+    const { key, keyChanged, policy, removed } = this.state();
+    // Before any file of the round, so the commit that brings an encrypted file also marks it.
+    try {
+      writeSecretAttributes(this.options.vaultPath, policy.active, removed);
+    } catch {
+      // A .gitattributes that another program holds open waits for the next round: the files still go.
+    }
+    const matcher = new SecretMatcher(policy.active);
+    return (relativePath) => {
+      const path = join(this.options.vaultPath, relativePath);
+      let info: Stats;
+      try {
+        info = lstatSync(path);
+      } catch {
+        return null;
+      }
+      const secret = matcher.matches(relativePath);
+      // A link is never followed: its target could be Eva's own file, or outside the vault.
+      if (!info.isFile()) return secret && info.isSymbolicLink() ? "secret" : null;
+      // One file that another program holds open, or that goes away now, must not stop the whole commit.
+      try {
+        const state = encryptedState(readHead(path));
+        if (state === "newer") return null;
+        if (state === "encrypted") return hasEncryptedShape(readFileSync(path)) ? null : "not_decryptable";
+        if (!secret) return plainEnvWithSecret(relativePath, path, info.size) ? "env_has_secret" : null;
+        if (key === null) return "no_vault_key";
+        if (keyChanged) return "vault_key_changed";
+        if (info.size > maxEncryptedBytes) return "too_large";
+        writeFileAtomic(path, new TextDecoder().decode(encryptFile(readFileSync(path), key, relativePath)));
+        return null;
+      } catch {
+        return "unreadable";
+      }
+    };
+  }
+
+  /**
+   * What the policy reads now: the key, whether it changed since this machine pinned it, this
+   * machine's memory, and the policy's input. It writes nothing.
+   */
+  inputs(): {
+    key: VaultKeyFile | null;
+    keyChanged: boolean;
+    machine: MachineSecrets;
+    input: SecretPolicyInput;
+  } {
+    const key = readVaultKey(this.options.vaultPath);
+    const machine = readMachineSecrets(this.options.machineStatePath);
+    const fingerprint = key === null ? null : keyFingerprint(key);
+    // The first key that this machine sees is the vault's. Another one later is the person's to confirm.
+    const keyChanged = machine.fingerprint !== null && fingerprint !== null && fingerprint !== machine.fingerprint;
+    const signed = key === null || keyChanged ? null : readSignedState(this.options.vaultPath, key, machine.sequence);
+    const input = {
+      defaults: defaultSecretPatterns,
+      retired: retiredSecretPatterns,
+      changes: readSecretFiles(this.options.vaultPath),
+      signed,
+      applied: machine.applied,
+    };
+    return { key, keyChanged, machine, input };
+  }
+
+  /** Pins the vault's current key on this machine: the person confirmed a key that changed. */
+  pinKey(fingerprint: string): void {
+    const machine = readMachineSecrets(this.options.machineStatePath);
+    writeMachineSecrets(this.options.machineStatePath, { ...machine, fingerprint });
+  }
+
+  /** Records the sequence of a record that this machine signed itself. */
+  acceptSequence(sequence: number): void {
+    const machine = readMachineSecrets(this.options.machineStatePath);
+    writeMachineSecrets(this.options.machineStatePath, { ...machine, sequence: Math.max(machine.sequence, sequence) });
+  }
+
+  private state(): {
+    key: VaultKeyFile | null;
+    keyChanged: boolean;
+    policy: SecretPolicy;
+    /** The patterns that a signed removal took out. */
+    removed: ReadonlySet<string>;
+  } {
+    const { key, keyChanged, machine, input } = this.inputs();
+    const fingerprint = key === null ? null : keyFingerprint(key);
+    const { signed } = input;
+    const policy = activeSecretPatterns(input);
+    const next = {
+      fingerprint: machine.fingerprint ?? fingerprint,
+      sequence: Math.max(machine.sequence, signed?.sequence ?? 0),
+      applied: [...policy.active],
+    };
+    // A machine's first round applies the whole list, and a pattern that a signed record knows is the person's own choice.
+    if (machine.applied.length > 0)
+      for (const pattern of policy.active)
+        if (
+          defaultSecretPatterns.includes(pattern) &&
+          !machine.applied.includes(pattern) &&
+          !(signed?.known.includes(pattern) ?? false)
+        )
+          this.newDefaults.add(pattern);
+    if (JSON.stringify(next) !== JSON.stringify(machine)) writeMachineSecrets(this.options.machineStatePath, next);
+    const removed = new Set(signed?.known.filter((pattern) => !policy.active.includes(pattern)) ?? []);
+    return { key, keyChanged, policy, removed };
+  }
+}
+
+/** The first bytes of a file: enough for Eva's two header lines. */
+function readHead(path: string): Uint8Array {
+  const buffer = Buffer.alloc(400);
+  const descriptor = openSync(path, "r");
+  try {
+    return buffer.subarray(0, readSync(descriptor, buffer, 0, buffer.length, 0));
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+/** A plain `.env` holds values that are safe to share. One with a known token shape holds a secret. */
+function plainEnvWithSecret(relativePath: string, path: string, size: number): boolean {
+  const name = basename(relativePath).toLowerCase();
+  if (!(name === ".env" || name.endsWith(".env")) || size > maxScannedBytes) return false;
+  return containsSecretPattern(readFileSync(path, "utf8"));
+}

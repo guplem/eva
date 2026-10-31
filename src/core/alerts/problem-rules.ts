@@ -6,7 +6,7 @@ import type { EngineName } from "../../shared/engine-port.ts";
 import { engineInstallSteps, engineProgramNames } from "../engine-install/engine-install.ts";
 import type { EngineUpdateResult } from "../updates/engine-update.ts";
 import type { UpdateStatus } from "../updates/updater.ts";
-import type { VaultSyncState } from "../vault/vault-sync.ts";
+import type { VaultSyncState, WithheldFile } from "../vault/vault-sync.ts";
 import type { AlertProblem, OpenAlert } from "./alert-center.ts";
 import type { VaultAhead } from "../migrations/migrations.ts";
 import type { LocationWrite } from "../location/last-location.ts";
@@ -78,6 +78,68 @@ export function shellWallProblem(gap: string | null): AlertProblem | null {
     message: `The shell of a Project chat can read the whole vault on this computer. ${gap} The file tools of each chat stay inside its own folder.`,
     resolvedMessage: "The shell of each Project chat stays inside its own folder on this computer.",
   };
+}
+
+/** The alert keys of the vault's encryption (#707), so each problem opens and closes by itself. */
+type VaultSecretsKey = "vault_password" | "vault_key_changed" | "vault_secret_files";
+
+/**
+ * The problems of the vault's encryption. A vault with no password keeps each secret file on this
+ * computer. A changed key stops every new encryption until the person confirms it. A file that does
+ * not decrypt, or a plain `.env` with a token, stays out of each commit.
+ */
+export function vaultSecretsProblems(input: {
+  readonly hasKey: boolean;
+  readonly keyChanged: boolean;
+  readonly withheld: readonly WithheldFile[];
+}): Record<VaultSecretsKey, AlertProblem | null> {
+  const pathsOf = (reason: WithheldFile["reason"]): string[] =>
+    input.withheld.filter((file) => file.reason === reason).map((file) => file.path);
+  const broken = pathsOf("not_decryptable");
+  const envs = pathsOf("env_has_secret");
+  const fileParts = [
+    broken.length === 0
+      ? ""
+      : `These encrypted files do not open with the vault's key, so Eva leaves them out of each commit: ${broken.join(", ")}. Someone may have changed them. Restore each one from an older commit, or delete it.`,
+    envs.length === 0
+      ? ""
+      : `These .env files hold a key or a token, so Eva leaves them out of each commit: ${envs.join(", ")}. Move each secret to a .env.local file next to it: Eva encrypts that file.`,
+  ].filter((part) => part !== "");
+  return {
+    vault_password: input.hasKey
+      ? null
+      : {
+          level: "warn",
+          message:
+            "The vault has no password yet, so Eva keeps its secret files on this computer and syncs none of them. Set a password in Settings, on the Vault page. Its old commits may still hold secrets in plain text, on the remote and on each computer: change those secrets. Update Eva on every computer that shares the vault, so none of them commits a secret in plain text.",
+          resolvedMessage: "The vault has a password. Eva encrypts its secret files now.",
+        },
+    vault_key_changed: input.keyChanged
+      ? {
+          level: "warn",
+          message:
+            "The vault's key changed on another computer, so Eva encrypts no new secret file here. Open Settings, on the Vault page, unlock with the new password, and confirm the new key. If you did not make a new key, someone else may have: do not confirm it.",
+          resolvedMessage: "Eva uses the vault's new key on this computer.",
+        }
+      : null,
+    vault_secret_files:
+      fileParts.length === 0
+        ? null
+        : {
+            level: "warn",
+            message: fileParts.join(" "),
+            resolvedMessage: "Every secret file of the vault syncs again.",
+          },
+  };
+}
+
+/** The news of the defaults that an update added, with each file that Eva encrypted for them at once. */
+export function newSecretDefaultsNews(patterns: readonly string[], files: readonly string[]): string {
+  const encrypted =
+    files.length === 0
+      ? "No file of the vault matches them yet."
+      : `Eva encrypted these files of the vault: ${files.join(", ")}.`;
+  return `This version of Eva encrypts more secret files by default: ${patterns.join(", ")}. ${encrypted} Settings, on the Vault page, lists every pattern and its switch.`;
 }
 
 /** A laptop that wakes up with no network fails a check or two; only a long failure needs the owner. */

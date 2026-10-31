@@ -3,6 +3,7 @@ import {
   installEnvironment,
   remoteAccessWatcher,
   wantsColor,
+  mutableOutput,
   withLinePrompt,
   type LinePrompt,
 } from "../../../../src/frontends/cli/host.ts";
@@ -142,5 +143,44 @@ describe("wantsColor", () => {
     expect(wantsColor(fakeHost({ outputIsTerminal: true, environment: { NO_COLOR: "1" } }))).toBe(false);
     expect(wantsColor(fakeHost({ outputIsTerminal: true, environment: { NO_COLOR: "" } }))).toBe(true);
     expect(wantsColor(fakeHost({ outputIsTerminal: true, environment: { TERM: "dumb" } }))).toBe(false);
+  });
+});
+
+describe("withLinePrompt: a hidden question (second review of #707)", () => {
+  test("mutes the echo while the person types the answer, and only for that question", async () => {
+    const events: string[] = [];
+    const prompt: LinePrompt = {
+      question: (query) => {
+        events.push(`ask ${query}`);
+        return Promise.resolve("typed");
+      },
+      on: () => undefined,
+      close: () => undefined,
+    };
+    await withLinePrompt(
+      prompt,
+      async (ask) => {
+        await ask("Vault password: ", { hidden: true });
+        await ask("Name: ");
+      },
+      (muted) => events.push(muted ? "mute" : "unmute"),
+    );
+    // The question shows first: the mute starts only after readline wrote it.
+    expect(events).toEqual(["ask Vault password: ", "mute", "unmute", "ask Name: "]);
+  });
+});
+
+describe("mutableOutput (second review of #707)", () => {
+  test("drops what readline echoes while muted, and ends the hidden line after", () => {
+    const written: string[] = [];
+    const { output, mute } = mutableOutput({ write: (text: string) => written.push(text), columns: 80, isTTY: true });
+    output.write("Vault password: ");
+    mute(true);
+    output.write("secret");
+    output.write("\r\n");
+    mute(false);
+    output.write("Name: ");
+    expect(written.join("")).toBe("Vault password: \nName: ");
+    expect((output as unknown as { columns: number }).columns).toBe(80);
   });
 });

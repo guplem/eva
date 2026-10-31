@@ -21,6 +21,7 @@ EVA_TIME_ZONE="Europe/Madrid" \
   EVA_VAULT_PATH="$work/vault" \
   EVA_CREATE_VAULT="yes" \
   EVA_PERSON_NAME="Test Person" \
+  EVA_VAULT_PASSWORD="a long smoke test password" \
   EVA_INSTALL_ENGINES="no" \
   "$executable" --instance smoke setup --non-interactive
 
@@ -28,6 +29,8 @@ grep -q '"port": 7533' "$work/eva-smoke/config.json"
 grep -q '"timeZone": "Europe/Madrid"' "$work/vault/.eva/settings/settings.json"
 grep -q 'Test Person' "$work/vault/Life/About me.md"
 test -s "$work/vault/.eva/assistant.md"
+# A new vault starts with its key (#707).
+test -s "$work/vault/.eva/vault-key.json"
 git -C "$work/vault" log --oneline | grep -q "Start the vault"
 
 # A new machine has no engine yet, so doctor may fail; it must still run and find git.

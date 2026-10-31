@@ -26,7 +26,14 @@ import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { describeFailure, runCli } from "./frontends/cli/commands.ts";
 import { terminalDeviceApprover } from "./frontends/cli/devices.ts";
-import { evaCommand, remoteAccessWatcher, withLinePrompt, writeLine, type CliHost } from "./frontends/cli/host.ts";
+import {
+  evaCommand,
+  remoteAccessWatcher,
+  mutableOutput,
+  withLinePrompt,
+  writeLine,
+  type CliHost,
+} from "./frontends/cli/host.ts";
 import { updateChannel } from "./frontends/cli/local-commands.ts";
 import { restartMethodNow } from "./frontends/cli/service.ts";
 import { HubTelegram, startTelegram } from "./frontends/telegram/telegram-start.ts";
@@ -63,7 +70,15 @@ const host: CliHost = {
   writeError: (text) => process.stderr.write(text),
   interactive: process.stdin.isTTY,
   outputIsTerminal: process.stdout.isTTY,
-  withPrompt: (work) => withLinePrompt(createInterface({ input: process.stdin, output: process.stdout }), work),
+  withPrompt: (work) => {
+    // A hidden answer, such as the vault password, needs a terminal output that can stop its echo.
+    const { output, mute } = mutableOutput(process.stdout);
+    return withLinePrompt(
+      createInterface({ input: process.stdin, output, terminal: process.stdout.isTTY }),
+      work,
+      mute,
+    );
+  },
   sleep: (ms) => Bun.sleep(ms),
   // A `bun build --compile` executable runs its code from Bun's embedded file system.
   standalone: Bun.main.includes("$bunfs") || Bun.main.includes("~BUN"),

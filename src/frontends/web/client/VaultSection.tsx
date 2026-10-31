@@ -6,6 +6,7 @@ import { useState, type ReactElement } from "react";
 import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
+import { EncryptedFilesCard } from "./EncryptedFilesCard.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { TemplateAlignmentCard } from "./TemplateAlignmentCard.tsx";
@@ -25,6 +26,7 @@ export function VaultSection({ context }: { readonly context: SettingsContext })
       <VaultFolderCard context={context} />
       <VaultSyncCard context={context} />
       <ProjectFoldersCard context={context} />
+      {context.settings.config.vaultPath !== null && <EncryptedFilesCard />}
       {context.settings.config.vaultPath !== null && <TemplateAlignmentCard context={context} />}
     </>
   );

@@ -21,7 +21,7 @@ export function initialValues(
 ): Record<string, WidgetInputValue | undefined> {
   const values: Record<string, WidgetInputValue | undefined> = {};
   for (const input of formInputs(manifest)) {
-    const value = current[input.id] ?? input.default;
+    const value = ownValue(current, input.id) ?? input.default;
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") values[input.id] = value;
   }
   return values;
@@ -34,7 +34,7 @@ function isEmpty(value: WidgetInputValue | undefined): boolean {
 /** The labels of the required inputs with no value yet. A form with any of them cannot approve. */
 export function missingInputs(manifest: WidgetManifest, values: FormValues): string[] {
   return formInputs(manifest)
-    .filter((input) => input.required && isEmpty(values[input.id]))
+    .filter((input) => input.required && isEmpty(ownValue(values, input.id)))
     .map((input) => input.label);
 }
 
@@ -42,7 +42,7 @@ export function missingInputs(manifest: WidgetManifest, values: FormValues): str
 export function sentValues(manifest: WidgetManifest, values: FormValues): Record<string, WidgetInputValue> {
   const sent: Record<string, WidgetInputValue> = {};
   for (const input of formInputs(manifest)) {
-    const value = values[input.id];
+    const value = ownValue(values, input.id);
     if (value !== undefined && !isEmpty(value)) sent[input.id] = typeof value === "string" ? value.trim() : value;
   }
   return sent;
@@ -58,7 +58,7 @@ export interface PermissionLine {
 export function permissionLines(manifest: WidgetManifest, values: FormValues): PermissionLine[] {
   const places = manifest.inputs.flatMap((input): PermissionLine[] => {
     if (input.type !== "folder" && input.type !== "file") return [];
-    const value = values[input.id];
+    const value = ownValue(values, input.id);
     if (typeof value !== "string" || value.trim() === "") return [];
     const verb = input.access === "write" ? "Reads and writes" : "Reads";
     const what = input.type === "folder" ? "the folder" : "the file";
@@ -81,4 +81,9 @@ export function permissionLines(manifest: WidgetManifest, values: FormValues): P
 export function isPickable(path: string): boolean {
   const segments = path.split("/");
   return segments.every(isPlainName) && !isClosedPlace(segments);
+}
+
+/** The value of a key of the record itself: an input id such as `constructor` must not read `Object.prototype`. */
+export function ownValue<Value>(record: Readonly<Record<string, Value>>, key: string): Value | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
 }

@@ -242,7 +242,7 @@ export class Widgets {
             {
               input: input.id,
               type: input.type,
-              path: typeof kept[input.id] === "string" ? (kept[input.id] as string) : null,
+              path: typeof ownValue(kept, input.id) === "string" ? (ownValue(kept, input.id) as string) : null,
               access: input.access ?? "read",
               files: input.files ?? null,
               schema: input.schema ?? null,
@@ -450,7 +450,7 @@ export class Widgets {
     const kept: Record<string, WidgetInputValue> = {};
     for (const input of inputs) {
       if (input.type === "eva-location") continue;
-      const value = values[input.id];
+      const value = ownValue(values, input.id);
       const empty = value === undefined || (typeof value === "string" && value.trim() === "");
       if (empty) {
         if (input.required) throw new EvaError("widget_invalid", `${input.label} needs a value.`);
@@ -549,7 +549,7 @@ export class Widgets {
 export function matches(record: WidgetApproval | null, entry: WidgetEntry): boolean {
   if (record === null) return false;
   return record.paths.every((approved) => {
-    const value = entry.inputs[approved.input];
+    const value = ownValue(entry.inputs, approved.input);
     const path = typeof value === "string" && value.trim() !== "" ? value.trim() : null;
     return path === approved.path;
   });
@@ -575,4 +575,9 @@ function locationOf(location: LastLocation | null): Omit<LastLocation, "source">
 
 function json(value: unknown): WidgetAnswer {
   return { status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify(value) };
+}
+
+/** The value of a key of the record itself: an input id such as `constructor` must not read `Object.prototype`. */
+function ownValue<Value>(record: Readonly<Record<string, Value>>, key: string): Value | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
 }

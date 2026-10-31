@@ -5,6 +5,7 @@ import {
   initialValues,
   isPickable,
   missingInputs,
+  ownValue,
   permissionLines,
   sentValues,
 } from "../../../../../src/frontends/web/client/widget-form.ts";
@@ -54,6 +55,16 @@ describe("the activation form", () => {
       habits: "Life/Habits",
       count: 0,
     });
+  });
+
+  test("reads only the own keys of the values, so an id such as constructor stays empty", () => {
+    const odd: WidgetManifest = {
+      ...manifest,
+      inputs: [{ ...base, id: "constructor", type: "text", label: "Name", required: true }],
+    };
+    expect(initialValues(odd, {})).toEqual({});
+    expect(missingInputs(odd, {})).toEqual(["Name"]);
+    expect(ownValue({ a: 1 }, "a")).toBe(1);
   });
 
   test("lists each permission with its reason", () => {

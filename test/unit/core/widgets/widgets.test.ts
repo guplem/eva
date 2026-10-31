@@ -372,6 +372,14 @@ describe("the review and the approval", () => {
   });
 });
 
+test("an input id such as constructor reads only the value that the person gave", async () => {
+  const inputs = [{ id: "constructor", type: "text", label: "Name", description: "d", why: "w", required: false }];
+  commit({ "eva-widget.json": JSON.stringify({ ...manifest, hosts: [], inputs }) });
+  const review = await widgets.review(habitsId, ownHosts);
+  await widgets.approve(habitsId, review.commit, {}, ownHosts);
+  expect(readWidgetList(vault)[0]?.inputs).toEqual({});
+});
+
 describe("on, off and remove", () => {
   test("turning off ends the token at once; turning on again asks nothing and keeps the place", async () => {
     widgets.add("example-owner/second");

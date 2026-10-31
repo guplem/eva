@@ -6,6 +6,7 @@
  * target, not from the link's name.
  */
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, sep } from "node:path";
 
 /** True when `path` is `root` or inside it. Both are resolved, absolute paths. */
@@ -23,6 +24,8 @@ const patternForms = 256;
 export interface WallFolders {
   readonly area: string;
   readonly closed: readonly string[];
+  /** Folders inside a closed one that the file tools still open, such as the engine's own data for this chat. */
+  readonly open?: readonly string[];
 }
 
 /**
@@ -34,8 +37,10 @@ export function wallRefusesPath(wall: WallFolders, requested: string, cwd: strin
   const real = realOf(requested, cwd);
   if (real === null) return true;
   const path = folded(real);
-  const area = realFolder(wall.area);
-  if (area !== null && isInside(folded(area), path)) return false;
+  for (const folder of [wall.area, ...(wall.open ?? [])]) {
+    const opened = realFolder(folder);
+    if (opened !== null && isInside(folded(opened), path)) return false;
+  }
   return wall.closed.some((closed) => {
     const folder = realFolder(closed);
     return folder !== null && (isInside(folded(folder), path) || isInside(path, folded(folder)));
@@ -99,10 +104,11 @@ function realFolder(folder: string): string | null {
 }
 /**
  * The path that a file tool opens, or null for one that it would expand into a place that a check
- * by text cannot follow, such as `~` for the home folder.
+ * by text cannot follow, such as `file:`. Both engines read `~` as the home folder.
  */
 function toolPath(requested: string): string | null {
-  const path = withoutLongPrefix(requested);
+  const asked = withoutLongPrefix(requested);
+  const path = asked === "~" || /^~[\\/]/.test(asked) ? `${homedir()}${asked.slice(1)}` : asked;
   if (path.startsWith("~") || /^file:/i.test(path)) return null;
   if (process.platform !== "win32") return path;
   // A Windows variable names a place that only the tool knows. `D:x` starts at that drive's own current folder.

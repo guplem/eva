@@ -42,6 +42,7 @@ import { FileLogger, type Logger } from "./shared/logger.ts";
 import { systemLongProcessStarter } from "./shared/long-process.ts";
 import { systemLineProcessStarter } from "./shared/line-process.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
+import { baseEnvironmentAllowlist, buildChildEnvironment } from "./shared/environment.ts";
 import { Redactor } from "./shared/redaction.ts";
 import { exitCodes } from "./shared/exit-codes.ts";
 import { evaVersion } from "./shared/version.ts";
@@ -215,7 +216,13 @@ async function serve(paths: HomePaths): Promise<number> {
     config: withVoicePrograms(config),
     secrets,
     engines,
-    shellWallGap: () => shellWallGap({ platform: process.platform, which: (name) => Bun.which(name) }),
+    shellWallGap: () =>
+      shellWallGap({
+        platform: process.platform,
+        which: (name) => Bun.which(name),
+        runner: systemProcessRunner,
+        environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist, {}),
+      }),
     runner: systemProcessRunner,
     processEnvironment: process.env,
     now: () => new Date(),

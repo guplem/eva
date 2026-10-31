@@ -32,6 +32,6 @@ describe("describePiPermissions", () => {
 describe("the file wall in pi's permissions (#711)", () => {
   test("each Project chat blocks the vault and Eva's folder, and says that the shell can still read them", () => {
     for (const chat of describePiPermissions().chats.filter((each) => each.chat !== "assistant"))
-      expect(chat.blocks.join(" ")).toContain("A shell command can still read them.");
+      expect(chat.blocks.join(" ")).toContain("a shell command can still read them");
   });
 });

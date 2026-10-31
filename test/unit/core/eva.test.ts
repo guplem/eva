@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
-import { defaultConfig, engineFolders, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
+import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
+import { projectWallRoots } from "../../../src/core/instance/child-environments.ts";
 import { templateParts } from "../../../src/core/vault/vault-template.ts";
 import { turnSnapshotRef } from "../../../src/core/vault/vault-snapshots.ts";
 import type { SessionRecord } from "../../../src/core/sessions/session-store.ts";
@@ -1227,11 +1228,7 @@ describe("Eva", () => {
         trusted: true,
         harnessMemory: false,
         folderHooks: false,
-        fileWall: {
-          area: coachFolder(),
-          closed: [vault, homePaths(home).root],
-          readable: [engineFolders(homePaths(home)).gh],
-        },
+        fileWall: { area: coachFolder(), ...projectWallRoots(homePaths(home), vault, []) },
       });
       expect(sandbox.git(sandbox.remote, "show", `main:Projects/${coachId}/log.md`)).toBe("Monday: legs.");
     });
@@ -2904,17 +2901,18 @@ describe("migrations (#119)", () => {
     expect(await instance.checkForUpdate()).toMatchObject({ target: "0.3.0", heldBack: "1.0.0" });
   });
 
-  test("a computer where the shell of a Project chat has no wall says so at start, with why (#711)", () => {
+  test("a computer where the shell of a Project chat has no wall says so at start, with why (#711)", async () => {
     const instance = start(
       new FakeEngine(),
       {},
-      { shellWallGap: () => "Claude Code's shell sandbox needs bubblewrap." },
+      { shellWallGap: () => Promise.resolve("Claude Code's shell sandbox needs bubblewrap.") },
     );
     const alerts = collectAlerts(instance);
     instance.reportStartMigrations({
       machine: { kind: "done", applied: [], later: [] },
       vault: { kind: "done", applied: [], later: [] },
     });
+    await Promise.resolve();
     expect(alerts.find((alert) => alert.key === "shell_wall")?.message).toContain("bubblewrap");
   });
 

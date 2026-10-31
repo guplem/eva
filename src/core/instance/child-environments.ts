@@ -17,6 +17,7 @@ import {
   type HomePaths,
 } from "../settings/home.ts";
 import { githubTokenVariable } from "../vault/vault-clone.ts";
+import type { WallRoots } from "../../shared/engine-port.ts";
 
 export interface InstanceFacts {
   readonly paths: HomePaths;
@@ -117,4 +118,28 @@ function writeEvaScriptFiles(folder: string, command: readonly string[]): void {
   writeFileAtomic(join(folder, "eva"), `#!/bin/sh\nexec ${command.map(shellQuote).join(" ")} "$@"\n`);
   chmodSync(join(folder, "eva"), 0o755);
   writeFileAtomic(join(folder, "eva.cmd"), `@${command.map((part) => `"${part}"`).join(" ")} %*\r\n`);
+}
+
+/**
+ * The folders that a Project chat may not open, but its own folder (#711), and the folders inside
+ * them that its shell still reads. The instance folder holds Eva's logins and secrets. The shell
+ * still needs the git config and the gh login of the engine's environment, so `git commit` keeps
+ * its identity and a push keeps its login. It also needs the `eva` scripts on its PATH, and the
+ * shell setup, skills and plugins that Claude Code keeps in its config folder.
+ */
+export function projectWallRoots(
+  paths: HomePaths,
+  vaultPath: string | null,
+  projectRoots: readonly string[],
+): WallRoots {
+  const folders = engineFolders(paths);
+  return {
+    closed: [...(vaultPath === null ? [] : [vaultPath]), ...projectRoots, paths.root],
+    readable: [
+      folders.git,
+      folders.gh,
+      join(paths.root, "bin"),
+      ...["shell-snapshots", "session-env", "skills", "plugins"].map((name) => join(folders.claude, name)),
+    ],
+  };
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   isProtectedInArea,
@@ -101,7 +101,6 @@ describe("isPatternInsideArea (#711)", () => {
     expect(isPatternInsideArea(area, "src/../../**/*", area)).toBe(false);
     expect(isPatternInsideArea(area, "{src,../x}/*", area)).toBe(false);
     expect(isPatternInsideArea(area, join(outside, "*.md"), area)).toBe(false);
-    expect(isPatternInsideArea(area, "~/notes/*", area)).toBe(false);
   });
 
   test("an absolute pattern inside the area is inside", () => {
@@ -128,9 +127,7 @@ describe("isInsideArea, after the review of #711", () => {
     expect(isInsideArea(area, "dang/../x", area)).toBe(false);
   });
 
-  test("a path that a tool expands, such as `~` for the home folder or `file://`, is refused", () => {
-    expect(isInsideArea(area, "~/notes.md", area)).toBe(false);
-    expect(isInsideArea(area, "~", area)).toBe(false);
+  test("a path that only the tool can read, such as `file://`, is refused", () => {
     expect(isInsideArea(area, `file://${join(outside, "plan.md")}`, area)).toBe(false);
   });
 });
@@ -174,8 +171,13 @@ describe("the wall: what a Project chat may not open (review of #711)", () => {
     expect(wallRefusesPath(wall(), join(tmpdir(), "x.txt"), area)).toBe(false);
   });
 
-  test("refuses `~`, which a tool expands, and keeps a `$` in a name as plain text", () => {
-    expect(wallRefusesPath(wall(), "~/x", area)).toBe(true);
+  test("reads `~` as the home folder, as both engines do, and keeps a `$` in a name as plain text", () => {
+    const home = { area, closed: [homedir()] };
+    expect(wallRefusesPath(home, "~/x", area)).toBe(true);
+    expect(wallRefusesPath(home, "~", area)).toBe(true);
+    expect(wallRefusesPattern(home, "~/notes/*", area)).toBe(true);
+    expect(wallRefusesPath(wall(), "~/x", area)).toBe(false);
+    expect(wallRefusesPath(wall(), "~other/x", area)).toBe(true);
     // A route file such as `$id.tsx` is a common name. No file tool expands `$HOME`.
     expect(wallRefusesPath(wall(), "src/$id.tsx", area)).toBe(false);
     expect(wallRefusesPath(wall(), "$HOME/x", area)).toBe(false);

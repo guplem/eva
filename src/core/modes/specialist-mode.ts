@@ -22,7 +22,7 @@ export interface SpecialistPreparerOptions {
    */
   readonly isSpecialist?: (projectId: string) => boolean;
   /** The folders that the chat may not open, read at each turn (#711). */
-  readonly wallRoots?: () => WallRoots;
+  readonly wallRoots: () => WallRoots;
 }
 
 export class SpecialistPreparer implements TurnPreparer {
@@ -53,7 +53,7 @@ export class SpecialistPreparer implements TurnPreparer {
       trusted: true,
       harnessMemory: false,
       folderHooks: false,
-      fileWall: { area: session.startFolder, ...(this.options.wallRoots?.() ?? { closed: [], readable: [] }) },
+      fileWall: { area: session.startFolder, ...this.options.wallRoots() },
       // The project folder is no repository: without the ceiling, git there would read the vault.
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };

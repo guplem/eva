@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { ApprovalAnswer } from "../../../../src/shared/engine-port.ts";
+import type { ApprovalAnswer, WallRoots } from "../../../../src/shared/engine-port.ts";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
@@ -127,6 +127,8 @@ function addProject(id: string, status: string, body: string): void {
 const silentRunner = new FakeRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
 const finishedTurn: TurnOutcome = { finished: true, addNote: () => undefined };
 const stoppedTurn: TurnOutcome = { finished: false, addNote: () => undefined };
+/** No closed folder: these tests are about the other parts of a turn. */
+const noWall = (): WallRoots => ({ closed: [], readable: [] });
 
 beforeEach(() => {
   sandbox = createGitSandbox();
@@ -458,7 +460,7 @@ describe("Specialist mode (#703)", () => {
   const coachId = "2025-03-02-1015-coach";
 
   function specialist(sync = new FakeSync()): SpecialistPreparer {
-    return new SpecialistPreparer({ vaultSync: sync, environment: { PATH: "/bin" } });
+    return new SpecialistPreparer({ vaultSync: sync, environment: { PATH: "/bin" }, wallRoots: noWall });
   }
 
   test("a specialist's wall closes the vault and each extra project root (#711)", async () => {
@@ -515,6 +517,7 @@ describe("Specialist mode (#703)", () => {
   test("a chat whose project is no specialist any more takes no message, and touches no file", async () => {
     const sync = new FakeSync();
     const preparer = new SpecialistPreparer({
+      wallRoots: noWall,
       vaultSync: sync,
       environment: { PATH: "/bin" },
       isSpecialist: () => false,
@@ -577,6 +580,7 @@ describe("Project mode", () => {
 
   function project(trustedOwners: string[], store = new TrustStore(join(sandbox.root, "trust.json"))): ProjectPreparer {
     return new ProjectPreparer({
+      wallRoots: noWall,
       trustStore: store,
       cloneOrigins: origins,
       trustedOwners: () => trustedOwners,
@@ -588,6 +592,7 @@ describe("Project mode", () => {
   test("a chat in a clone gets a copy of each mentioned vault file, and no vault path (#706)", () => {
     writeFileSync(join(vault, "Plan.md"), "The plan.");
     const preparer = new ProjectPreparer({
+      wallRoots: noWall,
       trustStore: new TrustStore(join(sandbox.root, "trust.json")),
       cloneOrigins: origins,
       trustedOwners: () => [],
@@ -690,6 +695,7 @@ describe("Project mode", () => {
   test("each turn reads the trusted owners again, so a change needs no restart", async () => {
     const owners: string[] = [];
     const preparer = new ProjectPreparer({
+      wallRoots: noWall,
       trustStore: new TrustStore(join(sandbox.root, "trust.json")),
       cloneOrigins: origins,
       trustedOwners: () => owners,
@@ -811,6 +817,7 @@ describe("Project mode", () => {
 
     test("the question shows the origin without a user part, a line break or a long tail", async () => {
       const preparer = new ProjectPreparer({
+        wallRoots: noWall,
         trustStore: new TrustStore(join(sandbox.root, "t.json")),
         cloneOrigins: origins,
         trustedOwners: () => [],
@@ -834,6 +841,7 @@ describe("Project mode", () => {
       ] as const) {
         const asking = recording("expired");
         await new ProjectPreparer({
+          wallRoots: noWall,
           trustStore: new TrustStore(join(sandbox.root, "t.json")),
           cloneOrigins: origins,
           trustedOwners: () => [],
@@ -857,6 +865,7 @@ describe("Project mode", () => {
     test("with no remote, or a remote that cannot be read, is untrusted with no question", async () => {
       for (const readRemote of [() => Promise.resolve(null), () => Promise.reject(new Error("no git"))]) {
         const preparer = new ProjectPreparer({
+          wallRoots: noWall,
           trustStore: new TrustStore(join(sandbox.root, "t.json")),
           cloneOrigins: origins,
           trustedOwners: () => ["owner"],
@@ -917,6 +926,7 @@ describe("Project mode", () => {
 
   test("keeps and brings back the files of the clone (issue 523)", async () => {
     const preparer = new ProjectPreparer({
+      wallRoots: noWall,
       trustStore: new TrustStore(join(sandbox.root, "trust.json")),
       cloneOrigins: origins,
       trustedOwners: () => [],
@@ -934,6 +944,7 @@ describe("Project mode", () => {
 
   test("refuses a restore while Eva pulls or pushes in the clone", async () => {
     const preparer = new ProjectPreparer({
+      wallRoots: noWall,
       trustStore: new TrustStore(join(sandbox.root, "trust.json")),
       cloneOrigins: origins,
       trustedOwners: () => [],

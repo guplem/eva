@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallback, Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildQueryOptions } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
+import { chatDataFolders } from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
 import type { ApprovalAnswer, QuestionsOutcome, TurnRequest } from "../../../../src/shared/engine-port.ts";
 
 let vault: string;
@@ -86,11 +87,10 @@ describe("the file wall of a Claude Code Project chat (#711)", () => {
       .allowWrite;
     expect(writes).toContain(clone);
     expect(writes).toContain(tmpdir());
-    expect(writes).toContain(join(homedir(), ".cache", "pip"));
-    // The default vault lives in the home folder, and a `bin` folder beside a cache runs later outside the sandbox.
-    expect(writes).not.toContain(homedir());
-    expect(writes).not.toContain(join(homedir(), ".cache"));
-    expect(writes).not.toContain(join(homedir(), ".cargo"));
+    // npm checks each package of its cache. A build outside the sandbox reuses the other caches with no check.
+    expect(writes).toEqual([clone, tmpdir(), join(homedir(), ".npm", "_cacache")]);
+    expect(options.env).toMatchObject({ UV_CACHE_DIR: join(tmpdir(), "eva-tool-caches", "uv") });
+    expect(options.settings).toMatchObject({ sandbox: { network: { allowLocalBinding: true } } });
     // In auto mode, a host that no rule names goes to Claude Code's classifier: the common ones are named.
     const hosts = (options.settings as { sandbox: { network: { allowedDomains: string[] } } }).sandbox.network
       .allowedDomains;
@@ -169,7 +169,7 @@ describe("the file wall, after the review of #711", () => {
     const options = buildQueryOptions(projectRequest(), "/bin/claude", "auto");
     expect(await decide(options, "mcp__files__read", { path: join(vault, "AGENTS.md") })).toBe("deny");
     expect(await decide(options, "mcp__files__read", { paths: ["src", join(vault, "AGENTS.md")] })).toBe("deny");
-    expect(await decide(options, "Read", { file_path: "~/notes.md" })).toBe("deny");
+    expect(await decide(options, "Read", { file_path: "~other/notes.md" })).toBe("deny");
     const answer = await wallHook(options)(
       {
         hook_event_name: "PreToolUse",
@@ -192,5 +192,36 @@ describe("the file wall, after the review of #711", () => {
     } finally {
       rmSync(other, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Claude Code's own folder for the chat (review of #711)", () => {
+  test("the file tools read back the chat's large outputs and memory, and no other chat's history", async () => {
+    const config = join(vault, "engines", "claude");
+    const own = join(config, "projects", clone.replace(/[^a-zA-Z0-9]/g, "-"));
+    mkdirSync(join(own, "memory"), { recursive: true });
+    mkdirSync(join(config, "projects", "-assistant"), { recursive: true });
+    const options = buildQueryOptions(
+      projectRequest({ environment: { PATH: "/bin", CLAUDE_CONFIG_DIR: config } }),
+      "/bin/claude",
+      "auto",
+    );
+    expect(await decide(options, "Read", { file_path: join(own, "s1", "tool-results", "out.txt") })).toBeUndefined();
+    expect(await decide(options, "Write", { file_path: join(own, "memory", "MEMORY.md") })).toBeUndefined();
+    expect(await decide(options, "Read", { file_path: join(config, "projects", "-assistant", "s.jsonl") })).toBe(
+      "deny",
+    );
+    expect(await decide(options, "Read", { file_path: join(config, ".credentials.json") })).toBe("deny");
+  });
+
+  test("a long start folder matches Claude Code's shortened name, which ends with a hash", () => {
+    const config = join(vault, "engines", "claude");
+    const start = join(vault, "x".repeat(250));
+    const name = start.replace(/[^a-zA-Z0-9]/g, "-");
+    const shortened = join(config, "projects", `${name.slice(0, 200)}-abc123`);
+    mkdirSync(shortened, { recursive: true });
+    expect(chatDataFolders(config, start)).toEqual([shortened]);
+    expect(chatDataFolders(join(vault, "none"), start)).toEqual([]);
+    expect(chatDataFolders(null, clone)).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@ import { googleClientIdProblem } from "./google/google-client.ts";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
-import type { EngineName, EnginePort, McpServerSpec, WallRoots } from "../shared/engine-port.ts";
+import type { EngineName, EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import type { EnginePermissions } from "../shared/permissions.ts";
 import { chatKind } from "../shared/chat-kind.ts";
 import {
@@ -66,6 +66,7 @@ import {
   engineEnvironment,
   engineToolEnvironment,
   gitEnvironment,
+  projectWallRoots,
   type InstanceFacts,
 } from "./instance/child-environments.ts";
 import {
@@ -237,7 +238,7 @@ export interface EvaOptions {
   readonly secrets: EvaSecrets;
   readonly engines: readonly EnginePort[];
   /** Why the shell of a Project chat has no wall on this computer, or null when it has one (#711). */
-  readonly shellWallGap?: () => string | null;
+  readonly shellWallGap?: () => Promise<string | null>;
   readonly runner: ProcessRunner;
   /** The environment Eva started with. Child processes only get its allowlisted part. */
   readonly processEnvironment: EnvironmentMap;
@@ -759,7 +760,8 @@ export class Eva {
           // Read at each restore: the project work exists only after the session manager.
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
-          wallRoots: () => this.wallRoots(),
+          wallRoots: () =>
+            projectWallRoots(this.options.paths, this.options.config.vaultPath, this.options.config.projectRoots),
         }),
         specialist: new SpecialistPreparer({
           vaultSync,
@@ -767,7 +769,8 @@ export class Eva {
           // A project that is gone keeps its chat's refusal to the engine: its folder no longer exists.
           isSpecialist: (projectId) =>
             this.projects().find((project) => project.id === projectId)?.frontMatter.type !== "software",
-          wallRoots: () => this.wallRoots(),
+          wallRoots: () =>
+            projectWallRoots(this.options.paths, this.options.config.vaultPath, this.options.config.projectRoots),
         }),
       },
       now: options.now,
@@ -1351,7 +1354,9 @@ export class Eva {
     this.noticeVaultAhead();
     // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
     if (this.options.engines.some((engine) => engine.name === "claude-code"))
-      this.alerts.report("shell_wall", shellWallProblem(this.options.shellWallGap?.() ?? null));
+      void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
+        this.alerts.report("shell_wall", shellWallProblem(gap));
+      });
     this.noticeVaultSecrets();
     this.encryptVaultSecrets();
   }
@@ -2437,21 +2442,6 @@ export class Eva {
     return ahead.version ?? "newest";
   }
 
-  /**
-   * The folders that a Project chat may not open, but its own folder (#711). Eva's instance folder
-   * holds her logins and secrets. The gh login inside it stays readable, so a push still works.
-   */
-  private wallRoots(): WallRoots {
-    const vaultPath = this.options.config.vaultPath;
-    return {
-      closed: [
-        ...(vaultPath === null ? [] : [vaultPath]),
-        ...this.options.config.projectRoots,
-        this.options.paths.root,
-      ],
-      readable: [engineFolders(this.options.paths).gh],
-    };
-  }
   private noticeVaultAhead(): void {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return;

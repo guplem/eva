@@ -17,6 +17,7 @@ The template of a new widget is [`templates/widget/`](../templates/widget/). Eva
 - [Data formats](#data-formats)
 - [Naming rules](#naming-rules)
 - [Rules for the code](#rules-for-the-code)
+- [How Eva runs a widget](#how-eva-runs-a-widget)
 - [Outside Eva: the demo](#outside-eva-the-demo)
 - [Contract versions](#contract-versions)
 - [Example: a habits widget](#example-a-habits-widget)
@@ -95,6 +96,10 @@ A widget talks to its host only through `fetch` to relative paths. The host deci
 | `eva/theme.css`           | `GET`                  | The EVE colour variables. See [Theme](#theme).                                        |
 
 - A `file` input uses the path `data/<input>`, with no file name.
+- `data/<input>/` includes the subfolders of the folder. `index.json` lists each file of the folder and its subfolders by its path from the folder, such as `2026/run.json`, when its name matches `files`. So a file of the person named `index.json` at the top of the folder stays hidden.
+- A widget never reaches `.git/`, `.eva/`, `Scratch/`, the clones in `Projects/*/repos/`, `Life/About me.md` or any hidden file, also inside a folder that the person picked.
+- A widget writes only a JSON or YAML file whose name matches `files`, and never a rule file of an agent: `AGENTS.md`, `CLAUDE.md`, `README.md` or `DATA_FORMAT.md`. A write is 5 MB at most. Eva refuses a text that holds a secret, such as a token.
+- `eva/location.json` answers `null` for a widget with no `eva-location` input.
 - `eva/location.json` holds `{ "latitude": 41.39, "longitude": 2.17, "accuracy": 30, "at": "2026-01-01T09:30:00Z" }`. `accuracy` is in meters. `at` is the time of the newest stored point.
 - A `PUT` or a `DELETE` fails outside Eva. Handle the failure. See [Outside Eva: the demo](#outside-eva-the-demo).
 - A data file is JSON or YAML.
@@ -143,6 +148,8 @@ Each input that the widget writes has a JSON Schema in `schemas/`, in JSON Schem
 - The top of the schema is an object: `"type": "object"`.
 - Never close an object with `"additionalProperties": false`, at any level. Two widgets can share one folder, and each adds its own fields.
 - When the widget changes a file, it keeps the fields that it does not know. Read the file, change your fields, and write the whole object back.
+- Eva keeps them too. When a write leaves out a field of the file on disk, and the widget's schema does not name that field at that level, Eva keeps the field. She does the same inside each object. A list is the widget's own: Eva writes it as the widget sends it, so keep the fields of each item.
+- A write of a YAML file loses its comments.
 - A widget tolerates a missing field. Another widget, or the person, can write a file with fewer fields.
 
 ## Naming rules
@@ -177,6 +184,15 @@ The machine check is a meta-schema: [`widgets/meta-schema-v1.json`](widgets/meta
 - Keep the fields that you do not know, as [Data formats](#data-formats) says.
 - Call only the hosts of the manifest. Eva blocks the others.
 - Use only relative paths for the contract paths, such as `fetch("config.json")`, never `fetch("/config.json")`.
+
+## How Eva runs a widget
+
+- Eva keeps a read-only copy of the newest commit of the default branch, on the computer, never in the vault. Before the person approves it, she reads only `eva-widget.json` and the schemas. The approval installs exactly that commit.
+- The person approves the inputs and the permissions on each computer. Eva checks each request against this approval, never against the manifest or `.eva/widgets.json`.
+- Each widget runs in a frame with `sandbox="allow-scripts"`, so it has no origin of its own. It sends no cookie, and it cannot read Eva's page, Eva's API or another widget.
+- Eva serves the widget from a path with a random token. Each answer carries a Content Security Policy: the widget loads only its own files, and calls only the approved hosts.
+- A host must be a public `https` address. Eva refuses her own names, this computer, the local network and the tailnet.
+- A sandbox and a policy do not block every channel, such as WebRTC. A check by name also cannot see a public name that points to a private address. So a widget is code from its author: turn on only a widget whose author you trust.
 
 ## Outside Eva: the demo
 

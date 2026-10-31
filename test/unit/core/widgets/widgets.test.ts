@@ -141,7 +141,10 @@ beforeEach(() => {
       remoteOf: () => sandbox.remote,
     }),
     projects: () => projects,
-    baseWidgets: ["https://github.com/example-owner/base-widget", "not an address"],
+    baseWidgets: [
+      { url: "https://github.com/example-owner/base-widget", name: "Base" },
+      { url: "not an address", name: "Broken" },
+    ],
     location: () => location,
     exclusive: (work) => Promise.resolve().then(work),
     redact: (value) => value.replaceAll("ghp_secret", "[hidden]"),
@@ -188,6 +191,10 @@ describe("the list", () => {
       expect.objectContaining({ id: "example-owner/project-widget", sources: ["project"], state: "off" }),
       expect.objectContaining({ id: "example-owner/base-widget", sources: ["base"], state: "off" }),
     ]);
+  });
+
+  test("shows a base widget by its name before Eva reads its manifest", () => {
+    expect(widgets.list().find((item) => item.id === "example-owner/base-widget")?.name).toBe("Base");
   });
 
   test("adds a widget only once, and only by a GitHub address", async () => {

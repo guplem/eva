@@ -190,7 +190,7 @@ import { changelogEntries, type ChangelogEntry } from "./updates/release-policy.
 import { publishedReleaseNotes } from "./updates/self-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
-import { baseWidgets } from "./widgets/base-widgets.ts";
+import { baseWidgets, type BaseWidget } from "./widgets/base-widgets.ts";
 import type { WidgetAddress } from "./widgets/widget-address.ts";
 import { WidgetApprovals } from "./widgets/widget-approvals.ts";
 import { WidgetCopies } from "./widgets/widget-copies.ts";
@@ -299,6 +299,8 @@ export interface EvaOptions {
   readonly toolLatestSources?: LatestVersionSources;
   /** The git address of a widget; a test points it at a local remote. Default: its GitHub address. */
   readonly widgetRemote?: (address: WidgetAddress) => string;
+  /** The widgets that ship with Eva; a test that counts the list gives none. Default: `baseWidgets`. */
+  readonly baseWidgets?: readonly BaseWidget[];
 }
 
 /** The tools that Eva installs and updates from the Updates page, by their program name. */
@@ -813,7 +815,7 @@ export class Eva {
               ...(options.widgetRemote === undefined ? {} : { remoteOf: options.widgetRemote }),
             }),
             projects: () => this.projects(),
-            baseWidgets,
+            baseWidgets: options.baseWidgets ?? baseWidgets,
             location: () => this.locations.newest(),
             exclusive: (work) => this.vault.exclusive(work),
             redact: (text) => redactor.redact(text),

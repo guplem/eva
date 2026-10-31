@@ -29,6 +29,7 @@ import type { GithubRequest } from "../projects/repository-facts.ts";
 import { grantChange, readOnlyFallbacks, type GrantChange, type WidgetGrant } from "./widget-changes.ts";
 import { releaseNotes } from "./widget-notes.ts";
 import type { WaitingUpdate, WidgetUpdates } from "./widget-updates.ts";
+import type { BaseWidget } from "./base-widgets.ts";
 import {
   PreviewGrants,
   WidgetPreviews,
@@ -42,8 +43,8 @@ export interface WidgetsOptions {
   readonly approvals: WidgetApprovals;
   readonly copies: WidgetCopies;
   readonly projects: () => readonly Project[];
-  /** The addresses of the widgets that ship with Eva. */
-  readonly baseWidgets: readonly string[];
+  /** The widgets that ship with Eva. */
+  readonly baseWidgets: readonly BaseWidget[];
   /** The newest location that Eva knows, or null. */
   readonly location: () => LastLocation | null;
   /** Runs a vault write between two sync steps. */
@@ -232,7 +233,7 @@ export class Widgets {
     const entries = readWidgetList(this.options.vaultPath);
     const listed = new Set(entries.map((entry) => entry.id));
     const projects = new Set(this.projectAddresses().map((address) => address.id));
-    const base = new Set(this.baseAddresses().map((address) => address.id));
+    const base = new Map(this.baseAddresses().map(({ address, name }) => [address.id, name]));
     return this.allAddresses(entries).map(({ address, entry }) => {
       const record = this.options.approvals.get(address.id);
       const reviewed = this.reviews.get(address.id)?.review;
@@ -245,7 +246,8 @@ export class Widgets {
         id: address.id,
         repository: address.url,
         owner: address.owner,
-        name: this.options.redact(record?.name ?? reviewed?.manifest?.name ?? address.name),
+        // Before a review, a base widget shows its own name, such as "Habits", not its repository name.
+        name: this.options.redact(record?.name ?? reviewed?.manifest?.name ?? base.get(address.id) ?? address.name),
         sources,
         state: entry?.enabled !== true ? "off" : matches(record, entry) ? "on" : "approve",
         size: record?.size ?? reviewed?.manifest?.size ?? null,
@@ -974,7 +976,9 @@ export class Widgets {
       all.push({ address, entry });
     };
     for (const entry of entries) add(widgetAddress(entry.repository), entry);
-    for (const address of [...this.projectAddresses(), ...this.baseAddresses()]) add(address, null);
+    for (const address of [...this.projectAddresses(), ...this.baseAddresses().map((base) => base.address)]) {
+      add(address, null);
+    }
     return all;
   }
 
@@ -988,10 +992,10 @@ export class Widgets {
     );
   }
 
-  private baseAddresses(): WidgetAddress[] {
-    return this.options.baseWidgets.flatMap((url) => {
+  private baseAddresses(): { address: WidgetAddress; name: string }[] {
+    return this.options.baseWidgets.flatMap(({ url, name }) => {
       const address = widgetAddress(url);
-      return address === null ? [] : [address];
+      return address === null ? [] : [{ address, name }];
     });
   }
 }

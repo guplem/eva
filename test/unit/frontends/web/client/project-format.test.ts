@@ -8,6 +8,7 @@ import {
   projectSummary,
   shownTags,
   tagsByUse,
+  removedRepositoriesHint,
   repositoryLabel,
   repositoryWebUrl,
   statusPill,
@@ -181,5 +182,24 @@ describe("shownTags", () => {
 
   test("hides nothing when the tags fit", () => {
     expect(shownTags(["a", "b"], "", false, 3)).toEqual({ shown: ["a", "b"], hidden: 0 });
+  });
+});
+
+describe("removedRepositoriesHint", () => {
+  const app = "https://github.com/example/example-app";
+  const docs = "https://github.com/example/example-docs";
+
+  test("says nothing while no saved repository is gone", () => {
+    expect(removedRepositoriesHint([app], [app])).toBeNull();
+    expect(removedRepositoriesHint([app], [app, docs])).toBeNull();
+  });
+
+  test("names each removed repository and says that its clones stay", () => {
+    expect(removedRepositoriesHint([app, docs], [docs])).toBe(
+      "Save to remove github.com/example/example-app. Its clones stay in the project.",
+    );
+    expect(removedRepositoriesHint([app, docs], [])).toBe(
+      "Save to remove github.com/example/example-app and github.com/example/example-docs. Their clones stay in the project.",
+    );
   });
 });

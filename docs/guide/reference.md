@@ -253,6 +253,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - Each new chat with Eva gets a list of your active and in-use projects, with the title, the folder name and the description. So Eva knows them without a search. A changed status shows in the next new chat. A project chat gets no list.
 - **Repository setup:** open it from the project page. It checks each repository by its type. A repository with no type, such as one that you added by hand, shows no report: pick its type first.
   - **Fix** on an item that a command can fix runs it on GitHub at once. Press **Refresh** to see the item turn green. Any other **Fix** opens a chat with the request.
+  - A file fix, such as a skill copy, goes straight to the default branch. When the branch requires checks, Eva opens a pull request with auto-merge instead. It merges by itself when CI passes, and the item turns green then.
   - **Fix all** runs every fix that a command can do. Then it opens one chat for the rest, when something is left.
 - **Specialists:** a specialist is a project that you chat with directly, such as a gym coach. It has its own rules and memory. Its `AGENTS.md` has `type: specialist` in the front matter.
   - The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. At your first message, a new specialist asks what it does. Then it writes its rules into this file.

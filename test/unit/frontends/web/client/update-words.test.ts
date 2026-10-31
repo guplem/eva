@@ -4,6 +4,7 @@ import {
   evaNewest,
   installLabel,
   releaseDay,
+  releasePage,
   restartWait,
   updateCallout,
   updatesFace,
@@ -152,5 +153,11 @@ describe("evaNewest", () => {
 
   test("a source checkout names no version, as it follows the main branch", () => {
     expect(evaNewest({ ...status, kind: "source", releases: [], available: true })).toBeNull();
+  });
+});
+
+describe("releasePage", () => {
+  test("links the GitHub page of the release tag", () => {
+    expect(releasePage("4.5.0")).toBe("https://github.com/guplem/eva/releases/tag/v4.5.0");
   });
 });

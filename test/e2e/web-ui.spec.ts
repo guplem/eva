@@ -1900,6 +1900,14 @@ test("Project mode: the repository setup shows each item's light; Fix runs a dir
   await skill.getByRole("button", { name: "Fix Skill write-commit now" }).click();
   await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
   report = page.getByRole("region", { name: "example-owner/example-app" });
+  // The demo branch requires checks, so the copy waits in a pull request with auto-merge.
+  await expect(
+    report.getByText(
+      "Skill write-commit: Eva opened the pull request https://github.com/example-owner/example-app/pull/1.",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await expect(report.getByRole("link", { name: "https://github.com/example-owner/example-app/pull/1" })).toBeVisible();
   // Git hooks depend on the project's stack, so a coding agent adds them.
   const hooks = report.locator(".setup-item", { hasText: "Git hooks" });
   await hooks.getByRole("button", { name: "Fix Git hooks in a new chat" }).click();
@@ -4559,13 +4567,17 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
   await expect(dialog.getByRole("alert")).toContainText("It can break things");
   await dialog.getByText("Every change up to v1.0.0").click();
   await expect(dialog.getByText("feat!: rename the keys (1.0.0)")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "See v1.0.0 on GitHub" })).toHaveAttribute(
+    "href",
+    "https://github.com/guplem/eva/releases/tag/v1.0.0",
+  );
   await expect(dialog).toContainText("Your chats stay as they are.");
   if (test.info().project.name === "phone") {
     // A phone shows the dialog as a bottom sheet, with its buttons at full width.
     const box = await dialog.boundingBox();
     expect(Math.abs((box?.y ?? 0) + (box?.height ?? 0) - (page.viewportSize()?.height ?? 0))).toBeLessThanOrEqual(1);
     const heights = await dialog
-      .locator("button, summary")
+      .locator("button, summary, a")
       .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
   }
@@ -4697,6 +4709,24 @@ test("Settings: the changelog lists each release with its own changes", async ({
   await expect(dialog).toContainText("v0.3.0");
   await expect(dialog).toContainText("Voice notes.");
   await expect(dialog.locator(".version-row", { hasText: "v0.2.0" })).toContainText("Installed");
+  await expect(dialog.getByRole("link", { name: "v0.3.0" })).toHaveAttribute(
+    "href",
+    "https://github.com/guplem/eva/releases/tag/v0.3.0",
+  );
+  // A tap on the headline, not only on the version, opens the release page.
+  await page.context().route("https://github.com/**", (route) => route.fulfill({ body: "release" }));
+  const releaseTab = page.waitForEvent("popup");
+  // The link lies over the headline. A click on the row waits until the sheet stops, and its link may take the click.
+  const row = dialog.locator(".version-row", { hasText: "v0.3.0" });
+  const rowBox = await row.boundingBox();
+  const headlineBox = await row.getByText("Voice notes.").boundingBox();
+  if (rowBox === null || headlineBox === null) throw new Error("The release row is not on the screen.");
+  await row.click({
+    position: { x: headlineBox.x - rowBox.x + 4, y: headlineBox.y - rowBox.y + headlineBox.height / 2 },
+  });
+  expect((await releaseTab).url()).toBe("https://github.com/guplem/eva/releases/tag/v0.3.0");
+  await (await releaseTab).close();
+  // The changes toggle sits above the row link, so it still opens in place.
   await dialog.getByText("Every change in v0.3.0").click();
   await expect(dialog.getByText("feat: voice notes (#7)")).toBeVisible();
   await dialog.getByRole("button", { name: "Close" }).click();
@@ -6400,6 +6430,31 @@ test("Files: a drag of a divider resizes only the column at its left (issue 626)
   await page.reload();
   await expect(divider).toBeVisible();
   await expectWidth(vault, usual);
+});
+
+test("Files: a quick button makes the file large or small, and the large file hides the search and favorites (issue 733)", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows the file alone already.");
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  const file = page.getByRole("region", { name: "File text" });
+  const vaultList = page.getByRole("list", { name: "Contents of Vault" });
+  const search = page.getByRole("searchbox", { name: "Search the vault" });
+  // A favorite makes the bar show, so the test can see it hide.
+  await page.getByRole("button", { name: "Add to favorites" }).click();
+  const favorites = page.getByRole("navigation", { name: "Favorites" });
+  await expect(favorites).toBeVisible();
+  await expect(search).toBeVisible();
+  await file.getByRole("button", { name: "Make the file large" }).click();
+  await expect(vaultList).toBeHidden();
+  await expect(search).toBeHidden();
+  await expect(favorites).toBeHidden();
+  await file.getByRole("button", { name: "Make the file small" }).click();
+  await expect(vaultList).toBeVisible();
+  await expect(search).toBeVisible();
+  await expect(favorites).toBeVisible();
+  await page.getByRole("button", { name: "Remove from favorites" }).click();
 });
 
 test("Files: the one folder view, the large file and a phone show no divider (issue 626)", async ({

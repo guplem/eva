@@ -654,7 +654,7 @@ async function widgetRoute(request: Request, url: URL, options: LocalApiOptions)
   try {
     const path = encoded.map((part) => decodeURIComponent(part)).join("/");
     // A dead token reads no body, and a body stops at the limit, also one with no length or a chunked one.
-    if (!widgets.isLive(token)) return answer(404);
+    if (request.method === "PUT" && !widgets.isLive(token)) return answer(404);
     let body: Uint8Array | null = null;
     if (request.method === "PUT") {
       body = await cappedBody(request, maxWidgetWriteBytes);

@@ -102,6 +102,8 @@ export type SetupQuestion =
   | "googleClientSecret"
   | "voiceModel";
 
+/** The questions whose answer the terminal never shows. */
+export const hiddenSetupQuestions: ReadonlySet<SetupQuestion> = new Set(["vaultPassword", "vaultPasswordAgain"]);
 /** The environment variable that answers each question in `eva setup --non-interactive`. */
 export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   timeZone: "EVA_TIME_ZONE",

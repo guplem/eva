@@ -14,6 +14,7 @@ import {
   formInputs,
   initialValues,
   missingInputs,
+  ownValue,
   permissionLines,
   sentValues,
   type FormValues,
@@ -310,7 +311,11 @@ function WidgetActivation({
   const [review, setReview] = useState<WidgetReview | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [values, setValues] = useState<FormValues>({});
-  const [picking, setPicking] = useState<{ readonly id: string; readonly kind: "folder" | "file" } | null>(null);
+  const [picking, setPicking] = useState<{
+    readonly id: string;
+    readonly kind: "folder" | "file";
+    readonly writes: boolean;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -375,9 +380,9 @@ function WidgetActivation({
               <InputField
                 key={input.id}
                 input={input}
-                value={values[input.id]}
+                value={ownValue(values, input.id)}
                 onChange={(value) => set(input.id, value)}
-                onPick={(kind) => setPicking({ id: input.id, kind })}
+                onPick={(kind) => setPicking({ id: input.id, kind, writes: input.access === "write" })}
               />
             ))}
             <div className="field">
@@ -424,8 +429,9 @@ function WidgetActivation({
       {picking !== null && (
         <VaultPicker
           label={picking.kind === "folder" ? "Pick a folder" : "Pick a file"}
+          newFile={picking.writes}
           kind={picking.kind}
-          start={folderOf(values[picking.id], picking.kind)}
+          start={folderOf(ownValue(values, picking.id), picking.kind)}
           onClose={() => setPicking(null)}
           onPick={(path) => {
             set(picking.id, path);

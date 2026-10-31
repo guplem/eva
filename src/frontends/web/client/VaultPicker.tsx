@@ -9,6 +9,7 @@ import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { errorText } from "./SettingsParts.tsx";
+import { isWritableName } from "../../../core/widgets/widget-places.ts";
 import { isPickable } from "./widget-form.ts";
 
 function childOf(path: string, name: string): string {
@@ -23,6 +24,7 @@ export function VaultPicker({
   label,
   kind,
   start,
+  newFile = false,
   onPick,
   onClose,
 }: {
@@ -31,11 +33,15 @@ export function VaultPicker({
   /** The folder that the picker opens first: the folder of the current value, or the vault root. */
   readonly start: string;
   readonly onPick: (path: string) => void;
+  /** True for a file that a widget writes: the person may name a file that does not exist yet. */
+  readonly newFile?: boolean;
   readonly onClose: () => void;
 }): ReactElement {
   const [path, setPath] = useState(start);
   const [entries, setEntries] = useState<readonly FileEntry[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const canName = isWritableName(newName.trim()) && isPickable(childOf(path, newName.trim()));
 
   useEffect(() => {
     let current = true;
@@ -102,6 +108,29 @@ export function VaultPicker({
               ))}
             </ul>
           ))}
+        {kind === "file" && newFile && (
+          <form
+            className="inline-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canName) onPick(childOf(path, newName.trim()));
+            }}
+          >
+            <label className="field grow">
+              <span className="field-label">Or a new file here</span>
+              <input
+                value={newName}
+                placeholder="log.json"
+                autoComplete="off"
+                onChange={(event) => setNewName(event.target.value)}
+              />
+              <span className="field-hint">A JSON or YAML file. The widget makes it at its first save.</span>
+            </label>
+            <button type="submit" className="ghost" aria-disabled={canName ? undefined : "true"}>
+              Use this name
+            </button>
+          </form>
+        )}
         {kind === "folder" && (
           <div className="button-row">
             <button

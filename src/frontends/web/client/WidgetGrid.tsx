@@ -22,7 +22,8 @@ function currentScheme(): "light" | "dark" {
 export function WidgetGrid(): ReactElement | null {
   const [frames, setFrames] = useState<readonly WidgetFrame[]>([]);
   const [scheme, setScheme] = useState(currentScheme);
-  const [full, setFull] = useState<WidgetFrame | null>(null);
+  // By id, so the full-screen frame takes the new token after each ask, as the grid does.
+  const [fullId, setFullId] = useState<string | null>(null);
   const tokens = useRef<readonly string[]>([]);
   const askedAt = useRef<number | null>(null);
   // The number of the newest ask, so an older answer that comes late changes nothing.
@@ -79,6 +80,11 @@ export function WidgetGrid(): ReactElement | null {
       tokens.current = [];
     };
     window.addEventListener("pagehide", release);
+    // A page back from the back-forward cache released its tokens as it left: ask for new ones.
+    const onShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) ask(true);
+    };
+    window.addEventListener("pageshow", onShow);
     return () => {
       stopReconnect();
       clearInterval(timer);
@@ -86,11 +92,13 @@ export function WidgetGrid(): ReactElement | null {
       themeWatch.disconnect();
       media.removeEventListener("change", onSystemChange);
       window.removeEventListener("pagehide", release);
+      window.removeEventListener("pageshow", onShow);
       release();
     };
   }, [ask]);
 
-  const closeFull = useCallback(() => setFull(null), []);
+  const full = frames.find((frame) => frame.id === fullId && frame.src !== null) ?? null;
+  const closeFull = useCallback(() => setFullId(null), []);
   useBackLayer(full !== null, closeFull, "widget-full");
 
   if (frames.length === 0) return null;
@@ -118,7 +126,7 @@ export function WidgetGrid(): ReactElement | null {
                 type="button"
                 className="icon-button widget-full-button"
                 aria-label={`Open ${frame.name} in full screen`}
-                onClick={() => setFull(frame)}
+                onClick={() => setFullId(frame.id)}
               >
                 <Icon name="expand" />
               </button>

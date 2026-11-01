@@ -222,6 +222,7 @@ async function serve(paths: HomePaths): Promise<number> {
         which: (name) => Bun.which(name),
         runner: systemProcessRunner,
         environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist, {}),
+        root: process.getuid?.() === 0,
       }),
     nestedSandbox: () =>
       nestedSandboxWorks({
@@ -229,6 +230,7 @@ async function serve(paths: HomePaths): Promise<number> {
         which: (name) => Bun.which(name),
         runner: systemProcessRunner,
         environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist, {}),
+        root: process.getuid?.() === 0,
       }),
     runner: systemProcessRunner,
     processEnvironment: process.env,

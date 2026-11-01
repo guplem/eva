@@ -11,6 +11,8 @@ export interface ShellWallMachine {
   readonly runner: ProcessRunner;
   /** The environment of the trial run. */
   readonly environment: Readonly<Record<string, string>>;
+  /** True when Eva runs as root, where Claude Code keeps one right in its box. */
+  readonly root: boolean;
 }
 
 /** A trial run is quick. A machine that hangs on it has no sandbox that works. */
@@ -50,9 +52,12 @@ export async function shellWallGap(machine: ShellWallMachine): Promise<string | 
 export async function nestedSandboxWorks(machine: ShellWallMachine): Promise<boolean> {
   if (machine.platform === "darwin") return true;
   if (machine.platform !== "linux" || machine.which("bwrap") === null) return false;
+  // Claude Code drops every right in its box. As root, it keeps the one that a nested namespace
+  // needs, and only when the system grants it. The trial does the same, so it sees what they see.
   const trial = [
     ...["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-pid", "--proc", "/proc"],
-    ...["--unshare-user", "--unshare-net", "unshare", "--user", "--map-root-user", "true"],
+    ...["--unshare-user", "--unshare-net", "--cap-drop", "ALL", ...(machine.root ? ["--cap-add", "CAP_SETFCAP"] : [])],
+    ...["unshare", "--user", "--map-root-user", "--pid", "--mount", "--fork", "true"],
   ];
   try {
     const result = await machine.runner.run(trial, {

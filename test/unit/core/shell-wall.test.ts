@@ -19,6 +19,7 @@ function machine(
     platform,
     which: found(names),
     environment: {},
+    root: false,
     runs,
     runner: {
       run: (command) => {
@@ -92,5 +93,18 @@ describe("nestedSandboxWorks (#760)", () => {
     const mac = machine("darwin", []);
     expect(await nestedSandboxWorks(mac)).toBe(true);
     expect(mac.runs).toEqual([]);
+  });
+});
+
+describe("nestedSandboxWorks, as Claude Code builds its sandbox (review of #760)", () => {
+  test("the trial drops every right, as Claude Code does, so a root Eva sees what its commands see", async () => {
+    const user = machine("linux", ["bwrap", "socat"]);
+    await nestedSandboxWorks(user);
+    expect(user.runs[0]).toContain("--cap-drop");
+    expect(user.runs[0]).not.toContain("--cap-add");
+    // As root, Claude Code keeps the one right that a nested namespace needs.
+    const root = { ...machine("linux", ["bwrap", "socat"]), root: true };
+    await nestedSandboxWorks(root);
+    expect(root.runs[0]).toContain("CAP_SETFCAP");
   });
 });

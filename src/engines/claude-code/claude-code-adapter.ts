@@ -235,7 +235,7 @@ export function buildQueryOptions(
       // The chat cannot open the vault or Eva's folder, by a file tool or by the shell (#711).
       options.settings = {
         ...(typeof options.settings === "object" ? options.settings : {}),
-        sandbox: fileWallSandbox(request.fileWall),
+        sandbox: fileWallSandbox(request.fileWall, request.environment["XDG_RUNTIME_DIR"] ?? null),
       };
       options.hooks = fileWallHooks(
         request.fileWall,

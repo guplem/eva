@@ -237,9 +237,26 @@ describe("the socket filter (#760)", () => {
   test("a machine that blocks a nested sandbox gets no socket filter, so each command still runs", () => {
     const wall = { area: clone, closed: [vault], readable: [], socketFilter: false };
     expect(sockets(projectRequest({ fileWall: wall }))).toBe(true);
+    // With no filter, a socket of the user, such as systemd's, could run a command outside the box.
+    const request = projectRequest({
+      fileWall: wall,
+      environment: { PATH: "/bin", XDG_RUNTIME_DIR: "/run/user/1000" },
+    });
+    const denied = (
+      buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: { filesystem: { denyRead: string[] } } }
+    ).sandbox.filesystem.denyRead;
+    for (const folder of ["/run/user/1000", "/run/dbus", "/var/run/docker.sock", "/run/tailscale", "/tmp/.X11-unix"])
+      expect(denied).toContain(folder);
+    expect(denied).toContain(vault);
   });
 
   test("another machine keeps the filter", () => {
     expect(sockets(projectRequest())).toBeUndefined();
+    const denied = (
+      buildQueryOptions(projectRequest(), "/bin/claude", "auto").settings as {
+        sandbox: { filesystem: { denyRead: string[] } };
+      }
+    ).sandbox.filesystem.denyRead;
+    expect(denied).toEqual([vault, "/srv/projects"]);
   });
 });

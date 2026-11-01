@@ -128,8 +128,35 @@ export function fileWallHooks(
   };
 }
 
+/**
+ * The places of the Unix sockets through which a command could run code outside the box, such as
+ * systemd's user bus, Docker, podman, tmux, X11 or Tailscale. With no socket filter (#760), Eva
+ * hides them instead. A list can miss a socket, so the guide calls the wall weaker there.
+ */
+const socketPlaces = [
+  "/run/dbus",
+  "/var/run/dbus",
+  "/run/docker.sock",
+  "/var/run/docker.sock",
+  "/run/podman",
+  "/run/containerd",
+  "/run/tailscale",
+  "/var/run/tailscale",
+  "/var/snap/lxd",
+  "/run/libvirt",
+  "/run/screen",
+  "/tmp/.X11-unix",
+];
+
+/** The user's own sockets: systemd, rootless Docker and podman, gpg, tmux. */
+function userSocketPlaces(runtimeFolder: string | null): string[] {
+  const uid = process.getuid?.();
+  const ownRuntime = uid === undefined ? [] : [`/run/user/${String(uid)}`, `/tmp/tmux-${String(uid)}`];
+  return [...new Set([...(runtimeFolder === null ? [] : [runtimeFolder]), ...ownRuntime])];
+}
+
 /** The sandbox of the chat's shell, in the shape of the `settings` option. */
-export function fileWallSandbox(wall: FileWall): Record<string, unknown> {
+export function fileWallSandbox(wall: FileWall, runtimeFolder: string | null = null): Record<string, unknown> {
   return {
     enabled: true,
     // A machine with no sandbox runs the turn on. Eva's status says that its shell has no wall.
@@ -149,7 +176,7 @@ export function fileWallSandbox(wall: FileWall): Record<string, unknown> {
       ...(wall.socketFilter ? {} : { allowAllUnixSockets: true }),
     },
     filesystem: {
-      denyRead: [...wall.closed],
+      denyRead: [...wall.closed, ...(wall.socketFilter ? [] : [...userSocketPlaces(runtimeFolder), ...socketPlaces])],
       // The chat's folder, and the parts of Eva's folder that its git and its shell need.
       allowRead: [wall.area, ...wall.readable],
       // npm checks each package of its cache. The other tools use the temporary folder.

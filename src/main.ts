@@ -13,7 +13,7 @@ import { createInterface } from "node:readline/promises";
 import { locateEngineProgram, pathWithOwnGh, pathWithUvFolder } from "./core/engine-install/engine-install.ts";
 import { locateVoiceProgram, ownVoicePrograms } from "./core/engine-install/voice-install.ts";
 import { Eva } from "./core/eva.ts";
-import { shellWallGap } from "./core/shell-wall.ts";
+import { nestedSandboxWorks, shellWallGap } from "./core/shell-wall.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
 import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
@@ -218,6 +218,13 @@ async function serve(paths: HomePaths): Promise<number> {
     engines,
     shellWallGap: () =>
       shellWallGap({
+        platform: process.platform,
+        which: (name) => Bun.which(name),
+        runner: systemProcessRunner,
+        environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist, {}),
+      }),
+    nestedSandbox: () =>
+      nestedSandboxWorks({
         platform: process.platform,
         which: (name) => Bun.which(name),
         runner: systemProcessRunner,

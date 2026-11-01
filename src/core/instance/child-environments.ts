@@ -131,7 +131,7 @@ export function projectWallRoots(
   paths: HomePaths,
   vaultPath: string | null,
   projectRoots: readonly string[],
-): WallRoots {
+): Pick<WallRoots, "closed" | "readable"> {
   const folders = engineFolders(paths);
   return {
     closed: [...(vaultPath === null ? [] : [vaultPath]), ...projectRoots, paths.root],

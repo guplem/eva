@@ -41,3 +41,27 @@ export async function shellWallGap(machine: ShellWallMachine): Promise<string | 
     return cannot(error instanceof Error ? error.message : String(error));
   }
 }
+
+/**
+ * True when a sandbox can start inside the sandbox, as Claude Code's Unix socket filter does on
+ * Linux (#760). A recent Ubuntu lets bubblewrap make one user namespace but not a second inside
+ * it. There, the filter breaks every shell command, so Eva turns it off. macOS makes no namespace.
+ */
+export async function nestedSandboxWorks(machine: ShellWallMachine): Promise<boolean> {
+  if (machine.platform === "darwin") return true;
+  if (machine.platform !== "linux" || machine.which("bwrap") === null) return false;
+  const trial = [
+    ...["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-pid", "--proc", "/proc"],
+    ...["--unshare-user", "--unshare-net", "unshare", "--user", "--map-root-user", "true"],
+  ];
+  try {
+    const result = await machine.runner.run(trial, {
+      cwd: "/",
+      environment: machine.environment,
+      timeoutMs: trialTimeoutMs,
+    });
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}

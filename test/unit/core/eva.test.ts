@@ -1228,9 +1228,23 @@ describe("Eva", () => {
         trusted: true,
         harnessMemory: false,
         folderHooks: false,
-        fileWall: { area: coachFolder(), ...projectWallRoots(homePaths(home), vault, []) },
+        fileWall: { area: coachFolder(), ...projectWallRoots(homePaths(home), vault, []), socketFilter: false },
       });
       expect(sandbox.git(sandbox.remote, "show", `main:Projects/${coachId}/log.md`)).toBe("Monday: legs.");
+    });
+
+    test("the socket filter runs only after the start check says this computer allows it (#760)", async () => {
+      const engine = new FakeEngine((request) => FakeEngine.answer(request, "Noted."));
+      const instance = start(engine, {}, { nestedSandbox: () => Promise.resolve(true) });
+      const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      await instance.sessions.send(chat.id, "Before the check.");
+      instance.reportStartMigrations({
+        machine: { kind: "done", applied: [], later: [] },
+        vault: { kind: "done", applied: [], later: [] },
+      });
+      await Promise.resolve();
+      await instance.sessions.send(chat.id, "After the check.");
+      expect(engine.requests.map((request) => request.fileWall?.socketFilter)).toEqual([false, true]);
     });
 
     test("a specialist has no clones: a named clone, a fork or a retry in a new clone are refused", async () => {

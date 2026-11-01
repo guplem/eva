@@ -35,7 +35,7 @@ function projectRequest(overrides: Partial<TurnRequest> = {}): TurnRequest {
     trusted: true,
     harnessMemory: true,
     folderHooks: true,
-    fileWall: { area: clone, closed: [vault, "/srv/projects"], readable: [join(vault, "gh")] },
+    fileWall: { area: clone, closed: [vault, "/srv/projects"], readable: [join(vault, "gh")], socketFilter: true },
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
     askQuestions: () => Promise.resolve<QuestionsOutcome>("declined"),
@@ -133,7 +133,7 @@ describe("the file wall of a Claude Code Project chat (#711)", () => {
         startFolder: folder,
         projectFolder: folder,
         folderHooks: false,
-        fileWall: { area: folder, closed: [vault], readable: [] },
+        fileWall: { area: folder, closed: [vault], readable: [], socketFilter: true },
       }),
       "/bin/claude",
       "auto",
@@ -226,5 +226,20 @@ describe("Claude Code's own folder for the chat (review of #711)", () => {
     expect(chatDataFolders(config, start)).toEqual([shortened]);
     expect(chatDataFolders(join(vault, "none"), start)).toEqual([]);
     expect(chatDataFolders(null, clone)).toEqual([]);
+  });
+});
+
+describe("the socket filter (#760)", () => {
+  const sockets = (request: TurnRequest): unknown =>
+    (buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: { network: Record<string, unknown> } })
+      .sandbox.network["allowAllUnixSockets"];
+
+  test("a machine that blocks a nested sandbox gets no socket filter, so each command still runs", () => {
+    const wall = { area: clone, closed: [vault], readable: [], socketFilter: false };
+    expect(sockets(projectRequest({ fileWall: wall }))).toBe(true);
+  });
+
+  test("another machine keeps the filter", () => {
+    expect(sockets(projectRequest())).toBeUndefined();
   });
 });

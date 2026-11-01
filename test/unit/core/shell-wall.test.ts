@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shellWallGap, type ShellWallMachine } from "../../../src/core/shell-wall.ts";
+import { nestedSandboxWorks, shellWallGap, type ShellWallMachine } from "../../../src/core/shell-wall.ts";
 import { EvaError } from "../../../src/shared/errors.ts";
 import type { ProcessResult } from "../../../src/shared/process-runner.ts";
 
@@ -63,5 +63,34 @@ describe("shellWallGap (#711)", () => {
     expect(await shellWallGap(machine("darwin", []))).toBeNull();
     expect(await shellWallGap(machine("win32", []))).toContain("Windows");
     expect(await shellWallGap(machine("freebsd", []))).toContain("freebsd");
+  });
+});
+
+describe("nestedSandboxWorks (#760)", () => {
+  test("Linux that lets a sandbox start inside a sandbox keeps the socket filter", async () => {
+    const linux = machine("linux", ["bwrap", "socat"]);
+    expect(await nestedSandboxWorks(linux)).toBe(true);
+    // The socket filter makes a second user namespace inside bubblewrap's, so the trial does too.
+    expect(linux.runs[0]).toContain("unshare");
+  });
+
+  test("Linux that blocks it, such as a recent Ubuntu, or a trial that hangs, turns the filter off", async () => {
+    const blocked = machine("linux", ["bwrap", "socat"], () => ({
+      exitCode: 1,
+      stdout: "",
+      stderr: "unshare: write failed /proc/self/uid_map: Operation not permitted",
+    }));
+    expect(await nestedSandboxWorks(blocked)).toBe(false);
+    const hangs = machine("linux", ["bwrap", "socat"], () => {
+      throw new EvaError("process_timeout", "bwrap did not end in time.");
+    });
+    expect(await nestedSandboxWorks(hangs)).toBe(false);
+    expect(await nestedSandboxWorks(machine("linux", ["socat"]))).toBe(false);
+  });
+
+  test("macOS needs no trial: its sandbox makes no namespace", async () => {
+    const mac = machine("darwin", []);
+    expect(await nestedSandboxWorks(mac)).toBe(true);
+    expect(mac.runs).toEqual([]);
   });
 });

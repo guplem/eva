@@ -144,6 +144,9 @@ export function fileWallSandbox(wall: FileWall): Record<string, unknown> {
       deniedDomains: [...evaHosts],
       // A dev server or a test server of the clone listens on this computer. macOS asks for this.
       allowLocalBinding: true,
+      // The socket filter starts a sandbox inside the sandbox. Where the system blocks that, the
+      // filter would break every command, so it stays off and the folders stay closed (#760).
+      ...(wall.socketFilter ? {} : { allowAllUnixSockets: true }),
     },
     filesystem: {
       denyRead: [...wall.closed],

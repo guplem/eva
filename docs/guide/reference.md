@@ -327,9 +327,9 @@ In the sandbox, a command:
 - writes only in the chat's folder, the temporary folder and npm's cache;
 - cannot install a program on the computer or change your settings, and cannot use `sudo`;
 - reads the git config and the GitHub login, so `git commit` and `git push` work;
-- has no `ssh-agent` (the program that keeps your SSH keys) and no Docker. So use an `https` address, not an `ssh` one, for a git repository;
-- reaches the git hosts and package sites: GitHub, GitLab, Bitbucket, npm, Yarn, PyPI, crates.io, Go and Maven. For any other site, Claude Code's safety check decides in Auto mode;
-- cannot reach Eva herself, on this computer or on your tailnet (your private Tailscale network);
+- cannot use git over SSH: the sandbox lets a command out to the internet only through its own proxy, for web addresses. So use an `https` address, not an `ssh` one, for a git repository;
+- reaches the git hosts and package sites: GitHub, GitLab, Bitbucket, npm, Yarn, PyPI, crates.io, Go and Maven. For any other site, Claude Code's safety check decides in Auto mode. In Bypass mode, every site is open;
+- cannot reach Eva herself by the names `localhost` and `*.ts.net`, on this computer or on your tailnet (your private Tailscale network). A number address, such as `100.64.0.1`, is not blocked;
 - can serve on a port of this computer, such as for a dev server.
 
 pi has no sandbox. Its file tools stay walled, but its shell can read the closed folders.
@@ -342,9 +342,9 @@ On Linux, Claude Code adds a filter to the sandbox that closes every socket. To 
 
 So at start, Eva tries a sandbox inside a sandbox:
 
+- **While the test runs,** Eva treats the filter as off. The known socket folders stay closed.
 - **Where it works,** Eva keeps the socket filter on.
 - **Where it fails,** Eva turns the filter off, so each command still runs. Instead, she closes the folders of the known sockets, such as systemd's, Docker's, Tailscale's and the screen's. The vault and the other closed folders stay closed.
-- **Until the test ends,** the filter stays off and those folders stay closed.
 
 Without the filter, the wall is weaker: Eva's list can miss a socket in another folder. Do not turn off Ubuntu's setting for Eva. It protects the whole computer.
 
@@ -361,7 +361,7 @@ At start, Eva tries the sandbox. When it cannot start, a notice says why. The ch
 The wall stops an agent that makes a mistake or looks around. It does not stop an agent that tries hard to get out:
 
 - **GitHub:** the shell reads the GitHub login, so that `git push` works. Your vault is on GitHub too, so a command can download it from there.
-- **Sockets:** where the socket filter is off, a socket that Eva's list misses can let a command run code outside the sandbox.
+- **Sockets:** where the socket filter is off, a socket that Eva's list misses can let a command run code outside the sandbox. An example is the socket of `ssh-agent` (the program that keeps your SSH keys) in the temporary folder.
 - **Programs outside the sandbox:** MCP servers and the hooks of a trusted clone run outside it.
 - **pi and Windows:** the shell has no sandbox there.
 - **Another Eva:** the wall closes this Eva's folder only. Another Eva on the same computer stays open.

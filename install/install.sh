@@ -1,9 +1,9 @@
 #!/bin/sh
 # Installs Eva on Linux with one command:
 #   curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
-# It installs git, and the OpenMP library for voice notes, when they are missing. It downloads Eva
-# from the latest release, checks the download against SHA256SUMS, puts it in ~/.local/bin, and
-# starts `eva setup`. A second run updates Eva.
+# It installs git, the OpenMP library for voice notes, and bubblewrap and socat for the shell
+# sandbox, when they are missing. It downloads Eva from the latest release, checks the download
+# against SHA256SUMS, puts it in ~/.local/bin, and starts `eva setup`. A second run updates Eva.
 # EVA_INSTALL_BASE_URL downloads from another place, and EVA_INSTALL_SKIP_SETUP=1 skips the setup.
 # The CI uses both (scripts/smoke-install.sh).
 set -eu
@@ -53,33 +53,38 @@ has_openmp() {
   { ldconfig -p || /sbin/ldconfig -p; } 2>/dev/null | grep -q 'libgomp\.so\.1'
 }
 
-# Installs the tools in $1 and, when $2 is not empty, the OpenMP library. Each package manager
-# names the library in its own way. $packages is a list of words on purpose. NEEDRESTART_SUSPEND
-# keeps Ubuntu's service check (needrestart) from taking over the screen after the install.
+# Installs the tools in $1, the OpenMP library when $2 is not empty, and the shell sandbox when $3 is
+# not empty. Each package manager names the library in its own way. $packages is a list of words on
+# purpose. NEEDRESTART_SUSPEND keeps Ubuntu's service check (needrestart) from taking over the screen.
 install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
-    packages="$1${2:+ libgomp1}"
+    packages="$1${2:+ libgomp1}${3:+ bubblewrap socat}"
     as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get update -qq
     as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq $packages
   elif command -v dnf >/dev/null 2>&1; then
-    packages="$1${2:+ libgomp}"
+    packages="$1${2:+ libgomp}${3:+ bubblewrap socat}"
     as_root dnf install -y $packages
   elif command -v pacman >/dev/null 2>&1; then
-    packages="$1${2:+ gcc-libs}"
+    packages="$1${2:+ gcc-libs}${3:+ bubblewrap socat}"
     as_root pacman -S --noconfirm --needed $packages
   elif command -v zypper >/dev/null 2>&1; then
-    packages="$1${2:+ libgomp1}"
+    packages="$1${2:+ libgomp1}${3:+ bubblewrap socat}"
     as_root zypper --non-interactive install $packages
   elif command -v apk >/dev/null 2>&1; then
-    packages="$1${2:+ libgomp}"
+    packages="$1${2:+ libgomp}${3:+ bubblewrap socat}"
     as_root apk add $packages
   else
     return 1
   fi
 }
 
-# Eva needs git for the vault. `eva setup` downloads uv and Claude Code with curl. Voice notes
-# are optional, so the OpenMP library never stops the install.
+has_sandbox() {
+  command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1
+}
+
+# Eva needs git for the vault. `eva setup` downloads uv and Claude Code with curl. Voice notes and
+# the shell sandbox of Claude Code are optional, so neither stops the install. The sandbox keeps the
+# shell of a Project chat out of the vault (#711). An Eva from before it gets it from a second run.
 install_tools() {
   missing=""
   for tool in git curl; do
@@ -87,24 +92,43 @@ install_tools() {
   done
   openmp=""
   has_openmp || openmp="yes"
+  sandbox=""
+  has_sandbox || sandbox="yes"
   if [ -n "$missing" ]; then
-    say "  Installing$missing${openmp:+ and the OpenMP library for voice notes}. It needs administrator rights, so sudo can ask for your password."
-    install_packages "$missing" "$openmp" ||
+    say "  Installing$missing. It needs administrator rights, so sudo can ask for your password."
+    install_packages "$missing" "" "" ||
       fail "this system has no package manager that the script knows. Install$missing, then run this command again."
     for tool in $missing; do
       command -v "$tool" >/dev/null 2>&1 || fail "$tool did not install."
       say "  [ok] Installed $tool."
     done
-  elif [ -n "$openmp" ] && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; then
-    say "  Installing the OpenMP library for voice notes. It needs administrator rights, so sudo can ask for your password."
-    # The subshell keeps a failed step, such as a refused sudo, from stopping the install.
-    (install_packages "" yes) || true
   fi
-  [ -z "$openmp" ] && return 0
-  if has_openmp; then
-    say "  [ok] Installed the OpenMP library."
-  else
-    say "  Voice notes need the OpenMP library. Install it later with your package manager (libgomp1 on Ubuntu)."
+  [ -z "$openmp$sandbox" ] && return 0
+  if [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; then
+    # Each one alone, so a package that this system lacks does not stop the other.
+    # The subshell keeps a failed step, such as a refused sudo, from stopping the install.
+    if [ -n "$openmp" ]; then
+      say "  Installing the OpenMP library for voice notes. It needs administrator rights, so sudo can ask for your password."
+      (install_packages "" yes "") || true
+    fi
+    if [ -n "$sandbox" ]; then
+      say "  Installing bubblewrap and socat, the shell sandbox of Project chats. It needs administrator rights, so sudo can ask for your password."
+      (install_packages "" "" yes) || true
+    fi
+  fi
+  if [ -n "$openmp" ]; then
+    if has_openmp; then
+      say "  [ok] Installed the OpenMP library."
+    else
+      say "  Voice notes need the OpenMP library. Install it later with your package manager (libgomp1 on Ubuntu)."
+    fi
+  fi
+  if [ -n "$sandbox" ]; then
+    if has_sandbox; then
+      say "  [ok] Installed bubblewrap and socat."
+    else
+      say "  The shell of a Project chat needs bubblewrap and socat to stay out of the vault. Install them later with your package manager."
+    fi
   fi
 }
 

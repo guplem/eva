@@ -26,7 +26,7 @@ export async function shellWallGap(machine: ShellWallMachine): Promise<string | 
     ...(machine.which("socat") === null ? ["socat"] : []),
   ];
   if (missing.length > 0)
-    return `Claude Code's shell sandbox needs ${missing.join(" and ")}. Install them, such as with \`sudo apt install bubblewrap socat\`, then restart Eva.`;
+    return `Claude Code's shell sandbox needs ${missing.join(" and ")}. Run the install command of Eva again, or install them, such as with \`sudo apt install bubblewrap socat\`. Then restart Eva.`;
   // An installed bubblewrap can still fail, such as where the system allows no user namespace.
   const trial = ["bwrap", "--ro-bind", "/", "/", "--unshare-user", "--unshare-net", "true"];
   const cannot = (reason: string): string => `Claude Code's shell sandbox cannot start on this computer: ${reason}`;

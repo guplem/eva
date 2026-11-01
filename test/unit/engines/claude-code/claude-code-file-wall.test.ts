@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallback, Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildQueryOptions } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
-import { chatDataFolders } from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
+import { chatDataFolders, fileWallSandbox } from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
 import type { ApprovalAnswer, QuestionsOutcome, TurnRequest } from "../../../../src/shared/engine-port.ts";
 
 let vault: string;
@@ -245,9 +245,23 @@ describe("the socket filter (#760)", () => {
     const denied = (
       buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: { filesystem: { denyRead: string[] } } }
     ).sandbox.filesystem.denyRead;
-    for (const folder of ["/run/user/1000", "/run/dbus", "/var/run/docker.sock", "/run/tailscale", "/tmp/.X11-unix"])
+    // As root, a command could reach any socket under /run, such as systemd's, so all of it closes.
+    for (const folder of ["/run/user/1000", "/run", "/var/run", "/tmp/.X11-unix", join(homedir(), ".docker")])
       expect(denied).toContain(folder);
     expect(denied).toContain(vault);
+    // The name server file of many systems lives under /run.
+    const readable = (
+      buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: { filesystem: { allowRead: string[] } } }
+    ).sandbox.filesystem.allowRead;
+    expect(readable).toContain("/run/systemd/resolve");
+  });
+
+  test("macOS keeps its socket filter, which needs no nested sandbox", () => {
+    const wall = { area: clone, closed: [vault], readable: [], socketFilter: false };
+    const network = (
+      fileWallSandbox(wall, { runtimeFolder: null, platform: "darwin" }) as { network: Record<string, unknown> }
+    ).network;
+    expect(network["allowAllUnixSockets"]).toBeUndefined();
   });
 
   test("another machine keeps the filter", () => {

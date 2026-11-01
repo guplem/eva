@@ -306,11 +306,12 @@ The Assistant needs the whole vault and the `eva` command. So Eva puts no wall a
 
 ### The file wall of a project chat
 
-A project chat works in its own folder: its clone folder, or a specialist's project folder. The wall closes three folders to it:
+A project chat works in its own folder: its clone folder, or a specialist's project folder. The wall closes these folders to it:
 
 - your vault,
 - your other project folders,
-- Eva's own folder, with her logins and secrets.
+- Eva's own folder, with her logins and secrets,
+- the folder of Eva's own Tailscale, if she installed it for your user: a command could open a public tunnel with it.
 
 So a chat in a clone cannot read the project's notes or its other clones. To give it a vault file, mention the file. Eva then puts a copy in the clone. The other files of the computer stay open.
 
@@ -344,7 +345,7 @@ So at start, Eva tries a sandbox inside a sandbox:
 
 - **While the test runs,** Eva treats the filter as off. The known socket folders stay closed.
 - **Where it works,** Eva keeps the socket filter on.
-- **Where it fails,** Eva turns the filter off, so each command still runs. Instead, she closes the folders of the known sockets, such as systemd's, Docker's, Tailscale's and the screen's. The vault and the other closed folders stay closed.
+- **Where it fails,** Eva turns the filter off, so each command still runs. Instead, she closes the folders where the known sockets live: all of `/run` (but the name server file), your user's runtime folder, the screen's, and the folders of Docker Desktop, Rancher Desktop, Colima and Lima in your home folder. The vault and the other closed folders stay closed.
 
 Without the filter, the wall is weaker: Eva's list can miss a socket in another folder. Do not turn off Ubuntu's setting for Eva. It protects the whole computer.
 

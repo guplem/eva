@@ -4718,6 +4718,8 @@ test("Settings: the changelog lists each release with its own changes", async ({
   const releaseTab = page.waitForEvent("popup");
   // The link lies over the headline. A click on the row waits until the sheet stops, and its link may take the click.
   const row = dialog.locator(".version-row", { hasText: "v0.3.0" });
+  // On a phone the sheet slides in. Boxes read while it moves put the click on the dialog, not the row.
+  await restingBottom(dialog);
   const rowBox = await row.boundingBox();
   const headlineBox = await row.getByText("Voice notes.").boundingBox();
   if (rowBox === null || headlineBox === null) throw new Error("The release row is not on the screen.");

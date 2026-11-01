@@ -272,7 +272,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - Claude Code runs each shell command in its sandbox, with the same folders closed. The git config, the gh login and the shell setup stay readable, so `git commit` and `git push` work. A command writes only to the chat's folder, the temporary folder and npm's cache. Other tools, such as pip, uv and Go, keep their cache in the temporary folder. A command cannot reach Eva's own address on this computer or on the tailnet. It can serve on a port of this computer, such as for a dev server.
   - The sandbox has no `ssh-agent` and no Docker: use an `https` remote for git. Cargo, Gradle and Maven cannot write their caches in the home folder.
   - In Auto mode, Claude Code's safety check decides about a network host that is not a common one, such as GitHub or npm.
-  - The sandbox needs `bubblewrap` and `socat` on Linux, and a system that lets bubblewrap start. At start, Eva tries it. Eva has no sandbox to turn on for native Windows. There, the shell can still read the vault, and a notice says so. The file tools stay walled.
+  - The sandbox needs `bubblewrap` and `socat` on Linux, and a system that lets bubblewrap start. The one-command install adds them. For an Eva from before, run the install command again. At start, Eva tries the sandbox. Eva has no sandbox to turn on for native Windows. There, the shell can still read the vault, and a notice says so. The file tools stay walled.
   - pi has no sandbox, so its shell can still read the vault. Settings says so.
   - The wall closes this Eva's folder only. Another Eva on the same computer stays open.
   - An Assistant chat reads the whole vault, as before.

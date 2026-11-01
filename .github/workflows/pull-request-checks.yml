@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 2
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - id: diff
         run: bun run scripts/ci-changes.ts
 
@@ -59,7 +59,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       # One umbrella script: format, lint, types, architecture, dead code, public content, and the
@@ -86,7 +86,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       # The browser build depends on the Playwright version that bun.lock installs.
@@ -167,7 +167,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       - if: env.RUN_CODE_CHECKS == 'true'
@@ -202,7 +202,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       - if: env.RUN_CODE_CHECKS == 'true'

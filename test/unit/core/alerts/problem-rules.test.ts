@@ -309,6 +309,8 @@ describe("shellWallProblem (#711)", () => {
     expect(problem?.message).toContain("can read the vault and Eva's own folder on this computer");
     expect(problem?.message).toContain("bubblewrap");
     expect(problem?.message).toContain("file tools");
+    // The guide says what the sandbox is and how to set it up (#760).
+    expect(problem?.message).toContain("docs/guide/reference.md#set-up-the-sandbox");
     expect(shellWallProblem(null)).toBeNull();
   });
 });

@@ -1,9 +1,9 @@
 #!/bin/sh
 # Installs Eva on Linux with one command:
 #   curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
-# It installs git, and the OpenMP library for voice notes, when they are missing. It downloads Eva
-# from the latest release, checks the download against SHA256SUMS, puts it in ~/.local/bin, and
-# starts `eva setup`. A second run updates Eva.
+# It installs git, the OpenMP library for voice notes, and bubblewrap and socat for the shell
+# sandbox, when they are missing. It downloads Eva from the latest release, checks the download
+# against SHA256SUMS, puts it in ~/.local/bin, and starts `eva setup`. A second run updates Eva.
 # EVA_INSTALL_BASE_URL downloads from another place, and EVA_INSTALL_SKIP_SETUP=1 skips the setup.
 # The CI uses both (scripts/smoke-install.sh).
 set -eu

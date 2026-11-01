@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks install/install.sh the way a new person runs it: `curl ... | sh` on a clean Ubuntu with
-# no git, no OpenMP library and no sandbox tools, as a normal user with sudo, from a fake release folder that holds
-# the given executable.
+# no git, no OpenMP library and no sandbox tools, as a normal user with sudo, from a fake release
+# folder that holds the given executable.
 # Then it checks install/uninstall.sh.
 # Usage: bash scripts/smoke-install.sh <path to the Linux x64 executable>
 set -euo pipefail

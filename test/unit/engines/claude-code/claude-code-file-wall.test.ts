@@ -101,6 +101,9 @@ describe("the file wall of a Claude Code Project chat (#711)", () => {
     const denied = (options.settings as { sandbox: { network: { deniedDomains: string[] } } }).sandbox.network
       .deniedDomains;
     for (const host of ["localhost", "127.0.0.1", "*.ts.net"]) expect(denied).toContain(host);
+    // The sandbox refuses its whole config for one bad host. An IPv6 address needs brackets, such as `[::1]`.
+    for (const host of [...hosts, ...denied])
+      expect(host).toMatch(/^(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)*$|^\[[0-9a-f:]+\]$/);
   });
 
   test("a file tool outside the chat's folder is refused in every mode, and one inside keeps its mode's path", async () => {

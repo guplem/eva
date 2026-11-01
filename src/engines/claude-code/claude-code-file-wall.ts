@@ -36,7 +36,7 @@ export function toolCacheVariables(): Record<string, string> {
 }
 
 /** The names of this computer and of the tailnet, where Eva's own API listens. */
-const evaHosts = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "*.ts.net"];
+const evaHosts = ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "*.ts.net"];
 
 /**
  * The hosts of git and of the package managers. The wall closes files, never the network, but the

@@ -68,3 +68,12 @@ export function helpTitle(topic: HelpTopic): string {
     page === undefined ? undefined : renderedGuide(page).sections.find((each) => each.slug === target.slug);
   return section?.title ?? page?.title ?? "the guide";
 }
+
+/** The help of a notice in the notification center, by the alert's key, as for a Settings card. */
+const problemHelp: Readonly<Partial<Record<string, HelpTopic>>> = {
+  shell_wall: "what-a-chat-can-reach",
+};
+
+export function helpOfProblem(key: string): HelpTopic | null {
+  return problemHelp[key] ?? null;
+}

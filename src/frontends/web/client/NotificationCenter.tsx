@@ -13,6 +13,7 @@ import { problemAction, problemActionLabels, shownProblems, type ProblemAction }
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { HelpLink } from "./HelpLink.tsx";
+import { helpOfProblem } from "./help-links.ts";
 
 interface NotificationCenterProps {
   readonly problems: EvaStatus["problemDetails"];
@@ -96,6 +97,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
               <h2>Needs you</h2>
               {needs.map((problem) => {
                 const action = problemAction(problem.key, syncStatus);
+                const help = helpOfProblem(problem.key);
                 const read = problem.hidden;
                 // An older Eva sends no start time.
                 const since = (problem as Partial<typeof problem>).since;
@@ -106,6 +108,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
                       {!read && <UnreadMark />}
                       <span className="visually-hidden">{problem.level === "error" ? "Error: " : "Warning: "}</span>
                       {problem.message}
+                      {help !== null && <HelpLink topic={help} place="this problem" />}
                       {since !== undefined && <span className="center-time"> · since {timeLabel(since, now)}</span>}
                     </span>
                     {action !== null && (

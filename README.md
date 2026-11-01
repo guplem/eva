@@ -91,7 +91,7 @@ Open the Tailscale app and check that it says "Connected", with the same account
 **Eva says "conflict" for the vault.**
 Two computers changed the same note. Eva stops saving to GitHub until you pick a version, so that nothing is lost. Send `/conflicts` in Telegram: see [Vault conflicts](docs/guide/reference.md#vault-conflicts).
 
-**A project chat says "This path is outside this chat's folder", or "No such file or directory" for a note of the vault.**
+**A project chat says "This path is outside this chat's folder", or "No such file or directory" (on macOS, "Operation not permitted") for a note of the vault.**
 That is the file wall: a project chat cannot open your vault, your other projects or Eva's own folder. Mention the file to give the chat a copy. See [What a chat can reach](docs/guide/reference.md#what-a-chat-can-reach).
 
 **Something else.**

@@ -758,7 +758,7 @@ describe("the file wall of a pi Project chat (#711)", () => {
           mode: "project",
           appendSystemPrompt: null,
           startFolder: cwd,
-          fileWall: { area, closed: [folder], readable: [] },
+          fileWall: { area, closed: [folder], readable: [], socketFilter: true },
         }),
       ),
     );

@@ -502,6 +502,9 @@ test("with no chat yet, the page greets the person, and the first message makes 
   expect(made()).toBe(1);
   await openList(page);
   await expect(page.locator(".sidebar .list-item").first()).toHaveAttribute("aria-current", "true");
+  // The turn can end after the answer shows. A page that closes before it leaves the chat unread on
+  // the shared demo server, and a later test then finds "Chats 1 unread chat", not "Chats".
+  await expect(page.locator(".sidebar .list-item").first()).not.toContainText("Unread");
 });
 
 test("with no chat yet, the first message shows while Eva works on it", async ({ page }) => {

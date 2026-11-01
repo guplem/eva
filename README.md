@@ -76,6 +76,7 @@ A device without Tailscale cannot open Eva. That is on purpose: Eva can act on y
 | **Tailscale** | A free app that links your own devices privately, so your phone can open Eva's page from anywhere.                                           |
 | **Project**   | A folder in your vault for one piece of work, often with code on GitHub.                                                                     |
 | **Sync**      | Saving the vault to GitHub, and getting what other computers saved.                                                                          |
+| **Sandbox**   | A box around a program, built by Linux or macOS. A project chat runs its commands in one, so it cannot see your vault.                       |
 
 ## Problems and answers
 
@@ -89,6 +90,9 @@ Open the Tailscale app and check that it says "Connected", with the same account
 
 **Eva says "conflict" for the vault.**
 Two computers changed the same note. Eva stops saving to GitHub until you pick a version, so that nothing is lost. Send `/conflicts` in Telegram: see [Vault conflicts](docs/guide/reference.md#vault-conflicts).
+
+**A project chat says "This path is outside this chat's folder", or "No such file or directory" (on macOS, "Operation not permitted") for a note of the vault.**
+That is the file wall: a project chat cannot open your vault, your other projects or Eva's own folder. Mention the file to give the chat a copy. See [What a chat can reach](docs/guide/reference.md#what-a-chat-can-reach).
 
 **Something else.**
 Run `eva doctor` on Eva's computer. It lists the tools that are missing, and how to install each one.

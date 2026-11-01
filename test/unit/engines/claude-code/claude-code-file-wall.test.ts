@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallback, Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildQueryOptions } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
-import { chatDataFolders } from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
+import { chatDataFolders, fileWallSandbox } from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
 import type { ApprovalAnswer, QuestionsOutcome, TurnRequest } from "../../../../src/shared/engine-port.ts";
 
 let vault: string;
@@ -35,7 +35,7 @@ function projectRequest(overrides: Partial<TurnRequest> = {}): TurnRequest {
     trusted: true,
     harnessMemory: true,
     folderHooks: true,
-    fileWall: { area: clone, closed: [vault, "/srv/projects"], readable: [join(vault, "gh")] },
+    fileWall: { area: clone, closed: [vault, "/srv/projects"], readable: [join(vault, "gh")], socketFilter: true },
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
     askQuestions: () => Promise.resolve<QuestionsOutcome>("declined"),
@@ -133,7 +133,7 @@ describe("the file wall of a Claude Code Project chat (#711)", () => {
         startFolder: folder,
         projectFolder: folder,
         folderHooks: false,
-        fileWall: { area: folder, closed: [vault], readable: [] },
+        fileWall: { area: folder, closed: [vault], readable: [], socketFilter: true },
       }),
       "/bin/claude",
       "auto",
@@ -226,5 +226,51 @@ describe("Claude Code's own folder for the chat (review of #711)", () => {
     expect(chatDataFolders(config, start)).toEqual([shortened]);
     expect(chatDataFolders(join(vault, "none"), start)).toEqual([]);
     expect(chatDataFolders(null, clone)).toEqual([]);
+  });
+});
+
+describe("the socket filter (#760)", () => {
+  const sockets = (request: TurnRequest): unknown =>
+    (buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: { network: Record<string, unknown> } })
+      .sandbox.network["allowAllUnixSockets"];
+
+  test("a machine that blocks a nested sandbox gets no socket filter, so each command still runs", () => {
+    const wall = { area: clone, closed: [vault], readable: [], socketFilter: false };
+    expect(sockets(projectRequest({ fileWall: wall }))).toBe(true);
+    // With no filter, a socket of the user, such as systemd's, could run a command outside the box.
+    const request = projectRequest({
+      fileWall: wall,
+      environment: { PATH: "/bin", XDG_RUNTIME_DIR: "/run/user/1000" },
+    });
+    const denied = (
+      buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: { filesystem: { denyRead: string[] } } }
+    ).sandbox.filesystem.denyRead;
+    // As root, a command could reach any socket under /run, such as systemd's, so all of it closes.
+    for (const folder of ["/run/user/1000", "/run", "/var/run", "/tmp/.X11-unix", join(homedir(), ".docker")])
+      expect(denied).toContain(folder);
+    expect(denied).toContain(vault);
+    // The name server file of many systems lives under /run.
+    const readable = (
+      buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: { filesystem: { allowRead: string[] } } }
+    ).sandbox.filesystem.allowRead;
+    expect(readable).toContain("/run/systemd/resolve");
+  });
+
+  test("macOS keeps its socket filter, which needs no nested sandbox", () => {
+    const wall = { area: clone, closed: [vault], readable: [], socketFilter: false };
+    const network = (
+      fileWallSandbox(wall, { runtimeFolder: null, platform: "darwin" }) as { network: Record<string, unknown> }
+    ).network;
+    expect(network["allowAllUnixSockets"]).toBeUndefined();
+  });
+
+  test("another machine keeps the filter", () => {
+    expect(sockets(projectRequest())).toBeUndefined();
+    const denied = (
+      buildQueryOptions(projectRequest(), "/bin/claude", "auto").settings as {
+        sandbox: { filesystem: { denyRead: string[] } };
+      }
+    ).sandbox.filesystem.denyRead;
+    expect(denied).toEqual([vault, "/srv/projects"]);
   });
 });

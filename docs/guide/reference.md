@@ -264,18 +264,9 @@ A request from Eva's own computer can come from any program there, so only the t
   - A specialist must be in the vault's `Projects/` folder. The type changes in **Details**, only while the project has no chats and no clones. The project page shows a warning for a specialist outside the vault, with `repos`, or with a clone on this computer.
   - In Telegram, the chat list names it "Specialist". A file that you send to its chat gets the answer that this chat takes no files.
   - A specialist runs with your own permission mode, as a project chat does, but its folder is in your vault. Retry with undo takes back what it changed.
-  - It cannot open the rest of the vault: see **The file wall** below.
+  - It cannot open the rest of the vault: see [What a chat can reach](#what-a-chat-can-reach).
 - **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, but no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
-- **The file wall:** a project chat opens its own folder, but not the vault, your other project folders or Eva's own folder. Its own folder is its clone folder, or a specialist's project folder. So a chat in a clone cannot read the project's notes or its other clones: mention a file to give it a copy. The other files of the computer stay open.
-  - Eva refuses each file tool that names a closed folder, in every permission mode. The agent reads "This path is outside this chat's folder."
-  - A file tool may not write the chat folder's own `.claude` or `.pi` settings, its `.mcp.json`, or a `.git` folder. Such a file could run code at the next turn.
-  - Claude Code runs each shell command in its sandbox, with the same folders closed. The git config, the gh login and the shell setup stay readable, so `git commit` and `git push` work. A command writes only to the chat's folder, the temporary folder and npm's cache. Other tools, such as pip, uv and Go, keep their cache in the temporary folder. A command cannot reach Eva's own address on this computer or on the tailnet. It can serve on a port of this computer, such as for a dev server.
-  - The sandbox has no `ssh-agent` and no Docker: use an `https` remote for git. Cargo, Gradle and Maven cannot write their caches in the home folder.
-  - In Auto mode, Claude Code's safety check decides about a network host that is not a common one, such as GitHub or npm.
-  - The sandbox needs `bubblewrap` and `socat` on Linux, and a system that lets bubblewrap start. The one-command install adds them. For an Eva from before, run the install command again. At start, Eva tries the sandbox. Eva has no sandbox to turn on for native Windows. There, the shell can still read the vault, and a notice says so. The file tools stay walled.
-  - pi has no sandbox, so its shell can still read the vault. Settings says so.
-  - The wall closes this Eva's folder only. Another Eva on the same computer stays open.
-  - An Assistant chat reads the whole vault, as before.
+- **The file wall:** a project chat cannot open your vault, your other project folders or Eva's own folder. Mention a file to give it a copy. See [What a chat can reach](#what-a-chat-can-reach).
 - **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
   - All its work is on GitHub.
   - No turn runs in it.
@@ -296,7 +287,91 @@ A request from Eva's own computer can come from any program there, so only the t
   A retry or a fork in a new clone is the first chat of that clone. A note at its top names the chat and the clone that it came from. When Eva cannot copy the chat to the new clone, the new chat starts from a summary. Read the summary, then send it. Ignored files, such as installed dependencies or `.env`, stay as they are after a restore. An undo keeps the files as they were just before it in one more snapshot. A commit that is already on GitHub stays there, so a later pull can restore it. An answer from before Eva kept snapshots offers only the choices that need none.
 
 - **Trusted repositories:** a project chat uses the project's own agent settings and tools (the hooks, settings and MCP servers of its clone) only when Eva trusts every repository in it. Eva trusts the repositories of the GitHub account that she logs in with. She also trusts the owners in `trust.trustedRepositoryOwners`. She asks about any other repository once, and keeps your answer. **Settings > Trusted repositories** lists the trusted accounts and the saved answers. Add or remove one there. A change applies to the next project chat.
-- **What Eva may do:** **Settings > AI engines > What Eva may do** lists, for each engine and each kind of chat, what runs with no question, what Eva asks you first and what never runs. It also lists your own Claude Code `allow`, `ask` and `deny` rules apart, with the file that holds them: the `settings.json` in this Eva's Claude Code folder, and `.claude/settings.json` in your vault.
+- **What Eva may do:** **Settings > AI engines > What Eva may do** lists, for each engine and each kind of chat, what runs with no question, what Eva asks you first and what never runs. See also [What a chat can reach](#what-a-chat-can-reach). It also lists your own Claude Code `allow`, `ask` and `deny` rules apart, with the file that holds them: the `settings.json` in this Eva's Claude Code folder, and `.claude/settings.json` in your vault.
+
+## What a chat can reach
+
+An AI agent in Eva runs as your user on Eva's computer. This part says what each kind of chat can read, change and run. It also says where the protection is weak.
+
+### Assistant chats
+
+A chat with Eva has no wall.
+
+- It reads and changes every file of your user: the vault, your other folders and Eva's own folder.
+- It runs any program that your user can run. It reaches any website.
+- It cannot do the work of an administrator, unless `sudo` asks your user for no password.
+- Two things stop a risky action. In Auto mode, Claude Code's safety check refuses some actions. Eva also asks you first before some actions, such as a push or a message to other people. **Settings > AI engines > What Eva may do** lists them.
+
+The Assistant needs the whole vault and the `eva` command. So Eva puts no wall around it.
+
+### The file wall of a project chat
+
+A project chat works in its own folder: its clone folder, or a specialist's project folder. The wall closes these folders to it:
+
+- your vault,
+- your other project folders,
+- Eva's own folder, with her logins and secrets,
+- the folder of Eva's own Tailscale, if she installed it for your user: a command could open a public tunnel with it.
+
+So a chat in a clone cannot read the project's notes or its other clones. To give it a vault file, mention the file. Eva then puts a copy in the clone. The other files of the computer stay open.
+
+The wall has two parts.
+
+**The file tools.** Before each read, write or search, Eva checks the path. A path in a closed folder gets the answer "This path is outside this chat's folder." This works in every permission mode, and with both engines. A file tool also cannot write some files of the chat's own folder: its `.claude` or `.pi` settings, its `.mcp.json`, and a `.git` folder. Such a file could run code at the next turn.
+
+**The shell, in a sandbox.** A sandbox is a box that the system builds around a program. Claude Code has one, and Eva turns it on for each project chat. Inside the sandbox, the closed folders look empty or missing. So every program fails to read them, not only `cat`. On Linux the message is "No such file or directory". On macOS it is "Operation not permitted".
+
+In the sandbox, a command:
+
+- runs any program, such as git, node or python;
+- installs packages for the project, such as with `npm install`;
+- writes only in the chat's folder, the temporary folder and npm's cache;
+- cannot install a program on the computer or change your settings, and cannot use `sudo`;
+- reads the git config and the GitHub login, so `git commit` and `git push` work;
+- cannot use git over SSH: the sandbox lets a command out to the internet only through its own proxy, for web addresses. So use an `https` address, not an `ssh` one, for a git repository;
+- reaches the git hosts and package sites: GitHub, GitLab, Bitbucket, npm, Yarn, PyPI, crates.io, Go and Maven. For any other site, Claude Code's safety check decides in Auto mode. In Bypass mode, every site is open;
+- cannot reach Eva herself by the names `localhost` and `*.ts.net`, on this computer or on your tailnet (your private Tailscale network). A number address, such as `100.64.0.1`, is not blocked;
+- can serve on a port of this computer, such as for a dev server.
+
+pi has no sandbox. Its file tools stay walled, but its shell can read the closed folders.
+
+### The socket filter
+
+A socket is a private door between two programs on the same computer. Docker, systemd and `ssh-agent` each have one. Through some of them, a command could ask a program outside the sandbox to read the closed folders.
+
+On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Ubuntu 24.04 and later do not allow that: their setting `kernel.apparmor_restrict_unprivileged_userns` blocks it. There, the filter would break every command, even `echo`.
+
+So at start, Eva tries a sandbox inside a sandbox:
+
+- **While the test runs,** Eva treats the filter as off. The known socket folders stay closed.
+- **Where it works,** Eva keeps the socket filter on.
+- **Where it fails,** Eva turns the filter off, so each command still runs. Instead, she closes the folders where the known sockets live: all of `/run` (but the name server file), your user's runtime folder, the screen's, and the folders of Docker Desktop, Rancher Desktop, Colima and Lima in your home folder. The vault and the other closed folders stay closed.
+
+Without the filter, the wall is weaker: Eva's list can miss a socket in another folder. Do not turn off Ubuntu's setting for Eva. It protects the whole computer.
+
+### Set up the sandbox
+
+- **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The one-command install adds them. For an Eva from before, run the install command again, or run `sudo apt install bubblewrap socat`. Then restart Eva.
+- **macOS:** the sandbox needs nothing.
+- **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders, and a notice says so. The file tools stay walled.
+
+At start, Eva tries the sandbox. When it cannot start, a notice says why. The chats still run, and their file tools stay walled.
+
+### Limits of the wall
+
+The wall stops an agent that makes a mistake or looks around. It does not stop an agent that tries hard to get out:
+
+- **GitHub:** the shell reads the GitHub login, so that `git push` works. Your vault is on GitHub too, so a command can download it from there.
+- **Sockets:** where the socket filter is off, a socket that Eva's list misses can let a command run code outside the sandbox. An example is the socket of `ssh-agent` (the program that keeps your SSH keys) in the temporary folder.
+- **Programs outside the sandbox:** MCP servers and the hooks of a trusted clone run outside it.
+- **pi and Windows:** the shell has no sandbox there.
+- **Another Eva:** the wall closes this Eva's folder only. Another Eva on the same computer stays open.
+- **Assistant chats:** they have no wall at all.
+
+Some commands work differently in the sandbox:
+
+- `git push -u` cannot save the upstream branch, because the sandbox protects `.git/config`. Use `git push origin <branch>`.
+- Cargo, Gradle and Maven cannot write their caches in the home folder. pip, uv, Go and the other tools keep their caches in the temporary folder.
 
 ## Optional features
 

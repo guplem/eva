@@ -6,7 +6,7 @@ import { googleClientIdProblem } from "./google/google-client.ts";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
-import type { EngineName, EnginePort, McpServerSpec } from "../shared/engine-port.ts";
+import type { EngineName, EnginePort, McpServerSpec, WallRoots } from "../shared/engine-port.ts";
 import type { EnginePermissions } from "../shared/permissions.ts";
 import { chatKind } from "../shared/chat-kind.ts";
 import {
@@ -241,6 +241,11 @@ export interface EvaOptions {
   readonly engines: readonly EnginePort[];
   /** Why the shell of a Project chat has no wall on this computer, or null when it has one (#711). */
   readonly shellWallGap?: () => Promise<string | null>;
+  /**
+   * Whether a sandbox can start inside the sandbox on this computer, as Claude Code's Unix socket
+   * filter needs (#760). Without it, the filter stays off.
+   */
+  readonly nestedSandbox?: () => Promise<boolean>;
   readonly runner: ProcessRunner;
   /** The environment Eva started with. Child processes only get its allowlisted part. */
   readonly processEnvironment: EnvironmentMap;
@@ -468,6 +473,11 @@ export class Eva {
   private readonly latestToolCache: Map<string, { readonly lookup: Promise<string | null>; readonly at: number }>;
   /** The changelog, kept as the latest tool versions are, so each dialog open does not use up GitHub's limit. */
   private changelogCache: { readonly lookup: Promise<ChangelogEntry[] | EvaError>; readonly at: number } | null;
+  /**
+   * Whether Claude Code's socket filter runs in a Project chat's sandbox. Off until the start check
+   * says that it can: on a computer that blocks it, the filter breaks every command (#760).
+   */
+  private socketFilter: boolean;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -666,6 +676,7 @@ export class Eva {
     this.installedPrograms = new Map();
     this.uvAnswer = null;
     this.latestToolCache = new Map();
+    this.socketFilter = false;
     this.changelogCache = null;
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
@@ -764,8 +775,7 @@ export class Eva {
           // Read at each restore: the project work exists only after the session manager.
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
-          wallRoots: () =>
-            projectWallRoots(this.options.paths, this.options.config.vaultPath, this.options.config.projectRoots),
+          wallRoots: () => this.wallRoots(),
         }),
         specialist: new SpecialistPreparer({
           vaultSync,
@@ -773,8 +783,7 @@ export class Eva {
           // A project that is gone keeps its chat's refusal to the engine: its folder no longer exists.
           isSpecialist: (projectId) =>
             this.projects().find((project) => project.id === projectId)?.frontMatter.type !== "software",
-          wallRoots: () =>
-            projectWallRoots(this.options.paths, this.options.config.vaultPath, this.options.config.projectRoots),
+          wallRoots: () => this.wallRoots(),
         }),
       },
       now: options.now,
@@ -1370,10 +1379,14 @@ export class Eva {
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
     // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
-    if (this.options.engines.some((engine) => engine.name === "claude-code"))
+    if (this.options.engines.some((engine) => engine.name === "claude-code")) {
       void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
         this.alerts.report("shell_wall", shellWallProblem(gap));
       });
+      void (this.options.nestedSandbox?.() ?? Promise.resolve(false)).then((works) => {
+        this.socketFilter = works;
+      });
+    }
     this.noticeVaultSecrets();
     this.encryptVaultSecrets();
   }
@@ -2457,6 +2470,12 @@ export class Eva {
     const ahead = vaultPath === null ? null : vaultAhead(vaultPath);
     if (ahead === null) return undefined;
     return ahead.version ?? "newest";
+  }
+
+  /** The walls of each Project chat (#711), with the socket filter that this computer allows (#760). */
+  private wallRoots(): WallRoots {
+    const { paths, config } = this.options;
+    return { ...projectWallRoots(paths, config.vaultPath, config.projectRoots), socketFilter: this.socketFilter };
   }
 
   private noticeVaultAhead(): void {

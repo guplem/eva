@@ -25,7 +25,7 @@ test("a test file that blocks its worker fails by its name, and the other files 
     {
       cwd: repository,
       // Long enough for the passing file on a busy runner. The blocked file waits a minute.
-      env: { ...environment, EVA_TEST_FILE_LIMIT_MS: "5000" },
+      env: { ...environment, EVA_TEST_FILE_LIMIT_MS: "10000" },
       stdout: "pipe",
       stderr: "pipe",
       timeout: 40_000,
@@ -40,6 +40,6 @@ test("a test file that blocks its worker fails by its name, and the other files 
   expect(child.signalCode, output).toBeNull();
   expect(exitCode, output).toBe(1);
   expect(output).toMatch(/blocks\.test\.ts \(worker crashed/);
-  expect(output).toMatch(/blocks\.test\.ts ran for more than 5000 ms/);
+  expect(output).toMatch(/blocks\.test\.ts ran for more than 10000 ms/);
   expect(output).toContain(" 1 pass");
 }, 60_000);

@@ -3,7 +3,8 @@
  * thread, such as a `Bun.spawnSync` that never returns, stops every timer of the file. So Bun's
  * test timeout never fires, and the run waits for the CI job limit. A `Worker` has its own
  * thread and timers, so it still runs. It names the file and ends the process. The coordinator
- * then reports the file as crashed and runs the other files.
+ * then reports the file as crashed and runs the other files. With one worker, Bun runs the files
+ * in its own process, so the watchdog ends the whole run, after the message.
  *
  * `bunfig.toml` loads this file before each test file. Bun stops the `Worker` of a finished file.
  */
@@ -13,10 +14,13 @@ import { relative } from "node:path";
 /** The slowest file takes about 75 seconds on Linux, and git makes it a few times slower on Windows. */
 const defaultLimitMs = 10 * 60_000;
 
-/** Only a test lowers the limit. A value that is not a positive number keeps the default. */
+/** A longer timer delay overflows, and the timer fires at once. */
+const maxTimerMs = 2 ** 31 - 1;
+
+/** Only a test lowers the limit. A value that is not a usable delay keeps the default. */
 function limitMs(): number {
   const value = Number(process.env["EVA_TEST_FILE_LIMIT_MS"]);
-  return Number.isFinite(value) && value > 0 ? value : defaultLimitMs;
+  return Number.isFinite(value) && value > 0 && value <= maxTimerMs ? value : defaultLimitMs;
 }
 
 // Bun sets the variable only with `--parallel`. A plain `bun test` runs every file in one

@@ -9,7 +9,7 @@ const repository = join(import.meta.dir, "..", "..");
 const fixtures = join("test", "fixtures", "file-watchdog");
 
 test("a test file that blocks its worker fails by its name, and the other files still run", async () => {
-  // The outer run is a worker too: its own worker ids would arm the watchdog in the inner coordinator.
+  // The inner run sets its own worker ids. The ids of this outer worker do not belong to it.
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(([name]) => !/^(BUN_TEST|JEST|VITEST)_(WORKER|POOL)_ID$/.test(name)),
   );
@@ -24,10 +24,11 @@ test("a test file that blocks its worker fails by its name, and the other files 
     ],
     {
       cwd: repository,
-      env: { ...environment, EVA_TEST_FILE_LIMIT_MS: "1000" },
+      // Long enough for the passing file on a busy runner. The blocked file waits a minute.
+      env: { ...environment, EVA_TEST_FILE_LIMIT_MS: "5000" },
       stdout: "pipe",
       stderr: "pipe",
-      timeout: 20_000,
+      timeout: 40_000,
     },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -39,6 +40,6 @@ test("a test file that blocks its worker fails by its name, and the other files 
   expect(child.signalCode, output).toBeNull();
   expect(exitCode, output).toBe(1);
   expect(output).toMatch(/blocks\.test\.ts \(worker crashed/);
-  expect(output).toContain("ran for more than 1000 ms");
+  expect(output).toMatch(/blocks\.test\.ts ran for more than 5000 ms/);
   expect(output).toContain(" 1 pass");
-}, 30_000);
+}, 60_000);

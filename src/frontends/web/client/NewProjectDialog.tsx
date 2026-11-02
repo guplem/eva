@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type NewProjectResult, type ProjectDetails, type PublicSettings } from "./api.ts";
-import type { ProjectType } from "../../../core/projects/project-catalog.ts";
+import type { ProjectType } from "../../../shared/project-types.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import {
   repositoryCatalog,

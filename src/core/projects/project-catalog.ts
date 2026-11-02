@@ -12,13 +12,9 @@ import {
   type ProjectStatus,
   type ProjectStatusFilter,
 } from "../../shared/project-statuses.ts";
+import { projectTypeNoun, projectTypes, worksInClones, type ProjectType } from "../../shared/project-types.ts";
 import { parseProjectId, type ParsedProjectId } from "./project-id.ts";
 
-/**
- * A software project works in repositories, in clones. A specialist is a chat with its own rules in
- * the project folder, such as a gym coach (#703).
- */
-export type ProjectType = "software" | "specialist";
 /** The statuses of the "Current" filter: the projects that the person develops or uses now. */
 const currentStatuses: readonly ProjectStatus[] = ["active", "in-use"];
 
@@ -30,7 +26,10 @@ export interface ProjectFrontMatter {
   readonly legacyId: string | null;
   /** The type name of each repository address of `repos`, from the `repo_types` key (#681). */
   readonly repoTypes: Readonly<Record<string, string>>;
-  /** From the `type` key. No key, or a value that Eva does not know, reads as software. */
+  /**
+   * From the `type` key. No key, or a value that Eva does not know, reads as software when the
+   * project lists `repos`, and as general when it lists none (#768).
+   */
   readonly type: ProjectType;
   /** Every key Eva does not know, kept as it is. */
   readonly extra: Readonly<Record<string, unknown>>;
@@ -63,7 +62,6 @@ const statuses: readonly string[] = projectStatuses;
 /** "idea, active, in-use, paused or closed", for a warning and for the comment after `status:`. */
 export const statusListText = `${projectStatuses.slice(0, -1).join(", ")} or ${projectStatuses.at(-1) ?? ""}`;
 const statusFilters: readonly string[] = projectStatusFilters;
-const projectTypes: readonly ProjectType[] = ["software", "specialist"];
 /** The front matter keys that Eva reads. Every other key stays in `extra`. */
 export const projectFrontMatterKeys = [
   "created",
@@ -77,17 +75,27 @@ export const projectFrontMatterKeys = [
 const knownKeys: ReadonlySet<string> = new Set(projectFrontMatterKeys);
 /** The warning of a `repo_types` value that is not a map of text values. */
 export const repoTypesWarning = "repo_types must map each repository to its type";
-/** A specialist saves its work in the vault, so it gets no clone (#703). */
-export const specialistReposWarning = "a specialist has no clones, so Eva does not clone its repos";
+/** A general project and a specialist save their work in the vault, so they get no clone (#703, #768). */
+export function reposWarning(type: ProjectType): string {
+  return `${projectTypeNoun(type)} has no clones, so Eva does not clone its repos`;
+}
 /**
  * The type syncs to every machine, but clones stay on one. A type that changed on another machine
- * leaves them in the specialist folder, where its chats would see them (#703).
+ * leaves them in the project folder, where its chats would see them (#703).
  */
-export const specialistClonesWarning =
-  "a specialist has no clones, but this computer has some: delete them on the project page";
-/** Only the vault reaches the person's other machines, so a specialist elsewhere gets no chat (#703). */
-export const specialistOutsideWarning = "a specialist must be in the vault's Projects folder, so it has no chat";
+export function noClonesWarning(type: ProjectType): string {
+  return `${projectTypeNoun(type)} has no clones, but this computer has some: delete them on the project page`;
+}
+/** Only the vault reaches the person's other machines, so a chat in a project folder elsewhere gets none (#703). */
+export function outsideWarning(type: ProjectType): string {
+  return `${projectTypeNoun(type)} must be in the vault's Projects folder, so it has no chat`;
+}
 export const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+
+/** The type of a project with no `type` key: software when it lists repositories, else general (#768). */
+export function defaultType(repos: readonly string[]): ProjectType {
+  return repos.length > 0 ? "software" : "general";
+}
 
 export function parseFrontMatter(text: string): FrontMatterResult {
   const match = frontMatterPattern.exec(text);
@@ -121,9 +129,11 @@ export function parseFrontMatter(text: string): FrontMatterResult {
   const repoTypes = readTextMap(fields["repo_types"]);
   if (repoTypes === null) warnings.push(repoTypesWarning);
   // An older Eva keeps the key in `extra`, so a specialist there reads as a project with no repository.
-  let type: ProjectType = "software";
+  // A project with `repos` and no type stays software for good: a satellite that updates before the
+  // hub migrates, an extra root that no migration reaches, or a file written by hand (#768).
+  let type = defaultType(repos ?? []);
   if (projectTypes.includes(fields["type"] as ProjectType)) type = fields["type"] as ProjectType;
-  else if (fields["type"] !== undefined) warnings.push("type must be software or specialist");
+  else if (fields["type"] !== undefined) warnings.push("type must be general, software or specialist");
 
   const extra = Object.fromEntries(Object.entries(fields).filter(([key]) => !knownKeys.has(key)));
   return {
@@ -248,10 +258,11 @@ function readProject(path: string, name: string, vaultFolder: string | null): Pr
   if (frontMatter.created !== null && !createdMatchesId(frontMatter.created, name)) {
     allWarnings.push(`created ${frontMatter.created} does not match the folder name`);
   }
-  if (frontMatter.type === "specialist" && frontMatter.repos.length > 0) allWarnings.push(specialistReposWarning);
-  if (frontMatter.type === "specialist" && vaultFolder === null) allWarnings.push(specialistOutsideWarning);
+  const inFolder = !worksInClones(frontMatter.type);
+  if (inFolder && frontMatter.repos.length > 0) allWarnings.push(reposWarning(frontMatter.type));
+  if (inFolder && vaultFolder === null) allWarnings.push(outsideWarning(frontMatter.type));
   const clones = listClones(path).map((clone) => clone.name);
-  if (frontMatter.type === "specialist" && clones.length > 0) allWarnings.push(specialistClonesWarning);
+  if (inFolder && clones.length > 0) allWarnings.push(noClonesWarning(frontMatter.type));
   return {
     id: name,
     path,

@@ -1,7 +1,7 @@
 /** The words and colours of the project pages. */
 import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 import type { Project } from "./api.ts";
-import type { ProjectType } from "../../../core/projects/project-catalog.ts";
+import type { ProjectType } from "../../../shared/project-types.ts";
 import { repositoryName } from "../../../core/projects/repository-name.ts";
 
 /** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */

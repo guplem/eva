@@ -806,6 +806,11 @@ describe("the file wall of a pi Project chat (#711)", () => {
     expect(await answerIn("edit", { path: join(project, "plan.md") })).toBe(false);
     expect(await answerIn("read", { path: "../clone-1/a.ts" })).toBe(false);
     expect(await answerIn("write", { path: "a.ts" })).toBe(true);
+    // A listing of the project folder reaches no clone. A search of it would, and so is refused.
+    expect(await answerIn("ls", { path: "../.." })).toBe(true);
+    expect(await answerIn("grep", { pattern: "x", path: "../.." })).toBe(false);
+    // An extension's tool may write: only pi's own reads open the project folder.
+    expect(await answerIn("custom_tool", { path: "../../plan.md" })).toBe(false);
   });
 
   test("the extension's refusal names no vault, and says that the path can be outside the chat's folder", () => {

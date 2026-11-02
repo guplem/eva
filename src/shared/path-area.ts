@@ -34,29 +34,53 @@ export interface WallFolders {
 }
 
 /**
+ * What a tool does with a path. Only a read opens a read-only folder, so a tool that Eva does not
+ * know, such as an MCP tool, cannot write there. A listing shows one level of a folder, so it may
+ * list a read-only folder that holds a closed one: it reaches no file inside.
+ */
+export interface WallAccess {
+  readonly reads?: boolean;
+  readonly lists?: boolean;
+}
+
+/**
+ * Why the wall refuses a path: it is outside the chat's folders, or it is a search of a read-only
+ * folder that holds a closed one, such as a clone chat's whole project folder with its other clones.
+ */
+export type WallRefusal = "outside" | "search";
+
+/**
  * True when a file tool may not open `requested`: a path inside a closed folder, such as the vault,
  * but not inside the chat's own folder. A folder that holds a closed one is refused too, since a
- * search from it would reach in. A read-only folder refuses a write. The other files of the machine
- * stay open, as the issue asks.
+ * search from it would reach in. A read-only folder opens to a read only. The other files of the
+ * machine stay open, as the issue asks.
  */
-export function wallRefusesPath(wall: WallFolders, requested: string, cwd: string, write = false): boolean {
+export function wallRefusesPath(wall: WallFolders, requested: string, cwd: string, access: WallAccess = {}): boolean {
+  return pathRefusal(wall, requested, cwd, access) !== null;
+}
+
+function pathRefusal(wall: WallFolders, requested: string, cwd: string, access: WallAccess): WallRefusal | null {
   const real = realOf(requested, cwd);
-  if (real === null) return true;
+  if (real === null) return "outside";
   const path = folded(real);
-  const reaches = (closed: string): boolean => {
+  if (holds([wall.area, ...(wall.open ?? [])], path)) return null;
+  const readOnly = wall.readOnly ?? [];
+  const inReadOnly = holds(readOnly, path);
+  // The closed folders inside a read-only one come first: they would open with it.
+  for (const closed of wall.closed) {
+    const folder = realFolder(closed);
+    if (folder === null || !holds(readOnly, folded(folder))) continue;
+    if (isInside(folded(folder), path)) return "outside";
+    if (!isInside(path, folded(folder))) continue;
+    if (!inReadOnly) return "outside";
+    if (access.lists !== true) return "search";
+  }
+  if (inReadOnly) return access.reads === true ? null : "outside";
+  const reaches = wall.closed.some((closed) => {
     const folder = realFolder(closed);
     return folder !== null && (isInside(folded(folder), path) || isInside(path, folded(folder)));
-  };
-  if (holds([wall.area, ...(wall.open ?? [])], path)) return false;
-  const readOnly = wall.readOnly ?? [];
-  // The closed folders inside a read-only one come first: they would open with it.
-  const closedInside = wall.closed.filter((closed) => {
-    const folder = realFolder(closed);
-    return folder !== null && holds(readOnly, folded(folder));
   });
-  if (closedInside.some(reaches)) return true;
-  if (holds(readOnly, path)) return write;
-  return wall.closed.some(reaches);
+  return reaches ? "outside" : null;
 }
 
 /** True when one of the folders holds `path`, a folded real path. */
@@ -72,21 +96,42 @@ function holds(folders: readonly string[], path: string): boolean {
  * checked from its fixed folder, the parts before its first wildcard. A `..` after a wildcard, an
  * extglob such as `+(.)`, and a character class with a dot, such as `[.]`, are refused.
  */
-export function wallRefusesPattern(wall: WallFolders, pattern: string, cwd: string, write = false): boolean {
-  if (/[+@!?*]\(/.test(pattern) || /\[[^\]]*\.[^\]]*\]/.test(pattern)) return true;
+export function wallRefusesPattern(wall: WallFolders, pattern: string, cwd: string, access: WallAccess = {}): boolean {
+  return patternRefusal(wall, pattern, cwd, access) !== null;
+}
+
+const patternSeparators = process.platform === "win32" ? /[\\/]/ : /\//;
+
+/** True when a pattern lists one level of its fixed folder: its only wildcard part is the last one, with no `**`. */
+function isFlatPattern(pattern: string): boolean {
   const forms = expandBraces(pattern);
-  if (forms === null) return true;
-  const separators = process.platform === "win32" ? /[\\/]/ : /\//;
-  return forms.some((form) => {
-    const parts = form.split(separators);
+  return (
+    forms?.every((form) => {
+      const parts = form.split(patternSeparators);
+      const wild = parts.findIndex((part) => /[*?[]/.test(part));
+      return wild === -1 || (wild === parts.length - 1 && !(parts[wild] ?? "").includes("**"));
+    }) ?? false
+  );
+}
+
+function patternRefusal(wall: WallFolders, pattern: string, cwd: string, access: WallAccess): WallRefusal | null {
+  if (/[+@!?*]\(/.test(pattern) || /\[[^\]]*\.[^\]]*\]/.test(pattern)) return "outside";
+  const forms = expandBraces(pattern);
+  if (forms === null) return "outside";
+  // A listing reaches no deeper than the last part of its pattern.
+  const lists = access.lists === true && isFlatPattern(pattern);
+  for (const form of forms) {
+    const parts = form.split(patternSeparators);
     const wild = parts.findIndex((part) => /[*?[]/.test(part));
-    if (wild !== -1 && parts.slice(wild).includes("..")) return true;
+    if (wild !== -1 && parts.slice(wild).includes("..")) return "outside";
     const fixed = (wild === -1 ? parts : parts.slice(0, wild)).join(sep);
     // `/x` splits into an empty first part: the search starts at the root. `C:` alone is a drive.
     const absolute = parts[0] === "" && form.length > 0 ? sep : "";
     const base = /^[A-Za-z]:$/.test(fixed) ? `${fixed}${sep}` : `${absolute}${fixed}`;
-    return wallRefusesPath(wall, base === "" ? cwd : base, cwd, write);
-  });
+    const refusal = pathRefusal(wall, base === "" ? cwd : base, cwd, { ...access, lists });
+    if (refusal !== null) return refusal;
+  }
+  return null;
 }
 
 /**
@@ -255,34 +300,59 @@ function hasStream(path: string): boolean {
 const pathKeys = ["file_path", "path", "notebook_path", "local_path", "filePath"];
 const pathListKeys = ["file_paths", "paths"];
 
+/** How the wall reads a tool call. */
+export interface WallCallOptions {
+  readonly patternKeys: readonly string[];
+  readonly write: boolean;
+  /** True for a tool that Eva knows only reads. Only such a tool opens a read-only folder. */
+  readonly reads?: boolean;
+  /** True for a tool that lists one level of a folder, such as `ls`, or a Glob with a flat pattern. */
+  readonly lists?: boolean;
+  /** pi drops a leading `@` from a path. Claude Code opens the name as it is, so the check must too. */
+  readonly dropsAt: boolean;
+}
+
 /**
  * True when the wall refuses a tool call: a path or a pattern that a closed folder holds, or, for a
  * write, a file that could run code at the next turn. `patternKeys` names the fields that hold a
  * file pattern. A relative path starts at `cwd`.
  */
-export function wallRefusesCall(
+export function wallRefusesCall(wall: WallFolders, cwd: string, input: unknown, options: WallCallOptions): boolean {
+  return wallRefusal(wall, cwd, input, options) !== null;
+}
+
+/**
+ * Why the wall refuses a tool call, or null when it does not. A pattern starts at the call's `path`
+ * when it has one, as the tool searches from there.
+ */
+export function wallRefusal(
   wall: WallFolders,
   cwd: string,
   input: unknown,
-  options: {
-    readonly patternKeys: readonly string[];
-    readonly write: boolean;
-    /** pi drops a leading `@` from a path. Claude Code opens the name as it is, so the check must too. */
-    readonly dropsAt: boolean;
-  },
-): boolean {
+  options: WallCallOptions,
+): WallRefusal | null {
   const fields = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   const strings = (value: unknown): string[] =>
     (Array.isArray(value) ? value : [value]).filter((item): item is string => typeof item === "string" && item !== "");
+  const named = (path: string): string => (options.dropsAt && path.startsWith("@") ? path.slice(1) : path);
   const paths = [
     ...pathKeys.flatMap((key) => strings(fields[key])),
     ...pathListKeys.flatMap((key) => strings(fields[key])),
-  ].map((path) => (options.dropsAt && path.startsWith("@") ? path.slice(1) : path));
-  return (
-    paths.some((path) => wallRefusesPath(wall, path, cwd, options.write)) ||
-    options.patternKeys
-      .flatMap((key) => strings(fields[key]))
-      .some((pattern) => wallRefusesPattern(wall, pattern, cwd, options.write)) ||
-    (options.write && paths.some((path) => isProtectedInArea(wall.area, path, cwd)))
-  );
+  ].map(named);
+  const patterns = options.patternKeys.flatMap((key) => strings(fields[key]));
+  // A Glob of `*.md` from a folder lists that folder only. A `**` pattern searches below it.
+  const lists = options.lists === true && patterns.every(isFlatPattern);
+  const access = { reads: options.reads === true, lists };
+  for (const path of paths) {
+    const refusal = pathRefusal(wall, path, cwd, access);
+    if (refusal !== null) return refusal;
+  }
+  const searchRoot = strings(fields["path"]).map(named)[0];
+  const patternCwd = searchRoot === undefined ? cwd : realOf(searchRoot, cwd);
+  if (patterns.length > 0 && patternCwd === null) return "outside";
+  for (const pattern of patterns) {
+    const refusal = patternRefusal(wall, pattern, patternCwd ?? cwd, { ...access, lists: options.lists === true });
+    if (refusal !== null) return refusal;
+  }
+  return options.write && paths.some((path) => isProtectedInArea(wall.area, path, cwd)) ? "outside" : null;
 }

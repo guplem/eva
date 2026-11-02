@@ -10,4 +10,5 @@
 # File wall
 
 - Keep each Project chat's file tools out of `request.fileWall.closed`, but inside its `area`, in every permission mode, through `src/shared/path-area.ts` (#711). Name no vault in the refusal.
+- Open a `request.fileWall.readOnly` folder only to a tool that the engine knows as a read. Never let a write or an unknown tool, such as an MCP tool, into it (#774).
 - Turn off Claude Code's socket filter where a nested sandbox fails (`nestedSandboxWorks`). Ubuntu 24.04 and later block a user namespace inside bubblewrap's, and the filter then breaks every command (#760).

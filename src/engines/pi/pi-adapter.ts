@@ -459,13 +459,21 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
 const piPatternFields: Readonly<Record<string, readonly string[]>> = { find: ["pattern"], grep: ["glob"] };
 /** pi's tools that write a file. A write to the folder's own settings could run code at the next turn. */
 const piWriteTools = new Set(["write", "edit"]);
+/** pi's tools that only read. Only they open a read-only folder, so an extension's tool cannot write there (#774). */
+const piReadTools = new Set(["read", "grep", "find", "ls"]);
 
 function decide(request: TurnRequest, toolName: string, input: Record<string, unknown>): Promise<ApprovalAnswer> {
   // A model call has no tools, and nobody waits for a question.
   if (request.mode === "model-call") return Promise.resolve("deny");
   // A Project chat's file tools may not open a closed folder, such as the vault (#711). pi has no shell wall.
   const wall = request.fileWall;
-  const options = { patternKeys: piPatternFields[toolName] ?? [], write: piWriteTools.has(toolName), dropsAt: true };
+  const options = {
+    patternKeys: piPatternFields[toolName] ?? [],
+    write: piWriteTools.has(toolName),
+    reads: piReadTools.has(toolName),
+    lists: toolName === "ls",
+    dropsAt: true,
+  };
   if (wall !== null && wallRefusesCall(wall, request.startFolder, input, options)) return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
   if (request.mode === "project" || !asksThePerson(toolName, input)) return Promise.resolve("allow");

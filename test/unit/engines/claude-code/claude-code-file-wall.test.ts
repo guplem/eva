@@ -4,7 +4,12 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallback, Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildQueryOptions } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
-import { chatDataFolders, fileWallSandbox } from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
+import {
+  chatDataFolders,
+  fileWallSandbox,
+  outsideMessage,
+  searchMessage,
+} from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
 import type { ApprovalAnswer, QuestionsOutcome, TurnRequest } from "../../../../src/shared/engine-port.ts";
 
 let vault: string;
@@ -329,5 +334,32 @@ describe("a clone chat reads its project's notes (#774)", () => {
     expect(await decide(options, "Read", { file_path: "../clone-1/a.ts" })).toBe("deny");
     expect(await decide(options, "Read", { file_path: "src/a.ts" })).toBeUndefined();
     expect(await decide(options, "Read", { file_path: join(vault, "AGENTS.md") })).toBe("deny");
+  });
+
+  test("a search of the whole project folder says how to find a note, and a listing of it passes", async () => {
+    mkdirSync(join(project(), "repos", "clone-1"), { recursive: true });
+    const options = buildQueryOptions(projectRequest({ fileWall: notesWall() }), "/bin/claude", "auto");
+    const reason = async (tool: string, input: Record<string, unknown>): Promise<unknown> => {
+      const answer = await wallHook(options)(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: tool,
+          tool_input: input,
+          tool_use_id: "t1",
+        } as Parameters<HookCallback>[0],
+        "t1",
+        { signal: new AbortController().signal },
+      );
+      return (answer as { hookSpecificOutput?: { permissionDecisionReason?: string } }).hookSpecificOutput
+        ?.permissionDecisionReason;
+    };
+    expect(await reason("Grep", { pattern: "x", path: "../.." })).toBe(searchMessage);
+    expect(await reason("Glob", { pattern: "../../**/*.md" })).toBe(searchMessage);
+    expect(await reason("Read", { file_path: "../clone-1/a.ts" })).toBe(outsideMessage);
+    expect(await decide(options, "Glob", { pattern: "../../*.md" })).toBeUndefined();
+    expect(await decide(options, "Glob", { pattern: "*.md", path: "../.." })).toBeUndefined();
+    expect(await decide(options, "LS", { path: "../.." })).toBeUndefined();
+    // A tool that Eva does not know, such as an MCP tool, may write: the project folder stays closed to it.
+    expect(await decide(options, "mcp__files__write", { path: "../../plan.md" })).toBe("deny");
   });
 });

@@ -106,8 +106,9 @@ describe("commitSecretFiles (vault, #707)", () => {
     migrate();
     const lines = (text: string): string[] => text.split("\n").filter((line) => line !== "" && !line.startsWith("#"));
     const envLines = [".env", "*.env", "!Projects/**/.env", "!Projects/**/*.env"];
+    // Since #767 the template names .eva/scratch/, and a later migration adds it.
     expect(lines(readFileSync(join(vault, ".gitignore"), "utf-8")).filter((line) => !envLines.includes(line))).toEqual(
-      lines(template(".gitignore")),
+      lines(template(".gitignore")).map((line) => (line === ".eva/scratch/" ? "Scratch/" : line)),
     );
   });
 

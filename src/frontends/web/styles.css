@@ -2642,7 +2642,9 @@ button.link-button {
   .filter-chip::after {
     content: "";
     position: absolute;
-    inset: calc((30px - var(--touch-target)) / 2) 0;
+    /* The margin starts inside the border. So it centres on the pill, and the border and the pill's height do not
+       change the tap target (#777). */
+    inset: calc(50% - var(--touch-target) / 2) 0;
   }
 }
 

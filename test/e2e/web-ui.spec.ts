@@ -128,6 +128,29 @@ async function restingBottom(dialog: Locator): Promise<number> {
   return (box?.y ?? 0) + (box?.height ?? 0);
 }
 
+/**
+ * The height that a finger can tap on each element: its box, and the `::after` of an invisible tap
+ * margin, which can reach past the box. A pseudo-element has no box of its own, so its computed style gives it.
+ */
+async function tapHeights(locator: Locator): Promise<number[]> {
+  return locator.evaluateAll((elements) =>
+    elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      const margin = getComputedStyle(element, "::after");
+      const holdsMargin =
+        margin.content !== "none" &&
+        margin.position === "absolute" &&
+        margin.pointerEvents !== "none" &&
+        getComputedStyle(element).position !== "static";
+      if (!holdsMargin) return box.height;
+      // An absolute `::after` starts at the padding box, inside the border.
+      const top = element.clientTop + parseFloat(margin.top);
+      const bottom = top + parseFloat(margin.height);
+      return Math.max(box.height, bottom) - Math.min(0, top);
+    }),
+  );
+}
+
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
 async function openSettings(page: Page, section?: string): Promise<void> {
   // Only the main navigation: a chat or a project in the list may also have "Settings" in its name.
@@ -1993,11 +2016,8 @@ test("on a phone, the project list is the page, and Back to the list returns to 
   // No tap on the menu: with no project open, the list is already on the screen.
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
-  const heights = await page
-    .locator("button:visible:not(.filter-chip)")
-    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
-  expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
-  // A filter is a small pill, but an invisible margin keeps its tap target at 44 px.
+  expect(Math.min(...(await tapHeights(page.locator("button:visible"))))).toBeGreaterThanOrEqual(44);
+  // A filter is a small pill, but an invisible margin keeps its tap target at 44 px. No other filter covers it.
   const filters = await page.locator(".filter-chip:visible").evaluateAll((chips) =>
     chips.map((chip) => {
       const box = chip.getBoundingClientRect();
@@ -5428,9 +5448,18 @@ test.describe("on a phone", () => {
     for (const hash of pages) {
       await page.evaluate((next) => (window.location.hash = next), hash);
       await expect(page.locator(".settings-page .card").first()).toBeVisible();
-      const heights = await page
-        .locator("button:visible, select:visible, .link-list a:visible, a.button-link:visible")
-        .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+      if (hash === "#/settings/updates") {
+        // The versions load after the page. Each tool that Eva can install then gets a small pill with a tap margin.
+        const pills = page.getByRole("region", { name: "Versions" }).locator(".fact-with-action button.small");
+        await expect(pills.first()).toBeVisible();
+        const boxes = await pills.evaluateAll((elements) =>
+          elements.map((element) => element.getBoundingClientRect().height),
+        );
+        expect(Math.max(...boxes)).toBeLessThan(44);
+      }
+      const heights = await tapHeights(
+        page.locator("button:visible, select:visible, .link-list a:visible, a.button-link:visible"),
+      );
       expect(Math.min(...heights), hash).toBeGreaterThanOrEqual(44);
       expect(await page.evaluate(() => document.documentElement.scrollWidth), hash).toBeLessThanOrEqual(375);
     }

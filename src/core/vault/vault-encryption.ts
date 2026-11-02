@@ -13,6 +13,7 @@ import {
   encryptAgain,
   filesFreedBy,
   readEncryptedFile,
+  moveToCurrentKey,
   saveEncryptedFile,
   type OpenedFile,
 } from "./encrypted-files.ts";
@@ -133,8 +134,27 @@ export class VaultEncryption {
     await this.persist();
   }
 
-  unlock(deviceToken: string | null, password: string): Promise<string> {
-    return this.options.keys.unlock(deviceToken, password);
+  async unlock(deviceToken: string | null, password: string): Promise<string> {
+    const secret = await this.options.keys.unlock(deviceToken, password);
+    await this.moveOldFiles(deviceToken, secret);
+    return secret;
+  }
+
+  /**
+   * Moves each file that another computer left on an older key to the current one (#775). It runs at
+   * each unlock, the first moment that this device holds the keys. A fault here never stops the unlock.
+   */
+  private async moveOldFiles(deviceToken: string | null, secret: string): Promise<void> {
+    try {
+      const vaultPath = this.vaultPath();
+      const moved = await this.options.vault.exclusive(() => {
+        if (this.secrets().inputs().keyChanged) return [];
+        return moveToCurrentKey(vaultPath, this.options.keys.keyFor(deviceToken, secret), this.currentKey(vaultPath));
+      });
+      if (moved.length > 0) await this.persist();
+    } catch {
+      // The files stay on the old key, which the new password still opens: the next unlock tries again.
+    }
   }
 
   lock(deviceToken: string | null): void {
@@ -258,11 +278,9 @@ export class VaultEncryption {
         "Eva cannot sync the vault now, so she changes no password: a file from another computer could stay on the old one. Try again when the sync works.",
       );
     await this.options.vault.exclusive(() => {
+      // A pull that brought another key locks this device here, since it unlocked an old one.
       const unlocked = this.options.keys.keyFor(deviceToken, secret);
       this.refuseChangedKey();
-      // A pull that brought another key means that this device unlocked an old one.
-      if (keyFingerprint(this.currentKey(vaultPath)) !== keyFingerprint(next.chain?.at(-1) ?? next))
-        throw new EvaError("vault_key_invalid", "The vault's key changed meanwhile. Unlock it again, then try again.");
       const secrets = this.secrets();
       const { machine, input } = secrets.inputs();
       // The new key file first: a stop halfway leaves files on the old key, which git still holds.

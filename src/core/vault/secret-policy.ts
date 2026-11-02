@@ -10,7 +10,7 @@ import type { SecretFilesChanges } from "./secret-files.ts";
 export interface SignedSecretState {
   /** Grows with each confirmation, so an older record copied from git history does nothing. */
   readonly sequence: number;
-  /** The key that signed it. A record of an old key does nothing after "New key". */
+  /** The key that signed it. A record of an old key does nothing after a password change. */
   readonly fingerprint: string;
   /** Every pattern that Eva knew when the person confirmed. A pattern that it did not know is new. */
   readonly known: readonly string[];

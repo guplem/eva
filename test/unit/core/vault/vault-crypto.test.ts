@@ -142,6 +142,19 @@ describe("vault keys (#707)", () => {
     expect(chainTrusts(next, keyFingerprint(next))).toBe(false);
   });
 
+  test("the new key keeps the older private keys, so the new password opens a file left on an old key (#775)", async () => {
+    const file = await keyFile();
+    // Another computer encrypted this file to the old key just before it learned of the new one.
+    const late = encryptFile(text("late secret"), file, "deploy/late.key");
+    const next = await nextVaultKey(file, await unlockVaultKey(file, password), "a brand new password", cost);
+    const unlocked = await unlockVaultKey(next, "a brand new password");
+    expect(plainText(decryptFile(late, unlocked).plain)).toBe("late secret");
+    // The old password still opens only the old key, never a file on the new one.
+    const fresh = encryptFile(text("fresh secret"), next, "deploy/fresh.key");
+    const old = await unlockVaultKey(file, password);
+    expect(await failure(() => decryptFile(fresh, old))).toMatchObject({ code: "vault_file_unreadable" });
+  });
+
   test("a computer that missed several changes trusts the newest key through the whole chain (#775)", async () => {
     const first = await keyFile();
     const second = await nextVaultKey(first, await unlockVaultKey(first, password), "second password here", cost);

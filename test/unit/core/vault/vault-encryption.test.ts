@@ -6,6 +6,7 @@ import { readVaultKey, writeVaultKey } from "../../../../src/core/vault/secret-s
 import { VaultEncryption } from "../../../../src/core/vault/vault-encryption.ts";
 import {
   createVaultKey,
+  encryptedFingerprint,
   encryptedState,
   encryptFile,
   keyFingerprint,
@@ -19,6 +20,8 @@ let vault: string;
 let saves: number;
 /** What the next pull answers: "offline" plays a computer that cannot reach the remote. */
 let pullStatus: string;
+/** What the remote brings at the next pull, such as a key file from another computer. */
+let beforePull: () => void = () => undefined;
 let secrets: VaultSecrets;
 const password = "correct horse battery";
 const token = "phone-token";
@@ -38,7 +41,10 @@ function encryption(): VaultEncryption {
     // The vault sync of a test: each save runs one round of the secret files, as a commit does.
     vault: {
       exclusive: (work) => Promise.resolve().then(work),
-      pull: () => Promise.resolve({ status: pullStatus }),
+      pull: () => {
+        beforePull();
+        return Promise.resolve({ status: pullStatus });
+      },
       encryptSecrets: () => {
         const prepare = secrets.round();
         for (const path of ["deploy/id.key", "Toolbox/server.pem", "Life/Health/blood.md"]) prepare(path);
@@ -63,6 +69,7 @@ async function failure(work: () => unknown): Promise<unknown> {
 }
 
 beforeEach(() => {
+  beforePull = () => undefined;
   root = mkdtempSync(join(tmpdir(), "eva-vault-encryption-"));
   vault = join(root, "vault");
   mkdirSync(join(vault, ".eva"), { recursive: true });
@@ -241,20 +248,57 @@ describe("a key file that an agent changes (review of #707)", () => {
     expect(isEvaError(await failure(() => service.unlock(token, password)), "vault_password_wrong")).toBe(true);
   });
 
-  test("a password change while the sync cannot reach the remote changes nothing (#775)", async () => {
+  test("a file that another computer left on the old key moves to the new key at the next unlock (#775)", async () => {
     const service = encryption();
     await service.setPassword(token, password);
+    const old = readVaultKey(vault);
+    if (old === null) throw new Error("No key.");
+    let secret = await service.unlock(token, password);
+    await service.changePassword(token, secret, "a second long password");
+    // Another computer encrypted this file to the old key before it learned of the new one.
+    write(
+      "deploy/late.key",
+      new TextDecoder().decode(encryptFile(new TextEncoder().encode("LATE\n"), old, "deploy/late.key")),
+    );
+    secret = await service.unlock(token, "a second long password");
+    const current = readVaultKey(vault);
+    expect(encryptedFingerprint(new TextEncoder().encode(read("deploy/late.key")))).toBe(
+      keyFingerprint(current ?? { publicKey: "", signingKey: "" }),
+    );
+    expect(service.readFile(token, secret, "deploy/late.key")).toMatchObject({ text: "LATE\n" });
+  });
+
+  test.each(["offline", "error", "conflict"])(
+    "a password change with a pull that ends %s changes nothing (#775)",
+    async (status) => {
+      const service = encryption();
+      await service.setPassword(token, password);
+      const secret = await service.unlock(token, password);
+      const before = read(".eva/vault-key.json");
+      pullStatus = status;
+      expect(
+        isEvaError(
+          await failure(() => service.changePassword(token, secret, "a second long password")),
+          "vault_key_invalid",
+        ),
+      ).toBe(true);
+      expect(read(".eva/vault-key.json")).toBe(before);
+      expect(service.status(token, secret).unlocked).toBe(true);
+    },
+  );
+
+  test("a pull that brings a key from another computer stops the change, which touches nothing (#775)", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write("deploy/id.key", "KEY\n");
+    await service.setPatterns(null, null, { added: [], off: [] });
     const secret = await service.unlock(token, password);
-    const before = read(".eva/vault-key.json");
-    pullStatus = "offline";
+    const theirs = await createVaultKey("another computer's password", { logN: 10 });
+    beforePull = () => writeVaultKey(vault, theirs);
     expect(
-      isEvaError(
-        await failure(() => service.changePassword(token, secret, "a second long password")),
-        "vault_key_invalid",
-      ),
+      isEvaError(await failure(() => service.changePassword(token, secret, "a second long password")), "vault_locked"),
     ).toBe(true);
-    expect(read(".eva/vault-key.json")).toBe(before);
-    expect(service.status(token, secret).unlocked).toBe(true);
+    expect(readVaultKey(vault)).toEqual(theirs);
   });
 });
 

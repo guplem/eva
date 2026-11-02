@@ -79,6 +79,11 @@ export interface KeyLink {
 export interface UnlockedVaultKey {
   readonly agreement: KeyObject;
   readonly signing: KeyObject;
+  /**
+   * The agreement keys of the older keys in the chain (#775), newest last. A computer that did not know
+   * of a password change may have encrypted a file to an old key: the new password still opens it.
+   */
+  readonly older?: readonly KeyObject[];
 }
 
 /** What a file's first lines say. A file in a newer format is never encrypted again, nor opened. */
@@ -108,7 +113,13 @@ export async function nextVaultKey(
   password: string,
   cost: { readonly logN: number } = defaultCost,
 ): Promise<VaultKeyFile> {
-  const next = await createVaultKey(password, cost);
+  checkPassword(password);
+  const older = [...(unlocked.older ?? []), unlocked.agreement].slice(-chainLength);
+  const next = await wrap(
+    { agreement: generateKeyPairSync("x25519").privateKey, signing: generateKeyPairSync("ed25519").privateKey, older },
+    password,
+    cost,
+  );
   const link: KeyLink = {
     publicKey: file.publicKey,
     signingKey: file.signingKey,
@@ -160,10 +171,15 @@ export async function unlockVaultKey(file: VaultKeyFile, password: string): Prom
     decipher.setAAD(keyFileAad(file));
     decipher.setAuthTag(wrapped.subarray(wrapped.length - 16));
     const plain = Buffer.concat([decipher.update(wrapped.subarray(12, wrapped.length - 16)), decipher.final()]);
-    const parts = JSON.parse(plain.toString("utf8")) as { agreement: string; signing: string };
+    const parts = JSON.parse(plain.toString("utf8")) as { agreement: string; signing: string; older?: string[] };
     const privateKey = (der: string): KeyObject =>
       createPrivateKey({ key: Buffer.from(der, "base64"), format: "der", type: "pkcs8" });
-    unlocked = { agreement: privateKey(parts.agreement), signing: privateKey(parts.signing) };
+    const older = (parts.older ?? []).map(privateKey);
+    unlocked = {
+      agreement: privateKey(parts.agreement),
+      signing: privateKey(parts.signing),
+      ...(older.length > 0 ? { older } : {}),
+    };
   } catch {
     throw new EvaError("vault_password_wrong", "This password does not unlock the vault.");
   }
@@ -280,22 +296,37 @@ export function decryptFile(bytes: Uint8Array, unlocked: UnlockedVaultKey): Decr
   if (head?.version !== formatVersion || !hasEncryptedShape(bytes)) throw unreadable();
   const body = Buffer.from(head.body.replace(/\s+/g, ""), "base64");
   if (body.length < 32 + 12 + 16) throw unreadable();
+  // The current key first. An older one opens a file that another computer encrypted before it knew
+  // of a password change (#775).
+  for (const agreement of [unlocked.agreement, ...[...(unlocked.older ?? [])].reverse()]) {
+    const opened = openBody(body, head.fingerprint, agreement);
+    if (opened !== null) return opened;
+  }
+  throw unreadable();
+}
+
+/** The path and the plain bytes, or null when this agreement key does not open the body. */
+function openBody(body: Buffer, fingerprint: string, agreement: KeyObject): DecryptedFile | null {
   try {
     const ephemeralRaw = body.subarray(0, 32);
-    const keys = publicKeysOf(unlocked);
+    const publicKey = rawPublicKey(createPublicKey(agreement)).toString("base64");
     const shared = diffieHellman({
-      privateKey: unlocked.agreement,
+      privateKey: agreement,
       publicKey: publicKeyOf(ephemeralRaw, x25519Prefix),
     });
-    const decipher = createDecipheriv("aes-256-gcm", fileKey(shared, ephemeralRaw, keys), body.subarray(32, 44));
-    decipher.setAAD(Buffer.from(headerText(head.fingerprint), "utf8"));
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      fileKey(shared, ephemeralRaw, { publicKey }),
+      body.subarray(32, 44),
+    );
+    decipher.setAAD(Buffer.from(headerText(fingerprint), "utf8"));
     decipher.setAuthTag(body.subarray(body.length - 16));
     const inner = Buffer.concat([decipher.update(body.subarray(44, body.length - 16)), decipher.final()]);
     const length = inner.readUInt16BE(0);
-    if (inner.length < 2 + length) throw unreadable();
+    if (inner.length < 2 + length) return null;
     return { path: inner.subarray(2, 2 + length).toString("utf8"), plain: new Uint8Array(inner.subarray(2 + length)) };
   } catch {
-    throw unreadable();
+    return null;
   }
 }
 
@@ -379,7 +410,15 @@ async function wrap(keys: UnlockedVaultKey, password: string, cost: { readonly l
   const cipher = createCipheriv("aes-256-gcm", await passwordKey(password, kdf), nonce);
   cipher.setAAD(keyFileAad(unwrapped));
   const der = (key: KeyObject): string => key.export({ format: "der", type: "pkcs8" }).toString("base64");
-  const plain = Buffer.from(JSON.stringify({ agreement: der(keys.agreement), signing: der(keys.signing) }), "utf8");
+  const older = (keys.older ?? []).map(der);
+  const plain = Buffer.from(
+    JSON.stringify({
+      agreement: der(keys.agreement),
+      signing: der(keys.signing),
+      ...(older.length > 0 ? { older } : {}),
+    }),
+    "utf8",
+  );
   const wrapped = Buffer.concat([nonce, cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
   return { ...unwrapped, wrappedPrivateKey: wrapped.toString("base64") };
 }

@@ -12,7 +12,10 @@ export const destinations = [
   { id: "settings", label: "Settings", icon: "gear" },
 ] as const satisfies readonly { id: string; label: string; icon: IconName }[];
 
-/** The visor opens the notification center, so it has an address but no button of its own (#566). */
+/**
+ * The notification center has an address but no button in the main navigation. The bell of the
+ * home page opens it (#761). Telegram and web push link to it.
+ */
 export const notificationCenter = "notifications";
 
 export type Destination = (typeof destinations)[number]["id"] | typeof notificationCenter;
@@ -91,6 +94,21 @@ export function assistantChatIdOf(hash: string): string | null {
 
 export function assistantChatAddressOf(chatId: string | null): string {
   return chatId === null ? addressOf("chats") : `${addressOf("chats")}/${encodeURIComponent(chatId)}`;
+}
+
+/** The home page that the visor opens: the New chat page, with Eva and her widgets (#761). */
+export const homeAddress = assistantChatAddressOf(newChatPageId);
+
+/**
+ * The button of the main navigation that shows as the current page. The home page belongs to the
+ * visor, not to Chats. The notification center has no button.
+ */
+export function currentNavButton(
+  current: Destination,
+  homeShown: boolean,
+): Exclude<Destination, typeof notificationCenter> | "visor" | null {
+  if (current === notificationCenter) return null;
+  return current === "chats" && homeShown ? "visor" : current;
 }
 
 /** A page of Projects. Each page has an address, so Back goes from a chat to its project, then to the list. */

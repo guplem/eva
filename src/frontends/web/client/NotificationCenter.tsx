@@ -1,5 +1,5 @@
 /**
- * The notification center (#566): the page behind the visor. "Needs you" lists each open problem
+ * The notification center (#566): the page behind the bell of the home page (#761). "Needs you" lists each open problem
  * with the button that fixes it, and each setup step that is left. "Earlier" is the history of
  * the last 30 days. One page serves a computer and a phone.
  */
@@ -67,7 +67,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
               <div className="center-subtitle">What Eva needs from you, and what she did by herself.</div>
             </div>
             <HelpLink topic="problems-and-alerts" />
-            {/* A phone has no Settings tab, so this button is its one way to Settings: keep the word (#566). */}
+            {/* A phone has no Settings tab, so a link to the center still leads to Settings: keep the word (#566, #761). */}
             <button className="ghost center-settings" onClick={props.onOpenSettings}>
               <Icon name="gear" />
               Settings

@@ -679,6 +679,31 @@ textarea {
   box-shadow: 0 0 0 2px var(--side);
 }
 
+/* The bell and the phone's gear sit at the right of the home page's header (#761). */
+.home-buttons {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+/* The bell holds the count and the dot of the visor. */
+.home-bell {
+  position: relative;
+}
+
+.home-bell .nav-badge {
+  top: -6px;
+  right: -2px;
+  left: auto;
+}
+
+.home-bell .nav-dot {
+  top: -2px;
+  right: 2px;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
 .nav-button {
   flex: none;
   width: 50px;

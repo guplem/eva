@@ -40,11 +40,13 @@ import {
   type LiveState,
 } from "./live-state.ts";
 import { AccountRefusedView, LoginView } from "./LoginView.tsx";
-import { MainNav } from "./MainNav.tsx";
+import { HomeButtons, MainNav } from "./MainNav.tsx";
+import { visorSignal } from "./nav-visor.ts";
 import {
   addressOf,
   chatsTapAgain,
   destinationOf,
+  homeAddress,
   linkedChatIdOf,
   notificationCenter,
   projectRouteOf,
@@ -119,6 +121,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [sidebarOpen, setSidebarOpen] = useState(false);
   /** Counts the taps on Chats while Chats is open. Each one opens a new chat on a computer. */
   const [newChatRequest, setNewChatRequest] = useState(0);
+  /** The Chats page shows the New chat page, the home page of the visor (#761). */
+  const [homeShown, setHomeShown] = useState(false);
   const isPhone = useIsPhone();
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
@@ -216,6 +220,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     }
     if (chatsTapAgain(isPhone) === "show-list") setSidebarOpen(true);
     else setNewChatRequest((count) => count + 1);
+  };
+
+  /** A tap on the visor opens the home page from any page. A chat in progress stays in the list (#761). */
+  const openHome = (): void => {
+    setSidebarOpen(false);
+    goTo(homeAddress, () => setScreen("chats"));
   };
 
   // A waiting card is also a problem, so both come back together.
@@ -683,6 +693,14 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const notices = <ProblemNotices isConnected={isConnected} onRetryNow={() => events.current?.retryNow()} />;
   const unreadProblems = shownProblems(problems);
   const unread = unreadChats(sessions, readChats);
+  const unreadError = unreadProblems.some((problem) => problem.level === "error");
+  // One signal for the visor and the bell of the home page, so both always show the same (#761).
+  const signal = visorSignal({
+    unreadProblems: unreadProblems.length,
+    unreadError,
+    news: setupMissing > 0 || notifications.some((entry) => !entry.read),
+    centerOpen: screen === notificationCenter,
+  });
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
   const onConflictState = (state: VaultSyncState): void => {
     setSyncState(state);
@@ -694,15 +712,17 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       {/* A badge, not a banner, says what is left to set up: a short phone screen keeps its room for the chats. */}
       <MainNav
         current={screen}
+        homeShown={homeShown}
         isPhone={isPhone}
         onOpen={openFromNav}
+        onHome={openHome}
         approvals={approvals.length}
         setupMissing={setupMissing}
         isConnected={isConnected}
         problems={problems.length}
         unreadProblems={unreadProblems.length}
-        unreadError={unreadProblems.some((problem) => problem.level === "error")}
-        news={setupMissing > 0 || notifications.some((entry) => !entry.read)}
+        unreadError={unreadError}
+        signal={signal}
         unreadChats={unread.filter((chat) => chat.mode === "assistant").length}
         unreadProjectChats={unread.filter((chat) => chat.mode === "project").length}
         chatBlocked={chatBlocker !== null}
@@ -729,6 +749,16 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
             approvals={chatApprovals}
             blocker={chatBlocker}
             voiceNotes={voiceNotes}
+            homeButtons={
+              <HomeButtons
+                signal={signal}
+                unreadError={unreadError}
+                isPhone={isPhone}
+                onNotifications={() => openDestination(notificationCenter)}
+                onSettings={() => openDestination("settings")}
+              />
+            }
+            onHomeShown={setHomeShown}
           />
         )}
         {screen === "projects" && (

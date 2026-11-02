@@ -1,6 +1,6 @@
 /**
  * The notice at the top of the main area when Eva does not answer. The open problems live in the
- * notification center behind the visor (#566): the center cannot load without Eva, so this one stays.
+ * notification center behind the bell of the home page (#566, #761): the center cannot load without Eva, so this one stays.
  */
 import type { ReactElement } from "react";
 import { Icon } from "./icons.tsx";

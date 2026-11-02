@@ -5,27 +5,32 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
 import {
+  bellName,
   navVisorProjectEyes,
   navVisorState,
   tapFace,
   tapFaceMs,
-  visorSignal,
   type NavVisorInput,
+  type VisorSignal,
 } from "./nav-visor.ts";
-import { destinations, navBadges, notificationCenter, type Destination } from "./navigation.ts";
+import { currentNavButton, destinations, navBadges, type Destination } from "./navigation.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 
 interface MainNavProps extends NavVisorInput {
   readonly current: Destination;
+  /** The home page, the New chat page of Chats, shows: the visor is the current button (#761). */
+  readonly homeShown: boolean;
   readonly isPhone: boolean;
   readonly onOpen: (destination: Destination) => void;
+  /** A tap on the visor opens the home page (#761). */
+  readonly onHome: () => void;
   readonly setupMissing: number;
-  /** An unread problem is an error, so the visor's crosses pulse. */
+  /** An unread problem is an error, so the count is red. */
   readonly unreadError: boolean;
-  /** An unread entry of the history, or a setup step that is left. */
-  readonly news: boolean;
+  /** The count and the dot of the visor. The bell of the home page shows the same signal. */
+  readonly signal: VisorSignal;
   /** The Assistant chats with an answer that the person did not see. */
   readonly unreadChats: number;
   /** The Project chats with an answer that the person did not see. */
@@ -33,9 +38,9 @@ interface MainNavProps extends NavVisorInput {
 }
 
 export function MainNav(props: MainNavProps): ReactElement {
-  const { current, onOpen, approvals, setupMissing } = props;
+  const { current, onOpen, approvals, setupMissing, signal } = props;
   const visor = navVisorState(props);
-  const signal = visorSignal({ ...props, centerOpen: current === notificationCenter });
+  const shownButton = currentNavButton(current, props.homeShown);
   // Only the crossed face pulses: an approval or an offline face would only borrow the red.
   const alarm = signal.alarm && visor.face === stateFaces.broken;
   // The visible label "Eva" starts the name, so a voice command that says it finds the button.
@@ -46,7 +51,7 @@ export function MainNav(props: MainNavProps): ReactElement {
   // and so do the Project eyes: they are the phone's only sign of the mode.
   const day = useSpecialDay();
   const festive = visor.face === stateFaces.idle && !projectEyes ? (day?.id ?? null) : null;
-  // A tap opens the center and plays a playful face for a moment. Then the face of the main state comes back.
+  // A tap opens the home page and plays a playful face for a moment. Then the face of the main state comes back.
   const [tapped, setTapped] = useState<{ face: Face } | null>(null);
   useEffect(() => {
     if (tapped === null) return undefined;
@@ -67,7 +72,7 @@ export function MainNav(props: MainNavProps): ReactElement {
         className={`nav-button nav-${destination.id}`}
         data-tooltip={destination.label}
         data-tooltip-side="right"
-        aria-current={destination.id === current ? "page" : undefined}
+        aria-current={destination.id === shownButton ? "page" : undefined}
         onClick={() => onOpen(destination.id)}
       >
         <span className="nav-icon">
@@ -83,18 +88,18 @@ export function MainNav(props: MainNavProps): ReactElement {
       </button>
     );
   };
-  // The visor opens the notification center. On a phone it takes the place of Settings, which the center links to.
+  // The visor opens the home page (#761). On a phone it takes the place of Settings, which the home page links to.
   return (
     <nav className="main-nav" aria-label="Main">
       <button
         className="main-nav-visor"
         aria-label={name}
-        aria-current={current === notificationCenter ? "page" : undefined}
+        aria-current={shownButton === "visor" ? "page" : undefined}
         data-tooltip={visor.words}
         data-tooltip-side="right"
         onClick={() => {
           setTapped((last) => ({ face: tapFace(Math.random, last?.face) }));
-          onOpen(notificationCenter);
+          props.onHome();
         }}
       >
         <span className="nav-icon">
@@ -120,6 +125,48 @@ export function MainNav(props: MainNavProps): ReactElement {
       <span className="nav-spacer" />
       {destinations.filter((destination) => destination.id === "settings").map(button)}
     </nav>
+  );
+}
+
+/**
+ * The buttons at the right of the home page's header (#761). The bell opens the notification center,
+ * with the count and the dot of the visor. A phone has no Settings tab, so it also shows a gear.
+ */
+export function HomeButtons({
+  signal,
+  unreadError,
+  isPhone,
+  onNotifications,
+  onSettings,
+}: {
+  readonly signal: VisorSignal;
+  readonly unreadError: boolean;
+  readonly isPhone: boolean;
+  readonly onNotifications: () => void;
+  readonly onSettings: () => void;
+}): ReactElement {
+  return (
+    <div className="home-buttons">
+      <button
+        className="icon-button home-bell"
+        aria-label={bellName(signal)}
+        data-tooltip="Notifications"
+        onClick={onNotifications}
+      >
+        <Icon name="bell" />
+        {signal.count > 0 && (
+          <span className={`nav-badge${unreadError ? " bad" : ""}`} aria-hidden="true">
+            {signal.count}
+          </span>
+        )}
+        {signal.dot && <span className="nav-dot" aria-hidden="true" />}
+      </button>
+      {isPhone && (
+        <button className="icon-button" aria-label="Settings" data-tooltip="Settings" onClick={onSettings}>
+          <Icon name="gear" />
+        </button>
+      )}
+    </div>
   );
 }
 

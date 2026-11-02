@@ -134,9 +134,9 @@ async function openSettings(page: Page, section?: string): Promise<void> {
   const nav = page.getByRole("navigation", { name: "Main" });
   if (test.info().project.name === "desktop") await nav.getByRole("button", { name: /^Settings/ }).click();
   else {
-    // On a phone, the visor takes the place of Settings, and its notification center links to Settings (#566).
+    // On a phone, the visor takes the place of Settings. It opens the home page, which has a gear (#761).
     await nav.locator(".main-nav-visor").click();
-    await page.locator(".notification-center").getByRole("button", { name: "Settings", exact: true }).click();
+    await page.locator(".home-buttons").getByRole("button", { name: "Settings", exact: true }).click();
   }
   if (section === "Setup") await page.getByRole("button", { name: "See every step" }).click();
   else if (section !== undefined) await page.locator(".section-card", { hasText: section }).click();
@@ -2136,8 +2136,8 @@ test("Settings: the back arrow returns to the page before, so Back then leaves S
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
   await page.goBack();
-  // On a phone, Settings opens from the notification center, so Back returns there (#566).
-  expect(page.url()).toBe(test.info().project.name === "desktop" ? before : `${before}#/notifications`);
+  // On a phone, Settings opens from the home page, so Back returns there (#761).
+  expect(page.url()).toBe(test.info().project.name === "desktop" ? before : `${before}#/chats/new`);
 });
 
 test("on a short phone, a long project list scrolls, and no card cuts its text", async ({ page }) => {
@@ -3058,8 +3058,9 @@ test("the main navigation opens each destination at its own address, and the bac
   for (const [name, address] of [
     ["Projects", "#/projects"],
     ["Schedules", "#/schedules"],
-    ["Eva: ", "#/notifications"],
     ["Chats", "#/chats"],
+    // The visor opens the home page, the New chat page of Chats (#761).
+    ["Eva: ", "#/chats/new"],
   ] as const) {
     await nav.getByRole("button", { name }).click();
     await expect(nav.getByRole("button", { name })).toHaveAttribute("aria-current", "page");
@@ -3067,13 +3068,16 @@ test("the main navigation opens each destination at its own address, and the bac
     expect(new URL(page.url()).hash).toBe(address);
   }
   await page.goBack();
-  await expect(nav.getByRole("button", { name: "Eva: " })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
   // A reload keeps the destination.
   await page.reload();
   await expect(nav.getByRole("button", { name: "Schedules" })).toHaveAttribute("aria-current", "page");
+  // A link from Telegram or web push still opens the notification center, which has no button of its own.
+  await page.goto("/#/notifications");
+  await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
   // A Settings section address opens Settings. A phone has no Settings tab: the visor takes its place (#566).
   await page.goto("/#/settings/appearance");
   if (test.info().project.name === "desktop")
@@ -3115,7 +3119,7 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   }
 });
 
-test("the nav visor names the approval that waits, and a tap opens the center with a face that ends", async ({
+test("the nav visor names the approval that waits, and a tap opens the home page with a face that ends", async ({
   page,
 }) => {
   // The tooltip shows on hover, which a phone does not have.
@@ -3132,11 +3136,45 @@ test("the nav visor names the approval that waits, and a tap opens the center wi
   await visorButton.hover();
   await expect(page.getByRole("tooltip")).toHaveText("1 approval waits for you");
   await visorButton.click();
-  await expect(page).toHaveURL(/#\/notifications$/);
+  await expect(page).toHaveURL(/#\/chats\/new$/);
   await expect(visorButton).toHaveAttribute("aria-current", "page");
   // The tap also plays a playful face for a moment, then the face of the main state comes back.
   await expect(visor).not.toHaveClass(/e-firm/);
   await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
+});
+
+test("the visor opens the home page from a chat, and the home page has a bell and, on a phone, a gear (#761)", async ({
+  page,
+}) => {
+  await logIn(page);
+  // The visor leaves a chat for the home page, and the chat stays in the list.
+  const chat = "A quiet morning walk by the river";
+  await sendFirstMessage(page, chat);
+  await expect(page).toHaveURL(/#\/chats\/[0-9a-f-]{36}$/);
+  const title = page.getByRole("heading", { level: 1 });
+  await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  await expect(title).toHaveText("New chat");
+  const buttons = page.locator(".home-buttons");
+  const bell = buttons.getByRole("button", { name: /^Notifications/ });
+  // The buttons sit at the right of the header, on the row of the title.
+  const header = await page.locator(".main-header").boundingBox();
+  const box = await buttons.boundingBox();
+  expect(header!.x + header!.width - (box!.x + box!.width)).toBeLessThan(40);
+  expect(box!.y).toBeLessThan(header!.y + header!.height);
+  await expect(bell).toBeVisible();
+  const gear = buttons.getByRole("button", { name: "Settings", exact: true });
+  if (test.info().project.name === "desktop") {
+    // A computer keeps Settings at the foot of the rail.
+    await expect(gear).toHaveCount(0);
+    await expect(
+      page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Settings/ }),
+    ).toBeVisible();
+  } else await expect(gear).toBeVisible();
+  await openList(page);
+  await expect(
+    page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: chat }).first(),
+  ).toBeVisible();
 });
 
 test("the nav visor wears the Project eyes in Projects on a phone only, even on a special day", async ({ page }) => {
@@ -3890,9 +3928,16 @@ async function routeProblems(
   });
 }
 
-/** Opens the notification center behind the visor (#566). */
-async function openCenter(page: Page): Promise<void> {
+/** Opens the home page with the visor, and returns its bell (#761). */
+async function openHomeBell(page: Page): Promise<Locator> {
   await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  return page.locator(".home-buttons").getByRole("button", { name: /^Notifications/ });
+}
+
+/** Opens the notification center with the bell of the home page (#761). */
+async function openCenter(page: Page): Promise<void> {
+  await (await openHomeBell(page)).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Notifications");
 }
 
@@ -3911,8 +3956,13 @@ test("the visor counts the open problems, and its center lists each with the but
   await expect(visor.locator(".mk")).toHaveClass(/alarm/);
   // No page shows the problems as a banner anymore.
   await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
-  await openCenter(page);
-  await expect(visor).toHaveAttribute("aria-current", "page");
+  // The bell of the home page shows the same count as the visor (#761).
+  const bell = await openHomeBell(page);
+  await expect(bell).toHaveAccessibleName("Notifications: 2 problems need you");
+  await expect(bell.locator(".nav-badge.bad")).toHaveText("2");
+  await bell.click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Notifications");
+  await expect(visor).not.toHaveAttribute("aria-current", "page");
   // The person already looks, so the error stays still.
   await expect(visor.locator(".mk")).not.toHaveClass(/alarm/);
   const needs = page.getByRole("region", { name: "Problems" });
@@ -4022,7 +4072,11 @@ test("the center lists the history by day, and marks an entry or every entry as 
   await logIn(page);
   const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
   await expect(visor.locator(".nav-dot")).toBeVisible();
-  await openCenter(page);
+  // The bell of the home page shows the same dot (#761).
+  const bell = await openHomeBell(page);
+  await expect(bell).toHaveAccessibleName("Notifications: something new waits");
+  await expect(bell.locator(".nav-dot")).toBeVisible();
+  await bell.click();
   const earlier = page.getByRole("region", { name: "Earlier" });
   await expect(earlier).toContainText("Today");
   await expect(earlier.getByRole("button").first()).toContainText("Telegram works again.");

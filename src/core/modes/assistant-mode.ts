@@ -19,7 +19,7 @@ import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migrat
 import { aboutMeProblemNote, readAboutMe } from "../vault/about-me.ts";
 import { pinFiles } from "../migrations/pinned-files.ts";
 import { pinnedBlock, type PinnedBlock } from "./pinned-block.ts";
-import { findPinnedFiles } from "./pinned-files.ts";
+import { findPinnedFiles, readsOldImportant } from "./pinned-files.ts";
 import { VaultTurns, type TurnSnapshots, type VaultSyncPort } from "./vault-turns.ts";
 import { widgetsBlock } from "./widgets-block.ts";
 
@@ -193,8 +193,8 @@ export class AssistantPreparer implements TurnPreparer {
   /** The walk runs in the core, also for the details of a chat that has not started, so it is bounded. */
   private pinnedBlockNow(): PinnedBlock {
     const vaultPath = this.options.vaultPath;
-    // Until the hub migrates the vault, a `> Important:` line still pins its note.
-    const oldForm = !migrationApplied(vaultMigrationRecordPath(vaultPath), pinFiles.id);
+    // While the vault follows the old rule, a `> Important:` line still pins its note.
+    const oldForm = readsOldImportant(vaultPath, migrationApplied(vaultMigrationRecordPath(vaultPath), pinFiles.id));
     const block = pinnedBlock({
       files: findPinnedFiles(vaultPath, { oldForm }),
       projects: this.options.projects(),

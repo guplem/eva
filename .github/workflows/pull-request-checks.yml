@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 2
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - id: diff
         run: bun run scripts/ci-changes.ts
 
@@ -44,8 +44,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # A full run takes about 14 to 20 minutes. A Bun test worker can hang with no error, and the
-    # 30-second test timeout does not stop it (#574). Without this limit, the job waits 6 hours.
+    # A full run takes about 14 to 20 minutes. A test file that blocks its worker stops no timer, so the
+    # 30-second test timeout does not end it (#574, #742). `test/support/file-watchdog.ts` ends such a
+    # worker after 10 minutes and names its file. This limit stops anything else, instead of 6 hours.
     timeout-minutes: 35
     env:
       # Ubuntu always runs in full: the format and public-content checks read the docs too.
@@ -58,7 +59,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       # One umbrella script: format, lint, types, architecture, dead code, public content, and the
@@ -85,7 +86,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       # The browser build depends on the Playwright version that bun.lock installs.
@@ -166,7 +167,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       - if: env.RUN_CODE_CHECKS == 'true'
@@ -201,7 +202,7 @@ jobs:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
       - if: env.RUN_CODE_CHECKS == 'true'

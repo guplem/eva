@@ -3,6 +3,7 @@
  * engines, and Eva's own engine tools. Each gets only what it needs (lesson 96).
  */
 import { chmodSync } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../../shared/environment.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -17,6 +18,7 @@ import {
   type HomePaths,
 } from "../settings/home.ts";
 import { githubTokenVariable } from "../vault/vault-clone.ts";
+import { userspaceFolders } from "../remote-access/tailscale.ts";
 import type { WallRoots } from "../../shared/engine-port.ts";
 
 export interface InstanceFacts {
@@ -131,10 +133,17 @@ export function projectWallRoots(
   paths: HomePaths,
   vaultPath: string | null,
   projectRoots: readonly string[],
-): WallRoots {
+): Pick<WallRoots, "closed" | "readable"> {
   const folders = engineFolders(paths);
   return {
-    closed: [...(vaultPath === null ? [] : [vaultPath]), ...projectRoots, paths.root],
+    // Eva's own Tailscale keeps its key and its control socket in the home folder: a command
+    // could open a public tunnel with them.
+    closed: [
+      ...(vaultPath === null ? [] : [vaultPath]),
+      ...projectRoots,
+      paths.root,
+      userspaceFolders(homedir()).state,
+    ],
     readable: [
       folders.git,
       folders.gh,

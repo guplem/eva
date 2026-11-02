@@ -1,5 +1,5 @@
 /**
- * The notification center (#566): the page behind the visor. "Needs you" lists each open problem
+ * The notification center (#566): the page behind the bell of the home page (#761). "Needs you" lists each open problem
  * with the button that fixes it, and each setup step that is left. "Earlier" is the history of
  * the last 30 days. One page serves a computer and a phone.
  */
@@ -13,6 +13,7 @@ import { problemAction, problemActionLabels, shownProblems, type ProblemAction }
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { HelpLink } from "./HelpLink.tsx";
+import { helpOfProblem } from "./help-links.ts";
 
 interface NotificationCenterProps {
   readonly problems: EvaStatus["problemDetails"];
@@ -66,7 +67,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
               <div className="center-subtitle">What Eva needs from you, and what she did by herself.</div>
             </div>
             <HelpLink topic="problems-and-alerts" />
-            {/* A phone has no Settings tab, so this button is its one way to Settings: keep the word (#566). */}
+            {/* A phone has no Settings tab, so a link to the center still leads to Settings: keep the word (#566, #761). */}
             <button className="ghost center-settings" onClick={props.onOpenSettings}>
               <Icon name="gear" />
               Settings
@@ -96,6 +97,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
               <h2>Needs you</h2>
               {needs.map((problem) => {
                 const action = problemAction(problem.key, syncStatus);
+                const help = helpOfProblem(problem.key);
                 const read = problem.hidden;
                 // An older Eva sends no start time.
                 const since = (problem as Partial<typeof problem>).since;
@@ -106,6 +108,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
                       {!read && <UnreadMark />}
                       <span className="visually-hidden">{problem.level === "error" ? "Error: " : "Warning: "}</span>
                       {problem.message}
+                      {help !== null && <HelpLink topic={help} place="this problem" />}
                       {since !== undefined && <span className="center-time"> · since {timeLabel(since, now)}</span>}
                     </span>
                     {action !== null && (

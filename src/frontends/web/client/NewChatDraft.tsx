@@ -2,7 +2,7 @@
  * The Chats page before a chat exists: the greeting, or the missing setup step, and a message box.
  * The first message makes the chat, so an open page leaves no empty chat behind.
  */
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
@@ -47,6 +47,8 @@ interface NewChatDraftProps {
   readonly onShowList: () => void;
   /** True when a chat in the list has an answer that the person has not read. */
   readonly listHasUnread: boolean;
+  /** The bell and, on a phone, the gear: this page is the home page that the visor opens (#761). */
+  readonly homeButtons: ReactNode;
   /** Gets the first message before it goes, or null when it failed to go. */
   readonly onSending: (message: SentMessage | null) => void;
   /** Opens the chat that the first message made. */
@@ -58,6 +60,7 @@ export function NewChatDraft({
   voiceNotes,
   onShowList,
   listHasUnread,
+  homeButtons,
   onSending,
   onStarted,
 }: NewChatDraftProps): ReactElement {
@@ -154,6 +157,7 @@ export function NewChatDraft({
           <h1>New chat</h1>
           {draft !== null && <div className="sub">{chatSubtitle(draft, false)}</div>}
         </div>
+        {homeButtons}
       </div>
       <div className="branches">
         <section className="branch" aria-label="New chat">

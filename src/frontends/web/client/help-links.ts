@@ -24,6 +24,7 @@ export const helpTargets = {
   updates: { page: "reference", slug: "updates" },
   notifications: { page: "reference", slug: "notifications-on-a-device" },
   "problems-and-alerts": { page: "reference", slug: "problems-and-alerts" },
+  "what-a-chat-can-reach": { page: "reference", slug: "what-a-chat-can-reach" },
 } as const satisfies Readonly<Record<string, HelpTarget>>;
 
 export type HelpTopic = keyof typeof helpTargets;
@@ -47,6 +48,7 @@ export const cardHelp: Readonly<Partial<Record<string, HelpTopic>>> = {
   notifications: "notifications",
   machine: "several-computers",
   "eva-updates": "updates",
+  permissions: "what-a-chat-can-reach",
 };
 
 export function helpOfCard(item: string | undefined): HelpTopic | null {
@@ -65,4 +67,13 @@ export function helpTitle(topic: HelpTopic): string {
   const section =
     page === undefined ? undefined : renderedGuide(page).sections.find((each) => each.slug === target.slug);
   return section?.title ?? page?.title ?? "the guide";
+}
+
+/** The help of a notice in the notification center, by the alert's key, as for a Settings card. */
+const problemHelp: Readonly<Partial<Record<string, HelpTopic>>> = {
+  shell_wall: "what-a-chat-can-reach",
+};
+
+export function helpOfProblem(key: string): HelpTopic | null {
+  return problemHelp[key] ?? null;
 }

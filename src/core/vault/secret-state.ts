@@ -30,7 +30,11 @@ const keyFileSchema = z.object({
     salt: z.string(),
   }),
   wrappedPrivateKey: z.string(),
-}) satisfies z.ZodType<VaultKeyFile>;
+}) satisfies z.ZodType<Omit<VaultKeyFile, "chain">>;
+
+const chainSchema = z
+  .array(z.object({ publicKey: z.string(), signingKey: z.string(), signature: z.string() }))
+  .optional();
 
 const signedFileSchema = z.object({ version: z.literal(1), payload: z.string(), signature: z.string() });
 
@@ -54,7 +58,10 @@ export function readVaultKey(vaultPath: string): VaultKeyFile | null {
   const read = readJsonTolerant(join(vaultPath, vaultKeyPath));
   if (!read.ok) return null;
   const parsed = keyFileSchema.safeParse(read.value);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+  // A broken chain only stops the trust that it would give: the key itself still opens the files (#775).
+  const chain = chainSchema.safeParse((read.value as { chain?: unknown }).chain);
+  return chain.success && chain.data !== undefined ? { ...parsed.data, chain: chain.data } : parsed.data;
 }
 
 export function writeVaultKey(vaultPath: string, file: VaultKeyFile): void {

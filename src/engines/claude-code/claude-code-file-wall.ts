@@ -36,7 +36,7 @@ export function toolCacheVariables(): Record<string, string> {
 }
 
 /** The names of this computer and of the tailnet, where Eva's own API listens. */
-const evaHosts = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "*.ts.net"];
+const evaHosts = ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "*.ts.net"];
 
 /**
  * The hosts of git and of the package managers. The wall closes files, never the network, but the
@@ -128,8 +128,48 @@ export function fileWallHooks(
   };
 }
 
+/**
+ * The places of the Unix sockets through which a command could run code outside the box, such as
+ * systemd's, Docker's, podman's, tmux's, X11's or Tailscale's. With no socket filter (#760), Eva
+ * closes them instead. All of `/run` closes: a root Eva reaches each root socket there. A list
+ * can miss a socket, so the guide calls the wall weaker there.
+ */
+const socketPlaces = ["/run", "/var/run", "/var/snap/lxd", "/tmp/.X11-unix"];
+
+/** Docker Desktop, Rancher Desktop, Colima and Lima keep their sockets in the home folder. */
+const homeSocketPlaces = [".docker", ".rd", ".colima", ".lima"];
+
+/** The name server file of many systems links into `/run`, so it stays readable when `/run` closes. */
+const nameServerPlaces = ["/run/systemd/resolve", "/run/resolvconf"];
+
+/** The user's own sockets: systemd, rootless Docker and podman, gpg, tmux. */
+function userSocketPlaces(runtimeFolder: string | null): string[] {
+  const uid = process.getuid?.();
+  const ownRuntime = uid === undefined ? [] : [`/run/user/${String(uid)}`, `/tmp/tmux-${String(uid)}`];
+  return [...new Set([...(runtimeFolder === null ? [] : [runtimeFolder]), ...ownRuntime])];
+}
+
+/** What the sandbox needs to know of the machine. */
+export interface SandboxMachine {
+  /** The user's runtime folder, where systemd and others keep their sockets. */
+  readonly runtimeFolder: string | null;
+  readonly platform: NodeJS.Platform;
+}
+
 /** The sandbox of the chat's shell, in the shape of the `settings` option. */
-export function fileWallSandbox(wall: FileWall): Record<string, unknown> {
+export function fileWallSandbox(
+  wall: FileWall,
+  machine: SandboxMachine = { runtimeFolder: null, platform: process.platform },
+): Record<string, unknown> {
+  // macOS filters sockets with no nested sandbox, so only Linux may need the filter off (#760).
+  const noFilter = !wall.socketFilter && machine.platform !== "darwin";
+  const socketFolders = noFilter
+    ? [
+        ...userSocketPlaces(machine.runtimeFolder),
+        ...socketPlaces,
+        ...homeSocketPlaces.map((name) => join(homedir(), name)),
+      ]
+    : [];
   return {
     enabled: true,
     // A machine with no sandbox runs the turn on. Eva's status says that its shell has no wall.
@@ -144,11 +184,14 @@ export function fileWallSandbox(wall: FileWall): Record<string, unknown> {
       deniedDomains: [...evaHosts],
       // A dev server or a test server of the clone listens on this computer. macOS asks for this.
       allowLocalBinding: true,
+      // The socket filter starts a sandbox inside the sandbox. Where the system blocks that, the
+      // filter would break every command, so it stays off and the socket folders close (#760).
+      ...(noFilter ? { allowAllUnixSockets: true } : {}),
     },
     filesystem: {
-      denyRead: [...wall.closed],
+      denyRead: [...wall.closed, ...socketFolders],
       // The chat's folder, and the parts of Eva's folder that its git and its shell need.
-      allowRead: [wall.area, ...wall.readable],
+      allowRead: [wall.area, ...wall.readable, ...(noFilter ? nameServerPlaces : [])],
       // npm checks each package of its cache. The other tools use the temporary folder.
       allowWrite: [wall.area, tmpdir(), join(homedir(), ".npm", "_cacache")],
     },

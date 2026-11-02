@@ -128,7 +128,7 @@ const silentRunner = new FakeRunner(() => ({ exitCode: 0, stdout: "", stderr: ""
 const finishedTurn: TurnOutcome = { finished: true, addNote: () => undefined };
 const stoppedTurn: TurnOutcome = { finished: false, addNote: () => undefined };
 /** No closed folder: these tests are about the other parts of a turn. */
-const noWall = (): WallRoots => ({ closed: [], readable: [] });
+const noWall = (): WallRoots => ({ closed: [], readable: [], socketFilter: true });
 
 beforeEach(() => {
   sandbox = createGitSandbox();
@@ -467,7 +467,7 @@ describe("Specialist mode (#703)", () => {
     const preparer = new SpecialistPreparer({
       vaultSync: new FakeSync(),
       environment: {},
-      wallRoots: () => ({ closed: [vault, "/srv/projects"], readable: ["/srv/gh"] }),
+      wallRoots: () => ({ closed: [vault, "/srv/projects"], readable: ["/srv/gh"], socketFilter: true }),
     });
     const folder = join(vault, "Projects", coachId);
     const chat = session({ mode: "project", startFolder: folder, projectId: coachId, clone: null });
@@ -475,6 +475,7 @@ describe("Specialist mode (#703)", () => {
       area: folder,
       closed: [vault, "/srv/projects"],
       readable: ["/srv/gh"],
+      socketFilter: true,
     });
   });
 
@@ -499,7 +500,7 @@ describe("Specialist mode (#703)", () => {
       harnessMemory: false,
       folderHooks: false,
       // The specialist reads and writes its own folder only (#711).
-      fileWall: { area: folder, closed: [], readable: [] },
+      fileWall: { area: folder, closed: [], readable: [], socketFilter: true },
       // Git stops above the specialist, so a git command there never finds the vault's repository.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: join(vault, "Projects") },
     });
@@ -620,10 +621,15 @@ describe("Project mode", () => {
       trustedOwners: () => ["owner"],
       environment: {},
       readRemote: () => Promise.resolve(null),
-      wallRoots: () => ({ closed, readable: [] }),
+      wallRoots: () => ({ closed, readable: [], socketFilter: true }),
     });
     const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
-    expect((await preparer.prepare(chat, deny)).fileWall).toEqual({ area: cloneFolder, closed: [vault], readable: [] });
+    expect((await preparer.prepare(chat, deny)).fileWall).toEqual({
+      area: cloneFolder,
+      closed: [vault],
+      readable: [],
+      socketFilter: true,
+    });
     closed = [vault, "/srv/projects"];
     expect((await preparer.prepare(chat, deny)).fileWall?.closed).toEqual([vault, "/srv/projects"]);
   });
@@ -645,7 +651,7 @@ describe("Project mode", () => {
       harnessMemory: true,
       folderHooks: true,
       // A chat in a clone reads and writes its clone only (#711).
-      fileWall: { area: cloneFolder, closed: [], readable: [] },
+      fileWall: { area: cloneFolder, closed: [], readable: [], socketFilter: true },
       // Git stops at the folder of the clones, so a git command in the clone folder never reads the vault.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: sandbox.root },
     });

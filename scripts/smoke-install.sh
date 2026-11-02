@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks install/install.sh the way a new person runs it: `curl ... | sh` on a clean Ubuntu with
-# no git and no OpenMP library, as a normal user with sudo, from a fake release folder that holds
-# the given executable.
+# no git, no OpenMP library and no sandbox tools, as a normal user with sudo, from a fake release
+# folder that holds the given executable.
 # Then it checks install/uninstall.sh.
 # Usage: bash scripts/smoke-install.sh <path to the Linux x64 executable>
 set -euo pipefail
@@ -23,6 +23,7 @@ cat >"$release/steps.sh" <<'STEPS'
 set -euo pipefail
 if command -v git >/dev/null; then echo "The image already has git." >&2; exit 1; fi
 if ldconfig -p | grep libgomp >/dev/null; then echo "The image already has the OpenMP library." >&2; exit 1; fi
+if command -v bwrap >/dev/null || command -v socat >/dev/null; then echo "The image already has the shell sandbox." >&2; exit 1; fi
 
 # A wrong checksum installs nothing.
 if EVA_INSTALL_BASE_URL=file:///bad EVA_INSTALL_SKIP_SETUP=1 sh -c "curl -fsSL file:///bad/install.sh | sh"; then
@@ -35,10 +36,16 @@ curl -fsSL file:///release/install.sh | sh
 git --version
 # whisper-cli, for voice notes, needs the OpenMP library.
 ldconfig -p | grep "libgomp.so.1" >/dev/null
+# Claude Code's shell sandbox, for the file wall of Project chats (#711), needs bubblewrap and socat.
+command -v bwrap >/dev/null
+command -v socat >/dev/null
 "$HOME/.local/bin/eva" version
 grep -q ".local/bin" "$HOME/.profile"
-# A second run finds git and Eva, and installs Eva again.
+# A second run finds git and Eva, and installs Eva again. It also installs a sandbox tool that an
+# Eva from before #757 never got.
+sudo apt-get remove -y -qq bubblewrap >/dev/null
 curl -fsSL file:///release/install.sh | sh
+command -v bwrap >/dev/null
 test "$(grep -c "Added by the Eva installer" "$HOME/.bashrc")" = 1
 
 # The uninstall stops an Eva and deletes her folder, then the program. Enter keeps each safe answer.

@@ -3,6 +3,7 @@ import { guidePageOf, guideItem, renderedGuide } from "../../../../../src/fronte
 import {
   cardHelp,
   helpOfCard,
+  helpOfProblem,
   helpRoute,
   helpTargets,
   helpTitle,
@@ -38,5 +39,12 @@ describe("help links", () => {
     expect(helpOfCard("vault-sync")).toBe("vault-sync");
     expect(helpOfCard("appearance")).toBeNull();
     expect(helpOfCard(undefined)).toBeNull();
+  });
+});
+
+describe("the help of a problem (#760)", () => {
+  test("the notice of a computer with no sandbox links to what a chat can reach", () => {
+    expect(helpOfProblem("shell_wall")).toBe("what-a-chat-can-reach");
+    expect(helpOfProblem("vault_ahead")).toBeNull();
   });
 });

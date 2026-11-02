@@ -11,6 +11,8 @@ export interface ShellWallMachine {
   readonly runner: ProcessRunner;
   /** The environment of the trial run. */
   readonly environment: Readonly<Record<string, string>>;
+  /** True when Eva runs as root, where Claude Code keeps one right in its box. */
+  readonly root: boolean;
 }
 
 /** A trial run is quick. A machine that hangs on it has no sandbox that works. */
@@ -26,7 +28,7 @@ export async function shellWallGap(machine: ShellWallMachine): Promise<string | 
     ...(machine.which("socat") === null ? ["socat"] : []),
   ];
   if (missing.length > 0)
-    return `Claude Code's shell sandbox needs ${missing.join(" and ")}. Install them, such as with \`sudo apt install bubblewrap socat\`, then restart Eva.`;
+    return `Claude Code's shell sandbox needs ${missing.join(" and ")}. Run the install command of Eva again, or install them, such as with \`sudo apt install bubblewrap socat\`. Then restart Eva.`;
   // An installed bubblewrap can still fail, such as where the system allows no user namespace.
   const trial = ["bwrap", "--ro-bind", "/", "/", "--unshare-user", "--unshare-net", "true"];
   const cannot = (reason: string): string => `Claude Code's shell sandbox cannot start on this computer: ${reason}`;
@@ -39,5 +41,32 @@ export async function shellWallGap(machine: ShellWallMachine): Promise<string | 
     return result.exitCode === 0 ? null : cannot(failureReason(result, "bwrap"));
   } catch (error) {
     return cannot(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * True when a sandbox can start inside the sandbox, as Claude Code's Unix socket filter does on
+ * Linux (#760). A recent Ubuntu lets bubblewrap make one user namespace but not a second inside
+ * it. There, the filter breaks every shell command, so Eva turns it off. macOS makes no namespace.
+ */
+export async function nestedSandboxWorks(machine: ShellWallMachine): Promise<boolean> {
+  if (machine.platform === "darwin") return true;
+  if (machine.platform !== "linux" || machine.which("bwrap") === null) return false;
+  // Claude Code drops every right in its box. As root, it keeps the one that a nested namespace
+  // needs, and only when the system grants it. The trial does the same, so it sees what they see.
+  const trial = [
+    ...["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-pid", "--proc", "/proc"],
+    ...["--unshare-user", "--unshare-net", "--cap-drop", "ALL", ...(machine.root ? ["--cap-add", "CAP_SETFCAP"] : [])],
+    ...["unshare", "--user", "--map-root-user", "--pid", "--mount", "--fork", "true"],
+  ];
+  try {
+    const result = await machine.runner.run(trial, {
+      cwd: "/",
+      environment: machine.environment,
+      timeoutMs: trialTimeoutMs,
+    });
+    return result.exitCode === 0;
+  } catch {
+    return false;
   }
 }

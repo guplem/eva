@@ -309,6 +309,8 @@ describe("shellWallProblem (#711)", () => {
     expect(problem?.message).toContain("can read the vault and Eva's own folder on this computer");
     expect(problem?.message).toContain("bubblewrap");
     expect(problem?.message).toContain("file tools");
+    // The guide says what the sandbox is and how to set it up (#760).
+    expect(problem?.message).toContain("docs/guide/reference.md#set-up-the-sandbox");
     expect(shellWallProblem(null)).toBeNull();
   });
 });
@@ -333,7 +335,8 @@ describe("vaultSecretsProblems (#707)", () => {
 
   test("a changed key asks the person, and says not to confirm a key that they did not make", () => {
     const message = vaultSecretsProblems({ ...none, keyChanged: true }).vault_key_changed?.message ?? "";
-    expect(message).toContain("did not make");
+    // A password change signs the new key, so an unsigned one may be someone else's (#775).
+    expect(message).toContain("did not sign");
   });
 
   test("a file that does not decrypt and a plain .env with a token each name the file and the fix", () => {

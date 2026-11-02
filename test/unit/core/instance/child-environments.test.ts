@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import {
   engineEnvironment,
@@ -9,6 +9,7 @@ import {
   projectWallRoots,
 } from "../../../../src/core/instance/child-environments.ts";
 import { homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
+import { userspaceFolders } from "../../../../src/core/remote-access/tailscale.ts";
 
 let home: string;
 let paths: HomePaths;
@@ -64,7 +65,8 @@ describe("projectWallRoots (#711)", () => {
   test("closes Eva's folder, but keeps readable each file that the agent's git, gh and PATH name", () => {
     const environment = engineEnvironment({ paths, processEnvironment: { PATH: "/usr/bin" }, evaCommand: ["eva"] }, {});
     const wall = projectWallRoots(paths, "/srv/vault", ["/srv/projects"]);
-    expect(wall.closed).toEqual(["/srv/vault", "/srv/projects", paths.root]);
+    // Eva's own Tailscale keeps its key and its control socket in the home folder.
+    expect(wall.closed).toEqual(["/srv/vault", "/srv/projects", paths.root, userspaceFolders(homedir()).state]);
     const readable = (path: string): boolean => wall.readable.some((folder) => path.startsWith(folder));
     expect(readable(environment["GIT_CONFIG_GLOBAL"] ?? "")).toBe(true);
     expect(readable(join(environment["GH_CONFIG_DIR"] ?? "", "hosts.yml"))).toBe(true);

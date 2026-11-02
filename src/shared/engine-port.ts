@@ -71,6 +71,11 @@ export interface FileWall {
   readonly closed: readonly string[];
   /** Folders inside a closed one that a shell command may still read, such as the git login that a push needs. */
   readonly readable: readonly string[];
+  /**
+   * False where the system lets no sandbox start inside the sandbox, such as a recent Ubuntu. Claude
+   * Code's Unix socket filter needs one, so Eva turns it off there and each command still runs (#760).
+   */
+  readonly socketFilter: boolean;
 }
 
 export interface TurnRequest {
@@ -152,4 +157,4 @@ export interface CarryHistoryInput {
 }
 
 /** The closed folders of every Project chat's wall, and the folders inside them that a shell may read (#711). */
-export type WallRoots = Pick<FileWall, "closed" | "readable">;
+export type WallRoots = Pick<FileWall, "closed" | "readable" | "socketFilter">;

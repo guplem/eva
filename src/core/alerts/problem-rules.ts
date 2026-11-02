@@ -10,6 +10,7 @@ import type { VaultSyncState, WithheldFile } from "../vault/vault-sync.ts";
 import type { AlertProblem, OpenAlert } from "./alert-center.ts";
 import type { VaultAhead } from "../migrations/migrations.ts";
 import type { LocationWrite } from "../location/last-location.ts";
+import { evaRepository } from "../../shared/version.ts";
 
 const dayMs = 24 * 60 * 60_000;
 
@@ -75,7 +76,7 @@ export function shellWallProblem(gap: string | null): AlertProblem | null {
   if (gap === null) return null;
   return {
     level: "warn",
-    message: `The shell of a Project chat can read the vault and Eva's own folder on this computer. ${gap} The file tools of each chat stay out of them.`,
+    message: `The shell of a Project chat can read the vault and Eva's own folder on this computer. ${gap} The file tools of each chat stay out of them. See https://github.com/${evaRepository}/blob/main/docs/guide/reference.md#set-up-the-sandbox`,
     resolvedMessage: "The shell of each Project chat stays out of the vault and Eva's own folder on this computer.",
   };
 }
@@ -118,7 +119,7 @@ export function vaultSecretsProblems(input: {
       ? {
           level: "warn",
           message:
-            "The vault's key changed on another computer, so Eva encrypts no new secret file here. Open Settings, on the Vault page, unlock with the new password, and confirm the new key. If you did not make a new key, someone else may have: do not confirm it.",
+            "The vault's key changed, and the old key did not sign the new one, so Eva encrypts no new secret file here. A password change on another computer signs it, so someone else may have changed the key. If you know why, open Settings, on the Vault page, unlock with the new password, and confirm the new key.",
           resolvedMessage: "Eva uses the vault's new key on this computer.",
         }
       : null,

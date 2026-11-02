@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  bellName,
   navVisorProjectEyes,
   navVisorState,
   tapFace,
@@ -120,5 +121,26 @@ describe("navVisorProjectEyes", () => {
 
   test("keeps the standard eyes on a computer, which shows the visor beside each answer", () => {
     expect(navVisorProjectEyes("projects", false)).toBe(false);
+  });
+});
+
+describe("bellName (#761)", () => {
+  const signal = { count: 0, dot: false, alarm: false };
+
+  test("names the bell, and says nothing more when nothing waits", () => {
+    expect(bellName(signal)).toBe("Notifications");
+  });
+
+  test("says the count of the unread problems, as the visor does", () => {
+    expect(bellName({ ...signal, count: 1 })).toBe("Notifications: 1 problem needs you");
+    expect(bellName({ ...signal, count: 2, alarm: true })).toBe("Notifications: 2 problems need you");
+  });
+
+  test("says that something new waits when the dot shows", () => {
+    expect(bellName({ ...signal, dot: true })).toBe("Notifications: something new waits");
+  });
+
+  test("the count comes before the dot, as on the visor", () => {
+    expect(bellName({ count: 1, dot: true, alarm: false })).toBe("Notifications: 1 problem needs you");
   });
 });

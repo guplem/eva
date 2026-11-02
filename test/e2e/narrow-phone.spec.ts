@@ -70,6 +70,7 @@ test("no page scrolls sideways on a narrow phone, also with long names", async (
   const longNote = page.getByRole("link", { name: /Benachrichtigungseinstellungen/ });
   const pages: [string, Locator][] = [
     ["#/chats", page.locator(".composer-box")],
+    ["#/chats/new", page.locator(".home-buttons")],
     ["#/projects", longProject],
     ["#/files/Notes", longNote],
     ["#/schedules", page.locator(".schedule-panel").first()],

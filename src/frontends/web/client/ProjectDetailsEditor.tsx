@@ -11,12 +11,13 @@ import { BackButton } from "./MainNav.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, SelectField } from "./SettingsParts.tsx";
-import { removedRepositoriesHint, statusChoices, statusOf } from "./project-format.ts";
-
-const projectTypeChoices = [
-  { value: "software", label: "Software" },
-  { value: "specialist", label: "Specialist" },
-] as const;
+import {
+  projectTypeChoices,
+  projectTypeOf,
+  removedRepositoriesHint,
+  statusChoices,
+  statusOf,
+} from "./project-format.ts";
 
 const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
 
@@ -190,11 +191,11 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
               />
               <SelectField
                 label="Project type"
-                value={details.type ?? "software"}
+                value={details.type ?? "general"}
                 choices={projectTypeChoices}
-                hint="A specialist is a chat with its own rules in this folder. The type changes only while the project has no chats and no clones."
+                hint="General and specialist chats work in this folder, software chats in clones. A change to or from software waits until the project has no chats and no clones."
                 onChange={(value) =>
-                  edit(() => setDetails({ ...details, type: value === "specialist" ? "specialist" : "software" }))
+                  edit(() => setDetails({ ...details, type: projectTypeOf(value) ?? details.type ?? "general" }))
                 }
               />
               <ListField

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactElement
 import type { ContextPart } from "../../../shared/chat-context.ts";
 import { takesEffort } from "../../../shared/engine-port.ts";
 import { chatKind, chatKindName } from "../../../shared/chat-kind.ts";
+import type { ProjectType } from "../../../shared/project-types.ts";
 import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { Dialog } from "./Dialog.tsx";
@@ -76,6 +77,8 @@ export interface ChatProps {
   readonly shownId?: string | null;
   /** Every chat, so the details can link the chats that one continues from a summary. */
   readonly sessions: readonly SessionRecord[];
+  /** The type of the chat's project, so a chat in a project folder gets its name (#768). */
+  readonly projectType?: ProjectType;
 }
 
 /** A conic gradient fills the ring with the share. Only a known window gives a share, so the ring is never a guess. */
@@ -235,7 +238,7 @@ function ChatLink({ chat }: { readonly chat: SessionRecord }): ReactElement {
   return <a href={`#/chat/${encodeURIComponent(chat.id)}`}>{chat.title}</a>;
 }
 
-function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatProps): ReactElement {
+function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions, projectType }: ChatProps): ReactElement {
   const root = tree[0];
   const shown = tree.find((session) => session.id === shownId) ?? root;
   const links = chatLinks(tree, sessions);
@@ -259,7 +262,7 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatP
               </>
             )}
             <dt>Mode</dt>
-            <dd>{chatKindName(chatKind(root))}</dd>
+            <dd>{chatKindName(chatKind(root), projectType)}</dd>
             <dt>Answers</dt>
             <dd>
               {tree.reduce((sum, session) => sum + session.turns.length, 0)}

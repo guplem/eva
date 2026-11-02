@@ -16,6 +16,7 @@ import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import { projectStatuses, projectStatusFilters } from "../../shared/project-statuses.ts";
+import { projectTypes } from "../../shared/project-types.ts";
 import { repositoryCatalog, type RepositoryTypeName } from "../../core/projects/repository-catalog.ts";
 import type {
   DeviceLoginApprover,
@@ -162,7 +163,7 @@ const projectDetailsSchema = z.object({
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
   /** An older page sends none, which keeps the type (#703). */
-  type: z.enum(["software", "specialist"]).optional(),
+  type: z.enum(projectTypes).optional(),
 });
 const repositoryTypeNames = repositoryCatalog.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
 const repositoryTypeSchema = z.object({ repository: z.string().min(1).max(2_000), type: z.enum(repositoryTypeNames) });
@@ -184,7 +185,7 @@ const newProjectSchema = z
     repository: z.object({ type: z.enum(repositoryTypeNames), visibility: z.enum(["private", "public"]) }).nullish(),
     drive: z.boolean(),
     /** An older page sends none: a software project, as before specialists (#703). */
-    type: z.enum(["software", "specialist"]).default("software"),
+    type: z.enum(projectTypes).default("software"),
   })
   .transform(({ github, repository, ...rest }) => ({
     ...rest,

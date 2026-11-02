@@ -37,7 +37,8 @@ import { projectStatusFilters } from "../../../shared/project-statuses.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
-import { chatKind } from "../../../shared/chat-kind.ts";
+import { chatKind, chatKindName } from "../../../shared/chat-kind.ts";
+import { worksInClones } from "../../../shared/project-types.ts";
 
 interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
@@ -533,6 +534,8 @@ export function ProjectView({
   const [panelShown, togglePanel] = useChatPanelShown();
   const chatDetails = {
     tree,
+    // The Mode line names a chat in a project folder after the project's type (#768).
+    ...(page === null ? {} : { projectType: page.project.frontMatter.type }),
     shownId: branch.id,
     sessions,
     onChanged,
@@ -685,7 +688,9 @@ export function ProjectView({
                   {/* Eva adds no prompt and no skill here: the chip only says which mode runs. */}
                   <span className="mode-chip soft">
                     <Icon name="briefcase" />{" "}
-                    <span className="mode-chip-label">{page.clone === null ? "Specialist" : "Project mode"}</span>
+                    <span className="mode-chip-label">
+                      {page.clone === null ? chatKindName("specialist", page.project.frontMatter.type) : "Project mode"}
+                    </span>
                   </span>
                   <BranchesButton tree={tree} shown={branch} states={branchStates} />
                 </>
@@ -785,8 +790,8 @@ function ProjectCard({
     [
       { label: "Open", icon: "briefcase", onChoose: () => onOpen("project") },
       { label: "Details", icon: "pen", onChoose: () => onOpen("details") },
-      // A specialist has no repository and no clone (#703).
-      ...(project.frontMatter.type === "specialist"
+      // A general project and a specialist have no repository and no clone (#703, #768).
+      ...(!worksInClones(project.frontMatter.type)
         ? []
         : [
             { label: "Repository setup", icon: "gear" as const, onChoose: () => onOpen("setup") },

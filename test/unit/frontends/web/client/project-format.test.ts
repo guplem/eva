@@ -45,6 +45,11 @@ describe("projectSummary", () => {
     expect(projectSummary(0, 2)).toBe("No clones yet · 2 chats");
   });
 
+  test("a general project has no clones, so it counts its chats only (#768)", () => {
+    expect(projectSummary(0, 0, "general")).toBe("General · No chats yet");
+    expect(projectSummary(0, 3, "general")).toBe("General · 3 chats");
+  });
+
   test("a specialist has no clones, so it counts its chats only (#703)", () => {
     expect(projectSummary(0, 0, "specialist")).toBe("Specialist · No chats yet");
     expect(projectSummary(0, 2, "specialist")).toBe("Specialist · 2 chats");

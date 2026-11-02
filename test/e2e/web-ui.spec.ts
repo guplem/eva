@@ -1642,6 +1642,7 @@ test("New project: the form creates a project and opens its page", async ({ page
   await openProjects(page);
   await page.getByRole("button", { name: "New project" }).click();
   const form = page.getByRole("dialog", { name: "New project" });
+  await form.getByLabel("Project type").selectOption("software");
   // The demo has no GitHub login, so the form says what to set up instead of a send that fails.
   await expect(form.getByLabel(/Create a GitHub repository/)).toBeDisabled();
   await expect(form).toContainText("Log in to GitHub");
@@ -1653,6 +1654,37 @@ test("New project: the form creates a project and opens its page", async ({ page
   await expect(form).toHaveCount(0);
   await expect(page.locator("main").getByRole("heading", { level: 1 })).toHaveText(name);
   await expect(page.locator("main")).toContainText("Made from the form.");
+});
+
+test("New project: a general project opens its page, and its chat works in the folder and takes files (#768)", async ({
+  page,
+}, testInfo) => {
+  const name = `House ${testInfo.project.name}`;
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  // General comes first and is picked. It offers a Drive folder, but no repository.
+  await expect(form.getByLabel("Project type")).toHaveValue("general");
+  await expect(form.getByLabel(/Create a GitHub repository/)).toHaveCount(0);
+  await expect(form.getByLabel(/Create a Google Drive folder/)).toHaveCount(1);
+  await form.getByLabel("Name").fill(name);
+  await form.getByRole("button", { name: "Create project" }).click();
+  await expect(form).toHaveCount(0);
+  const main = page.locator("main");
+  await expect(main.getByRole("heading", { level: 1 })).toHaveText(name);
+  await expect(main.getByRole("heading", { name: "Chats" })).toBeVisible();
+  await expect(main.locator(".clone-chat")).toHaveCount(0);
+  await expect(main.getByRole("button", { name: "Repository setup" })).toHaveCount(0);
+  await main.getByRole("button", { name: /New chat/ }).click();
+  await page.getByRole("menuitem", { name: "In the project folder" }).click();
+  const header = page.locator(".main-header");
+  await expect(header.locator(".mode-chip-label")).toHaveText("Project");
+  await expect(page.getByRole("button", { name: "Attach a file" })).toBeVisible();
+  await page.getByRole("button", { name: name, exact: true }).first().click();
+  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
+  const card = page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: new RegExp(name) });
+  await expect(card).toContainText("General · 1 chat");
 });
 
 test("New project: a specialist opens its first chat, and its page lists its chats with no clone (#703)", async ({
@@ -1673,6 +1705,8 @@ test("New project: a specialist opens its first chat, and its page lists its cha
   const header = page.locator(".main-header");
   await expect(header.getByText("Specialist", { exact: true })).toBeVisible();
   await expect(header).not.toContainText("clone-");
+  // Every chat takes files: a specialist's land in its project's received folder (#768).
+  await expect(page.getByRole("button", { name: "Attach a file" })).toBeVisible();
   const composer = page.getByLabel("Message").first();
   await composer.fill("Plan my training week");
   await composer.press("Enter");
@@ -1713,6 +1747,7 @@ test("New project: the repository asks for a type and a visibility, and warns on
   });
   await page.getByRole("button", { name: "New project" }).click();
   const form = page.getByRole("dialog", { name: "New project" });
+  await form.getByLabel("Project type").selectOption("software");
   await form.getByLabel(/Create a GitHub repository/).check();
   await expect(form.getByLabel("Repository type")).toHaveValue("standard");
   await expect(form.getByLabel("Visibility")).toHaveValue("private");

@@ -9,7 +9,7 @@
  * no record of cloning, or that is not the folder she cloned, is asked about too, and the
  * answer holds for that folder only.
  */
-import { basename, delimiter, dirname } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import {
   isTrustedByDefault,
   listRepositories,
@@ -20,6 +20,7 @@ import {
 } from "../projects/clones.ts";
 import type { WallRoots } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
+import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { withCloneMentions } from "../projects/clone-files.ts";
 import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
 import type {
@@ -58,9 +59,19 @@ export class ProjectPreparer implements TurnPreparer {
   }
 
   async prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn> {
+    const projectFolder = projectFolderOf(session.startFolder, session.clone);
+    const roots = this.options.wallRoots();
+    // A chat in a clone reads its project's notes, but no other clone and no file of `repos/` (#774).
+    const reposFolder = dirname(session.startFolder);
+    const fileWall =
+      session.clone === null
+        ? { area: session.startFolder, ...roots }
+        : { area: session.startFolder, ...roots, closed: [...roots.closed, reposFolder], readOnly: [projectFolder] };
+    // Before the engine starts: it reads its instruction files only then.
+    if (session.clone !== null) writeNotesHint(reposFolder);
     return {
       startFolder: session.startFolder,
-      projectFolder: projectFolderOf(session.startFolder, session.clone),
+      projectFolder,
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
@@ -69,7 +80,7 @@ export class ProjectPreparer implements TurnPreparer {
       // As in a session that the person opens by hand.
       harnessMemory: true,
       folderHooks: true,
-      fileWall: { area: session.startFolder, ...this.options.wallRoots() },
+      fileWall,
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };
   }
@@ -227,4 +238,25 @@ export function withGitCeiling(
   const current = environment["GIT_CEILING_DIRECTORIES"];
   const ceiling = current === undefined || current === "" ? clonesFolder : `${current}${delimiter}${clonesFolder}`;
   return { ...environment, GIT_CEILING_DIRECTORIES: ceiling };
+}
+
+/**
+ * The one line that Eva adds to a chat in a clone (#774). Nothing else tells the chat where the
+ * project's notes are. The engines read it as an instruction file of `repos/`, from the clone up to
+ * the project folder. The vault's `.gitignore` keeps `repos/` out of the sync, so each computer has its own.
+ */
+export const cloneNotesHint =
+  "The notes of this project are in the project folder, two levels above each clone (`../../` from the clone folder). " +
+  "Read them when they help. Never write there: write only in the clone.";
+
+/** Writes the line only when it is missing or its text differs. A turn runs on without it. */
+function writeNotesHint(reposFolder: string): void {
+  const path = join(reposFolder, "AGENTS.md");
+  const text = `${cloneNotesHint}\n`;
+  if (readTextTolerant(path) === text) return;
+  try {
+    writeFileAtomic(path, text);
+  } catch {
+    // A folder without rights must not stop the chat: it still reads a note that the person mentions.
+  }
 }

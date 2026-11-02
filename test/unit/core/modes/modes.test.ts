@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
 import { AssistantPreparer, type AssistantPreparerOptions } from "../../../../src/core/modes/assistant-mode.ts";
-import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
+import { cloneNotesHint, ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { widgetsIntro } from "../../../../src/core/modes/widgets-block.ts";
 import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
 import { discoverProjects } from "../../../../src/core/projects/project-catalog.ts";
@@ -626,12 +626,31 @@ describe("Project mode", () => {
     const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
     expect((await preparer.prepare(chat, deny)).fileWall).toEqual({
       area: cloneFolder,
-      closed: [vault],
+      // The other clones stay closed, though the project folder opens for reads (#774).
+      closed: [vault, sandbox.root],
       readable: [],
+      readOnly: [dirname(sandbox.root)],
       socketFilter: true,
     });
     closed = [vault, "/srv/projects"];
-    expect((await preparer.prepare(chat, deny)).fileWall?.closed).toEqual([vault, "/srv/projects"]);
+    expect((await preparer.prepare(chat, deny)).fileWall?.closed).toEqual([vault, "/srv/projects", sandbox.root]);
+  });
+
+  test("a chat in a clone learns where the project's notes are, from a file that Eva owns in `repos/` (#774)", async () => {
+    const hint = join(sandbox.root, "AGENTS.md");
+    const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
+    await project(["owner"]).prepare(chat, deny);
+    expect(readFileSync(hint, "utf8")).toBe(`${cloneNotesHint}\n`);
+    expect(cloneNotesHint).toContain("../../");
+    // A changed file gets Eva's text again before the next turn.
+    writeFileSync(hint, "Something else.\n");
+    await project(["owner"]).prepare(chat, deny);
+    expect(readFileSync(hint, "utf8")).toBe(`${cloneNotesHint}\n`);
+    // A chat with no clone gets no such file.
+    const folder = join(vault, "Projects", "2025-03-02-1015-notes");
+    mkdirSync(folder, { recursive: true });
+    await project(["owner"]).prepare(session({ mode: "project", startFolder: folder, clone: null }), deny);
+    expect(readdirSync(folder)).toEqual([]);
   });
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
@@ -650,8 +669,14 @@ describe("Project mode", () => {
       trusted: true,
       harnessMemory: true,
       folderHooks: true,
-      // A chat in a clone reads and writes its clone only (#711).
-      fileWall: { area: cloneFolder, closed: [], readable: [], socketFilter: true },
+      // A chat in a clone writes its clone only (#711), and reads its project folder but no other clone (#774).
+      fileWall: {
+        area: cloneFolder,
+        closed: [sandbox.root],
+        readable: [],
+        readOnly: [dirname(sandbox.root)],
+        socketFilter: true,
+      },
       // Git stops at the folder of the clones, so a git command in the clone folder never reads the vault.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: sandbox.root },
     });

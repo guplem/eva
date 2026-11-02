@@ -2646,6 +2646,12 @@ button.link-button {
        change the tap target (#777). */
     inset: calc(50% - var(--touch-target) / 2) 0;
   }
+
+  /* A row of a fact with a pill and the gap below it are as tall as the tap target. So the margins of two
+     such rows meet, but do not overlap, as the filters do. */
+  .facts dd.fact-with-action {
+    min-height: calc(var(--touch-target) - var(--space-2));
+  }
 }
 
 .save-bar {

@@ -151,6 +151,26 @@ async function tapHeights(locator: Locator): Promise<number[]> {
   );
 }
 
+/**
+ * Checks that each pill is smaller than 44 px, and that a tap 1 px inside the top or the bottom
+ * edge of its 44 px target reaches it. So no other pill's margin covers a part of it.
+ */
+async function expectSmallPills(pills: Locator): Promise<void> {
+  const found = await pills.evaluateAll((elements) =>
+    elements.map((element) => {
+      element.scrollIntoView({ block: "center" });
+      const box = element.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const middle = box.top + box.height / 2;
+      const hits = [middle - 21, middle + 21].map((y) => document.elementFromPoint(x, y)?.closest("button"));
+      return { name: element.textContent, height: box.height, hit: hits.every((hit) => hit === element) };
+    }),
+  );
+  expect(found.length).toBeGreaterThan(0);
+  for (const pill of found) expect(pill.hit, pill.name).toBe(true);
+  expect(Math.max(...found.map((pill) => pill.height))).toBeLessThan(44);
+}
+
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
 async function openSettings(page: Page, section?: string): Promise<void> {
   // Only the main navigation: a chat or a project in the list may also have "Settings" in its name.
@@ -2017,19 +2037,7 @@ test("on a phone, the project list is the page, and Back to the list returns to 
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
   expect(Math.min(...(await tapHeights(page.locator("button:visible"))))).toBeGreaterThanOrEqual(44);
-  // A filter is a small pill, but an invisible margin keeps its tap target at 44 px. No other filter covers it.
-  const filters = await page.locator(".filter-chip:visible").evaluateAll((chips) =>
-    chips.map((chip) => {
-      const box = chip.getBoundingClientRect();
-      const x = box.left + box.width / 2;
-      const middle = box.top + box.height / 2;
-      const hits = [middle - 20, middle + 20].map((y) => document.elementFromPoint(x, y)?.closest(".filter-chip"));
-      return { height: box.height, hit: hits.every((hit) => hit === chip) };
-    }),
-  );
-  expect(filters.length).toBeGreaterThan(0);
-  for (const filter of filters) expect(filter.hit).toBe(true);
-  expect(Math.max(...filters.map((filter) => filter.height))).toBeLessThan(44);
+  await expectSmallPills(page.locator(".filter-chip:visible"));
   await page.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
@@ -5457,10 +5465,7 @@ test.describe("on a phone", () => {
         // The versions load after the page. Each tool that Eva can install then gets a small pill with a tap margin.
         const pills = page.getByRole("region", { name: "Versions" }).locator(".fact-with-action button.small");
         await expect(pills.first()).toBeVisible();
-        const boxes = await pills.evaluateAll((elements) =>
-          elements.map((element) => element.getBoundingClientRect().height),
-        );
-        expect(Math.max(...boxes)).toBeLessThan(44);
+        await expectSmallPills(pills);
       }
       const heights = await tapHeights(
         page.locator("button:visible, select:visible, .link-list a:visible, a.button-link:visible"),

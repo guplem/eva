@@ -10,6 +10,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -18,6 +19,7 @@ import {
 import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
+import { isScratchPath, scratchFolder } from "./scratch-folders.ts";
 import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
 
 export type SendableFile =
@@ -37,7 +39,6 @@ export function isClonePath(relativePath: string): boolean {
 
 /** Telegram lets a bot upload at most 50 MB. */
 export const maxSendableBytes = 50 * 1024 * 1024;
-export const scratchFolderName = "Scratch";
 /** Scratch files older than this are removed. */
 const scratchMaxAgeMs = 7 * 24 * 60 * 60_000;
 /** Only a text file this small is scanned for a secret: a larger one is a document or a media file. */
@@ -126,16 +127,16 @@ export function contentName(originalName: string, bytes: Uint8Array): string {
 }
 
 /**
- * Saves a file that the person sent into `Scratch/received/`, named by its content, so two
+ * Saves a file that the person sent into `.eva/scratch/received/`, named by its content, so two
  * chats that receive files at once never overwrite each other (lesson 74). Returns the path
  * from the vault root.
  */
 export function saveReceivedFile(vaultPath: string, originalName: string, bytes: Uint8Array): string {
   const name = contentName(originalName, bytes);
-  const folder = join(vaultPath, scratchFolderName, "received");
+  const folder = join(vaultPath, scratchFolder, "received");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, name), bytes);
-  return `${scratchFolderName}/received/${name}`;
+  return `${scratchFolder}/received/${name}`;
 }
 
 /** The line that tells the agent where a received file is. Every front end sends the same line. */
@@ -143,13 +144,58 @@ export function receivedFileNote(savedPath: string): string {
   return `[The person sent a file, saved as ${savedPath}]`;
 }
 
-/** Removes every Scratch file older than a week. Returns how many it removed. */
+/**
+ * Removes every file older than a week from each scratch folder. Returns how many it removed. Eva
+ * writes no more in the old `Scratch/` at the vault root, so it goes once it is empty, and the Files
+ * page no longer shows it.
+ */
 export function cleanScratch(vaultPath: string, now: Date): number {
-  return cleanFolder(join(vaultPath, scratchFolderName), now);
+  let removed = 0;
+  for (const folder of scratchFolders(vaultPath)) {
+    removed += cleanFolder(join(vaultPath, folder), now);
+    if (!folder.includes("/")) removeEmptyFolders(join(vaultPath, folder));
+  }
+  return removed;
 }
 
 /**
- * Walks the folder without following a symbolic link: a link in Scratch, from a vault push
+ * The scratch folders on disk, as paths from the vault root with `/`, in any case. A link is no
+ * folder here, so a cleanup never follows one out of the vault.
+ */
+export function scratchFolders(vaultPath: string): string[] {
+  const found: string[] = [];
+  for (const top of subfolders(vaultPath)) {
+    if (isScratchPath(top)) found.push(top);
+    else if (top.toLowerCase() === ".eva")
+      for (const child of subfolders(join(vaultPath, top)))
+        if (isScratchPath(`${top}/${child}`)) found.push(`${top}/${child}`);
+  }
+  return found;
+}
+
+function subfolders(folder: string): string[] {
+  try {
+    return readdirSync(folder, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+/** Removes the folder and each folder in it that holds nothing. A link is never followed. */
+function removeEmptyFolders(folder: string): void {
+  try {
+    for (const entry of readdirSync(folder, { withFileTypes: true }))
+      if (entry.isDirectory()) removeEmptyFolders(join(folder, entry.name));
+    rmdirSync(folder);
+  } catch {
+    // A folder that still holds a file stays.
+  }
+}
+
+/**
+ * Walks the folder without following a symbolic link: a link in a scratch folder, from a vault push
  * or an agent, must never lead the cleanup to delete files elsewhere.
  */
 function cleanFolder(folder: string, now: Date): number {

@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { EvaError } from "../../shared/errors.ts";
+import { isScratchPath } from "../files/scratch-folders.ts";
 
 export const dayNames = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 export type DayName = (typeof dayNames)[number];
@@ -113,9 +114,12 @@ export function parseScheduleEntry(entry: unknown, position: number): Schedule |
   const prompt = optionalText(fields["prompt"]);
   if (text === null && file === null && prompt === null)
     return `Schedule ${id} has no text, file or prompt, so it does nothing.`;
-  // Scratch empties after a week, so the file would be gone by a later firing.
-  if (file?.replaceAll("\\", "/").split("/")[0] === "Scratch")
-    return `Schedule ${id} sends a file from Scratch/: use a file outside Scratch/.`;
+  // A scratch folder empties after a week, so the file would be gone by a later firing.
+  if (file !== null && isScratchPath(file)) {
+    const parts = file.split(/[/\\]/);
+    const folder = parts.slice(0, parts[0]?.toLowerCase() === ".eva" ? 2 : 1).join("/");
+    return `Schedule ${id} sends a file from ${folder}/, which empties each week: use a file outside it.`;
+  }
   const enabled = "enabled" in fields ? fields["enabled"] : true;
   // A typo such as "false" in quotes must never run a schedule that the person paused.
   if (typeof enabled !== "boolean") return `Schedule ${id} has an invalid enabled: write true or false.`;

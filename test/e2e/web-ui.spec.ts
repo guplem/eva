@@ -3710,10 +3710,10 @@ test("an attached file reaches the agent as its vault path, and a removed one do
 
   const message = page.locator(".message.user").last();
   await expect(message).toContainText("What is this?");
-  await expect(message).toContainText(/saved as Scratch\/received\/receipt-[0-9a-f]{12}\.pdf/);
+  await expect(message).toContainText(/saved as \.eva\/scratch\/received\/receipt-[0-9a-f]{12}\.pdf/);
   await expect(message).not.toContainText("extra");
   await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
-  await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
+  await expect(page.locator(".message.answer").first()).toContainText(".eva/scratch/received/receipt-");
 });
 
 test("an @ mentions a project and a vault file, and the agent gets where they are (issue 657)", async ({ page }) => {
@@ -3831,8 +3831,8 @@ test("a pasted image and a dropped file attach like a picked file", async ({ pag
   await expect(attached).toContainText("notes.txt");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   const message = page.locator(".message.user").last();
-  await expect(message).toContainText(/saved as Scratch\/received\/image-[0-9a-f]{12}\.png/);
-  await expect(message).toContainText(/saved as Scratch\/received\/notes-[0-9a-f]{12}\.txt/);
+  await expect(message).toContainText(/saved as \.eva\/scratch\/received\/image-[0-9a-f]{12}\.png/);
+  await expect(message).toContainText(/saved as \.eva\/scratch\/received\/notes-[0-9a-f]{12}\.txt/);
   await waitUntilNewestChatSeen(page);
 });
 

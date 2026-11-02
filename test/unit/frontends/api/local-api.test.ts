@@ -2148,7 +2148,7 @@ describe("web routes", () => {
     expect((await call("/api/files/rename", { method: "POST", body: { path: "README.md" } })).status).toBe(400);
   });
 
-  test("files: a file from the chat lands in Scratch/received/ and answers its note (issue 409)", async () => {
+  test("files: a file from the chat lands in .eva/scratch/received/ and answers its note (issue 409)", async () => {
     const vaultPath = eva.status().vaultPath ?? "";
     const response = await fetch(`${api.url}/api/files/received?name=${encodeURIComponent("my photo.jpg")}`, {
       method: "POST",
@@ -2157,7 +2157,7 @@ describe("web routes", () => {
     });
     expect(response.status).toBe(201);
     const saved = await json<{ path: string; note: string }>(response);
-    expect(saved.path).toMatch(/^Scratch\/received\/my-photo-[0-9a-f]{12}\.jpg$/);
+    expect(saved.path).toMatch(/^\.eva\/scratch\/received\/my-photo-[0-9a-f]{12}\.jpg$/);
     expect(saved.note).toBe(`[The person sent a file, saved as ${saved.path}]`);
     expect([...readFileSync(join(vaultPath, saved.path))]).toEqual([7, 8, 9]);
 
@@ -2167,7 +2167,7 @@ describe("web routes", () => {
       body: new Uint8Array(26 * 1024 * 1024),
     });
     expect(tooLarge.status).toBe(413);
-    expect(existsSync(join(vaultPath, "Scratch", "received", "big.bin"))).toBe(false);
+    expect(existsSync(join(vaultPath, ".eva", "scratch", "received", "big.bin"))).toBe(false);
   });
 
   test("a chat in a clone: an attached file lands in the clone, and a gone mention stops the message (#706)", async () => {

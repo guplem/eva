@@ -239,7 +239,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - **Undo and retry** puts those files back as they were before the answer, and saves that as a new commit.
   - **Keep and retry** does not change them.
 
-  Eva restores only files: a sent message or a calendar event stays. A file that changed after the answer stays too, and so does a file that Eva does not save in git, such as a file in `Scratch/`. The question names them. With the vault sync off, Eva does not ask.
+  Eva restores only files: a sent message or a calendar event stays. A file that changed after the answer stays too, and so does a file that Eva does not save in git, such as a file in `.eva/scratch/`. The question names them. With the vault sync off, Eva does not ask.
 
 ## Projects
 
@@ -317,7 +317,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Change them in **Settings > Personalize > Message box menu**, or ask Eva to. Each one is a Markdown file in the vault, in `.eva/settings/text-actions/` or `.eva/settings/saved-prompts/`. The file name is the name in the menu.
   - A text action can start with a `model:` line between two `---` lines: `haiku` (Fast), `sonnet` (Balanced) or `opus` (Smart). With no such line, it uses the fast model.
   - Eva brings Polish and Summary as examples, once. If you delete one, it stays deleted.
-- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and a plain `.env` file. An encrypted file shows a lock: type the vault password to open it. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `Scratch/received/` in the vault. Git never saves `Scratch/`, and Eva deletes its files after a week.
+- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and a plain `.env` file. An encrypted file shows a lock: type the vault password to open it. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `.eva/scratch/received/` in the vault. Git never saves `.eva/scratch/`, and Eva deletes its files after a week. An older vault also has a `Scratch/` folder from an earlier Eva. Eva writes nothing new there, and the folder goes away once its files are a week old.
   - **In a project chat in a clone,** a file that you send goes into the clone's `.mentions/` folder, outside every repository.
   - To give such a chat a vault file, such as a design or the notes of a meeting, type `@` in the web app and pick the file. Eva puts a copy in `.mentions/` too.
   - The chat gets the name of the copy, never the vault path.
@@ -340,7 +340,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Eva keeps each widget up to date. A new version that asks for nothing new installs by itself. A new version that asks for more waits: the old version keeps running, and Eva sends you a notice with what is new. In the list, press **Review the update** to approve it, or **Keep this version**.
   - Eva checks your own widgets every 30 minutes, and every other widget once a day. Change it in **Widget updates**, or press **Check for updates** to check now.
   - On a widget project, **Preview** on a clone shows the widget as the clone holds it, with no push. **Example data** shows its mock files. **My data** shows your vault, and asks first for anything that the installed widget does not have.
-- **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
+- **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `.eva/scratch/` and sends it.
 - **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. The audio never leaves the computer.
   On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt install libgomp1` on Ubuntu.
   To install them by hand, install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Then download a model and put it at `voice/ggml-base.bin` in Eva's home folder.

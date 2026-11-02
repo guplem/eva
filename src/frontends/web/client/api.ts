@@ -245,7 +245,7 @@ export const api = {
   transcribe: (audio: Blob): Promise<{ text: string }> => request("POST", "/api/transcribe", audio),
   /**
    * Keeps a file for the agent, and answers the note that the message carries: in the vault's
-   * Scratch folder, or in the clone of a chat in a clone, with a note that names no vault path (#706).
+   * .eva/scratch/ folder, or in the clone of a chat in a clone, with a note that names no vault path (#706).
    */
   attachFile: (file: File, sessionId: string | null = null): Promise<{ path: string; note: string }> =>
     request(

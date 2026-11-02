@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
+import { isScratchPath } from "../files/scratch-folders.ts";
 import type { SecretMatcher } from "./secret-files.ts";
 import {
   decryptFile,
@@ -123,7 +124,7 @@ export function encryptAgain(
   return { moved: planned.map(({ path }) => path), unreadable };
 }
 
-/** Each regular file of the vault with Eva's header, outside git's folder, the clones and Scratch. */
+/** Each regular file of the vault with Eva's header, outside git's folder, the clones and the scratch folders. */
 function encryptedFiles(vaultPath: string): string[] {
   const found: string[] = [];
   const visit = (folder: string): void => {
@@ -149,7 +150,9 @@ function skippedFolder(relativePath: string): boolean {
   const parts = relativePath.split("/");
   const top = parts[0]?.toLowerCase();
   return (
-    parts.at(-1) === ".git" || top === "scratch" || (top === "projects" && parts.length === 3 && parts[2] === "repos")
+    parts.at(-1) === ".git" ||
+    isScratchPath(relativePath) ||
+    (top === "projects" && parts.length === 3 && parts[2] === "repos")
   );
 }
 

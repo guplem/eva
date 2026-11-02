@@ -106,6 +106,9 @@ describe("a confirmed removal and a new key (#707)", () => {
     writeEncrypted("Toolbox/server.pem", "PEM\n");
     // A conflict copy keeps Eva's header, but no pattern names it: a removal must not touch it.
     writeEncrypted("Notes/old (conflict copy).md", "OLD\n");
+    // Git never saves a scratch folder, so a removal leaves its files alone (#767).
+    writeEncrypted(".eva/scratch/id.key", "KEY\n");
+    writeEncrypted("Scratch/id.key", "KEY\n");
     const decrypted = filesFreedBy(vault, new SecretMatcher(["*.key"]), new SecretMatcher(["*.pem"]));
     decryptFiles(vault, decrypted, unlocked);
     expect(decrypted).toEqual(["deploy/id.key"]);

@@ -7,6 +7,7 @@
  */
 import { join } from "node:path";
 import { readTextTolerant } from "../../shared/files.ts";
+import { isScratchPath } from "../files/scratch-folders.ts";
 
 /**
  * Files that hold secrets by convention. A plain `.env` holds values that are safe to share, such as
@@ -64,11 +65,17 @@ export function parseSecretFiles(text: string): SecretFilesChanges {
 /**
  * Eva's settings, the instruction files and git's own files stay plain whatever the list says. A
  * pattern such as `**` would otherwise stop the Assistant and every specialist, and hide the key file.
+ * `.eva/scratch/` holds the files of the chats, not settings, so the patterns apply there (#767).
  */
 export function isNeverEncrypted(relativePath: string): boolean {
   const path = normalized(relativePath);
   const name = path.slice(path.lastIndexOf("/") + 1);
-  return path.startsWith(".eva/") || name === "agents.md" || name === ".gitignore" || name === ".gitattributes";
+  return (
+    (path.startsWith(".eva/") && !isScratchPath(path)) ||
+    name === "agents.md" ||
+    name === ".gitignore" ||
+    name === ".gitattributes"
+  );
 }
 
 /** Matches vault paths, from the vault root with `/`, against patterns in `.gitignore` syntax. */

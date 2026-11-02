@@ -1171,6 +1171,8 @@ describe("ClaudeCodeEngine", () => {
     await drain(engine.runTurn(turnRequest));
     expect(await canUseTool?.("Edit", { file_path: "Methods/A.md" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Write", { file_path: ".eva/schedules.json" })).toMatchObject({ behavior: "deny" });
+    // A file of a chat goes in .eva/scratch/ with no question, under the .eva/** ask rule (#428, #767).
+    expect(await canUseTool?.("Write", { file_path: ".eva/scratch/answer.pdf" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "gh issue create --title x" })).toMatchObject({ behavior: "deny" });
     expect(await canUseTool?.("mcp__google__send_email", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });

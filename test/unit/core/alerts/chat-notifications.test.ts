@@ -83,14 +83,20 @@ describe("a chat that is free again", () => {
 
   test("leaves out the file markers, and keeps the text before a block of markers only (#581)", () => {
     const { sent, feed, idle } = notifications();
-    feed("web", received("api"), text("Here it is.\n[[attach: Scratch/a.zip]]"), text("[[offer: b.md]]"), finished);
+    feed(
+      "web",
+      received("api"),
+      text("Here it is.\n[[attach: .eva/scratch/a.zip]]"),
+      text("[[offer: b.md]]"),
+      finished,
+    );
     idle("web");
     expect(sent.map((notification) => notification.body)).toEqual(["Here it is."]);
   });
 
   test("says that Eva finished when the answer holds file markers only", () => {
     const { sent, feed, idle } = notifications();
-    feed("web", received("api"), text("[[attach: Scratch/a.zip]]"), finished);
+    feed("web", received("api"), text("[[attach: .eva/scratch/a.zip]]"), finished);
     idle("web");
     expect(sent.map((notification) => notification.body)).toEqual(["Eva finished."]);
   });

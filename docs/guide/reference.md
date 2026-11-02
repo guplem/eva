@@ -265,7 +265,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - In Telegram, the chat list names it "Specialist". A file that you send to its chat gets the answer that this chat takes no files.
   - A specialist runs with your own permission mode, as a project chat does, but its folder is in your vault. Retry with undo takes back what it changed.
   - It cannot open the rest of the vault: see [What a chat can reach](#what-a-chat-can-reach).
-- **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, but no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
+- **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, and one line that Eva keeps in `repos/AGENTS.md`: the project's notes are two folders above the clone. It loads no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
 - **The file wall:** a project chat cannot open your vault, your other project folders or Eva's own folder. Mention a file to give it a copy. See [What a chat can reach](#what-a-chat-can-reach).
 - **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
   - All its work is on GitHub.
@@ -306,18 +306,18 @@ The Assistant needs the whole vault and the `eva` command. So Eva puts no wall a
 
 ### The file wall of a project chat
 
-A project chat works in its own folder: its clone folder, or a specialist's project folder. The wall closes these folders to it:
+A project chat works in its own folder: its clone folder, or a specialist's project folder. A chat in a clone also reads, but never writes, its project folder. The wall closes these folders to it:
 
 - your vault,
 - your other project folders,
 - Eva's own folder, with her logins and secrets,
 - the folder of Eva's own Tailscale, if she installed it for your user: a command could open a public tunnel with it.
 
-So a chat in a clone cannot read the project's notes or its other clones. To give it a vault file, mention the file. Eva then puts a copy in the clone. The other files of the computer stay open.
+So a chat in a clone reads the notes of its project. It opens a secret file there too, such as a `.secrets` file: once Eva has saved the file encrypted, the chat sees only the encrypted text. It cannot read the other clones of the project or any other note. To give it another vault file, mention the file. Eva then puts a copy in the clone. The other files of the computer stay open.
 
 The wall has two parts.
 
-**The file tools.** Before each read, write or search, Eva checks the path. A path in a closed folder gets the answer "This path is outside this chat's folder." This works in every permission mode, and with both engines. A file tool also cannot write some files of the chat's own folder: its `.claude` or `.pi` settings, its `.mcp.json`, and a `.git` folder. Such a file could run code at the next turn.
+**The file tools.** Before each read, write or search, Eva checks the path. A path in a closed folder, and a write to the project folder of a clone chat, get the answer "This path is outside this chat's folder." This works in every permission mode, and with both engines. A file search of a clone chat's whole project folder gets it too, since the folder holds the other clones. A search of the shell skips them instead. A file tool also cannot write some files of the chat's own folder: its `.claude` or `.pi` settings, its `.mcp.json`, and a `.git` folder. Such a file could run code at the next turn.
 
 **The shell, in a sandbox.** A sandbox is a box that the system builds around a program. Claude Code has one, and Eva turns it on for each project chat. Inside the sandbox, the closed folders look empty or missing. So every program fails to read them, not only `cat`. On Linux the message is "No such file or directory". On macOS it is "Operation not permitted".
 

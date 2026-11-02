@@ -418,6 +418,16 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain("code.ts");
   });
 
+  test("never commits a file of a project's `repos/` folder, even when the vault's .gitignore does not list it (#774)", async () => {
+    sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/AGENTS.md", "Eva's line for a clone chat.\n");
+    sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/clone-0/.mentions/Plan.md", "A copy.\n");
+    sandbox.write(vault, "Projects/2025-01-01-1200-app/plan.md", "The plan.\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).toContain("Projects/2025-01-01-1200-app/plan.md");
+    expect(remoteFiles()).not.toContain("repos/");
+  });
+
   test("never commits a file in Scratch/, even when the vault's .gitignore does not list it (#415)", async () => {
     sandbox.write(vault, "Scratch/received/statement.pdf", "A bank statement.\n");
     sandbox.write(vault, "Methods/New.md", "Steps.\n");

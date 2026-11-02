@@ -207,6 +207,15 @@ describe("VaultSync undo of an answer", () => {
     expect(tree).toContain("Notes/Unstaged.md");
   });
 
+  test("a snapshot takes no file of a project's `repos/` folder (#774)", async () => {
+    sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/AGENTS.md", "Eva's line for a clone chat.\n");
+    sandbox.write(vault, "Notes/Unstaged.md", "unstaged\n");
+    expect(await createSync().snapshot(turnSnapshotRef("chat", 0, "before"))).toBe(true);
+    const tree = sandbox.git(vault, "ls-tree", "-r", "--name-only", turnSnapshotRef("chat", 0, "before"));
+    expect(tree).toContain("Notes/Unstaged.md");
+    expect(tree).not.toContain("repos/");
+  });
+
   test("a turn with no snapshots adds nothing", async () => {
     expect(await createSync().undoPreview([answer("old-chat", 3)])).toEqual({
       restore: [],

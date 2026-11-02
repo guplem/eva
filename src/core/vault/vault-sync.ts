@@ -294,7 +294,8 @@ export class VaultSync {
         ...(await this.statusEntries()).map((entry) => entry.path),
         ...(tracked.exitCode === 0 ? tracked.stdout.split("\0").filter((path) => path.length > 0) : []),
       ]);
-      for (const path of paths) if (!path.endsWith("/") && !this.isScratchFile(path)) prepare(path);
+      for (const path of paths)
+        if (!path.endsWith("/") && !this.isScratchFile(path) && !isCloneFolderFile(path)) prepare(path);
     });
   }
 
@@ -312,6 +313,7 @@ export class VaultSync {
       for (const { path } of await this.statusEntries()) {
         // A folder entry is a repository inside the vault, which a commit does not take either.
         if (path.endsWith("/")) continue;
+        if (isCloneFolderFile(path)) continue;
         if (!this.isScratchFile(path) && this.withheldReason(path, prepare) === null) paths.push(path);
         else this.addLeftOut(leftOut, path);
       }
@@ -854,7 +856,7 @@ export class VaultSync {
     let stagedScratch = false;
     for (const { code, path } of entries) {
       if (unmerged.includes(path)) continue;
-      if (this.isScratchFile(path)) {
+      if (this.isScratchFile(path) || isCloneFolderFile(path)) {
         // An untracked file stays out of a plain commit anyway; a staged one needs --only.
         if (!code.startsWith(" ") && !code.startsWith("?")) stagedScratch = true;
         continue;
@@ -1333,4 +1335,14 @@ function fileKind(path: string): "file" | "absent" | "other" {
   } catch {
     return "absent";
   }
+}
+
+/**
+ * True for a path in a project's `repos/` folder: the clones, and the line that Eva writes there
+ * for a clone chat (#774). The vault's `.gitignore` usually lists the folder. A vault without that
+ * line must not commit them either. Windows and macOS ignore the case of a name.
+ */
+function isCloneFolderFile(relativePath: string): boolean {
+  const parts = relativePath.split("/").map((part) => part.toLowerCase());
+  return parts.length > 3 && parts[0] === "projects" && parts[2] === "repos";
 }

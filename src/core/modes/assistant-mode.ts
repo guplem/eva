@@ -38,6 +38,11 @@ export interface AssistantPreparerOptions {
   readonly now: () => Date;
   /** An IANA time zone, such as Europe/Madrid. A server clock is often UTC (lesson 68). */
   readonly timeZone: string;
+  /**
+   * The zone of "today" for the case marks of the pinned block: the setting, or else the computer's
+   * own zone, as the person decided. `timeZone` when not given.
+   */
+  readonly todayTimeZone?: string;
   /** The MCP servers of every Assistant turn, such as the Google tools. */
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
   /** The projects of the vault and of the extra roots, read at the first turn of each chat for the pinned block. */
@@ -193,7 +198,7 @@ export class AssistantPreparer implements TurnPreparer {
     const block = pinnedBlock({
       files: findPinnedFiles(vaultPath, { oldForm }),
       projects: this.options.projects(),
-      today: formatLocalTime(this.options.now(), this.options.timeZone).slice(0, 10),
+      today: formatLocalTime(this.options.now(), this.options.todayTimeZone ?? this.options.timeZone).slice(0, 10),
     });
     if (!block.complete)
       this.options.logger?.log("warn", "The walk for pinned files stopped before it saw the whole vault.", {});

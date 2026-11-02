@@ -233,6 +233,13 @@ describe("Assistant mode", () => {
     // 2026-10-14T16:00Z is already 15 October in Tokyo.
     expect((await at("2026-10-14T16:00:00Z").prepare(session())).appendSystemPrompt).toContain("[DUE 2026-10-15]");
     expect((await at("2026-10-14T14:00:00Z").prepare(session())).appendSystemPrompt).not.toContain("DUE");
+    // With no time zone setting, Eva passes UTC for the time but the computer's zone for "today".
+    const computer = assistant(silentRunner, new FakeSync(), [], {
+      now: () => new Date("2026-10-14T16:00:00Z"),
+      timeZone: "UTC",
+      todayTimeZone: "Asia/Tokyo",
+    });
+    expect((await computer.prepare(session())).appendSystemPrompt).toContain("[DUE 2026-10-15]");
   });
 
   test("the details say when the walk for pinned files stopped early, and the log warns (#769)", async () => {

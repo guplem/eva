@@ -19,7 +19,12 @@ import type { Migration, MigrationContext } from "./migration-runner.ts";
 /** A note larger than this is a document or a dump, not a note that the old rule marked. */
 const maxNoteBytes = 1_000_000;
 const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
-const projectIdPattern = /^\d{4}-\d{2}-\d{2}-\d{4}-/;
+/** A frozen copy of the project id rule of `src/core/projects/project-id.ts`: an old id can hold only a year. */
+const projectIdPattern = /^\d{4}(?:-\d{2}(?:-\d{2}(?:-\d{4})?)?)?-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** #770 owns the About me note and its `pinned: full`. */
+const aboutMePath = "Life/About me.md";
+/** The walk runs once, on the hub, at start; a vault with more entries than this is not a notes vault. */
+const maxVisitedEntries = 200_000;
 
 export const pinFiles: Migration = {
   id: "2026-11-02-pinned-files",
@@ -41,6 +46,7 @@ function migrateFile(context: MigrationContext, vaultPath: string, path: string)
   } catch {
     return;
   }
+  if (path === aboutMePath) return;
   let changed = text;
   const parts = path.split("/");
   const isProject =
@@ -53,7 +59,7 @@ function migrateFile(context: MigrationContext, vaultPath: string, path: string)
 /** The project file with a quoted `summary`, or null when it needs none or the edit is unsafe. */
 function withProjectSummary(text: string): string | null {
   const header = headerOf(text.replace(/^\uFEFF/, ""));
-  if (header === null || header === "broken" || "summary" in header) return null;
+  if (header === null || header === "broken" || hasText(header["summary"])) return null;
   const description = readDescription(text.replace(/^\uFEFF/, ""));
   // A JSON string is a YAML string too, so `: `, ` #` and quotes stay one value.
   return description === null ? null : withHeaderField(text, "summary", `summary: ${JSON.stringify(description)}`);
@@ -70,14 +76,21 @@ function withImportantPin(text: string): string | null {
   const body = rest.slice(bodyStart);
   const heading = titleHeading(body);
   const afterTitle = heading === null ? 0 : heading.index + heading.length;
-  // The empty lines before it, the line itself with its reason, and its line break.
-  const line = /^((?:[ \t]*\r?\n)*)[ \t]*>[ \t]*Important:[ \t]*(\S[^\r\n]*?)[ \t]*(?:\r?\n|$)/.exec(
+  // The empty lines before it, the whole quote with its reason, and its line break.
+  const line = /^((?:[ \t]*\r?\n)*)([ \t]*>[ \t]*Important:[^\r\n]*(?:\r?\n[ \t]*>[^\r\n]*)*)(?:\r?\n|$)/.exec(
     body.slice(afterTitle),
   );
   if (line === null) return null;
-  const why = (line[2] ?? "").trim();
+  const why = (line[2] ?? "")
+    .split(/\r?\n/)
+    .map((each) => each.trim().replace(/^>\s?/, ""))
+    .join(" ")
+    .replace(/^\s*Important:/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (why === "") return null;
   let edited = rest;
-  if (header === null || !("summary" in header)) {
+  if (header === null || !hasText(header["summary"])) {
     // The line and the empty line after it go; the reason lives on in `summary:`.
     const base = bodyStart + afterTitle;
     const lineStart = base + (line[1] ?? "").length;
@@ -93,10 +106,19 @@ function withImportantPin(text: string): string | null {
   return pinned === null ? null : bom + pinned;
 }
 
-/** Every `.md` file of the vault, with no hidden folder, no root `Scratch/`, no clone and no link. */
+/** An empty `summary:` counts as none. */
+function hasText(value: unknown): boolean {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+/**
+ * Every `.md` file of the vault, with no hidden folder, no root `Scratch/`, no clone, no
+ * `node_modules` and no link.
+ */
 function markdownFiles(vaultPath: string): string[] {
   const files: string[] = [];
   const queue: string[] = [""];
+  let left = maxVisitedEntries;
   for (let folder = queue.shift(); folder !== undefined; folder = queue.shift()) {
     let entries;
     try {
@@ -105,12 +127,15 @@ function markdownFiles(vaultPath: string): string[] {
       continue;
     }
     for (const entry of entries) {
+      left -= 1;
+      if (left < 0) return files;
       if (entry.name.startsWith(".")) continue;
       const path = folder === "" ? entry.name : `${folder}/${entry.name}`;
       const parts = path.toLowerCase().split("/");
       if (entry.isDirectory()) {
         const skipped =
           (parts.length === 1 && parts[0] === "scratch") ||
+          entry.name.toLowerCase() === "node_modules" ||
           (parts.length === 3 && parts[0] === "projects" && parts[2] === "repos");
         if (!skipped) queue.push(path);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) files.push(path);

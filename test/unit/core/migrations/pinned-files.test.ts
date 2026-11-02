@@ -99,6 +99,42 @@ describe("pinFiles (vault, #769)", () => {
     for (const [path, text] of Object.entries(files)) expect(read(path)).toBe(text);
   });
 
+  test("reads every project id form, also an old one with only a year, a month or a day", () => {
+    for (const id of ["2019-old", "2019-03-old", "2019-03-02-old"])
+      write(`Projects/${id}/AGENTS.md`, "---\nstatus: active\n---\n# Old\n\nText.\n");
+    write("Projects/notes/AGENTS.md", "---\nstatus: active\n---\n# Not a project\n\nText.\n");
+    migrate();
+    for (const id of ["2019-old", "2019-03-old", "2019-03-02-old"])
+      expect(read(`Projects/${id}/AGENTS.md`)).toContain('summary: "Text."\n');
+    expect(read("Projects/notes/AGENTS.md")).not.toContain("summary");
+  });
+
+  test("an empty summary counts as none", () => {
+    write(projectFile, "---\nstatus: active\nsummary:\n---\n# App\n\nText.\n");
+    write("Notes/Keys.md", '---\nsummary: ""\n---\n# Keys\n\n> Important: a reason\n');
+    migrate();
+    expect(read(projectFile)).toBe('---\nstatus: active\nsummary: "Text."\n---\n# App\n\nText.\n');
+    expect(read("Notes/Keys.md")).toBe('---\nsummary: "a reason"\npinned: summary\n---\n# Keys\n\n');
+  });
+
+  test("takes a quote of several lines whole", () => {
+    write("Notes/Keys.md", "# Keys\n\n> Important: where the\n> spare key is\n\nUnder the mat.\n");
+    migrate();
+    expect(read("Notes/Keys.md")).toBe(
+      '---\nsummary: "where the spare key is"\npinned: summary\n---\n# Keys\n\nUnder the mat.\n',
+    );
+  });
+
+  test("leaves About me to #770, and never walks a node_modules folder", () => {
+    const files = {
+      "Life/About me.md": "# About me\n\n> Important: the basics\n",
+      "Code/node_modules/pkg/README.md": "# Pkg\n\n> Important: x\n",
+    };
+    for (const [path, text] of Object.entries(files)) write(path, text);
+    migrate();
+    for (const [path, text] of Object.entries(files)) expect(read(path)).toBe(text);
+  });
+
   test("waits for a vault", () => {
     expect(migrate(null)).toEqual({ kind: "done", applied: [], later: [] });
     expect(migrate(join(root, "missing"))).toEqual({ kind: "done", applied: [], later: ["2026-11-02-pinned-files"] });

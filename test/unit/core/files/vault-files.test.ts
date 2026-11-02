@@ -206,6 +206,13 @@ describe("received files and the scratch cleanup", () => {
     expect([...readFileSync(join(vault, first))]).toEqual([1, 2, 3]);
   });
 
+  test("a file for a project lands in its own folder, which the daily clean empties too (#768)", () => {
+    const saved = saveReceivedFile(vault, "plan.pdf", new Uint8Array([1]), "2025-03-04-1015-house");
+    expect(saved).toMatch(/^\.eva\/scratch\/received\/2025-03-04-1015-house\/plan-[0-9a-f]{12}\.pdf$/);
+    expect(cleanScratch(vault, new Date(Date.now() + 8 * 24 * 60 * 60 * 1000))).toBe(1);
+    expect(existsSync(join(vault, saved))).toBe(false);
+  });
+
   test("a hostile name cannot leave the folder", () => {
     const saved = saveReceivedFile(vault, "../../evil name?.sh", new Uint8Array([1]));
     expect(saved).toMatch(/^\.eva\/scratch\/received\/[\w.-]+-[0-9a-f]{12}\.sh$/);

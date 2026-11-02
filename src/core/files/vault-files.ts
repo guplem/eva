@@ -128,16 +128,29 @@ export function contentName(originalName: string, bytes: Uint8Array): string {
 }
 
 /**
- * Saves a file that the person sent into `.eva/scratch/received/`, named by its content, so two
- * chats that receive files at once never overwrite each other (lesson 74). Returns the path
- * from the vault root.
+ * Where the files that the person sends land, from the vault root. A project's chats get a folder
+ * of their own, `<project-id>/`, so their wall opens only the files sent to that project (#768).
  */
-export function saveReceivedFile(vaultPath: string, originalName: string, bytes: Uint8Array): string {
+export function receivedFolder(projectId: string | null = null): string {
+  return projectId === null ? `${scratchFolder}/received` : `${scratchFolder}/received/${projectId}`;
+}
+
+/**
+ * Saves a file that the person sent into `.eva/scratch/received/`, or into the folder of its
+ * project, named by its content, so two chats that receive files at once never overwrite each
+ * other (lesson 74). Returns the path from the vault root.
+ */
+export function saveReceivedFile(
+  vaultPath: string,
+  originalName: string,
+  bytes: Uint8Array,
+  projectId: string | null = null,
+): string {
   const name = contentName(originalName, bytes);
-  const folder = join(vaultPath, scratchFolder, "received");
-  mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, name), bytes);
-  return `${scratchFolder}/received/${name}`;
+  const folder = receivedFolder(projectId);
+  mkdirSync(join(vaultPath, folder), { recursive: true });
+  writeFileSync(join(vaultPath, folder, name), bytes);
+  return `${folder}/${name}`;
 }
 
 /** The line that tells the agent where a received file is. Every front end sends the same line. */

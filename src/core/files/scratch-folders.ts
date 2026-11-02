@@ -18,6 +18,34 @@ export const scratchFolder = ".eva/scratch";
  * or the old `Scratch`. Windows and macOS ignore the case, so the check ignores it too.
  */
 export function isScratchPath(relativePath: string): boolean {
-  const parts = relativePath.split(/[/\\]/).map((part) => part.toLowerCase());
-  return parts[0] === "scratch" || (parts[0] === ".eva" && parts[1] === "scratch");
+  return scratchFolderOf(relativePath) !== null;
+}
+
+/** The scratch folder of a path from the vault root, in the path's own case, or null. */
+export function scratchFolderOf(relativePath: string): string | null {
+  const parts = segments(relativePath);
+  const lower = parts.map((part) => part.toLowerCase());
+  if (lower[0] === "scratch") return parts[0] ?? null;
+  if (lower[0] === ".eva" && lower[1] === "scratch") return parts.slice(0, 2).join("/");
+  return null;
+}
+
+/**
+ * The segments of a path as a file system reads it: `\` is `/`, empty and `.` segments go, `..`
+ * goes up, and Windows drops the trailing dots and spaces of a name. A path that leaves the vault
+ * keeps its `..`, so it never counts.
+ */
+function segments(relativePath: string): string[] {
+  const kept: string[] = [];
+  for (const part of relativePath.split(/[/\\]/)) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (kept.length === 0 || kept.at(-1) === "..") kept.push("..");
+      else kept.pop();
+      continue;
+    }
+    const name = part.replace(/[. ]+$/, "");
+    if (name !== "") kept.push(name);
+  }
+  return kept;
 }

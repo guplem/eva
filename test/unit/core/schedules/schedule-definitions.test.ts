@@ -109,6 +109,8 @@ describe("parseScheduleEntry", () => {
     [{ ...morning, file: ".eva\\Scratch\\today.pdf" }, "from .eva/Scratch/, which empties"],
     [{ ...morning, file: "Scratch/today.pdf" }, "from Scratch/, which empties"],
     [{ ...morning, file: "scratch\\today.pdf" }, "from scratch/, which empties"],
+    [{ ...morning, file: "./.eva//scratch./today.pdf" }, "from .eva/scratch/, which empties"],
+    [{ ...morning, file: "Methods/../Scratch /today.pdf" }, "from Scratch/, which empties"],
     // A typo must never run a schedule that the person turned off.
     [{ ...morning, enabled: "false" }, "invalid enabled"],
     [{ ...morning, enabled: null }, "invalid enabled"],

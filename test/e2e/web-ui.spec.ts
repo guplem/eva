@@ -4790,6 +4790,11 @@ test("Settings: the changelog lists each release with its own changes", async ({
   });
   await logIn(page);
   await openSettings(page, "Updates");
+  // The Versions card above grows when its list comes, and pushes Changelog down. When that happens between
+  // the press and the release, the browser sends no click. The demo shows Update all after the last answer.
+  await expect(
+    page.getByRole("region", { name: "Versions" }).getByRole("button", { name: "Update all" }),
+  ).toBeVisible();
   const card = page.getByRole("region", { name: "Eva updates" });
   await card.getByRole("button", { name: "Changelog" }).click();
   const dialog = page.getByRole("dialog", { name: "Changelog" });

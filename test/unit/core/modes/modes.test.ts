@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
 import { AssistantPreparer, type AssistantPreparerOptions } from "../../../../src/core/modes/assistant-mode.ts";
-import { cloneNotesHint, ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
+import { cloneNotesFile, evaFileMarker, ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { widgetsIntro } from "../../../../src/core/modes/widgets-block.ts";
 import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
 import { discoverProjects } from "../../../../src/core/projects/project-catalog.ts";
@@ -615,13 +615,14 @@ describe("Project mode", () => {
 
   test("the file wall closes the vault and each extra project root, read at each turn (#711)", async () => {
     let closed = [vault];
+    let readOnly: string[] = [];
     const preparer = new ProjectPreparer({
       trustStore: new TrustStore(join(sandbox.root, "trust.json")),
       cloneOrigins: origins,
       trustedOwners: () => ["owner"],
       environment: {},
       readRemote: () => Promise.resolve(null),
-      wallRoots: () => ({ closed, readable: [], socketFilter: true }),
+      wallRoots: () => ({ closed, readable: [], readOnly, socketFilter: true }),
     });
     const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
     expect((await preparer.prepare(chat, deny)).fileWall).toEqual({
@@ -634,23 +635,52 @@ describe("Project mode", () => {
     });
     closed = [vault, "/srv/projects"];
     expect((await preparer.prepare(chat, deny)).fileWall?.closed).toEqual([vault, "/srv/projects", sandbox.root]);
+    // A read-only folder of the roots, such as the files sent to a chat (#768), stays read-only.
+    readOnly = ["/srv/received"];
+    expect((await preparer.prepare(chat, deny)).fileWall?.readOnly).toEqual(["/srv/received", dirname(sandbox.root)]);
   });
 
   test("a chat in a clone learns where the project's notes are, from a file that Eva owns in `repos/` (#774)", async () => {
     const hint = join(sandbox.root, "AGENTS.md");
     const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
     await project(["owner"]).prepare(chat, deny);
-    expect(readFileSync(hint, "utf8")).toBe(`${cloneNotesHint}\n`);
-    expect(cloneNotesHint).toContain("../../");
-    // A changed file gets Eva's text again before the next turn.
-    writeFileSync(hint, "Something else.\n");
+    expect(readFileSync(hint, "utf8")).toBe(cloneNotesFile);
+    expect(cloneNotesFile.split("\n")[0]).toBe(evaFileMarker);
+    expect(cloneNotesFile).toContain("../../");
+    // Eva's own file, changed, gets her text again before the next turn.
+    writeFileSync(hint, `${evaFileMarker}\nAn old line.\n`);
     await project(["owner"]).prepare(chat, deny);
-    expect(readFileSync(hint, "utf8")).toBe(`${cloneNotesHint}\n`);
+    expect(readFileSync(hint, "utf8")).toBe(cloneNotesFile);
     // A chat with no clone gets no such file.
     const folder = join(vault, "Projects", "2025-03-02-1015-notes");
     mkdirSync(folder, { recursive: true });
     await project(["owner"]).prepare(session({ mode: "project", startFolder: folder, clone: null }), deny);
     expect(readdirSync(folder)).toEqual([]);
+  });
+
+  test("Eva keeps a `repos/AGENTS.md` that the person wrote, and logs that she left it (#774)", async () => {
+    const hint = join(sandbox.root, "AGENTS.md");
+    writeFileSync(hint, "The person's own rules for every clone.\n");
+    const logs: string[] = [];
+    const preparer = new ProjectPreparer({
+      wallRoots: noWall,
+      trustStore: new TrustStore(join(sandbox.root, "trust.json")),
+      cloneOrigins: origins,
+      trustedOwners: () => ["owner"],
+      environment: {},
+      readRemote: () => Promise.resolve(null),
+      logger: { log: (level, message) => logs.push(`${level}: ${message}`) },
+    });
+    const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
+    await preparer.prepare(chat, deny);
+    expect(readFileSync(hint, "utf8")).toBe("The person's own rules for every clone.\n");
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toStartWith("warn: ");
+    // A file that Eva cannot write logs too, and the turn runs on.
+    rmSync(hint);
+    mkdirSync(hint);
+    await preparer.prepare(chat, deny);
+    expect(logs).toHaveLength(2);
   });
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {

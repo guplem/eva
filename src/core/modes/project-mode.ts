@@ -20,6 +20,7 @@ import {
 } from "../projects/clones.ts";
 import type { WallRoots } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
+import type { Logger } from "../../shared/logger.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { withCloneMentions } from "../projects/clone-files.ts";
 import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
@@ -49,6 +50,7 @@ export interface ProjectPreparerOptions {
   readonly vaultPath?: () => string | null;
   /** The folders that the chat may not open, read at each turn (#711). */
   readonly wallRoots: () => WallRoots;
+  readonly logger?: Logger;
 }
 
 export class ProjectPreparer implements TurnPreparer {
@@ -66,9 +68,14 @@ export class ProjectPreparer implements TurnPreparer {
     const fileWall =
       session.clone === null
         ? { area: session.startFolder, ...roots }
-        : { area: session.startFolder, ...roots, closed: [...roots.closed, reposFolder], readOnly: [projectFolder] };
+        : {
+            area: session.startFolder,
+            ...roots,
+            closed: [...roots.closed, reposFolder],
+            readOnly: [...(roots.readOnly ?? []), projectFolder],
+          };
     // Before the engine starts: it reads its instruction files only then.
-    if (session.clone !== null) writeNotesHint(reposFolder);
+    if (session.clone !== null) writeNotesFile(reposFolder, this.options.logger);
     return {
       startFolder: session.startFolder,
       projectFolder,
@@ -240,23 +247,40 @@ export function withGitCeiling(
   return { ...environment, GIT_CEILING_DIRECTORIES: ceiling };
 }
 
-/**
- * The one line that Eva adds to a chat in a clone (#774). Nothing else tells the chat where the
- * project's notes are. The engines read it as an instruction file of `repos/`, from the clone up to
- * the project folder. The vault's `.gitignore` keeps `repos/` out of the sync, so each computer has its own.
- */
-export const cloneNotesHint =
-  "The notes of this project are in the project folder, two levels above each clone (`../../` from the clone folder). " +
-  "Read them when they help. Never write there: write only in the clone.";
+/** The first line of a file that Eva owns and rewrites. A file without it is the person's own. */
+export const evaFileMarker = "<!-- Written by Eva. She rewrites this file. -->";
 
-/** Writes the line only when it is missing or its text differs. A turn runs on without it. */
-function writeNotesHint(reposFolder: string): void {
+/**
+ * The one line that Eva adds to a chat in a clone (#774), in `repos/AGENTS.md`. Nothing else tells
+ * the chat where the project's notes are. The engines read it as an instruction file of `repos/`,
+ * from the clone up to the project folder. The sync never commits `repos/`, so each computer has its own.
+ */
+export const cloneNotesFile =
+  `${evaFileMarker}\n` +
+  "The notes of this project are in the project folder, two levels above each clone (`../../` from the clone folder). " +
+  "Read them when they help. To find one, list `../../` or search a sub-folder of it. " +
+  "Never write there: write only in the clone.\n";
+
+/**
+ * Writes the file when it is missing, or when it is Eva's and its text differs. A file that the
+ * person wrote stays as it is. A turn runs on without the line: the chat still reads a note that the person mentions.
+ */
+function writeNotesFile(reposFolder: string, logger: Logger | undefined): void {
   const path = join(reposFolder, "AGENTS.md");
-  const text = `${cloneNotesHint}\n`;
-  if (readTextTolerant(path) === text) return;
+  const current = readTextTolerant(path);
+  if (current === cloneNotesFile) return;
+  if (current !== null && current.split(/\r?\n/)[0] !== evaFileMarker) {
+    logger?.log("warn", "A clone chat gets no line about the project's notes: repos/AGENTS.md is the person's own.", {
+      path,
+    });
+    return;
+  }
   try {
-    writeFileAtomic(path, text);
-  } catch {
-    // A folder without rights must not stop the chat: it still reads a note that the person mentions.
+    writeFileAtomic(path, cloneNotesFile);
+  } catch (error) {
+    logger?.log("warn", "Eva could not write the line about the project's notes in repos/AGENTS.md.", {
+      path,
+      reason: String(error),
+    });
   }
 }

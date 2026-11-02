@@ -60,6 +60,19 @@ export interface VaultKeyFile {
    * public keys and the kdf fields are its extra authenticated data, so a change to them fails the unlock.
    */
   readonly wrappedPrivateKey: string;
+  /**
+   * The older keys of the vault, oldest first (#775). Each link signs the next key's public keys, the
+   * last one this file's, so a computer that trusts an older key trusts this one. Not in the extra
+   * authenticated data: a changed chain only stops that trust.
+   */
+  readonly chain?: readonly KeyLink[];
+}
+
+/** An older key of the vault, and its signature of the key after it. */
+export interface KeyLink {
+  readonly publicKey: string;
+  readonly signingKey: string;
+  readonly signature: string;
 }
 
 /** The unlocked private keys. They live in memory only. */
@@ -81,18 +94,55 @@ export function createVaultKey(password: string, cost: { readonly logN: number }
   );
 }
 
-/** The same private keys, wrapped with a new password. No file of the vault changes. */
-export async function rewrapVaultKey(
+/** A key file keeps this many older keys, so a computer that missed this many changes still trusts the new key. */
+const chainLength = 20;
+
+/**
+ * New key pairs for a new password, signed by the old key (#775). The old key stays in the git
+ * history, so a password change that kept it would leave every file open to the old password.
+ * The signature lets each computer that trusts the old key trust the new one, with no question.
+ */
+export async function nextVaultKey(
   file: VaultKeyFile,
   unlocked: UnlockedVaultKey,
   password: string,
   cost: { readonly logN: number } = defaultCost,
 ): Promise<VaultKeyFile> {
-  checkPassword(password);
-  const rewrapped = await wrap(unlocked, password, cost);
-  if (keyFingerprint(rewrapped) !== keyFingerprint(file))
-    throw new EvaError("vault_password_wrong", "This key does not belong to the vault.");
-  return rewrapped;
+  const next = await createVaultKey(password, cost);
+  const link: KeyLink = {
+    publicKey: file.publicKey,
+    signingKey: file.signingKey,
+    signature: sign(null, Buffer.from(linkText(next), "utf8"), unlocked.signing).toString("base64"),
+  };
+  return { ...next, chain: [...(file.chain ?? []), link].slice(-chainLength) };
+}
+
+/**
+ * True when the key file's chain leads from the key with the `trusted` fingerprint to the file's own
+ * key, each link signed by the key before it. A key that someone swaps in has no such chain.
+ */
+export function chainTrusts(file: VaultKeyFile, trusted: string): boolean {
+  const chain = file.chain ?? [];
+  const start = chain.findIndex((link) => keyFingerprint(link) === trusted);
+  if (start === -1) return false;
+  return chain.slice(start).every((link, index) => {
+    const signed = chain[start + index + 1] ?? file;
+    try {
+      return verify(
+        null,
+        Buffer.from(linkText(signed), "utf8"),
+        publicKeyOf(link.signingKey, ed25519Prefix),
+        Buffer.from(link.signature, "base64"),
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** What a link signs: the next key's public keys, with a label, so the signature serves no other record. */
+function linkText(next: Pick<VaultKeyFile, "publicKey" | "signingKey">): string {
+  return `eva vault key v1\n${next.publicKey}\n${next.signingKey}`;
 }
 
 /**

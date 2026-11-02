@@ -21,7 +21,14 @@ import {
   writeMachineSecrets,
   type MachineSecrets,
 } from "./secret-state.ts";
-import { encryptedState, encryptFile, hasEncryptedShape, keyFingerprint, type VaultKeyFile } from "./vault-crypto.ts";
+import {
+  chainTrusts,
+  encryptedState,
+  encryptFile,
+  hasEncryptedShape,
+  keyFingerprint,
+  type VaultKeyFile,
+} from "./vault-crypto.ts";
 import type { PrepareFile, WithheldReason } from "./vault-sync.ts";
 
 /** Base64 adds about a third, and the commit limit is 50 MB: a bigger file stays out. */
@@ -122,8 +129,13 @@ export class VaultSecrets {
     const key = readVaultKey(this.options.vaultPath);
     const machine = readMachineSecrets(this.options.machineStatePath);
     const fingerprint = key === null ? null : keyFingerprint(key);
-    // The first key that this machine sees is the vault's. Another one later is the person's to confirm.
-    const keyChanged = machine.fingerprint !== null && fingerprint !== null && fingerprint !== machine.fingerprint;
+    // The first key that this machine sees is the vault's. Another one later is the person's to confirm,
+    // unless the trusted key signed it: a password change on another computer needs no question (#775).
+    const keyChanged =
+      machine.fingerprint !== null &&
+      key !== null &&
+      fingerprint !== machine.fingerprint &&
+      !chainTrusts(key, machine.fingerprint);
     const signed = key === null || keyChanged ? null : readSignedState(this.options.vaultPath, key, machine.sequence);
     const input = {
       defaults: defaultSecretPatterns,
@@ -159,7 +171,8 @@ export class VaultSecrets {
     const { signed } = input;
     const policy = activeSecretPatterns(input);
     const next = {
-      fingerprint: machine.fingerprint ?? fingerprint,
+      // A key that the chain trusts replaces the old one here, so its next change chains from it.
+      fingerprint: keyChanged ? machine.fingerprint : (fingerprint ?? machine.fingerprint),
       sequence: Math.max(machine.sequence, signed?.sequence ?? 0),
       applied: [...policy.active],
     };

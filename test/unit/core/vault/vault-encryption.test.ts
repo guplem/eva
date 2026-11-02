@@ -105,15 +105,22 @@ describe("the vault password (#707)", () => {
     );
   });
 
-  test("a new password keeps every file readable; a new key moves each file to it", async () => {
+  test("a new password moves each file to a new key, so the old password opens nothing (#775)", async () => {
     const service = encryption();
     await service.setPassword(token, password);
     write("deploy/id.key", "KEY\n");
     await service.setPatterns(null, null, { added: [], off: [] });
     let secret = await service.unlock(token, password);
+    const first = readVaultKey(vault);
     await service.changePassword(token, secret, "a second long password");
+    expect(service.status(token, secret).unlocked).toBe(false);
+    expect(isEvaError(await failure(() => service.unlock(token, password)), "vault_password_wrong")).toBe(true);
     secret = await service.unlock(token, "a second long password");
     expect(service.readFile(token, secret, "deploy/id.key")).toMatchObject({ text: "KEY\n" });
+    expect(keyFingerprint(readVaultKey(vault) ?? { publicKey: "", signingKey: "" })).not.toBe(
+      keyFingerprint(first ?? { publicKey: "", signingKey: "" }),
+    );
+    // An older page still calls the new-key route, which does the same.
     const before = readVaultKey(vault);
     await service.newKey(token, secret, "a third long password");
     expect(keyFingerprint(readVaultKey(vault) ?? { publicKey: "", signingKey: "" })).not.toBe(
@@ -162,7 +169,7 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
     expect(defaults.find((entry) => entry.pattern === "*.key")).toMatchObject({ on: false });
   });
 
-  test("a key that changed on another machine waits until the person types its password here", async () => {
+  test("a password change on another machine is trusted here by its signature, with no question (#775)", async () => {
     const service = encryption();
     await service.setPassword(token, password);
     // Another machine made a new key; this machine still pins the old one.
@@ -179,11 +186,10 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
       cost: { logN: 10 },
     });
     const secret = await fresh.unlock("other", password);
-    await fresh.newKey("other", secret, "the other machine's password");
-    expect(service.status(null, null).keyChanged).toBe(true);
+    await fresh.changePassword("other", secret, "the other machine's password");
+    expect(service.status(null, null).keyChanged).toBe(false);
     const mine = await service.unlock(token, "the other machine's password");
-    await service.acceptKey(token, mine);
-    expect(service.status(token, mine).keyChanged).toBe(false);
+    expect(service.status(token, mine)).toMatchObject({ keyChanged: false, unlocked: true });
   });
 });
 
@@ -215,7 +221,7 @@ describe("a key file that an agent changes (review of #707)", () => {
     expect(readVaultKey(vault)).toBeNull();
   });
 
-  test("a new key changes nothing when a file does not open with the old key, and the old password then fails", async () => {
+  test("a password change changes nothing when a file does not open with the old key, and says so", async () => {
     const service = encryption();
     await service.setPassword(token, password);
     const other = await createVaultKey("another long password", { logN: 10 });
@@ -225,14 +231,30 @@ describe("a key file that an agent changes (review of #707)", () => {
     );
     const before = read(".eva/vault-key.json");
     let secret = await service.unlock(token, password);
-    expect(
-      isEvaError(await failure(() => service.newKey(token, secret, "a third long password")), "vault_file_unreadable"),
-    ).toBe(true);
+    const refused = await failure(() => service.changePassword(token, secret, "a third long password"));
+    expect(isEvaError(refused, "vault_file_unreadable")).toBe(true);
+    expect((refused as Error).message).toContain("no password change");
     expect(read(".eva/vault-key.json")).toBe(before);
     rmSync(join(vault, "deploy/foreign.key"));
     secret = await service.unlock(token, password);
-    await service.newKey(token, secret, "a third long password");
+    await service.changePassword(token, secret, "a third long password");
     expect(isEvaError(await failure(() => service.unlock(token, password)), "vault_password_wrong")).toBe(true);
+  });
+
+  test("a password change while the sync cannot reach the remote changes nothing (#775)", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const secret = await service.unlock(token, password);
+    const before = read(".eva/vault-key.json");
+    pullStatus = "offline";
+    expect(
+      isEvaError(
+        await failure(() => service.changePassword(token, secret, "a second long password")),
+        "vault_key_invalid",
+      ),
+    ).toBe(true);
+    expect(read(".eva/vault-key.json")).toBe(before);
+    expect(service.status(token, secret).unlocked).toBe(true);
   });
 });
 

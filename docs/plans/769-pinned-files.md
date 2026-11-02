@@ -22,7 +22,7 @@ Eva must know the open cases, the open period, the active projects and a few not
 
 Each decision follows the issue's assumptions unless it says otherwise.
 
-1. **Line format.** `- <title>, \`<path>\` (<kind>, <status>) [<flag>]: <summary>`. The title is for projects only. The kind is `project`, `case`or`period`, from the fixed path. Reason: assumption 6 asks for the path, the kind, the status, the flags and the summary in one line. The project id stays visible in the path, so `eva work <id>` still works.
+1. **Line format.** `- <title>, <path in backticks> (<kind>, <status>) [<flag>]: <summary>`. The title is for projects only. The kind is `project`, `case` or `period`, from the fixed path. Reason: assumption 6 asks for the path, the kind, the status, the flags and the summary in one line. The project id stays visible in the path, so `eva work <id>` still works.
 2. **"1 day", not "1 days".** The flag says `DEADLINE in 1 day` and `passed 1 day ago`. Reason: the owner wants human text. The base prompt names only the words `DUE` and `DEADLINE`, so the prompt and the block stay aligned.
 3. **Old `> Important:` form.** The reader treats the line as `pinned: summary` only while the vault record lacks the new migration. Reason: the same pattern as `withPersonality` in `assistant-mode.ts`. After the hub migrates, the line means nothing.
 4. **Dedupe.** A file with a `pinned` value is a manual pin, wherever it was found. The status part skips any file with a `pinned` value. So a manual pin that the walk missed still shows by its status when it has one. Reason: robust and simple.
@@ -33,3 +33,5 @@ Each decision follows the issue's assumptions unless it says otherwise.
 9. **A note with no title heading** can also carry the `> Important:` line as its first line. Reason: Obsidian notes often take their title from the file name.
 10. **Caps.** 25 summary lines and 8,000 characters (about 2,000 tokens) of full content. Over a cap, the block ends with "N more not shown".
 11. **The About me template** gets no `pinned: full` here: #770 owns it.
+12. **Chat details note.** It says how Eva picks the files, that a change shows in the next chat, how many files the caps left out, and whether the walk stopped early. The log gets one warning when the walk stops early.
+13. **The migration walks every `.md` file once,** at most 1 MB each. It has no entry budget: it runs once, on the hub, at start.

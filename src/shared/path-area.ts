@@ -102,24 +102,10 @@ export function wallRefusesPattern(wall: WallFolders, pattern: string, cwd: stri
 
 const patternSeparators = process.platform === "win32" ? /[\\/]/ : /\//;
 
-/** True when a pattern lists one level of its fixed folder: its only wildcard part is the last one, with no `**`. */
-function isFlatPattern(pattern: string): boolean {
-  const forms = expandBraces(pattern);
-  return (
-    forms?.every((form) => {
-      const parts = form.split(patternSeparators);
-      const wild = parts.findIndex((part) => /[*?[]/.test(part));
-      return wild === -1 || (wild === parts.length - 1 && !(parts[wild] ?? "").includes("**"));
-    }) ?? false
-  );
-}
-
 function patternRefusal(wall: WallFolders, pattern: string, cwd: string, access: WallAccess): WallRefusal | null {
   if (/[+@!?*]\(/.test(pattern) || /\[[^\]]*\.[^\]]*\]/.test(pattern)) return "outside";
   const forms = expandBraces(pattern);
   if (forms === null) return "outside";
-  // A listing reaches no deeper than the last part of its pattern.
-  const lists = access.lists === true && isFlatPattern(pattern);
   for (const form of forms) {
     const parts = form.split(patternSeparators);
     const wild = parts.findIndex((part) => /[*?[]/.test(part));
@@ -128,7 +114,7 @@ function patternRefusal(wall: WallFolders, pattern: string, cwd: string, access:
     // `/x` splits into an empty first part: the search starts at the root. `C:` alone is a drive.
     const absolute = parts[0] === "" && form.length > 0 ? sep : "";
     const base = /^[A-Za-z]:$/.test(fixed) ? `${fixed}${sep}` : `${absolute}${fixed}`;
-    const refusal = pathRefusal(wall, base === "" ? cwd : base, cwd, { ...access, lists });
+    const refusal = pathRefusal(wall, base === "" ? cwd : base, cwd, access);
     if (refusal !== null) return refusal;
   }
   return null;
@@ -306,7 +292,10 @@ export interface WallCallOptions {
   readonly write: boolean;
   /** True for a tool that Eva knows only reads. Only such a tool opens a read-only folder. */
   readonly reads?: boolean;
-  /** True for a tool that lists one level of a folder, such as `ls`, or a Glob with a flat pattern. */
+  /**
+   * True for a tool that lists one level of the folder that its path names, such as `ls`. A pattern
+   * never lists: Claude Code's Glob runs `rg --files --glob`, where even `*.md` matches at any depth.
+   */
   readonly lists?: boolean;
   /** pi drops a leading `@` from a path. Claude Code opens the name as it is, so the check must too. */
   readonly dropsAt: boolean;
@@ -340,9 +329,7 @@ export function wallRefusal(
     ...pathListKeys.flatMap((key) => strings(fields[key])),
   ].map(named);
   const patterns = options.patternKeys.flatMap((key) => strings(fields[key]));
-  // A Glob of `*.md` from a folder lists that folder only. A `**` pattern searches below it.
-  const lists = options.lists === true && patterns.every(isFlatPattern);
-  const access = { reads: options.reads === true, lists };
+  const access = { reads: options.reads === true, lists: options.lists === true };
   for (const path of paths) {
     const refusal = pathRefusal(wall, path, cwd, access);
     if (refusal !== null) return refusal;
@@ -351,7 +338,7 @@ export function wallRefusal(
   const patternCwd = searchRoot === undefined ? cwd : realOf(searchRoot, cwd);
   if (patterns.length > 0 && patternCwd === null) return "outside";
   for (const pattern of patterns) {
-    const refusal = patternRefusal(wall, pattern, patternCwd ?? cwd, { ...access, lists: options.lists === true });
+    const refusal = patternRefusal(wall, pattern, patternCwd ?? cwd, { ...access, lists: false });
     if (refusal !== null) return refusal;
   }
   return options.write && paths.some((path) => isProtectedInArea(wall.area, path, cwd)) ? "outside" : null;

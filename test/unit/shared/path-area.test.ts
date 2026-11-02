@@ -311,8 +311,11 @@ describe("the wall's read-only folders (#774)", () => {
 
   test("a listing of the project folder passes, and a search of it is refused as a search", () => {
     expect(wallRefusesCall(wall(), clone, { path: "../.." }, list)).toBe(false);
-    expect(wallRefusesCall(wall(), clone, { pattern: "../../*.md" }, list)).toBe(false);
-    expect(wallRefusesCall(wall(), clone, { path: "../..", pattern: "*.{md,txt}" }, list)).toBe(false);
+    expect(wallRefusesCall(wall(), clone, { pattern: "../../*.md" }, list)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { path: "../..", pattern: "*.{md,txt}" }, list)).toBe(true);
+    // Claude Code's Glob runs `rg --files --glob`, so even `*.md` matches at any depth: no Glob is a listing.
+    expect(wallRefusesCall(wall(), clone, { pattern: join(project, "*.md") }, read)).toBe(true);
+    expect(wallRefusal(wall(), clone, { pattern: join(project, "*.md") }, read)).toBe("search");
     expect(wallRefusesCall(wall(), clone, { pattern: "../../**/*.md" }, list)).toBe(true);
     expect(wallRefusesCall(wall(), clone, { path: "../..", pattern: "**/*.md" }, list)).toBe(true);
     expect(wallRefusesCall(wall(), clone, { path: "../..", pattern: "*/*.md" }, list)).toBe(true);

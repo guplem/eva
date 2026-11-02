@@ -71,8 +71,8 @@ const writeTools = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 /** The tools that only read. Only they open a read-only folder, so an MCP tool cannot write there (#774). */
 const readTools = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead"]);
 
-/** The tools that list one level of a folder, or a Glob whose pattern goes no deeper. */
-const listTools = new Set(["Glob", "LS"]);
+/** The tools that list one level of a folder. Glob is a search: it runs `rg --files`, which goes to any depth. */
+const listTools = new Set(["LS"]);
 
 /** Why the wall refuses a tool call, or null when it does not. */
 function refusalOf(wall: WallFolders, cwd: string, toolName: string, input: unknown): WallRefusal | null {

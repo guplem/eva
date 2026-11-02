@@ -153,16 +153,19 @@ async function tapHeights(locator: Locator): Promise<number[]> {
 
 /**
  * Checks that each pill is smaller than 44 px, and that a tap 1 px inside the top or the bottom
- * edge of its 44 px target reaches it. So no other pill's margin covers a part of it.
+ * edge of its 44 px target reaches it. The taps are at the left, the middle and the right of the
+ * pill, because another pill's margin can cover only the columns that the two share.
  */
 async function expectSmallPills(pills: Locator): Promise<void> {
   const found = await pills.evaluateAll((elements) =>
     elements.map((element) => {
       element.scrollIntoView({ block: "center" });
       const box = element.getBoundingClientRect();
-      const x = box.left + box.width / 2;
       const middle = box.top + box.height / 2;
-      const hits = [middle - 21, middle + 21].map((y) => document.elementFromPoint(x, y)?.closest("button"));
+      // The margin starts inside the 1 px border, at the sides too.
+      const hits = [box.left + 2, box.left + box.width / 2, box.right - 2].flatMap((x) =>
+        [middle - 21, middle + 21].map((y) => document.elementFromPoint(x, y)?.closest("button")),
+      );
       return { name: element.textContent, height: box.height, hit: hits.every((hit) => hit === element) };
     }),
   );
@@ -5476,6 +5479,25 @@ test.describe("on a phone", () => {
     }
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
+  });
+
+  test("a Versions row that wraps keeps the full tap target of its pill and of the pill below", async ({ page }) => {
+    // A long version, such as one from a distribution, puts the Update pill of pi on a second line.
+    await page.route("**/api/versions", async (route) => {
+      const response = await route.fetch();
+      const versions = (await response.json()) as { tools: { program: string }[] };
+      const tools = versions.tools.map((tool) =>
+        tool.program === "pi" ? { ...tool, version: "0.70.2-build.20261101.from.a.package", tooOld: true } : tool,
+      );
+      await route.fulfill({ response, json: { ...versions, tools } });
+    });
+    await logIn(page);
+    await openSettings(page, "Updates");
+    const card = page.getByRole("region", { name: "Versions" });
+    const row = card.locator("dd", { hasText: "too old" });
+    await expect(row).toBeVisible();
+    expect((await row.boundingBox())?.height ?? 0).toBeGreaterThan(50);
+    await expectSmallPills(card.locator(".fact-with-action button.small"));
   });
 
   test("the composer sits at the bottom of the screen, just above the tab bar", async ({ page }) => {

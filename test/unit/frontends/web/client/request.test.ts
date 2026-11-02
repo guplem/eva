@@ -47,8 +47,10 @@ describe("request", () => {
   });
 
   test("a request with no limit passes no signal, and the limit never reaches fetch", async () => {
-    fakeFetch(() => Promise.resolve(new Response(JSON.stringify({ path: "Scratch/a.txt" }))));
-    expect(await request("POST", "/api/files/received?name=a.txt", new Blob(["a"]))).toEqual({ path: "Scratch/a.txt" });
+    fakeFetch(() => Promise.resolve(new Response(JSON.stringify({ path: ".eva/scratch/a.txt" }))));
+    expect(await request("POST", "/api/files/received?name=a.txt", new Blob(["a"]))).toEqual({
+      path: ".eva/scratch/a.txt",
+    });
     expect(calls[0]?.init.signal).toBeUndefined();
     fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })));
     await request("GET", "/api/status", undefined, { limit: quickRead, keepalive: true });

@@ -38,7 +38,7 @@ export interface UndoPreview {
 
 export const emptyUndo: UndoPreview = { restore: [], changed: [], notKept: [], answers: 0 };
 
-/** A file that the snapshot leaves out, as the sync does: a Scratch file, a secret, a large file. */
+/** A file that the snapshot leaves out, as the sync does: a scratch file, a secret, a large file. */
 export interface LeftOutFile {
   readonly path: string;
   readonly size: number;

@@ -110,4 +110,12 @@ describe("the files that Eva never encrypts (#707)", () => {
     expect(everything.matches(".eva/assistant.md")).toBe(false);
     expect(everything.matches("Notes/a.md")).toBe(true);
   });
+
+  test("the secret patterns apply in .eva/scratch, as anywhere else in the vault (#767)", () => {
+    const matcher = new SecretMatcher(["*.pem"]);
+    expect(isNeverEncrypted(".eva/scratch/key.pem")).toBe(false);
+    expect(matcher.matches(".eva/scratch/key.pem")).toBe(true);
+    expect(matcher.matches(".EVA/Scratch/received/key.pem")).toBe(true);
+    expect(matcher.matches(".eva/key.pem")).toBe(false);
+  });
 });

@@ -10,10 +10,9 @@ Everything stays plain text where it can, so one search finds it and almost any 
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `Principles/`, `Methods/`, `Toolbox/`, `Library/`, `Life/` | Notes, grouped as _Knowledge_ below says                                                               |
 | `Projects/`                                                | One folder for each project (_Projects_ below)                                                         |
-| `.eva/`                                                    | The settings of Eva, a separate program. Not notes                                                     |
-| `Scratch/`                                                 | Files that are not knowledge: files made to send to a chat, and files received from it. Git ignores it |
+| `.eva/`                                                    | The settings of Eva, a separate program, and `.eva/scratch/` for files sent to or received from a chat |
 
-**`.eva/` and `Scratch/` are not notes.** Never file, move or link what they hold. Edit `.eva/` only when your own instructions say how.
+**`.eva/` is not notes.** Never file, move or link what it holds. Edit `.eva/` only when your own instructions say how.
 
 **Every path in this file starts at the vault root.**
 
@@ -49,7 +48,7 @@ Inside each folder, group by topic. Purpose first, topic second.
 
 ### Rules
 
-- **Anything can live in the vault:** notes, documents, scans, photos. Prefer plain text when the content is text. Copy a file from `Scratch/` worth keeping into the vault.
+- **Anything can live in the vault:** notes, documents, scans, photos. Prefer plain text when the content is text. Copy a file from `.eva/scratch/` that is worth keeping to its place in the vault.
 - **One fact lives in one file.** Other files link to it, never copy it. Two copies become different over time, and then neither can be trusted.
 - **Name a file after the moment when the person would open it**, not after where its content came from. Write `Mental Strength Checklist`, not `13 Things Mentally Strong People Don't Do`. The test: standing in that situation, could the person guess the file name?
 - **Write notes impersonally**, as statements about the world. Write "The mind believes what it hears by default", not "My mind believes what it hears". A diary is the exception: it is the person's own voice.

@@ -1430,7 +1430,7 @@ describe("Eva", () => {
         .catch((error: unknown) => error);
       expect(isEvaError(caught, "file_not_writable")).toBe(true);
       expect((caught as Error).message).toBe("This chat takes no files.");
-      expect(existsSync(join(vault, "Scratch", "received"))).toBe(false);
+      expect(existsSync(join(vault, ".eva", "scratch", "received"))).toBe(false);
     });
   });
 
@@ -1769,7 +1769,10 @@ describe("Eva", () => {
     expect(lines.join("\n")).toContain('warn Vault sync failed. {"status":"offline"');
   });
 
-  test("the background tick removes old Scratch files and old logs once a day, also with sync off", async () => {
+  test("the background tick removes old scratch files and old logs once a day, also with sync off", async () => {
+    sandbox.write(vault, ".eva/scratch/old.pdf", "old");
+    // A vault from before #767 lists its old Scratch/ in .gitignore.
+    sandbox.write(vault, ".gitignore", "Scratch/\n");
     sandbox.write(vault, "Scratch/old.pdf", "old");
     let logCleanups = 0;
     eva = new Eva({
@@ -1787,7 +1790,9 @@ describe("Eva", () => {
     });
     clock = new Date(Date.now() + 8 * 24 * 60 * 60_000);
     await eva.backgroundTick();
-    expect(existsSync(join(vault, "Scratch", "old.pdf"))).toBe(false);
+    expect(existsSync(join(vault, ".eva", "scratch", "old.pdf"))).toBe(false);
+    // Eva writes no more in the old Scratch/, so it goes once it is empty (#767).
+    expect(existsSync(join(vault, "Scratch"))).toBe(false);
     expect(logCleanups).toBe(1);
     await eva.backgroundTick();
     expect(logCleanups).toBe(1);
@@ -1796,8 +1801,8 @@ describe("Eva", () => {
     expect(logCleanups).toBe(2);
   });
 
-  test("the Scratch cleanup waits while an Assistant turn runs (lessons 22, 30)", async () => {
-    sandbox.write(vault, "Scratch/old.pdf", "old");
+  test("the scratch cleanup waits while an Assistant turn runs (lessons 22, 30)", async () => {
+    sandbox.write(vault, ".eva/scratch/old.pdf", "old");
     let release: () => void = () => undefined;
     const engine = new FakeEngine(async function* (request) {
       await new Promise<void>((resolve) => (release = resolve));
@@ -1809,11 +1814,11 @@ describe("Eva", () => {
     await waitFor(() => engine.requests.length >= 1);
     clock = new Date(Date.now() + 8 * 24 * 60 * 60_000);
     await instance.backgroundTick();
-    expect(existsSync(join(vault, "Scratch", "old.pdf"))).toBe(true);
+    expect(existsSync(join(vault, ".eva", "scratch", "old.pdf"))).toBe(true);
     release();
     await turn;
     await instance.backgroundTick();
-    expect(existsSync(join(vault, "Scratch", "old.pdf"))).toBe(false);
+    expect(existsSync(join(vault, ".eva", "scratch", "old.pdf"))).toBe(false);
   });
 
   test("a second idle sweep never starts while one runs", async () => {

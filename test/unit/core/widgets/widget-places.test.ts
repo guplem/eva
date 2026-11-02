@@ -62,6 +62,8 @@ describe("pathSegments and openPath", () => {
     }
     expect(openPath("Projects/2026-01-01-0900-app/notes")).toEqual(["Projects", "2026-01-01-0900-app", "notes"]);
     expect(openPath("Life/About you.md")).toEqual(["Life", "About you.md"]);
+    expect(isClosedPlace([".eva", "scratch"])).toBe(true);
+    expect(isClosedPlace([".EVA", "Scratch", "received"])).toBe(true);
     expect(isClosedPlace([])).toBe(true);
     expect(isClosedPlace([""])).toBe(true);
   });

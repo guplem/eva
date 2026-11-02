@@ -20,14 +20,14 @@ describe("extractFileMarkers (lesson 124)", () => {
 
 describe("shownAnswerText", () => {
   test("drops the marker lines", () => {
-    expect(shownAnswerText("Here it is.\n[[attach: Scratch/a.zip]]")).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n[[attach: .eva/scratch/a.zip]]")).toBe("Here it is.");
   });
 
   test("drops a last line that a marker starts but that a cut or a stream left open", () => {
     expect(shownAnswerText("Here it is.\n[[attach: Scrat", true)).toBe("Here it is.");
-    expect(shownAnswerText("Here it is.\n  [[OFFER: Scratch/a", true)).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n  [[OFFER: .eva/scratch/a", true)).toBe("Here it is.");
     expect(shownAnswerText("Here it is.\n[", true)).toBe("Here it is.");
-    expect(shownAnswerText("Here it is.\n[[attach: Scratch/a…", true)).toBe("Here it is.");
+    expect(shownAnswerText("Here it is.\n[[attach: .eva/scratch/a…", true)).toBe("Here it is.");
     expect(shownAnswerText("Here it is.\n[[attach: a.md]]…", true)).toBe("Here it is.");
   });
 

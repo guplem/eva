@@ -72,7 +72,7 @@ describe("chatPreview", () => {
   });
 
   test("leaves out the file markers of the answer (#581)", () => {
-    const chat = { turns: [turn({ answerText: "Here it is.\n[[attach: Scratch/example-app.zip]]" })] };
+    const chat = { turns: [turn({ answerText: "Here it is.\n[[attach: .eva/scratch/example-app.zip]]" })] };
     expect(chatPreview(chat)).toBe("Here it is.");
   });
 

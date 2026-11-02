@@ -138,6 +138,7 @@ describe("answerData reads", () => {
 
   test("gives nothing for a record whose place is now closed or gone", () => {
     expect(answerData(vault, { ...lifeRead, path: "Scratch" }, "x.json", "GET", null).status).toBe(404);
+    expect(answerData(vault, { ...lifeRead, path: ".eva/scratch" }, "x.json", "GET", null).status).toBe(404);
     expect(answerData(vault, { ...lifeRead, path: "Gone" }, "index.json", "GET", null).status).toBe(404);
     expect(answerData(vault, { ...lifeRead, path: ".eva" }, "index.json", "GET", null).status).toBe(404);
   });

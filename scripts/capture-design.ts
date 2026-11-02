@@ -16,6 +16,7 @@ import { join } from "node:path";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 import { e2ePorts } from "../test/e2e/e2e-ports.ts";
 import { specialDayOn } from "../src/frontends/web/client/special-days.ts";
+import { homeAddress } from "../src/frontends/web/client/navigation.ts";
 import { demoUrl, launchBrowser, logIn } from "./demo-browser.ts";
 
 interface View {
@@ -223,15 +224,15 @@ const scenes: readonly Scene[] = [
   },
   {
     name: "new",
+    // The home page that the visor opens: the New chat page, with the bell at its top right (#761).
+    // The address, not a tap: a tap would show a random playful face on the visor.
     show: async (page) => {
-      const id = await newChat(page);
-      await page.locator(".greeting, .new-chat").first().waitFor();
+      await openAddress(page, homeAddress, "New chat");
+      await page.locator(".home-buttons").waitFor();
+      await page.locator(".new-chat").waitFor();
       // The demo approved the habits widget: its frame shows its habits once it is ready (#691).
       await page.frameLocator(".widget-grid iframe").locator('.widget[data-ready="true"]').waitFor();
-      return id;
     },
-    // The empty chat would stay in the list of every later capture.
-    after: deleteChat,
   },
   { name: "chat", show: (page, _view, demo) => openChat(page, demo.weekChat) },
   {

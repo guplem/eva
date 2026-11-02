@@ -78,7 +78,16 @@ export interface VisorSignal {
   readonly alarm: boolean;
 }
 
-/** How the visor calls the person to the notification center (#566). */
+/**
+ * The name of the bell on the home page, which opens the notification center (#761). It shows the
+ * signal of the visor, so the words say what its count or its dot means.
+ */
+export function bellName(signal: VisorSignal): string {
+  if (signal.count > 0) return `Notifications: ${count(signal.count, "problem needs you", "problems need you")}`;
+  return signal.dot ? "Notifications: something new waits" : "Notifications";
+}
+
+/** How the visor and the bell of the home page call the person to the notification center (#566, #761). */
 export function visorSignal(input: VisorSignalInput): VisorSignal {
   return {
     count: input.unreadProblems,

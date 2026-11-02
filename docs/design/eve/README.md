@@ -164,14 +164,14 @@ The visor and the looping waits keep their own timing, which [EVE's expressions]
 
 A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) and inspector (300 px). A page without a list or an inspector drops that column.
 
-- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the notification center, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news or a setup step that is left.
+- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the home page, the new chat page, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news or a setup step that is left.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column of at most 760 px, and the composer.
 - **Inspector:** the details of the selected item, such as the chat details.
 
 ### Phone
 
-From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with Chats, Projects, Files, Schedules and Eva. The Eva tab is the nav visor, with the label "Eva". It opens the notification center, which has a button to Settings. List pages use a large 30 px title.
+From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with Chats, Projects, Files, Schedules and Eva. The Eva tab is the nav visor, with the label "Eva". It opens the home page, which has a bell and a button to Settings. List pages use a large 30 px title.
 
 Dialogs are centred boxes on a computer and bottom sheets on a phone. Their buttons stack at full width in a sheet. `phoneDialogForm` in `client/Dialog.tsx` picks the phone form of every dialog.
 
@@ -271,6 +271,8 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 ![Computer](screenshots/new-computer-light.webp) ![Phone](screenshots/new-phone-light.webp)
 
+- This is the home page: a tap on the visor opens it from any page.
+- A bell at the top right opens the notification center. It shows the same count and dot as the visor. On a phone, a gear beside it opens Settings.
 - EVE greets with happy eyes instead of a blank page.
 - The widgets that the person turned on show in a grid below the greeting, in sandboxed frames. A corner button opens one in full screen.
 - Suggestions show what Eva does well: notes, calendar, projects and reminders. The calendar shows only when Google is set up.
@@ -403,8 +405,8 @@ The pull requests of #161 and the owner chose these differences, each for the re
 | A glance of the neutral face                        | The neutral face only blinks.                                                          | The reference names `glance` keyframes that it does not define.                                        | #181         |
 | Separate Telegram and Google sections               | One Connections section.                                                               | #166 grouped them on purpose. Each still has its own setup step page.                                  | #197         |
 | A time on each message, and a duration on the steps | Only the running turn shows its time. A stored turn keeps only the time when it ended. | The owner closed #211: not a priority now.                                                             | (none)       |
-| Settings in the phone tab bar                       | The visor, with the label "Eva", in its place.                                         | The visor opens the notification center, which links to Settings. The tab bar keeps five entries.      | #567         |
-| Problem notices at the top of each page             | The notification center behind the visor.                                              | The owner found the notices too large. The visor counts the problems, and the center lists them.       | #567         |
+| Settings in the phone tab bar                       | The visor, with the label "Eva", in its place.                                         | The visor opens the home page, which links to Settings. The tab bar keeps five entries.                | #567, #761   |
+| Problem notices at the top of each page             | The notification center behind the bell of the home page.                              | The owner found the notices too large. The visor counts the problems, and the center lists them.       | #567, #761   |
 | A "Create a project" suggestion in a new chat       | No project suggestion.                                                                 | The owner chose one way to make a project: the New project form, which can also create its repository. | #682         |
 | The "In use" pill has a glowing dot                 | The dot has no glow.                                                                   | A glow means that something runs now, as on "Working". A project in use runs nothing.                  | #722         |
 

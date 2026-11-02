@@ -4,11 +4,14 @@ import {
   assistantChatAddressOf,
   assistantChatIdOf,
   chatsTapAgain,
+  currentNavButton,
   destinations,
   destinationOf,
+  homeAddress,
   linkedChatIdOf,
   navBadges,
   newChatPageId,
+  notificationCenter,
   projectAddressOf,
   projectRouteOf,
   type ProjectRoute,
@@ -152,5 +155,25 @@ describe("navBadges", () => {
       chats: { count: 1, words: "approval waits, 3 unread chats", tone: "warn" },
       settings: { count: 2, words: "to set up", tone: "warn" },
     });
+  });
+});
+
+describe("homeAddress and currentNavButton (#761)", () => {
+  test("the visor's home page is the New chat page of Chats", () => {
+    expect(homeAddress).toBe(assistantChatAddressOf(newChatPageId));
+    expect(destinationOf(homeAddress)).toBe("chats");
+  });
+
+  test("on the home page, the visor is the current button, not Chats", () => {
+    expect(currentNavButton("chats", true)).toBe("visor");
+  });
+
+  test("another page keeps its own button current", () => {
+    expect(currentNavButton("chats", false)).toBe("chats");
+    expect(currentNavButton("settings", false)).toBe("settings");
+  });
+
+  test("the notification center has no button: the bell of the home page opens it", () => {
+    expect(currentNavButton(notificationCenter, false)).toBeNull();
   });
 });

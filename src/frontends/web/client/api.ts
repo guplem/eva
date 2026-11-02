@@ -69,7 +69,7 @@ import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine
 import type { QuestionAnswers, SessionEvent } from "../../../shared/events.ts";
 import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
 import { failureOf, quickRead, quickSend, request } from "./request.ts";
-import { forgetUnlockSecret, keepUnlockSecret, unlockHeaders } from "./vault-unlock.ts";
+import { forgetUnlockSecret, keepUnlockSecret, thenForgetUnlock, unlockHeaders } from "./vault-unlock.ts";
 
 export { ApiError } from "./request.ts";
 
@@ -403,16 +403,10 @@ export const api = {
    * A new password makes a new key (#775). The old key opens nothing new, so the core locks every
    * device, this tab too.
    */
-  changeVaultPassword: async (password: string): Promise<VaultSecretsStatus> => {
-    const status = await request<VaultSecretsStatus>(
-      "POST",
-      "/api/vault/secrets/change-password",
-      { password },
-      { headers: unlockHeaders() },
-    );
-    forgetUnlockSecret();
-    return status;
-  },
+  changeVaultPassword: (password: string): Promise<VaultSecretsStatus> =>
+    thenForgetUnlock(() =>
+      request("POST", "/api/vault/secrets/change-password", { password }, { headers: unlockHeaders() }),
+    ),
   acceptVaultKey: (): Promise<VaultSecretsStatus> =>
     request("POST", "/api/vault/secrets/accept-key", undefined, { headers: unlockHeaders() }),
   openEncryptedFile,

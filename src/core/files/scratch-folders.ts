@@ -5,7 +5,9 @@
  * Eva writes only in `.eva/scratch/`, because what is not the vault lives in Eva. Before #767 she
  * wrote in `Scratch/` at the vault root, and an old vault map still names it, so an agent can still
  * write there. So Eva keeps the old folder protected while it exists, and removes it once it is
- * empty. Drop the old folder from these rules only when no vault map names it any more (#773).
+ * empty. Only an old vault's `.gitignore` lists `Scratch/`, and the sync and the clean act on the
+ * old folder only then. Drop the old folder from these rules only when no vault map names it any
+ * more (#773).
  *
  * The web page uses these rules too, so this file reads no disk.
  */

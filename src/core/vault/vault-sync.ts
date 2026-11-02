@@ -10,8 +10,8 @@ import { failureReason, type ProcessRunner } from "../../shared/process-runner.t
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { plainSecretsIn } from "./plain-secrets.ts";
-import { isScratchPath } from "../files/scratch-folders.ts";
-import { scratchFolders } from "../files/vault-files.ts";
+import { scratchFolderOf } from "../files/scratch-folders.ts";
+import { keepsOldScratch, scratchFolders } from "../files/vault-files.ts";
 import {
   changedLeftOut,
   parseDiffTree,
@@ -295,7 +295,8 @@ export class VaultSync {
         ...(await this.statusEntries()).map((entry) => entry.path),
         ...(tracked.exitCode === 0 ? tracked.stdout.split("\0").filter((path) => path.length > 0) : []),
       ]);
-      for (const path of paths) if (!path.endsWith("/") && !this.isScratchFile(path)) prepare(path);
+      const oldScratch = keepsOldScratch(this.options.vaultPath);
+      for (const path of paths) if (!path.endsWith("/") && !this.isScratchFile(path, oldScratch)) prepare(path);
     });
   }
 
@@ -310,10 +311,11 @@ export class VaultSync {
       const paths: string[] = [];
       // A snapshot holds a secret only encrypted, as a commit does (#707).
       const prepare = this.options.secrets?.round() ?? null;
+      const oldScratch = keepsOldScratch(this.options.vaultPath);
       for (const { path } of await this.statusEntries()) {
         // A folder entry is a repository inside the vault, which a commit does not take either.
         if (path.endsWith("/")) continue;
-        if (!this.isScratchFile(path) && this.withheldReason(path, prepare) === null) paths.push(path);
+        if (!this.isScratchFile(path, oldScratch) && this.withheldReason(path, prepare) === null) paths.push(path);
         else this.addLeftOut(leftOut, path);
       }
       for (const path of this.scratchFiles()) this.addLeftOut(leftOut, path);
@@ -849,9 +851,10 @@ export class VaultSync {
     const withheld: WithheldFile[] = [];
     const kept: string[] = [];
     let stagedScratch = false;
+    const oldScratch = keepsOldScratch(this.options.vaultPath);
     for (const { code, path } of entries) {
       if (unmerged.includes(path)) continue;
-      if (this.isScratchFile(path)) {
+      if (this.isScratchFile(path, oldScratch)) {
         // An untracked file stays out of a plain commit anyway; a staged one needs --only.
         if (!code.startsWith(" ") && !code.startsWith("?")) stagedScratch = true;
         continue;
@@ -1176,9 +1179,11 @@ export class VaultSync {
    * A scratch folder holds files received from a chat, such as a bank statement, so it never reaches
    * a commit, whatever the vault's .gitignore says (#415). A removal still commits: it takes an old
    * scratch file out of the tree. lstat, so a broken link in a scratch folder is not read as a removal.
+   * The old `Scratch/` counts only in an old vault: in a new one, it is the person's own folder (#767).
    */
-  private isScratchFile(relativePath: string): boolean {
-    if (!isScratchPath(relativePath)) return false;
+  private isScratchFile(relativePath: string, oldScratch: boolean): boolean {
+    const folder = scratchFolderOf(relativePath);
+    if (folder === null || (!folder.includes("/") && !oldScratch)) return false;
     try {
       lstatSync(join(this.options.vaultPath, relativePath));
       return true;

@@ -101,7 +101,7 @@ A widget talks to its host only through `fetch` to relative paths. The host deci
 
 - A `file` input uses the path `data/<input>`, with no file name.
 - `data/<input>/` includes the subfolders of the folder. `index.json` lists each file of the folder and its subfolders by its path from the folder, such as `2026/run.json`, when its name matches `files`. So a file of the person named `index.json` at the top of the folder stays hidden.
-- A widget never reaches `.git/`, `.eva/`, the old `Scratch/` folder of an older vault, the clones in `Projects/*/repos/`, `Life/About me.md` or any hidden file, also inside a folder that the person picked.
+- A widget never reaches `.git/`, `.eva/`, `Scratch/`, the clones in `Projects/*/repos/`, `Life/About me.md` or any hidden file, also inside a folder that the person picked.
 - A widget writes only a JSON or YAML file whose name matches `files`, and never a rule file of an agent: `AGENTS.md`, `CLAUDE.md`, `README.md` or `DATA_FORMAT.md`. A write is 5 MB at most. Eva refuses a text that holds a secret, such as a token.
 - `eva/location.json` answers `null` for a widget with no `eva-location` input.
 - `eva/location.json` holds `{ "latitude": 41.39, "longitude": 2.17, "accuracy": 30, "at": "2026-01-01T09:30:00Z" }`. `accuracy` is in meters. `at` is the time of the newest stored point.

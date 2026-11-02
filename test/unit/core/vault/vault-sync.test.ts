@@ -418,20 +418,34 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain("code.ts");
   });
 
-  // Eva writes in .eva/scratch/. An old vault map still names Scratch/, so it stays protected (#767).
-  test.each([".eva/scratch", "Scratch"])(
-    "never commits a file in %s/, even when the vault's .gitignore does not list it (#415)",
-    async (scratch) => {
-      sandbox.write(vault, `${scratch}/received/statement.pdf`, "A bank statement.\n");
-      sandbox.write(vault, "Methods/New.md", "Steps.\n");
-      const state = await createSync(vault).save();
-      expect(state.status).toBe("ok");
-      expect(state.withheldFiles).toEqual([]);
-      expect(remoteFiles()).toContain("Methods/New.md");
-      expect(remoteFiles()).not.toContain(`${scratch}/`);
-      expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (1 file)");
-    },
-  );
+  test("never commits a file in .eva/scratch/, even when the vault's .gitignore does not list it (#415)", async () => {
+    sandbox.write(vault, ".eva/scratch/received/statement.pdf", "A bank statement.\n");
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(state.withheldFiles).toEqual([]);
+    expect(remoteFiles()).toContain("Methods/New.md");
+    expect(remoteFiles()).not.toContain(".eva/scratch/");
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (1 file)");
+  });
+
+  // An old vault map still names Scratch/, and only an old vault's .gitignore lists it (#767).
+  test("in an old vault, never commits a Scratch/ file, also one that a person staged by hand", async () => {
+    sandbox.write(vault, ".gitignore", "Scratch/\n");
+    sandbox.write(vault, "Scratch/out/chart.png", "An image.\n");
+    sandbox.git(vault, "add", "-f", "Scratch/out/chart.png");
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    await createSync(vault).save();
+    expect(remoteFiles()).toContain("Methods/New.md");
+    expect(remoteFiles()).not.toContain("Scratch/");
+  });
+
+  test("in a new vault, Scratch/ is the person's own folder, so its notes are committed", async () => {
+    sandbox.write(vault, ".gitignore", ".eva/scratch/\n");
+    sandbox.write(vault, "Scratch/notes.md", "My notes.\n");
+    await createSync(vault).save();
+    expect(remoteFiles()).toContain("Scratch/notes.md");
+  });
 
   test("never commits a secret-named file in .eva/scratch/, and does not withhold it either (#767)", async () => {
     sandbox.write(vault, ".eva/scratch/key.pem", "A key.\n");
@@ -441,13 +455,13 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain(".eva/scratch/");
   });
 
-  test.each([".eva/scratch", "Scratch"])("never commits a %s/ file that a person staged by hand", async (scratch) => {
-    sandbox.write(vault, `${scratch}/out/chart.png`, "An image.\n");
-    sandbox.git(vault, "add", `${scratch}/out/chart.png`);
+  test("never commits a .eva/scratch/ file that a person staged by hand", async () => {
+    sandbox.write(vault, ".eva/scratch/out/chart.png", "An image.\n");
+    sandbox.git(vault, "add", ".eva/scratch/out/chart.png");
     sandbox.write(vault, "Methods/New.md", "Steps.\n");
     await createSync(vault).save();
     expect(remoteFiles()).toContain("Methods/New.md");
-    expect(remoteFiles()).not.toContain(`${scratch}/`);
+    expect(remoteFiles()).not.toContain(".eva/scratch/");
   });
 
   test("saves when a staged Scratch/ file sits beside a note that was staged and then deleted", async () => {
@@ -464,6 +478,7 @@ describe("VaultSync.save", () => {
   });
 
   test("keeps a scratch folder in another case out too, as Windows and macOS ignore the case", async () => {
+    sandbox.write(vault, ".gitignore", "Scratch/\n");
     sandbox.write(vault, "scratch/received/statement.pdf", "A bank statement.\n");
     sandbox.write(vault, ".eva/Scratch/received/photo.jpg", "A photo.\n");
     sandbox.write(vault, "Methods/New.md", "Steps.\n");

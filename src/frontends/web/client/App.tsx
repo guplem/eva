@@ -215,7 +215,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   /** A tap in the main navigation. A tap on Chats while Chats is open gives the person a next step. */
   const openFromNav = (destination: Destination): void => {
     // The home page belongs to the visor, so a tap on Chats there leaves it for the chats (#761).
-    if (destination !== "chats" || screen !== "chats" || homeShown) {
+    // A phone shows the list instead, which is its way to the chats.
+    if (destination !== "chats" || screen !== "chats" || (homeShown && !isPhone)) {
       openDestination(destination);
       return;
     }

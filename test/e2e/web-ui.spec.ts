@@ -3061,16 +3061,22 @@ test("the main navigation opens each destination at its own address, and the bac
     ["Chats", "#/chats"],
     // The visor opens the home page, the New chat page of Chats (#761).
     ["Eva: ", "#/chats/new"],
-    // On the home page, Chats is not the current button, so a tap on it leaves for the chats.
-    ["Chats", "#/chats"],
   ] as const) {
     await nav.getByRole("button", { name }).click();
     await expect(nav.getByRole("button", { name })).toHaveAttribute("aria-current", "page");
     await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     expect(new URL(page.url()).hash).toBe(address);
   }
+  // On the home page, Chats is not the current button. A computer leaves for the chats. A phone
+  // shows the chat list, as a tap on Chats does in Chats. Back then returns to the home page.
+  await nav.getByRole("button", { name: "Chats" }).click();
+  if (test.info().project.name === "desktop") {
+    await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
+    expect(new URL(page.url()).hash).toBe("#/chats");
+  } else await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible();
   await page.goBack();
   await expect(nav.getByRole("button", { name: "Eva: " })).toHaveAttribute("aria-current", "page");
+  expect(new URL(page.url()).hash).toBe("#/chats/new");
   await page.goBack();
   await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   await page.goBack();

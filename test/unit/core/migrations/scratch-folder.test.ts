@@ -35,8 +35,8 @@ const secretFilesIgnore = [
   "",
 ].join("\n");
 
-const template = (path: string): string =>
-  readFileSync(join(import.meta.dir, "../../../../templates/vault", path), "utf-8");
+/** What the template's .gitignore ignored on 2026-11-02, frozen with the migration. */
+const templateIgnoreLines = ["Projects/*/repos/", ".eva/scratch/", "settings.local.json", "desktop.ini", ".DS_Store"];
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "eva-scratch-folder-"));
@@ -84,7 +84,7 @@ describe("ignoreEvaScratch (vault, #767)", () => {
     migrate();
     const lines = (text: string): string[] => text.split("\n").filter((line) => line !== "" && !line.startsWith("#"));
     const kept = ["Scratch/", ".env", "*.env", "!Projects/**/.env", "!Projects/**/*.env"];
-    expect(lines(ignore()).filter((line) => !kept.includes(line))).toEqual(lines(template(".gitignore")));
+    expect(lines(ignore()).filter((line) => !kept.includes(line))).toEqual(templateIgnoreLines);
   });
 
   test("the whole chain from a .gitignore before 2026-10-31 ends with .eva/scratch/ listed", () => {

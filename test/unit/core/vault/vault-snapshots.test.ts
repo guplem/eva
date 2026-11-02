@@ -151,6 +151,15 @@ describe("VaultSync undo of an answer", () => {
     expect((await sync.undoPreview([answer("chat", 0)])).notKept).toEqual(["Scratch/report.pdf"]);
   });
 
+  test("a full old Scratch/ never pushes a new .eva/scratch file out of the list", async () => {
+    for (let index = 0; index < 1_000; index += 1) sandbox.write(vault, `Scratch/old-${String(index)}.txt`, "old\n");
+    const sync = createSync();
+    await runAnswer(sync, "chat", 0, () => {
+      sandbox.write(vault, ".eva/scratch/new.txt", "new\n");
+    });
+    expect((await sync.undoPreview([answer("chat", 0)])).notKept).toContain(".eva/scratch/new.txt");
+  });
+
   test("a left-out file that the answer changed counts, one that it did not change does not", async () => {
     sandbox.write(vault, ".eva/scratch/old.txt", "old\n");
     const sync = createSync();

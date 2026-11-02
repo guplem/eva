@@ -160,7 +160,8 @@ export function cleanScratch(vaultPath: string, now: Date): number {
 
 /**
  * The scratch folders on disk, as paths from the vault root with `/`, in any case. A link is no
- * folder here, so a cleanup never follows one out of the vault.
+ * folder here, so a cleanup never follows one out of the vault. `.eva/scratch` comes first, so a
+ * full old `Scratch/` never pushes a new file out of a capped list.
  */
 export function scratchFolders(vaultPath: string): string[] {
   const found: string[] = [];
@@ -168,7 +169,7 @@ export function scratchFolders(vaultPath: string): string[] {
     if (isScratchPath(top)) found.push(top);
     else if (top.toLowerCase() === ".eva")
       for (const child of subfolders(join(vaultPath, top)))
-        if (isScratchPath(`${top}/${child}`)) found.push(`${top}/${child}`);
+        if (isScratchPath(`${top}/${child}`)) found.unshift(`${top}/${child}`);
   }
   return found;
 }

@@ -19,6 +19,7 @@ import {
   receivedFileNote,
   resolveSendableFile,
   saveReceivedFile,
+  scratchFolders,
 } from "../../../../src/core/files/vault-files.ts";
 
 let folder: string;
@@ -281,6 +282,12 @@ describe("received files and the scratch cleanup", () => {
       stat.mockRestore();
     }
     expect(existsSync(join(vault, ".eva", "scratch", "b-old.pdf"))).toBe(false);
+  });
+
+  test("the new scratch folder comes first, then the old one", () => {
+    write("Scratch/a.pdf", "a");
+    write(".eva/scratch/c.pdf", "c");
+    expect(scratchFolders(vault)).toEqual([".eva/scratch", "Scratch"]);
   });
 
   test("a vault without a scratch folder cleans nothing", () => {

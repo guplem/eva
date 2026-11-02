@@ -51,7 +51,7 @@ export interface PinnedFiles {
  * close, so an ordinary vault stays far below the byte budget.
  */
 const headBytes = 1024;
-/** Enough for the `> Important:` line under a title too, for one release. */
+/** Enough for a `> Important:` quote that the head cut, for the old form only. */
 const oldFormHeadBytes = 8 * 1024;
 /** The walk blocks the core while it runs, also when the person opens the chat details. */
 const maxVisitedEntries = 20_000;
@@ -173,7 +173,7 @@ function entriesOf(folder: string): { readonly name: string; readonly folder: bo
 }
 
 // eslint-disable-next-line no-control-regex -- the pattern looks for control characters on purpose.
-const controlCharacter = /[\u0000-\u001f\u007f]/;
+const controlCharacter = /[\u0000-\u001f\u007f\u0085\u2028\u2029]/;
 
 function childFolders(folder: string): string[] {
   return entriesOf(folder)
@@ -206,7 +206,7 @@ function readPinnedFile(
   } catch {
     return none(0);
   }
-  let head = readBounded(absolutePath, oldForm ? oldFormHeadBytes : headBytes);
+  let head = readBounded(absolutePath, headBytes);
   if (head === null) return none(0);
   let bytes = head.bytes;
   // A front matter that the head does not close: read up to the full-file limit for it.
@@ -231,7 +231,18 @@ function readPinnedFile(
   }
   const value = fields["pinned"];
   const pinned = (pinnedValues as readonly unknown[]).includes(value) ? (value as PinnedValue) : null;
-  const oldImportant = oldForm && !("pinned" in fields) ? importantLine(text.slice(match?.[0].length ?? 0)) : null;
+  let oldImportant: string | null = null;
+  if (oldForm && !("pinned" in fields)) {
+    let body = text.slice(match?.[0].length ?? 0);
+    if (head.cut && head.bytes < oldFormHeadBytes && quoteMayGoOn(body)) {
+      const more = readBounded(absolutePath, oldFormHeadBytes);
+      if (more !== null) {
+        bytes += more.bytes;
+        body = more.text.replace(/^\uFEFF/, "").slice(match?.[0].length ?? 0);
+      }
+    }
+    oldImportant = importantLine(body);
+  }
   if (pinned === null && oldImportant === null && kind === null) return none(bytes);
   const file: PinnedFile = {
     path,
@@ -242,6 +253,26 @@ function readPinnedFile(
     oldImportant,
   };
   return { file, bytes, unread: false };
+}
+
+/** True when a cut body may still hold the `> Important:` quote: nothing under the title yet, or a quote up to the cut. */
+function quoteMayGoOn(body: string): boolean {
+  const heading = titleHeading(body);
+  const rest = heading === null ? body : body.slice(heading.index + heading.length);
+  const lines = rest.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() !== "");
+  if (start === -1) return true;
+  return lines.slice(start).every((line) => line.trim().startsWith(">"));
+}
+
+/**
+ * True while the vault still follows the old rule: the hub has not migrated it, or its root
+ * `AGENTS.md` still asks for `> Important:` lines, until the vault upgrade of #773 replaces it.
+ */
+export function readsOldImportant(vaultPath: string, migrated: boolean): boolean {
+  if (!migrated) return true;
+  const map = readBounded(join(vaultPath, "AGENTS.md"), maxFullBytes);
+  return map?.text.includes("`> Important:") ?? false;
 }
 
 /**

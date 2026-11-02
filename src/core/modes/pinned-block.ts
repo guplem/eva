@@ -11,7 +11,14 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { lastLocationKey } from "../vault/about-me.ts";
 import { frontMatterPattern, oneLineSummary, type Project } from "../projects/project-catalog.ts";
-import { caseStatuses, periodStatuses, readWholeFile, type PinnedFile, type PinnedFiles } from "./pinned-files.ts";
+import {
+  caseStatuses,
+  periodStatuses,
+  readWholeFile,
+  type EntityKind,
+  type PinnedFile,
+  type PinnedFiles,
+} from "./pinned-files.ts";
 
 /** About 25 summary lines and about 2,000 tokens of full content, as the person decided. */
 export const maxSummaryLines = 25;
@@ -152,17 +159,35 @@ function projectPath(project: Project): string {
 }
 
 /** The title, the path, the kind and status, then the summary or the first paragraph. */
-function projectLine(project: Project): string {
+function projectLine(project: Project, oldImportant: string | null = null): string {
   const status = project.frontMatter.status;
   const head = `- ${project.title}, \`${projectPath(project)}\` (project${status === null ? "" : `, ${status}`})`;
-  if (project.description !== null) return `${head}: ${project.description}`;
+  // A `> Important:` line is a quote, never a first paragraph, so its reason is the only summary.
+  const summary = project.description ?? (oldImportant === null ? null : oneLineSummary(oldImportant));
+  if (summary !== null) return `${head}: ${summary}`;
   return project.frontMatter.pinned === "full" ? `${head} (open it when needed)` : head;
+}
+
+/** The statuses that a line may show for each kind. Any other value stays out of the prompt. */
+const knownStatuses: Readonly<Record<EntityKind, readonly string[]>> = {
+  case: [...caseStatuses, "closed"],
+  period: [...periodStatuses, "closed"],
+};
+
+/**
+ * The status as one line, or null. A YAML text can hold line breaks, which would add lines to the
+ * block outside the markers. A case or a period shows only the words of its format.
+ */
+function statusOf(file: PinnedFile): string | null {
+  const status = oneLineSummary(textField(file.fields, "status") ?? "");
+  if (status === null || file.kind === null) return status;
+  return knownStatuses[file.kind].includes(status) ? status : null;
 }
 
 /** One summary line: the path, the kind and status when it has them, the flags, then the summary. */
 function fileLine(file: PinnedFile, today: string, project: Project | null): string {
-  if (project !== null) return projectLine(project);
-  const status = textField(file.fields, "status");
+  if (project !== null) return projectLine(project, file.oldImportant);
+  const status = statusOf(file);
   const about =
     file.kind === null
       ? status === null

@@ -1486,13 +1486,13 @@ ${engineText}`,
   /**
    * Waits until no other chat runs a turn in the folder of a Project chat, then holds the folder.
    * Two agents in one clone would pull, commit and push against each other (issue 356). Two chats
-   * of one specialist would write the same memory files (#703). Every Assistant chat runs at the
+   * in one project folder would write the same files (#703, #768). Every Assistant chat runs at the
    * vault root, and Eva's vault sync handles them, so they never wait.
    */
   private async takeFolder(session: SessionRecord, signal: AbortSignal): Promise<() => void> {
     if (session.mode !== "project") return () => undefined;
     const folder = session.startFolder;
-    const place = chatKind(session) === "specialist" ? "of this specialist" : "in this clone";
+    const inClone = chatKind(session) === "project";
     let told = false;
     // Several turns can wait. The first to wake takes the folder, and the others wait again.
     for (let held = this.folderTurns.get(folder); held !== undefined; held = this.folderTurns.get(folder)) {
@@ -1500,10 +1500,9 @@ ${engineText}`,
         told = true;
         this.emit(session.id, {
           kind: "notice",
-          text:
-            place === "in this clone"
-              ? "Another chat runs a turn in this clone. This turn starts when that turn ends."
-              : "Another chat of this specialist runs a turn. This turn starts when that turn ends.",
+          text: inClone
+            ? "Another chat runs a turn in this clone. This turn starts when that turn ends."
+            : "Another chat of this project runs a turn. This turn starts when that turn ends.",
         });
       }
       // A front end can stop the turn inside the notice event, before the listener exists.
@@ -1517,7 +1516,10 @@ ${engineText}`,
           });
         });
       }
-      if (signal.aborted) throw new Error(`The turn stopped while it waited for another chat ${place}.`);
+      if (signal.aborted)
+        throw new Error(
+          `The turn stopped while it waited for another chat ${inClone ? "in this clone" : "of this project"}.`,
+        );
     }
     let release = (): void => undefined;
     this.folderTurns.set(

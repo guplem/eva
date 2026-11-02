@@ -3249,7 +3249,7 @@ describe("one turn per clone (issue 356)", () => {
     expect(manager.get(second).turns[0]?.notes).toEqual([]);
   });
 
-  test("two chats of one specialist run one turn at a time, and the notice names the specialist (#703)", async () => {
+  test("two chats of one project folder run one turn at a time, and the notice names the project (#703, #768)", async () => {
     const { engine, release } = heldEngine();
     const manager = createManager(engine);
     const specialistChat = (): string =>
@@ -3269,7 +3269,7 @@ describe("one turn per clone (issue 356)", () => {
     await waitUntil(() => events.some((event) => event.sessionId === second && event.kind === "notice"));
     const notice = events.find((event) => event.sessionId === second && event.kind === "notice");
     expect(notice).toMatchObject({
-      text: "Another chat of this specialist runs a turn. This turn starts when that turn ends.",
+      text: "Another chat of this project runs a turn. This turn starts when that turn ends.",
     });
     release();
     await Promise.all([running, waiting]);

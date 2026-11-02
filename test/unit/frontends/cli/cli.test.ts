@@ -1775,8 +1775,8 @@ repos:
       request: "plan the week",
       reportToSessionId: null,
     });
-    // A specialist works in its own folder, with no clone (#703).
-    expect(asked).toMatch(/^Started the work with the specialist, chat \S+\.$/);
+    // A specialist and a general project work in the project folder, with no clone (#703, #768).
+    expect(asked).toMatch(/^Started the work in the project folder, chat \S+\.$/);
   });
 
   test("eva projects filters by status and tag, and shows the tags and the warnings", async () => {

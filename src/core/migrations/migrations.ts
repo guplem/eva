@@ -26,6 +26,7 @@ import { modelTiersInConfig, modelTiersInVault } from "./model-tiers.ts";
 import { moveSettingsToFolder } from "./settings-folder.ts";
 import { describeProjectTypes } from "./project-types.ts";
 import { commitSecretFiles } from "./secret-files.ts";
+import { ignoreEvaScratch } from "./scratch-folder.ts";
 
 /** Add each new migration here. The runner sorts them by id. */
 export const migrations: readonly Migration[] = [
@@ -42,6 +43,7 @@ export const migrations: readonly Migration[] = [
   moveSettingsToFolder,
   describeProjectTypes,
   commitSecretFiles,
+  ignoreEvaScratch,
 ];
 
 export interface VaultAhead {

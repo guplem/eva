@@ -261,6 +261,8 @@ describe("a key file that an agent changes (review of #707)", () => {
       new TextDecoder().decode(encryptFile(new TextEncoder().encode("LATE\n"), old, "deploy/late.key")),
     );
     secret = await service.unlock(token, "a second long password");
+    // The move runs in the background, so the unlock never waits on the sync.
+    await new Promise((resolve) => setTimeout(resolve, 10));
     const current = readVaultKey(vault);
     expect(encryptedFingerprint(new TextEncoder().encode(read("deploy/late.key")))).toBe(
       keyFingerprint(current ?? { publicKey: "", signingKey: "" }),

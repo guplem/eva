@@ -210,9 +210,9 @@ export function moveToCurrentKey(
   const moved: string[] = [];
   const fingerprint = keyFingerprint(current);
   for (const relativePath of encryptedFiles(vaultPath)) {
-    const bytes = new Uint8Array(readFileSync(join(vaultPath, relativePath)));
-    if (encryptedFingerprint(bytes) === fingerprint) continue;
     try {
+      const bytes = new Uint8Array(readFileSync(join(vaultPath, relativePath)));
+      if (encryptedFingerprint(bytes) === fingerprint) continue;
       const opened = decryptFile(bytes, unlocked);
       writeFileAtomic(
         join(vaultPath, relativePath),
@@ -220,7 +220,7 @@ export function moveToCurrentKey(
       );
       moved.push(relativePath);
     } catch {
-      // A file that no key of this device opens is the person's to restore: the status names it.
+      // A file that no key of this device opens, or that went away, stays as it is: the others still move.
     }
   }
   return moved;

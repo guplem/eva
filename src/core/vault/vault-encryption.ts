@@ -136,7 +136,8 @@ export class VaultEncryption {
 
   async unlock(deviceToken: string | null, password: string): Promise<string> {
     const secret = await this.options.keys.unlock(deviceToken, password);
-    await this.moveOldFiles(deviceToken, secret);
+    // In the background: the move waits for the sync, which can wait on a slow network.
+    void this.moveOldFiles(deviceToken, secret);
     return secret;
   }
 

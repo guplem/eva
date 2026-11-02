@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createVaultKey, keyFingerprint, unlockVaultKey } from "../../../../src/core/vault/vault-crypto.ts";
+import {
+  createVaultKey,
+  keyFingerprint,
+  nextVaultKey,
+  unlockVaultKey,
+} from "../../../../src/core/vault/vault-crypto.ts";
 import {
   readMachineSecrets,
   readSignedState,
@@ -37,6 +42,16 @@ describe("the vault's key file (#707)", () => {
     expect(readVaultKey(vault)).toBeNull();
     writeFileSync(join(vault, vaultKeyPath), JSON.stringify({ version: 1, publicKey: 3 }));
     expect(readVaultKey(vault)).toBeNull();
+  });
+
+  test("the chain of older keys reads back, and a broken chain reads as none, not as no key (#775)", async () => {
+    const key = await createVaultKey(password, { logN: 10 });
+    const next = await nextVaultKey(key, await unlockVaultKey(key, password), "another long password", { logN: 10 });
+    writeVaultKey(vault, next);
+    expect(readVaultKey(vault)).toEqual(next);
+    writeFileSync(join(vault, vaultKeyPath), JSON.stringify({ ...next, chain: [{ publicKey: 3 }] }));
+    const { chain: _chain, ...withoutChain } = next;
+    expect(readVaultKey(vault)).toEqual(withoutChain);
   });
 });
 

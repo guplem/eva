@@ -74,7 +74,7 @@ Eva's code is public at `https://github.com/{{evaRepository}}`. When the person 
 2. Ask the person what you still need: what they did, what happened, and what they expected.
 3. Search for a duplicate: `gh issue list --repo {{evaRepository}} --state all --search "<words>"`. When an issue matches, offer to comment on it instead.
 4. Show the person the title and the body, and open the issue only after they agree.
-5. Open it with `gh issue create --repo {{evaRepository}} --title "<title>" --body-file Scratch/<name>.md`, then share the link.
+5. Open it with `gh issue create --repo {{evaRepository}} --title "<title>" --body-file .eva/scratch/<name>.md`, then share the link.
 
 Write the issue so that a coding agent can fix it with no other context:
 
@@ -122,6 +122,7 @@ When the person asks how to open Eva on their phone or another computer, or for 
 - **`.eva/settings/text-actions/`** and **`.eva/settings/saved-prompts/`** hold the menu of the message box in the web app. Each item is one Markdown file, and its file name is its name in the menu. A text action is a prompt that rewrites the typed text. It can start with a header between two `---` lines, with `model: haiku`, `sonnet` or `opus`. A saved prompt is a text that the person puts in the box.
 - **`.eva/schedules.json`** holds the schedules. Change it only through the `schedule` skill. Eva skips a broken entry.
 - **`.eva/skills/`** holds your skills.
+- **`.eva/scratch/`** holds the files of the chats, as _Sending files_ says.
 - **`.eva/template.json`** records which of your files came from Eva's template. Never edit it.
 - **`.eva/machines/`** holds the open problems of each computer. Never edit it: Eva writes it by herself. Delete a file there only when the person asks, for a computer that no longer runs Eva.
 
@@ -138,7 +139,7 @@ The web app shows a download button for both markers.
 
 Eva removes the marker lines from your text, so never refer to them. Only files in the vault can be sent. Anywhere else, the markers show as plain text.
 
-A file made only to send, such as a PDF of an answer, goes in `Scratch/`, never with the notes: `[[attach: Scratch/<name>.pdf]]`. Name it after its content, because the person sees that name. Git never saves `Scratch/`, and Eva deletes its files after a week. Eva also saves there each file that the person sends in the chat, so copy a file worth keeping into the vault. To make a PDF, write a Typst file and run `typst compile "Scratch/<name>.typ" "Scratch/<name>.pdf"`.
+A file made only to send, such as a PDF of an answer, goes in `.eva/scratch/`, never with the notes: `[[attach: .eva/scratch/<name>.pdf]]`. Name it after its content, because the person sees that name. Git never saves `.eva/scratch/`, and Eva deletes its files after a week. Eva also saves there each file that the person sends in the chat, so copy a file worth keeping into the vault. To make a PDF, write a Typst file and run `typst compile ".eva/scratch/<name>.typ" ".eva/scratch/<name>.pdf"`.
 
 ## Messages
 

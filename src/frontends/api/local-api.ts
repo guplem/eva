@@ -1569,12 +1569,9 @@ async function secretsRoute(request: Request, url: URL, eva: Eva, deviceToken: s
     return noStore({
       decrypted: await encryption.confirmRemovals(deviceToken, secret, confirmSchema.parse(await request.json())),
     });
-  if (method === "POST" && path === "/api/vault/secrets/change-password") {
+  // A new password makes a new key, which locks every device (#775). An older page calls `new-key`.
+  if (method === "POST" && (path === "/api/vault/secrets/change-password" || path === "/api/vault/secrets/new-key")) {
     await encryption.changePassword(deviceToken, secret, passwordSchema.parse(await request.json()).password);
-    return noStore(encryption.status(deviceToken, secret));
-  }
-  if (method === "POST" && path === "/api/vault/secrets/new-key") {
-    await encryption.newKey(deviceToken, secret, passwordSchema.parse(await request.json()).password);
     return noStore(encryption.status(deviceToken, null));
   }
   if (method === "POST" && path === "/api/vault/secrets/accept-key") {

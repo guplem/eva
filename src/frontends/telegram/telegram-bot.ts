@@ -464,7 +464,7 @@ export class TelegramBot {
   }
 
   /**
-   * Saves a received file where the chat can read it, and tells the chat where it is: in Scratch/,
+   * Saves a received file where the chat can read it, and tells the chat where it is: in .eva/scratch/,
    * or in the clone of a chat in a clone (#706). The core decides, as for the web app.
    */
   private async forwardFile(
@@ -495,7 +495,7 @@ export class TelegramBot {
     if (bytes === null) return;
     let note: string;
     try {
-      // A topic with no chat yet gets an Assistant chat when the message goes, so the file goes to Scratch/.
+      // A topic with no chat yet gets an Assistant chat when the message goes, so the file goes to .eva/scratch/.
       note = this.options.eva.receiveFile(file.file_name ?? "file", bytes, existing).note;
     } catch (error) {
       await this.send(chatId, topicId, `Eva cannot keep the file: ${this.describeError(error)}`);

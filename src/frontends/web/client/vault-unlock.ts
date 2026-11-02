@@ -60,3 +60,16 @@ export function unlockHeaders(store: UnlockStorage | null = storage()): Record<s
   const secret = unlockSecret(store);
   return secret === null ? {} : { [unlockHeader]: secret };
 }
+
+/**
+ * Runs a change that locks every device, such as a new vault password (#775), and then forgets this
+ * tab's unlock. A change that fails keeps it, so the person can try again.
+ */
+export async function thenForgetUnlock<Result>(
+  change: () => Promise<Result>,
+  store: UnlockStorage | null = storage(),
+): Promise<Result> {
+  const result = await change();
+  forgetUnlockSecret(store);
+  return result;
+}

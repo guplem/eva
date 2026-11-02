@@ -9,6 +9,7 @@ import {
   encryptedState,
   encryptFile,
   keyFingerprint,
+  nextVaultKey,
   unlockVaultKey,
   type VaultKeyFile,
 } from "../../../../src/core/vault/vault-crypto.ts";
@@ -94,6 +95,21 @@ describe("preparing the vault's files for a commit (#707)", () => {
     write("b.pem", "PEM\n");
     expect(secrets().prepare("b.pem")).toBe("vault_key_changed");
     expect(new TextDecoder().decode(read("b.pem"))).toBe("PEM\n");
+  });
+
+  test("a key that the trusted key signed is trusted with no question, and encrypts the next file (#775)", async () => {
+    const first = await withKey();
+    write("a.pem", "PEM\n");
+    expect(secrets().prepare("a.pem")).toBeNull();
+    // The person changed the password on another computer, which signed the new key with the old one.
+    const next = await nextVaultKey(first, await unlockVaultKey(first, password), "a brand new password", { logN: 10 });
+    writeVaultKey(vault, next);
+    write("b.pem", "PEM\n");
+    expect(secrets().prepare("b.pem")).toBeNull();
+    expect(readMachineSecrets(machine).fingerprint).toBe(keyFingerprint(next));
+    expect(secrets().inputs().keyChanged).toBe(false);
+    const unlocked = await unlockVaultKey(next, "a brand new password");
+    expect(new TextDecoder().decode(decryptFile(read("b.pem"), unlocked).plain)).toBe("PEM\n");
   });
 
   test("a plain .env with a token stays out, and a plain .env with safe values goes in", async () => {

@@ -69,7 +69,7 @@ import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine
 import type { QuestionAnswers, SessionEvent } from "../../../shared/events.ts";
 import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
 import { failureOf, quickRead, quickSend, request } from "./request.ts";
-import { forgetUnlockSecret, keepUnlockSecret, unlockHeaders } from "./vault-unlock.ts";
+import { forgetUnlockSecret, keepUnlockSecret, thenForgetUnlock, unlockHeaders } from "./vault-unlock.ts";
 
 export { ApiError } from "./request.ts";
 
@@ -245,7 +245,7 @@ export const api = {
   transcribe: (audio: Blob): Promise<{ text: string }> => request("POST", "/api/transcribe", audio),
   /**
    * Keeps a file for the agent, and answers the note that the message carries: in the vault's
-   * Scratch folder, or in the clone of a chat in a clone, with a note that names no vault path (#706).
+   * .eva/scratch/ folder, or in the clone of a chat in a clone, with a note that names no vault path (#706).
    */
   attachFile: (file: File, sessionId: string | null = null): Promise<{ path: string; note: string }> =>
     request(
@@ -399,20 +399,14 @@ export const api = {
   /** Answers the paths that the removals decrypted. A locked tab answers 403 with `vault_locked`. */
   confirmSecretRemovals: (patterns: readonly string[], files: readonly string[]): Promise<{ decrypted: string[] }> =>
     request("POST", "/api/vault/secrets/confirm", { patterns, files }, { headers: unlockHeaders() }),
-  /** The keys stay the same, so this tab stays unlocked. */
+  /**
+   * A new password makes a new key (#775). The old key opens nothing new, so the core locks every
+   * device, this tab too.
+   */
   changeVaultPassword: (password: string): Promise<VaultSecretsStatus> =>
-    request("POST", "/api/vault/secrets/change-password", { password }, { headers: unlockHeaders() }),
-  /** The old key opens nothing any more, so the core locks every device, this tab too. */
-  newVaultKey: async (password: string): Promise<VaultSecretsStatus> => {
-    const status = await request<VaultSecretsStatus>(
-      "POST",
-      "/api/vault/secrets/new-key",
-      { password },
-      { headers: unlockHeaders() },
-    );
-    forgetUnlockSecret();
-    return status;
-  },
+    thenForgetUnlock(() =>
+      request("POST", "/api/vault/secrets/change-password", { password }, { headers: unlockHeaders() }),
+    ),
   acceptVaultKey: (): Promise<VaultSecretsStatus> =>
     request("POST", "/api/vault/secrets/accept-key", undefined, { headers: unlockHeaders() }),
   openEncryptedFile,

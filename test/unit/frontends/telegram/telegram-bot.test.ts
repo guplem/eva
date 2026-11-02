@@ -2502,12 +2502,12 @@ describe("files (lessons 72, 74, 124)", () => {
     );
   });
 
-  test("a received file is saved in Scratch and named in the message to Eva", async () => {
+  test("a received file is saved in .eva/scratch and named in the message to Eva", async () => {
     const bot = createBot();
     telegram.sendFile(owner, "document", new Uint8Array([1, 2, 3]), { fileName: "receipt.pdf" });
     await settle(bot, () => engine.requests.length === 1);
     const prompt = engine.requests[0]?.prompt ?? "";
-    const saved = /saved as (Scratch\/received\/receipt-[0-9a-f]{12}\.pdf)/.exec(prompt)?.[1] ?? "";
+    const saved = /saved as (\.eva\/scratch\/received\/receipt-[0-9a-f]{12}\.pdf)/.exec(prompt)?.[1] ?? "";
     expect(existsSync(join(vault(), saved))).toBe(true);
   });
 
@@ -2524,7 +2524,8 @@ describe("files (lessons 72, 74, 124)", () => {
     await settle(bot, () => engine.requests.length === 1);
     const prompt = engine.requests[0]?.prompt ?? "";
     expect(prompt).toContain("What is this?\n\n[The person sent a file");
-    const saved = /saved as (Scratch\/received\/photo-large-photo-\d+-[0-9a-f]{12}\.jpg)/.exec(prompt)?.[1] ?? "";
+    const saved =
+      /saved as (\.eva\/scratch\/received\/photo-large-photo-\d+-[0-9a-f]{12}\.jpg)/.exec(prompt)?.[1] ?? "";
     expect(existsSync(join(vault(), saved))).toBe(true);
   });
 
@@ -2584,7 +2585,7 @@ describe("files (lessons 72, 74, 124)", () => {
     const bot = createBot();
     telegram.sendFile(owner, "audio", new Uint8Array([4, 5]), { fileName: "memo.mp3" });
     await settle(bot, () => engine.requests.length === 1);
-    expect(engine.requests[0]?.prompt).toMatch(/saved as Scratch\/received\/memo-[0-9a-f]{12}\.mp3/);
+    expect(engine.requests[0]?.prompt).toMatch(/saved as \.eva\/scratch\/received\/memo-[0-9a-f]{12}\.mp3/);
   });
 
   test("a sticker or a video note gets one sentence, and a service message gets none", async () => {

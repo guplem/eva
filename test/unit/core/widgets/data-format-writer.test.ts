@@ -119,6 +119,7 @@ describe("writeDataFormats", () => {
       [
         { folder: "Life/Linked", text: first },
         { folder: "Scratch", text: first },
+        { folder: ".eva/scratch", text: first },
         { folder: "Life/Missing", text: first },
       ],
       record,

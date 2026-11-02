@@ -5,6 +5,7 @@
  *
  * A path here is a forward-slash path from the vault root, such as `Life/Habits/walk.json`.
  */
+import { isScratchPath } from "../files/scratch-folders.ts";
 
 /** The file names that an agent reads as its rules, or that a later issue reads as a data format (#692). */
 const ruleFiles: ReadonlySet<string> = new Set(["agents.md", "claude.md", "readme.md", "data_format.md"]);
@@ -52,14 +53,14 @@ export function isPlainName(name: string): boolean {
 }
 
 /**
- * True for a place that no widget ever reaches, at any depth: the vault root, `Scratch/`, the
- * clones of a project, and the person's facts. Hidden names, such as `.git/` and `.eva/`, fail
- * `isPlainName` already. Eva compares without case, as the vault sync does for `Scratch`.
+ * True for a place that no widget ever reaches, at any depth: the vault root, the scratch folders,
+ * the clones of a project, and the person's facts. Hidden names, such as `.git/` and `.eva/`, fail
+ * `isPlainName` already. Eva compares without case, as the vault sync does for the scratch folders.
  */
 export function isClosedPlace(segments: readonly string[]): boolean {
   const lower = segments.map(folded);
   if (lower.length === 0 || (lower.length === 1 && lower[0] === "")) return true;
-  if (lower[0] === "scratch") return true;
+  if (isScratchPath(lower.join("/"))) return true;
   if (lower[0] === "projects" && lower[2] === "repos") return true;
   return lower[0] === "life" && lower[1] === "about me.md";
 }

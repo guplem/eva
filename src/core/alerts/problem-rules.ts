@@ -119,7 +119,7 @@ export function vaultSecretsProblems(input: {
       ? {
           level: "warn",
           message:
-            "The vault's key changed on another computer, so Eva encrypts no new secret file here. Open Settings, on the Vault page, unlock with the new password, and confirm the new key. If you did not make a new key, someone else may have: do not confirm it.",
+            "The vault's key changed, and the old key did not sign the new one, so Eva encrypts no new secret file here. A password change on another computer signs it, so someone else may have changed the key. If you know why, open Settings, on the Vault page, unlock with the new password, and confirm the new key.",
           resolvedMessage: "Eva uses the vault's new key on this computer.",
         }
       : null,

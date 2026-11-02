@@ -1893,7 +1893,7 @@ textarea {
     }
   }
 
-  /* The visor takes the place of Settings at the end of the tab bar. The notification center links to Settings.
+  /* The visor takes the place of Settings at the end of the tab bar. The gear of the home page opens Settings (#761).
      The selector outweighs `.nav-button[aria-current]` below, which would show Settings again. */
   .nav-spacer,
   .main-nav .nav-button.nav-settings {

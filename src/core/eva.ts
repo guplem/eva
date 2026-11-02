@@ -777,6 +777,7 @@ export class Eva {
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
           wallRoots: () => this.wallRoots(),
+          ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         specialist: new SpecialistPreparer({
           vaultSync,

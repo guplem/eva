@@ -48,6 +48,8 @@ const global = { path: "/eva/engines/pi-agent/AGENTS.md", content: "Global rule.
 const vaultMap = { path: "/vault/AGENTS.md", content: "Vault map." };
 const project = { path: "/vault/Projects/example-app/AGENTS.md", content: "Project rule." };
 const repository = { path: "/vault/Projects/example-app/repos/clone-0/AGENTS.md", content: "Clone rule." };
+// Eva's line that tells a clone chat where the project's notes are (#774).
+const notesHint = { path: "/vault/Projects/example-app/repos/AGENTS.md", content: "The notes are two levels up." };
 const projectFolder = "/vault/Projects/example-app";
 
 /** pi's prompt options, with a copy of the list, since the extension changes the list in place. */
@@ -78,11 +80,11 @@ afterEach(() => {
 
 describe("hideUpperContext, pi 0.73.1", () => {
   test("removes each file above the project folder, and keeps the project's files and pi's global file", () => {
-    const files = [global, vaultMap, project, repository];
+    const files = [global, vaultMap, project, notesHint, repository];
     const promptOptions = options(files);
     const { prompt, problem } = hideUpperContext(oldPrompt(files), promptOptions, projectFolder, posix);
-    expect(prompt).toBe(oldPrompt([global, project, repository]));
-    expect(promptOptions.contextFiles).toEqual([global, project, repository]);
+    expect(prompt).toBe(oldPrompt([global, project, notesHint, repository]));
+    expect(promptOptions.contextFiles).toEqual([global, project, notesHint, repository]);
     expect(problem).toBeNull();
   });
 

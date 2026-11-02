@@ -76,6 +76,16 @@ describe("describeClaudeContext", () => {
     expect(instructions.map((part) => part.text)).toEqual(["Project rules."]);
   });
 
+  test("a chat in a clone lists Eva's line in `repos/AGENTS.md` after the project's rules (#774)", () => {
+    const project = join(vault, "Projects", "example-app");
+    write(join(project, "AGENTS.md"), "Project rules.");
+    write(join(project, "repos", "AGENTS.md"), "The notes are two levels up.");
+    const instructions = context(
+      input({ mode: "project", startFolder: join(project, "repos", "clone-0"), projectFolder: project }),
+    ).filter((part) => part.group === "instructions");
+    expect(instructions.map((part) => part.text)).toEqual(["Project rules.", "The notes are two levels up."]);
+  });
+
   test("reads no AGENTS.md when a folder has a CLAUDE.md", () => {
     write(join(vault, "AGENTS.md"), "Vault rules.");
     write(join(vault, ".claude", "CLAUDE.md"), "Claude rules.");

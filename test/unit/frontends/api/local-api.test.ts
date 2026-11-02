@@ -710,6 +710,29 @@ describe("device login", () => {
     );
     expect(status).toMatchObject({ hasKey: true, unlocked: true });
   });
+
+  test("a password change, by its own path or an older page's new-key path, locks the page (#775)", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const device = { cookie, "content-type": "application/json" };
+    const first = { password: "correct horse battery" };
+    await call("/api/vault/secrets/password", { method: "POST", body: first, headers: device });
+    let password = first;
+    for (const [path, next] of [
+      ["/api/vault/secrets/change-password", { password: "a second long password" }],
+      ["/api/vault/secrets/new-key", { password: "a third long password" }],
+    ] as const) {
+      const unlocked = await call("/api/vault/secrets/unlock", { method: "POST", body: password, headers: device });
+      const { secret } = await json<{ secret: string }>(unlocked);
+      const changed = await call(path, { method: "POST", body: next, headers: { ...device, "x-eva-unlock": secret } });
+      expect(changed.status).toBe(200);
+      expect(await json<{ unlocked: boolean }>(changed)).toMatchObject({ unlocked: false });
+      // The old password opens nothing any more.
+      const old = await call("/api/vault/secrets/unlock", { method: "POST", body: password, headers: device });
+      expect(old.status).not.toBe(200);
+      password = next;
+    }
+  });
 });
 
 describe("routes", () => {

@@ -12,8 +12,10 @@ import { writeFileAtomic } from "../../shared/files.ts";
 import type { SecretMatcher } from "./secret-files.ts";
 import {
   decryptFile,
+  encryptedFingerprint,
   encryptedState,
   encryptFile,
+  keyFingerprint,
   type DecryptedFile,
   type UnlockedVaultKey,
   type VaultKeyFile,
@@ -193,4 +195,33 @@ function readHead(path: string): Uint8Array {
   } finally {
     closeSync(descriptor);
   }
+}
+
+/**
+ * Moves each encrypted file that is on an older key of the chain to the vault's current key (#775).
+ * Another computer may have encrypted a file to the old key before it learned of a password change.
+ * A file that no key opens stays as it is. Answers the paths that moved.
+ */
+export function moveToCurrentKey(
+  vaultPath: string,
+  unlocked: UnlockedVaultKey,
+  current: Pick<VaultKeyFile, "publicKey" | "signingKey">,
+): string[] {
+  const moved: string[] = [];
+  const fingerprint = keyFingerprint(current);
+  for (const relativePath of encryptedFiles(vaultPath)) {
+    try {
+      const bytes = new Uint8Array(readFileSync(join(vaultPath, relativePath)));
+      if (encryptedFingerprint(bytes) === fingerprint) continue;
+      const opened = decryptFile(bytes, unlocked);
+      writeFileAtomic(
+        join(vaultPath, relativePath),
+        new TextDecoder().decode(encryptFile(opened.plain, current, opened.path)),
+      );
+      moved.push(relativePath);
+    } catch {
+      // A file that no key of this device opens, or that went away, stays as it is: the others still move.
+    }
+  }
+  return moved;
 }

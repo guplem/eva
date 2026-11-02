@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chainTrusts,
   createVaultKey,
   decryptFile,
   encryptedFileLine,
@@ -9,7 +10,7 @@ import {
   hasEncryptedShape,
   isEncryptedFile,
   keyFingerprint,
-  rewrapVaultKey,
+  nextVaultKey,
   signRecord,
   unlockVaultKey,
   verifyRecord,
@@ -129,13 +130,69 @@ describe("vault keys (#707)", () => {
     expect(isEncryptedFile(text(`${encryptedFileLine}\nsomething else\n`))).toBe(false);
   });
 
-  test("a new password wraps the same private keys again, so every file still opens", async () => {
+  test("a new password makes a new key, signed by the old one, so the old password opens nothing new (#775)", async () => {
     const file = await keyFile();
-    const encrypted = encryptFile(text("secret"), file, "deploy/id.key");
-    const moved = await rewrapVaultKey(file, await unlockVaultKey(file, password), "a brand new password", cost);
-    expect(keyFingerprint(moved)).toBe(keyFingerprint(file));
-    const unlocked = await unlockVaultKey(moved, "a brand new password");
-    expect(plainText(decryptFile(encrypted, unlocked).plain)).toBe("secret");
+    const next = await nextVaultKey(file, await unlockVaultKey(file, password), "a brand new password", cost);
+    expect(keyFingerprint(next)).not.toBe(keyFingerprint(file));
+    expect(await failure(() => unlockVaultKey(next, password))).toMatchObject({ code: "vault_password_wrong" });
+    const unlocked = await unlockVaultKey(next, "a brand new password");
+    expect(plainText(decryptFile(encryptFile(text("secret"), next, "a.key"), unlocked).plain)).toBe("secret");
+    // A computer that trusts the old key trusts the new one by its signature, with no question.
+    expect(chainTrusts(next, keyFingerprint(file))).toBe(true);
+    expect(chainTrusts(next, keyFingerprint(next))).toBe(false);
+  });
+
+  test("the new key keeps the older private keys, so the new password opens a file left on an old key (#775)", async () => {
+    const file = await keyFile();
+    // Another computer encrypted this file to the old key just before it learned of the new one.
+    const late = encryptFile(text("late secret"), file, "deploy/late.key");
+    const next = await nextVaultKey(file, await unlockVaultKey(file, password), "a brand new password", cost);
+    const unlocked = await unlockVaultKey(next, "a brand new password");
+    expect(plainText(decryptFile(late, unlocked).plain)).toBe("late secret");
+    // The old password still opens only the old key, never a file on the new one.
+    const fresh = encryptFile(text("fresh secret"), next, "deploy/fresh.key");
+    const old = await unlockVaultKey(file, password);
+    expect(await failure(() => decryptFile(fresh, old))).toMatchObject({ code: "vault_file_unreadable" });
+  });
+
+  test("a computer that missed several changes trusts the newest key through the whole chain (#775)", async () => {
+    const first = await keyFile();
+    const second = await nextVaultKey(first, await unlockVaultKey(first, password), "second password here", cost);
+    const third = await nextVaultKey(
+      second,
+      await unlockVaultKey(second, "second password here"),
+      "third password here",
+      cost,
+    );
+    expect(chainTrusts(third, keyFingerprint(first))).toBe(true);
+    expect(chainTrusts(third, keyFingerprint(second))).toBe(true);
+  });
+
+  test("a key that someone swaps in, with no valid signature, is not trusted (#775)", async () => {
+    const file = await keyFile();
+    const next = await nextVaultKey(file, await unlockVaultKey(file, password), "a brand new password", cost);
+    const stranger = await createVaultKey("someone else's password", cost);
+    // The old chain on a stranger's key: its signature covers another key.
+    expect(chainTrusts({ ...stranger, chain: next.chain ?? [] }, keyFingerprint(file))).toBe(false);
+    expect(chainTrusts(stranger, keyFingerprint(file))).toBe(false);
+    const link = next.chain?.[0];
+    if (link === undefined) throw new Error("No link.");
+    // A link that names other public keys no longer matches the trusted fingerprint.
+    expect(chainTrusts({ ...next, chain: [{ ...link, publicKey: stranger.publicKey }] }, keyFingerprint(file))).toBe(
+      false,
+    );
+    expect(chainTrusts({ ...next, chain: [{ ...link, signature: "AAAA" }] }, keyFingerprint(file))).toBe(false);
+  });
+
+  test("the chain keeps the last 20 keys, so a key file stays small (#775)", async () => {
+    let file = await keyFile();
+    let current = password;
+    for (let round = 0; round < 22; round += 1) {
+      const next = `password number ${String(round)}`;
+      file = await nextVaultKey(file, await unlockVaultKey(file, current), next, { logN: 1 });
+      current = next;
+    }
+    expect(file.chain).toHaveLength(20);
   });
 
   test("each key has its own fingerprint, which covers both public keys", async () => {

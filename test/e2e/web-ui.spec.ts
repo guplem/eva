@@ -3061,12 +3061,16 @@ test("the main navigation opens each destination at its own address, and the bac
     ["Chats", "#/chats"],
     // The visor opens the home page, the New chat page of Chats (#761).
     ["Eva: ", "#/chats/new"],
+    // On the home page, Chats is not the current button, so a tap on it leaves for the chats.
+    ["Chats", "#/chats"],
   ] as const) {
     await nav.getByRole("button", { name }).click();
     await expect(nav.getByRole("button", { name })).toHaveAttribute("aria-current", "page");
     await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     expect(new URL(page.url()).hash).toBe(address);
   }
+  await page.goBack();
+  await expect(nav.getByRole("button", { name: "Eva: " })).toHaveAttribute("aria-current", "page");
   await page.goBack();
   await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   await page.goBack();
@@ -3157,12 +3161,12 @@ test("the visor opens the home page from a chat, and the home page has a bell an
   await expect(title).toHaveText("New chat");
   const buttons = page.locator(".home-buttons");
   const bell = buttons.getByRole("button", { name: /^Notifications/ });
+  await expect(bell).toBeVisible();
   // The buttons sit at the right of the header, on the row of the title.
   const header = await page.locator(".main-header").boundingBox();
   const box = await buttons.boundingBox();
   expect(header!.x + header!.width - (box!.x + box!.width)).toBeLessThan(40);
   expect(box!.y).toBeLessThan(header!.y + header!.height);
-  await expect(bell).toBeVisible();
   const gear = buttons.getByRole("button", { name: "Settings", exact: true });
   if (test.info().project.name === "desktop") {
     // A computer keeps Settings at the foot of the rail.

@@ -1,5 +1,5 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { ChatBlocker, ListedSession, SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatForks, chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
@@ -132,7 +132,8 @@ export function AssistantView({
       chats[0]);
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
   // The visor shows as the current page on the New chat page. Another page of Chats, or another destination, clears it.
-  useEffect(() => {
+  // Before the paint, so Chats never shows as current for one frame.
+  useLayoutEffect(() => {
     onHomeShown(drafting);
     return () => onHomeShown(false);
   }, [drafting, onHomeShown]);

@@ -10,6 +10,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  lstatSync,
   rmdirSync,
   rmSync,
   statSync,
@@ -19,7 +20,7 @@ import {
 import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
-import { isScratchPath, scratchFolder } from "./scratch-folders.ts";
+import { scratchFolder } from "./scratch-folders.ts";
 import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
 
 export type SendableFile =
@@ -146,7 +147,7 @@ export function receivedFileNote(savedPath: string): string {
 
 /**
  * Removes every file older than a week from each scratch folder. Returns how many it removed. Eva
- * writes no more in the old `Scratch/` at the vault root, so it goes once it is empty, and the Files
+ * writes no more in the old `Scratch/` of an old vault, so it goes once it is empty, and the Files
  * page no longer shows it.
  */
 export function cleanScratch(vaultPath: string, now: Date): number {
@@ -159,28 +160,38 @@ export function cleanScratch(vaultPath: string, now: Date): number {
 }
 
 /**
- * The scratch folders on disk, as paths from the vault root with `/`, in any case. A link is no
- * folder here, so a cleanup never follows one out of the vault. `.eva/scratch` comes first, so a
- * full old `Scratch/` never pushes a new file out of a capped list.
+ * The scratch folders on disk that Eva may empty, as paths from the vault root. Each is Eva's own
+ * folder by its exact name, so the clean never deletes a folder of the person's that only looks
+ * like one. A link is no folder here, so a cleanup never follows one out of the vault.
+ * `.eva/scratch` comes first, so a full old `Scratch/` never pushes a new file out of a capped list.
  */
 export function scratchFolders(vaultPath: string): string[] {
   const found: string[] = [];
-  for (const top of subfolders(vaultPath)) {
-    if (isScratchPath(top)) found.push(top);
-    else if (top.toLowerCase() === ".eva")
-      for (const child of subfolders(join(vaultPath, top)))
-        if (isScratchPath(`${top}/${child}`)) found.unshift(`${top}/${child}`);
-  }
+  if (hasFolder(vaultPath, ".eva") && hasFolder(join(vaultPath, ".eva"), "scratch")) found.push(scratchFolder);
+  if (keepsOldScratch(vaultPath) && hasFolder(vaultPath, "Scratch")) found.push("Scratch");
   return found;
 }
 
-function subfolders(folder: string): string[] {
+/**
+ * True for a vault from before #767: its .gitignore names the old `Scratch/`, and keeps that line
+ * for good. A new vault never names it, so there a `Scratch/` folder is the person's own.
+ */
+export function keepsOldScratch(vaultPath: string): boolean {
+  let text: string;
   try {
-    return readdirSync(folder, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
+    text = readFileSync(join(vaultPath, ".gitignore"), "utf-8");
   } catch {
-    return [];
+    return false;
+  }
+  return text.split(/\r?\n/).some((line) => /^\/?Scratch\/?$/.test(line.trim()));
+}
+
+/** True when the folder holds a folder of exactly this name: Windows and macOS would match any case. */
+function hasFolder(parent: string, name: string): boolean {
+  try {
+    return readdirSync(parent, { withFileTypes: true }).some((entry) => entry.name === name && entry.isDirectory());
+  } catch {
+    return false;
   }
 }
 
@@ -197,7 +208,8 @@ function removeEmptyFolders(folder: string): void {
 
 /**
  * Walks the folder without following a symbolic link: a link in a scratch folder, from a vault push
- * or an agent, must never lead the cleanup to delete files elsewhere.
+ * or an agent, must never lead the cleanup to delete files elsewhere. An old link goes itself, with
+ * its own age, so the folder can become empty.
  */
 function cleanFolder(folder: string, now: Date): number {
   let entries: Dirent[];
@@ -211,9 +223,9 @@ function cleanFolder(folder: string, now: Date): number {
     const path = join(folder, entry.name);
     if (entry.isDirectory()) {
       removed += cleanFolder(path, now);
-    } else if (entry.isFile()) {
+    } else {
       try {
-        if (now.getTime() - statSync(path).mtimeMs <= scratchMaxAgeMs) continue;
+        if (now.getTime() - lstatSync(path).mtimeMs <= scratchMaxAgeMs) continue;
         rmSync(path, { force: true });
         removed += 1;
       } catch {

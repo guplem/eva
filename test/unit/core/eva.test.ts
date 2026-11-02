@@ -1757,6 +1757,8 @@ describe("Eva", () => {
 
   test("the background tick removes old scratch files and old logs once a day, also with sync off", async () => {
     sandbox.write(vault, ".eva/scratch/old.pdf", "old");
+    // A vault from before #767 lists its old Scratch/ in .gitignore.
+    sandbox.write(vault, ".gitignore", "Scratch/\n");
     sandbox.write(vault, "Scratch/old.pdf", "old");
     let logCleanups = 0;
     eva = new Eva({

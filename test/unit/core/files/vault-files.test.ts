@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import {
   existsSync,
+  lutimesSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -33,6 +34,11 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(folder, { recursive: true, force: true });
 });
+
+/** A vault from before #767: its .gitignore names the old Scratch/, which Eva still cleans. */
+function oldVault(): void {
+  write(".gitignore", "Projects/*/repos/\nScratch/\n");
+}
 
 function write(relativePath: string, content: string): void {
   const path = join(vault, relativePath);
@@ -242,6 +248,7 @@ describe("received files and the scratch cleanup", () => {
   });
 
   test("the old Scratch/ empties as its files age, and then goes away (#767)", () => {
+    oldVault();
     write("Scratch/old.pdf", "old");
     write("Scratch/received/new.jpg", "new");
     const now = new Date();
@@ -260,10 +267,42 @@ describe("received files and the scratch cleanup", () => {
     expect(existsSync(join(vault, ".eva", "scratch"))).toBe(true);
   });
 
-  test("a scratch folder in another case is cleaned too, as Windows and macOS ignore the case", () => {
+  test("the clean touches only Eva's own folders, by their exact names", () => {
+    oldVault();
     write("scratch/old.pdf", "old");
     write(".eva/Scratch/old.pdf", "old");
-    expect(cleanScratch(vault, new Date(Date.now() + 10 * 24 * 60 * 60_000))).toBe(2);
+    write(".EVA/scratch/old.pdf", "old");
+    expect(cleanScratch(vault, new Date(Date.now() + 10 * 24 * 60 * 60_000))).toBe(0);
+    expect(existsSync(join(vault, "scratch", "old.pdf"))).toBe(true);
+  });
+
+  test("in a new vault, a Scratch/ folder is the person's own, so the clean never touches it", () => {
+    write(".gitignore", "Projects/*/repos/\n.eva/scratch/\n");
+    write("Scratch/notes.md", "My notes.\n");
+    write("Scratch/Empty/.keep", "");
+    rmSync(join(vault, "Scratch", "Empty", ".keep"));
+    expect(cleanScratch(vault, new Date(Date.now() + 10 * 24 * 60 * 60_000))).toBe(0);
+    expect(existsSync(join(vault, "Scratch", "notes.md"))).toBe(true);
+    expect(existsSync(join(vault, "Scratch", "Empty"))).toBe(true);
+    expect(scratchFolders(vault)).toEqual([]);
+  });
+
+  test("the old Scratch/ also loses a week-old link, never its target, and then goes away", () => {
+    oldVault();
+    const outside = join(folder, "outside");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "keep.txt"), "mine");
+    mkdirSync(join(vault, "Scratch"));
+    try {
+      symlinkSync(join(outside, "keep.txt"), join(vault, "Scratch", "link"), "file");
+    } catch {
+      return; // A system that cannot make the link has none to remove.
+    }
+    const old = new Date(Date.now() - 8 * 24 * 60 * 60_000);
+    lutimesSync(join(vault, "Scratch", "link"), old, old);
+    expect(cleanScratch(vault, new Date())).toBe(1);
+    expect(readFileSync(join(outside, "keep.txt"), "utf-8")).toBe("mine");
+    expect(existsSync(join(vault, "Scratch"))).toBe(false);
   });
 
   test("a file that goes away during the cleanup is skipped, and the cleanup goes on", () => {
@@ -271,11 +310,11 @@ describe("received files and the scratch cleanup", () => {
     write(".eva/scratch/b-old.pdf", "old");
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60_000);
     utimesSync(join(vault, ".eva", "scratch", "b-old.pdf"), eightDaysAgo, eightDaysAgo);
-    const real = fs.statSync;
-    const stat = spyOn(fs, "statSync").mockImplementation(((path: string, ...rest: unknown[]) => {
+    const real = fs.lstatSync;
+    const stat = spyOn(fs, "lstatSync").mockImplementation(((path: string, ...rest: unknown[]) => {
       if (path.endsWith("a-gone.pdf")) throw Object.assign(new Error("ENOENT: gone"), { code: "ENOENT" });
       return (real as (...args: unknown[]) => unknown)(path, ...rest);
-    }) as typeof fs.statSync);
+    }) as typeof fs.lstatSync);
     try {
       expect(cleanScratch(vault, new Date())).toBe(1);
     } finally {
@@ -285,6 +324,7 @@ describe("received files and the scratch cleanup", () => {
   });
 
   test("the new scratch folder comes first, then the old one", () => {
+    oldVault();
     write("Scratch/a.pdf", "a");
     write(".eva/scratch/c.pdf", "c");
     expect(scratchFolders(vault)).toEqual([".eva/scratch", "Scratch"]);
@@ -297,6 +337,7 @@ describe("received files and the scratch cleanup", () => {
 
 describe("security review", () => {
   test.each([".eva/scratch", "Scratch"])("the cleanup of %s never follows a link out of it", (scratch) => {
+    oldVault();
     const outside = join(folder, "outside");
     mkdirSync(outside);
     writeFileSync(join(outside, "keep.txt"), "mine");
@@ -313,6 +354,7 @@ describe("security review", () => {
   });
 
   test("the cleanup never follows a scratch folder that is itself a link", () => {
+    oldVault();
     const outside = join(folder, "outside");
     mkdirSync(outside);
     writeFileSync(join(outside, "keep.txt"), "mine");

@@ -120,9 +120,9 @@ describe("the vault password (#707)", () => {
     expect(keyFingerprint(readVaultKey(vault) ?? { publicKey: "", signingKey: "" })).not.toBe(
       keyFingerprint(first ?? { publicKey: "", signingKey: "" }),
     );
-    // An older page still calls the new-key route, which does the same.
+    // A second change moves each file again.
     const before = readVaultKey(vault);
-    await service.newKey(token, secret, "a third long password");
+    await service.changePassword(token, secret, "a third long password");
     expect(keyFingerprint(readVaultKey(vault) ?? { publicKey: "", signingKey: "" })).not.toBe(
       keyFingerprint(before ?? { publicKey: "", signingKey: "" }),
     );

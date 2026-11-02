@@ -399,14 +399,14 @@ export const api = {
   /** Answers the paths that the removals decrypted. A locked tab answers 403 with `vault_locked`. */
   confirmSecretRemovals: (patterns: readonly string[], files: readonly string[]): Promise<{ decrypted: string[] }> =>
     request("POST", "/api/vault/secrets/confirm", { patterns, files }, { headers: unlockHeaders() }),
-  /** The keys stay the same, so this tab stays unlocked. */
-  changeVaultPassword: (password: string): Promise<VaultSecretsStatus> =>
-    request("POST", "/api/vault/secrets/change-password", { password }, { headers: unlockHeaders() }),
-  /** The old key opens nothing any more, so the core locks every device, this tab too. */
-  newVaultKey: async (password: string): Promise<VaultSecretsStatus> => {
+  /**
+   * A new password makes a new key (#775). The old key opens nothing new, so the core locks every
+   * device, this tab too.
+   */
+  changeVaultPassword: async (password: string): Promise<VaultSecretsStatus> => {
     const status = await request<VaultSecretsStatus>(
       "POST",
-      "/api/vault/secrets/new-key",
+      "/api/vault/secrets/change-password",
       { password },
       { headers: unlockHeaders() },
     );

@@ -284,11 +284,6 @@ export class VaultEncryption {
     await this.persist();
   }
 
-  /** The route of an older page, from when a new key was a second choice: it now changes the password. */
-  newKey(deviceToken: string | null, secret: string | null, password: string): Promise<void> {
-    return this.changePassword(deviceToken, secret, password);
-  }
-
   /** Pins a key that changed on another machine. The device must have unlocked that key here. */
   async acceptKey(deviceToken: string | null, secret: string | null): Promise<void> {
     this.options.keys.keyFor(deviceToken, secret);

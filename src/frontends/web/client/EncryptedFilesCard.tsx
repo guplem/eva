@@ -112,12 +112,11 @@ export function EncryptedFilesCard(): ReactElement {
           />
           {status.waiting.length > 0 && <WaitingRemovals status={status} onConfirm={confirmRemovals} />}
           {status.unlocked && !status.keyChanged && (
-            <PasswordChanges
-              onChange={(password) => apply(() => api.changeVaultPassword(password), "The vault password changed.")}
-              onNewKey={(password) =>
+            <PasswordChange
+              onChange={(password) =>
                 apply(
-                  () => api.newVaultKey(password),
-                  "Eva made a new key and encrypted every file again. Each device must unlock again.",
+                  () => api.changeVaultPassword(password),
+                  "The vault password changed, and Eva encrypted every file again. Each device must unlock again.",
                 )
               }
             />
@@ -159,8 +158,9 @@ function KeyChanged({
   return (
     <div role="alert" className="callout warning">
       <p>
-        The vault's key changed on another machine. Eva encrypts no new secret file until you confirm the new key. If
-        you did not make a new key, someone else may have: do not confirm it.
+        The vault's key changed, and the old key did not sign the new one. A password change on another computer signs
+        it, so someone else may have changed the key: do not confirm it unless you know why. Eva encrypts no new secret
+        file until you confirm it.
       </p>
       {status.unlocked ? (
         <SaveButton className="primary" onSave={onAccept}>
@@ -301,35 +301,23 @@ function WaitingRemovals({
   );
 }
 
-function PasswordChanges({
-  onChange,
-  onNewKey,
-}: {
-  readonly onChange: (password: string) => Promise<void>;
-  readonly onNewKey: (password: string) => Promise<void>;
-}): ReactElement {
+/** One way to change the password: it always makes a new key, so the old password opens nothing new (#775). */
+function PasswordChange({ onChange }: { readonly onChange: (password: string) => Promise<void> }): ReactElement {
   return (
     <details className="secret-password-changes">
       <summary>Change the password</summary>
+      <p className="field-hint">
+        Eva makes a new key and encrypts every file again. Each device must unlock again. If you think someone knows the
+        old password, also change the secrets in these files, such as an API key: old commits still open with the old
+        password.
+      </p>
       <NewPasswordForm
         label="New vault password"
         submitLabel="Change the password"
         onSubmit={async (password) => {
-          await onChange(password);
-          return true;
-        }}
-      />
-      <p className="field-hint">
-        If the old password leaked, make a new key instead. Eva then encrypts every file again, and the old password
-        opens nothing new. Old commits still open with the old password.
-      </p>
-      <NewPasswordForm
-        label="Password of the new key"
-        submitLabel="Make a new key"
-        onSubmit={async (password) => {
           // False keeps the typed password in the form, so a second try needs no typing.
-          if (!window.confirm("Make a new key? Every device must unlock again.")) return false;
-          await onNewKey(password);
+          if (!window.confirm("Change the password? Every device must unlock again.")) return false;
+          await onChange(password);
           return true;
         }}
       />

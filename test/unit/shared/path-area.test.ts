@@ -227,3 +227,57 @@ describe("the wall: what a Project chat may not open (review of #711)", () => {
     expect(isProtectedInArea(area, "src/a.ts", area)).toBe(false);
   });
 });
+
+describe("the wall's read-only folders (#774)", () => {
+  let project: string;
+  let clone: string;
+  /** A chat in a clone: the vault closed, its project folder read-only, the other clones closed. */
+  const wall = (): { area: string; closed: string[]; readOnly: string[] } => ({
+    area: clone,
+    closed: [root, join(project, "repos")],
+    readOnly: [project],
+  });
+  const read = { patternKeys: ["pattern"], write: false, dropsAt: false };
+  const write = { ...read, write: true };
+
+  beforeEach(() => {
+    project = join(root, "Projects", "2026-01-01-0900-example-app");
+    clone = join(project, "repos", "clone-0");
+    mkdirSync(join(clone, "example-app"), { recursive: true });
+    mkdirSync(join(project, "repos", "clone-1", "example-app"), { recursive: true });
+    mkdirSync(join(project, "decisions"), { recursive: true });
+    writeFileSync(join(project, "plan.md"), "");
+    writeFileSync(join(project, "repos", "AGENTS.md"), "");
+  });
+
+  test("a read in the read-only folder passes, by a relative or an absolute path, dot files too", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../plan.md" }, read)).toBe(false);
+    expect(wallRefusesCall(wall(), clone, { file_path: join(project, ".secrets") }, read)).toBe(false);
+    expect(wallRefusesCall(wall(), clone, { path: "../../decisions", pattern: "*.md" }, read)).toBe(false);
+  });
+
+  test("a write in the read-only folder is refused, and a write in the area passes", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../plan.md" }, write)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: join(project, "new.md") }, write)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: "example-app/a.ts" }, write)).toBe(false);
+  });
+
+  test("a closed folder inside the read-only one stays closed, and so does a search that holds it", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../clone-1/example-app/a.ts" }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: "../AGENTS.md" }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { path: "../.." }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { pattern: "../../**/*.ts" }, read)).toBe(true);
+  });
+
+  test("the rest of the vault stays closed", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: join(outside, "plan.md") }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../../x.md" }, read)).toBe(true);
+  });
+
+  test("a read-only folder opens any folder, such as one beside the area", () => {
+    const received = { area: clone, closed: [root], readOnly: [outside] };
+    expect(wallRefusesCall(received, clone, { file_path: join(outside, "plan.md") }, read)).toBe(false);
+    expect(wallRefusesCall(received, clone, { file_path: join(outside, "plan.md") }, write)).toBe(true);
+    expect(wallRefusesCall(received, clone, { file_path: "../../plan.md" }, read)).toBe(true);
+  });
+});

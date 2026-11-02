@@ -26,24 +26,44 @@ export interface WallFolders {
   readonly closed: readonly string[];
   /** Folders inside a closed one that the file tools still open, such as the engine's own data for this chat. */
   readonly open?: readonly string[];
+  /**
+   * Folders that the chat reads but never writes, even inside a closed one, such as a clone chat's
+   * project folder (#774). A closed folder inside one stays closed, such as the project's `repos/`.
+   */
+  readonly readOnly?: readonly string[];
 }
 
 /**
  * True when a file tool may not open `requested`: a path inside a closed folder, such as the vault,
  * but not inside the chat's own folder. A folder that holds a closed one is refused too, since a
- * search from it would reach in. The other files of the machine stay open, as the issue asks.
+ * search from it would reach in. A read-only folder refuses a write. The other files of the machine
+ * stay open, as the issue asks.
  */
-export function wallRefusesPath(wall: WallFolders, requested: string, cwd: string): boolean {
+export function wallRefusesPath(wall: WallFolders, requested: string, cwd: string, write = false): boolean {
   const real = realOf(requested, cwd);
   if (real === null) return true;
   const path = folded(real);
-  for (const folder of [wall.area, ...(wall.open ?? [])]) {
-    const opened = realFolder(folder);
-    if (opened !== null && isInside(folded(opened), path)) return false;
-  }
-  return wall.closed.some((closed) => {
+  const reaches = (closed: string): boolean => {
     const folder = realFolder(closed);
     return folder !== null && (isInside(folded(folder), path) || isInside(path, folded(folder)));
+  };
+  if (holds([wall.area, ...(wall.open ?? [])], path)) return false;
+  const readOnly = wall.readOnly ?? [];
+  // The closed folders inside a read-only one come first: they would open with it.
+  const closedInside = wall.closed.filter((closed) => {
+    const folder = realFolder(closed);
+    return folder !== null && holds(readOnly, folded(folder));
+  });
+  if (closedInside.some(reaches)) return true;
+  if (holds(readOnly, path)) return write;
+  return wall.closed.some(reaches);
+}
+
+/** True when one of the folders holds `path`, a folded real path. */
+function holds(folders: readonly string[], path: string): boolean {
+  return folders.some((folder) => {
+    const real = realFolder(folder);
+    return real !== null && isInside(folded(real), path);
   });
 }
 
@@ -52,7 +72,7 @@ export function wallRefusesPath(wall: WallFolders, requested: string, cwd: strin
  * checked from its fixed folder, the parts before its first wildcard. A `..` after a wildcard, an
  * extglob such as `+(.)`, and a character class with a dot, such as `[.]`, are refused.
  */
-export function wallRefusesPattern(wall: WallFolders, pattern: string, cwd: string): boolean {
+export function wallRefusesPattern(wall: WallFolders, pattern: string, cwd: string, write = false): boolean {
   if (/[+@!?*]\(/.test(pattern) || /\[[^\]]*\.[^\]]*\]/.test(pattern)) return true;
   const forms = expandBraces(pattern);
   if (forms === null) return true;
@@ -65,7 +85,7 @@ export function wallRefusesPattern(wall: WallFolders, pattern: string, cwd: stri
     // `/x` splits into an empty first part: the search starts at the root. `C:` alone is a drive.
     const absolute = parts[0] === "" && form.length > 0 ? sep : "";
     const base = /^[A-Za-z]:$/.test(fixed) ? `${fixed}${sep}` : `${absolute}${fixed}`;
-    return wallRefusesPath(wall, base === "" ? cwd : base, cwd);
+    return wallRefusesPath(wall, base === "" ? cwd : base, cwd, write);
   });
 }
 
@@ -259,10 +279,10 @@ export function wallRefusesCall(
     ...pathListKeys.flatMap((key) => strings(fields[key])),
   ].map((path) => (options.dropsAt && path.startsWith("@") ? path.slice(1) : path));
   return (
-    paths.some((path) => wallRefusesPath(wall, path, cwd)) ||
+    paths.some((path) => wallRefusesPath(wall, path, cwd, options.write)) ||
     options.patternKeys
       .flatMap((key) => strings(fields[key]))
-      .some((pattern) => wallRefusesPattern(wall, pattern, cwd)) ||
+      .some((pattern) => wallRefusesPattern(wall, pattern, cwd, options.write)) ||
     (options.write && paths.some((path) => isProtectedInArea(wall.area, path, cwd)))
   );
 }

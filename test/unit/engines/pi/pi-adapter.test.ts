@@ -782,6 +782,32 @@ describe("the file wall of a pi Project chat (#711)", () => {
     expect(await answer("bash", { command: "cat ../../AGENTS.md" }, area, area)).toBe(true);
   });
 
+  test("a chat in a clone reads its project's notes, writes none, and opens no other clone (#774)", async () => {
+    const project = join(folder, "Projects", "example-app");
+    const area = join(project, "repos", "clone-0");
+    mkdirSync(area, { recursive: true });
+    mkdirSync(join(project, "repos", "clone-1"), { recursive: true });
+    const wall = {
+      area,
+      closed: [folder, join(project, "repos")],
+      readable: [],
+      readOnly: [project],
+      socketFilter: true,
+    };
+    const answerIn = async (toolName: string, input: Record<string, unknown>): Promise<unknown> => {
+      const fake = new FakePi([{ records: asking(toolName, input) }]);
+      await drain(
+        engine(fake).runTurn(request({ mode: "project", appendSystemPrompt: null, startFolder: area, fileWall: wall })),
+      );
+      return (fake.runs[0]?.sent[1] as { confirmed?: boolean } | undefined)?.confirmed;
+    };
+    expect(await answerIn("read", { path: "../../plan.md" })).toBe(true);
+    expect(await answerIn("write", { path: "../../plan.md" })).toBe(false);
+    expect(await answerIn("edit", { path: join(project, "plan.md") })).toBe(false);
+    expect(await answerIn("read", { path: "../clone-1/a.ts" })).toBe(false);
+    expect(await answerIn("write", { path: "a.ts" })).toBe(true);
+  });
+
   test("the extension's refusal names no vault, and says that the path can be outside the chat's folder", () => {
     expect(approvalExtensionSource).toContain("outside this chat's folder");
     expect(approvalExtensionSource).not.toContain("vault");

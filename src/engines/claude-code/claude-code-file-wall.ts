@@ -12,7 +12,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallbackMatcher, HookEvent } from "@anthropic-ai/claude-agent-sdk";
 import type { FileWall } from "../../shared/engine-port.ts";
-import { wallRefusesCall, type WallFolders } from "../../shared/path-area.ts";
+import { isInside, wallRefusesCall, type WallFolders } from "../../shared/path-area.ts";
 
 /** What the agent reads when Eva refuses a path. It names no vault: the chat must not know of one. */
 export const outsideMessage = "This path is outside this chat's folder.";
@@ -156,6 +156,19 @@ export interface SandboxMachine {
   readonly platform: NodeJS.Platform;
 }
 
+/**
+ * A closed folder as the sandbox's `denyRead` names it. On macOS, the last rule that matches wins,
+ * and the sandbox adds a literal deny again after the allows. So a closed folder inside a read-only
+ * one, such as `repos/`, would close the chat's own clone there. Its glob form keeps the clone open
+ * (#774). The globs take no escape that Eva can count on, so each glob character becomes `?`, as in
+ * `hiddenInstructionPatterns`: it also matches a sibling with a similar name, which only closes more.
+ */
+function deniedFolder(wall: FileWall, folder: string, platform: NodeJS.Platform): string {
+  const nested = (wall.readOnly ?? []).some((readOnly) => readOnly !== folder && isInside(readOnly, folder));
+  if (!nested || platform !== "darwin") return folder;
+  return `${folder.replace(/[*?[\]{}()!+@]/g, "?")}/**`;
+}
+
 /** The sandbox of the chat's shell, in the shape of the `settings` option. */
 export function fileWallSandbox(
   wall: FileWall,
@@ -189,9 +202,9 @@ export function fileWallSandbox(
       ...(noFilter ? { allowAllUnixSockets: true } : {}),
     },
     filesystem: {
-      denyRead: [...wall.closed, ...socketFolders],
-      // The chat's folder, and the parts of Eva's folder that its git and its shell need.
-      allowRead: [wall.area, ...wall.readable, ...(noFilter ? nameServerPlaces : [])],
+      denyRead: [...wall.closed.map((folder) => deniedFolder(wall, folder, machine.platform)), ...socketFolders],
+      // The chat's folder, its read-only folders, and the parts of Eva's folder that its git and its shell need.
+      allowRead: [wall.area, ...(wall.readOnly ?? []), ...wall.readable, ...(noFilter ? nameServerPlaces : [])],
       // npm checks each package of its cache. The other tools use the temporary folder.
       allowWrite: [wall.area, tmpdir(), join(homedir(), ".npm", "_cacache")],
     },

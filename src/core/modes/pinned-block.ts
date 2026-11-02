@@ -8,6 +8,7 @@
  */
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { containsSecretPattern } from "../../shared/redaction.ts";
 import { lastLocationKey } from "../vault/about-me.ts";
 import { frontMatterPattern, oneLineSummary, type Project } from "../projects/project-catalog.ts";
 import { caseStatuses, periodStatuses, readWholeFile, type PinnedFile, type PinnedFiles } from "./pinned-files.ts";
@@ -61,7 +62,8 @@ export function pinnedBlock(input: PinnedBlockInput): PinnedBlock {
   for (const entry of orderedEntries(input)) {
     if (entry.full !== null) {
       const text = readWhole(entry.full.absolutePath);
-      const part = text === null ? null : fullPart(entry.full.path, text);
+      // A note can hold a key that no secret pattern of its name shows: only its summary line goes in.
+      const part = text === null || containsSecretPattern(text) ? null : fullPart(entry.full.path, text);
       if (part !== null && part.length <= fullLeft) {
         fullParts.push(part);
         fullLeft -= part.length;
@@ -153,7 +155,8 @@ function projectPath(project: Project): string {
 function projectLine(project: Project): string {
   const status = project.frontMatter.status;
   const head = `- ${project.title}, \`${projectPath(project)}\` (project${status === null ? "" : `, ${status}`})`;
-  return project.description === null ? head : `${head}: ${project.description}`;
+  if (project.description !== null) return `${head}: ${project.description}`;
+  return project.frontMatter.pinned === "full" ? `${head} (open it when needed)` : head;
 }
 
 /** One summary line: the path, the kind and status when it has them, the flags, then the summary. */
@@ -175,7 +178,9 @@ function fileLine(file: PinnedFile, today: string, project: Project | null): str
   const own = textField(file.fields, "summary");
   const summary =
     own === null ? (file.oldImportant === null ? null : oneLineSummary(file.oldImportant)) : oneLineSummary(own);
-  return `- \`${file.path}\`${about}${flags}${summary === null ? "" : `: ${summary}`}`;
+  // A full file that does not fit and has no summary still says that it holds more.
+  const end = summary !== null ? `: ${summary}` : file.pinned === "full" ? " (open it when needed)" : "";
+  return `- \`${file.path}\`${about}${flags}${end}`;
 }
 
 /** The marks of an open or waiting case: `DUE` when its next date has come, `DEADLINE` when its deadline is near or passed. */

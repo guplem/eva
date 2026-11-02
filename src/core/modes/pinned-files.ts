@@ -46,8 +46,13 @@ export interface PinnedFiles {
   readonly complete: boolean;
 }
 
-/** Enough for the front matter of a note, and for the line under its title. */
-const headBytes = 8 * 1024;
+/**
+ * Enough for most front matter. Eva reads more only for a front matter that the head does not
+ * close, so an ordinary vault stays far below the byte budget.
+ */
+const headBytes = 1024;
+/** Enough for the `> Important:` line under a title too, for one release. */
+const oldFormHeadBytes = 8 * 1024;
 /** The walk blocks the core while it runs, also when the person opens the chat details. */
 const maxVisitedEntries = 20_000;
 const maxReadBytes = 20_000_000;
@@ -71,24 +76,44 @@ export function findPinnedFiles(vaultPath: string, options: { readonly oldForm: 
     return { manual: [], entities: [], complete: true };
   }
   const secrets = secretMatcherOf(root);
+  const unread: string[] = [];
   const entities = entityFolders.flatMap((entity) =>
-    childFolders(join(root, entity.folder)).flatMap((name) => {
-      const path = `${entity.folder}/${name}/${entity.file}`;
-      const file = readPinnedFile(root, path, entity.kind, secrets, options.oldForm, null);
-      return file === null ? [] : [file];
-    }),
+    // A linked `Life/` or `Life/Cases/` could point out of the vault (lesson 72).
+    !isRealFolder(root, entity.folder)
+      ? []
+      : childFolders(join(root, entity.folder)).flatMap((name) => {
+          const path = `${entity.folder}/${name}/${entity.file}`;
+          const read = readPinnedFile(root, path, entity.kind, secrets, options.oldForm);
+          if (read.unread) unread.push(path);
+          return read.file === null ? [] : [read.file];
+        }),
   );
   const walk = walkVault(root, secrets, options.oldForm);
   const manual = new Map<string, PinnedFile>();
   for (const file of [...entities, ...walk.files]) {
     if ((file.pinned === "full" || file.pinned === "summary") && !manual.has(file.path)) manual.set(file.path, file);
   }
-  return { manual: [...manual.values()], entities, complete: walk.complete };
+  return { manual: [...manual.values()], entities, complete: unread.length === 0 && walk.complete };
 }
 
 /** The whole text of a full file, or null when it is too large, unsafe or gone. */
 export function readWholeFile(absolutePath: string): string | null {
-  return readBounded(absolutePath, maxFullBytes, true);
+  const read = readBounded(absolutePath, maxFullBytes);
+  return read === null || read.cut ? null : read.text;
+}
+
+/** True when each part of the path is a folder, not a link. */
+function isRealFolder(root: string, path: string): boolean {
+  let current = root;
+  for (const part of path.split("/")) {
+    current = join(current, part);
+    try {
+      if (!lstatSync(current).isDirectory()) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Breadth-first, so the files near the root come first when the budget runs out. */
@@ -98,6 +123,7 @@ function walkVault(
   oldForm: boolean,
 ): { readonly files: PinnedFile[]; readonly complete: boolean } {
   const files: PinnedFile[] = [];
+  let complete = true;
   const budget = { entries: maxVisitedEntries, bytes: maxReadBytes };
   const queue: string[] = [""];
   for (let folder = queue.shift(); folder !== undefined; folder = queue.shift()) {
@@ -111,26 +137,34 @@ function walkVault(
         continue;
       }
       if (!entry.name.toLowerCase().endsWith(".md")) continue;
-      budget.bytes -= headBytes;
-      const file = readPinnedFile(root, path, null, secrets, oldForm, budget);
-      if (file !== null) files.push(file);
+      const read = readPinnedFile(root, path, null, secrets, oldForm);
+      budget.bytes -= read.bytes;
+      if (read.unread) complete = false;
+      if (read.file !== null) files.push(read.file);
     }
   }
-  return { files, complete: true };
+  return { files, complete };
 }
 
-/** The old `Scratch/` at the root holds temporary files (#767), and a clone holds other chats' work. */
+/**
+ * The old `Scratch/` at the root holds temporary files (#767), and a clone holds other chats' work.
+ * A `node_modules` folder holds only code of others, and can hold many thousand files.
+ */
 function skippedFolder(path: string): boolean {
   const parts = path.toLowerCase().split("/");
+  if (parts.at(-1) === "node_modules") return true;
   if (parts.length === 1 && parts[0] === "scratch") return true;
   return parts[0] === "projects" && parts[2] === "repos" && parts.length === 3;
 }
 
-/** The folders and regular files of a folder, by name. A link or a special file is left out. */
+/**
+ * The folders and regular files of a folder, by name. A link or a special file is left out, and so
+ * is a name with a control character: a line break in a path could add a line to the prompt.
+ */
 function entriesOf(folder: string): { readonly name: string; readonly folder: boolean }[] {
   try {
     return readdirSync(folder, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() || entry.isFile())
+      .filter((entry) => (entry.isDirectory() || entry.isFile()) && !controlCharacter.test(entry.name))
       .map((entry) => ({ name: entry.name, folder: entry.isDirectory() }))
       .sort((first, second) => first.name.localeCompare(second.name));
   } catch {
@@ -138,50 +172,68 @@ function entriesOf(folder: string): { readonly name: string; readonly folder: bo
   }
 }
 
+// eslint-disable-next-line no-control-regex -- the pattern looks for control characters on purpose.
+const controlCharacter = /[\u0000-\u001f\u007f]/;
+
 function childFolders(folder: string): string[] {
   return entriesOf(folder)
     .filter((entry) => entry.folder && !entry.name.startsWith("."))
     .map((entry) => entry.name);
 }
 
-/** The file's front matter, or null when the file is not a plain note, or its front matter does not parse. */
+interface PinnedRead {
+  /** The file, or null when it is not pinned, not a plain note, or its front matter does not parse. */
+  readonly file: PinnedFile | null;
+  /** The bytes that Eva read, for the budget of the walk. */
+  readonly bytes: number;
+  /** True when the front matter is too long to read, so Eva cannot tell whether the file is pinned. */
+  readonly unread: boolean;
+}
+
 function readPinnedFile(
   root: string,
   path: string,
   kind: EntityKind | null,
   secrets: SecretPaths,
   oldForm: boolean,
-  budget: { bytes: number } | null,
-): PinnedFile | null {
+): PinnedRead {
+  const none = (bytes: number, unread = false): PinnedRead => ({ file: null, bytes, unread });
   // A secret never reaches the prompt, even with `pinned: full`.
-  if (secrets.matches(path)) return null;
+  if (secrets.matches(path)) return none(0);
   const absolutePath = join(root, path);
   try {
-    if (!lstatSync(absolutePath).isFile()) return null;
+    if (!lstatSync(absolutePath).isFile()) return none(0);
   } catch {
-    return null;
+    return none(0);
   }
-  const head = readBounded(absolutePath, headBytes, false);
-  if (head === null) return null;
-  if (budget !== null) budget.bytes += headBytes - Buffer.byteLength(head);
-  const text = head.replace(/^\uFEFF/, "");
+  let head = readBounded(absolutePath, oldForm ? oldFormHeadBytes : headBytes);
+  if (head === null) return none(0);
+  let bytes = head.bytes;
+  // A front matter that the head does not close: read up to the full-file limit for it.
+  if (head.cut && /^\uFEFF?---\r?\n/.test(head.text) && !frontMatterPattern.test(head.text.replace(/^\uFEFF/, ""))) {
+    head = readBounded(absolutePath, maxFullBytes);
+    if (head === null) return none(bytes);
+    bytes += head.bytes;
+  }
+  const text = head.text.replace(/^\uFEFF/, "");
   const match = frontMatterPattern.exec(text);
+  if (match === null && head.cut && text.startsWith("---")) return none(bytes, true);
   let fields: Record<string, unknown> = {};
   if (match !== null) {
     try {
       const parsed: unknown = parseYaml(match[1] ?? "", { schema: "failsafe" });
       // A bad front matter never breaks a chat: the file counts as not pinned (lesson 54).
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return none(bytes);
       fields = parsed as Record<string, unknown>;
     } catch {
-      return null;
+      return none(bytes);
     }
   }
   const value = fields["pinned"];
   const pinned = (pinnedValues as readonly unknown[]).includes(value) ? (value as PinnedValue) : null;
   const oldImportant = oldForm && !("pinned" in fields) ? importantLine(text.slice(match?.[0].length ?? 0)) : null;
-  if (pinned === null && oldImportant === null && kind === null) return null;
-  return {
+  if (pinned === null && oldImportant === null && kind === null) return none(bytes);
+  const file: PinnedFile = {
     path,
     absolutePath,
     kind,
@@ -189,22 +241,40 @@ function readPinnedFile(
     fields,
     oldImportant,
   };
+  return { file, bytes, unread: false };
 }
 
-/** The reason of a `> Important: <why>` line, when it is the first line under the title, or the first line of the body. */
+/**
+ * The reason of a `> Important: <why>` quote, when it is the first block under the title, or the
+ * first block of the body. A quote of several lines gives one line.
+ */
 function importantLine(body: string): string | null {
   const heading = titleHeading(body);
   const rest = heading === null ? body : body.slice(heading.index + heading.length);
-  const first = rest.split("\n").find((line) => line.trim() !== "") ?? "";
-  const why = /^>\s*Important:\s*(.+)$/.exec(first.trim())?.[1]?.trim();
-  return why === undefined || why === "" ? null : why;
+  const lines = rest.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() !== "");
+  if (start === -1 || !/^>\s*Important:/.test(lines[start]?.trim() ?? "")) return null;
+  const quote: string[] = [];
+  for (const line of lines.slice(start)) {
+    if (!line.trim().startsWith(">")) break;
+    quote.push(line.trim().replace(/^>\s?/, ""));
+  }
+  const why = quote
+    .join(" ")
+    .replace(/^Important:\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return why === "" ? null : why;
 }
 
 /**
  * At most `limit` bytes of a plain text file, or null. The open does not wait, so a pipe never
- * blocks the core. `whole` returns null for a larger file instead of its head.
+ * blocks the core. `cut` says that the file is larger than what Eva read.
  */
-function readBounded(absolutePath: string, limit: number, whole: boolean): string | null {
+function readBounded(
+  absolutePath: string,
+  limit: number,
+): { readonly text: string; readonly bytes: number; readonly cut: boolean } | null {
   let handle: number;
   try {
     handle = openSync(absolutePath, constants.O_RDONLY | noWait);
@@ -213,13 +283,17 @@ function readBounded(absolutePath: string, limit: number, whole: boolean): strin
   }
   try {
     const stats = fstatSync(handle);
-    if (!stats.isFile() || (whole && stats.size > limit)) return null;
+    if (!stats.isFile()) return null;
     const bytes = Buffer.alloc(Math.min(stats.size, limit));
     const read = bytes.subarray(0, readSync(handle, bytes, 0, bytes.length, 0));
     // An encrypted file holds no words of its own, whatever its name.
     if (encryptedState(read) !== "plain" || read.includes(0)) return null;
     // Not fatal: a head can cut a character in two.
-    return new TextDecoder("utf-8", { ignoreBOM: true }).decode(read);
+    return {
+      text: new TextDecoder("utf-8", { ignoreBOM: true }).decode(read),
+      bytes: read.length,
+      cut: stats.size > read.length,
+    };
   } catch {
     return null;
   } finally {

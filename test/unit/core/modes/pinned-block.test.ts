@@ -152,7 +152,7 @@ describe("pinnedBlock", () => {
     write("Notes/Huge.md", `---\npinned: full\n---\n${long}`);
     const shown = text();
     expect(shown).toContain("- `Notes/Big.md`: A big note.\n");
-    expect(shown).toContain("- `Notes/Huge.md`\n");
+    expect(shown).toContain("- `Notes/Huge.md` (open it when needed)\n");
     expect(shown).not.toContain("<pinned-file");
   });
 
@@ -213,6 +213,54 @@ describe("pinnedBlock", () => {
     expect(text()).toBe(
       "# Pinned files\n\nEva pins these files at the start of the chat, by their `pinned` field or their status. A summary line points to its file: open the file before you use what it holds.\n\n## Summaries\n\n- `Life/Cases/x/Case.md` (case, open)\n",
     );
+  });
+
+  test("never follows a linked Life/ or Life/Cases/ out of the vault", () => {
+    write("Outside/Cases/claim/Case.md", "---\nstatus: open\n---\n", root);
+    write("Outside/Life/Periods/job/Period.md", "---\nstatus: open\n---\n", root);
+    mkdirSync(join(vault, "Life"), { recursive: true });
+    symlinkSync(join(root, "Outside", "Cases"), join(vault, "Life", "Cases"), "junction");
+    expect(block().text).toBeNull();
+    rmSync(join(vault, "Life"), { recursive: true, force: true });
+    symlinkSync(join(root, "Outside", "Life"), join(vault, "Life"), "junction");
+    expect(block().text).toBeNull();
+  });
+
+  test("reads a long front matter whole, and says so when it is too long to read", () => {
+    write("Notes/Long.md", `---\nlist:\n${"  - item\n".repeat(300)}pinned: summary\n---\n`);
+    write("Notes/Huge.md", `---\nlist:\n${"  - item\n".repeat(9_000)}pinned: summary\n---\n`);
+    const result = block();
+    expect(result.text).toContain("- `Notes/Long.md`\n");
+    expect(result.text).not.toContain("Huge.md");
+    expect(result.complete).toBe(false);
+  });
+
+  test("a full note that holds a key shows only its summary line", () => {
+    write("Notes/Keys.md", `---\npinned: full\nsummary: The keys.\n---\ntoken ghp_${"a".repeat(36)}\n`);
+    const shown = text();
+    expect(shown).toContain("- `Notes/Keys.md`: The keys.\n");
+    expect(shown).not.toContain("ghp_");
+  });
+
+  test("skips a path with a control character and a node_modules folder", () => {
+    const pinned = "---\npinned: summary\n---\n";
+    if (process.platform !== "win32") write("Notes/bad\nname.md", pinned);
+    write("Code/node_modules/pkg/README.md", pinned);
+    expect(block().text).toBeNull();
+  });
+
+  test("before the hub migrates, a `> Important:` quote of several lines gives one summary line", () => {
+    write("Notes/Keys.md", "# Keys\n\n> Important: where the\n> spare key is\n\nUnder the mat.\n");
+    expect(text(true)).toContain("- `Notes/Keys.md`: where the spare key is\n");
+  });
+
+  test("an ordinary vault of many notes stays within the byte budget", () => {
+    const note = `---\ntags: [a]\n---\n${"word ".repeat(1_800)}\n`;
+    for (let index = 0; index < 2_600; index += 1) write(`Notes/${String(index)}.md`, note);
+    write("Zz/Late.md", "---\npinned: summary\n---\n");
+    const result = block();
+    expect(result.complete).toBe(true);
+    expect(result.text).toContain("Zz/Late.md");
   });
 });
 

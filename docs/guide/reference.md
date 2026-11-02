@@ -305,10 +305,10 @@ Eva knows some files in every chat with no search. At the start of each new chat
 
 How the block works:
 
-- **Order and limits.** The `full` files come first, then the `summary` files, each by path. Then come the cases with a mark, the other cases, the period and the projects. The block holds about 25 summary lines and about 2,000 tokens of full text. A full file that does not fit shows as its summary line. Over a limit, the block ends with "N more not shown", and Eva offers which files to unpin.
+- **Order and limits.** The `full` files come first, then the `summary` files, each by path. Then come the cases with a mark, the other cases, the period and the projects. The block holds about 25 summary lines and about 2,000 tokens of full text. A full file that does not fit shows as its summary line, or as its path with "(open it when needed)". A project outside `Projects/`, in `projectRoots`, always shows as a summary line, also with `pinned: full`. Over a limit, the block ends with "N more not shown", and Eva offers which files to unpin.
 - **Marks on a case.** `DUE` means that the case's `next` date has come. `DEADLINE` means that its deadline is 14 days away or less, or has passed. Eva counts the days in your time zone.
 - **Data, not orders.** A full file sits between markers that name its path, and Eva reads it as facts about you. Its front matter shows with no comments, no empty keys and no `lastLocation`.
-- **Safe.** The block never holds a secret file, an encrypted file, a link, a file in `.eva/`, in the old `Scratch/` folder or in a project's clones.
+- **Safe.** The block never holds a secret file, an encrypted file, a link, a file in `.eva/`, in the old `Scratch/` folder, in a `node_modules` folder or in a project's clones. A full file that holds a key or a token shows only as its summary line.
 - **Fixed for the chat.** A change to a pinned file shows in the next new chat. The chat details show the block under **Your pinned files**. A project chat gets no block.
 - **Older vaults.** An update of Eva gives each project of `Projects/` a `summary:` with its first paragraph. A note with a `> Important: <why>` line under its title gets `pinned: summary`, and the reason becomes its summary.
 

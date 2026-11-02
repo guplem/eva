@@ -139,4 +139,8 @@ describe("bellName (#761)", () => {
   test("says that something new waits when the dot shows", () => {
     expect(bellName({ ...signal, dot: true })).toBe("Notifications: something new waits");
   });
+
+  test("the count comes before the dot, as on the visor", () => {
+    expect(bellName({ count: 1, dot: true, alarm: false })).toBe("Notifications: 1 problem needs you");
+  });
 });

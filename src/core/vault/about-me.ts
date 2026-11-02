@@ -51,6 +51,8 @@ export const aboutMeHeaderKeys = [
   "diet",
   "allergies",
   "lastLocation",
+  "summary",
+  "pinned",
 ] as const;
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;

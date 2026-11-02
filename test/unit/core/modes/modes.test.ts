@@ -209,18 +209,44 @@ describe("Assistant mode", () => {
     });
   });
 
-  test("the prompt lists the projects that the person develops and uses after the rules (#690)", async () => {
+  test("the prompt gives the pinned files after the rules, with the active and in-use projects (#769)", async () => {
     addProject("2025-01-01-0900-website", "active", "# Website\n\nThe person's site.\n");
     addProject("2025-02-01-0900-recipes", "in-use", "# Recipes\n");
     addProject("2025-03-01-0900-old", "closed", "# Old\n");
     const prompt = (await assistant(silentRunner).prepare(session())).appendSystemPrompt ?? "";
-    expect(prompt).toStartWith("Base rules.\n\n# You are Eva\n\n# The person's projects\n\n");
-    expect(prompt).toContain("- Website (`2025-01-01-0900-website`): The person's site.\n");
-    expect(prompt).toContain("- Recipes (`2025-02-01-0900-recipes`)\n");
+    expect(prompt).toStartWith("Base rules.\n\n# You are Eva\n\n# Pinned files\n\n");
+    expect(prompt).toContain(
+      "- Website, `Projects/2025-01-01-0900-website/AGENTS.md` (project, active): The person's site.\n",
+    );
+    expect(prompt).toContain("- Recipes, `Projects/2025-02-01-0900-recipes/AGENTS.md` (project, in-use)\n");
     expect(prompt).not.toContain("2025-03-01-0900-old");
   });
 
-  test("the projects stay fixed for a chat while Eva runs, and a new chat gets the change (#690)", async () => {
+  test("a case flag counts from the date in the person's time zone (#769)", async () => {
+    mkdirSync(join(vault, "Life", "Cases", "claim"), { recursive: true });
+    writeFileSync(
+      join(vault, "Life", "Cases", "claim", "Case.md"),
+      "---\nstatus: open\nnext:\n  date: 2026-10-15\n---\n",
+    );
+    const at = (now: string): AssistantPreparer =>
+      assistant(silentRunner, new FakeSync(), [], { now: () => new Date(now), timeZone: "Asia/Tokyo" });
+    // 2026-10-14T16:00Z is already 15 October in Tokyo.
+    expect((await at("2026-10-14T16:00:00Z").prepare(session())).appendSystemPrompt).toContain("[DUE 2026-10-15]");
+    expect((await at("2026-10-14T14:00:00Z").prepare(session())).appendSystemPrompt).not.toContain("DUE");
+  });
+
+  test("the details say when the walk for pinned files stopped early, and the log warns (#769)", async () => {
+    for (let index = 0; index < 20_050; index += 1) writeFileSync(join(vault, `${String(index)}.txt`), "");
+    addProject("2025-01-01-0900-website", "active", "# Website\n");
+    const logged: string[] = [];
+    const part = (await assistant(silentRunner, new FakeSync(), logged).describe(session())).parts.find(
+      (each) => each.title === "Your pinned files",
+    );
+    expect(part?.note).toContain("The search stopped before it saw the whole vault");
+    expect(logged.some((line) => line.startsWith("The walk for pinned files stopped"))).toBe(true);
+  });
+
+  test("the pinned files stay fixed for a chat while Eva runs, and a new chat gets the change (#690, #769)", async () => {
     addProject("2025-01-01-0900-website", "active", "# Website\n");
     const preparer = assistant(silentRunner);
     const first = await preparer.prepare(session());
@@ -228,7 +254,7 @@ describe("Assistant mode", () => {
     addProject("2025-01-01-0900-website", "paused", "# Website\n");
     expect((await preparer.prepare(session())).appendSystemPrompt).toBe(first.appendSystemPrompt);
     const projectsPart = async (id: string): Promise<string | null | undefined> =>
-      (await preparer.describe(session({ id }))).parts.find((part) => part.title === "Your projects")?.text;
+      (await preparer.describe(session({ id }))).parts.find((part) => part.title === "Your pinned files")?.text;
     expect(await projectsPart("s1")).toContain("Website");
     const next = (await preparer.prepare(session({ id: "s2" }))).appendSystemPrompt ?? "";
     expect(next).toContain("Recipes");
@@ -237,11 +263,11 @@ describe("Assistant mode", () => {
     expect(await projectsPart("s3")).toContain("Recipes");
   });
 
-  test("with no project that the person develops or uses, the prompt and the details have no projects part", async () => {
+  test("with nothing pinned, the prompt and the details have no pinned part", async () => {
     addProject("2025-01-01-0900-someday", "idea", "# Someday\n");
     const preparer = assistant(silentRunner);
     expect((await preparer.prepare(session())).appendSystemPrompt).toBe("Base rules.\n\n# You are Eva\n");
-    expect((await preparer.describe(session())).parts.map((part) => part.title)).not.toContain("Your projects");
+    expect((await preparer.describe(session())).parts.map((part) => part.title)).not.toContain("Your pinned files");
   });
 
   test("before the hub migrates the vault, the prompt adds the sections that left the built-in prompt", async () => {
@@ -355,12 +381,12 @@ describe("Assistant mode", () => {
     expect(runner.runs).toEqual([]);
   });
 
-  test("the prompt gives the widget lines after the projects, fixed for the chat (#692)", async () => {
+  test("the prompt gives the widget lines after the pinned files, fixed for the chat (#692)", async () => {
     addProject("2025-01-01-0900-website", "active", "# Website\n");
     let lines = ["- Habits: Habits live in Life/Habits."];
     const preparer = assistant(silentRunner, new FakeSync(), [], { widgetLines: () => lines });
     const first = (await preparer.prepare(session())).appendSystemPrompt ?? "";
-    expect(first).toContain("# The person's projects");
+    expect(first).toContain("# Pinned files");
     expect(first).toEndWith(
       "\n# The person's widgets\n\n" + widgetsIntro + "\n\n- Habits: Habits live in Life/Habits.\n",
     );

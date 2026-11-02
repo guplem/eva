@@ -17,7 +17,9 @@ import type { SessionRecord } from "../sessions/session-store.ts";
 import { moveAssistantPersonality, withMovedSections } from "../migrations/assistant-rules-move.ts";
 import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 import { aboutMeProblemNote, readAboutMe } from "../vault/about-me.ts";
-import { projectsBlock } from "./projects-block.ts";
+import { pinFiles } from "../migrations/pinned-files.ts";
+import { pinnedBlock, type PinnedBlock } from "./pinned-block.ts";
+import { findPinnedFiles } from "./pinned-files.ts";
 import { VaultTurns, type TurnSnapshots, type VaultSyncPort } from "./vault-turns.ts";
 import { widgetsBlock } from "./widgets-block.ts";
 
@@ -38,7 +40,7 @@ export interface AssistantPreparerOptions {
   readonly timeZone: string;
   /** The MCP servers of every Assistant turn, such as the Google tools. */
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
-  /** The projects of the vault and of the extra roots, read at the first turn of each chat (#690). */
+  /** The projects of the vault and of the extra roots, read at the first turn of each chat for the pinned block. */
   readonly projects: () => readonly Project[];
   /** One line for each widget that is on, read at the first turn of each chat (#692). */
   readonly widgetLines?: () => readonly string[];
@@ -53,8 +55,8 @@ const pskillTimeoutMs = 30_000;
 /** The parts of the appended prompt that Eva reads from the vault at the first turn of a chat. */
 interface KeptPrompt {
   readonly rules: string;
-  /** Null when no project is active or in use. */
-  readonly projects: string | null;
+  /** The pinned files (#769). Its text is null when nothing is pinned. */
+  readonly pinned: PinnedBlock;
   /** Null when no widget is on. */
   readonly widgets: string | null;
 }
@@ -86,7 +88,7 @@ export class AssistantPreparer implements TurnPreparer {
     // A restart reads it again.
     const kept = this.promptBySession.get(session.id) ?? {
       rules: this.personalRules(personalRulesPath),
-      projects: projectsBlock(this.options.projects()),
+      pinned: this.pinnedBlockNow(),
       widgets: this.widgetsBlockNow(),
     };
     this.promptBySession.set(session.id, kept);
@@ -114,9 +116,9 @@ export class AssistantPreparer implements TurnPreparer {
     const kept = this.promptBySession.get(session.id);
     // A file that Eva cannot read must not break the whole details, so this read never throws.
     const onDisk = readTextTolerant(rulesPath);
-    // A running chat keeps the rules and the projects of its first turn since Eva started, even when they changed.
+    // A running chat keeps the rules and the pinned files of its first turn since Eva started, even when they changed.
     const rules = kept?.rules ?? (onDisk === null ? null : this.withPersonality(onDisk));
-    const projects = kept === undefined ? projectsBlock(this.options.projects()) : kept.projects;
+    const pinned = kept === undefined ? this.pinnedBlockNow() : kept.pinned;
     const widgets = kept === undefined ? this.widgetsBlockNow() : kept.widgets;
     const parts: ContextPart[] = [
       { group: "prompt", title: "Eva's prompt", source: null, text: this.options.basePrompt, note: null },
@@ -132,15 +134,15 @@ export class AssistantPreparer implements TurnPreparer {
             ? "Eva cannot read the file."
             : null,
       },
-      ...(projects === null
+      ...(pinned.text === null
         ? []
         : [
             {
               group: "prompt" as const,
-              title: "Your projects",
+              title: "Your pinned files",
               source: null,
-              text: projects,
-              note: "Eva lists the projects with the status Active or In use at the start of each chat. A change shows in the next chat.",
+              text: pinned.text,
+              note: pinnedNote(pinned),
             },
           ]),
       ...(widgets === null
@@ -175,11 +177,27 @@ export class AssistantPreparer implements TurnPreparer {
     });
   }
 
-  /** Eva's prompt, the person's rules, then the projects and the widgets, so the person's rules stay next to Eva's. */
+  /** Eva's prompt, the person's rules, then the pinned files and the widgets, so the person's rules stay next to Eva's. */
   private appendedPrompt(kept: KeptPrompt): string {
     let prompt = `${this.options.basePrompt}\n\n${kept.rules}`;
-    for (const block of [kept.projects, kept.widgets]) if (block !== null) prompt = `${prompt.trimEnd()}\n\n${block}`;
+    for (const block of [kept.pinned.text, kept.widgets])
+      if (block !== null) prompt = `${prompt.trimEnd()}\n\n${block}`;
     return prompt;
+  }
+
+  /** The walk runs in the core, also for the details of a chat that has not started, so it is bounded. */
+  private pinnedBlockNow(): PinnedBlock {
+    const vaultPath = this.options.vaultPath;
+    // Until the hub migrates the vault, a `> Important:` line still pins its note.
+    const oldForm = !migrationApplied(vaultMigrationRecordPath(vaultPath), pinFiles.id);
+    const block = pinnedBlock({
+      files: findPinnedFiles(vaultPath, { oldForm }),
+      projects: this.options.projects(),
+      today: formatLocalTime(this.options.now(), this.options.timeZone).slice(0, 10),
+    });
+    if (!block.complete)
+      this.options.logger?.log("warn", "The walk for pinned files stopped before it saw the whole vault.", {});
+    return block;
   }
 
   private widgetsBlockNow(): string | null {
@@ -265,6 +283,19 @@ export class AssistantPreparer implements TurnPreparer {
       return null;
     }
   }
+}
+
+/** How Eva picks the pinned files, and what the caps or the walk left out. */
+function pinnedNote(block: PinnedBlock): string {
+  const notes = [
+    "Eva pins the files with `pinned: full` or `pinned: summary`, the open and waiting cases, the open period, and the active and in-use projects, at the start of each chat. A change shows in the next chat.",
+  ];
+  if (block.notShown > 0)
+    notes.push(
+      `${String(block.notShown)} more ${block.notShown === 1 ? "file is" : "files are"} pinned than the limit lets in.`,
+    );
+  if (!block.complete) notes.push("The search stopped before it saw the whole vault, so a pinned file can be missing.");
+  return notes.join(" ");
 }
 
 /** The follow-up to the agent: each file and field, so it can fix the file. */

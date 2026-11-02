@@ -676,11 +676,25 @@ describe("Project mode", () => {
     expect(readFileSync(hint, "utf8")).toBe("The person's own rules for every clone.\n");
     expect(logs).toHaveLength(1);
     expect(logs[0]).toStartWith("warn: ");
-    // A file that Eva cannot write logs too, and the turn runs on.
+    // The same file logs once, not at each turn. A new text of it logs again.
+    await preparer.prepare(chat, deny);
+    expect(logs).toHaveLength(1);
+    writeFileSync(hint, "New rules of the person.\n");
+    await preparer.prepare(chat, deny);
+    expect(logs).toHaveLength(2);
+    // A file that exists but cannot be read is left as it is, with a log, and the turn runs on.
     rmSync(hint);
     mkdirSync(hint);
     await preparer.prepare(chat, deny);
-    expect(logs).toHaveLength(2);
+    expect(logs).toHaveLength(3);
+    expect(readdirSync(hint)).toEqual([]);
+  });
+
+  test("Eva rewrites her own `repos/AGENTS.md` when its text is old (#774)", async () => {
+    const hint = join(sandbox.root, "AGENTS.md");
+    writeFileSync(hint, `${evaFileMarker}\nThe notes are somewhere else.\n`);
+    await project(["owner"]).prepare(session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" }), deny);
+    expect(readFileSync(hint, "utf8")).toBe(cloneNotesFile);
   });
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {

@@ -9,6 +9,7 @@
  * no record of cloning, or that is not the folder she cloned, is asked about too, and the
  * answer holds for that folder only.
  */
+import { readFileSync } from "node:fs";
 import { basename, delimiter, dirname, join } from "node:path";
 import {
   isTrustedByDefault,
@@ -21,7 +22,7 @@ import {
 import type { WallRoots } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
-import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
+import { writeFileAtomic } from "../../shared/files.ts";
 import { withCloneMentions } from "../projects/clone-files.ts";
 import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
 import type {
@@ -55,6 +56,8 @@ export interface ProjectPreparerOptions {
 
 export class ProjectPreparer implements TurnPreparer {
   private readonly options: ProjectPreparerOptions;
+  /** The text of each `repos/AGENTS.md` that Eva left and logged, so she logs it once, not at each turn. */
+  private readonly leftFiles = new Map<string, string>();
 
   constructor(options: ProjectPreparerOptions) {
     this.options = options;
@@ -75,7 +78,7 @@ export class ProjectPreparer implements TurnPreparer {
             readOnly: [...(roots.readOnly ?? []), projectFolder],
           };
     // Before the engine starts: it reads its instruction files only then.
-    if (session.clone !== null) writeNotesFile(reposFolder, this.options.logger);
+    if (session.clone !== null) writeNotesFile(reposFolder, this.leftFiles, this.options.logger);
     return {
       startFolder: session.startFolder,
       projectFolder,
@@ -265,12 +268,21 @@ export const cloneNotesFile =
  * Writes the file when it is missing, or when it is Eva's and its text differs. A file that the
  * person wrote stays as it is. A turn runs on without the line: the chat still reads a note that the person mentions.
  */
-function writeNotesFile(reposFolder: string, logger: Logger | undefined): void {
+function writeNotesFile(reposFolder: string, leftFiles: Map<string, string>, logger: Logger | undefined): void {
   const path = join(reposFolder, "AGENTS.md");
-  const current = readTextTolerant(path);
+  let current: string | null;
+  try {
+    current = readFileSync(path, "utf8");
+  } catch (error) {
+    // Only a missing file is Eva's to write. A file that she cannot read may be the person's own:
+    // its error stands for its text, so it is left and logged once.
+    current = (error as NodeJS.ErrnoException).code === "ENOENT" ? null : `\0${String(error)}`;
+  }
   if (current === cloneNotesFile) return;
   if (current !== null && current.split(/\r?\n/)[0] !== evaFileMarker) {
-    logger?.log("warn", "A clone chat gets no line about the project's notes: repos/AGENTS.md is the person's own.", {
+    if (leftFiles.get(path) === current) return;
+    leftFiles.set(path, current);
+    logger?.log("warn", "A clone chat gets no line about the project's notes: Eva left repos/AGENTS.md as it is.", {
       path,
     });
     return;

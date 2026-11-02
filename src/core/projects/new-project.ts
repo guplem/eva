@@ -8,7 +8,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
-import type { ProjectType } from "./project-catalog.ts";
+import { oneLineSummary, type ProjectType } from "./project-catalog.ts";
 import type { ProjectStatus } from "../../shared/project-statuses.ts";
 import type { RepositoryVisibility } from "../vault/github-repositories.ts";
 import { applyProjectDetails, setRepositoryType } from "./project-file.ts";
@@ -195,7 +195,10 @@ function projectText(
     input.type === "specialist" ? newSpecialistLine : "",
   ];
   const body = parts.filter((part) => part !== "").join("\n\n");
-  return applyProjectDetails(`---\ncreated: ${wallClock}\n---\n\n${body}\n`, {
+  // The body keeps the whole description. A JSON string is a YAML string too, so `: ` stays one value.
+  const summary = oneLineSummary(description.split(/\n\s*\n/)[0] ?? "");
+  const summaryLine = summary === null ? "" : `summary: ${JSON.stringify(summary)}\n`;
+  return applyProjectDetails(`---\ncreated: ${wallClock}\n${summaryLine}---\n\n${body}\n`, {
     title,
     status: input.status,
     tags: input.tags,

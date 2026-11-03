@@ -39,7 +39,7 @@ describe("shellWallGap (#711)", () => {
 
   test("Linux without one of them says which to install, and runs nothing", async () => {
     const linux = machine("linux", ["socat"]);
-    const gap = (await shellWallGap(linux)) ?? "";
+    const gap = (await shellWallGap(linux))?.reason ?? "";
     expect(gap).toContain("bubblewrap");
     expect(gap).toContain("apt install bubblewrap socat");
     // The install command adds them, also for an Eva from before (#757).
@@ -53,17 +53,23 @@ describe("shellWallGap (#711)", () => {
       stdout: "",
       stderr: "bwrap: setting up uid map: Permission denied",
     }));
-    expect(await shellWallGap(denied)).toContain("cannot start on this computer: bwrap: setting up uid map");
+    expect((await shellWallGap(denied))?.reason).toContain("cannot start on this computer: bwrap: setting up uid map");
     const hangs = machine("linux", ["bwrap", "socat"], () => {
       throw new EvaError("process_timeout", "bwrap did not end in time.");
     });
-    expect(await shellWallGap(hangs)).toContain("bwrap did not end in time.");
+    expect((await shellWallGap(hangs))?.reason).toContain("bwrap did not end in time.");
   });
 
   test("macOS has its own sandbox, and native Windows has none that Eva can turn on", async () => {
     expect(await shellWallGap(machine("darwin", []))).toBeNull();
-    expect(await shellWallGap(machine("win32", []))).toContain("Windows");
-    expect(await shellWallGap(machine("freebsd", []))).toContain("freebsd");
+    expect((await shellWallGap(machine("win32", [])))?.reason).toContain("Windows");
+    expect((await shellWallGap(machine("freebsd", [])))?.reason).toContain("freebsd");
+  });
+
+  test("only a gap on Linux has a fix that the person can make (#825)", async () => {
+    expect((await shellWallGap(machine("linux", ["socat"])))?.fixable).toBe(true);
+    expect((await shellWallGap(machine("win32", [])))?.fixable).toBe(false);
+    expect((await shellWallGap(machine("freebsd", [])))?.fixable).toBe(false);
   });
 });
 

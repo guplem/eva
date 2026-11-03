@@ -87,6 +87,12 @@ describe("entryState", () => {
     expect(entryState(entry(1, "vault_structure", "warn"), new Set(["vault_structure"]))).toBeNull();
   });
 
+  test("gives a shell sandbox gap that is not open no state: on Windows it became news, not solved (#825)", () => {
+    expect(entryState(entry(1, "shell_wall", "warn"), new Set())).toBeNull();
+    expect(entryState(entry(1, "machine:laptop:shell_wall", "warn"), new Set())).toBeNull();
+    expect(entryState(entry(1, "shell_wall", "warn"), new Set(["shell_wall"]))).toBe("open");
+  });
+
   test("gives a one-off problem no state: it is never open, but not solved either", () => {
     expect(entryState(entry(1, "migration_failed:vault", "error"), new Set())).toBeNull();
     expect(entryState(entry(1, "unclean_exit", "warn"), new Set())).toBeNull();

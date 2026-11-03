@@ -7,7 +7,7 @@
  */
 import { closesFence, openingFencePattern } from "../../markdown-fence.ts";
 import { escapeHtml, inlineHtml, unescapeHtml } from "../../markdown-inline.ts";
-import { fileAddressOf, vaultPathOf } from "./file-paths.ts";
+import { fileAddressOf, vaultPathLabel, vaultPathOf } from "./file-paths.ts";
 
 const headingPattern = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const quotePattern = /^\s{0,3}>\s?(.*)$/;
@@ -37,15 +37,18 @@ export function toWebHtml(markdown: string, { vaultLinks = false }: { readonly v
 
 /**
  * Wraps each inline code span that names a vault path in a link to the Files page. The link
+ * shows only the name, and its title holds the full path: a path never holds a `"`. The link
  * stays in the tab, so the back button returns to the chat. A code block starts with `<pre>`,
  * and a code span inside a link keeps that link: HTML allows no link in a link.
  */
 function linkVaultPaths(html: string): string {
   return html.replace(/<a [^>]*>.*?<\/a>|(?<!<pre>)<code>([^<]*)<\/code>/g, (match, code: string | undefined) => {
     if (code === undefined) return match;
-    const path = vaultPathOf(unescapeHtml(code));
+    const text = unescapeHtml(code);
+    const path = vaultPathOf(text);
     if (path === null) return match;
-    return `<a class="vault-link" href="${fileAddressOf(path)}">${match}</a>`;
+    const label = escapeHtml(vaultPathLabel(text));
+    return `<a class="vault-link" href="${fileAddressOf(path)}" title="${escapeHtml(path)}"><code>${label}</code></a>`;
   });
 }
 

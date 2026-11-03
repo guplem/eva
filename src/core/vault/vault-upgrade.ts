@@ -23,8 +23,6 @@ import type { GitResult, VaultSync } from "./vault-sync.ts";
 
 export type UpgradeAction = "start" | "finish" | "drop" | "undo";
 
-export const upgradeActions: readonly UpgradeAction[] = ["start", "finish", "drop", "undo"];
-
 /** The message of each commit of the notes that other chats wrote during the upgrade. */
 const notesMessage = "Notes written during the upgrade";
 const upgradeMessage = (version: number): string => `Upgrade the vault structure to v${String(version)}`;

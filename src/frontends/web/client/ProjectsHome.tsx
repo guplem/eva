@@ -25,6 +25,13 @@ function colorStyle(project: Project | undefined): CSSProperties {
   return { "--project-color": projectColor(project?.parsedId.slug ?? "") } as CSSProperties;
 }
 
+/** Where the word of a bar goes: at its start, or before its end when the bar starts near the right edge. */
+function wordPlace(start: number, end: number): CSSProperties {
+  return start <= 0.75
+    ? { left: `${String(start * 100)}%` }
+    : { right: `${String((1 - end) * 100)}%`, paddingRight: "var(--space-2)" };
+}
+
 interface ChatRowsProps {
   readonly chats: readonly { readonly chat: SessionRecord; readonly state: ChatState }[];
   readonly projectOf: (chat: SessionRecord) => Project | undefined;
@@ -145,24 +152,24 @@ export function ProjectsHome({
         </div>
       </div>
       <div className="projects-home">
-        <NeedsYouCard chats={chats} projects={known} stateOf={stateOf} onOpenChat={onOpenChat} />
-        <section className="card home-card" aria-label="Recent">
-          <h2 className="home-card-title">Recent</h2>
-          {recent.length === 0 ? (
-            <span className="muted">{needsYou.length === 0 ? "No Project chats yet." : "No other chats yet."}</span>
-          ) : (
-            <ChatRows
-              chats={recent.map((chat) => ({ chat, state: null }))}
-              projectOf={projectOf}
-              onOpenChat={onOpenChat}
-              now={now}
-            />
-          )}
-        </section>
         {projects === null ? (
-          <CardsSkeleton label="Loading the projects…" cards={2} />
+          <CardsSkeleton label="Loading the projects…" cards={3} />
         ) : (
           <>
+            <NeedsYouCard chats={chats} projects={known} stateOf={stateOf} onOpenChat={onOpenChat} />
+            <section className="card home-card" aria-label="Recent">
+              <h2 className="home-card-title">Recent</h2>
+              {recent.length === 0 ? (
+                <span className="muted">{needsYou.length === 0 ? "No Project chats yet." : "No other chats yet."}</span>
+              ) : (
+                <ChatRows
+                  chats={recent.map((chat) => ({ chat, state: null }))}
+                  projectOf={projectOf}
+                  onOpenChat={onOpenChat}
+                  now={now}
+                />
+              )}
+            </section>
             <section className="card home-card" aria-label="Timeline">
               <h2 className="home-card-title">Timeline</h2>
               {shown.rows.length === 0 ? (
@@ -199,7 +206,7 @@ export function ProjectsHome({
                         />
                         {/* A state shows with a word too, never with colour alone. */}
                         {row.status === "paused" && (
-                          <span className="timeline-word" style={{ left: `${String(row.start * 100)}%` }}>
+                          <span className="timeline-word" style={wordPlace(row.start, row.end)}>
                             Paused
                           </span>
                         )}

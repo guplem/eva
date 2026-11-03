@@ -116,11 +116,6 @@
   white-space: nowrap;
 }
 
-/* The last mark ends at the right edge, so it stays inside the card. */
-.timeline-marks span:last-child:not(:first-child) {
-  transform: translateX(-100%);
-}
-
 /* A narrow timeline has no room for twelve months: it names every third one. */
 @container (max-width: 560px) {
   .timeline-marks.months span:not(:nth-child(3n + 1)) {

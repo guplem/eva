@@ -37,6 +37,7 @@ describe("parseFrontMatter", () => {
     expect(result.frontMatter).toEqual({
       created: "2025-03-02T10:15",
       status: "active",
+      closed: null,
       repos: ["https://github.com/owner/app"],
       tags: ["work", "tool"],
       legacyId: "P93",

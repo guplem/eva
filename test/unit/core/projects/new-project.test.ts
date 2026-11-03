@@ -370,3 +370,14 @@ describe("createProject", () => {
     expect(existsSync(join(projectsFolder(), "2026-10-21-1542-two-lines"))).toBe(false);
   });
 });
+
+describe("a project created as closed (#826)", () => {
+  test("closes on the day it is created", async () => {
+    const result = await createProject(
+      { ...input, status: "closed", description: "", tags: [] },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      noSteps,
+    );
+    expect(fileOf(result.projectId)).toContain("status: closed\nclosed: 2026-10-21\n");
+  });
+});

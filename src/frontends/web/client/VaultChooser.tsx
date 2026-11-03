@@ -43,7 +43,10 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
       context.noteAndReload(
         result.problem === null
           ? `${where} Press Restart now so that Eva uses it.`
-          : `${where} It is only on this computer: ${result.problem}`,
+          : result.repository === null
+            ? `${where} It is only on this computer: ${result.problem}`
+            : // A pushed vault can still have a problem, such as settings that Eva could not save (#770).
+              `${where} ${result.problem} Press Restart now so that Eva uses it.`,
       );
       // The buttons stay off after a success: the card shows the vault once the setup loads again.
     } catch (error) {
@@ -227,6 +230,9 @@ function NewVault({
         .filter((topic) => topic !== ""),
       // With no token, the vault stays on this computer, and the page offers the push later.
       repository: hasToken ? repository : "",
+      // The person's own forms, since the hub is often a server with none (#770).
+      locale: navigator.language,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   };
   return (

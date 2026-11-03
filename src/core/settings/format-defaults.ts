@@ -1,7 +1,10 @@
 /**
  * The format settings of a new vault (#770). Setup asks only for the answer language. The time
  * zone, the clock, the week start and the units come from the computer that runs setup ("Plug and
- * play" in `AGENTS.md`). A setting that holds a value, such as one that a cloned vault brought, stays.
+ * play" in `AGENTS.md`): the web page sends the browser's locale and zone, since the hub is often
+ * a server with no locale of its own. A computer with no locale set leaves the forms empty, never
+ * the US forms of the engine's fallback. A setting that holds a value, such as one that a cloned
+ * vault brought, stays.
  */
 import type { Clock, Units, WeekStart } from "../../shared/time-format.ts";
 import { weekStarts } from "../../shared/time-format.ts";
@@ -10,7 +13,8 @@ import { changeSettings, loadSettings } from "./settings.ts";
 
 export interface LocalFormats {
   readonly timeZone: string;
-  readonly clock: Clock;
+  /** Null when the computer has no locale set. */
+  readonly clock: Clock | null;
   /** Null when this JavaScript engine cannot tell the locale's week. */
   readonly weekStart: WeekStart | null;
   /** Null for a locale with no region. */
@@ -20,8 +24,30 @@ export interface LocalFormats {
 /** The regions that measure in imperial units. */
 const imperialRegions = new Set(["US", "LR", "MM"]);
 
-/** The forms of a locale, such as `en-US`. No locale: the computer's own. */
-export function localFormats(locale?: string): LocalFormats {
+/** The variables that set a computer's locale. With none, or only `C` or `POSIX`, the engine falls back to `en-US`. */
+const localeVariables = ["LC_ALL", "LC_TIME", "LC_MESSAGES", "LANG"] as const;
+
+/** True when the computer names a real locale, such as `es_ES.UTF-8`. Windows and macOS always have one. */
+export function hasLocale(environment: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  if (process.platform === "win32" || process.platform === "darwin") return true;
+  return localeVariables.some((name) => {
+    const value = environment[name]?.trim() ?? "";
+    return value !== "" && !/^(C|POSIX)([._@].*)?$/.test(value);
+  });
+}
+
+/**
+ * The forms of a locale, such as `en-US`. No locale: the computer's own, or no forms when the
+ * computer has none set. An unknown locale or zone, such as a bad one from a page, is skipped.
+ */
+export function localFormats(locale?: string, timeZone?: string, machineHasLocale = hasLocale()): LocalFormats {
+  const zone = validZone(timeZone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const given = validLocale(locale);
+  if (given === undefined && !machineHasLocale) return { timeZone: zone, clock: null, weekStart: null, units: null };
+  return { ...formsOf(given), timeZone: zone };
+}
+
+function formsOf(locale: string | undefined): LocalFormats {
   const format = new Intl.DateTimeFormat(locale, { hour: "numeric" });
   const options = format.resolvedOptions();
   const hourCycle = options.hourCycle;
@@ -32,6 +58,25 @@ export function localFormats(locale?: string): LocalFormats {
     weekStart: weekStartOf(parsed),
     units: parsed.region === undefined ? null : imperialRegions.has(parsed.region) ? "imperial" : "metric",
   };
+}
+
+function validLocale(locale: string | undefined): string | undefined {
+  if (locale === undefined || locale.trim() === "") return undefined;
+  try {
+    return new Intl.Locale(locale.trim()).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function validZone(timeZone: string | undefined): string | undefined {
+  if (timeZone === undefined || timeZone.trim() === "") return undefined;
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: timeZone.trim() });
+    return timeZone.trim();
+  } catch {
+    return undefined;
+  }
 }
 
 /** `getWeekInfo()` in newer engines, `weekInfo` in older ones. `firstDay` counts Monday as 1 and Sunday as 7. */
@@ -59,7 +104,7 @@ export function newVaultSettings(
   return {
     language,
     ...(config.timeZone === null ? { timeZone: local.timeZone } : {}),
-    ...(config.clock === null ? { clock: local.clock } : {}),
+    ...(config.clock === null && local.clock !== null ? { clock: local.clock } : {}),
     ...(config.weekStart === null && local.weekStart !== null ? { weekStart: local.weekStart } : {}),
     ...(config.units === null && local.units !== null ? { units: local.units } : {}),
   };

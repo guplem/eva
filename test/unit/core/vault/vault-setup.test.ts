@@ -144,6 +144,27 @@ describe("VaultSetup", () => {
     expect(await setup(api.baseUrl).needsPush()).toBe(false);
   });
 
+  test("a new vault takes the formats and the zone of the browser, since the hub may have none (#770)", async () => {
+    const result = await setup().create({
+      ...answers,
+      repository: "",
+      language: "Spanish",
+      locale: "es-ES",
+      timeZone: "Europe/Madrid",
+    });
+    expect(result.problem).toBeNull();
+    const settings = JSON.parse(
+      readFileSync(join(result.folder, ".eva", "settings", "settings.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(settings).toMatchObject({
+      language: "Spanish",
+      timeZone: "Europe/Madrid",
+      clock: "24h",
+      weekStart: "monday",
+      units: "metric",
+    });
+  });
+
   test("a failed create keeps the local vault, and a push later puts it on GitHub", async () => {
     const api = fakeApi();
     api.created.push("taken");

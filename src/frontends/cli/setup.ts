@@ -775,7 +775,14 @@ async function offerNewVault(
     },
   });
   // The vault folder is saved, so the answer language and this computer's formats go to the vault (#770).
-  saveNewVaultSettings(homePaths(options.paths.root), language);
+  try {
+    saveNewVaultSettings(homePaths(options.paths.root), language);
+  } catch (error) {
+    // A broken settings file must not stop the new vault.
+    options.write(
+      `Eva could not save the answer language and the formats: ${error instanceof Error ? error.message : String(error)} Set them later with eva settings set.`,
+    );
+  }
   options.write(`Created a new vault in ${folder}.`);
   await offerVaultPush(options, folder, ask);
 }

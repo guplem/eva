@@ -15,7 +15,7 @@ const fields = [
   "nickname:",
   "pronouns:",
   "birthDate: # YYYY-MM-DD",
-  "region: # ISO 3166 code, such as US or US-CA",
+  "region: # ISO 3166 code, such as ES or ES-CT",
   "hemisphere: # north or south",
   "units: # metric or imperial",
   "clock: # 24h or 12h",

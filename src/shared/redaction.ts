@@ -7,8 +7,13 @@
 const replacement = "[redacted]";
 const shortestSecretLength = 8;
 
-const secretPatterns: readonly RegExp[] = [
+/** A shape with no fixed prefix: random bytes, such as a photo's, can match it by chance. */
+const looseSecretPatterns: readonly RegExp[] = [
   /\b\d{6,12}:[A-Za-z0-9_-]{30,}\b/g, // Telegram bot token
+];
+
+/** A shape with a fixed prefix or a header, which no random bytes match by chance. */
+const fixedSecretPatterns: readonly RegExp[] = [
   /\bsk-ant-[A-Za-z0-9_-]{10,}\b/g, // Anthropic key or OAuth token
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, // GitHub classic token
   /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, // GitHub fine-grained token
@@ -22,6 +27,11 @@ const secretPatterns: readonly RegExp[] = [
   // A private key, or a header alone when the key is cut short: up to the END line, or to the end of the text.
   /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|[\s\S]*$)/g,
 ];
+
+const secretPatterns: readonly RegExp[] = [...looseSecretPatterns, ...fixedSecretPatterns];
+
+/** Git's rule: a NUL byte in the first 8000 bytes marks a binary file. */
+const binaryWindowBytes = 8000;
 
 export class Redactor {
   private readonly knownSecrets: string[];
@@ -52,7 +62,21 @@ export class Redactor {
 
 /** True when the text holds a well-known secret shape. Used by the vault secret scan. */
 export function containsSecretPattern(text: string): boolean {
-  return secretPatterns.some((pattern) => {
+  return matchesAny(secretPatterns, text);
+}
+
+/**
+ * True when a file's bytes hold a well-known secret shape. A binary file, marked as git marks one,
+ * is scanned only for the shapes with a fixed prefix or a header: a photo can match a loose shape by
+ * chance, but an archive or a database that holds a token still counts.
+ */
+export function bytesContainSecretPattern(bytes: Uint8Array): boolean {
+  const binary = bytes.subarray(0, binaryWindowBytes).includes(0);
+  return matchesAny(binary ? fixedSecretPatterns : secretPatterns, new TextDecoder().decode(bytes));
+}
+
+function matchesAny(patterns: readonly RegExp[], text: string): boolean {
+  return patterns.some((pattern) => {
     pattern.lastIndex = 0;
     const found = pattern.test(text);
     pattern.lastIndex = 0;

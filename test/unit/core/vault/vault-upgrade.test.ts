@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { VaultUpgrade } from "../../../../src/core/vault/vault-upgrade.ts";
@@ -185,6 +185,55 @@ describe("finish", () => {
     expect(branch()).toBe("upgrade-v3");
     expect(readVaultStructure(vault)).toBe(2);
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).not.toContain("Keys.md");
+  });
+
+  test("merges a moved file that was already on main, even one whose text matches a token shape", async () => {
+    // A note that came in before the scan knew its shape: moving it is no new risk.
+    sandbox.write(vault, "Life/Car/Old key.md", `key: sk-ant-${"a".repeat(30)}\n`);
+    sandbox.git(vault, "add", "Life/Car/Old key.md");
+    sandbox.git(vault, "commit", "-q", "-m", "An old note", "--", "Life/Car/Old key.md");
+    await upgrade().upgrade.run("start");
+    mkdirSync(join(vault, "Toolbox"), { recursive: true });
+    sandbox.git(vault, "mv", "Life/Car/Old key.md", "Toolbox/Old key.md");
+    sandbox.git(vault, "commit", "-q", "-m", "Move the note", "--", "Life/Car/Old key.md", "Toolbox/Old key.md");
+    await upgrade().upgrade.run("finish");
+    expect(readVaultStructure(vault)).toBe(3);
+    expect(remoteFile("Toolbox/Old key.md")).toContain("sk-ant-");
+  });
+
+  test("merges a new binary file whose bytes happen to match a loose token shape", async () => {
+    await upgrade().upgrade.run("start");
+    const photo = Buffer.concat([Buffer.from([0xff, 0xd8, 0x00]), Buffer.from(`123456789:${"b".repeat(35)}`)]);
+    mkdirSync(join(vault, "Life/Cases"), { recursive: true });
+    writeFileSync(join(vault, "Life/Cases/Photo.jpg"), photo);
+    sandbox.git(vault, "add", "Life/Cases/Photo.jpg");
+    sandbox.git(vault, "commit", "-q", "-m", "A photo", "--", "Life/Cases/Photo.jpg");
+    await upgrade().upgrade.run("finish");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Life/Cases/Photo.jpg");
+  });
+
+  test("still refuses a binary archive that holds a token", async () => {
+    await upgrade().upgrade.run("start");
+    const archive = Buffer.concat([
+      Buffer.from("dotfiles/.env"),
+      Buffer.alloc(100),
+      Buffer.from(`ghp_${"f".repeat(36)}`),
+    ]);
+    writeFileSync(join(vault, "Life/Car/backup.tar"), archive);
+    sandbox.git(vault, "add", "Life/Car/backup.tar");
+    sandbox.git(vault, "commit", "-q", "-m", "An archive", "--", "Life/Car/backup.tar");
+    expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Life/Car/backup.tar");
+  });
+
+  test("still refuses a plain binary file at a secret-file path", async () => {
+    await upgrade().upgrade.run("start");
+    writeFileSync(join(vault, "Life/Car/Key.bin"), Buffer.from([0x00, 0x01, 0x02]));
+    sandbox.git(vault, "add", "Life/Car/Key.bin");
+    sandbox.git(vault, "commit", "-q", "-m", "A key file", "--", "Life/Car/Key.bin");
+    const { upgrade: command, sync } = upgrade();
+    sync.isPlainSecret = (path) => path === "Life/Car/Key.bin";
+    expect(await refusal(command.run("finish"))).toContain("Life/Car/Key.bin");
+    expect(readVaultStructure(vault)).toBe(2);
   });
 
   test("refuses on a satellite and with no upgrade open", async () => {

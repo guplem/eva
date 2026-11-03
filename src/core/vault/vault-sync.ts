@@ -8,7 +8,7 @@ import { join, posix, sep } from "node:path";
 import type { Logger } from "../../shared/logger.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
-import { containsSecretPattern } from "../../shared/redaction.ts";
+import { bytesContainSecretPattern } from "../../shared/redaction.ts";
 import { plainSecretsIn } from "./plain-secrets.ts";
 import { scratchFolderOf } from "../files/scratch-folders.ts";
 import { keepsOldScratch, scratchFolders } from "../files/vault-files.ts";
@@ -1235,7 +1235,7 @@ export class VaultSync {
       if (!info.isFile()) return null;
       if (info.size > maxCommittedFileBytes) return "too_large";
       if (info.size > maxScannedFileBytes) return null;
-      return containsSecretPattern(readFileSync(absolutePath, "utf-8")) ? "secret" : null;
+      return bytesContainSecretPattern(readFileSync(absolutePath)) ? "secret" : null;
     } catch {
       return null;
     }

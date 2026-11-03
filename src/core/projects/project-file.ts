@@ -52,7 +52,7 @@ function changedClosed(
   details: ProjectDetails,
   source: string,
 ): FrontMatterChanges {
-  const status = details.status === current.status ? current.status : details.status;
+  const status = details.status;
   // A project that opens again has no closing date. A date with no status change stays as it is.
   if (status !== "closed") return current.status === "closed" && hasKey(source, "closed") ? { closed: null } : {};
   const closed = details.closed?.trim() ?? "";

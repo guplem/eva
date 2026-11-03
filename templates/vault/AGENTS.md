@@ -11,7 +11,7 @@ The vault has three parts: the person's life, what they build, and what they kno
 | Folder | What goes here | Not here |
 | --- | --- | --- |
 | `Life/About me.md` | The basics only: name, birthday, their own phone and email, region, home address, current job, languages. | Anything else about them → the folders below. |
-| `Life/Cases/` | Matters the person deals with. A case has a goal and some steps, and it closes when the goal is reached or dropped. It lasts days or months. A claim, a refund, a dispute, a fine, this year's tax return, a trip (also a work trip), a party, a move, a surgery, a therapy, a job application, buying or selling a home or a car, a short paid job, buying or organizing a gift. | One reminder with a date and nothing else to keep → the task app. Something that already happened and needs no follow-up → one dated line in the note of what it was about, such as a repair in the object's note. |
+| `Life/Cases/` | Matters the person deals with. A case has a goal and some steps, and it closes when the goal is reached or dropped. It lasts days or months. To tell a case from a project, ask: does something built remain after the work ends? No, it only resolves a matter → a case. A claim, a refund, a dispute, a fine, this year's tax return, a trip (also a work trip), a party, a move, a surgery, a therapy, a job application, buying or selling a home or a car, a short paid job, buying or organizing a gift. | One reminder with a date and nothing else to keep → the task app. Something that already happened and needs no follow-up → one dated line in the note of what it was about, such as a repair in the object's note. |
 | `Life/Objects/` | Things the person has or uses, even when someone else owns them: a car, a home (also one they left), a phone, a laptop, a borrowed bike, a rented parking space. Each thing's contracts and insurance go in its folder: the car insurance, the rent, the mortgage, electricity, internet at home. | A thing of someone else that the person does not use → a line in its owner's `Person.md`. |
 | `Life/People/` | One folder for each person who matters. What the person knows about them: who they are to them, tastes, allergies, gift ideas, history, agreements made with them, such as a rule a couple sets. | Their phone, email and birthday → the contacts app. A day spent together → `Diary/`. |
 | `Life/Pets/` | The pets that live with the person, also a foster pet. | A pet of someone else → a line in its owner's `Person.md`. |
@@ -24,7 +24,7 @@ The vault has three parts: the person's life, what they build, and what they kno
 
 | Folder | What goes here | Not here |
 | --- | --- | --- |
-| `Projects/` | Things that last after the work ends: an app, a website, a game, a book, the slides of a talk, an album, an app built at a job or a hackathon, and Eva's specialists, such as a tutor that helps the person prepare exams during a master's. An idea for one is a project with status `idea`. | A job → a period. |
+| `Projects/` | Work that leaves something built. To tell a project from a case, ask: does something built remain after the work ends? Yes → a project, even when it has a goal, steps and an end. An app, a website, a game, a book, the slides of a talk, an album, a building, such as classrooms built for a school, an app built at a job or a hackathon, and Eva's specialists, such as a tutor that helps the person prepare exams during a master's. An idea for one is a project with status `idea`. | A job → a period. |
 
 ### What they know
 
@@ -63,8 +63,8 @@ Go down this list in order. Stop at the first yes. _What is where_ says what eac
 
 1. It belongs outside the vault → _Outside the vault_.
 2. One of the basics → `Life/About me.md`.
-3. Something built that lasts, or a specialist → `Projects/`.
-4. A matter being handled, with steps, that ends → `Life/Cases/`.
+3. Something built remains after the work ends, even when the work has a goal, steps and an end, or a specialist → `Projects/`.
+4. A matter being handled, with steps, that ends and leaves nothing built → `Life/Cases/`.
 5. About a thing or a home → `Life/Objects/`.
 6. About a person → `Life/People/`. About a pet → `Life/Pets/`.
 7. About a stage of life → `Life/Periods/`.

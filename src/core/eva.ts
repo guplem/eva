@@ -164,6 +164,8 @@ import type { UndoPreview } from "./vault/vault-snapshots.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
 import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
+import { formatSettingsOf } from "./modes/format-block.ts";
+import type { DisplayFormat } from "../shared/time-format.ts";
 import { LocationKeeper, type LocationInput, type LocationSource } from "./location/last-location.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
@@ -378,6 +380,8 @@ export interface EvaStatus {
   readonly chatBlocker: ChatBlocker | null;
   /** True when this machine can turn a voice note into text. */
   readonly voiceNotes: boolean;
+  /** The clock and the first day of the week that the screens follow (#770). */
+  readonly format: DisplayFormat;
 }
 
 /** The Setup section: the settings' state, and the progress list. */
@@ -760,6 +764,8 @@ export class Eva {
           timeZone: options.config.timeZone ?? "UTC",
           todayTimeZone: options.config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
           mcpServers: this.assistantMcpServers(),
+          // From memory: a save on the Settings page reaches the next new chat with no restart.
+          formatSettings: () => formatSettingsOf(this.settings.config, vaultPath),
           projects: () => this.projects(),
           // Read at each call: the widgets exist only after the session manager.
           widgetLines: () => this.widgets?.formats.promptLines() ?? [],
@@ -1715,7 +1721,14 @@ export class Eva {
       setupMissing: missingSteps(progress),
       chatBlocker: this.chatBlocker(progress),
       voiceNotes: this.transcribe !== null,
+      format: this.displayFormat(),
     };
+  }
+
+  /** The person's clock and week start, with the old About me fields while the hub has not moved them. */
+  displayFormat(): DisplayFormat {
+    const { clock, weekStart } = formatSettingsOf(this.settings.config, this.options.config.vaultPath);
+    return { clock, weekStart };
   }
 
   /** Turns a voice note into text on this machine. Throws `voice_unavailable` with no whisper model. */

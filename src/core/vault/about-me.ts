@@ -10,6 +10,9 @@ import { parse as parseYaml } from "yaml";
 import { readJsonTolerant, readTextTolerant } from "../../shared/files.ts";
 import { frontMatterPattern } from "../projects/project-catalog.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { isClock, isUnits, isWeekStart, type Clock, type Units, type WeekStart } from "../../shared/time-format.ts";
+import { moveFormatSettings } from "../migrations/format-settings.ts";
+import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 
 const gitTimeoutMs = 20_000;
 
@@ -38,27 +41,29 @@ export const aboutMeHeaderKeys = [
   "nickname",
   "pronouns",
   "birthDate",
+  "contact",
   "region",
   "hemisphere",
-  "units",
-  "clock",
-  "weekStart",
-  "sleep",
-  "work",
   "places",
+  "work",
+  "languages",
+  "lastLocation",
+  "summary",
+  "pinned",
+  // Old personal fields, still valid until the vault upgrade (#773) files them with the person.
+  "sleep",
   "people",
   "dates",
   "diet",
   "allergies",
-  "lastLocation",
-  "summary",
-  "pinned",
 ] as const;
+
+/** The header fields that became Eva settings on 2026-11-03 (#770). */
+const movedFormatKeys = ["units", "clock", "weekStart"] as const;
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 const regionPattern = /^[A-Z]{2}(-[A-Z0-9]{1,3})?$/;
-const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
 const dateProblem = "must be a date as YYYY-MM-DD.";
 /** A birthday may have no year, as `--MM-DD`: people often say only the day. */
@@ -133,9 +138,13 @@ export function readAboutMe(vaultPath: string): AboutMe {
     "must be a country code, such as ES, or a region code, such as ES-CT.",
   );
   const hemisphere = text1("hemisphere", (value) => value === "north" || value === "south", "must be north or south.");
-  text1("clock", (value) => value === "12h" || value === "24h", "must be 12h or 24h.");
-  text1("units", (value) => value === "metric" || value === "imperial", "must be metric or imperial.");
-  text1("weekStart", (value) => days.includes(value), "must be a day, such as monday.");
+  // Before the hub migrates, Eva still reads these fields, so the agent must not move them yet.
+  if (migrationApplied(vaultMigrationRecordPath(vaultPath), moveFormatSettings.id))
+    for (const key of movedFormatKeys)
+      if (key in header)
+        problems.push(
+          `${key} is an Eva setting now: set it in Eva's Settings, or with eva settings set ${key}, then remove the field from this note.`,
+        );
   checkHours(header, "sleep", problems);
   checkHours(header, "work", problems);
   if (!isEmpty(header["places"]) && !isMap(header["places"])) problems.push("places must be a set of named places.");
@@ -145,6 +154,30 @@ export function readAboutMe(vaultPath: string): AboutMe {
     if (!isEmpty(header[key]) && !Array.isArray(header[key])) problems.push(`${key} must be a list.`);
   }
   return { name, birthDate, region, hemisphere: hemisphere as Hemisphere | null, problems };
+}
+
+/** The format fields of the header before 2026-11-03 (#770). Null for a bad, empty or missing one. */
+export interface OldFormatFields {
+  readonly units: Units | null;
+  readonly clock: Clock | null;
+  readonly weekStart: WeekStart | null;
+}
+
+/**
+ * The valid format fields of the header. A satellite reads them while the hub has not moved them
+ * to the settings yet. Remove this one release after #770.
+ */
+export function readOldFormatFields(vaultPath: string): OldFormatFields {
+  const header = readHeader(vaultPath);
+  const field = (key: string): unknown => (isMap(header) ? header[key] : undefined);
+  const units = field("units");
+  const clock = field("clock");
+  const weekStart = field("weekStart");
+  return {
+    units: isUnits(units) ? units : null,
+    clock: isClock(clock) ? clock : null,
+    weekStart: isWeekStart(weekStart) ? weekStart : null,
+  };
 }
 
 function checkHours(header: Record<string, unknown>, key: string, problems: string[]): void {

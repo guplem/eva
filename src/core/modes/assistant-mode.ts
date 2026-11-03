@@ -22,6 +22,8 @@ import { pinnedBlock, type PinnedBlock } from "./pinned-block.ts";
 import { findPinnedFiles, readsOldImportant } from "./pinned-files.ts";
 import { VaultTurns, type TurnSnapshots, type VaultSyncPort } from "./vault-turns.ts";
 import { widgetsBlock } from "./widgets-block.ts";
+import { formatBlock, type FormatSettings } from "./format-block.ts";
+import { clockTime, type Clock } from "../../shared/time-format.ts";
 
 export interface AssistantPreparerOptions {
   readonly vaultPath: string;
@@ -47,6 +49,11 @@ export interface AssistantPreparerOptions {
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
   /** The projects of the vault and of the extra roots, read at the first turn of each chat for the pinned block. */
   readonly projects: () => readonly Project[];
+  /**
+   * The person's format settings, read at the first turn of each chat for the format block (#770),
+   * and at each message for the clock of the local time.
+   */
+  readonly formatSettings?: () => FormatSettings;
   /** One line for each widget that is on, read at the first turn of each chat (#692). */
   readonly widgetLines?: () => readonly string[];
   /** Checks the data files that a turn changed against the widget schemas: one sentence for each problem. */
@@ -62,6 +69,8 @@ interface KeptPrompt {
   readonly rules: string;
   /** The pinned files (#769). Its text is null when nothing is pinned. */
   readonly pinned: PinnedBlock;
+  /** Null when the preparer has no format settings. */
+  readonly format: string | null;
   /** Null when no widget is on. */
   readonly widgets: string | null;
 }
@@ -94,6 +103,7 @@ export class AssistantPreparer implements TurnPreparer {
     const kept = this.promptBySession.get(session.id) ?? {
       rules: this.personalRules(personalRulesPath),
       pinned: this.pinnedBlockNow(),
+      format: this.formatBlockNow(),
       widgets: this.widgetsBlockNow(),
     };
     this.promptBySession.set(session.id, kept);
@@ -124,6 +134,7 @@ export class AssistantPreparer implements TurnPreparer {
     // A running chat keeps the rules and the pinned files of its first turn since Eva started, even when they changed.
     const rules = kept?.rules ?? (onDisk === null ? null : this.withPersonality(onDisk));
     const pinned = kept === undefined ? this.pinnedBlockNow() : kept.pinned;
+    const format = kept === undefined ? this.formatBlockNow() : kept.format;
     const widgets = kept === undefined ? this.widgetsBlockNow() : kept.widgets;
     const parts: ContextPart[] = [
       { group: "prompt", title: "Eva's prompt", source: null, text: this.options.basePrompt, note: null },
@@ -148,6 +159,17 @@ export class AssistantPreparer implements TurnPreparer {
               source: null,
               text: pinned.text,
               note: pinnedNote(pinned),
+            },
+          ]),
+      ...(format === null
+        ? []
+        : [
+            {
+              group: "prompt" as const,
+              title: "Your format settings",
+              source: null,
+              text: format,
+              note: "Eva reads the answer language, the time zone, the units, the clock and the first day of the week from Settings at the start of each chat. A change shows in the next chat.",
             },
           ]),
       ...(widgets === null
@@ -182,10 +204,10 @@ export class AssistantPreparer implements TurnPreparer {
     });
   }
 
-  /** Eva's prompt, the person's rules, then the pinned files and the widgets, so the person's rules stay next to Eva's. */
+  /** Eva's prompt, the person's rules, then the pinned files, the format settings and the widgets, so the person's rules stay next to Eva's. */
   private appendedPrompt(kept: KeptPrompt): string {
     let prompt = `${this.options.basePrompt}\n\n${kept.rules}`;
-    for (const block of [kept.pinned.text, kept.widgets])
+    for (const block of [kept.pinned.text, kept.format, kept.widgets])
       if (block !== null) prompt = `${prompt.trimEnd()}\n\n${block}`;
     return prompt;
   }
@@ -205,6 +227,11 @@ export class AssistantPreparer implements TurnPreparer {
     return block;
   }
 
+  private formatBlockNow(): string | null {
+    const settings = this.options.formatSettings?.();
+    return settings === undefined ? null : formatBlock(settings);
+  }
+
   private widgetsBlockNow(): string | null {
     return widgetsBlock(this.options.widgetLines?.() ?? []);
   }
@@ -217,7 +244,8 @@ export class AssistantPreparer implements TurnPreparer {
 
   /** The local time, and a note when `Life/About me.md` has a field that Eva must fix. */
   private messagePrefix(): string {
-    const time = `[Local time: ${formatLocalTime(this.options.now(), this.options.timeZone)}, ${this.options.timeZone}]`;
+    const clock = this.options.formatSettings?.().clock ?? null;
+    const time = `[Local time: ${formatLocalTime(this.options.now(), this.options.timeZone, clock)}, ${this.options.timeZone}]`;
     const note = aboutMeProblemNote(readAboutMe(this.options.vaultPath).problems);
     return note === null ? time : `${time}\n${note}`;
   }
@@ -329,8 +357,8 @@ function readContinueMessage(stdout: string): string | null {
   }
 }
 
-/** Such as `2026-10-14 12:30`, in the person's time zone. */
-export function formatLocalTime(date: Date, timeZone: string): string {
+/** Such as `2026-10-14 12:30`, or `2026-10-14 12:30 PM` on a 12-hour clock, in the person's time zone. */
+export function formatLocalTime(date: Date, timeZone: string, clock: Clock | null = null): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -341,5 +369,6 @@ export function formatLocalTime(date: Date, timeZone: string): string {
     hourCycle: "h23",
   }).formatToParts(date);
   const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find((entry) => entry.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
+  const time = clockTime(Number(part("hour")), Number(part("minute")), clock);
+  return `${part("year")}-${part("month")}-${part("day")} ${time}`;
 }

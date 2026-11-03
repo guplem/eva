@@ -63,7 +63,7 @@ The root `AGENTS.md` has the v3 sections, such as _Personal rules_. Each folder 
 
 - **Version:** 4
 - **Date:** 2026-11-03
-- **Pull request:** https://github.com/guplem/eva/issues/851
+- **Pull request:** https://github.com/guplem/eva/pull/852
 - **Summary:** Eva reads your principles and your methods before she acts, and follows the steps that you keep, such as how to start a project. The rule now lives in your vault's map, so you can change it.
 
 ### What changes, and why

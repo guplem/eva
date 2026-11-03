@@ -1139,6 +1139,9 @@ describe("the subagents of a pi Assistant chat (#824)", () => {
     // The subagent is a fresh turn with Eva's own approvals, but no subagents and no question form.
     expect(fake.runs[1]?.command).toContain(join(folder, "pi", "eva-approval-extension.ts"));
     expect(fake.runs[1]?.command).not.toContain(tool);
+    // Nobody continues a subagent, so its text stays off the disk.
+    expect(fake.runs[1]?.command).toContain("--no-session");
+    expect(fake.runs[1]?.command).not.toContain("--session");
     expect(fake.runs[1]?.command).not.toContain(join(folder, "pi", "eva-question-extension.ts"));
 
     const project = new FakePi([{ records: loadPiFixture("plain") }]);

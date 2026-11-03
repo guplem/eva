@@ -192,7 +192,7 @@ export class PiEngine implements EnginePort {
       ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
       : null;
     const args = buildPiArguments(request, {
-      sessionFile: sessionFile(engineSessionId),
+      sessionFile: subagent ? null : sessionFile(engineSessionId),
       sessionsFolder,
       extensionFile,
       mcpExtensionFile,
@@ -374,7 +374,7 @@ export class PiEngine implements EnginePort {
         else if (record["method"] === "editor" && record["title"] === subagentTitle)
           this.startSubagent(pi, request, record, subagents);
         else answerDialog(pi, request, record);
-        // The task shows while it runs: pi sends nothing more until the subagent answers.
+        // The task shows at once: pi may send nothing more until a subagent answers.
         yield* side.splice(0);
       } else if (type === "auto_retry_start") {
         pendingError = null;
@@ -449,7 +449,13 @@ export class PiEngine implements EnginePort {
     const id = record["id"];
     if (typeof id !== "string") return;
     const answer = (reply: { result: string } | { failed: string }): void => {
-      pi.send({ type: "extension_ui_response", id, value: JSON.stringify(reply) });
+      // A pi that ended, as after a hard stop, has no stdin: an answer then reaches nobody.
+      if (runs.ended.signal.aborted) return;
+      try {
+        pi.send({ type: "extension_ui_response", id, value: JSON.stringify(reply) });
+      } catch {
+        // The same: a write to a pi that just died. The turn ends with pi's own end.
+      }
     };
     // Only an Assistant chat loads the tool. Nobody waits for a model call's subagents.
     if (request.mode !== "assistant") {
@@ -494,7 +500,7 @@ export class PiEngine implements EnginePort {
         answer(reply);
       });
     runs.running.add(work);
-    void work.finally(() => runs.running.delete(work));
+    void work.finally(() => runs.running.delete(work)).catch(() => undefined);
   }
 
   /**
@@ -562,7 +568,8 @@ export class PiEngine implements EnginePort {
 }
 
 export interface PiArgumentInputs {
-  readonly sessionFile: string;
+  /** Null for a subagent's turn, which nobody continues (#824). */
+  readonly sessionFile: string | null;
   readonly sessionsFolder: string;
   readonly extensionFile: string;
   /** Eva's MCP bridge, when the turn has MCP servers. */
@@ -582,8 +589,8 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
   const args = [
     "--mode",
     "rpc",
-    // A model call is never continued, and its text must not stay on disk.
-    ...(request.mode === "model-call"
+    // A model call and a subagent are never continued, so their text must not stay on disk.
+    ...(request.mode === "model-call" || inputs.sessionFile === null
       ? ["--no-session"]
       : // Always a path: a bare name makes pi search every project and ask y/N on stdin.
         ["--session", inputs.sessionFile, "--session-dir", inputs.sessionsFolder]),

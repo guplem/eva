@@ -70,6 +70,7 @@ export function SettingsView({
   // The cards come with the settings, so the index waits for them.
   const pageIndex = usePageIndex(
     settings !== null && hasPageIndex(route) ? settingsHash({ section: route.section, item: null }) : null,
+    route,
   );
 
   useEffect(() => {

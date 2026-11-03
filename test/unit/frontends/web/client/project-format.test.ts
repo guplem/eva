@@ -11,6 +11,8 @@ import {
   removedRepositoriesHint,
   repositoryLabel,
   sameDetails,
+  localDay,
+  withStatus,
   repositoryWebUrl,
   statusPill,
   syncPills,
@@ -238,5 +240,29 @@ describe("sameDetails", () => {
     expect(sameDetails(details, { ...details, status: "paused" })).toBe(false);
     expect(sameDetails(details, { ...details, tags: [] })).toBe(false);
     expect(sameDetails(details, { ...details, repos: ["https://github.com/example/example-app"] })).toBe(false);
+  });
+});
+
+describe("the closing date in the details form (#826)", () => {
+  const details = { title: "House", status: "active" as const, tags: [], repos: [], closed: null };
+
+  test("a choice of Closed sets the date to today, and the person can pick another one", () => {
+    expect(withStatus(details, "closed", "2026-11-03")).toEqual({ ...details, status: "closed", closed: "2026-11-03" });
+    const picked = { ...details, status: "closed" as const, closed: "2026-10-01" };
+    expect(withStatus(picked, "closed", "2026-11-03").closed).toBe("2026-10-01");
+  });
+
+  test("another status clears the date", () => {
+    const closed = { ...details, status: "closed" as const, closed: "2026-10-01" };
+    expect(withStatus(closed, "paused", "2026-11-03")).toEqual({ ...details, status: "paused", closed: null });
+  });
+
+  test("a changed date differs, and a missing one is no date", () => {
+    expect(sameDetails(details, { ...details, closed: "2026-10-01" })).toBe(false);
+    expect(sameDetails({ ...details, closed: undefined }, details)).toBe(true);
+  });
+
+  test("today is the day on the person's clock", () => {
+    expect(localDay(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
   });
 });

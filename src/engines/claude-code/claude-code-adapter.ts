@@ -13,7 +13,13 @@ import {
 import { realpathSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
-import type { ApprovalAnswer, CarryHistoryInput, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
+import {
+  lostHistoryPreamble,
+  type ApprovalAnswer,
+  type CarryHistoryInput,
+  type EnginePort,
+  type TurnRequest,
+} from "../../shared/engine-port.ts";
 import { readTextTolerant } from "../../shared/files.ts";
 import { describeClaudeContext, projectInstructionFiles } from "./claude-code-context.ts";
 import { carryClaudeHistory } from "./claude-code-history.ts";
@@ -55,9 +61,6 @@ export interface ClaudeCodeEngineOptions {
  * field for this case, so the text is the only signal (lessons 36, 46).
  */
 const lostHistoryMarker = "No conversation found with session ID";
-
-const lostHistoryPreamble =
-  "(The earlier part of this conversation is lost, because the engine no longer has it. Say so if the message refers to it.)\n\n";
 
 export class ClaudeCodeEngine implements EnginePort {
   readonly name = "claude-code" as const;

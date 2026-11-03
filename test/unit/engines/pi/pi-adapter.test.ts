@@ -27,7 +27,12 @@ import {
   mcpServersFileVariable,
 } from "../../../../src/engines/pi/pi-mcp-extension.ts";
 import type { PiProcessStarter } from "../../../../src/engines/pi/pi-process.ts";
-import type { ApprovalAnswer, ApprovalRequest, TurnRequest } from "../../../../src/shared/engine-port.ts";
+import {
+  lostHistoryPreamble,
+  type ApprovalAnswer,
+  type ApprovalRequest,
+  type TurnRequest,
+} from "../../../../src/shared/engine-port.ts";
 import type { EngineEventPayload } from "../../../../src/shared/events.ts";
 import { deafPi, FakePi, loadPiFixture, type PiRecord } from "../../../support/fake-pi.ts";
 
@@ -570,9 +575,81 @@ describe("PiEngine", () => {
   });
 
   test("a 401 is not retried and fails the turn", async () => {
-    const fake = new FakePi([{ records: loadPiFixture("error-401") }]);
+    const ready = { records: [{ status: "ready", provider: "fake", authType: "api_key" }], oneShot: true };
+    const fake = new FakePi([{ records: loadPiFixture("error-401") }, ready]);
     const events = await drain(engine(fake).runTurn(request()));
     expect(events.at(-1)).toMatchObject({ kind: "turn_failed", reason: expect.stringContaining("401") as string });
+    expect(events.at(-1)).not.toHaveProperty("loginExpired");
+  });
+
+  test("a failed turn whose provider has no working login says so, as a Claude Code chat does (#815)", async () => {
+    const missing = {
+      records: [{ status: "not_ready", provider: "fake", reason: "credentials_not_configured" }],
+      oneShot: true,
+    };
+    const fake = new FakePi([{ records: loadPiFixture("error-401") }, missing]);
+    const events = await drain(
+      engine(fake).runTurn(request({ environment: { PI_CODING_AGENT_DIR: "/eva/pi-agent" } })),
+    );
+    expect(events.at(-1)).toEqual({
+      kind: "turn_failed",
+      reason: 'The pi login of "fake" expired or is missing. Log in again in Settings, AI engines, pi.',
+      loginExpired: true,
+    });
+    expect(fake.runs[1]?.command).toEqual(["pi", "auth", "check", "--provider", "fake", "--json"]);
+    expect(fake.runs[1]?.environment).toEqual({ PI_CODING_AGENT_DIR: "/eva/pi-agent" });
+  });
+
+  test("a pi that dies with no answer checks the login of the tier's model", async () => {
+    const missing = {
+      records: [{ status: "not_ready", provider: "openai", reason: "credentials_not_configured" }],
+      oneShot: true,
+    };
+    const fake = new FakePi([
+      { records: [{ type: "agent_start" }], stderr: "No API key for provider openai\n" },
+      missing,
+    ]);
+    const events = await drain(
+      engine(fake, { models: { opus: "openai/gpt-5", sonnet: null, haiku: null } }).runTurn(request()),
+    );
+    expect(fake.runs[1]?.command).toEqual(["pi", "auth", "check", "--model", "openai/gpt-5", "--json"]);
+    expect(events.at(-1)).toMatchObject({ loginExpired: true });
+  });
+
+  test("a good turn and a failed model call run no check", async () => {
+    const good = new FakePi([{ records: loadPiFixture("plain") }]);
+    await drain(engine(good).runTurn(request()));
+    expect(good.runs).toHaveLength(1);
+    const call = new FakePi([{ records: loadPiFixture("error-401") }]);
+    await drain(engine(call).runTurn(request({ mode: "model-call" })));
+    expect(call.runs).toHaveLength(1);
+  });
+
+  test("a check that never answers counts as a working login, and pi gets time to close", async () => {
+    const stuck = deafPi();
+    let runs = 0;
+    const fake = new FakePi([{ records: loadPiFixture("error-401") }]);
+    const start: PiProcessStarter = (command, options) => {
+      runs += 1;
+      return runs === 1 ? fake.start(command, options) : stuck.start(command, options);
+    };
+    const events = await drain(engine(fake, { start, loginCheckMs: 20, closeTimeoutMs: 7 }).runTurn(request()));
+    expect(events.at(-1)).toMatchObject({ kind: "turn_failed", reason: expect.stringContaining("401") as string });
+    expect(stuck.closeTimeouts).toEqual([7]);
+  });
+
+  test("a stopped turn, or a provider that pi does not know, checks nothing more", async () => {
+    const unknown = {
+      records: [{ status: "not_ready", provider: "fake", reason: "provider_not_found" }],
+      oneShot: true,
+    };
+    const fake = new FakePi([{ records: loadPiFixture("error-401") }, unknown]);
+    expect((await drain(engine(fake).runTurn(request()))).at(-1)).not.toHaveProperty("loginExpired");
+    const aborted = new FakePi([{ records: loadPiFixture("abort") }]);
+    const controller = new AbortController();
+    controller.abort();
+    await drain(engine(aborted).runTurn(request({ signal: controller.signal })));
+    expect(aborted.runs).toHaveLength(1);
   });
 
   test("a stop sends abort to pi, and the aborted answer fails the turn", async () => {
@@ -715,6 +792,9 @@ describe("PiEngine", () => {
     expect(fake.runs[0]?.command).toContain(join(sessions, "session-1.jsonl"));
     const lost = await drain(engine(fake).runTurn(request({ history: { kind: "continue", engineSessionId: "gone" } })));
     expect(lost[0]).toEqual({ kind: "history_lost" });
+    // The model is told, as in a Claude Code chat, so it does not answer as if it knew the earlier part (#815).
+    expect(fake.runs[1]?.sent[0]).toMatchObject({ type: "prompt", message: `${lostHistoryPreamble}Hello` });
+    expect(fake.runs[0]?.sent[0]).toMatchObject({ type: "prompt", message: "Hello" });
   });
 
   test("a fork writes a branch file up to the chosen answer, and the turn runs on it", async () => {

@@ -25,6 +25,8 @@ export interface FakePiScript {
   readonly stderr?: string;
   /** Set to false to stop at a `get_state` command with no answer, as a pi that dies does. */
   readonly answersState?: boolean;
+  /** Set to true for a one-shot command, such as `pi auth check`: it prints its records with no prompt. */
+  readonly oneShot?: boolean;
 }
 
 export function loadPiFixture(name: string): PiRecord[] {
@@ -131,6 +133,10 @@ class FakePiProcess implements PiProcess {
   }
 
   private async *replay(): AsyncIterable<PiRecord> {
+    if (this.script.oneShot === true) {
+      yield* this.script.records;
+      return;
+    }
     const prompt = await this.nextCommand();
     if (prompt === null) return;
     const records = this.script.records.filter(

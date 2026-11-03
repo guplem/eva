@@ -1,5 +1,6 @@
 /** The rules of an answer to one question of the model, the same in the core, the engine and every front end. */
 import type { ApprovalQuestion, QuestionAnswer } from "./events.ts";
+import type { TurnRequest } from "./engine-port.ts";
 
 /** A single choice replaces the last one. A multiple choice adds or removes the option. */
 export function pickOption(selected: readonly number[], option: number, multiSelect: boolean): number[] {
@@ -43,19 +44,13 @@ export type CollectedAnswers =
   | { readonly kind: "answered"; readonly answers: Readonly<Record<string, string>> }
   | { readonly kind: "refused"; readonly message: string };
 
-/** What the engine asks the core: show the questions to the person, and wait for the answers. */
-export type AskQuestions = (
-  toolName: string,
-  questions: readonly ApprovalQuestion[],
-) => Promise<readonly QuestionAnswer[] | "declined" | "expired">;
-
 /**
  * Shows the model's question form to the person, and gives the answers by question text, as
  * Claude Code's own form gives them. Each engine uses it, so a switch of engine changes nothing.
  */
 export async function collectAnswers(
   input: Readonly<Record<string, unknown>>,
-  ask: AskQuestions,
+  ask: TurnRequest["askQuestions"],
 ): Promise<CollectedAnswers> {
   const questions = readQuestions(input);
   if (questions === null) return { kind: "refused", message: askInTextMessage };
@@ -75,7 +70,7 @@ export async function collectAnswers(
 }
 
 /** Null for an input that Eva cannot show as a form. Eva keeps only the fields that she shows. */
-export function readQuestions(input: Readonly<Record<string, unknown>>): ApprovalQuestion[] | null {
+function readQuestions(input: Readonly<Record<string, unknown>>): ApprovalQuestion[] | null {
   const raw = input["questions"];
   if (!Array.isArray(raw) || raw.length === 0) return null;
   const questions: ApprovalQuestion[] = [];

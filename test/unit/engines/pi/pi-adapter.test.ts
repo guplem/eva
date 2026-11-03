@@ -906,6 +906,50 @@ describe("the question form of a pi Assistant chat (#813)", () => {
   });
 });
 
+describe("the question form when it cannot be answered (#813)", () => {
+  const formQuestion = { question: "Which format?", options: [{ label: "PDF" }] };
+
+  function formTurn(prefill: string): PiRecord[] {
+    return loadPiFixture("approval-allowed").map((record) =>
+      record["type"] === "extension_ui_request"
+        ? { ...record, method: "editor", title: questionTitle, prefill }
+        : record,
+    );
+  }
+
+  async function reply(prefill: string, overrides: Partial<TurnRequest>): Promise<unknown> {
+    const fake = new FakePi([{ records: formTurn(prefill) }]);
+    await drain(engine(fake).runTurn(request(overrides)));
+    const answer = fake.runs[0]?.sent.find((record) => record["type"] === "extension_ui_response");
+    return JSON.parse(String(answer?.["value"]));
+  }
+
+  test("an expired form, a core that fails, or a broken input still answers pi", async () => {
+    const prefill = JSON.stringify({ questions: [formQuestion] });
+    expect(await reply(prefill, { askQuestions: () => Promise.resolve("expired") })).toEqual({
+      refused: askInTextMessage,
+    });
+    expect(await reply(prefill, { askQuestions: () => Promise.reject(new Error("broken")) })).toEqual({
+      refused: askInTextMessage,
+    });
+    expect(await reply("not JSON", {})).toEqual({ refused: askInTextMessage });
+  });
+
+  test("a form with Claude Code's optional fields left out still reaches the person", async () => {
+    const shown: unknown[] = [];
+    const answer = await reply(JSON.stringify({ questions: [formQuestion] }), {
+      askQuestions: (_tool, questions) => {
+        shown.push(...questions);
+        return Promise.resolve([{ selected: [0] }]);
+      },
+    });
+    expect(shown).toEqual([
+      { question: "Which format?", header: "", options: [{ label: "PDF", description: "" }], multiSelect: false },
+    ]);
+    expect(answer).toEqual({ answers: { "Which format?": "PDF" } });
+  });
+});
+
 describe("the question tool inside pi (#813)", () => {
   type Tool = Parameters<QuestionPi["registerTool"]>[0];
 
@@ -960,18 +1004,21 @@ describe("the question tool inside pi (#813)", () => {
     expect(result.content).toEqual([
       {
         type: "text",
-        text: 'The person answered your questions: "Which format?"="Markdown". Go on with these answers.',
+        text: 'The person answered your questions, as JSON by question: {"Which format?":"Markdown"}. Go on with these answers.',
       },
     ]);
   });
 
-  test("a refusal or a cancel fails the call with the reason", () => {
+  test("a refusal or a cancel fails the call with the reason", async () => {
     const tool = registered();
-    expect(
-      tool.execute("call-1", {}, undefined, undefined, context(JSON.stringify({ refused: "No." }))),
-    ).rejects.toThrow("No.");
-    expect(tool.execute("call-1", {}, undefined, undefined, context(undefined))).rejects.toThrow(
-      "nobody answered it in time",
-    );
+    const failure = async (reply: string | undefined): Promise<string> => {
+      const error = await tool
+        .execute("call-1", {}, undefined, undefined, context(reply))
+        .catch((thrown: unknown) => thrown);
+      return error instanceof Error ? error.message : "no failure";
+    };
+    expect(await failure(JSON.stringify({ refused: "No." }))).toBe("No.");
+    expect(await failure(undefined)).toBe(askInTextMessage);
+    expect(await failure("not JSON")).toBe(askInTextMessage);
   });
 });

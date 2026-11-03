@@ -22,10 +22,13 @@ const option = {
     label: { type: "string", description: "The text of the choice, 1 to 5 words." },
     description: { type: "string", description: "What the choice means." },
   },
-  required: ["label", "description"],
+  required: ["label"],
 };
 
-/** Claude Code's input of the tool, so the shared rules and every front end read it the same way. */
+/**
+ * Claude Code's input of the tool. Only the parts that Eva needs are required: a model that is not
+ * Claude may leave out the rest, and a refused call would cost it a retry. Eva fills in the defaults.
+ */
 const parameters = {
   type: "object",
   properties: {
@@ -38,10 +41,10 @@ const parameters = {
         properties: {
           question: { type: "string", description: "The whole question, which ends with a question mark." },
           header: { type: "string", description: "A short label of 12 characters at most, such as Format." },
-          options: { type: "array", minItems: 2, maxItems: 4, items: option },
+          options: { type: "array", minItems: 1, maxItems: 4, items: option },
           multiSelect: { type: "boolean", description: "True when the person may pick more than one choice." },
         },
-        required: ["question", "header", "options", "multiSelect"],
+        required: ["question", "options"],
       },
     },
   },
@@ -53,13 +56,15 @@ interface ToolResult {
   details: Record<string, never>;
 }
 
-/** The part of the tool context that the tool uses. */
+/** The tool context, as far as the tool reads it, so a test can give its own. */
 export interface QuestionContext {
   readonly hasUI: boolean;
-  readonly ui: { editor(title: string, prefill?: string): Promise<string | undefined> };
+  readonly ui: {
+    editor(title: string, prefill?: string, options?: { signal?: AbortSignal }): Promise<string | undefined>;
+  };
 }
 
-/** The part of pi's extension API that the tool uses. */
+/** pi's extension API, as far as the tool calls it, so a test can give its own. */
 export interface QuestionPi {
   registerTool(tool: {
     name: string;
@@ -84,20 +89,23 @@ export default function evaQuestions(pi: QuestionPi): void {
       "Ask the person 1 to 4 multiple-choice questions, and wait for the answers. Use it when you need a decision " +
       "or a preference to go on. The person can also type an answer of their own.",
     parameters,
-    async execute(_toolCallId, params, _signal, _onUpdate, context) {
+    async execute(_toolCallId, params, signal, _onUpdate, context) {
       if (!context.hasUI) throw new Error(noAnswer);
-      const reply = await context.ui.editor(questionTitle, JSON.stringify(params));
+      // A stop of the turn closes the dialog, as it does for Eva's approvals.
+      const reply = await context.ui.editor(
+        questionTitle,
+        JSON.stringify(params),
+        signal === undefined ? {} : { signal },
+      );
       const fields = parse(reply);
       const answers = fields?.["answers"];
       if (typeof answers === "object" && answers !== null && !Array.isArray(answers)) {
-        const pairs = Object.entries(answers as Record<string, unknown>).map(
-          ([question, answer]) => `"${question}"="${String(answer)}"`,
-        );
+        // JSON, so a quote inside a question or an answer cannot make the text read two ways.
         return {
           content: [
             {
               type: "text",
-              text: `The person answered your questions: ${pairs.join(", ")}. Go on with these answers.`,
+              text: `The person answered your questions, as JSON by question: ${JSON.stringify(answers)}. Go on with these answers.`,
             },
           ],
           details: {},

@@ -458,9 +458,12 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
   const method = String(record["method"]);
   if (typeof id !== "string" || !answeredDialogMethods.includes(method)) return;
   if (method === "editor" && record["title"] === questionTitle) {
-    void answerForm(request, record["prefill"]).then((reply) => {
-      pi.send({ type: "extension_ui_response", id, value: JSON.stringify(reply) });
-    });
+    // A failure in the core must still answer pi: an open dialog holds the turn until a hard stop.
+    void answerForm(request, record["prefill"])
+      .catch(() => ({ refused: askInTextMessage }))
+      .then((reply) => {
+        pi.send({ type: "extension_ui_response", id, value: JSON.stringify(reply) });
+      });
     return;
   }
   if (method !== "confirm" || record["title"] !== approvalTitle) {
@@ -468,9 +471,11 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
     return;
   }
   const call = parseToolCall(record["message"]);
-  void decide(request, call.toolName, call.input).then((answer) => {
-    pi.send({ type: "extension_ui_response", id, confirmed: answer === "allow" });
-  });
+  void decide(request, call.toolName, call.input)
+    .catch((): ApprovalAnswer => "deny")
+    .then((answer) => {
+      pi.send({ type: "extension_ui_response", id, confirmed: answer === "allow" });
+    });
 }
 
 /** The reply to the question tool of pi-question-tool.ts: the answers, or why there are none. */

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describeProjectTypes } from "../../../../src/core/migrations/project-types.ts";
+import { typeSoftwareProjects } from "../../../../src/core/migrations/general-project-type.ts";
 import { runMigrations, type MigrationRun } from "../../../../src/core/migrations/migration-runner.ts";
 import { homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
 
@@ -104,12 +105,22 @@ describe("describeProjectTypes (vault, #703)", () => {
     }
   });
 
-  test("the new text is the template's text, so a new vault and a migrated vault read the same", () => {
+  test("with the later type migration, the new text is the template's text, so a new vault and a migrated vault read the same", () => {
     writeFileSync(map, oldSection);
     migrate();
+    // The general type came later, and its own migration fixes the same lines (#768).
+    runMigrations({
+      store: "vault",
+      migrations: [describeProjectTypes, typeSoftwareProjects],
+      paths,
+      vaultPath: vault,
+      version: "1.60.0",
+      now: () => new Date("2026-11-02T08:00:00.000Z"),
+    });
     const migrated = readFileSync(map, "utf-8");
     const template = readFileSync(join(import.meta.dir, "../../../../templates/vault/AGENTS.md"), "utf-8");
-    const typesOf = (text: string): string => text.slice(text.indexOf("A project is one of two types:"));
+    expect(migrated).toContain("type: software # general, software or specialist. No type means general");
+    const typesOf = (text: string): string => text.slice(text.indexOf("A project is one of three types:"));
     expect(typesOf(template).startsWith(typesOf(migrated).split("\n\n`Projects/")[0] ?? "")).toBe(true);
   });
 

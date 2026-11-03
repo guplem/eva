@@ -56,14 +56,21 @@ describe("TextStreamRedactor", () => {
 });
 
 describe("bytesContainSecretPattern", () => {
+  const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
   const token = "ghp_" + "d".repeat(36);
+  const telegramShape = "123456789:" + "e".repeat(35);
 
-  test("finds a token shape in text", () => {
-    expect(bytesContainSecretPattern(new TextEncoder().encode(`token ${token}\n`))).toBe(true);
-    expect(bytesContainSecretPattern(new TextEncoder().encode("plain text\n"))).toBe(false);
+  test("finds every token shape in text, also after a stray NUL past git's binary window", () => {
+    expect(bytesContainSecretPattern(encode(`token ${token}\n`))).toBe(true);
+    expect(bytesContainSecretPattern(encode(`bot ${telegramShape}\n`))).toBe(true);
+    expect(bytesContainSecretPattern(encode(`${"a".repeat(8000)}\0 bot ${telegramShape}\n`))).toBe(true);
+    expect(bytesContainSecretPattern(encode("plain text\n"))).toBe(false);
   });
 
-  test("never reads a binary file as text: a NUL byte marks it", () => {
-    expect(bytesContainSecretPattern(new Uint8Array([0xff, 0x00, ...new TextEncoder().encode(token)]))).toBe(false);
+  test("a binary file, with a NUL in its first 8000 bytes as git marks one, skips only the loose shapes", () => {
+    // A photo can hold digits, a colon and letters by chance; a fixed prefix or a key header it cannot.
+    expect(bytesContainSecretPattern(new Uint8Array([0xff, 0xd8, 0x00, ...encode(telegramShape)]))).toBe(false);
+    expect(bytesContainSecretPattern(new Uint8Array([0x00, ...encode(`token ${token}`)]))).toBe(true);
+    expect(bytesContainSecretPattern(encode(`\0-----BEGIN OPENSSH PRIVATE KEY-----\nabc`))).toBe(true);
   });
 });

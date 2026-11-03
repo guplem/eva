@@ -201,15 +201,28 @@ describe("finish", () => {
     expect(remoteFile("Toolbox/Old key.md")).toContain("sk-ant-");
   });
 
-  test("merges a new binary file whose bytes happen to match a token shape", async () => {
+  test("merges a new binary file whose bytes happen to match a loose token shape", async () => {
     await upgrade().upgrade.run("start");
-    const photo = Buffer.concat([Buffer.from([0xff, 0xd8, 0x00]), Buffer.from(`sk-ant-${"b".repeat(30)}`)]);
+    const photo = Buffer.concat([Buffer.from([0xff, 0xd8, 0x00]), Buffer.from(`123456789:${"b".repeat(35)}`)]);
     mkdirSync(join(vault, "Life/Cases"), { recursive: true });
     writeFileSync(join(vault, "Life/Cases/Photo.jpg"), photo);
     sandbox.git(vault, "add", "Life/Cases/Photo.jpg");
     sandbox.git(vault, "commit", "-q", "-m", "A photo", "--", "Life/Cases/Photo.jpg");
     await upgrade().upgrade.run("finish");
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Life/Cases/Photo.jpg");
+  });
+
+  test("still refuses a binary archive that holds a token", async () => {
+    await upgrade().upgrade.run("start");
+    const archive = Buffer.concat([
+      Buffer.from("dotfiles/.env"),
+      Buffer.alloc(100),
+      Buffer.from(`ghp_${"f".repeat(36)}`),
+    ]);
+    writeFileSync(join(vault, "Life/Car/backup.tar"), archive);
+    sandbox.git(vault, "add", "Life/Car/backup.tar");
+    sandbox.git(vault, "commit", "-q", "-m", "An archive", "--", "Life/Car/backup.tar");
+    expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Life/Car/backup.tar");
   });
 
   test("still refuses a plain binary file at a secret-file path", async () => {

@@ -185,14 +185,25 @@ describe("VaultSync.save", () => {
     expect(existsSync(join(vault, "Toolbox/keys.md"))).toBe(true);
   });
 
-  test("commits a binary file whose bytes happen to match a token shape", async () => {
+  test("commits a binary file whose bytes happen to match a loose token shape", async () => {
     mkdirSync(join(vault, "Life"), { recursive: true });
-    const photo = Buffer.concat([Buffer.from([0xff, 0xd8, 0x00]), Buffer.from("ghp_" + "c".repeat(36))]);
+    const photo = Buffer.concat([Buffer.from([0xff, 0xd8, 0x00]), Buffer.from("123456789:" + "c".repeat(35))]);
     writeFileSync(join(vault, "Life/Photo.jpg"), photo);
     const state = await createSync(vault).save();
     expect(state.status).toBe("ok");
     expect(state.withheldFiles).toEqual([]);
     expect(remoteFiles()).toContain("Life/Photo.jpg");
+  });
+
+  test("still withholds a binary archive that holds a token", async () => {
+    const archive = Buffer.concat([
+      Buffer.from("dotfiles/.env"),
+      Buffer.alloc(100),
+      Buffer.from("ghp_" + "f".repeat(36)),
+    ]);
+    writeFileSync(join(vault, "backup.tar"), archive);
+    const state = await createSync(vault).save();
+    expect(state.withheldFiles).toEqual([{ path: "backup.tar", reason: "secret" }]);
   });
 
   test("a project folder keeps no plain secret any more: its secrets reach the vault only encrypted (#707)", async () => {

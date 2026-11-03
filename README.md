@@ -101,6 +101,7 @@ Run `eva doctor` on Eva's computer. It lists the tools that are missing, and how
 
 - [docs/guide/setup.md](docs/guide/setup.md): the full installation, step by step, for Windows and for Linux. Its last section, [Remove Eva](docs/guide/setup.md#remove-eva), removes Eva again.
 - [docs/guide/reference.md](docs/guide/reference.md): every command and setting, several computers, updates, and the optional features (voice notes, PDFs, Google Calendar).
+- [docs/guide/how-eva-works.md](docs/guide/how-eva-works.md): how Eva works inside. Ask Eva herself too: she reads these guides when you ask how she works.
 
 ## For developers
 
@@ -116,6 +117,8 @@ To run Eva from source, clone this repository and run `bun install`. Then type `
 | Run the tests                              | `bun run test`   |
 
 `bun run check` runs the same checks as the continuous integration (CI, the checks that GitHub runs) on every pull request.
+
+[How Eva works inside](docs/guide/how-eva-works.md) explains her parts, one turn step by step, the vault sync and the safety rules.
 
 [docs/lessons-from-v1.md](docs/lessons-from-v1.md) holds what the previous version, Wall-I v1, learned.
 

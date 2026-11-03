@@ -398,6 +398,51 @@ describe("nothing lost (second review)", () => {
     expect(readFileSync(join(vault, "Life/Objects/New.md"), "utf-8")).toBe("from main, not committed\n");
   });
 
+  test("F1: a drop keeps the old About me when the skill's rewrite was never committed", async () => {
+    const full = "---\nname: Sam\ndiet: vegetarian\nallergies: peanuts (severe)\n---\n\nI sleep 7h.\n";
+    const slim = "---\nname: Sam\n---\n\nSee Life/Health for health facts.\n";
+    writeAboutMe(full);
+    commitAll("About me");
+    await upgrade().upgrade.run("start");
+    sandbox.write(vault, "Life/Health/Allergies and Diet.md", "diet: vegetarian\nallergies: peanuts (severe)\n");
+    commitAll("File About me facts");
+    // The chat stops before it commits the new About me.
+    writeAboutMe(slim);
+    const text = await upgrade().upgrade.run("drop");
+    expect(aboutMe()).toBe(full);
+    expect(copyIn(text)).toBe(slim);
+  });
+
+  test("F1b: the same with only the rewrite", async () => {
+    const full = "---\nname: Sam\ndiet: vegetarian\n---\n";
+    writeAboutMe(full);
+    commitAll("About me");
+    await upgrade().upgrade.run("start");
+    writeAboutMe("---\nname: Sam\n---\n");
+    const text = await upgrade().upgrade.run("drop");
+    expect(aboutMe()).toBe(full);
+    expect(copyIn(text)).toBe("---\nname: Sam\n---\n");
+  });
+
+  test("F2: finish refuses an uncommitted change to a file that the upgrade replaces", async () => {
+    writeAboutMe("---\nname: Sam\ndiet: vegetarian\n---\n");
+    commitAll("About me");
+    await upgrade().upgrade.run("start");
+    writeAboutMe("---\nname: Sam\n---\n");
+    expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Life/About me.md");
+    expect(branch()).toBe("upgrade-v3");
+    expect(readVaultStructure(vault)).toBe(2);
+  });
+
+  test("a drop puts back a file that only the upgrade made and a chat deleted", async () => {
+    await upgrade().upgrade.run("start");
+    sandbox.write(vault, "Life/People/AGENTS.md", "# People\n");
+    commitAll("Add the folder rules");
+    rmSync(join(vault, "Life/People/AGENTS.md"));
+    expect(await upgrade().upgrade.run("drop")).toContain("dropped");
+    expect(branch()).toBe("main");
+  });
+
   test("an undo after the scratch folder was emptied moves the git-ignored files back from Eva's own copy", async () => {
     await upgrade().upgrade.run("start");
     renameSync(join(vault, "Life/Car/.env"), join(vault, "Life/car.env"));

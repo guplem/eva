@@ -48,6 +48,8 @@ const networkTimeoutMs = 60_000;
 const outOfInventory = /^(\.git\/|\.eva\/scratch\/|Scratch\/|Projects\/[^/]+\/repos\/)/;
 /** The note whose `lastLocation` the phone keeps writing, so a conflict there keeps the newest point. */
 const aboutMePath = "Life/About me.md";
+/** The template files that the skill rewrites. An uncommitted change to one is half of the skill's work, never a note. */
+const replacedFiles: readonly string[] = ["AGENTS.md", "README.md", ".eva/assistant.md", aboutMePath];
 /** The line of the merge commit's body that names the backup tag, so undo finds Eva's copies. */
 const backupTagLine = "Backup tag: ";
 /** The same limits as the sync: GitHub refuses a file over 100 MB, and a bigger file is not scanned. */
@@ -213,12 +215,28 @@ export class VaultUpgrade {
     const { sync } = this.options;
     const branch = await this.theOpenBranch();
     const version = upgradeBranchVersion(branch) ?? 0;
+    const tag = (await this.git(["config", `branch.${branch}.evaBackupTag`])).stdout.trim() || null;
     const onBranch = (await this.currentBranch()) === branch;
-    const notes = onBranch ? await this.commitNotes("drop") : [];
     const main = await sync.mainBranch();
+    if (onBranch) await this.tidyForDrop(main);
+    const before = await this.head();
+    const notes = onBranch ? await this.commitNotes("drop") : [];
+    // This commit can hold the skill's half work, such as a rewrite of About me that it never committed.
+    const lastNotes = notes.length > 0 ? await this.head() : null;
+    const modified =
+      lastNotes === null || lastNotes === before
+        ? []
+        : (
+            await this.must(
+              ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "--diff-filter=M", lastNotes],
+              "list the changed notes",
+            )
+          ).stdout
+            .split("\0")
+            .filter((path) => path !== "");
     const copies = await sync.exclusive(async () => {
       const commits = await this.notesCommits(`${main}..${branch}`);
-      if (onBranch) await this.switchTo(main);
+      if (onBranch) await this.switchForDrop(main);
       const start = await this.head();
       try {
         // A pick finds a moved note again by git's rename detection, so an edit goes back to the old path.
@@ -228,6 +246,16 @@ export class VaultUpgrade {
           // The vault stays as it was: the note keeps its old text, and the chat's version goes to a copy.
           if (picked.exitCode !== 0) kept.push(...(await this.keepBoth("here", "The pick failed", picked)));
         }
+        // A changed note of the default branch keeps its old text, and the branch's text goes to a copy:
+        // Eva cannot tell a chat's edit from the skill's unfinished rewrite.
+        if (lastNotes !== null)
+          for (const path of modified) {
+            const old = await this.versionIn(start, path);
+            const changed = await this.versionIn(lastNotes, path);
+            if (old === null || changed === null || old.oid === changed.oid) continue;
+            await this.place(old, path);
+            kept.push(await this.copyOf(path, changed));
+          }
         await this.commitIfStaged(notesMessage);
         await this.must(["branch", "-q", "-D", branch], `delete the branch ${branch}`);
         return kept;
@@ -237,7 +265,7 @@ export class VaultUpgrade {
         throw error;
       }
     });
-    const back = this.moveIgnoredBack(version, null);
+    const back = this.moveIgnoredBack(version, tag);
     const saved = await sync.save();
     this.options.afterBranch();
     return [
@@ -341,7 +369,8 @@ export class VaultUpgrade {
       const path = entry.slice(3);
       // A staged rename or copy names its old path in the next field.
       const old = staged === "R" || staged === "C" ? (entries[(index += 1)] ?? "") : "";
-      if ((staged !== " " && staged !== "?") || worktree === "D")
+      const halfRewrite = step === "finish" && worktree === "M" && replacedFiles.includes(path);
+      if ((staged !== " " && staged !== "?") || worktree === "D" || halfRewrite)
         unfinished.push(...[path, old].filter((each) => each !== ""));
     }
     if (unfinished.length > 0)
@@ -605,6 +634,41 @@ export class VaultUpgrade {
       if (remote.exitCode === 0 && remote.stdout.trim() !== "") continue;
       return name;
     }
+  }
+
+  /**
+   * Clears what would stop a drop for nothing: a deleted file that only the upgrade made, and a new
+   * file with the same text as on the default branch.
+   */
+  private async tidyForDrop(main: string): Promise<void> {
+    const status = await this.must(["status", "--porcelain=v1", "-z"], "read the status");
+    for (const entry of status.stdout.split("\0")) {
+      if (entry.length < 4) continue;
+      const code = entry.slice(0, 2);
+      const path = entry.slice(3);
+      if (code !== " D" && code !== "??") continue;
+      const onMain = await this.versionIn(main, path);
+      if (code === " D" && onMain === null) await this.must(["checkout", "--", path], `put back ${path}`);
+      if (code === "??" && onMain !== null && this.blobHash(path) === onMain.oid)
+        rmSync(join(this.options.vaultPath, path), { force: true });
+    }
+  }
+
+  /** The switch of a drop. A file that the sync kept out, such as a plain secret, can stand in its way. */
+  private async switchForDrop(main: string): Promise<void> {
+    const switched = await this.git(["switch", "-q", main]);
+    if (switched.exitCode === 0) return;
+    const withheld = this.options.sync.currentState.withheldFiles.map((file) => file.path);
+    refuse(
+      `Eva could not switch the vault to ${main}: ${gitReason(switched)}.${withheld.length === 0 ? "" : ` The sync kept these files out of its commit, as they look like secrets or are too big: ${withheld.join(", ")}. Move each one out of the vault folder, or into an encrypted file, then run eva vault-upgrade drop again.`}`,
+    );
+  }
+
+  /** The version of a path in a commit, or null when the commit has no such file. */
+  private async versionIn(commit: string, path: string): Promise<Stage | null> {
+    const listed = await this.git(["ls-tree", "-z", commit, "--", path]);
+    const match = /^(\d+) blob ([0-9a-f]+)\t/.exec(listed.stdout);
+    return listed.exitCode === 0 && match !== null ? { mode: match[1] ?? "", oid: match[2] ?? "" } : null;
   }
 
   private async switchTo(branch: string): Promise<void> {

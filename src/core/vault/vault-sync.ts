@@ -918,7 +918,24 @@ export class VaultSync {
         .filter((entry) => (entry.isStagedSource === true || entry.code === "D ") && !untracked.has(entry.path))
         .map((entry) => entry.path),
     );
-    const toAdd = kept.filter((path) => !stagedRemovals.has(path));
+    // git add refuses a path that the .gitignore lists, even to record its removal, so a tracked
+    // file that is deleted from an ignored folder leaves the index this way instead (#783).
+    // update-index never adds a file that git does not track.
+    const deleted = new Set(entries.filter((entry) => entry.code[1] === "D").map((entry) => entry.path));
+    const toRemove = kept.filter((path) => deleted.has(path) && !stagedRemovals.has(path));
+    if (toRemove.length > 0) {
+      const removed = await this.git(
+        ["update-index", "--remove", "-z", "--stdin"],
+        localTimeoutMs,
+        {},
+        toRemove.join("\0"),
+      );
+      if (removed.exitCode !== 0) {
+        this.update({ status: "error", lastError: `git update-index failed: ${failureReason(removed, "git")}` });
+        return false;
+      }
+    }
+    const toAdd = kept.filter((path) => !stagedRemovals.has(path) && !deleted.has(path));
     const add =
       toAdd.length === 0 ? null : await this.git(["add", "-A", ...pathsOnStdin], localTimeoutMs, {}, toAdd.join("\0"));
     if (add !== null && add.exitCode !== 0) {

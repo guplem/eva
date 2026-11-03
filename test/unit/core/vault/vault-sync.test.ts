@@ -529,6 +529,40 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain("Scratch/");
   });
 
+  // git add refuses an ignored path, even to record its removal (#783).
+  test("in an old vault whose .gitignore lists Scratch/, commits the removal of a Scratch/ file that an old commit holds", async () => {
+    sandbox.write(vault, "Scratch/old.pdf", "Old.\n");
+    sandbox.git(vault, "add", "Scratch/old.pdf");
+    sandbox.git(vault, "commit", "-q", "-m", "old");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    sandbox.write(vault, ".gitignore", "Scratch/\n");
+    sandbox.write(vault, "Scratch/new.pdf", "New.\n");
+    rmSync(join(vault, "Scratch/old.pdf"));
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(state.lastError).toBeNull();
+    expect(remoteFiles()).not.toContain("Scratch/");
+    expect(remoteFiles()).toContain(".gitignore");
+  });
+
+  test("commits the removal of a tracked file in a folder that the .gitignore lists later, beside an edit and a withheld file", async () => {
+    sandbox.write(vault, "Archive/old.md", "Old.\n");
+    sandbox.git(vault, "add", "Archive/old.md");
+    sandbox.git(vault, "commit", "-q", "-m", "old");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    sandbox.write(vault, ".gitignore", "Archive/\n");
+    sandbox.write(vault, "Archive/new.md", "New.\n");
+    rmSync(join(vault, "Archive/old.md"));
+    sandbox.write(vault, "AGENTS.md", "# Edited\n");
+    // A withheld file makes the commit take only the kept paths (--only).
+    sandbox.write(vault, "Toolbox/keys.md", "token ghp_" + "a".repeat(36) + "\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(state.withheldFiles).toEqual([{ path: "Toolbox/keys.md", reason: "secret" }]);
+    expect(remoteFiles().split("\n").sort()).toEqual([".gitignore", "AGENTS.md"]);
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Edited");
+  });
+
   test("runs one operation at a time", async () => {
     const sync = createSync(vault);
     sandbox.write(vault, "a.md", "a\n");

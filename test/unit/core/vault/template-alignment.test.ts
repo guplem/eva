@@ -11,6 +11,7 @@ import {
   type TemplatePart,
 } from "../../../../src/core/vault/template-alignment.ts";
 import { templateParts } from "../../../../src/core/vault/vault-template.ts";
+import { evaCoreFiles } from "../../../../src/core/modes/eva-core.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 const skill = ".eva/skills/demo/SKILL.md";
@@ -253,10 +254,29 @@ describe("templateParts", () => {
 });
 
 describe("templateHistory", () => {
-  test("lists only older versions, never the current one", () => {
+  test("lists only older versions of a current part, never the current one", () => {
     for (const [path, hashes] of Object.entries(templateHistory)) {
-      expect(hashes).not.toContain(contentHash(templateParts[path] ?? ""));
+      if (path in templateParts) expect(hashes).not.toContain(contentHash(templateParts[path] ?? ""));
     }
+  });
+
+  test("knows the last vault version of each skill that moved into Eva, so an untouched copy goes (#771)", () => {
+    for (const name of ["about-me", "schedule"]) {
+      expect(templateHistory[`.eva/skills/${name}/SKILL.md`]).toContain(
+        contentHash(evaCoreFiles()[`skills/${name}/SKILL.md`] ?? ""),
+      );
+    }
+  });
+});
+
+describe("a part that comes back", () => {
+  test("loses its retired mark when the template has it again (#771)", () => {
+    alignment({ [skill]: oldText, ".eva/skills/gone/SKILL.md": "# Gone\n" }).align();
+    write(".eva/skills/gone/SKILL.md", "# Mine now\n");
+    alignment().align();
+    alignment({ [skill]: newText, ".eva/skills/gone/SKILL.md": "# Gone\n" }).align();
+    const record = JSON.parse(read(".eva/template.json")) as { parts: Record<string, { retired?: boolean }> };
+    expect(record.parts[".eva/skills/gone/SKILL.md"]?.retired).toBeUndefined();
   });
 });
 

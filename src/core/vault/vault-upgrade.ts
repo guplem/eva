@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, posix } from "node:path";
+import { basename, dirname, join, posix } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
@@ -48,6 +48,8 @@ const networkTimeoutMs = 60_000;
 const outOfInventory = /^(\.git\/|\.eva\/scratch\/|Scratch\/|Projects\/[^/]+\/repos\/)/;
 /** The note whose `lastLocation` the phone keeps writing, so a conflict there keeps the newest point. */
 const aboutMePath = "Life/About me.md";
+/** The line of the merge commit's body that names the backup tag, so undo finds Eva's copies. */
+const backupTagLine = "Backup tag: ";
 /** The same limits as the sync: GitHub refuses a file over 100 MB, and a bigger file is not scanned. */
 const maxCommittedBytes = 50 * 1024 * 1024;
 const maxScannedBytes = 1_000_000;
@@ -63,6 +65,11 @@ export interface VaultUpgradeOptions {
   readonly isHub: () => boolean;
   /** The `sync.enabled` setting: the backup tag must reach the remote, so a start needs it on. */
   readonly syncEnabled: () => boolean;
+  /**
+   * `<state>/vault-upgrade/` on this computer: a copy of the inventory, the report and the list of
+   * the git-ignored moves, by backup tag. The scratch folder empties after a week, and undo needs them later.
+   */
+  readonly stateFolder: string;
   /** The folder of the `vault-upgrade` skill, with its template texts. */
   readonly skillFolder: () => string;
   /** Runs what the open branch held back, such as the vault migrations and the location write. */
@@ -132,11 +139,14 @@ export class VaultUpgrade {
         refuse(`Eva could not push the backup tag ${tag}: ${firstLine(pushed)}. Nothing changed.`);
       }
       await this.must(["switch", "-q", "-c", branch], `create the branch ${branch}`);
+      // finish puts the tag in the merge commit, so undo finds Eva's copies of the working files.
+      await this.must(["config", `branch.${branch}.evaBackupTag`, tag], "record the backup tag");
     });
     // The sync marks itself paused at once, so the status says so before its next step.
     await sync.pull();
     const folder = upgradeFolder(vaultPath);
     const inventory = await this.writeInventory(target);
+    this.keepCopies(target, tag);
     const skill = this.options.skillFolder();
     return [
       `The upgrade to vault structure version ${String(target)} started.`,
@@ -155,9 +165,11 @@ export class VaultUpgrade {
     const branch = await this.theOpenBranch();
     const version = upgradeBranchVersion(branch) ?? 0;
     assertVaultWritable(vaultPath);
-    const notes = (await this.currentBranch()) === branch ? await this.commitNotes() : [];
+    const notes = (await this.currentBranch()) === branch ? await this.commitNotes("finish") : [];
     const main = await sync.mainBranch();
     await this.refuseUnsafeFiles(main, branch);
+    const tag = (await this.git(["config", `branch.${branch}.evaBackupTag`])).stdout.trim();
+    if (tag !== "") this.keepCopies(version, tag);
     await sync.exclusive(() => this.switchTo(main));
     const pulled = await sync.pull();
     if (pulled.status === "conflict" || pulled.status === "error")
@@ -169,11 +181,12 @@ export class VaultUpgrade {
       const recordBefore = readTextTolerant(vaultStructurePath(vaultPath));
       try {
         const merged = await this.git(["merge", "--no-ff", "--no-commit", "-q", branch]);
-        const kept = merged.exitCode === 0 ? [] : await this.keepBoth(`The merge failed: ${firstLine(merged)}`);
+        const kept = merged.exitCode === 0 ? [] : await this.keepBoth("incoming", "The merge failed", merged);
         // The record goes into the merge commit, so the version and the change never disagree.
         writeVaultStructure(vaultPath, version);
         await this.must(["add", "--", ".eva/vault-structure.json"], "stage the version record");
-        await this.must(["commit", "-q", "--no-verify", "-m", upgradeMessage(version)], "commit the merge");
+        const body = tag === "" ? [] : ["-m", `${backupTagLine}${tag}`];
+        await this.must(["commit", "-q", "--no-verify", "-m", upgradeMessage(version), ...body], "commit the merge");
         await this.must(["branch", "-q", "-D", branch], `delete the branch ${branch}`);
         return kept;
       } catch (error) {
@@ -201,7 +214,7 @@ export class VaultUpgrade {
     const branch = await this.theOpenBranch();
     const version = upgradeBranchVersion(branch) ?? 0;
     const onBranch = (await this.currentBranch()) === branch;
-    const notes = onBranch ? await this.commitNotes() : [];
+    const notes = onBranch ? await this.commitNotes("drop") : [];
     const main = await sync.mainBranch();
     const copies = await sync.exclusive(async () => {
       const commits = await this.notesCommits(`${main}..${branch}`);
@@ -212,7 +225,8 @@ export class VaultUpgrade {
         const kept: string[] = [];
         for (const commit of commits) {
           const picked = await this.git(["cherry-pick", "--no-commit", commit]);
-          if (picked.exitCode !== 0) kept.push(...(await this.keepBoth(`The pick failed: ${firstLine(picked)}`)));
+          // The vault stays as it was: the note keeps its old text, and the chat's version goes to a copy.
+          if (picked.exitCode !== 0) kept.push(...(await this.keepBoth("here", "The pick failed", picked)));
         }
         await this.commitIfStaged(notesMessage);
         await this.must(["branch", "-q", "-D", branch], `delete the branch ${branch}`);
@@ -223,7 +237,7 @@ export class VaultUpgrade {
         throw error;
       }
     });
-    const back = this.moveIgnoredBack(version);
+    const back = this.moveIgnoredBack(version, null);
     const saved = await sync.save();
     this.options.afterBranch();
     return [
@@ -252,11 +266,18 @@ export class VaultUpgrade {
       "log",
       "--first-parent",
       "-1",
-      "--format=%H %P",
+      "--format=%H %P%x00%b",
       `--grep=^${upgradeMessage(version)}$`,
       "HEAD",
     ]);
-    const [commit = "", ...parents] = found.stdout.trim().split(" ");
+    const [line = "", body = ""] = found.stdout.trim().split("\0");
+    const [commit = "", ...parents] = line.trim().split(" ");
+    const tag =
+      body
+        .split("\n")
+        .find((each) => each.startsWith(backupTagLine))
+        ?.slice(backupTagLine.length)
+        .trim() ?? null;
     if (found.exitCode !== 0 || commit === "")
       refuse(`The vault has no upgrade to version ${String(version)} to undo.`);
     await sync.save();
@@ -272,7 +293,7 @@ export class VaultUpgrade {
         const own = parents.length > 1 ? await this.upgradeCommits(`${commit}^1..${commit}^2`) : [commit];
         for (const step of own) {
           const reverted = await this.git(["revert", "--no-commit", step]);
-          if (reverted.exitCode !== 0) kept.push(...(await this.keepBoth(`The undo failed: ${firstLine(reverted)}`)));
+          if (reverted.exitCode !== 0) kept.push(...(await this.keepBoth("incoming", "The undo failed", reverted)));
         }
         if (parents.length > 1) await this.restoreFrom(`${commit}^1`, ".eva/vault-structure.json");
         // A removed secret pattern needs the person's yes, and a pattern for both paths does no harm.
@@ -285,7 +306,7 @@ export class VaultUpgrade {
         throw error;
       }
     });
-    const back = this.moveIgnoredBack(version);
+    const back = this.moveIgnoredBack(version, tag);
     const saved = await sync.save();
     this.options.afterBranch();
     return [
@@ -303,9 +324,30 @@ export class VaultUpgrade {
       refuse("Only the hub computer upgrades the vault structure. Run this on the hub, or ask in a chat there.");
   }
 
-  /** Commits what other chats wrote on the branch, and returns its files. */
-  private async commitNotes(): Promise<string[]> {
+  /**
+   * Commits what other chats wrote on the branch, and returns its files. A chat only writes files, so
+   * a staged change or a deleted file is the skill's own work that it did not commit. That stops the
+   * step, with its files: committed as notes, a half move would lose the note in a drop or an undo.
+   */
+  private async commitNotes(step: "finish" | "drop"): Promise<string[]> {
     const { sync } = this.options;
+    const status = await this.must(["status", "--porcelain=v1", "-z"], "read the status");
+    const entries = status.stdout.split("\0");
+    const unfinished: string[] = [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index] ?? "";
+      if (entry.length < 4) continue;
+      const [staged = " ", worktree = " "] = entry;
+      const path = entry.slice(3);
+      // A staged rename or copy names its old path in the next field.
+      const old = staged === "R" || staged === "C" ? (entries[(index += 1)] ?? "") : "";
+      if ((staged !== " " && staged !== "?") || worktree === "D")
+        unfinished.push(...[path, old].filter((each) => each !== ""));
+    }
+    if (unfinished.length > 0)
+      refuse(
+        `The upgrade branch has work that is not committed: ${unfinished.join(", ")}. Commit each change of the upgrade, with the old and the new path of each move, or put it back. Then run eva vault-upgrade ${step} again.`,
+      );
     const before = await this.head();
     if (!(await sync.commitAll(notesMessage)))
       refuse(
@@ -345,11 +387,11 @@ export class VaultUpgrade {
 
   /**
    * Resolves each conflicted path of a merge, a pick or a revert, and loses no version: the path
-   * takes the incoming version, and the other one goes to a copy beside it. About me takes the
-   * incoming version with the newest location. Returns the copies. With no conflicted path, the
-   * step failed for another reason, and this refuses with `reason`.
+   * takes the `prefer` side, and the other one goes to a copy beside it. About me also takes the
+   * newest location of the two. Returns the copies. With no conflicted path, the step failed for
+   * another reason, such as a local file in the way, and this refuses with git's reason and files.
    */
-  private async keepBoth(reason: string): Promise<string[]> {
+  private async keepBoth(prefer: "incoming" | "here", reason: string, failed: GitResult): Promise<string[]> {
     const listed = await this.git(["ls-files", "-u", "-z"]);
     const stages = new Map<string, Map<string, Stage>>();
     for (const entry of listed.stdout.split("\0")) {
@@ -360,30 +402,36 @@ export class VaultUpgrade {
       sides.set(stage, { mode, oid });
       stages.set(path, sides);
     }
-    if (stages.size === 0) refuse(`${reason}. Nothing changed.`);
+    if (stages.size === 0) refuse(`${reason}: ${gitReason(failed)}. Nothing changed.`);
     const copies: string[] = [];
     for (const [path, sides] of stages) {
       const incoming = sides.get("3") ?? null;
       const here = sides.get("2") ?? null;
-      const kept = incoming ?? here;
+      const kept = (prefer === "incoming" ? incoming : here) ?? incoming ?? here;
+      const other = kept === incoming ? here : incoming;
       if (kept === null) {
         await this.must(["rm", "-q", "--cached", "--ignore-unmatch", "--", path], `resolve ${path}`);
         continue;
       }
-      if (path === aboutMePath && incoming !== null && here !== null) {
-        const text = withNewerLocation(await this.blob(incoming), await this.blob(here));
-        writeFileSync(join(this.options.vaultPath, path), text);
+      if (path === aboutMePath && other !== null) {
+        const [keptText, otherText] = [await this.blob(kept), await this.blob(other)];
+        writeFileSync(join(this.options.vaultPath, path), withNewerLocation(keptText, otherText));
         await this.must(["add", "--", path], `resolve ${path}`);
+        // The phone's point alone is no reason for a copy. Any other difference is.
+        if (withoutLocation(keptText) !== withoutLocation(otherText)) copies.push(await this.copyOf(path, other));
         continue;
       }
       await this.place(kept, path);
-      if (incoming !== null && here !== null && incoming.oid !== here.oid) {
-        const copy = await this.freeCopyPath(path);
-        await this.place(here, copy);
-        copies.push(copy);
-      }
+      if (other !== null && other.oid !== kept.oid) copies.push(await this.copyOf(path, other));
     }
     return copies;
+  }
+
+  /** Writes a version beside its path, as a conflict copy, and returns the copy's path. */
+  private async copyOf(path: string, version: Stage): Promise<string> {
+    const copy = await this.freeCopyPath(path);
+    await this.place(version, copy);
+    return copy;
   }
 
   /** Puts one version at a path, in the index and in the folder. */
@@ -442,20 +490,43 @@ export class VaultUpgrade {
   }
 
   /**
-   * Moves each git-ignored file back to its old place, from the list that the skill wrote. A file
-   * that cannot go back is named, so the person can move it.
+   * Keeps Eva's copy of the working files of an upgrade on this computer, by backup tag: the scratch
+   * folder empties after a week, and undo needs the list of the git-ignored moves later.
    */
-  private moveIgnoredBack(version: number): string {
-    const listPath = ignoredMovesPath(this.options.vaultPath, version);
-    const text = readTextTolerant(listPath);
-    if (text === null) return "";
+  private keepCopies(version: number, tag: string): void {
+    const folder = join(this.options.stateFolder, tag);
+    try {
+      mkdirSync(folder, { recursive: true });
+      for (const path of workingFiles(this.options.vaultPath, version)) {
+        const text = readTextTolerant(path);
+        if (text !== null) writeFileAtomic(join(folder, basename(path)), text);
+      }
+    } catch {
+      // The scratch folder still holds them, and undo names what it cannot find.
+    }
+  }
+
+  /**
+   * Moves each git-ignored file back to its old place, from the list that the skill wrote, or Eva's
+   * copy of it. A file that cannot go back is named, so the person can move it. With no list, the
+   * inventory names the git-ignored files that are no longer at their place.
+   */
+  private moveIgnoredBack(version: number, tag: string | null): string {
+    const { vaultPath, stateFolder } = this.options;
+    const name = basename(ignoredMovesPath(vaultPath, version));
+    const kept = tag === null ? null : join(stateFolder, tag, name);
+    const listPath = [ignoredMovesPath(vaultPath, version), kept].find(
+      (path): path is string => path !== null && existsSync(path),
+    );
+    if (listPath === undefined) return this.missingIgnored(version, tag);
+    const text = readTextTolerant(listPath) ?? "";
     const left: string[] = [];
     let moved = 0;
     for (const line of text.split("\n")) {
       const [from = "", to = ""] = line.split("\t").map((part) => part.trim());
       if (from === "" || to === "") continue;
-      const source = join(this.options.vaultPath, to);
-      const target = join(this.options.vaultPath, from);
+      const source = join(vaultPath, to);
+      const target = join(vaultPath, from);
       try {
         if (!existsSync(source) || existsSync(target)) throw new Error("not movable");
         mkdirSync(dirname(target), { recursive: true });
@@ -465,13 +536,30 @@ export class VaultUpgrade {
         left.push(`${to} (was ${from})`);
       }
     }
-    rmSync(listPath, { force: true });
+    for (const path of [ignoredMovesPath(vaultPath, version), kept]) if (path !== null) rmSync(path, { force: true });
     return [
       moved > 0 ? `${String(moved)} git-ignored ${moved === 1 ? "file is" : "files are"} back at the old place.` : "",
       left.length > 0 ? `Move these git-ignored files back by hand: ${left.join(", ")}.` : "",
     ]
       .filter((part) => part !== "")
       .join(" ");
+  }
+
+  /** With no list of the git-ignored moves: each ignored file of the inventory that is not at its place. */
+  private missingIgnored(version: number, tag: string | null): string {
+    const { vaultPath, stateFolder } = this.options;
+    const name = `v${String(version)}-inventory.tsv`;
+    const inventory = [join(upgradeFolder(vaultPath), name), tag === null ? null : join(stateFolder, tag, name)]
+      .map((path) => (path === null ? null : readTextTolerant(path)))
+      .find((text): text is string => text !== null);
+    if (inventory === undefined)
+      return "Some git-ignored files may need to move back: Eva has no list of the ones that the upgrade moved. Check the report of the upgrade.";
+    const gone = inventory
+      .split("\n")
+      .map((line) => line.split("\t"))
+      .filter(([kind, , path = ""]) => kind === "ignored" && path !== "" && !existsSync(join(vaultPath, path)))
+      .map(([, , path = ""]) => path);
+    return gone.length === 0 ? "" : `These git-ignored files may need to move back: ${gone.join(", ")}.`;
   }
 
   private async head(): Promise<string> {
@@ -581,7 +669,7 @@ export class VaultUpgrade {
 
   private async must(arguments_: readonly string[], what: string): Promise<GitResult> {
     const result = await this.git(arguments_);
-    if (result.exitCode !== 0) refuse(`Eva could not ${what}: ${firstLine(result)}`);
+    if (result.exitCode !== 0) refuse(`Eva could not ${what}: ${gitReason(result)}`);
     return result;
   }
 }
@@ -593,6 +681,27 @@ export function ignoredMovesPath(vaultPath: string, version: number): string {
 
 function refuse(reason: string): never {
   throw new EvaError("vault_upgrade_refused", reason);
+}
+
+/** The working files of an upgrade in the scratch folder, which Eva also keeps on this computer. */
+function workingFiles(vaultPath: string, version: number): string[] {
+  const folder = upgradeFolder(vaultPath);
+  return ["inventory.tsv", "report.md", "ignored-moves.tsv"].map((name) => join(folder, `v${String(version)}-${name}`));
+}
+
+/** About me with no `lastLocation` and its comment: the phone writes them, so they make no conflict copy. */
+function withoutLocation(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !line.startsWith("lastLocation:") && !line.startsWith("# Eva's code fills lastLocation"))
+    .join("\n");
+}
+
+/** git's first line, and each file that it lists on the lines after, such as the files that block a merge. */
+function gitReason(result: GitResult): string {
+  const lines = `${result.stderr}\n${result.stdout}`.split("\n");
+  const files = lines.filter((line) => line.startsWith("\t")).map((line) => line.trim());
+  return files.length === 0 ? firstLine(result) : `${firstLine(result)} ${files.join(", ")}`;
 }
 
 function firstLine(result: GitResult): string {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { VaultUpgrade } from "../../../../src/core/vault/vault-upgrade.ts";
@@ -32,6 +32,7 @@ function upgrade(): { upgrade: VaultUpgrade; sync: VaultSync } {
       isHub: () => hub,
       syncEnabled: () => syncOn,
       skillFolder: () => join(sandbox.root, "engines", "eva-core", "skills", "vault-upgrade"),
+      stateFolder: join(sandbox.root, "state", "vault-upgrade"),
       afterBranch: () => {
         afterBranch += 1;
       },
@@ -218,7 +219,7 @@ describe("drop", () => {
 });
 
 describe("drop with a conflict", () => {
-  test("keeps both versions of a note that the upgrade and a chat both changed, and can run again", async () => {
+  test("keeps the old note, and the version of the chat in a copy, and can run again", async () => {
     await upgrade().upgrade.run("start");
     sandbox.write(vault, "Life/Car/Car.md", "# Car\n\nThe upgrade's text.\n");
     sandbox.git(vault, "commit", "-q", "-am", "Rewrite the car");
@@ -226,8 +227,8 @@ describe("drop with a conflict", () => {
     const text = await upgrade().upgrade.run("drop");
     expect(text).toContain("Life/Car/Car (conflict copy).md");
     expect(branch()).toBe("main");
-    expect(remoteFile("Life/Car/Car.md")).toContain("a chat's line");
-    expect(remoteFile("Life/Car/Car (conflict copy).md")).toBe("# Car");
+    expect(remoteFile("Life/Car/Car.md")).toBe("# Car");
+    expect(remoteFile("Life/Car/Car (conflict copy).md")).toContain("a chat's line");
     expect(await refusal(upgrade().upgrade.run("drop"))).toContain("No vault upgrade is open");
   });
 });
@@ -260,7 +261,8 @@ describe("undo", () => {
     await upgrade().upgrade.run("finish");
     sandbox.write(vault, "Life/About me.md", `---\nname: Sam\n${location("2026-10-25T10:00:00.000Z")}\n---\n`);
     await upgrade().sync.save();
-    expect(await upgrade().upgrade.run("undo")).not.toContain("conflict copy");
+    // The slim note differs in more than the location, so it stays in a copy too.
+    expect(await upgrade().upgrade.run("undo")).toContain("Life/About me (conflict copy).md");
     const aboutMe = remoteFile("Life/About me.md");
     expect(aboutMe).toContain("diet: vegetarian");
     expect(aboutMe).toContain("2026-10-25T10:00:00.000Z");
@@ -293,5 +295,125 @@ describe("undo", () => {
     expect(await refusal(upgrade().upgrade.run("undo"))).toContain("no upgrade to version 2");
     await upgrade().upgrade.run("start");
     expect(sandbox.git(vault, "tag", "--list")).toBe("before-v3\nbefore-v3-2");
+  });
+});
+
+/** The scenarios of the second review: each one lost a note or a fact before. */
+describe("nothing lost (second review)", () => {
+  const aboutMe = (): string => readFileSync(join(vault, "Life/About me.md"), "utf-8");
+  const writeAboutMe = (text: string): void => sandbox.write(vault, "Life/About me.md", text);
+  const commitAll = (message: string): void => {
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", message);
+  };
+  /** The text of the copy that the output names. */
+  const copyIn = (text: string): string => {
+    const name = /(Life\/About me \(conflict copy[^)]*\)\.md)/.exec(text)?.[1];
+    if (name === undefined) throw new Error(`No About me copy in: ${text}`);
+    return readFileSync(join(vault, name), "utf-8");
+  };
+
+  test("A: a drop keeps the old About me, and the chat's edit in a named copy", async () => {
+    writeAboutMe("---\nname: Sam\ndiet: vegetarian\nallergies: nuts\n---\n\nI sleep 7h.\n");
+    commitAll("About me");
+    await upgrade().upgrade.run("start");
+    writeAboutMe("---\nname: Sam\npronouns: they\n---\n");
+    sandbox.git(vault, "commit", "-q", "-am", "Slim About me");
+    writeAboutMe("---\nname: Sam\npronouns: they\ncontact: sam@example.invalid\n---\n");
+    const text = await upgrade().upgrade.run("drop");
+    expect(aboutMe()).toContain("diet: vegetarian");
+    expect(aboutMe()).toContain("I sleep 7h.");
+    expect(copyIn(text)).toContain("contact: sam@example.invalid");
+  });
+
+  test("B and S7: an undo keeps the old About me, and the edits made since in a named copy", async () => {
+    writeAboutMe("---\nname: Sam\ndiet: vegetarian\n---\nOld body.\n");
+    commitAll("About me");
+    await upgrade().upgrade.run("start");
+    writeAboutMe("---\nname: Sam\npronouns: they\n---\nNew slim.\n");
+    sandbox.git(vault, "commit", "-q", "-am", "Slim About me");
+    await upgrade().upgrade.run("finish");
+    writeAboutMe("---\nname: Sam\npronouns: they\nbirthDate: 1990-01-01\n---\nNew slim.\nAllergic to nuts.\n");
+    await upgrade().sync.save();
+    const text = await upgrade().upgrade.run("undo");
+    expect(aboutMe()).toContain("diet: vegetarian");
+    expect(copyIn(text)).toContain("Allergic to nuts.");
+    expect(copyIn(text)).toContain("birthDate: 1990-01-01");
+  });
+
+  test("S8: a drop keeps a note that the person added to About me during the upgrade", async () => {
+    writeAboutMe("---\nname: Sam\ndiet: veg\n---\nOld body.\n");
+    commitAll("About me");
+    await upgrade().upgrade.run("start");
+    writeAboutMe("---\nname: Sam\n---\nNew slim.\n");
+    sandbox.git(vault, "commit", "-q", "-am", "slim");
+    writeAboutMe("---\nname: Sam\n---\nNew slim.\nAllergic to nuts.\n");
+    const text = await upgrade().upgrade.run("drop");
+    expect(aboutMe()).toContain("Old body.");
+    expect(copyIn(text)).toContain("Allergic to nuts.");
+  });
+
+  test("C, D, S1 and N5: work that the skill staged but did not commit stops drop and finish, with its files", async () => {
+    await upgrade().upgrade.run("start");
+    sandbox.git(vault, "mv", "Life/Car/Car.md", "Life/Car-old.md");
+    // A move committed under its new path only: the removal of the old path stays staged.
+    sandbox.git(vault, "commit", "-q", "-m", "Move the car", "--", "Life/Car-old.md");
+    for (const step of ["drop", "finish"] as const) {
+      const refused = await refusal(upgrade().upgrade.run(step));
+      expect(refused).toContain("Life/Car/Car.md");
+      expect(branch()).toBe("upgrade-v3");
+    }
+  });
+
+  test("a deleted note is no note written meanwhile: drop names it and stops", async () => {
+    await upgrade().upgrade.run("start");
+    rmSync(join(vault, "Life/Car/Car.md"));
+    expect(await refusal(upgrade().upgrade.run("drop"))).toContain("Life/Car/Car.md");
+    expect(branch()).toBe("upgrade-v3");
+  });
+
+  test("S2: an undo never leaves a moved note deleted, even after a full rewrite", async () => {
+    await upgrade().upgrade.run("start");
+    moveTheCar();
+    await upgrade().upgrade.run("finish");
+    sandbox.write(vault, "Life/Car-old.md", "Totally different long text here now. ".repeat(10));
+    await upgrade().sync.save();
+    await upgrade().upgrade.run("undo");
+    expect(existsSync(join(vault, "Life/Car/Car.md"))).toBe(true);
+    const files = sandbox.git(vault, "ls-files").split("\n");
+    const rewritten = files.filter((file) =>
+      readFileSync(join(vault, file), "utf-8").includes("Totally different long text"),
+    );
+    expect(rewritten.length).toBeGreaterThan(0);
+  });
+
+  test("S5: a merge that a local file blocks names the file", async () => {
+    await upgrade().upgrade.run("start");
+    sandbox.write(vault, "Life/Objects/New.md", "from the branch\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "new");
+    sandbox.git(vault, "switch", "-q", "main");
+    sandbox.write(vault, "Life/Objects/New.md", "from main, not committed\n");
+    expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Life/Objects/New.md");
+    expect(readFileSync(join(vault, "Life/Objects/New.md"), "utf-8")).toBe("from main, not committed\n");
+  });
+
+  test("an undo after the scratch folder was emptied moves the git-ignored files back from Eva's own copy", async () => {
+    await upgrade().upgrade.run("start");
+    renameSync(join(vault, "Life/Car/.env"), join(vault, "Life/car.env"));
+    sandbox.write(vault, ".eva/scratch/vault-upgrade/v3-ignored-moves.tsv", "Life/Car/.env\tLife/car.env\n");
+    await upgrade().upgrade.run("finish");
+    rmSync(join(vault, ".eva", "scratch"), { recursive: true, force: true });
+    await upgrade().upgrade.run("undo");
+    expect(readFileSync(join(vault, "Life/Car/.env"), "utf-8")).toBe("PLATE_API=demo\n");
+  });
+
+  test("with no list at all, an undo names the git-ignored files that are not at their old place", async () => {
+    await upgrade().upgrade.run("start");
+    renameSync(join(vault, "Life/Car/.env"), join(vault, "Life/car.env"));
+    await upgrade().upgrade.run("finish");
+    rmSync(join(vault, ".eva", "scratch"), { recursive: true, force: true });
+    rmSync(join(sandbox.root, "state", "vault-upgrade"), { recursive: true, force: true });
+    expect(await upgrade().upgrade.run("undo")).toContain("may need to move back");
   });
 });

@@ -660,6 +660,7 @@ export class Eva {
             sync: gitSync,
             isHub: () => this.role() === "hub",
             syncEnabled: () => options.config.sync.enabled,
+            stateFolder: join(options.paths.stateFolder, "vault-upgrade"),
             skillFolder: () => evaCore.skillFolder("vault-upgrade"),
             // The open branch held these back. Only the hub runs the vault migrations: a drop also runs on a satellite.
             afterBranch: () => {
@@ -1333,6 +1334,8 @@ export class Eva {
         // From here on, a new point needs a new job.
         if (queues) this.locationWriteQueued = false;
         if (this.vaultTurnRunning(endingTurn)) return;
+        // A vault upgrade can start while the job waits in the queue.
+        if (vaultPath !== null && upgradeIsOpen(vaultPath)) return;
         const problem = lastLocationProblem(this.locations.writeIfDue());
         if (problem !== "keep") this.alerts.report("last_location", problem);
       });

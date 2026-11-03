@@ -524,7 +524,7 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).toContain(".gitignore");
   });
 
-  test("commits the removal of a tracked file in a folder that the .gitignore lists later, and never adds a new one there", async () => {
+  test("commits the removal of a tracked file in a folder that the .gitignore lists later, beside an edit and a withheld file", async () => {
     sandbox.write(vault, "Archive/old.md", "Old.\n");
     sandbox.git(vault, "add", "Archive/old.md");
     sandbox.git(vault, "commit", "-q", "-m", "old");
@@ -532,9 +532,14 @@ describe("VaultSync.save", () => {
     sandbox.write(vault, ".gitignore", "Archive/\n");
     sandbox.write(vault, "Archive/new.md", "New.\n");
     rmSync(join(vault, "Archive/old.md"));
+    sandbox.write(vault, "AGENTS.md", "# Edited\n");
+    // A withheld file makes the commit take only the kept paths (--only).
+    sandbox.write(vault, "Toolbox/keys.md", "token ghp_" + "a".repeat(36) + "\n");
     const state = await createSync(vault).save();
     expect(state.status).toBe("ok");
-    expect(remoteFiles()).not.toContain("Archive/");
+    expect(state.withheldFiles).toEqual([{ path: "Toolbox/keys.md", reason: "secret" }]);
+    expect(remoteFiles().split("\n").sort()).toEqual([".gitignore", "AGENTS.md"]);
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Edited");
   });
 
   test("runs one operation at a time", async () => {

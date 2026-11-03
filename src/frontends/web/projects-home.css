@@ -1,0 +1,252 @@
+/* The Projects home page (#840): client/ProjectsHome.tsx. */
+
+.projects-home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  /* Room for the shadows of the cards: a box that scrolls cuts them at its padding. */
+  padding: var(--space-5) var(--space-5) var(--shadow-room);
+}
+
+.home-card {
+  gap: var(--space-3);
+}
+
+/* `.card h2` would set a large title, so the rule names the card too. */
+.home-card .home-card-title {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.home-chats {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-chat {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  border-radius: var(--radius-input);
+  padding: var(--space-2);
+}
+
+.home-chat + .home-chat {
+  border-top: 1px solid var(--line);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-chat:hover {
+    background: var(--chip);
+  }
+
+  .timeline-row:hover .timeline-name {
+    color: var(--accent-ink);
+  }
+}
+
+/* The pill keeps its own width: `.status-pill` places itself in the grid of the chat list. */
+.home-chat .status-pill {
+  grid-row: auto;
+  grid-column: auto;
+}
+
+.home-chat-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.home-chat-text b,
+.home-chat-text .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-chat-text .muted {
+  font-size: var(--text-xs);
+}
+
+/* The mark of a project: its initials in its colour on a tint of it. White text on a light type colour is too faint. */
+.project-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-input);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--project-color);
+  background: color-mix(in oklch, var(--project-color) 18%, var(--panel));
+}
+
+.timeline {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  --timeline-name: 160px;
+}
+
+.timeline-marks {
+  position: relative;
+  height: 18px;
+  margin-left: calc(var(--timeline-name) + var(--space-3));
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.timeline-marks span {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+}
+
+/* A narrow timeline has no room for twelve months: it names every third one. */
+@container (max-width: 560px) {
+  .timeline-marks.months span:not(:nth-child(3n + 1)) {
+    display: none;
+  }
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: var(--timeline-name) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  border-radius: var(--radius-input);
+  padding: var(--space-1) 0;
+}
+
+.timeline-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.timeline-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-name::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--project-color);
+}
+
+.timeline-lane {
+  position: relative;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+}
+
+.timeline-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--project-color);
+}
+
+/* A project from an earlier year runs in from the edge. */
+.timeline-bar.before {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* A faint bar keeps the colour of the project and still differs from an active bar. */
+.timeline-row.paused .timeline-bar {
+  opacity: 0.3;
+}
+
+.timeline-word {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  padding-left: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.timeline-today {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  /* "Now" in the accent, as the day timeline of Schedules shows it. */
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--glow);
+}
+
+.home-counts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.home-count-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.home-count {
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  text-align: left;
+}
+
+.home-count b {
+  font-size: var(--text-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .timeline {
+    --timeline-name: 110px;
+  }
+
+  .home-count-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The Needs you card of the phone list. `.card` comes after `.phone-only` in styles.css, so it needs this rule. */
+.home-card.phone-only {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .home-card.phone-only {
+    display: flex;
+  }
+}

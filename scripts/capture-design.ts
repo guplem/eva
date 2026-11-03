@@ -79,7 +79,7 @@ async function openAddress(page: Page, address: string, ready: string): Promise<
   await page.getByRole("heading", { level: 1, name: ready }).waitFor();
 }
 
-/** With no project open, the list shows on both sizes, and the page has no title yet. */
+/** With no project open, the list shows on both sizes. A computer shows the home page beside it (#840). */
 async function openProjects(page: Page): Promise<void> {
   await page.evaluate(() => {
     window.location.hash = "#/projects";
@@ -160,7 +160,11 @@ async function setUp(browser: Browser): Promise<Demo> {
   await addSchedule(page, { id: "water-plants", name: "Water the plants", time: "18:30", days: ["Fri"] });
 
   await openProjects(page);
-  await page.getByRole("button", { name: /Example app/ }).click();
+  await page
+    .getByRole("navigation", { name: "Projects" })
+    .locator("button.project-card")
+    .filter({ hasText: /Example app/ })
+    .click();
   await page.getByRole("heading", { level: 1, name: "Example app" }).waitFor();
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
@@ -255,8 +259,21 @@ const scenes: readonly Scene[] = [
     name: "projects",
     show: async (page) => {
       await openProjects(page);
-      await page.getByRole("button", { name: /Example app/ }).click();
+      await page
+        .getByRole("navigation", { name: "Projects" })
+        .locator("button.project-card")
+        .filter({ hasText: /Example app/ })
+        .click();
       await page.locator(".clone-card").first().waitFor();
+    },
+  },
+  {
+    // With no project open (#840): the home page beside the list on a computer, the list on a phone.
+    name: "projects-home",
+    show: async (page, view) => {
+      await openProjects(page);
+      await page.locator("button.project-card").first().waitFor();
+      if (view.device === "computer") await page.getByRole("region", { name: "Timeline" }).waitFor();
     },
   },
   { name: "project-chat", show: (page, _view, demo) => openChat(page, demo.projectChat) },

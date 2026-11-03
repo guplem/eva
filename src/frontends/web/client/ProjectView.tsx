@@ -31,6 +31,7 @@ import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { startChatAbout } from "./NewChatDraft.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
+import { NeedsYouCard, ProjectsHome } from "./ProjectsHome.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 import { countOf, projectSummary, shownTags, statusChips, statusPill, tagsByUse } from "./project-format.ts";
 import { projectStatusFilters } from "../../../shared/project-statuses.ts";
@@ -156,9 +157,13 @@ export function ProjectView({
     };
   }, [search, status, tag, listVersion, showError]);
 
-  // The tags come from every project, so a tag of a closed project is offered too.
+  // The tags come from every project, so a tag of a closed project is offered too. The home page counts every project.
+  const [allProjects, setAllProjects] = useState<Project[] | null>(null);
   useEffect(() => {
-    api.projects("", "").then((all) => setAllTags(tagsByUse(all)), showError);
+    api.projects("", "").then((all) => {
+      setAllTags(tagsByUse(all));
+      setAllProjects(all);
+    }, showError);
   }, [listVersion, showError]);
 
   const openProjectId = page?.project.id ?? null;
@@ -531,6 +536,14 @@ export function ProjectView({
   const unreadProjects = new Set(
     unreadChats(sessions, branch.id === null || sidebarOpen ? [] : [branch.id]).map((session) => session.projectId),
   );
+  // A chat of the home page opens by its address: the page reads its project and its clone, as after a reload.
+  const openHomeChat = (picked: SessionRecord): void => {
+    if (picked.projectId === null) return;
+    clearAction();
+    opening.current = null;
+    goTo(projectAddressOf({ kind: "chat", projectId: picked.projectId, chatId: picked.id }));
+    onNavigate();
+  };
   const [panelShown, togglePanel] = useChatPanelShown();
   const chatDetails = {
     tree,
@@ -554,6 +567,15 @@ export function ProjectView({
             <Icon name="plus" /> New project
           </button>
         </div>
+        {page === null && allProjects !== null && (
+          <NeedsYouCard
+            className="phone-only"
+            chats={roots}
+            projects={allProjects}
+            stateOf={stateOf}
+            onOpenChat={openHomeChat}
+          />
+        )}
         <input
           className="project-search"
           aria-label="Search projects"
@@ -635,7 +657,17 @@ export function ProjectView({
       <main className="main">
         {notices}
         {page === null ? (
-          <div className="empty">Pick a project.</div>
+          <ProjectsHome
+            projects={allProjects}
+            chats={roots}
+            stateOf={stateOf}
+            onOpenChat={openHomeChat}
+            onOpenProject={(project) => open({ kind: "project", project })}
+            onFilterStatus={(chosen) => {
+              setSearch("");
+              setStatus(chosen);
+            }}
+          />
         ) : page.kind === "details" ? (
           <ProjectDetailsEditor
             key={page.project.id}

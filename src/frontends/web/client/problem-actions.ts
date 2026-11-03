@@ -28,6 +28,8 @@ export function isOtherMachineProblem(key: string): boolean {
 export function problemAction(key: string, syncStatus: VaultSyncState["status"]): ProblemAction | null {
   if (key.startsWith("schedule:") || key.startsWith("schedule_card:")) return "open_schedules";
   if (isOtherMachineProblem(key)) return null;
+  // Only a step outside Eva closes it, such as an install on Linux. Its help link says which (#825).
+  if (key === "shell_wall") return null;
   if (key === "vault_sync" && syncStatus === "conflict") return "pick_version";
   if (key === "template_alignment") return "choose_template_version";
   if (key.startsWith("widget_update:")) return "review_widget_update";

@@ -47,6 +47,10 @@ describe("problemAction", () => {
     expect(isOtherMachineProblem("update")).toBe(false);
   });
 
+  test("the shell sandbox gap has no button: no part of Settings fixes it (#825)", () => {
+    expect(problemAction("shell_wall", "ok")).toBeNull();
+  });
+
   test("a widget update that waits opens the widget list, where the person answers it", () => {
     expect(problemAction("widget_update:example-owner/habits:0123456789ab", "ok")).toBe("review_widget_update");
   });

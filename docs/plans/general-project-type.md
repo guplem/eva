@@ -29,3 +29,22 @@ The owner is away. Each decision follows his intentions: simple, one place per f
 - **The preparer's check at each turn.** It refuses a chat whose project became software. Decision: keep the check, and reword its message to "This project works in clones now, ...". Reason: the old text says "no specialist", which is false for a general project.
 - **The base prompt.** #769 edits the same Projects section. Decision: change only the type lines, with the approved text of #771 for them. Reason: small edits limit the conflict.
 - **The extra-root warning.** A general or specialist project outside the vault gets no chat. Decision: one warning that names the type. Reason: the same rule for both types.
+
+## Review decisions
+
+The reviews ran in five rounds. Each finding below is fixed, or kept with its reason.
+
+- **Fixed:** the guide's type-change sentence of a specialist, and the General bullet now names its warnings and how `type: general` keeps a project general when it gets `repos`.
+- **Fixed:** the busy vault sentence says "an Assistant or project chat", so it covers a general chat.
+- **Fixed:** the daily clean removes the empty project folders inside `.eva/scratch/received/`. The received folder and `.eva/scratch` stay.
+- **Fixed:** Telegram checks that the chat's project exists before it downloads a file.
+- **Fixed:** a raw save that adds `repos` to a general project with no type key, while it has chats, says that the repos make it software and that `type: general` keeps it general.
+- **Fixed:** the Details form reads a missing type as general for its unsaved-changes check, as it shows it.
+- **Fixed:** the migration reads only folders named by a project id, with a frozen copy of the rule.
+- **Fixed:** the root goal says that a chat in a project folder reads the files sent to its project.
+- **Fixed:** a folder chat of a software project, left from an older type, stays "Specialist". Only a general project's chat is "Project".
+- **Fixed:** the merge of #769: a new project file starts with `created`, `summary`, `status` and `type`, in that order.
+- **Kept:** the menu label "In the project folder", since the button already says New chat.
+- **Kept:** the vault map comment "No type means general". #772 replaces the map, and the base prompt states the `repos` rule.
+- **Kept:** a malformed scalar `repos` reads as general. The warning still shows.
+- **Kept:** the note of a received file differs from the Assistant's. A chat in a project folder gets no prompt of Eva's, so the note carries the line.

@@ -1,8 +1,8 @@
 /**
  * What Eva learned about each schedule, in the instance home (lesson 64): when she first saw
  * it, the slot it last fired, the result of its last run, and the fields its last setup card
- * showed. Losing this file costs one new setup card per schedule, so a broken file starts empty
- * (lesson 54).
+ * showed. Losing this file costs one new setup card per schedule, and a one-off that is due then
+ * never runs. Both are rare, so a broken file starts empty (lesson 54).
  */
 import { z } from "zod";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -14,11 +14,18 @@ const stateSchema = z.object({
    * The slot of the last firing and whether it failed. Unlike `lastFired`, a slot that a setup
    * card skipped never counts. Optional: a state file from before this field reads as no run yet.
    */
-  lastResult: z.object({ slot: z.string(), failed: z.boolean() }).nullable().optional(),
+  lastResult: z.object({ slot: z.string(), failed: z.boolean(), quiet: z.boolean().optional() }).nullable().optional(),
   /** The fields that the last setup card showed. Null: no card yet. */
   announced: z.record(z.string(), z.string()).nullable(),
   /** True from a pause until the next card. Optional: a state file from before this field reads as not paused. */
   paused: z.boolean().optional(),
+  /** The slot of the run whose [[done]] ended the schedule (#687). Null again once it is on. */
+  done: z.string().nullable().optional(),
+  /**
+   * The time of a one-off and when Eva first saw that time (#822). A one-off counts from then, so a
+   * past time that an edit writes never fires. Optional: a missing field reads as not seen yet.
+   */
+  onceSeen: z.object({ from: z.string(), at: z.string() }).optional(),
 });
 
 export type ScheduleState = z.infer<typeof stateSchema>;

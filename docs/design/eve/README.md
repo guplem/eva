@@ -82,7 +82,7 @@ Semantic colours do not follow the seed:
 - `--bad` shows a failure, or a button that deletes or refuses.
 - `--warn-ink` is small text on `--warn-bg`. `--on-warn` is text on a solid `--warn`.
 
-The file kinds of the Files page have their own fixed colours, `--type-red` to `--type-pink`. They do not follow the seed either.
+The file kinds of the Files page have their own fixed colours, `--type-red` to `--type-pink`. They do not follow the seed either. The Projects home page gives each project one of them, by a hash of its folder name.
 
 `styles.css` gives a name to each shared value of this guide. Use the name, not the value:
 
@@ -166,7 +166,7 @@ A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) an
 
 - **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the home page, the new chat page, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news or a setup step that is left.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
-- **Main area:** a header (title, subtitle, status pill, actions), the content in a column of at most 760 px, and the composer.
+- **Main area:** a header (title, subtitle, status pill, actions), the content in a column that fills the free width, and the composer. In a chat, an answer takes at most 86 % of the column, and a message of the person at most 72 %.
 - **Inspector:** the details of the selected item, such as the chat details.
 
 ### Phone
@@ -307,6 +307,14 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - The list opens with the "Current" filter: the active and in-use projects.
 - Each clone is a card with its branch, its state and its chats.
 - A project card shows the "Unread" pill while one of its chats has an answer that the person did not see.
+- A project page has a "Projects" back button beside its title, on both sizes.
+
+### Projects home
+
+![Computer](screenshots/projects-home-computer-light.webp) ![Phone](screenshots/projects-home-phone-light.webp)
+
+- With no project open, a computer shows a home page: Needs you, Recent, a timeline of the active and paused projects, and the counts of a year. A phone shows only Needs you, above the list.
+- Each project of the timeline has one file type colour, by a hash of its folder name. A paused bar is a faint bar of that colour. The today line takes the accent.
 
 ### A chat in a clone
 
@@ -330,6 +338,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 ![Computer](screenshots/settings-computer-light.webp) ![Phone](screenshots/settings-phone-light.webp)
 
 - Settings has its own list of sections on a computer.
+- Each section page lists its cards: under the open section on a computer, at the top of the page on a phone. The entry of the card in view is marked.
 - The setup is a ring with the steps left. The open step has the main button.
 - Optional steps have another icon and colour, so they do not look like errors.
 - Appearance has the colour picker, the theme and the density.

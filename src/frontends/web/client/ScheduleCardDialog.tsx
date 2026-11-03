@@ -12,7 +12,14 @@ import { stateFaces } from "./visor-faces.ts";
 import { dialogBackdropClass } from "./Dialog.tsx";
 
 /** The name is in the heading, and "When" says the time, the days and the interval together. */
-const labels: Record<string, string> = { text: "Text", file: "File", prompt: "Prompt", model: "Model", id: "Id" };
+const labels: Record<string, string> = {
+  text: "Text",
+  file: "File",
+  prompt: "Prompt",
+  model: "Model",
+  id: "Id",
+  until: "Last day",
+};
 const inWhen = new Set(["name", "at", "days", "every", "from"]);
 
 export function ScheduleCardDialog(props: {
@@ -37,9 +44,11 @@ export function ScheduleCardDialog(props: {
   const when =
     every !== undefined && from !== undefined
       ? `${repeatWords({ at: null, days: null, every, from })}, from ${slotWords(from)}`
-      : at === undefined
-        ? ""
-        : repeatWords({ at, days: dayNumbersOf(days ?? ""), every: null, from: null });
+      : from !== undefined
+        ? repeatWords({ at: null, days: null, every: null, from })
+        : at === undefined
+          ? ""
+          : repeatWords({ at, days: dayNumbersOf(days ?? ""), every: null, from: null });
   const row = (name: string, label: string, value: string, isChanged: boolean): ReactElement => (
     <div key={name} style={{ display: "contents" }}>
       <dt className={isChanged ? "changed" : undefined}>{label}</dt>

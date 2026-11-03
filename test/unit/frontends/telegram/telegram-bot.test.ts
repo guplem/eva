@@ -2783,6 +2783,44 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(telegram.callsTo("editForumTopic")).toEqual([]);
   });
 
+  test("a quiet run sends nothing to its topic, and a [[done]] run sends its answer without the marker (#687)", async () => {
+    const watch = { id: "reply", name: "Reply", at: "10:45", prompt: "Any reply?" };
+    writeSchedules([watch, { ...watch, id: "done", name: "Done" }]);
+    let turn = 0;
+    createEva((request) => FakeEngine.answer(request, (turn += 1) === 1 ? "[[quiet]]" : "She replied.\n[[done]]"));
+    const bot = createBot();
+    await eva.schedules?.tick();
+    const before = telegram.sentTexts().length;
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("She replied")));
+    await eva.idle();
+    expect(telegram.sentTexts().slice(before)).toEqual(["She replied."]);
+  });
+
+  test("text before a tool call in a quiet run never reaches the topic (#687)", async () => {
+    writeSchedules([{ id: "reply", name: "Reply", at: "10:45", prompt: "Any reply?" }]);
+    createEva((request): EngineEventPayload[] => {
+      const [, finished] = FakeEngine.answer(request, "[[quiet]]");
+      return [
+        { kind: "text", text: "I check Gmail now.", messageId: "m1" },
+        { kind: "tool_started", toolUseId: "t1", name: "search", category: "tool", summary: "Gmail" },
+        { kind: "tool_finished", toolUseId: "t1", isError: false },
+        { kind: "text", text: "[[quiet]]", messageId: "m2" },
+        ...(finished === undefined ? [] : [finished]),
+      ];
+    });
+    const bot = createBot();
+    await eva.schedules?.tick();
+    const before = telegram.sentTexts().length;
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await eva.idle();
+    await settle(bot, () => eva.sessions.list().length === 0);
+    await bot.pollOnce();
+    expect(telegram.sentTexts().slice(before)).toEqual([]);
+  });
+
   test("a deleted firing chat leaves the schedule's topic, with the earlier firings in it", async () => {
     writeSchedules([morning]);
     createEva((request) => FakeEngine.answer(request, "Your day: rest."));
@@ -2909,13 +2947,19 @@ describe("schedules (lessons 66, 70, 126)", () => {
   });
 
   test("/schedules lists them with a remove button, and the button removes one", async () => {
-    writeSchedules([morning, { ...morning, id: "evening", name: "Evening", enabled: false }, { id: "Bad" }]);
+    writeSchedules([
+      morning,
+      { ...morning, id: "evening", name: "Evening", enabled: false },
+      { id: "call", name: "Call", from: "2026-10-01T08:00", text: "Call the bank." },
+      { id: "Bad" },
+    ]);
     const bot = createBot();
     telegram.sendText(owner, "/schedules");
     await settle(bot, () => telegram.sentTexts().length >= 1);
     const listing = telegram.callsTo("sendMessage").at(-1)?.params;
     expect(String(listing?.["text"])).toContain("• Morning (morning), next: 2026-10-14 10:45");
     expect(String(listing?.["text"])).toContain("• Evening (evening), off");
+    expect(String(listing?.["text"])).toContain("• Call (call), ended: 2026-10-01 08:00");
     expect(String(listing?.["text"])).toContain("Schedules file problems:");
     expect(JSON.stringify(listing?.["reply_markup"])).toContain("s:morning");
     telegram.pressButton(owner, "s:morning");

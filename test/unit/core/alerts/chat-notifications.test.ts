@@ -19,6 +19,7 @@ interface Fake {
   readonly sent: ChatNotification[];
   readonly feed: (sessionId: string, ...payloads: Payload[]) => void;
   readonly idle: (sessionId: string, stopped?: boolean) => void;
+  readonly center: ChatNotifications;
 }
 
 function notifications(): Fake {
@@ -30,6 +31,7 @@ function notifications(): Fake {
   let seq = 0;
   return {
     sent,
+    center,
     feed: (sessionId, ...payloads) => {
       for (const payload of payloads) {
         seq += 1;
@@ -262,5 +264,37 @@ describe("holdingChat", () => {
 
   test("an approval waits for any page in view: each page shows its notice", () => {
     expect(holdingChat(notification("approvals"))).toBeNull();
+  });
+});
+
+describe("a scheduled run (#687)", () => {
+  test("holds its notification until the run ends, then sends it", () => {
+    const { sent, feed, idle, center } = notifications();
+    center.holdRun("daily");
+    feed("daily", received("schedule"), text("She replied."), finished);
+    idle("daily");
+    expect(sent).toEqual([]);
+    center.endRun("daily", true);
+    expect(sent).toMatchObject([{ kind: "schedules", body: "She replied." }]);
+  });
+
+  test("a quiet run sends nothing", () => {
+    const { sent, feed, idle, center } = notifications();
+    center.holdRun("daily");
+    feed("daily", received("schedule"), text("[[quiet]]"), finished);
+    idle("daily");
+    center.endRun("daily", false);
+    expect(sent).toEqual([]);
+  });
+
+  test("a later turn of the person in the chat is not held", () => {
+    const { sent, feed, idle, center } = notifications();
+    center.holdRun("daily");
+    feed("daily", received("schedule"), text("She replied."), finished);
+    idle("daily");
+    center.endRun("daily", true);
+    feed("daily", received("api"), text("Thanks."), finished);
+    idle("daily");
+    expect(sent.map((notification) => notification.kind)).toEqual(["schedules", "replies"]);
   });
 });

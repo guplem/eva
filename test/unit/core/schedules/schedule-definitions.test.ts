@@ -9,6 +9,7 @@ import {
   parseScheduleEntry,
   readScheduleDefinitions,
   removeScheduleDefinition,
+  runsOnce,
   saveScheduleDefinition,
   setScheduleEnabled,
   type Schedule,
@@ -79,6 +80,7 @@ describe("parseScheduleEntry", () => {
       enabled: true,
       every: null,
       from: null,
+      until: null,
     });
   });
 
@@ -90,6 +92,17 @@ describe("parseScheduleEntry", () => {
     expect([parsed.every, parsed.from, parsed.at, parsed.days]).toEqual(["3d", "2026-10-22T07:30", null, null]);
     for (const every of ["1h", "12h", "2w", "999d"])
       expect(typeof parseScheduleEntry({ ...interval, every }, 1)).toBe("object");
+  });
+
+  test("a schedule with from and no every runs once (#822)", () => {
+    const parsed = parseScheduleEntry(
+      { id: "call", name: "Call", from: "2026-11-24T10:00", text: "Call." },
+      1,
+    ) as Schedule;
+    expect([parsed.from, parsed.every, parsed.at, parsed.days]).toEqual(["2026-11-24T10:00", null, null, null]);
+    expect(runsOnce(parsed)).toBe(true);
+    expect(runsOnce(parseScheduleEntry(interval, 1) as Schedule)).toBe(false);
+    expect(runsOnce(parseScheduleEntry(morning, 1) as Schedule)).toBe(false);
   });
 
   test("days are read in any case, without repeats, in week order", () => {
@@ -124,7 +137,9 @@ describe("parseScheduleEntry", () => {
     [{ ...interval, from: "2026-02-30T07:30" }, "no valid from"],
     [{ ...interval, at: "07:30" }, "both every and at or days"],
     [{ ...interval, days: ["mon"] }, "both every and at or days"],
-    [{ ...morning, from: "2026-10-22T07:30" }, "from without every"],
+    [{ ...morning, from: "2026-10-22T07:30" }, "from with at or days"],
+    [{ id: "call", name: "Call", days: ["mon"], from: "2026-10-22T07:30", text: "Call." }, "from with at or days"],
+    [{ id: "call", name: "Call", from: "2026-10-22 07:30", text: "Call." }, "no valid from"],
   ])("entry %j is skipped: %s", (entry, reason) => {
     expect(parseScheduleEntry(entry, 4)).toContain(reason);
   });
@@ -272,5 +287,32 @@ describe("saving and removing", () => {
     writeFile({ version: 1 });
     expect(() => saveScheduleDefinition(path, morning)).toThrow("holds no list");
     expect(readFileSync(path, "utf8")).toBe(JSON.stringify({ version: 1 }));
+  });
+});
+
+describe("until (#687)", () => {
+  test("an end date reads as a day, and shows on the card only when set", () => {
+    const parsed = parseScheduleEntry({ ...interval, until: "2026-11-30" }, 1) as Schedule;
+    expect(parsed.until).toBe("2026-11-30");
+    expect(announcedFields(parsed).until).toBe("2026-11-30");
+    const without = parseScheduleEntry(interval, 1) as Schedule;
+    expect(without.until).toBeNull();
+    expect("until" in announcedFields(without)).toBe(false);
+  });
+
+  test.each([
+    [{ ...interval, until: "2026-11-31" }, "invalid until"],
+    [{ ...interval, until: "30/11/2026" }, "invalid until"],
+    [{ ...interval, until: 20261130 }, "invalid until"],
+  ])("entry %j is skipped: %s", (entry, reason) => {
+    expect(parseScheduleEntry(entry, 4)).toContain(reason);
+  });
+});
+
+describe("until on a one-off (#687 review)", () => {
+  test("is refused: a one-off has no later run to end", () => {
+    expect(
+      parseScheduleEntry({ id: "c", name: "C", from: "2026-11-24T10:00", until: "2026-11-30", text: "x" }, 1),
+    ).toContain("until is for a schedule that repeats");
   });
 });

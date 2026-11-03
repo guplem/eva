@@ -88,6 +88,7 @@ export function AddScheduleDialog(props: {
             choices={[
               { value: "days", label: "On days" },
               { value: "every", label: "At an interval" },
+              { value: "once", label: "Once" },
             ]}
             onChange={(value) => setForm({ ...form, repeat: value })}
           />
@@ -153,6 +154,26 @@ export function AddScheduleDialog(props: {
                 />
               </label>
             </>
+          )}
+          {repeat === "once" && (
+            <label>
+              Date and time
+              <input
+                type="datetime-local"
+                value={form.from}
+                onChange={(event) => setForm({ ...form, from: event.target.value.slice(0, 16) })}
+              />
+            </label>
+          )}
+          {repeat !== "once" && (
+            <label>
+              Last day (empty for no end)
+              <input
+                type="date"
+                value={form.until}
+                onChange={(event) => setForm({ ...form, until: event.target.value })}
+              />
+            </label>
           )}
           {/* A text in the file may hold line breaks, and a one-line input would drop them. */}
           <label>

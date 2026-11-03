@@ -113,7 +113,30 @@ describe("Eva", () => {
     await instance.idle();
     const [session] = instance.sessions.list();
     expect(session).toMatchObject({ title: "Lunch", source: "schedule", mode: "assistant" });
-    expect(engine.requests[0]?.prompt).toEndWith("Lunch ideas?");
+    expect(engine.requests[0]?.prompt).toContain("\n\nLunch ideas?\n\n[A scheduled run.");
+  });
+
+  test("a quiet scheduled run deletes its chat and sends nothing (#687)", async () => {
+    const engine = new FakeEngine((request) => FakeEngine.answer(request, "[[quiet]]"));
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "reply", name: "Reply", at: "12:45", prompt: "Any reply?" }] }),
+    );
+    const instance = start(engine);
+    const answered: string[] = [];
+    instance.schedules?.subscribe((event) => {
+      if (event.kind === "schedule_answered") answered.push(event.sessionId);
+      return true;
+    });
+    await instance.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    await waitFor(() => engine.requests.length === 1);
+    await instance.idle();
+    await waitFor(() => instance.sessions.list().length === 0);
+    expect(answered).toEqual([]);
+    expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ quiet: true });
   });
 
   test("with no vault there is no scheduler", () => {

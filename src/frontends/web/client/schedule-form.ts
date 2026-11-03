@@ -3,7 +3,8 @@ import type { Schedule } from "../../../core/schedules/schedule-definitions.ts";
 import { intervalUnits, nextHourSlot } from "./schedule-words.ts";
 import { weekOrder, type WeekStart } from "../../../shared/time-format.ts";
 
-export type Repeat = "days" | "every";
+/** On days, at an interval, or once at `from` (#822). */
+export type Repeat = "days" | "every" | "once";
 export type Unit = (typeof intervalUnits)[number][0];
 
 /** The day codes of `.eva/schedules.json`, from Monday, with the names that the buttons show. */
@@ -35,6 +36,8 @@ export interface ScheduleForm {
   readonly count: string;
   readonly unit: Unit;
   readonly from: string;
+  /** The last day, `YYYY-MM-DD`, or empty for no end (#687). */
+  readonly until: string;
   readonly text: string;
   readonly prompt: string;
 }
@@ -50,6 +53,7 @@ export function emptyScheduleForm(now: string | null): ScheduleForm {
     count: "1",
     unit: "d",
     from: now === null ? "" : nextHourSlot(now),
+    until: "",
     text: "",
     prompt: "",
   };
@@ -63,7 +67,7 @@ export function formOf(schedule: Schedule, now: string | null = null): ScheduleF
   return {
     id: schedule.id,
     name: schedule.name,
-    repeat: schedule.every === null ? "days" : "every",
+    repeat: schedule.every !== null ? "every" : schedule.from !== null ? "once" : "days",
     at: schedule.at ?? "",
     // Every day shows as no day picked, so a save keeps the entry without days.
     days:
@@ -71,6 +75,7 @@ export function formOf(schedule: Schedule, now: string | null = null): ScheduleF
     count: every === "" ? "1" : every.slice(0, -1),
     unit,
     from: schedule.from ?? emptyScheduleForm(now).from,
+    until: schedule.until ?? "",
     text: schedule.text ?? "",
     prompt: schedule.prompt ?? "",
   };
@@ -90,11 +95,15 @@ export function fieldsOf(form: ScheduleForm): Record<string, unknown> {
   if (form.repeat === "every") {
     fields["every"] = `${form.count.trim()}${form.unit}`;
     fields["from"] = form.from;
+  } else if (form.repeat === "once") {
+    fields["from"] = form.from;
   } else {
     fields["at"] = form.at.trim();
     if (form.days.length > 0)
       fields["days"] = weekDays.map(([code]) => code).filter((code) => form.days.includes(code));
   }
+  // A one-off has no later run to end.
+  if (form.repeat !== "once" && form.until.trim() !== "") fields["until"] = form.until.trim();
   if (form.text.trim() !== "") fields["text"] = form.text.trim();
   if (form.prompt.trim() !== "") fields["prompt"] = form.prompt.trim();
   return fields;

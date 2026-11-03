@@ -17,15 +17,17 @@ export interface Schedule {
   readonly name: string;
   /**
    * `HH:MM` on the wall clock of the configured time zone (lesson 68). Null for an interval
-   * schedule, which repeats `every` from `from` instead.
+   * schedule, which repeats `every` from `from` instead, and for a one-off, which runs at `from`.
    */
   readonly at: string | null;
-  /** Day numbers as `Date.getUTCDay` counts them: 0 is Sunday. Null for an interval schedule. */
+  /** Day numbers as `Date.getUTCDay` counts them: 0 is Sunday. Null for an interval schedule or a one-off. */
   readonly days: readonly number[] | null;
-  /** The interval, such as `2h`, `3d` or `1w`, or null for a schedule on days. */
+  /** The interval, such as `2h`, `3d` or `1w`, or null for a schedule on days or a one-off. */
   readonly every: string | null;
-  /** The first run of an interval schedule, as a wall-clock slot `YYYY-MM-DDTHH:MM`. */
+  /** The first run of an interval schedule, or the one run of a one-off, as a wall-clock slot `YYYY-MM-DDTHH:MM`. */
   readonly from: string | null;
+  /** The last day that the schedule runs, `YYYY-MM-DD`, or null for no end (#687). */
+  readonly until: string | null;
   readonly text: string | null;
   /** A path from the vault root. */
   readonly file: string | null;
@@ -49,6 +51,7 @@ export const scheduleFieldOrder = [
   "days",
   "every",
   "from",
+  "until",
   "text",
   "file",
   "prompt",
@@ -122,7 +125,12 @@ export function parseScheduleEntry(entry: unknown, position: number): Schedule |
   // A typo such as "false" in quotes must never run a schedule that the person paused.
   if (typeof enabled !== "boolean") return `Schedule ${id} has an invalid enabled: write true or false.`;
   const model = optionalText(fields["model"]);
-  return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model, enabled, every, from };
+  const until = fields["until"] ?? null;
+  if (until !== null && (typeof until !== "string" || !isDay(until)))
+    return `Schedule ${id} has an invalid until: write the last day as YYYY-MM-DD, such as 2026-11-30.`;
+  if (until !== null && every === null && from !== null)
+    return `Schedule ${id} has until on a one-off: until is for a schedule that repeats, so remove it.`;
+  return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model, enabled, every, from, until };
 }
 
 /** The minutes between two runs of an interval such as `3d`. */
@@ -131,9 +139,14 @@ export function intervalMinutes(every: string): number {
   return Number(match?.[1] ?? 1) * unitMinutes[(match?.[2] ?? "d") as keyof typeof unitMinutes];
 }
 
+/** True for a schedule that runs once, at `from` (#822). */
+export function runsOnce(schedule: Pick<Schedule, "every" | "from">): boolean {
+  return schedule.every === null && schedule.from !== null;
+}
+
 type Repeat = Pick<Schedule, "at" | "days" | "every" | "from">;
 
-/** When a schedule runs: `at` on some `days`, or `every` interval from `from`. */
+/** When a schedule runs: `at` on some `days`, `every` interval from `from`, or once at `from`. */
 function parseRepeat(id: string, fields: Record<string, unknown>): Repeat | string {
   const has = (name: string): boolean => fields[name] !== undefined && fields[name] !== null;
   if (has("every")) {
@@ -147,7 +160,14 @@ function parseRepeat(id: string, fields: Record<string, unknown>): Repeat | stri
       return `Schedule ${id} has no valid from: write the first run as YYYY-MM-DDTHH:MM, such as 2026-10-22T07:30.`;
     return { at: null, days: null, every, from };
   }
-  if (has("from")) return `Schedule ${id} has from without every: add every, or remove from.`;
+  if (has("from")) {
+    if (has("at") || has("days"))
+      return `Schedule ${id} has from with at or days: write from alone to run once, or add every.`;
+    const from = fields["from"];
+    if (typeof from !== "string" || !isSlot(from))
+      return `Schedule ${id} has no valid from: write the run as YYYY-MM-DDTHH:MM, such as 2026-10-22T07:30.`;
+    return { at: null, days: null, every: null, from };
+  }
   const at = fields["at"];
   if (typeof at !== "string" || !timePattern.test(at))
     return `Schedule ${id} has no valid time: write it as HH:MM, such as 07:30.`;
@@ -155,6 +175,11 @@ function parseRepeat(id: string, fields: Record<string, unknown>): Repeat | stri
   if (days === null)
     return `Schedule ${id} has invalid days: list some of ${dayNames.join(", ")}, or leave days out for every day.`;
   return { at, days, every: null, from: null };
+}
+
+/** A real date, `YYYY-MM-DD`: a day such as 31 November fails. */
+function isDay(text: string): boolean {
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(text) && isSlot(`${text}T00:00`);
 }
 
 /** A real date and time: a day such as 30 February fails. */
@@ -173,6 +198,7 @@ export function announcedFields(schedule: Schedule): Partial<Record<ScheduleFiel
     days: schedule.days?.map((day) => dayNames[day]).join(", ") ?? null,
     every: schedule.every,
     from: schedule.from,
+    until: schedule.until,
     text: schedule.text,
     file: schedule.file,
     prompt: schedule.prompt,
@@ -215,7 +241,7 @@ export function removeScheduleDefinition(path: string, scheduleId: string): bool
 }
 
 /** The keys that the schedule form shows: an edit owns them, and keeps every other key. */
-const formKeys = new Set(["name", "at", "days", "every", "from", "text", "prompt"]);
+const formKeys = new Set(["name", "at", "days", "every", "from", "until", "text", "prompt"]);
 
 /**
  * Changes the form's keys of one schedule and keeps every other key, such as `file`, `model` and

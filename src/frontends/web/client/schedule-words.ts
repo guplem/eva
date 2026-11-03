@@ -35,7 +35,23 @@ export function repeatWords(
   format: DisplayFormat = displayFormat(),
 ): string {
   if (repeat.every !== null && repeat.from !== null) return intervalWords(repeat.every, repeat.from, format);
+  if (repeat.from !== null)
+    return `Once on ${dateWords(repeat.from)} at ${slotTime(repeat.from.slice(11, 16), format.clock)}`;
   return dayWords(repeat.at ?? "", repeat.days ?? [], format);
+}
+
+/**
+ * The state after the repeat, such as "next Today 18:30". "Ended" comes first: a schedule that
+ * ended stays ended, also when it is off (#822, #687).
+ */
+export function scheduleStateWords(
+  view: { readonly enabled: boolean; readonly nextRun: string | null; readonly ended: string | null },
+  now: string,
+  clock = displayFormat().clock,
+): string {
+  if (view.ended !== null) return `Ended ${dateWords(view.ended)}`;
+  if (!view.enabled) return "off";
+  return `next ${nextRunWords(view.nextRun, now, clock)}`;
 }
 
 /** The next whole hour after now: the first run that the form offers. */
@@ -87,11 +103,12 @@ export type ResultTone = "ok" | "bad" | "idle";
 
 /** The last result as a pill text and its colour. */
 export function lastRunWords(
-  lastRun: { readonly slot: string; readonly failed: boolean } | null,
+  lastRun: { readonly slot: string; readonly failed: boolean; readonly quiet?: boolean | undefined } | null,
   now: string,
 ): { text: string; tone: ResultTone } {
   if (lastRun === null) return { text: "Not run yet", tone: "idle" };
-  const verb = lastRun.failed ? "Failed" : "Ran";
+  // A quiet run worked, and had nothing to tell (#687).
+  const verb = lastRun.failed ? "Failed" : lastRun.quiet === true ? "No news" : "Ran";
   const days = daysBetween(lastRun.slot, now);
   const when = days === 0 ? " today" : days === 1 ? " yesterday" : ` · ${dateWords(lastRun.slot)}`;
   return { text: verb + when, tone: lastRun.failed ? "bad" : "ok" };

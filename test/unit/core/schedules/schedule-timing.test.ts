@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseScheduleEntry, type Schedule } from "../../../../src/core/schedules/schedule-definitions.ts";
-import { dueSlot, nextSlot, runsOnDay, wallClockOf } from "../../../../src/core/schedules/schedule-timing.ts";
+import { dueSlot, isLate, nextSlot, runsOnDay, wallClockOf } from "../../../../src/core/schedules/schedule-timing.ts";
 
 function schedule(at: string, days?: string[]): Schedule {
   return parseScheduleEntry(
@@ -119,5 +119,69 @@ describe("runsOnDay", () => {
     ]);
     expect(runsOnDay(interval("6h", "2026-07-01T13:00"), "2026-07-01T12:00")).toEqual(["13:00", "19:00"]);
     expect(runsOnDay(interval("2d", "2026-06-30T07:30"), "2026-07-01T12:00")).toEqual([]);
+  });
+});
+
+function once(from: string): Schedule {
+  return parseScheduleEntry({ id: "s", name: "S", from, text: "hi" }, 1) as Schedule;
+}
+
+describe("one-off schedules (#822)", () => {
+  const seen = { firstSeen: "2026-11-01T09:00", lastFired: null };
+
+  test("fire once at their time, and never again", () => {
+    const call = once("2026-11-24T10:00");
+    expect(dueSlot(call, seen, "2026-11-24T09:59")).toBeNull();
+    expect(dueSlot(call, seen, "2026-11-24T10:00")).toBe("2026-11-24T10:00");
+    const fired = { ...seen, lastFired: "2026-11-24T10:00" };
+    expect(dueSlot(call, fired, "2026-11-24T10:01")).toBeNull();
+    expect(dueSlot(call, fired, "2026-11-25T10:00")).toBeNull();
+  });
+
+  test("a missed run fires late, with no time limit", () => {
+    expect(dueSlot(once("2026-11-24T10:00"), seen, "2026-11-27T18:00")).toBe("2026-11-24T10:00");
+  });
+
+  test("a time that was already past when Eva first saw it never fires", () => {
+    const seenLate = { firstSeen: "2026-11-24T10:05", lastFired: null };
+    expect(dueSlot(once("2026-11-24T10:00"), seenLate, "2026-11-24T10:06")).toBeNull();
+  });
+
+  test("a new time after a run fires, also when it is earlier than the old one", () => {
+    const fired = { ...seen, lastFired: "2026-11-24T10:00" };
+    expect(dueSlot(once("2026-11-20T10:00"), fired, "2026-11-20T10:00")).toBe("2026-11-20T10:00");
+  });
+
+  test("the next run is the time before it comes, then none", () => {
+    expect(nextSlot(once("2026-11-24T10:00"), "2026-11-01T09:00")).toBe("2026-11-24T10:00");
+    expect(nextSlot(once("2026-11-24T10:00"), "2026-11-24T10:00")).toBeNull();
+  });
+
+  test("the day line holds the run on its day only", () => {
+    expect(runsOnDay(once("2026-11-24T10:00"), "2026-11-24T08:00")).toEqual(["10:00"]);
+    expect(runsOnDay(once("2026-11-24T10:00"), "2026-11-23T08:00")).toEqual([]);
+  });
+
+  test("a run is late when it fires an hour or more after its time", () => {
+    expect(isLate("2026-11-24T10:00", "2026-11-24T10:59")).toBe(false);
+    expect(isLate("2026-11-24T10:00", "2026-11-24T11:00")).toBe(true);
+  });
+});
+
+describe("until (#687)", () => {
+  const seenLongAgo = { firstSeen: "2026-01-01T00:00", lastFired: null };
+  const daily = (until: string): Schedule =>
+    parseScheduleEntry({ id: "s", name: "S", at: "07:30", until, text: "hi" }, 1) as Schedule;
+
+  test("the last day still runs, and no slot after it runs, also within the grace time", () => {
+    expect(dueSlot(daily("2026-07-01"), seenLongAgo, "2026-07-01T07:30")).toBe("2026-07-01T07:30");
+    expect(dueSlot(daily("2026-06-30"), seenLongAgo, "2026-07-01T07:30")).toBeNull();
+    expect(dueSlot(daily("2026-06-30"), seenLongAgo, "2026-06-30T23:50")).toBeNull();
+  });
+
+  test("there is no next run after it, and no run on the day line", () => {
+    expect(nextSlot(daily("2026-07-02"), "2026-07-01T08:00")).toBe("2026-07-02T07:30");
+    expect(nextSlot(daily("2026-07-01"), "2026-07-01T08:00")).toBeNull();
+    expect(runsOnDay(daily("2026-06-30"), "2026-07-01T06:00")).toEqual([]);
   });
 });

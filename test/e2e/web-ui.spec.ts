@@ -42,6 +42,14 @@ async function sendFirstMessage(page: Page, text: string): Promise<void> {
 }
 
 /**
+ * A card of the project list. The home page and the Needs you card of the list name the same projects
+ * in their chat rows and their timeline (#840).
+ */
+function projectCard(page: Page, name: RegExp): Locator {
+  return page.getByRole("navigation", { name: "Projects" }).locator("button.project-card").filter({ hasText: name });
+}
+
+/**
  * Opens Projects and waits for its list. With no project open, the list shows with no menu tap on
  * both sizes. openList would race: the menu button of the page before can still show for a moment.
  */
@@ -70,7 +78,7 @@ async function answerInNewClone(page: Page, text: string): Promise<void> {
 async function openExampleApp(page: Page): Promise<void> {
   await openProjects(page);
   await page.getByLabel("Search projects").fill("example");
-  await page.getByRole("button", { name: /Example app/ }).click();
+  await projectCard(page, /Example app/).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 }
 
@@ -426,6 +434,33 @@ test("a fork continues under its answer, in the same column, and the switcher go
   await expect(page.getByLabel("Message").first()).toHaveValue("Half a thought");
 });
 
+test("on a wide screen, the chat fills the width beside the branch map (issue 828)", async ({ page }) => {
+  test.skip(
+    test.info().project.name === "phone",
+    "A phone shows no branch map, and its chat already fills the screen.",
+  );
+  await page.setViewportSize({ width: 1800, height: 900 });
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Wide chat"));
+  await waitUntilIdle(page, chatId);
+  // The client width leaves out a scrollbar, which shows when the chat grows taller than the window.
+  const freeWidth = (): Promise<number> =>
+    page.locator(".branches").evaluate((area) => {
+      const style = getComputedStyle(area);
+      const inner = area.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const map = area.querySelector(".branch-map-column");
+      const mapWidth = map === null ? 0 : map.getBoundingClientRect().width + parseFloat(style.columnGap);
+      return inner - mapWidth - area.querySelector(".branch")!.getBoundingClientRect().width;
+    });
+  // With no fork, the chat takes the whole area.
+  await expect.poll(freeWidth).toBeLessThanOrEqual(2);
+
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  await expect(page.locator(".branch-map-column")).toBeVisible();
+  // The map takes its column, and the chat takes the rest.
+  await expect.poll(freeWidth).toBeLessThanOrEqual(2);
+});
+
 /** Waits until the element is the given height, give or take the rounding of a pixel. */
 async function expectHeight(element: Locator, expected: number): Promise<void> {
   await expect
@@ -768,7 +803,7 @@ test("a long press on a chat in the list shows its actions, and the press opens 
 test("a right click on a project opens its pages from the menu", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  const card = page.getByRole("button", { name: /Example app/ });
+  const card = projectCard(page, /Example app/);
   const menu = page.getByRole("menu", { name: /^Actions of / });
   // On a phone, earlier tests' projects push the card down, so the project list scrolls. Likely, a
   // refresh of the list while their chats end scrolls it again, and a scroll closes the menu (#768).
@@ -1733,7 +1768,7 @@ test("the project list shows its shape while it reads, not that no project match
   await expect(list.locator(".skeleton .project-card").first()).toBeVisible();
   await expect(list.getByText("No project matches.")).toHaveCount(0);
   answer();
-  await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
   await expect(list.locator(".skeleton")).toHaveCount(0);
 });
 
@@ -1750,7 +1785,7 @@ test("a failed first read of the projects says so, and Try again reads them", as
   await expect(list.getByText("No project matches.")).toHaveCount(0);
   failing = false;
   await list.getByRole("button", { name: "Try again" }).click();
-  await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
 });
 
 test("New project: the form creates a project and opens its page", async ({ page }, testInfo) => {
@@ -1799,7 +1834,7 @@ test("New project: a general project opens its page, and its chat works in the f
   await expect(header.locator(".mode-chip-label")).toHaveText("Project");
   await expect(page.getByRole("button", { name: "Attach a file" })).toBeVisible();
   await page.getByRole("button", { name: name, exact: true }).first().click();
-  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
+  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the projects" }).click();
   const card = page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: new RegExp(name) });
   await expect(card).toContainText("General · 1 chat");
 });
@@ -1835,7 +1870,7 @@ test("New project: a specialist opens its first chat, and its page lists its cha
   await expect(main.getByRole("button", { name: "Repository setup" })).toHaveCount(0);
   await expect(main.locator(".clone-chat")).toHaveCount(1);
   // A phone shows the list as its own page.
-  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
+  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the projects" }).click();
   const card = page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: new RegExp(name) });
   await expect(card).toContainText("Specialist · 1 chat");
 });
@@ -1910,7 +1945,7 @@ test("the project page says that the clones load, not that there are none", asyn
   });
   await openProjects(page);
   await page.getByLabel("Search projects").fill("example");
-  await page.getByRole("button", { name: /Example app/ }).click();
+  await projectCard(page, /Example app/).click();
   await expect(page.getByText("Loading the clones…")).toBeVisible();
   await expect(page.locator("main").getByText(/^No clones yet\./)).toHaveCount(0);
   release();
@@ -2090,68 +2125,88 @@ test("the status chips hide a closed project until a tap clears the filter", asy
   await openProjects(page);
   const current = page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Current" });
   await expect(current).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await expect(projectCard(page, /Old tool/)).toHaveCount(0);
   // Current shows the projects that the person develops and the ones in use (#690).
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Family recipes/ }).getByText("In use", { exact: true })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
+  await expect(projectCard(page, /Family recipes/).getByText("In use", { exact: true })).toBeVisible();
   await current.click();
   await expect(current).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Closed" }).click();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toHaveCount(0);
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "In use" }).click();
-  await expect(page.getByRole("button", { name: /Family recipes/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+  await expect(projectCard(page, /Family recipes/)).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toHaveCount(0);
   // A status word typed in the search wins over the chip.
   await page.getByLabel("Search projects").fill("status:closed");
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   await page.getByLabel("Search projects").fill("status:in-use");
-  await expect(page.getByRole("button", { name: /Family recipes/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await expect(projectCard(page, /Family recipes/)).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toHaveCount(0);
 });
 
 test("the tag chips show only the projects with that tag", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Current" }).click();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   const web = page.getByRole("group", { name: "Tag" }).getByRole("button", { name: "#web" });
   await web.click();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await expect(projectCard(page, /Example app/)).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toHaveCount(0);
   await web.click();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   // A tag word typed in the search wins over the chip.
   await web.click();
   await page.getByLabel("Search projects").fill("#legacy");
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toHaveCount(0);
 });
 
 test("a project with a bad front matter field shows its warnings", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  const project = page.getByRole("button", { name: /Broken notes/ });
+  const project = projectCard(page, /Broken notes/);
   await expect(project).toContainText("1 warning");
   await project.click();
   await expect(page.getByRole("list", { name: "Warnings of Broken notes" })).toHaveText("repos must be a list of URLs");
 });
 
-test("on a phone, the project list is the page, and Back to the list returns to it", async ({ page }) => {
+test("on a phone, the project list is the page, and Back to the projects returns to it", async ({ page }) => {
   test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
   await logIn(page);
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   // No tap on the menu: with no project open, the list is already on the screen.
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
   expect(Math.min(...(await tapHeights(page.locator("button:visible"))))).toBeGreaterThanOrEqual(44);
   await expectSmallPills(page.locator(".filter-chip:visible"));
-  await page.getByRole("button", { name: /Example app/ }).click();
+  await projectCard(page, /Example app/).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
-  await page.getByRole("button", { name: "Back to the list" }).click();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await page.getByRole("button", { name: "Back to the projects" }).click();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
+});
+
+test("on a computer, Back to the projects shows the home page, and its timeline opens a project (#840)", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name === "phone", "A phone shows the list as the home page.");
+  await logIn(page);
+  await openExampleApp(page);
+  await page.getByRole("button", { name: "Back to the projects" }).click();
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  await expect(timeline).toBeVisible();
+  await expect(page.getByRole("region", { name: "Recent" })).toBeVisible();
+  // Only the active and the paused projects show: Family recipes is in use.
+  await expect(timeline.getByRole("button", { name: /Family recipes/ })).toHaveCount(0);
+  const startedLine = page.getByText(/^In (\d{4}|all): \d+ projects? started\.$/);
+  await expect(startedLine).toHaveText(new RegExp(`^In ${String(new Date().getFullYear())}:`));
+  await page.getByRole("group", { name: "Year" }).getByRole("button", { name: "All" }).click();
+  await expect(startedLine).toHaveText(/^In all: /);
+  await timeline.getByRole("button", { name: /Example app/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });
 
 test("on a phone, Back goes from a clone's chat to its project, then to the project list", async ({ page }) => {
@@ -2165,7 +2220,7 @@ test("on a phone, Back goes from a clone's chat to its project, then to the proj
   await expect(page).toHaveURL(/#\/projects\/2025-03-02-1015-example-app$/);
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
 });
 
 test("on a phone, the arrow of a clone's chat opens its project, and Back does not return to the chat", async ({
@@ -2283,7 +2338,7 @@ test("on a short phone, a long project list scrolls, and no card cuts its text",
   await page.setViewportSize({ width: 375, height: 360 });
   await logIn(page);
   await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
   const cut = await page
     .locator(".project-card")
     .evaluateAll((cards) => cards.filter((card) => card.scrollHeight > card.clientHeight + 1).length);
@@ -2936,6 +2991,23 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
 
+test("Settings: each page lists its cards, and an entry opens its card (issue 820)", async ({ page }) => {
+  await logIn(page);
+  await openSettings(page, "Personalize");
+  // One list shows: in the side list on a computer, at the top of the page on a phone.
+  const index = page.getByRole("list", { name: "On this page" });
+  await expect(index).toHaveCount(1);
+  await expect(index.getByRole("button", { name: "Appearance" })).toHaveAttribute("aria-current", "location");
+  await index.getByRole("button", { name: "Sounds and vibration" }).click();
+  await expect(page).toHaveURL(/#\/settings\/personalize\/sounds$/);
+  await expect(page.getByRole("region", { name: "Sounds and vibration" })).toBeInViewport();
+  await expect(index.getByRole("button", { name: "Sounds and vibration" })).toHaveAttribute("aria-current", "location");
+  // A page of its own, such as a setup step, has no list.
+  await page.goto("/#/settings/setup/engine");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Setup");
+  await expect(page.getByRole("list", { name: "On this page" })).toHaveCount(0);
+});
+
 test("Settings: a search result stays at its card while a card above it loads (issue 720)", async ({ page }) => {
   await logIn(page);
   // Eva's rules fill their card after the page opens, above the message box menu.
@@ -3146,6 +3218,48 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await card.getByRole("button", { name: "Got it" }).click();
   const row = page.getByRole("listitem", { name: `Water ${id}` });
   await expect(row).toContainText("Every 3 days at 07:30 · next 2 Jan 07:30");
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
+test("Schedules page: add a schedule with a last day (#687)", async ({ page }, testInfo) => {
+  const id = `watch-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Watch ${id}`);
+  await form.getByLabel("Time (HH:MM)").fill("08:00");
+  await form.getByLabel(/^Last day/).fill("2030-01-31");
+  await form.getByLabel("Fixed text").fill("Look at the inbox.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Last day");
+  await expect(card).toContainText("2030-01-31");
+  await card.getByRole("button", { name: "Got it" }).click();
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
+test("Schedules page: add a schedule that runs once (#822)", async ({ page }, testInfo) => {
+  const id = `bank-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Bank ${id}`);
+  await form.getByRole("button", { name: "Once" }).click();
+  await expect(form.getByLabel("Every")).toHaveCount(0);
+  await form.getByLabel("Date and time").fill("2030-01-02T07:30");
+  await form.getByLabel("Fixed text").fill("Phone the bank.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Once on 2 Jan at 07:30");
+  await card.getByRole("button", { name: "Got it" }).click();
+  const row = page.getByRole("listitem", { name: `Bank ${id}` });
+  await expect(row).toContainText("Once on 2 Jan at 07:30 · next 2 Jan 07:30");
   await page.request.delete(`/api/schedules/${id}`);
 });
 
@@ -4394,13 +4508,13 @@ test("Settings: Restart Eva in the header names the running chats, then restarts
     await route.fulfill({ response, json: { ...status, busySessionIds: [created.id] } });
   });
   await openSettings(page, "Updates");
-  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Restart Eva" }).click();
   const question = page.getByRole("alertdialog", { name: "Restart Eva" });
   await expect(question).toContainText('"Plan the trip" is running. A restart stops it. Restart Eva now?');
   await question.getByRole("button", { name: "Cancel" }).click();
   await expect(question).toHaveCount(0);
   expect(restarts).toEqual([]);
-  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Restart Eva" }).click();
   await page.getByRole("alertdialog", { name: "Restart Eva" }).getByRole("button", { name: "Yes, restart" }).click();
   await expect(page.getByText("Eva restarted.")).toBeVisible({ timeout: 10_000 });
   expect(restarts).toEqual(["POST"]);
@@ -5566,7 +5680,7 @@ test.describe("on a phone", () => {
     await newProjectChat(page);
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
     await page.getByRole("button", { name: "Back to the project" }).click();
-    await page.getByRole("button", { name: "Back to the list" }).click();
+    await page.getByRole("button", { name: "Back to the projects" }).click();
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
   });
 
@@ -5774,7 +5888,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(page.getByRole("status")).toHaveText("Saved.");
   // Back goes to the project page; on a phone, the list is one more step back.
   await page.getByRole("button", { name: "Back", exact: true }).click();
-  if (run === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
+  if (run === "phone") await page.getByRole("button", { name: "Back to the projects" }).click();
   await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
 });
 

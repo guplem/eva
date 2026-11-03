@@ -45,8 +45,6 @@ const problemCards: Readonly<Record<string, SettingsRoute>> = {
   template_alignment: { section: "vault", item: "template-alignment" },
   // The person updates the vault from its card (#801).
   vault_structure: { section: "vault", item: "vault-structure" },
-  // Its help explains what the shell of a chat can reach.
-  shell_wall: { section: "engines", item: "permissions" },
   default_engine: { section: "updates", item: "versions" },
   engine_update: { section: "updates", item: "versions" },
   default_engine_restart: { section: "updates", item: "restart" },

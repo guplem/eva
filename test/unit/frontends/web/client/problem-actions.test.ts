@@ -76,7 +76,6 @@ describe("problemSettingsRoute", () => {
       ["vault_secret_files", { section: "vault", item: "encrypted-files" }],
       ["template_alignment", { section: "vault", item: "template-alignment" }],
       ["vault_structure", { section: "vault", item: "vault-structure" }],
-      ["shell_wall", { section: "engines", item: "permissions" }],
       ["engine_login:claude-code", { section: "engines", item: "claude-code" }],
       ["engine_login:pi", { section: "engines", item: "pi" }],
       ["default_engine", { section: "updates", item: "versions" }],

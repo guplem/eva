@@ -145,8 +145,26 @@ export type EngineEventPayload =
  */
 export type MessageOrigin = "telegram" | "api" | "schedule" | "eva";
 
+/**
+ * The message of a running turn, as its stored turn will show it, so a front end shows it at the
+ * turn start and nothing changes at the end (#804). Every text is already redacted.
+ */
+export interface TurnMessage {
+  /** The texts of the turn's batch, joined as the stored turn keeps them. */
+  readonly userText: string;
+  readonly fromEva: boolean;
+  readonly personText: string | null;
+  readonly projectReports: readonly ProjectReport[];
+  /** The stored turn count when the turn started: the stored turn gets this index. */
+  readonly turnIndex: number;
+  /** The ids that the front ends sent with the turn's messages, so a page knows its own messages. */
+  readonly clientIds: readonly string[];
+}
+
 /** What the core itself says about a chat. No engine sends these, so they stay off the engine port. */
 export type CoreEventPayload =
+  /** A turn starts, with its whole message. */
+  | { readonly kind: "turn_started"; readonly message: TurnMessage }
   /** A message, when its turn starts, so a front end can show a message that another one sent. */
   | {
       readonly kind: "message_received";

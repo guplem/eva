@@ -322,6 +322,7 @@ export function describeEvent(event: SessionEvent, clock: Clock | null = null): 
       return event.text;
     // The person typed the message in this terminal, and `eva work` prints the Project chat it started.
     case "message_received":
+    case "turn_started":
     case "project_work_started":
     case "turn_finished":
     case "tool_finished":

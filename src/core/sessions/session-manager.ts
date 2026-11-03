@@ -28,6 +28,7 @@ import {
   type QuestionAnswers,
   type SessionEvent,
   type TaskState,
+  type TurnMessage,
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import { answerFits } from "../../shared/questions.ts";
@@ -224,6 +225,8 @@ export interface TurnSnapshot {
     readonly steps: readonly TurnStep[];
     /** The sent text of the block that the engine writes now, or "". An older Eva sends none. */
     readonly draft?: string;
+    /** The message of the turn. An older Eva sends none. */
+    readonly message?: TurnMessage;
   }[];
 }
 
@@ -250,6 +253,8 @@ export interface MessageOptions {
   readonly fromPerson?: boolean;
   /** The stored sender of a turn that a retry sends again. A message alone in its turn keeps it. */
   readonly sender?: TurnSender;
+  /** The id that a front end sent with the message, so it knows its own message in the turn (#804). */
+  readonly clientId?: string;
 }
 
 /** Who sent the messages of a turn, for the record. */
@@ -317,6 +322,8 @@ export class SessionManager {
   /** The steps of each running turn, by session id. The record gets them only at the turn end. */
   private readonly turnSteps = new Map<string, readonly TurnStep[]>();
   private readonly turnDrafts = new Map<string, string>();
+  /** The message of each running turn, by session id, from the turn start: the steps start later. */
+  private readonly turnMessages = new Map<string, TurnMessage>();
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
@@ -602,6 +609,7 @@ export class SessionManager {
       origin,
       ...(options.fromPerson === true ? { fromPerson: true } : {}),
       ...(options.sender === undefined ? {} : { sender: options.sender }),
+      ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
       ...(projectReport === undefined ? {} : { projectReport: redactReport(projectReport, this.options.redactor) }),
     });
     this.lastActivity.set(sessionId, this.options.now().getTime());
@@ -1067,11 +1075,16 @@ export class SessionManager {
 
   /** The steps of the running turns, so a front end that missed the events still shows the answer. */
   runningTurns(): TurnSnapshot {
-    const turns = [...this.turnSteps].map(([sessionId, steps]) => ({
-      sessionId,
-      steps,
-      draft: this.turnDrafts.get(sessionId) ?? "",
-    }));
+    const running = new Set([...this.turnMessages.keys(), ...this.turnSteps.keys()]);
+    const turns = [...running].map((sessionId) => {
+      const message = this.turnMessages.get(sessionId);
+      return {
+        sessionId,
+        steps: this.turnSteps.get(sessionId) ?? [],
+        draft: this.turnDrafts.get(sessionId) ?? "",
+        ...(message === undefined ? {} : { message }),
+      };
+    });
     return { seq: this.sequence.current(), turns };
   }
 
@@ -1079,6 +1092,7 @@ export class SessionManager {
     for (const [key, task] of this.tasks) if (task.sessionId === sessionId) this.tasks.delete(key);
     this.turnSteps.delete(sessionId);
     this.turnDrafts.delete(sessionId);
+    this.turnMessages.delete(sessionId);
   }
 
   private expireApprovals(sessionId: string): void {
@@ -1146,10 +1160,19 @@ export class SessionManager {
             origin,
             ...(projectReport === undefined ? {} : { projectReport }),
           });
+        const prompt = batch.texts.join("\n\n");
+        const sender = this.senderOf(batch);
+        const message: TurnMessage = {
+          userText: this.options.redactor.redact(prompt),
+          ...sender,
+          turnIndex: this.options.store.get(sessionId)?.turns.length ?? 0,
+          clientIds: batch.messages.flatMap((sent) => sent.clientId ?? []),
+        };
+        this.turnMessages.set(sessionId, message);
+        this.emit(sessionId, { kind: "turn_started", message });
         let followUp: string | null = null;
         try {
-          const sender = this.senderOf(batch);
-          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"), sender, batch.outcome);
+          followUp = await this.runTurn(sessionId, prompt, sender, batch.outcome);
           // Telegram showed the answer where the person asked, so the web app must not show it as unread.
           // A follow-up of the mode has no message, so its answer stays unread.
           const fromTelegram =
@@ -1160,6 +1183,9 @@ export class SessionManager {
           // The turn sent its end event already. Only the work after it failed, such as a save, so
           // the messages that wait still get their turn.
           this.logAfterTurnError(sessionId, error);
+        } finally {
+          // The end event forgets the message too. This also covers a turn that throws before it.
+          this.turnMessages.delete(sessionId);
         }
         // After a stop, the person wants Eva to end the work, not to go on with the mode's next step.
         if (followUp !== null && !runtime.stopped && followUps < maxFollowUps) {
@@ -1990,6 +2016,9 @@ function redactPayload(
     case "session_seen":
     case "session_archived":
     case "session_closed":
+      return payload;
+    // `drain` builds the message from redacted texts, and the snapshot keeps the same object.
+    case "turn_started":
       return payload;
     case "project_work_started":
       return { ...payload, request: redactor.redact(payload.request) };

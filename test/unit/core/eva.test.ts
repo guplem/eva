@@ -2523,7 +2523,7 @@ describe("Eva", () => {
     const events: SessionEvent[] = [];
     instance.sessions.subscribe((event) => events.push(event));
     await instance.sessions.send(instance.createAssistantSession({ source: "cli" }).id, "hi");
-    expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_started", "text", "turn_finished"]);
   });
 
   test("with no vault configured, Eva still starts and says so", () => {

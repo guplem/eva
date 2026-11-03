@@ -607,6 +607,28 @@ describe("PiEngine", () => {
     expect(events.at(-1)).toMatchObject({ loginExpired: true });
   });
 
+  test("a good turn and a failed model call run no check", async () => {
+    const good = new FakePi([{ records: loadPiFixture("plain") }]);
+    await drain(engine(good).runTurn(request()));
+    expect(good.runs).toHaveLength(1);
+    const call = new FakePi([{ records: loadPiFixture("error-401") }]);
+    await drain(engine(call).runTurn(request({ mode: "model-call" })));
+    expect(call.runs).toHaveLength(1);
+  });
+
+  test("a check that never answers counts as a working login, and pi gets time to close", async () => {
+    const stuck = deafPi();
+    let runs = 0;
+    const fake = new FakePi([{ records: loadPiFixture("error-401") }]);
+    const start: PiProcessStarter = (command, options) => {
+      runs += 1;
+      return runs === 1 ? fake.start(command, options) : stuck.start(command, options);
+    };
+    const events = await drain(engine(fake, { start, loginCheckMs: 20, closeTimeoutMs: 7 }).runTurn(request()));
+    expect(events.at(-1)).toMatchObject({ kind: "turn_failed", reason: expect.stringContaining("401") as string });
+    expect(stuck.closeTimeouts).toEqual([7]);
+  });
+
   test("a stopped turn, or a provider that pi does not know, checks nothing more", async () => {
     const unknown = {
       records: [{ status: "not_ready", provider: "fake", reason: "provider_not_found" }],

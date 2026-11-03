@@ -66,6 +66,8 @@ export interface PiEngineOptions {
   readonly closeTimeoutMs?: number;
   /** How long pi has to answer a stop before Eva stops its process. */
   readonly stopGraceMs?: number;
+  /** The longest wait for `pi auth check` after a failed turn. */
+  readonly loginCheckMs?: number;
 }
 
 interface PiMessage {
@@ -355,9 +357,12 @@ export class PiEngine implements EnginePort {
       yield { kind: "turn_failed", reason: "The turn was stopped." };
     } else if (end === null || end.kind === "failed") {
       // pi's error text differs by provider, so pi's own structured check tells a lost login apart (lesson 36).
-      const target = provider === null ? this.modelTarget(request) : (["--provider", provider] as const);
-      if (target !== null && (await this.loginMissing(request, target))) {
-        const name = provider ?? this.options.models[request.model] ?? "";
+      const target = this.checkTarget(request, provider);
+      const missing = target !== null && (await this.loginMissing(request, target));
+      if (request.signal.aborted) {
+        yield { kind: "turn_failed", reason: "The turn was stopped." };
+      } else if (missing) {
+        const name = target[1];
         yield {
           kind: "turn_failed",
           reason: `The pi login of "${name}" expired or is missing. Log in again in Settings, AI engines, pi.`,
@@ -381,16 +386,22 @@ export class PiEngine implements EnginePort {
     }
   }
 
-  /** The tier's pi model as an auth check target, or null when pi picks its own default. */
-  private modelTarget(request: TurnRequest): readonly ["--model", string] | null {
-    const model = this.options.models[request.model];
-    return model === null ? null : ["--model", model];
+  /**
+   * The target of `pi auth check`: the provider that answered, or the tier's model when pi gave no
+   * answer. Null when there is none, or when the turn needs no check: a model call reports no login.
+   */
+  private checkTarget(request: TurnRequest, provider: string | null): readonly [string, string] | null {
+    if (request.mode === "model-call") return null;
+    const target = provider ?? this.options.models[request.model];
+    // A name that starts with a dash would read as a flag of pi.
+    if (target === null || !/^\w[\w./:-]*$/.test(target)) return null;
+    return provider === null ? ["--model", target] : ["--provider", target];
   }
 
   /**
    * Asks `pi auth check` whether pi has a working login for the provider. True only for pi's
    * "credentials not configured": a refresh of an expired subscription login fails that way.
-   * Never throws, and a check that hangs counts as a working login.
+   * Never throws. A check that is slow or stopped counts as a working login.
    */
   private async loginMissing(request: TurnRequest, target: readonly [string, string]): Promise<boolean> {
     let check: PiProcess;
@@ -410,16 +421,24 @@ export class PiEngine implements EnginePort {
       return false;
     })().catch(() => false);
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort = (): void => undefined;
+    // The check may refresh a subscription login over a slow line, so it gets more time than a close.
     const late = new Promise<boolean>((resolve) => {
       timer = setTimeout(() => {
         resolve(false);
-      }, this.options.closeTimeoutMs ?? 5_000);
+      }, this.options.loginCheckMs ?? 20_000);
+      onAbort = () => {
+        resolve(false);
+      };
+      request.signal.addEventListener("abort", onAbort, { once: true });
     });
     try {
       return await Promise.race([answer, late]);
     } finally {
       clearTimeout(timer);
-      await check.close(0).catch(() => undefined);
+      request.signal.removeEventListener("abort", onAbort);
+      // A grace time, not a kill: pi may still save a new refresh token, and a kill would lose it.
+      await check.close(this.options.closeTimeoutMs ?? 5_000).catch(() => undefined);
     }
   }
 

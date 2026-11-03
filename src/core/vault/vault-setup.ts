@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { loadConfig, saveConfig, type HomePaths } from "../settings/home.ts";
-import { loadSettings } from "../settings/settings.ts";
+import { localFormats, saveNewVaultSettings } from "../settings/format-defaults.ts";
 import { createGitHubRepository, listGitHubRepositories, type GitHubRepository } from "./github-repositories.ts";
 import { checkVaultRepository, cloneVault, isAddress, pushNewVault, vaultNeedsPush } from "./vault-clone.ts";
 import { createVaultKey } from "./vault-crypto.ts";
@@ -41,6 +41,10 @@ export interface NewVaultAnswers {
   readonly repository: string;
   /** The vault password, which encrypts the vault's secret files (#707). Nobody can recover it. */
   readonly password: string;
+  /** The browser's locale, such as `es-ES`, for the clock, the week start and the units (#770). */
+  readonly locale?: string | undefined;
+  /** The browser's time zone, for a hub whose own zone is often UTC. */
+  readonly timeZone?: string | undefined;
 }
 
 export interface VaultSetupResult {
@@ -96,9 +100,7 @@ export class VaultSetup {
           key,
           answers: {
             name: answers.name.trim() || "the owner",
-            language: answers.language.trim() || "English",
             notesLanguage: answers.notesLanguage.trim() || "English",
-            timeZone: this.timeZone(),
             topics: answers.topics.map((topic) => topic.trim()).filter((topic) => topic !== ""),
           },
           runner: this.options.runner,
@@ -107,10 +109,12 @@ export class VaultSetup {
       );
       // The local vault comes first, so a failed push loses nothing, and the page offers it again.
       this.saveFolder(folder);
+      const settingsProblem = this.saveSettings(answers);
       if (this.options.githubToken() === undefined && !isAddress(answers.repository))
-        return { folder, repository: null, problem: noToken };
-      if (answers.repository.trim() === "") return { folder, repository: null, problem: null };
-      return this.pushTo(folder, answers.repository);
+        return { folder, repository: null, problem: settingsProblem ?? noToken };
+      if (answers.repository.trim() === "") return { folder, repository: null, problem: settingsProblem };
+      const pushed = await this.pushTo(folder, answers.repository);
+      return { ...pushed, problem: pushed.problem ?? settingsProblem };
     });
   }
 
@@ -228,14 +232,22 @@ export class VaultSetup {
     saveConfig(this.options.paths, { ...loadConfig(this.options.paths), vaultPath: folder });
   }
 
-  private timeZone(): string {
+  /**
+   * The answer language, and the time zone and the formats of the browser where they are empty
+   * (#770). A problem is a sentence for the page: it must not stop the new vault.
+   */
+  private saveSettings(answers: NewVaultAnswers): string | null {
     try {
-      const saved = loadSettings(this.options.paths).config.timeZone;
-      if (saved !== null) return saved;
-    } catch {
-      // A broken settings file must not stop the new vault; the machine's time zone serves.
+      saveNewVaultSettings(
+        this.options.paths,
+        answers.language.trim() || "English",
+        localFormats(answers.locale, answers.timeZone),
+      );
+      return null;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return `The vault is ready, but Eva could not save the answer language and the formats: ${reason} Set them in Settings, under Personalize.`;
     }
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
 
   private token(): string {

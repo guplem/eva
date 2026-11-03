@@ -4,6 +4,8 @@
  */
 import { months } from "./chat-list.ts";
 import { fileBadgeOf } from "./file-kinds.ts";
+import { clockTime } from "../../../shared/time-format.ts";
+import { displayFormat } from "./display-format.ts";
 
 export interface SmartName {
   readonly name: string;
@@ -43,9 +45,9 @@ export function smartName(real: string, options: SmartNameOptions): SmartName {
   return dated ?? { name: base, date: null };
 }
 
-/** "2 Mar 2026" for "2 Mar 2026, 10:15": a list row has little room, and the header shows the time. */
+/** "2 Mar 2026" for "2 Mar 2026, 10:15" or "2 Mar 2026, 10:15 AM": a list row has little room, and the header shows the time. */
 export function dayOf(date: string): string {
-  return date.replace(/, \d{2}:\d{2}$/, "");
+  return date.replace(/, \d{1,2}:\d{2}( [AP]M)?$/, "");
 }
 
 function splitDate(name: string): SmartName | null {
@@ -74,5 +76,5 @@ function dateWords([year = 0, month, day, hour, minute]: readonly number[]): str
   const date = `${String(day)} ${monthYear}`;
   if (hour === undefined || minute === undefined) return date;
   if (hour > 23 || minute > 59) return null;
-  return `${date}, ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  return `${date}, ${clockTime(hour, minute, displayFormat().clock)}`;
 }

@@ -62,6 +62,18 @@ describe("abortControllerFor", () => {
 
 describe("describeEvent", () => {
   const base = { sessionId: "s", seq: 1, at: "2026-10-14T00:00:00Z" };
+  test("a usage limit gives its reset time in the clock setting (#770)", () => {
+    const limit: SessionEvent = {
+      ...base,
+      kind: "usage_limit",
+      status: "rejected",
+      window: "five_hour",
+      usedPercent: 100,
+      resetsAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    expect(describeEvent(limit, "12h")).toMatch(/ It resets (at|on .* at) \d{1,2}:\d{2} [AP]M\.\)\n$/);
+  });
+
   test("gives each event kind its terminal line", () => {
     const events: SessionEvent[] = [
       { ...base, kind: "text", text: "Hi", messageId: "m" },
@@ -93,7 +105,7 @@ describe("describeEvent", () => {
       { ...base, kind: "session_archived", archived: true },
       { ...base, kind: "fork_named", name: "Short answer" },
     ];
-    expect(events.map(describeEvent)).toEqual([
+    expect(events.map((event) => describeEvent(event))).toEqual([
       "Hi\n",
       "  · Read a.md\n",
       "  · task running: search\n",

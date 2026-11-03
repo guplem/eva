@@ -1,5 +1,8 @@
 # The stored and typed names of Eva. scripts/check-stored-names.ts compares them with origin/main.
 # Update this file with: bun run scripts/check-stored-names.ts --write
+machine config.json clock
+machine config.json clock=12h
+machine config.json clock=24h
 machine config.json engines
 machine config.json engines.claudeCode
 machine config.json engines.claudeCode.executable
@@ -57,6 +60,7 @@ machine config.json google.services[]=contacts
 machine config.json google.services[]=drive
 machine config.json google.services[]=gmail
 machine config.json google.services[]=tasks
+machine config.json language
 machine config.json machineName
 machine config.json port
 machine config.json projectRoots
@@ -74,6 +78,9 @@ machine config.json telegram.allowedUserId
 machine config.json timeZone
 machine config.json trust
 machine config.json trust.trustedRepositoryOwners
+machine config.json units
+machine config.json units=imperial
+machine config.json units=metric
 machine config.json updates
 machine config.json updates.frequency
 machine config.json updates.frequency=daily
@@ -93,6 +100,14 @@ machine config.json voice.language
 machine config.json voice.modelPath
 machine config.json voice.vadModelPath
 machine config.json voice.whisperExecutable
+machine config.json weekStart
+machine config.json weekStart=friday
+machine config.json weekStart=monday
+machine config.json weekStart=saturday
+machine config.json weekStart=sunday
+machine config.json weekStart=thursday
+machine config.json weekStart=tuesday
+machine config.json weekStart=wednesday
 machine config.json widgets
 machine config.json widgets.checkIntervalMinutes
 machine secrets.json claudeOauthToken
@@ -314,6 +329,7 @@ migration vault 2026-10-31-secret-files
 migration vault 2026-11-02-eva-scratch
 migration vault 2026-11-02-general-project-type
 migration vault 2026-11-02-pinned-files
+migration vault 2026-11-03-format-settings
 typed cli --check
 typed cli --clone
 typed cli --engine
@@ -386,6 +402,9 @@ vault .eva/schedules.json schedules[].prompt
 vault .eva/schedules.json schedules[].text
 vault .eva/schedules.json version
 vault .eva/schedules.json version=1
+vault .eva/settings/settings.json clock
+vault .eva/settings/settings.json clock=12h
+vault .eva/settings/settings.json clock=24h
 vault .eva/settings/settings.json engines.default
 vault .eva/settings/settings.json engines.default=claude-code
 vault .eva/settings/settings.json engines.default=pi
@@ -404,9 +423,13 @@ vault .eva/settings/settings.json engines.pi.models.haiku
 vault .eva/settings/settings.json engines.pi.models.opus
 vault .eva/settings/settings.json engines.pi.models.sonnet
 vault .eva/settings/settings.json google.email
+vault .eva/settings/settings.json language
 vault .eva/settings/settings.json sync.pullIntervalMinutes
 vault .eva/settings/settings.json sync.sweepSeconds
 vault .eva/settings/settings.json timeZone
+vault .eva/settings/settings.json units
+vault .eva/settings/settings.json units=imperial
+vault .eva/settings/settings.json units=metric
 vault .eva/settings/settings.json updates
 vault .eva/settings/settings.json updates.frequency
 vault .eva/settings/settings.json updates.frequency=daily
@@ -418,6 +441,14 @@ vault .eva/settings/settings.json updates.install=major
 vault .eva/settings/settings.json updates.install=minor
 vault .eva/settings/settings.json updates.install=patch
 vault .eva/settings/settings.json voice.language
+vault .eva/settings/settings.json weekStart
+vault .eva/settings/settings.json weekStart=friday
+vault .eva/settings/settings.json weekStart=monday
+vault .eva/settings/settings.json weekStart=saturday
+vault .eva/settings/settings.json weekStart=sunday
+vault .eva/settings/settings.json weekStart=thursday
+vault .eva/settings/settings.json weekStart=tuesday
+vault .eva/settings/settings.json weekStart=wednesday
 vault .eva/settings/settings.json widgets.checkIntervalMinutes
 vault .eva/template.json eva
 vault .eva/template.json parts
@@ -434,12 +465,13 @@ vault .eva/widgets.json widgets[].inputs
 vault .eva/widgets.json widgets[].repository
 vault Life/About-me.md allergies
 vault Life/About-me.md birthDate
-vault Life/About-me.md clock
+vault Life/About-me.md contact
 vault Life/About-me.md dates
 vault Life/About-me.md diet
 vault Life/About-me.md familyName
 vault Life/About-me.md givenName
 vault Life/About-me.md hemisphere
+vault Life/About-me.md languages
 vault Life/About-me.md lastLocation
 vault Life/About-me.md lastLocation.accuracy
 vault Life/About-me.md lastLocation.at
@@ -457,8 +489,6 @@ vault Life/About-me.md pronouns
 vault Life/About-me.md region
 vault Life/About-me.md sleep
 vault Life/About-me.md summary
-vault Life/About-me.md units
-vault Life/About-me.md weekStart
 vault Life/About-me.md work
 vault Life/Cases/*/Case.md deadline.cost
 vault Life/Cases/*/Case.md deadline.date

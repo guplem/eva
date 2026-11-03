@@ -263,6 +263,12 @@ export const searchEntries: readonly SearchEntry[] = [
       "sound audio volume mute quiet loud effects chirp style palette coin orbit fluent kalimba halo aurora crystal pulse blocks eve haptic haptics vibrate vibration buzz phone",
   },
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
+  {
+    item: "formats",
+    section: "personalize",
+    title: "Language and formats",
+    words: "answer language units metric imperial clock 12h 24h am pm week start monday sunday",
+  },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },
   {
     item: "widgets",
@@ -320,6 +326,12 @@ export interface SettingPlace {
 /** A card with parts in two homes, such as Claude Code's model and token, has a row for each part. */
 export const settingPlaces: readonly SettingPlace[] = [
   { title: "Time zone", home: "vault", keys: ["timeZone"], link: { section: "personalize", item: "time-zone" } },
+  {
+    title: "Language and formats",
+    home: "vault",
+    keys: ["language", "units", "clock", "weekStart"],
+    link: { section: "personalize", item: "formats" },
+  },
   {
     title: "Vault sync timing",
     home: "vault",

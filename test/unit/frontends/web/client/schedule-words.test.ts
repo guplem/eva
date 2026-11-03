@@ -167,3 +167,25 @@ describe("nextHourSlot", () => {
     expect(nextHourSlot("2026-12-31T23:40")).toBe("2027-01-01T00:00");
   });
 });
+
+describe("the person's clock and week start (#770)", () => {
+  const sunday = { clock: null, weekStart: "sunday" } as const;
+  const twelve = { clock: "12h", weekStart: null } as const;
+
+  test("a Sunday start orders the days from Sunday, and still finds weekdays and weekends", () => {
+    expect(repeatWords(onDays("10:00", [0, 6]), sunday)).toBe("Weekends at 10:00");
+    expect(repeatWords(onDays("08:00", [1, 2, 3, 4, 5]), sunday)).toBe("Weekdays at 08:00");
+    expect(repeatWords(onDays("08:00", [1, 0]), sunday)).toBe("Sundays and Mondays at 08:00");
+    expect(repeatWords(onDays("08:00", [1, 0]))).toBe("Mondays and Sundays at 08:00");
+  });
+
+  test("a 12-hour clock writes every time that a person reads in its form", () => {
+    expect(repeatWords(onDays("18:30", [5]), twelve)).toBe("Fridays at 6:30 PM");
+    expect(repeatWords(every("3d", "2026-10-21T07:30"), twelve)).toBe("Every 3 days at 7:30 AM");
+    expect(nextRunWords("2026-10-22T08:00", now, "12h")).toBe("Tomorrow 8:00 AM");
+    expect(slotWords("2026-10-23T09:00", "12h")).toBe("Fri 23 Oct, 9:00 AM");
+    const line = dayLine([{ name: "Plan", runsToday: ["18:00"] }], now, "12h");
+    expect(line.nowLabel).toBe("Now (10:15 AM)");
+    expect(line.runs[0]?.label).toBe("6:00 PM Plan");
+  });
+});

@@ -1,10 +1,10 @@
 /**
  * The personalize page: this browser's look and sounds, the person's rules for Eva, the widgets, then the time zone, the
- * rules for chat names, and the message box menu. The text fields wait for Save; the look and the sounds
+ * language and formats, the rules for chat names, and the message box menu. The text fields wait for Save; the look and the sounds
  * apply at once. Each item of the message box menu saves on its own.
  */
 import { useEffect, useState, type ReactElement } from "react";
-import { api, ApiError } from "./api.ts";
+import { api, ApiError, type EvaStatus } from "./api.ts";
 import { AssistantRulesCard } from "./AssistantRulesCard.tsx";
 import { ComposerMenuCard } from "./ComposerMenuCard.tsx";
 import { WidgetsCard } from "./WidgetsCard.tsx";
@@ -31,6 +31,9 @@ import { Card, ChoiceChips, errorText, SelectField, type SettingsContext } from 
 import { SaveButton } from "./SaveButton.tsx";
 import { restartNote } from "./notes.ts";
 import { knownTimeZones, timeZoneChoices } from "./time-zones.ts";
+import type { Clock, Units, WeekStart } from "../../../shared/time-format.ts";
+import { displayFormat, setDisplayFormat } from "./display-format.ts";
+import { formatChange, formatFormChanged, formatFormOf, type FormatForm } from "./format-form.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
 const chatNameRulesLength = 4_000;
@@ -55,6 +58,30 @@ const fileNameCutChoices: readonly { value: Appearance["fileNameCut"]; label: st
 const fileNamesChoices: readonly { value: Appearance["fileNames"]; label: string }[] = [
   { value: "smart", label: "Smart" },
   { value: "real", label: "Real" },
+];
+
+/** "" is "not set": Eva keeps her old forms until the person picks one. */
+const unitChoices: readonly { value: Units | ""; label: string }[] = [
+  { value: "", label: "Not set" },
+  { value: "metric", label: "Metric" },
+  { value: "imperial", label: "Imperial" },
+];
+
+const clockChoices: readonly { value: Clock | ""; label: string }[] = [
+  { value: "", label: "Not set" },
+  { value: "24h", label: "24-hour" },
+  { value: "12h", label: "12-hour" },
+];
+
+const weekStartChoices: readonly { value: WeekStart | ""; label: string }[] = [
+  { value: "", label: "Not set" },
+  { value: "monday", label: "Monday" },
+  { value: "tuesday", label: "Tuesday" },
+  { value: "wednesday", label: "Wednesday" },
+  { value: "thursday", label: "Thursday" },
+  { value: "friday", label: "Friday" },
+  { value: "saturday", label: "Saturday" },
+  { value: "sunday", label: "Sunday" },
 ];
 
 const filesViewChoices: readonly { value: Appearance["filesView"]; label: string }[] = [
@@ -146,6 +173,16 @@ export function AppearanceCard(): ReactElement {
 function PreferencesForm({ context }: { readonly context: SettingsContext }): ReactElement {
   const config = context.settings.config;
   const [timeZone, setTimeZone] = useState(config.timeZone ?? "");
+  // A vault that the hub has not migrated still holds these in About me: the status gives the values in use.
+  // The baseline becomes the saved values after each save, so the leave guard stops asking.
+  const [baseline, setBaseline] = useState<FormatForm>(() =>
+    formatFormOf(config, (context.status as Partial<EvaStatus> | null)?.format, displayFormat()),
+  );
+  const [language, setLanguage] = useState(baseline.language);
+  const [units, setUnits] = useState<Units | "">(baseline.units);
+  const [clock, setClock] = useState<Clock | "">(baseline.clock);
+  const [weekStart, setWeekStart] = useState<WeekStart | "">(baseline.weekStart);
+  const form: FormatForm = { language, units, clock, weekStart };
   /** Null until loaded, and when no vault holds the rules. */
   const [chatNameRules, setChatNameRules] = useState<string | null>(null);
   /** Save sends the rules only when they changed, so it never overwrites an edit that Eva made in a chat. */
@@ -181,13 +218,20 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
     try {
       const result = await api.saveSettings({
         timeZone: timeZone === "" ? null : timeZone,
+        ...formatChange(form),
       });
+      setBaseline(form);
       notify(
         result.restartNeeded
           ? restartNote(`Saved. Press Restart Eva to use the new settings.${rulesProblem}`)
           : `Saved.${rulesProblem}`,
       );
       context.reloadSettings();
+      // The times on the page follow the new clock at once, not at the next status poll.
+      void api.status().then(
+        (status) => setDisplayFormat((status as Partial<EvaStatus>).format),
+        () => undefined,
+      );
       return rulesProblem === "";
     } catch (error) {
       notify(errorText(error) + rulesProblem);
@@ -195,7 +239,9 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
     }
   };
   useLeaveGuard(
-    timeZone !== (config.timeZone ?? "") || (chatNameRules !== null && chatNameRules !== savedChatNameRules),
+    timeZone !== (config.timeZone ?? "") ||
+      formatFormChanged(form, baseline) ||
+      (chatNameRules !== null && chatNameRules !== savedChatNameRules),
     save,
   );
 
@@ -207,6 +253,24 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
           value={timeZone}
           choices={timeZoneChoices(timeZone, knownTimeZones())}
           onChange={setTimeZone}
+        />
+      </Card>
+      <Card
+        item="formats"
+        title="Language and formats"
+        description="Eva answers in this language, and writes measures, times and weeks in these forms. Each new chat uses them."
+      >
+        <label className="field">
+          <span className="field-label">Answer language</span>
+          <input value={language} placeholder="English" onChange={(event) => setLanguage(event.target.value)} />
+        </label>
+        <ChoiceChips label="Units" value={units} choices={unitChoices} onChange={setUnits} />
+        <ChoiceChips label="Clock" value={clock} choices={clockChoices} onChange={setClock} />
+        <SelectField
+          label="First day of the week"
+          value={weekStart}
+          choices={weekStartChoices}
+          onChange={setWeekStart}
         />
       </Card>
       {chatNameRules !== null && (

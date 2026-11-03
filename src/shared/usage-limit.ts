@@ -1,5 +1,6 @@
 /** The one line that every front end shows for a usage limit, so they all say the same thing. */
 import type { EngineEventPayload, UsageWindow } from "./events.ts";
+import { zonedClockTime, type Clock } from "./time-format.ts";
 
 export type UsageLimit = Extract<EngineEventPayload, { kind: "usage_limit" }>;
 
@@ -12,8 +13,13 @@ const windowNames: Record<UsageWindow, string> = {
   other: "usage limit",
 };
 
-/** With no time zone, the line uses the zone of the machine or the browser. */
-export function describeUsageLimit(limit: UsageLimit, now: Date, timeZone?: string): string {
+/** With no time zone, the line uses the zone of the machine or the browser. The reset time follows the clock setting. */
+export function describeUsageLimit(
+  limit: UsageLimit,
+  now: Date,
+  timeZone?: string,
+  clock: Clock | null = null,
+): string {
   const name = windowNames[limit.window];
   const state =
     limit.status === "rejected"
@@ -24,7 +30,7 @@ export function describeUsageLimit(limit: UsageLimit, now: Date, timeZone?: stri
   const resetsAt = new Date(limit.resetsAt ?? Number.NaN);
   // A stored or relayed event can hold any text, and Intl throws on an invalid date.
   if (Number.isNaN(resetsAt.getTime())) return state;
-  return `${state} It resets ${resetText(resetsAt, now, validZone(timeZone))}.`;
+  return `${state} It resets ${resetText(resetsAt, now, validZone(timeZone), clock)}.`;
 }
 
 /** True once the window has reset, so a line that stays on screen stops saying the person is blocked. */
@@ -32,11 +38,11 @@ export function hasReset(limit: UsageLimit, now: Date): boolean {
   return limit.resetsAt !== null && new Date(limit.resetsAt).getTime() <= now.getTime();
 }
 
-function resetText(at: Date, now: Date, timeZone: string | undefined): string {
-  const time = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+function resetText(at: Date, now: Date, timeZone: string | undefined, clock: Clock | null): string {
+  const time = zonedClockTime(at, timeZone, clock);
   const date = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "long", day: "numeric", month: "long" });
-  if (date.format(at) === date.format(now)) return `at ${time.format(at)}`;
-  return `on ${date.format(at).replace(",", "")} at ${time.format(at)}`;
+  if (date.format(at) === date.format(now)) return `at ${time}`;
+  return `on ${date.format(at).replace(",", "")} at ${time}`;
 }
 
 /** A bad time zone setting must never stop the line. */

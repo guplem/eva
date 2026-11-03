@@ -44,6 +44,7 @@ import { isProcessAlive, readBootId, runningInstancePid } from "../../core/insta
 import { commitIdentityVariables } from "../../core/instance/child-environments.ts";
 import { commitIdentity, refreshGitHubAccount } from "../../core/instance/commit-identity.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../core/settings/settings.ts";
+import { saveNewVaultSettings } from "../../core/settings/format-defaults.ts";
 import {
   checkVaultRepository,
   cloneVault,
@@ -549,8 +550,7 @@ async function askVault(
     await cloneVault({ repository, folder, runner: options.runner, environment: gitEnvironment() });
     options.write(`Cloned the vault into ${folder}.`);
   } else {
-    const timeZone = loadSettings(paths).config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    await offerNewVault(options, folder, timeZone, ask, create);
+    await offerNewVault(options, folder, ask, create);
   }
 }
 
@@ -743,7 +743,6 @@ function loggedInEngine(current: EngineName, logins: Readonly<Record<EngineName,
 async function offerNewVault(
   options: SetupOptions,
   folder: string,
-  timeZone: string,
   ask: (key: SetupQuestion, question: string) => Promise<string>,
   chosen: boolean,
 ): Promise<void> {
@@ -765,7 +764,7 @@ async function offerNewVault(
   await createVaultFromTemplate({
     folder,
     key,
-    answers: { name, language, notesLanguage, timeZone, topics },
+    answers: { name, notesLanguage, topics },
     runner: options.runner,
     // The first commit carries this Eva's commit identity, as each later one does.
     environment: {
@@ -775,6 +774,15 @@ async function offerNewVault(
       ),
     },
   });
+  // The vault folder is saved, so the answer language and this computer's formats go to the vault (#770).
+  try {
+    saveNewVaultSettings(homePaths(options.paths.root), language);
+  } catch (error) {
+    // A broken settings file must not stop the new vault.
+    options.write(
+      `Eva could not save the answer language and the formats: ${error instanceof Error ? error.message : String(error)} Set them later with eva settings set.`,
+    );
+  }
   options.write(`Created a new vault in ${folder}.`);
   await offerVaultPush(options, folder, ask);
 }

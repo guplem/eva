@@ -2,13 +2,13 @@
  * The words and the day line of the Schedules page. Every time is a wall-clock slot
  * (`YYYY-MM-DDTHH:MM`) in the instance's time zone, so this code never reads the browser's clock or zone.
  */
+import { slotTime, weekOrder, type DisplayFormat } from "../../../shared/time-format.ts";
+import { displayFormat } from "./display-format.ts";
 
 const dayCodes = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const shortDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pluralDays = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** The person reads a week from Monday. */
-const weekOrder = [1, 2, 3, 4, 5, 6, 0];
 const dayMs = 86_400_000;
 const dayMinutes = 1440;
 /** Runs closer than this share one pill: a pill holds about this much of the day on a phone. */
@@ -21,15 +21,21 @@ export const intervalUnits = [
   ["w", "week", "weeks"],
 ] as const;
 
-/** When a schedule repeats, such as "Fridays at 18:30" or "Every 3 days at 07:30". `days` counts 0 as Sunday. */
-export function repeatWords(repeat: {
-  readonly at: string | null;
-  readonly days: readonly number[] | null;
-  readonly every: string | null;
-  readonly from: string | null;
-}): string {
-  if (repeat.every !== null && repeat.from !== null) return intervalWords(repeat.every, repeat.from);
-  return dayWords(repeat.at ?? "", repeat.days ?? []);
+/**
+ * When a schedule repeats, such as "Fridays at 18:30" or "Every 3 days at 07:30", in the person's clock
+ * and from the first day of their week. `days` counts 0 as Sunday.
+ */
+export function repeatWords(
+  repeat: {
+    readonly at: string | null;
+    readonly days: readonly number[] | null;
+    readonly every: string | null;
+    readonly from: string | null;
+  },
+  format: DisplayFormat = displayFormat(),
+): string {
+  if (repeat.every !== null && repeat.from !== null) return intervalWords(repeat.every, repeat.from, format);
+  return dayWords(repeat.at ?? "", repeat.days ?? [], format);
 }
 
 /** The next whole hour after now: the first run that the form offers. */
@@ -38,31 +44,33 @@ export function nextHourSlot(now: string): string {
   return new Date(next).toISOString().slice(0, 16);
 }
 
-function intervalWords(every: string, from: string): string {
+function intervalWords(every: string, from: string, format: DisplayFormat): string {
   const count = Number(every.slice(0, -1));
   const unit = intervalUnits.find(([code]) => code === every.slice(-1)) ?? intervalUnits[1];
   const head = count === 1 ? `Every ${unit[1]}` : `Every ${String(count)} ${unit[2]}`;
-  const time = from.slice(11, 16);
+  const time = slotTime(from.slice(11, 16), format.clock);
   if (unit[0] === "h") return head;
   if (unit[0] === "d") return `${head} at ${time}`;
   return `${head} on ${pluralDays[weekdayOf(from)] ?? ""} at ${time}`;
 }
 
-function dayWords(at: string, days: readonly number[]): string {
-  const ordered = weekOrder.filter((day) => days.includes(day));
-  const key = ordered.join(",");
-  if (ordered.length === 7) return `Every day at ${at}`;
-  if (key === "1,2,3,4,5") return `Weekdays at ${at}`;
-  if (key === "6,0") return `Weekends at ${at}`;
+function dayWords(at: string, days: readonly number[], format: DisplayFormat): string {
+  const time = slotTime(at, format.clock);
+  const ordered = weekOrder(format.weekStart).filter((day) => days.includes(day));
+  // By the set of days, not their order: a week can start on any day.
+  const key = [...ordered].sort((first, second) => first - second).join(",");
+  if (ordered.length === 7) return `Every day at ${time}`;
+  if (key === "1,2,3,4,5") return `Weekdays at ${time}`;
+  if (key === "0,6") return `Weekends at ${time}`;
   const names = ordered.map((day) => (ordered.length > 2 ? shortDays[day] : pluralDays[day]) ?? "");
-  return `${joinWords(names)} at ${at}`;
+  return `${joinWords(names)} at ${time}`;
 }
 
-/** The next run, such as "Tomorrow 08:00". */
-export function nextRunWords(nextRun: string | null, now: string): string {
+/** The next run, such as "Tomorrow 08:00" or "Tomorrow 8:00 AM". */
+export function nextRunWords(nextRun: string | null, now: string, clock = displayFormat().clock): string {
   if (nextRun === null) return "Never";
   const days = daysBetween(now, nextRun);
-  const time = nextRun.slice(11, 16);
+  const time = slotTime(nextRun.slice(11, 16), clock);
   if (days === 0) return `Today ${time}`;
   if (days === 1) return `Tomorrow ${time}`;
   if (days < 7) return `${shortDays[weekdayOf(nextRun)] ?? ""} ${time}`;
@@ -70,9 +78,9 @@ export function nextRunWords(nextRun: string | null, now: string): string {
 }
 
 /** A slot with its weekday and date, such as "Thu 23 Oct, 09:00", for a setup card. */
-export function slotWords(slot: string | null): string {
+export function slotWords(slot: string | null, clock = displayFormat().clock): string {
   if (slot === null) return "Never";
-  return `${shortDays[weekdayOf(slot)] ?? ""} ${dateWords(slot)}, ${slot.slice(11, 16)}`;
+  return `${shortDays[weekdayOf(slot)] ?? ""} ${dateWords(slot)}, ${slotTime(slot.slice(11, 16), clock)}`;
 }
 
 export type ResultTone = "ok" | "bad" | "idle";
@@ -118,10 +126,13 @@ export function dayLine(
     readonly enabled?: boolean;
   }[],
   now: string,
+  clock = displayFormat().clock,
 ): { now: number; nowLabel: string; runs: DayLineRun[] } {
   const runs = schedules
     .filter((schedule) => schedule.enabled !== false)
-    .flatMap((schedule) => schedule.runsToday.map((at) => ({ minutes: minutesOf(at), text: `${at} ${schedule.name}` })))
+    .flatMap((schedule) =>
+      schedule.runsToday.map((at) => ({ minutes: minutesOf(at), text: `${slotTime(at, clock)} ${schedule.name}` })),
+    )
     .sort((first, second) => first.minutes - second.minutes);
   const groups: { minutes: number; texts: string[]; marks: number[] }[] = [];
   for (const run of runs) {
@@ -134,7 +145,7 @@ export function dayLine(
   }
   return {
     now: minutesOf(now.slice(11, 16)) / dayMinutes,
-    nowLabel: `Now (${now.slice(11, 16)})`,
+    nowLabel: `Now (${slotTime(now.slice(11, 16), clock)})`,
     runs: groups.map((group, index) => {
       const position = group.minutes / dayMinutes;
       const next = groups[index + 1];

@@ -1,7 +1,8 @@
 /**
  * A new vault from Eva's template: the files in `templates/vault/`, which
  * Bun embeds at build time, so the single executable carries them. The template holds nothing
- * personal; `eva setup` fills in the person's name, both languages, time zone and topics.
+ * personal; `eva setup` fills in the person's name, the notes language and the topics. The answer
+ * language and the formats go to the settings (#770).
  */
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -16,6 +17,7 @@ import readmeFile from "../../../templates/vault/README.md" with { type: "text" 
 import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "text" };
 import assistantFile from "../../../templates/vault/.eva/assistant.md" with { type: "text" };
 import aboutFile from "../../../templates/vault/Life/About me.md" with { type: "text" };
+import allergiesFile from "../../../templates/vault/Life/Health/Allergies and Diet.md" with { type: "text" };
 import aboutMeSkillFile from "../../../templates/vault/.eva/skills/about-me/SKILL.md" with { type: "text" };
 import scheduleSkillFile from "../../../templates/vault/.eva/skills/schedule/SKILL.md" with { type: "text" };
 import polishActionFile from "../../../templates/vault/.eva/settings/text-actions/Polish.md" with { type: "text" };
@@ -40,11 +42,8 @@ export const templateParts: Readonly<Record<string, string>> = {
 
 export interface VaultTemplateAnswers {
   readonly name: string;
-  /** The language of Eva's answers. */
-  readonly language: string;
   /** The language of every note in the vault. */
   readonly notesLanguage: string;
-  readonly timeZone: string;
   /** The main topics of the person's life and work, in their own words. */
   readonly topics: readonly string[];
 }
@@ -69,9 +68,7 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
       // A JSON string is a YAML string too: the escapes keep any name one value in the header.
       .replaceAll("{{nameInQuotes}}", JSON.stringify(answers.name).slice(1, -1))
       .replaceAll("{{name}}", answers.name)
-      .replaceAll("{{language}}", answers.language)
       .replaceAll("{{notesLanguage}}", answers.notesLanguage)
-      .replaceAll("{{timeZone}}", answers.timeZone)
       .replaceAll("{{topics}}", topicList);
   const files: Record<string, string> = {
     "AGENTS.md": fill(agentsFile),
@@ -79,6 +76,7 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
     ".gitignore": gitignoreFile,
     ".eva/assistant.md": defaultAssistantRules,
     "Life/About me.md": fill(aboutFile),
+    "Life/Health/Allergies and Diet.md": allergiesFile,
     ".eva/schedules.json": JSON.stringify({ version: 1, schedules: [] }, null, 2) + "\n",
     ".eva/.claude-plugin/plugin.json":
       JSON.stringify(

@@ -29,6 +29,7 @@ import { commitSecretFiles } from "./secret-files.ts";
 import { ignoreEvaScratch } from "./scratch-folder.ts";
 import { typeSoftwareProjects } from "./general-project-type.ts";
 import { pinFiles } from "./pinned-files.ts";
+import { moveFormatSettings } from "./format-settings.ts";
 
 /** Add each new migration here. The runner sorts them by id. */
 export const migrations: readonly Migration[] = [
@@ -48,6 +49,7 @@ export const migrations: readonly Migration[] = [
   ignoreEvaScratch,
   typeSoftwareProjects,
   pinFiles,
+  moveFormatSettings,
 ];
 
 export interface VaultAhead {

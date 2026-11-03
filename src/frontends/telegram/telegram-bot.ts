@@ -1019,7 +1019,12 @@ export class TelegramBot {
     if (key !== null && (this.shownUsageWarnings.has(key) || held.some((line) => line.key === key))) return;
     // A server clock is often UTC, so the reset time uses the person's time zone setting.
     const timeZone = this.options.eva.publicSettings().config.timeZone ?? undefined;
-    const text = describeUsageLimit(event, (this.options.clock ?? systemClock).now(), timeZone);
+    const text = describeUsageLimit(
+      event,
+      (this.options.clock ?? systemClock).now(),
+      timeZone,
+      this.options.eva.displayFormat().clock,
+    );
     this.usageLines.set(event.sessionId, [...held, { key, text }]);
   }
 

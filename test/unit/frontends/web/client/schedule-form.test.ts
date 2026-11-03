@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Schedule } from "../../../../../src/core/schedules/schedule-definitions.ts";
-import { emptyScheduleForm, entryOf, fieldsOf, formOf } from "../../../../../src/frontends/web/client/schedule-form.ts";
+import {
+  emptyScheduleForm,
+  entryOf,
+  fieldsOf,
+  formOf,
+  weekDaysFrom,
+} from "../../../../../src/frontends/web/client/schedule-form.ts";
 
 const morning: Schedule = {
   id: "morning",
@@ -103,5 +109,12 @@ describe("fieldsOf", () => {
       from: "2026-10-26T06:30",
     };
     expect(fieldsOf(form)).toEqual({ name: "Morning", every: "2w", from: "2026-10-26T06:30", text: "Good morning." });
+  });
+});
+
+describe("weekDaysFrom (#770)", () => {
+  test("the day buttons start on the person's first day of the week", () => {
+    expect(weekDaysFrom(null).map(([code]) => code)).toEqual(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
+    expect(weekDaysFrom("sunday").map(([code]) => code)).toEqual(["sun", "mon", "tue", "wed", "thu", "fri", "sat"]);
   });
 });

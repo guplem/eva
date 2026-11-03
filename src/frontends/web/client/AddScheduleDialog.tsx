@@ -5,7 +5,8 @@
 import { useEffect, useState, type ReactElement } from "react";
 import type { Schedule } from "../../../core/schedules/schedule-definitions.ts";
 import { api } from "./api.ts";
-import { emptyScheduleForm, entryOf, fieldsOf, formOf, weekDays, type Unit } from "./schedule-form.ts";
+import { emptyScheduleForm, entryOf, fieldsOf, formOf, weekDaysFrom, type Unit } from "./schedule-form.ts";
+import { displayFormat } from "./display-format.ts";
 import { intervalUnits } from "./schedule-words.ts";
 import { ChoiceChips } from "./SettingsParts.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
@@ -96,7 +97,7 @@ export function AddScheduleDialog(props: {
               <fieldset>
                 <legend>Days (none for every day)</legend>
                 <div className="schedule-days">
-                  {weekDays.map(([code, name]) => (
+                  {weekDaysFrom(displayFormat().weekStart).map(([code, name]) => (
                     <button
                       key={code}
                       type="button"

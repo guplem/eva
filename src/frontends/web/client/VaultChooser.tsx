@@ -2,6 +2,7 @@
  * The vault step on the page, as in `eva setup`: pick the vault from the GitHub repositories, type
  * its address, or start a new vault in a new private repository. Eva clones it into her home folder.
  */
+import { regionalLocale } from "../../../shared/time-format.ts";
 import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
 import type { NewVaultAnswers } from "../../../core/vault/vault-setup.ts";
@@ -43,7 +44,10 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
       context.noteAndReload(
         result.problem === null
           ? `${where} Press Restart now so that Eva uses it.`
-          : `${where} It is only on this computer: ${result.problem}`,
+          : result.repository === null
+            ? `${where} It is only on this computer: ${result.problem}`
+            : // A pushed vault can still have a problem, such as settings that Eva could not save (#770).
+              `${where} ${result.problem} Press Restart now so that Eva uses it.`,
       );
       // The buttons stay off after a success: the card shows the vault once the setup loads again.
     } catch (error) {
@@ -227,6 +231,9 @@ function NewVault({
         .filter((topic) => topic !== ""),
       // With no token, the vault stays on this computer, and the page offers the push later.
       repository: hasToken ? repository : "",
+      // The person's own forms, since the hub is often a server with none (#770).
+      locale: regionalLocale(navigator.languages.length > 0 ? navigator.languages : [navigator.language]),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   };
   return (

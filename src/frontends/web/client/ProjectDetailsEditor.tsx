@@ -20,6 +20,7 @@ import {
   statusOf,
   localDay,
   withStatus,
+  closingDate,
 } from "./project-format.ts";
 
 const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
@@ -198,9 +199,15 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
                   <input
                     type="date"
                     value={details.closed ?? ""}
-                    onChange={(event) => edit(() => setDetails({ ...details, closed: event.target.value }))}
+                    onChange={(event) =>
+                      edit(() => setDetails({ ...details, closed: closingDate(event.target.value) }))
+                    }
                   />
-                  <span className="field-hint">Today, unless you pick the day the project closed.</span>
+                  <span className="field-hint">
+                    {details.closed === null || details.closed === undefined
+                      ? "Pick the day the project closed."
+                      : "Today, unless you pick the day the project closed."}
+                  </span>
                 </label>
               )}
               <SelectField

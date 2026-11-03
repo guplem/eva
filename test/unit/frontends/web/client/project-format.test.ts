@@ -13,6 +13,7 @@ import {
   sameDetails,
   localDay,
   withStatus,
+  closingDate,
   repositoryWebUrl,
   statusPill,
   syncPills,
@@ -252,9 +253,18 @@ describe("the closing date in the details form (#826)", () => {
     expect(withStatus(picked, "closed", "2026-11-03").closed).toBe("2026-10-01");
   });
 
-  test("another status clears the date", () => {
+  test("a choice of another status and then Closed again keeps the saved date", () => {
+    // The save removes the date of a project that is not closed, so the form keeps it meanwhile.
     const closed = { ...details, status: "closed" as const, closed: "2026-10-01" };
-    expect(withStatus(closed, "paused", "2026-11-03")).toEqual({ ...details, status: "paused", closed: null });
+    const paused = withStatus(closed, "paused", "2026-11-03");
+    expect(paused.status).toBe("paused");
+    expect(withStatus(paused, "closed", "2026-11-03").closed).toBe("2026-10-01");
+  });
+
+  test("an empty date is no date, so a choice of Closed starts at today", () => {
+    expect(closingDate("")).toBeNull();
+    expect(closingDate("2026-10-01")).toBe("2026-10-01");
+    expect(withStatus({ ...details, closed: "" }, "closed", "2026-11-03").closed).toBe("2026-11-03");
   });
 
   test("a changed date differs, and a missing one is no date", () => {

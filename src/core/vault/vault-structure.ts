@@ -111,7 +111,7 @@ export function writeStructureNotices(path: string, notices: StructureNotices): 
 }
 
 /** The name of the branch of an upgrade to this version. */
-export function upgradeBranch(version: number): string {
+export function upgradeBranch(version: number | string): string {
   return `upgrade-v${String(version)}`;
 }
 

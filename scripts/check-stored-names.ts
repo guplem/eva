@@ -28,6 +28,8 @@ import { isSharedSettingKey } from "../src/core/settings/settings.ts";
 import { commitChange } from "../src/core/updates/release-version.ts";
 import { oldLocationFileSchema } from "../src/core/location/last-location.ts";
 import { templateRecordFormatVersion, type RecordedPart } from "../src/core/vault/template-alignment.ts";
+import type { StructureNotices } from "../src/core/vault/vault-structure.ts";
+import { upgradeGitNames } from "../src/core/vault/vault-upgrade.ts";
 import { aboutMeHeaderKeys, lastLocationKey, type LastLocation } from "../src/core/vault/about-me.ts";
 import { projectFrontMatterKeys } from "../src/core/projects/project-catalog.ts";
 import { projectStatuses } from "../src/shared/project-statuses.ts";
@@ -123,6 +125,10 @@ const leafTypes = new Set([
 ]);
 
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
+const structureNoticeFields = Object.keys({ announced: true, prompted: true } satisfies Record<
+  keyof StructureNotices,
+  true
+>);
 const hubFields = Object.keys({ machine: true, since: true } satisfies Record<keyof HubClaim, true>);
 const favoritesFields = Object.keys({ version: true, paths: true } satisfies Record<keyof StoredFavorites, true>);
 const templatePartFields = Object.keys({ installed: true, kept: true, updatedAt: true, retired: true } satisfies Record<
@@ -190,6 +196,8 @@ export function currentNames(): string[] {
     ].map((name) => `vault .eva/template.json ${name}`),
     // A new vault records its structure version, which the vault upgrade reads (#772).
     "vault .eva/vault-structure.json version",
+    ...upgradeGitNames.map((name) => `vault git ${name}`),
+    ...structureNoticeFields.map((field) => `machine state/vault-structure.json ${field}`),
     // A line of the snapshot is three words, so the path of the note drops its space.
     ...aboutMeHeaderKeys.map((key) => `vault Life/About-me.md ${key}`),
     ...[...lastLocationFields, "source=telegram", "source=web"].map(

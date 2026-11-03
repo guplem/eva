@@ -253,6 +253,8 @@ machine state/step-details/*.json turns[].steps[].input
 machine state/step-details/*.json turns[].steps[].output
 machine state/step-details/*.json version
 machine state/step-details/*.json version=1
+machine state/vault-structure.json announced
+machine state/vault-structure.json prompted
 machine state/widget-approvals.json approvals
 machine state/widget-approvals.json approvals[].approvedAt
 machine state/widget-approvals.json approvals[].commit
@@ -522,3 +524,8 @@ vault Projects/*/AGENTS.md type
 vault Projects/*/AGENTS.md type=general
 vault Projects/*/AGENTS.md type=software
 vault Projects/*/AGENTS.md type=specialist
+vault git branch upgrade-v<N>
+vault git commit Notes written during the upgrade
+vault git commit Undo the vault structure upgrade to v<N>
+vault git commit Upgrade the vault structure to v<N>
+vault git tag before-v<N>

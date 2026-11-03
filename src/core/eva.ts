@@ -214,7 +214,6 @@ import { Widgets } from "./widgets/widgets.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
 import { PreviewGrants } from "./widgets/widget-previews.ts";
 
-/** The person's facts as the web page reads them. */
 /** The Vault structure card (#773). */
 export interface VaultStructureView {
   /** The version that the vault follows: 2 when it has no record. */
@@ -227,6 +226,7 @@ export interface VaultStructureView {
   readonly canUpgrade: boolean;
 }
 
+/** The person's facts as the web page reads them. */
 export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
   /** The day that Eva started on the vault, as `YYYY-MM-DD`. */
   readonly installedOn: string | null;

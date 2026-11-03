@@ -29,8 +29,20 @@ export type UpgradeAction = "start" | "finish" | "drop" | "undo";
 
 /** The message of each commit of the notes that other chats wrote during the upgrade. */
 const notesMessage = "Notes written during the upgrade";
-const upgradeMessage = (version: number): string => `Upgrade the vault structure to v${String(version)}`;
-const undoMessage = (version: number): string => `Undo the vault structure upgrade to v${String(version)}`;
+const upgradeMessage = (version: number | string): string => `Upgrade the vault structure to v${String(version)}`;
+const undoMessage = (version: number | string): string => `Undo the vault structure upgrade to v${String(version)}`;
+
+/**
+ * The names that the upgrade writes into the vault's git, which a later Eva finds again: the branch
+ * pauses the sync, and undo finds its commit by its message. `<N>` is the structure version.
+ */
+export const upgradeGitNames: readonly string[] = [
+  `branch ${upgradeBranch("<N>")}`,
+  "tag before-v<N>",
+  `commit ${notesMessage}`,
+  `commit ${upgradeMessage("<N>")}`,
+  `commit ${undoMessage("<N>")}`,
+];
 const networkTimeoutMs = 60_000;
 /** Folders that the inventory leaves out: temporary files, and the clones with their own git. */
 const outOfInventory = /^(\.git\/|\.eva\/scratch\/|Scratch\/|Projects\/[^/]+\/repos\/)/;

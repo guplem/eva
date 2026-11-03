@@ -122,8 +122,11 @@ export class AssistantPreparer implements TurnPreparer {
       pinned: this.pinnedBlockNow(),
       format: this.formatBlockNow(),
       widgets: this.widgetsBlockNow(),
-      // Only a new chat: a chat with turns started before the alert, or got the line already.
-      structureLine: session.turns.length === 0 ? (this.options.vaultStructureLine?.() ?? null) : null,
+      // Only a new chat that a person started: a chat with turns started before the alert, and a schedule's chat has nobody to agree.
+      structureLine:
+        session.turns.length === 0 && session.source !== "schedule"
+          ? (this.options.vaultStructureLine?.() ?? null)
+          : null,
     };
     this.promptBySession.set(session.id, kept);
     const pluginFolders = this.pluginFolders();

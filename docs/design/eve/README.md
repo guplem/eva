@@ -330,6 +330,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 ![Computer](screenshots/settings-computer-light.webp) ![Phone](screenshots/settings-phone-light.webp)
 
 - Settings has its own list of sections on a computer.
+- Each section page lists its cards: under the open section on a computer, at the top of the page on a phone. The entry of the card in view is marked.
 - The setup is a ring with the steps left. The open step has the main button.
 - Optional steps have another icon and colour, so they do not look like errors.
 - Appearance has the colour picker, the theme and the density.

@@ -193,19 +193,29 @@ export function ShowListButton({
   );
 }
 
-/** The arrow to the page above, such as from a chat to its project. */
+/**
+ * The arrow to the page above, such as from a chat to its project. With `text`, the button also
+ * names that page, such as "Projects", so it shows on a computer too (#840).
+ */
 export function BackButton({
   label,
   onClick,
   className = "",
+  text,
 }: {
   readonly label: string;
   readonly onClick: () => void;
   readonly className?: string;
+  readonly text?: string;
 }): ReactElement {
   return (
-    <button className={`icon-button ${className}`} aria-label={label} onClick={onClick}>
+    <button
+      className={`${text === undefined ? "icon-button" : "back-named"} ${className}`}
+      aria-label={label}
+      onClick={onClick}
+    >
       <Icon name="back" />
+      {text}
     </button>
   );
 }

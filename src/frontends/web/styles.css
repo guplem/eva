@@ -913,6 +913,17 @@ textarea {
   line-height: 1;
 }
 
+/* A back button that names the page above, such as "Projects": a computer shows it too (#840). */
+.back-named {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  padding-left: var(--space-2);
+  font-weight: 700;
+  color: var(--accent-ink);
+}
+
 .list-item {
   text-align: left;
   width: 100%;

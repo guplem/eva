@@ -1799,7 +1799,7 @@ test("New project: a general project opens its page, and its chat works in the f
   await expect(header.locator(".mode-chip-label")).toHaveText("Project");
   await expect(page.getByRole("button", { name: "Attach a file" })).toBeVisible();
   await page.getByRole("button", { name: name, exact: true }).first().click();
-  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
+  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the projects" }).click();
   const card = page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: new RegExp(name) });
   await expect(card).toContainText("General · 1 chat");
 });
@@ -1835,7 +1835,7 @@ test("New project: a specialist opens its first chat, and its page lists its cha
   await expect(main.getByRole("button", { name: "Repository setup" })).toHaveCount(0);
   await expect(main.locator(".clone-chat")).toHaveCount(1);
   // A phone shows the list as its own page.
-  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
+  if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the projects" }).click();
   const card = page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: new RegExp(name) });
   await expect(card).toContainText("Specialist · 1 chat");
 });
@@ -2138,7 +2138,7 @@ test("a project with a bad front matter field shows its warnings", async ({ page
   await expect(page.getByRole("list", { name: "Warnings of Broken notes" })).toHaveText("repos must be a list of URLs");
 });
 
-test("on a phone, the project list is the page, and Back to the list returns to it", async ({ page }) => {
+test("on a phone, the project list is the page, and Back to the projects returns to it", async ({ page }) => {
   test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
   await logIn(page);
   await page.getByRole("button", { name: "Projects", exact: true }).click();
@@ -2150,7 +2150,7 @@ test("on a phone, the project list is the page, and Back to the list returns to 
   await page.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
-  await page.getByRole("button", { name: "Back to the list" }).click();
+  await page.getByRole("button", { name: "Back to the projects" }).click();
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
 });
 
@@ -5566,7 +5566,7 @@ test.describe("on a phone", () => {
     await newProjectChat(page);
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
     await page.getByRole("button", { name: "Back to the project" }).click();
-    await page.getByRole("button", { name: "Back to the list" }).click();
+    await page.getByRole("button", { name: "Back to the projects" }).click();
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
   });
 
@@ -5774,7 +5774,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(page.getByRole("status")).toHaveText("Saved.");
   // Back goes to the project page; on a phone, the list is one more step back.
   await page.getByRole("button", { name: "Back", exact: true }).click();
-  if (run === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
+  if (run === "phone") await page.getByRole("button", { name: "Back to the projects" }).click();
   await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
 });
 

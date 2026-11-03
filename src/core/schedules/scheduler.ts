@@ -21,7 +21,7 @@ import {
   type ScheduleFieldName,
 } from "./schedule-definitions.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
-import { ScheduleStateStore } from "./schedule-state.ts";
+import { ScheduleStateStore, type ScheduleState } from "./schedule-state.ts";
 import { dueSlot, isLate, nextSlot, runsOnDay, wallClockOf } from "./schedule-timing.ts";
 import { EvaError } from "../../shared/errors.ts";
 
@@ -182,7 +182,7 @@ export class Scheduler {
   private endedAt(schedule: Schedule, now: string): string | null {
     if (!runsOnce(schedule) || schedule.from === null || schedule.from > now) return null;
     const state = this.state.peek(schedule.id);
-    if (state === undefined || state.lastFired === schedule.from || state.firstSeen > schedule.from)
+    if (state === undefined || state.lastFired === schedule.from || onceSeenAt(schedule, state, now) > schedule.from)
       return schedule.from;
     return null;
   }
@@ -287,7 +287,11 @@ export class Scheduler {
       this.pause(schedule.id);
       return;
     }
-    const state = this.state.see(schedule.id, now);
+    const seen = this.state.see(schedule.id, now);
+    // A one-off counts from when Eva first saw its time, not its id.
+    if (runsOnce(schedule) && schedule.from !== null && seen.onceSeen?.from !== schedule.from)
+      this.state.update(schedule.id, { onceSeen: { from: schedule.from, at: now } });
+    const state = this.state.peek(schedule.id) ?? seen;
     const fields = announcedFields(schedule);
     if (!this.isAnnounced(schedule)) {
       const changed: ScheduleChange[] = state.announced === null ? [] : changedFields(state.announced, fields);
@@ -322,7 +326,7 @@ export class Scheduler {
     }
     // The change was undone before anyone saw its card, so that card no longer waits.
     this.stopWaiting(schedule.id);
-    const slot = dueSlot(schedule, state, now);
+    const slot = dueSlot(schedule, { ...state, firstSeen: onceSeenAt(schedule, state, now) }, now);
     if (slot !== null) await this.fire(schedule, slot, now);
   }
 
@@ -463,4 +467,13 @@ function lateNotes(slot: string): { text: string; prompt: string } {
     text: `This message comes late: ${due}.`,
     prompt: `[This scheduled run comes late: ${due}. Say so in one short sentence at the start of your answer.]`,
   };
+}
+
+/**
+ * When Eva first saw the time of a one-off. A time that she did not check yet counts as seen now,
+ * as the next check records it. Any other schedule counts from when Eva first saw its id.
+ */
+function onceSeenAt(schedule: Schedule, state: ScheduleState, now: string): string {
+  if (!runsOnce(schedule)) return state.firstSeen;
+  return state.onceSeen?.from === schedule.from ? state.onceSeen.at : now;
 }

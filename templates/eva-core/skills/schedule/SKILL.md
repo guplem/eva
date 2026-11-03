@@ -60,7 +60,7 @@ Each schedule is one object in `schedules`:
 - **Once instead of a repeat.** To run one time only, write `from` alone, and leave out `at`, `days` and `every`. Example: `"from": "2026-11-24T10:00"` runs once, at 10:00 on 24 November.
   - Pick a time later than the `[Local time: ...]` line. A time in the past never runs.
   - The run also waits for its setup card. When the card reaches the person after the time, the run comes right after the card. So for a time in the next few minutes, tell the person to check the card soon.
-  - When Eva is off at that time, the run comes when she is back. A line says that it comes late.
+  - When Eva is off at that time, the run comes when she is back. When it comes an hour or more late, a line says so.
   - After the run, the schedule stays in the file, and the Schedules page shows it as "Ended". Do not remove it, and do not tell the person to remove it.
   - Never fake a one-off with a long interval, such as `"every": "999w"`.
 - **At least one step.** `text` is a fixed message. `file` is a path from the vault root, as an `[[attach:]]` marker names it. Never use `.eva/scratch/`, because that folder empties after a week, and Eva skips such an entry. `prompt` is a message that you answer, in a fresh chat, at that time. The steps run in that order.

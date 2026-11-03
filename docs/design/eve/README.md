@@ -307,6 +307,14 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - The list opens with the "Current" filter: the active and in-use projects.
 - Each clone is a card with its branch, its state and its chats.
 - A project card shows the "Unread" pill while one of its chats has an answer that the person did not see.
+- A project page has a "Projects" back button beside its title, on both sizes.
+
+### Projects home
+
+![Computer](screenshots/projects-home-computer-light.webp) ![Phone](screenshots/projects-home-phone-light.webp)
+
+- With no project open, a computer shows a home page: Needs you, Recent, a timeline of the active and paused projects, and the counts of a year. A phone shows only Needs you, above the list.
+- Each project of the timeline has one file type colour, by a hash of its folder name. A paused bar is a faint bar of that colour. The today line takes the accent.
 
 ### A chat in a clone
 

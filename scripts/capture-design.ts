@@ -267,6 +267,15 @@ const scenes: readonly Scene[] = [
       await page.locator(".clone-card").first().waitFor();
     },
   },
+  {
+    // With no project open (#840): the home page beside the list on a computer, the list on a phone.
+    name: "projects-home",
+    show: async (page, view) => {
+      await openProjects(page);
+      await page.locator("button.project-card").first().waitFor();
+      if (view.device === "computer") await page.getByRole("region", { name: "Timeline" }).waitFor();
+    },
+  },
   { name: "project-chat", show: (page, _view, demo) => openChat(page, demo.projectChat) },
   {
     name: "schedules",

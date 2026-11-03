@@ -722,9 +722,15 @@ test("a long press on a chat in the list shows its actions, and the press opens 
 test("a right click on a project opens its pages from the menu", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  await page.getByRole("button", { name: /Example app/ }).click({ button: "right" });
+  const card = page.getByRole("button", { name: /Example app/ });
   const menu = page.getByRole("menu", { name: /^Actions of / });
-  await menu.getByRole("menuitem", { name: "Details" }).click();
+  // On a phone, earlier tests' projects push the card down, so the project list scrolls. A refresh
+  // of the list while their chats end can scroll it again, and a scroll closes the menu (#768).
+  await waitUntilNoChatWorks(page);
+  await expect(async () => {
+    await card.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "Details" }).click({ timeout: 2_000 });
+  }).toPass();
   await expect(page.getByRole("heading", { name: /· Details$/ })).toBeVisible();
   await expect(menu).toHaveCount(0);
 });

@@ -2642,7 +2642,15 @@ button.link-button {
   .filter-chip::after {
     content: "";
     position: absolute;
-    inset: calc((30px - var(--touch-target)) / 2) 0;
+    /* The margin starts inside the border. So it centres on the pill, and the border and the pill's height do not
+       change the tap target (#777). */
+    inset: calc(50% - var(--touch-target) / 2) 0;
+  }
+
+  /* A pill, the space around it in its row and the row gap are as tall as the tap target. So the margins of
+     two such rows meet, but do not overlap, as the filters do. A row that wraps keeps the space under its pill. */
+  .facts dd.fact-with-action {
+    padding-block: max(0px, calc((var(--touch-target) - 30px - var(--space-2)) / 2));
   }
 }
 

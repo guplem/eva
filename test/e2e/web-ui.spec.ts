@@ -128,6 +128,52 @@ async function restingBottom(dialog: Locator): Promise<number> {
   return (box?.y ?? 0) + (box?.height ?? 0);
 }
 
+/**
+ * The height that a finger can tap on each element: its box, and the `::after` of an invisible tap
+ * margin, which can reach past the box. A pseudo-element has no box of its own, so its computed style gives it.
+ */
+async function tapHeights(locator: Locator): Promise<number[]> {
+  return locator.evaluateAll((elements) =>
+    elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      const margin = getComputedStyle(element, "::after");
+      const holdsMargin =
+        margin.content !== "none" &&
+        margin.position === "absolute" &&
+        margin.pointerEvents !== "none" &&
+        getComputedStyle(element).position !== "static";
+      if (!holdsMargin) return box.height;
+      // An absolute `::after` starts at the padding box, inside the border.
+      const top = element.clientTop + parseFloat(margin.top);
+      const bottom = top + parseFloat(margin.height);
+      return Math.max(box.height, bottom) - Math.min(0, top);
+    }),
+  );
+}
+
+/**
+ * Checks that each pill is smaller than 44 px, and that a tap 1 px inside the top or the bottom
+ * edge of its 44 px target reaches it. The taps are at the left, the middle and the right of the
+ * pill, because another pill's margin can cover only the columns that the two share.
+ */
+async function expectSmallPills(pills: Locator): Promise<void> {
+  const found = await pills.evaluateAll((elements) =>
+    elements.map((element) => {
+      element.scrollIntoView({ block: "center" });
+      const box = element.getBoundingClientRect();
+      const middle = box.top + box.height / 2;
+      // The margin starts inside the 1 px border, at the sides too.
+      const hits = [box.left + 2, box.left + box.width / 2, box.right - 2].flatMap((x) =>
+        [middle - 21, middle + 21].map((y) => document.elementFromPoint(x, y)?.closest("button")),
+      );
+      return { name: element.textContent, height: box.height, hit: hits.every((hit) => hit === element) };
+    }),
+  );
+  expect(found.length).toBeGreaterThan(0);
+  for (const pill of found) expect(pill.hit, pill.name).toBe(true);
+  expect(Math.max(...found.map((pill) => pill.height))).toBeLessThan(44);
+}
+
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
 async function openSettings(page: Page, section?: string): Promise<void> {
   // Only the main navigation: a chat or a project in the list may also have "Settings" in its name.
@@ -2034,23 +2080,8 @@ test("on a phone, the project list is the page, and Back to the list returns to 
   // No tap on the menu: with no project open, the list is already on the screen.
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
-  const heights = await page
-    .locator("button:visible:not(.filter-chip)")
-    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
-  expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
-  // A filter is a small pill, but an invisible margin keeps its tap target at 44 px.
-  const filters = await page.locator(".filter-chip:visible").evaluateAll((chips) =>
-    chips.map((chip) => {
-      const box = chip.getBoundingClientRect();
-      const x = box.left + box.width / 2;
-      const middle = box.top + box.height / 2;
-      const hits = [middle - 20, middle + 20].map((y) => document.elementFromPoint(x, y)?.closest(".filter-chip"));
-      return { height: box.height, hit: hits.every((hit) => hit === chip) };
-    }),
-  );
-  expect(filters.length).toBeGreaterThan(0);
-  for (const filter of filters) expect(filter.hit).toBe(true);
-  expect(Math.max(...filters.map((filter) => filter.height))).toBeLessThan(44);
+  expect(Math.min(...(await tapHeights(page.locator("button:visible"))))).toBeGreaterThanOrEqual(44);
+  await expectSmallPills(page.locator(".filter-chip:visible"));
   await page.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
@@ -4811,6 +4842,12 @@ test("Settings: the changelog lists each release with its own changes", async ({
   });
   await logIn(page);
   await openSettings(page, "Updates");
+  // The Versions card above grows when its list comes, and pushes Changelog down. When that happens between
+  // the press and the release, the browser sends no click. Update all shows after the last answer, when two
+  // or more tools can update, as in the demo.
+  await expect(
+    page.getByRole("region", { name: "Versions" }).getByRole("button", { name: "Update all" }),
+  ).toBeVisible();
   const card = page.getByRole("region", { name: "Eva updates" });
   await card.getByRole("button", { name: "Changelog" }).click();
   const dialog = page.getByRole("dialog", { name: "Changelog" });
@@ -5469,14 +5506,39 @@ test.describe("on a phone", () => {
     for (const hash of pages) {
       await page.evaluate((next) => (window.location.hash = next), hash);
       await expect(page.locator(".settings-page .card").first()).toBeVisible();
-      const heights = await page
-        .locator("button:visible, select:visible, .link-list a:visible, a.button-link:visible")
-        .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+      if (hash === "#/settings/updates") {
+        // The versions load after the page. Each tool that Eva can install then gets a small pill with a tap margin.
+        const pills = page.getByRole("region", { name: "Versions" }).locator(".fact-with-action button.small");
+        await expect(pills.first()).toBeVisible();
+        await expectSmallPills(pills);
+      }
+      const heights = await tapHeights(
+        page.locator("button:visible, select:visible, .link-list a:visible, a.button-link:visible"),
+      );
       expect(Math.min(...heights), hash).toBeGreaterThanOrEqual(44);
       expect(await page.evaluate(() => document.documentElement.scrollWidth), hash).toBeLessThanOrEqual(375);
     }
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
+  });
+
+  test("a Versions row that wraps keeps the full tap target of its pill and of the pill below", async ({ page }) => {
+    // A long version, such as one from a distribution, puts the Update pill of pi on a second line.
+    await page.route("**/api/versions", async (route) => {
+      const response = await route.fetch();
+      const versions = (await response.json()) as { tools: { program: string }[] };
+      const tools = versions.tools.map((tool) =>
+        tool.program === "pi" ? { ...tool, version: "0.70.2-build.20261101.from.a.package", tooOld: true } : tool,
+      );
+      await route.fulfill({ response, json: { ...versions, tools } });
+    });
+    await logIn(page);
+    await openSettings(page, "Updates");
+    const card = page.getByRole("region", { name: "Versions" });
+    const row = card.locator("dd", { hasText: "too old" });
+    await expect(row).toBeVisible();
+    expect((await row.boundingBox())?.height ?? 0).toBeGreaterThan(50);
+    await expectSmallPills(card.locator(".fact-with-action button.small"));
   });
 
   test("the composer sits at the bottom of the screen, just above the tab bar", async ({ page }) => {

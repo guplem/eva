@@ -76,7 +76,17 @@ describe("assistantBasePrompt", () => {
   });
 
   test("leaves the rules of each vault folder to the vault's AGENTS.md, which the person can change (#851)", () => {
-    for (const folder of ["Principles/", "Methods/", "Toolbox/", "Library/", "Life/Cases/", "Objects/", "People/"])
+    for (const folder of [
+      "Principles/",
+      "Methods/",
+      "Toolbox/",
+      "Library/",
+      "Cases/",
+      "Objects/",
+      "People/",
+      "Pets/",
+      "Periods/",
+    ])
       expect(assistantBasePrompt).not.toContain(`\`${folder}\``);
     expect(assistantBasePrompt).toContain("how to use each folder");
   });

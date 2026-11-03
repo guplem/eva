@@ -68,8 +68,8 @@ The root `AGENTS.md` has the v3 sections, such as _Personal rules_. Each folder 
 
 ### What changes, and why
 
-1. **The root `AGENTS.md` gets the folder rule for `Principles/` and `Methods/`,** in the exact text of the template, below the table of _What they know_. Before the agent acts on a request, it lists both folders, reads the notes that fit, and follows each method that fits. It never greps them. Why: Eva's base prompt held the rule for `Principles/` only, and the person could not change it. A method, such as the steps for a new project, was read only when a search found it.
-2. **The rest of the root `AGENTS.md` stays as it is.** Keep each of the person's own lines where it is. A line of the person that already says the new rule is proposed to leave out.
+1. **The root `AGENTS.md` gets the folder rule for `Principles/` and `Methods/`,** in the exact text of the template, at the end of _What they know_. Before the agent acts on a request, it lists both folders, reads the notes that fit, and follows each method that fits. It never greps them. Why: Eva's base prompt held the rule for `Principles/` only, and the person could not change it. A method, such as the steps for a new project, was read only when a search found it.
+2. **Nothing else changes.** The rest of the root `AGENTS.md` stays as it is, with each of the person's own lines. A line of the person that already says the new rule is proposed to leave out. No note moves. `README.md`, `.eva/assistant.md`, `Life/About me.md` and each `Life/*/AGENTS.md` stay as they are.
 
 ### How to detect a vault that has it
 

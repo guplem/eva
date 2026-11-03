@@ -415,7 +415,7 @@ describe("withRunningTurns and drafts", () => {
   });
 });
 
-describe("the message of a running turn (#804)", () => {
+describe("the messages of the running turns (#804)", () => {
   const message = {
     userText: "Update my vault",
     fromEva: false,
@@ -424,45 +424,78 @@ describe("the message of a running turn (#804)", () => {
     turnIndex: 0,
     clientIds: [],
   } as const;
+  const next = { ...message, userText: "And this", turnIndex: 1 };
   const stamp = { sessionId: "s1", at: "2026-10-18T10:00:00.000Z" };
+  function started(state: LiveState, turn: typeof message | typeof next, sessionId = "s1"): LiveState {
+    seq += 1;
+    return applyEvent(state, { ...stamp, sessionId, seq, kind: "turn_started", message: turn });
+  }
 
   test("the turn start brings the message, and the chat runs from then", () => {
-    seq += 1;
-    const state = applyEvent(emptyLiveState, { ...stamp, seq, kind: "turn_started", message });
-    expect(state.messages).toEqual({ s1: message });
+    const state = started(emptyLiveState, message);
+    expect(state.messages).toEqual({ s1: [message] });
     expect(state.steps).toEqual({ s1: [] });
   });
 
   test("the message outlives the turn end, so it does not blink before the stored turn arrives", () => {
+    const state = started(emptyLiveState, message);
+    expect(applyEvent(state, event({ kind: "turn_finished", ...finished })).messages).toEqual({ s1: [message] });
     seq += 1;
-    const started = applyEvent(emptyLiveState, { ...stamp, seq, kind: "turn_started", message });
-    expect(applyEvent(started, event({ kind: "turn_finished", ...finished })).messages).toEqual({ s1: message });
-    seq += 1;
-    expect(applyEvent(started, { ...stamp, seq, kind: "session_deleted" }).messages).toEqual({});
+    expect(applyEvent(state, { ...stamp, seq, kind: "session_deleted" }).messages).toEqual({});
+  });
+
+  test("a turn that starts before the list brings the one before keeps both messages, in order", () => {
+    let state = started(emptyLiveState, message);
+    state = applyEvent(state, event({ kind: "turn_finished", ...finished }));
+    state = started(state, next);
+    expect(state.messages).toEqual({ s1: [message, next] });
+  });
+
+  test("a turn start replaces a message of the same or a later turn, and keeps only a few older ones", () => {
+    let state = started(started(emptyLiveState, message), next);
+    // A turn that stored nothing, such as one that Eva lost in a restart, gives its index to the next turn.
+    state = started(state, { ...next, userText: "Again" });
+    expect(state.messages["s1"]?.map((turn) => turn.userText)).toEqual(["Update my vault", "Again"]);
+    for (let index = 2; index < 12; index += 1) state = started(state, { ...message, turnIndex: index });
+    expect(state.messages["s1"]?.length).toBeLessThanOrEqual(5);
+    expect(state.messages["s1"]?.at(-1)?.turnIndex).toBe(11);
+  });
+
+  test("each chat keeps its own messages, so a branch never shows another branch's message", () => {
+    const state = started(started(emptyLiveState, message), next, "fork");
+    expect(state.messages).toEqual({ s1: [message], fork: [next] });
   });
 
   test("a page that missed the turn start reads the message from the snapshot", () => {
     const state = startRecovery(emptyLiveState, 1);
     const after = withRunningTurns(state, 1, { seq, turns: [{ sessionId: "s1", steps: [], message }] });
-    expect(after.messages).toEqual({ s1: message });
+    expect(after.messages).toEqual({ s1: [message] });
     expect(after.steps).toEqual({ s1: [] });
   });
 
-  test("a turn start newer than the snapshot wins over it", () => {
+  test("a turn start newer than the snapshot comes after the snapshot's message", () => {
     const read = seq;
-    const next = { ...message, userText: "And this", turnIndex: 1 };
-    let state = startRecovery(emptyLiveState, 1);
-    seq += 1;
-    state = applyEvent(state, { ...stamp, seq, kind: "turn_started", message: next });
+    const state = started(startRecovery(emptyLiveState, 1), next);
     const after = withRunningTurns(state, 1, { seq: read, turns: [{ sessionId: "s1", steps: [], message }] });
-    expect(after.messages).toEqual({ s1: next });
+    expect(after.messages).toEqual({ s1: [message, next] });
   });
 
-  test("an older Eva sends no message, and the page keeps what it knows", () => {
-    seq += 1;
-    const known = startRecovery(applyEvent(emptyLiveState, { ...stamp, seq, kind: "turn_started", message }), 1);
-    expect(withRunningTurns(known, 1, { seq, turns: [{ sessionId: "s1", steps: [] }] }).messages).toEqual({
-      s1: message,
+  test("the snapshot drops the messages of chats that run no turn, such as a turn lost in a restart", () => {
+    const known = startRecovery(started(emptyLiveState, message), 1);
+    expect(withRunningTurns(known, 1, { seq, turns: [] }).messages).toEqual({});
+  });
+
+  test("an older Eva sends no message in the snapshot: the page shows none, with no error", () => {
+    const after = withRunningTurns(startRecovery(emptyLiveState, 1), 1, {
+      seq,
+      turns: [{ sessionId: "s1", steps: [] }],
     });
+    expect(after.messages).toEqual({});
+    expect(after.steps).toEqual({ s1: [] });
+  });
+
+  test("a failed read keeps the messages that the page knows", () => {
+    const known = startRecovery(started(emptyLiveState, message), 1);
+    expect(withRunningTurns(known, 1, null).messages).toEqual({ s1: [message] });
   });
 });

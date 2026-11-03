@@ -404,25 +404,31 @@ export function senderName(fromEva: boolean): string {
   return fromEva ? "Sent by Eva" : "You";
 }
 
-/**
- * The message of the turn that runs now, or null (#804). The live state keeps the message of the
- * last turn until a newer turn starts, so the stored turn count tells whether it is still to come.
- */
-export function runningMessage(
-  message: TurnMessage | undefined,
-  turnCount: number,
-  working: boolean,
-): TurnMessage | null {
-  return working && message?.turnIndex === turnCount ? message : null;
-}
-
-/** The sent messages that the running turn's message does not hold, so each message shows once. */
-export function notInTurn(pending: readonly PendingMessage[], message: TurnMessage | null): readonly PendingMessage[] {
-  if (message === null) return pending;
-  return pending.filter((entry) => entry.id === undefined || !message.clientIds.includes(entry.id));
-}
-
 /** A new id for a message of this page. It needs no strength, and a page on plain http has no `crypto.randomUUID`. */
 export function newMessageId(): string {
   return `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * The messages of the turns that are not stored yet, oldest first (#804). They show while the live
+ * steps run and while the chat waits for the stored turn after them. Not while the chat is free:
+ * an old message must never stand beside a new send.
+ */
+export function runningMessages(
+  messages: readonly TurnMessage[] | undefined,
+  turnCount: number,
+  chat: { readonly live: boolean; readonly turnRuns: boolean },
+): readonly TurnMessage[] {
+  if (!(chat.live || chat.turnRuns) || messages === undefined) return [];
+  return messages.filter((message) => message.turnIndex >= turnCount);
+}
+
+/** The sent messages that no running turn's message holds, so each message shows once. */
+export function notInTurn(
+  pending: readonly PendingMessage[],
+  messages: readonly TurnMessage[],
+): readonly PendingMessage[] {
+  const shown = new Set(messages.flatMap((message) => message.clientIds));
+  if (shown.size === 0) return pending;
+  return pending.filter((entry) => entry.id === undefined || !shown.has(entry.id));
 }

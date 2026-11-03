@@ -206,7 +206,8 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, answer);
     return;
   }
-  if (lastLine.includes("approve")) {
+  // The vault upgrade request holds its turn too, so a test sees its message while the turn runs (#804).
+  if (lastLine.includes("approve") || lastLine.includes("vault-upgrade skill")) {
     const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "gh issue create" });
     yield* FakeEngine.answer(request, `The person answered: ${answer}`);
     return;

@@ -41,7 +41,7 @@ import {
   keptPending,
   newMessageId,
   notInTurn,
-  runningMessage,
+  runningMessages,
   snapsToBottom,
   liveFace,
   runningUntil,
@@ -289,8 +289,11 @@ function Branch({
   const turnRuns = useTurnRuns(liveSteps !== undefined, turnCount);
   const working = isWorking({ live: liveSteps !== undefined, turnRuns, pending, turnCount });
   // The core says what the running turn shows, so a message that another sender sent shows too (#804).
-  const turnMessage = runningMessage(live.messages[session.id], turnCount, working);
-  const ownPending = notInTurn(pending, turnMessage);
+  const turnMessages = runningMessages(live.messages[session.id], turnCount, {
+    live: liveSteps !== undefined,
+    turnRuns,
+  });
+  const ownPending = notInTurn(pending, turnMessages);
   const startedAt = useStartTime(working);
 
   // Only the stored turn of a message clears it. A message sent during a turn outlives that turn.
@@ -456,7 +459,9 @@ function Branch({
           <UserMessage key={`sent-${String(index)}`} text={message.text} />
         ))}
       {/* As its stored turn will show it, so nothing changes at the turn end. */}
-      {turnMessage !== null && <TurnWordsView turn={turnMessage} turnKey={undefined} />}
+      {turnMessages.map((message) => (
+        <TurnWordsView key={`running-${String(message.turnIndex)}`} turn={message} turnKey={undefined} />
+      ))}
       {/* A live region on the streaming text would read the whole answer again at each token. */}
       <span className="visually-hidden" role="status">
         {turnEnd}
@@ -541,7 +546,6 @@ function Branch({
   );
 }
 
-/** The person's message. A voice note is text too: the person read and fixed it in the box. */
 /**
  * Who wrote the message of a turn, and what: a card for each project work result, and the person's
  * words. A running turn shows its message with it too. Without `turnKey`, the branch map cannot scroll to it.
@@ -569,6 +573,7 @@ function TurnWordsView({
   );
 }
 
+/** The person's message. A voice note is text too: the person read and fixed it in the box. */
 function UserMessage({
   text,
   fromEva = false,

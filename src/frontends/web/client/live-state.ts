@@ -26,10 +26,11 @@ export interface LiveState {
   /** The text of the block that the engine writes now, by session id. It is live only: the core never stores it. */
   readonly drafts: Readonly<Record<string, string>>;
   /**
-   * The message of the last turn that started in each chat, by session id (#804). It outlives its
-   * turn, so it does not blink before the stored turn arrives: the page shows it by its `turnIndex`.
+   * The messages of the last turns that started in each chat, by session id, oldest first (#804).
+   * They outlive their turns, so nothing blinks before the stored turn arrives: the page shows each
+   * one by its `turnIndex`. A turn can start before the list brings the turn before it, so a few stay.
    */
-  readonly messages: Readonly<Record<string, TurnMessage>>;
+  readonly messages: Readonly<Record<string, readonly TurnMessage[]>>;
   /**
    * While the page reads the running turns again: the id of the newest read, and each event that
    * came since it started. Null when no read is open.
@@ -103,15 +104,15 @@ export function withRunningTurns(state: LiveState, id: number, snapshot: TurnSna
   const draftsFromCore = Object.fromEntries(
     turns.flatMap((turn) => (turn.draft === undefined || turn.draft === "" ? [] : [[turn.sessionId, turn.draft]])),
   );
-  // An older Eva sends no message. The page then keeps the ones it knows: each shows only until its stored turn.
+  // Like the steps, the core's messages replace the ones that this page knew: a chat that runs no turn shows none.
   const messagesFromCore = Object.fromEntries(
-    turns.flatMap((turn) => (turn.message === undefined ? [] : [[turn.sessionId, turn.message]])),
+    turns.flatMap((turn) => (turn.message === undefined ? [] : [[turn.sessionId, [turn.message]]])),
   );
   return {
     ...state,
     steps: newer.reduce(stepsAfter, fromCore),
     drafts: newer.reduce(draftsAfter, draftsFromCore),
-    messages: newer.reduce(messagesAfter, { ...state.messages, ...messagesFromCore }),
+    messages: newer.reduce(messagesAfter, snapshot === null ? state.messages : messagesFromCore),
     recovery: null,
   };
 }
@@ -175,9 +176,18 @@ function draftsAfter(drafts: LiveState["drafts"], event: SessionEvent): LiveStat
   return rest;
 }
 
-/** The message of each chat's last turn after one event. A turn start replaces it, and a delete drops it. */
+/** The most messages that a chat keeps. The list brings each stored turn soon after its end. */
+const keptMessages = 5;
+
+/**
+ * The messages of each chat after one event. A turn start replaces the message of its own or a later
+ * turn, such as one that a restart lost, and a delete drops them all.
+ */
 function messagesAfter(messages: LiveState["messages"], event: SessionEvent): LiveState["messages"] {
-  if (event.kind === "turn_started") return { ...messages, [event.sessionId]: event.message };
+  if (event.kind === "turn_started") {
+    const older = (messages[event.sessionId] ?? []).filter((turn) => turn.turnIndex < event.message.turnIndex);
+    return { ...messages, [event.sessionId]: [...older, event.message].slice(-keptMessages) };
+  }
   if (event.kind !== "session_deleted" || !(event.sessionId in messages)) return messages;
   const rest = { ...messages };
   Reflect.deleteProperty(rest, event.sessionId);

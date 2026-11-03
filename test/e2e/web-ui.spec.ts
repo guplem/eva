@@ -1337,6 +1337,39 @@ test("a message sent outside the page shows while its turn runs, once, also afte
   await expect(words).toHaveCount(2);
 });
 
+test("Update the vault opens a chat that shows the request while Eva works, with no blink at the end (#804)", async ({
+  page,
+}) => {
+  await page.route("**/api/vault/structure", (route) =>
+    route.fulfill({ json: { current: 2, available: 3, summary: "Life folders.", canUpgrade: true } }),
+  );
+  await logIn(page);
+  await page.goto("/#/settings/vault/vault-structure");
+  await page.getByRole("region", { name: "Vault structure" }).getByRole("button", { name: "Update the vault" }).click();
+  const card = page.getByRole("region", { name: "Eva asks for permission" });
+  const request = page.locator(".message.user").filter({ hasText: "with the vault-upgrade skill" });
+  await expect(card).toBeVisible();
+  await expect(request).toHaveCount(1);
+  await expect(request.locator(".who")).toHaveText("You");
+
+  // The list brings the stored turn late: the message must stay in the gap after the turn end.
+  let delayList = true;
+  await page.route("**/api/sessions", async (route) => {
+    if (delayList && route.request().method() === "GET") await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.fallback();
+  });
+  await card.getByRole("button", { name: "Deny" }).click();
+  await expect(card).toHaveCount(0);
+  for (let sample = 0; sample < 10; sample += 1) {
+    expect(await request.count()).toBe(1);
+    await page.waitForTimeout(100);
+  }
+  delayList = false;
+  await expect(page.locator(".message.answer").first()).toContainText("The person answered: deny");
+  await expect(request).toHaveCount(1);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("Copy copies the text of an answer", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await logIn(page);

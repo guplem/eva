@@ -43,6 +43,8 @@ export const defaultAssistantRules: string = assistantFile;
  * vault root (`template-alignment.ts`). Add each new skill, text action and saved prompt here.
  */
 export const templateParts: Readonly<Record<string, string>> = {
+  // It describes only Eva's own folder, so it is true in every vault, an old one too (#772).
+  ".eva/AGENTS.md": evaGuideFile,
   ".eva/skills/about-me/SKILL.md": aboutMeSkillFile,
   ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
   ".eva/settings/text-actions/Polish.md": polishActionFile,
@@ -107,7 +109,6 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
     ".eva/assistant.md": defaultAssistantRules,
     "Life/About me.md": fill(aboutFile),
     "Life/Health/Allergies and Diet.md": allergiesFile,
-    ".eva/AGENTS.md": evaGuideFile,
     ...lifeRules,
     ".eva/vault-structure.json": JSON.stringify({ version: vaultStructureVersion }, null, 2) + "\n",
     ".eva/schedules.json": JSON.stringify({ version: 1, schedules: [] }, null, 2) + "\n",

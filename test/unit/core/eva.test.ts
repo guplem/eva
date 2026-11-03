@@ -3099,6 +3099,7 @@ describe("migrations (#119)", () => {
     });
     expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
     expect(instance.templateParts()?.parts.map((part) => [part.name, part.state])).toEqual([
+      [".eva", "current"],
       ["Summary", "current"],
       ["Polish", "current"],
       ["about-me", "current"],

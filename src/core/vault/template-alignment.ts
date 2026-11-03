@@ -25,7 +25,7 @@ import { isNewerVersion } from "../updates/version-order.ts";
 export type PartState = "current" | "pending" | "yours" | "kept" | "differs" | "missing";
 
 /** What a part is. Each kind gives the word that the page and the alert use for it. */
-export type PartKind = "skill" | "text action" | "saved prompt";
+export type PartKind = "skill" | "text action" | "saved prompt" | "guide";
 
 export interface TemplatePart {
   /** The path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
@@ -50,7 +50,11 @@ const partKinds: readonly { readonly kind: PartKind; readonly folder: string }[]
   { kind: "saved prompt", folder: ".eva/settings/saved-prompts/" },
 ];
 
+/** The guide of Eva's own folder: one file, named after the folder (#772). */
+const evaGuidePath = ".eva/AGENTS.md";
+
 function describePath(path: string): { readonly kind: PartKind; readonly name: string } {
+  if (path === evaGuidePath) return { kind: "guide", name: ".eva" };
   const place = partKinds.find((each) => path.startsWith(each.folder)) ?? partKinds[0];
   const folder = place?.folder ?? "";
   const name = path.slice(folder.length).split("/")[0] ?? path;
@@ -260,6 +264,7 @@ const kindWords: Readonly<Record<PartKind, string>> = {
   skill: "skill",
   "text action": "text action",
   "saved prompt": "saved prompt",
+  guide: "guide",
 };
 
 /** The alert of the parts that wait for the person's choice, or null when none waits. */

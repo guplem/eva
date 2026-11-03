@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -119,5 +120,52 @@ describe("eva-core, when the folder is not as Eva left it", () => {
     writeFileSync(join(main, "skills", "schedule", "SKILL.md"), "an older Eva's text");
     new EvaCore(engines).folderFor([]);
     expect(readdirSync(engines)).toEqual(["eva-core"]);
+  });
+});
+
+describe("eva-core, when the system refuses a step", () => {
+  const busy = (): Error => Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+
+  test("a rebuilt eva-core keeps the copies that other chats read", () => {
+    const core = new EvaCore(engines);
+    const copy = core.folderFor(["schedule"]);
+    rmSync(join(engines, "eva-core"), { recursive: true });
+    core.folderFor([]);
+    expect(skillsIn(copy)).toContain("eva-rules");
+  });
+
+  test("a failed swap keeps the older skills in use, and the next turn tries again", () => {
+    new EvaCore(engines).folderFor([]);
+    const main = join(engines, "eva-core");
+    writeFileSync(join(main, "skills", "schedule", "SKILL.md"), "an older Eva's text");
+    let refuse = true;
+    let refused = 0;
+    const logged: string[] = [];
+    const core = new EvaCore(engines, { log: (_level, message) => logged.push(message) }, (from, to) => {
+      if (refuse && from === main) {
+        refused += 1;
+        throw busy();
+      }
+      renameSync(from, to);
+    });
+    expect(core.folderFor([])).toBe(main);
+    expect(readFileSync(join(main, "skills", "schedule", "SKILL.md"), "utf-8")).toBe("an older Eva's text");
+    expect(refused).toBeGreaterThan(1);
+    expect(logged).toContain("Eva could not update her own skills, so the chats use the older ones.");
+    refuse = false;
+    core.folderFor([]);
+    expect(readFileSync(join(main, "skills", "schedule", "SKILL.md"), "utf-8")).toBe(
+      evaCoreFiles()["skills/schedule/SKILL.md"] ?? "",
+    );
+  });
+
+  test("a copy that Eva cannot write gives the turn the whole eva-core, and the log says why", () => {
+    const logged: string[] = [];
+    const core = new EvaCore(engines, { log: (_level, message) => logged.push(message) }, (from, to) => {
+      if (to.includes("-without-")) throw busy();
+      renameSync(from, to);
+    });
+    expect(core.folderFor(["schedule"])).toBe(join(engines, "eva-core"));
+    expect(logged).toContain("Eva could not leave out the skills that the vault replaces.");
   });
 });

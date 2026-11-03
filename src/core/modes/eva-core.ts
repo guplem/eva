@@ -58,15 +58,26 @@ export function evaCoreFiles(left: readonly string[] = []): Record<string, strin
  */
 const textHash = createHash("sha256").update(JSON.stringify(evaCoreFiles())).digest("hex").slice(0, 8);
 
+/** Renames a file or a folder. A seam, so a test can refuse a rename as Windows does. */
+export type Rename = (from: string, to: string) => void;
+
+/** The codes of a refusal that can pass: on Windows, another program holds a file open for a moment. */
+const passingRefusals = new Set(["EPERM", "EBUSY", "EACCES"]);
+const renameAttempts = 4;
+
 export class EvaCore {
   private readonly enginesFolder: string;
   private readonly logger: Logger | null;
+  private readonly renameOnce: Rename;
+  /** True once this process removed the copies of an earlier one. */
+  private swept = false;
   private installed = false;
 
   /** `enginesFolder` is `<EVA_HOME>/engines/`, which only this instance uses. */
-  constructor(enginesFolder: string, logger: Logger | null = null) {
+  constructor(enginesFolder: string, logger: Logger | null = null, rename: Rename = renameSync) {
     this.enginesFolder = enginesFolder;
     this.logger = logger;
+    this.renameOnce = rename;
   }
 
   /**
@@ -81,46 +92,93 @@ export class EvaCore {
     const replaced = evaCoreSkillNames.filter((name) => vaultSkills.includes(name));
     if (replaced.length === 0) return main;
     const folder = join(this.enginesFolder, `${pluginName}-without-${replaced.join("-")}-${textHash}`);
+    if (existsSync(folder)) return folder;
     // Another chat may read a copy during its turn, so Eva writes each copy once and never rewrites it.
-    if (!existsSync(folder)) writeFolder(folder, evaCoreFiles(replaced));
-    return folder;
+    try {
+      this.writeFolder(folder, evaCoreFiles(replaced));
+      return folder;
+    } catch (error) {
+      // Both versions of a replaced skill then load, which is better than none of Eva's skills.
+      this.logger?.log("warn", "Eva could not leave out the skills that the vault replaces.", {
+        reason: String(error),
+      });
+      return main;
+    }
   }
 
   /**
-   * Runs once in each Eva process, before its first turn, so no turn reads a folder that changes.
-   * The copies and leftovers of an earlier process go, when the system lets Eva delete them.
+   * Runs before the first turn of each Eva process, and again when `eva-core` is gone or out of date.
+   * Only the first run removes the copies and leftovers of an earlier process: later, a running chat
+   * may read a copy.
    */
   private install(): void {
     if (this.installed) return;
     mkdirSync(this.enginesFolder, { recursive: true });
     const main = join(this.enginesFolder, pluginName);
-    for (const entry of readdirSync(this.enginesFolder)) {
-      if (entry.startsWith(`${pluginName}-without-`) || entry.startsWith(`${pluginName}.`))
-        this.removeQuietly(join(this.enginesFolder, entry));
+    if (!this.swept) {
+      for (const entry of readdirSync(this.enginesFolder)) {
+        if (entry.startsWith(`${pluginName}-without-`) || entry.startsWith(`${pluginName}.`))
+          this.removeQuietly(join(this.enginesFolder, entry));
+      }
+      this.swept = true;
     }
-    if (!holds(main, evaCoreFiles())) this.replace(main);
-    this.installed = true;
+    this.installed = holds(main, evaCoreFiles()) || this.replace(main);
   }
 
-  /** Writes this Eva's text next to the folder, then swaps the two. On a failure the older text stays in use. */
-  private replace(main: string): void {
+  /**
+   * Writes this Eva's text next to the folder, then swaps the two. On a failure the older text stays
+   * in use. True when the folder holds this Eva's text.
+   */
+  private replace(main: string): boolean {
     const stamp = String(Date.now());
     const fresh = `${main}.new-${stamp}`;
     const old = `${main}.old-${stamp}`;
     try {
-      writeFolder(fresh, evaCoreFiles());
-      if (existsSync(main)) renameSync(main, old);
-      renameSync(fresh, main);
+      this.writeFolder(fresh, evaCoreFiles());
+      if (existsSync(main)) this.rename(main, old);
+      this.rename(fresh, main);
     } catch (error) {
-      // Windows refuses to rename or delete a file that another program holds open.
-      if (!existsSync(main) && existsSync(old)) renameSync(old, main);
+      if (!existsSync(main) && existsSync(old)) this.rename(old, main);
       if (!existsSync(main)) throw error;
+      this.removeQuietly(fresh);
       this.logger?.log("warn", "Eva could not update her own skills, so the chats use the older ones.", {
         reason: String(error),
       });
-      return;
+      return false;
     }
     this.removeQuietly(old);
+    return true;
+  }
+
+  /** Writes the files into a temporary folder, then renames it into place, so no turn sees half a plugin. */
+  private writeFolder(folder: string, files: Readonly<Record<string, string>>): void {
+    const temporary = `${folder}.partial`;
+    rmSync(temporary, { recursive: true, force: true });
+    for (const [path, text] of Object.entries(files)) {
+      const target = join(temporary, path);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, text);
+    }
+    try {
+      this.rename(temporary, folder);
+    } catch (error) {
+      this.removeQuietly(temporary);
+      throw error;
+    }
+  }
+
+  /** A rename, tried again a few times while Windows holds a file open. */
+  private rename(from: string, to: string): void {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        this.renameOnce(from, to);
+        return;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code ?? "";
+        if (attempt >= renameAttempts || !passingRefusals.has(code)) throw error;
+        Bun.sleepSync(attempt * 25);
+      }
+    }
   }
 
   private removeQuietly(path: string): void {
@@ -145,16 +203,4 @@ function holds(folder: string, files: Readonly<Record<string, string>>): boolean
     const target = join(folder, path);
     return existsSync(target) && readFileSync(target, "utf-8") === text;
   });
-}
-
-/** Writes the files into a temporary folder, then renames it into place, so no turn sees half a plugin. */
-function writeFolder(folder: string, files: Readonly<Record<string, string>>): void {
-  const temporary = `${folder}.partial`;
-  rmSync(temporary, { recursive: true, force: true });
-  for (const [path, text] of Object.entries(files)) {
-    const target = join(temporary, path);
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, text);
-  }
-  renameSync(temporary, folder);
 }

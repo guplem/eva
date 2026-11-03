@@ -537,6 +537,16 @@ describe("settings", () => {
     expect(() => eva.updateSettings({ clock: "13h" })).toThrow("clock");
     expect(() => eva.updateSettings({ weekStart: "Sunday" })).toThrow("weekStart");
   });
+
+  test("a save keeps a top-level key of the vault's file that this Eva does not know, such as a newer satellite's", () => {
+    const file = vaultSettingsPath(vault);
+    eva.updateSettings({ language: "Spanish" });
+    const before = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
+    writeFileSync(file, JSON.stringify({ ...before, aNewerSetting: "kept" }));
+    eva.updateSettings({ language: "Catalan" });
+    const saved = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
+    expect(saved).toMatchObject({ language: "Catalan", aNewerSetting: "kept" });
+  });
 });
 
 describe("runCheck", () => {

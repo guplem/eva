@@ -115,8 +115,26 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
     if (shared(after) !== shared(config)) assertVaultWritable(vaultPath);
   }
   writeFileAtomic(paths.config, toJson(machine));
-  if (!ahead)
-    writeSettingsFile(vaultSettingsFile(vaultPath), toJson(withOldVaultKeys(pickKeys(config, sharedSettingKeys))));
+  if (!ahead) {
+    const file = vaultSettingsFile(vaultPath);
+    const shared = withOldVaultKeys(pickKeys(config, sharedSettingKeys));
+    writeSettingsFile(file, toJson({ ...shared, ...unknownVaultKeys(file) }));
+  }
+}
+
+/**
+ * The top-level keys of the vault's file that this Eva does not know, such as a setting that a
+ * newer satellite added. They stay, so an older hub's save never drops them.
+ */
+function unknownVaultKeys(file: VaultSettingsFile): SettingsObject {
+  let kept: SettingsObject = {};
+  // Both places: a newer satellite may have written only one of them.
+  for (const path of [file.oldPath, file.path]) {
+    const read = readJsonTolerant(path);
+    if (!read.ok || !isObject(read.value)) continue;
+    kept = { ...kept, ...Object.fromEntries(Object.entries(read.value).filter(([key]) => !(key in defaultConfig))) };
+  }
+  return kept;
 }
 
 /** A config with a change, such as `{ updates: { frequency: "weekly" } }`, on top. Throws on a bad value. */

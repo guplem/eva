@@ -33,6 +33,7 @@ import { restartNote } from "./notes.ts";
 import { knownTimeZones, timeZoneChoices } from "./time-zones.ts";
 import type { Clock, Units, WeekStart } from "../../../shared/time-format.ts";
 import { displayFormat, setDisplayFormat } from "./display-format.ts";
+import { formatChange, formatFormChanged, formatFormOf, type FormatForm } from "./format-form.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
 const chatNameRulesLength = 4_000;
@@ -172,20 +173,16 @@ export function AppearanceCard(): ReactElement {
 function PreferencesForm({ context }: { readonly context: SettingsContext }): ReactElement {
   const config = context.settings.config;
   const [timeZone, setTimeZone] = useState(config.timeZone ?? "");
-  const [language, setLanguage] = useState(config.language ?? "");
   // A vault that the hub has not migrated still holds these in About me: the status gives the values in use.
-  const [shown] = useState(() => {
-    const used = (context.status as Partial<EvaStatus> | null)?.format;
-    const fallback = displayFormat();
-    return {
-      units: config.units ?? used?.units ?? null,
-      clock: config.clock ?? used?.clock ?? fallback.clock,
-      weekStart: config.weekStart ?? used?.weekStart ?? fallback.weekStart,
-    };
-  });
-  const [units, setUnits] = useState<Units | "">(shown.units ?? "");
-  const [clock, setClock] = useState<Clock | "">(shown.clock ?? "");
-  const [weekStart, setWeekStart] = useState<WeekStart | "">(shown.weekStart ?? "");
+  // The baseline becomes the saved values after each save, so the leave guard stops asking.
+  const [baseline, setBaseline] = useState<FormatForm>(() =>
+    formatFormOf(config, (context.status as Partial<EvaStatus> | null)?.format, displayFormat()),
+  );
+  const [language, setLanguage] = useState(baseline.language);
+  const [units, setUnits] = useState<Units | "">(baseline.units);
+  const [clock, setClock] = useState<Clock | "">(baseline.clock);
+  const [weekStart, setWeekStart] = useState<WeekStart | "">(baseline.weekStart);
+  const form: FormatForm = { language, units, clock, weekStart };
   /** Null until loaded, and when no vault holds the rules. */
   const [chatNameRules, setChatNameRules] = useState<string | null>(null);
   /** Save sends the rules only when they changed, so it never overwrites an edit that Eva made in a chat. */
@@ -221,11 +218,9 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
     try {
       const result = await api.saveSettings({
         timeZone: timeZone === "" ? null : timeZone,
-        language: language.trim() === "" ? null : language.trim(),
-        units: units === "" ? null : units,
-        clock: clock === "" ? null : clock,
-        weekStart: weekStart === "" ? null : weekStart,
+        ...formatChange(form),
       });
+      setBaseline(form);
       notify(
         result.restartNeeded
           ? restartNote(`Saved. Press Restart Eva to use the new settings.${rulesProblem}`)
@@ -245,10 +240,7 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
   };
   useLeaveGuard(
     timeZone !== (config.timeZone ?? "") ||
-      language !== (config.language ?? "") ||
-      units !== (shown.units ?? "") ||
-      clock !== (shown.clock ?? "") ||
-      weekStart !== (shown.weekStart ?? "") ||
+      formatFormChanged(form, baseline) ||
       (chatNameRules !== null && chatNameRules !== savedChatNameRules),
     save,
   );

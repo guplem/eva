@@ -145,7 +145,11 @@ test("Preview on a clone shows a change that is not pushed, with example data fi
   await logIn(page);
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await page.getByLabel("Search projects").fill("habits widget");
-  await page.getByRole("button", { name: /Habits widget/ }).click();
+  await page
+    .getByRole("navigation", { name: "Projects" })
+    .locator("button.project-card")
+    .filter({ hasText: /Habits widget/ })
+    .click();
   await expect(page.getByRole("heading", { level: 1, name: "Habits widget" })).toBeVisible();
   await page.locator('[aria-label="Repository habits-widget"]').getByRole("button", { name: "Preview" }).click();
   const dialog = page.getByRole("dialog", { name: /Preview of/ });

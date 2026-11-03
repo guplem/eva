@@ -42,14 +42,17 @@ async function sendFirstMessage(page: Page, text: string): Promise<void> {
 }
 
 /**
+ * A card of the project list. The home page and the Needs you card of the list name the same projects
+ * in their chat rows and their timeline (#840).
+ */
+function projectCard(page: Page, name: RegExp): Locator {
+  return page.getByRole("navigation", { name: "Projects" }).locator("button.project-card").filter({ hasText: name });
+}
+
+/**
  * Opens Projects and waits for its list. With no project open, the list shows with no menu tap on
  * both sizes. openList would race: the menu button of the page before can still show for a moment.
  */
-/** A card of the project list. The home page beside it names the same projects (#840). */
-function projectCard(page: Page, name: RegExp): Locator {
-  return page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name });
-}
-
 async function openProjects(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
@@ -1738,7 +1741,7 @@ test("the project list shows its shape while it reads, not that no project match
   await expect(list.locator(".skeleton .project-card").first()).toBeVisible();
   await expect(list.getByText("No project matches.")).toHaveCount(0);
   answer();
-  await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
   await expect(list.locator(".skeleton")).toHaveCount(0);
 });
 
@@ -1755,7 +1758,7 @@ test("a failed first read of the projects says so, and Try again reads them", as
   await expect(list.getByText("No project matches.")).toHaveCount(0);
   failing = false;
   await list.getByRole("button", { name: "Try again" }).click();
-  await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
 });
 
 test("New project: the form creates a project and opens its page", async ({ page }, testInfo) => {
@@ -2095,49 +2098,49 @@ test("the status chips hide a closed project until a tap clears the filter", asy
   await openProjects(page);
   const current = page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Current" });
   await expect(current).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await expect(projectCard(page, /Old tool/)).toHaveCount(0);
   // Current shows the projects that the person develops and the ones in use (#690).
   await expect(projectCard(page, /Example app/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Family recipes/ }).getByText("In use", { exact: true })).toBeVisible();
+  await expect(projectCard(page, /Family recipes/).getByText("In use", { exact: true })).toBeVisible();
   await current.click();
   await expect(current).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Closed" }).click();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   await expect(projectCard(page, /Example app/)).toHaveCount(0);
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "In use" }).click();
-  await expect(page.getByRole("button", { name: /Family recipes/ })).toBeVisible();
+  await expect(projectCard(page, /Family recipes/)).toBeVisible();
   await expect(projectCard(page, /Example app/)).toHaveCount(0);
   // A status word typed in the search wins over the chip.
   await page.getByLabel("Search projects").fill("status:closed");
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   await page.getByLabel("Search projects").fill("status:in-use");
-  await expect(page.getByRole("button", { name: /Family recipes/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await expect(projectCard(page, /Family recipes/)).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toHaveCount(0);
 });
 
 test("the tag chips show only the projects with that tag", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Current" }).click();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   const web = page.getByRole("group", { name: "Tag" }).getByRole("button", { name: "#web" });
   await web.click();
   await expect(projectCard(page, /Example app/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await expect(projectCard(page, /Old tool/)).toHaveCount(0);
   await web.click();
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   // A tag word typed in the search wins over the chip.
   await web.click();
   await page.getByLabel("Search projects").fill("#legacy");
-  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
   await expect(projectCard(page, /Example app/)).toHaveCount(0);
 });
 
 test("a project with a bad front matter field shows its warnings", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  const project = page.getByRole("button", { name: /Broken notes/ });
+  const project = projectCard(page, /Broken notes/);
   await expect(project).toContainText("1 warning");
   await project.click();
   await expect(page.getByRole("list", { name: "Warnings of Broken notes" })).toHaveText("repos must be a list of URLs");
@@ -2171,7 +2174,10 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   await expect(page.getByRole("region", { name: "Recent" })).toBeVisible();
   // Only the active and the paused projects show: Family recipes is in use.
   await expect(timeline.getByRole("button", { name: /Family recipes/ })).toHaveCount(0);
+  const startedLine = page.getByText(/^In (\d{4}|all): \d+ projects? started\.$/);
+  await expect(startedLine).toHaveText(new RegExp(`^In ${String(new Date().getFullYear())}:`));
   await page.getByRole("group", { name: "Year" }).getByRole("button", { name: "All" }).click();
+  await expect(startedLine).toHaveText(/^In all: /);
   await timeline.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });

@@ -54,7 +54,7 @@ Inside each folder, group by topic. Purpose first, topic second.
 - **Write notes impersonally**, as statements about the world. Write "The mind believes what it hears by default", not "My mind believes what it hears". A diary is the exception: it is the person's own voice.
 - **Write all notes in {{notesLanguage}}**, even when the person talks in another language, so that one search finds everything. Keep quotes and names in their own language.
 - **Close a note with its source** when the person says where it came from: `> Source: *Title*, Author`, plus a link when one exists.
-- **Mark few notes as important.** When the person would want to see a note even while they ask about another topic, put `> Important: <why it matters>` under its title.
+- **Keep any key you do not know,** such as `summary` or `pinned`.
 - **Secrets** (keys, passwords) live only in secret files, such as `.env.local` or `server.pem`. Eva encrypts each one, so you see only her first line and encrypted text. Never copy a secret into a note. Tell the person which file holds it, and ask them to open it in Eva's Files page. One known place for each secret makes it possible to change it later.
 
 ## Grow the vault
@@ -86,6 +86,7 @@ Each project is a folder `Projects/YYYY-MM-DD-HHmm-name/`, named after its creat
 created: 2026-01-31T09:15
 status: active # idea, active, in-use, paused or closed
 type: software # general, software or specialist. No type means general
+summary: One line that says what the project is.
 repos:
   - https://github.com/example/example-app
 ---

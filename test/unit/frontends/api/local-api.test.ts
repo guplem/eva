@@ -958,8 +958,8 @@ describe("routes", () => {
     expect(parts.map((part) => [part.group, part.title])).toEqual([
       ["prompt", "Eva's prompt"],
       ["prompt", "Your rules for Eva"],
-      // The test vault has an active project, so the list of projects is a part too (#690).
-      ["prompt", "Your projects"],
+      // The test vault has an active project, so the pinned files are a part too (#690, #769).
+      ["prompt", "Your pinned files"],
       ["message", "Before each message"],
     ]);
     expect((await call("/api/sessions/unknown/context")).status).toBe(404);

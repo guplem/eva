@@ -63,6 +63,7 @@ describe("createProject", () => {
       [
         "---",
         "created: 2026-10-21T15:42",
+        'summary: "A small app to try Eva."',
         "status: active",
         "type: software",
         "tags:",
@@ -134,6 +135,7 @@ describe("createProject", () => {
       [
         "---",
         "created: 2026-10-21T15:42",
+        'summary: "Building a house."',
         "status: active",
         "type: general",
         "---",
@@ -179,6 +181,19 @@ describe("createProject", () => {
     );
     expect(result.chat).toEqual({ problem: "No engine is ready." });
     expect(existsSync(join(projectsFolder(), result.projectId, "AGENTS.md"))).toBe(true);
+  });
+
+  test("the summary is the first paragraph of the description, in one quoted line (#769)", async () => {
+    const result = await createProject(
+      { ...input, description: 'Plan: phase 1, the\n"best" #one.\n\nMore text.', tags: [] },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      noSteps,
+    );
+    expect(fileOf(result.projectId)).toContain('summary: "Plan: phase 1, the \\"best\\" #one."\n');
+    expect(fileOf(result.projectId)).toContain('\n# Example App\n\nPlan: phase 1, the\n"best" #one.\n\nMore text.\n');
+    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.description).toBe(
+      'Plan: phase 1, the "best" #one.',
+    );
   });
 
   test("without a description, the file has the title only", async () => {

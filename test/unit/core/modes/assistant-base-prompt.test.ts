@@ -29,7 +29,22 @@ describe("assistantBasePrompt", () => {
 
   test("names each project status, so the agent of an older vault learns in-use (#690)", () => {
     for (const status of projectStatuses) expect(assistantBasePrompt).toContain(`\`${status}\``);
-    expect(assistantBasePrompt).toContain("a list of them comes after the person's rules");
+    expect(assistantBasePrompt).toContain("The `active` and `in-use` projects are in the pinned block");
+  });
+
+  test("names the words that the pinned block prints, so the block and the prompt stay aligned (#769)", () => {
+    for (const word of [
+      "`pinned: full`",
+      "`pinned: summary`",
+      "`pinned: false`",
+      "`DUE`",
+      "`DEADLINE`",
+      "N more not shown",
+    ])
+      expect(assistantBasePrompt).toContain(word);
+    expect(assistantBasePrompt).toContain(
+      "**A case line marked `DUE`** has a `next` date that has come. **A `DEADLINE` mark** means its deadline is 14 days away or less, or has passed. Tell the person once in the chat, when it fits.",
+    );
   });
 
   test("names each project type, and the default by repos, so the agent never writes a wrong type (#768)", () => {

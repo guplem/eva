@@ -152,9 +152,11 @@ describe("Eva", () => {
     const session = instance.createAssistantSession({ source: "cli" });
     await instance.sessions.send(session.id, "What should I cook?");
     const prompt = engine.requests[0]?.appendSystemPrompt ?? "";
-    expect(prompt).toContain("- Recipes (`2025-03-02-1015-recipes`): The menus of each week.");
     expect(prompt).toContain(
-      `- Website (\`2025-04-01-0900-website\`, in \`${join(extraRoot, "2025-04-01-0900-website")}\`)`,
+      "- Recipes, `Projects/2025-03-02-1015-recipes/AGENTS.md` (project, in-use): The menus of each week.",
+    );
+    expect(prompt).toContain(
+      `- Website, \`${join(extraRoot, "2025-04-01-0900-website", "AGENTS.md")}\` (project, active)`,
     );
   });
 

@@ -32,7 +32,7 @@ afterEach(() => {
 describe("parseFrontMatter", () => {
   test("reads the known fields and keeps unknown keys", () => {
     const result = parseFrontMatter(
-      "---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - https://github.com/owner/app\ntags: [work, tool]\nlegacy_id: P93\ncustom: kept\n---\n# Body\n",
+      '---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - https://github.com/owner/app\ntags: [work, tool]\nlegacy_id: P93\ncustom: kept\nsummary: "Plan:  phase 1"\npinned: false\n---\n# Body\n',
     );
     expect(result.frontMatter).toEqual({
       created: "2025-03-02T10:15",
@@ -42,6 +42,9 @@ describe("parseFrontMatter", () => {
       legacyId: "P93",
       repoTypes: {},
       type: "software",
+      // The summary reads in one line; the pinned value stays text (#769).
+      summary: "Plan: phase 1",
+      pinned: "false",
       extra: { custom: "kept" },
     });
     expect(result.warnings).toEqual([]);
@@ -185,6 +188,16 @@ describe("discoverProjects", () => {
     const long = description("2025-03-04-1015-long") ?? "";
     expect(long.length).toBeLessThanOrEqual(300);
     expect(long.endsWith("…")).toBe(true);
+  });
+
+  test("the description is the summary when the project has one, cut to 300 characters (#769)", () => {
+    addProject("2025-03-02-1015-example-app", 'status: active\nsummary: "Plan: phase 1"', "\n# App\n\nThe body.\n");
+    addProject("2025-03-03-1015-long", `status: active\nsummary: ${"word ".repeat(100)}`, "\n# Long\n");
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    const description = (id: string): string | null | undefined =>
+      projects.find((project) => project.id === id)?.description;
+    expect(description("2025-03-02-1015-example-app")).toBe("Plan: phase 1");
+    expect((description("2025-03-03-1015-long") ?? "").length).toBe(300);
   });
 
   test("names the clone folders of each project", () => {

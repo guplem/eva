@@ -31,6 +31,15 @@ import { templateRecordFormatVersion, type RecordedPart } from "../src/core/vaul
 import { aboutMeHeaderKeys, lastLocationKey, type LastLocation } from "../src/core/vault/about-me.ts";
 import { projectFrontMatterKeys } from "../src/core/projects/project-catalog.ts";
 import { projectStatuses } from "../src/shared/project-statuses.ts";
+import { projectTypes } from "../src/shared/project-types.ts";
+import {
+  caseFileKeys,
+  caseStatuses,
+  periodFileKeys,
+  periodStatuses,
+  pinnedFileKeys,
+  pinnedValues,
+} from "../src/core/modes/pinned-files.ts";
 import { cliCommands, switches, valueOptions } from "../src/frontends/cli/arguments.ts";
 import { commands as telegramCommands } from "../src/frontends/telegram/telegram-bot.ts";
 import { approvalsFileSchema } from "../src/core/widgets/widget-approvals.ts";
@@ -184,8 +193,18 @@ export function currentNames(): string[] {
     ...[...lastLocationFields, "source=telegram", "source=web"].map(
       (field) => `vault Life/About-me.md ${lastLocationKey}.${field}`,
     ),
-    ...[...projectFrontMatterKeys, ...projectStatuses.map((status) => `status=${status}`)].map(
-      (name) => `vault Projects/*/AGENTS.md ${name}`,
+    ...[
+      ...projectFrontMatterKeys,
+      ...projectStatuses.map((status) => `status=${status}`),
+      ...projectTypes.map((type) => `type=${type}`),
+    ].map((name) => `vault Projects/*/AGENTS.md ${name}`),
+    // Any note can carry these keys of the pinned block (#769).
+    ...[...pinnedFileKeys, ...pinnedValues.map((value) => `pinned=${value}`)].map((name) => `vault *.md ${name}`),
+    ...[...caseFileKeys, ...caseStatuses.map((status) => `status=${status}`)].map(
+      (name) => `vault Life/Cases/*/Case.md ${name}`,
+    ),
+    ...[...periodFileKeys, ...periodStatuses.map((status) => `status=${status}`)].map(
+      (name) => `vault Life/Periods/*/Period.md ${name}`,
     ),
     ...[
       "version",

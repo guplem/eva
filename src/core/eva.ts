@@ -759,6 +759,7 @@ export class Eva {
           environment: agentEnvironment,
           now: options.now,
           timeZone: options.config.timeZone ?? "UTC",
+          todayTimeZone: options.config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
           mcpServers: this.assistantMcpServers(),
           projects: () => this.projects(),
           // Read at each call: the widgets exist only after the session manager.

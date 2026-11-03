@@ -1,7 +1,7 @@
 # The vibe-coded project standard
 
 This document describes how a repository must look so that coding agents can develop it on their own.
-Eva follows it and is the reference repository. Eva's repository setup report checks other repositories against it.
+Eva follows it and is the reference repository. Eva's repository setup report checks the parts of it that GitHub and the files show: the skills, the labels, the git hooks, the CI, the ruleset, the merge settings, the harness files, the allowed commands and the security settings. A person or an agent checks the rest.
 
 ## Principles
 

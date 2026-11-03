@@ -101,6 +101,7 @@ Run `eva doctor` on Eva's computer. It lists the tools that are missing, and how
 
 - [docs/guide/setup.md](docs/guide/setup.md): the full installation, step by step, for Windows and for Linux. Its last section, [Remove Eva](docs/guide/setup.md#remove-eva), removes Eva again.
 - [docs/guide/reference.md](docs/guide/reference.md): every command and setting, several computers, updates, and the optional features (voice notes, PDFs, Google Calendar).
+- [docs/guide/how-eva-works.md](docs/guide/how-eva-works.md): how Eva works inside. Ask Eva herself too: she reads these guides when you ask how she works.
 
 ## For developers
 
@@ -108,14 +109,19 @@ Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes
 
 To run Eva from source, clone this repository and run `bun install`. Then type `bun run eva` where the guides say `eva`. A copy from source updates itself from `main`, not from releases.
 
-| Task                                       | Command          |
-| ------------------------------------------ | ---------------- |
-| Install the dependencies and the git hooks | `bun install`    |
-| Run every check                            | `bun run check`  |
-| Format the code                            | `bun run format` |
-| Run the tests                              | `bun run test`   |
+| Task                                       | Command                    |
+| ------------------------------------------ | -------------------------- |
+| Install the dependencies and the git hooks | `bun install`              |
+| Run every check                            | `bun run check`            |
+| Format the code                            | `bun run format`           |
+| Run the tests                              | `bun run test`             |
+| Run every check but the tests              | `bun run check:static`     |
+| Run the browser tests                      | `bun run test:e2e`         |
+| Build the single executable                | `bun run build:executable` |
 
-`bun run check` runs the same checks as the continuous integration (CI, the checks that GitHub runs) on every pull request.
+`bun run check` runs the same checks as the Linux job of the continuous integration (CI, the checks that GitHub runs) on every pull request. CI also runs the tests on Windows, the browser tests, the checks of the widget template, a build of the executable and a secret scan.
+
+[How Eva works inside](docs/guide/how-eva-works.md) explains her parts, one turn step by step, the vault sync and the safety rules.
 
 [docs/lessons-from-v1.md](docs/lessons-from-v1.md) holds what the previous version, Wall-I v1, learned.
 

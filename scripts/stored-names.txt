@@ -407,6 +407,7 @@ vault .eva/schedules.json schedules[].model
 vault .eva/schedules.json schedules[].name
 vault .eva/schedules.json schedules[].prompt
 vault .eva/schedules.json schedules[].text
+vault .eva/schedules.json schedules[].until
 vault .eva/schedules.json version
 vault .eva/schedules.json version=1
 vault .eva/settings/settings.json clock

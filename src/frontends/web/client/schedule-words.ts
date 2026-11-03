@@ -103,11 +103,12 @@ export type ResultTone = "ok" | "bad" | "idle";
 
 /** The last result as a pill text and its colour. */
 export function lastRunWords(
-  lastRun: { readonly slot: string; readonly failed: boolean } | null,
+  lastRun: { readonly slot: string; readonly failed: boolean; readonly quiet?: boolean | undefined } | null,
   now: string,
 ): { text: string; tone: ResultTone } {
   if (lastRun === null) return { text: "Not run yet", tone: "idle" };
-  const verb = lastRun.failed ? "Failed" : "Ran";
+  // A quiet run worked, and had nothing to tell (#687).
+  const verb = lastRun.failed ? "Failed" : lastRun.quiet === true ? "No news" : "Ran";
   const days = daysBetween(lastRun.slot, now);
   const when = days === 0 ? " today" : days === 1 ? " yesterday" : ` · ${dateWords(lastRun.slot)}`;
   return { text: verb + when, tone: lastRun.failed ? "bad" : "ok" };

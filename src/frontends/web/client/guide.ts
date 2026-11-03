@@ -6,13 +6,14 @@
 import readmeFile from "../../../../README.md" with { type: "text" };
 import referenceFile from "../../../../docs/guide/reference.md" with { type: "text" };
 import setupFile from "../../../../docs/guide/setup.md" with { type: "text" };
+import internalsFile from "../../../../docs/guide/how-eva-works.md" with { type: "text" };
 import { closesFence, openingFencePattern } from "../../markdown-fence.ts";
 import { inlineHtml, unescapeHtml } from "../../markdown-inline.ts";
 import { evaRepository } from "../../../shared/version.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { toWebHtml } from "./web-format.ts";
 
-export type GuidePageId = "overview" | "setup" | "reference";
+export type GuidePageId = "overview" | "setup" | "reference" | "internals";
 
 export interface GuideSource {
   readonly id: GuidePageId;
@@ -46,6 +47,13 @@ export const guidePages: readonly GuideSource[] = [
     summary: "Every command and setting, several computers, updates, and the optional features.",
     path: "docs/guide/reference.md",
     markdown: referenceFile,
+  },
+  {
+    id: "internals",
+    title: "How Eva works inside",
+    summary: "Her parts, one turn step by step, the vault sync, the safety rules and the updates.",
+    path: "docs/guide/how-eva-works.md",
+    markdown: internalsFile,
   },
 ];
 

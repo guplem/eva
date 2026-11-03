@@ -22,7 +22,7 @@ Run these on the computer where Eva runs. Eight commands need Eva to run: `statu
 | `eva chat --project <id>`         | Talks to a project's coding agent, or to a general project or a specialist in its folder. `--clone <name>` picks the copy of the code, such as `clone-0`, when it has no open chat. |
 | `eva chat --model <model>`        | Picks the model: `smart`, `balanced` or `fast`. Without it, the model from the settings.                                                                                            |
 | `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                                                                                                            |
-| `eva projects [words]`            | Searches your projects. `status:active`, `status:current` and `tag:work` filter them.                                                                                               |
+| `eva projects [words]`            | Searches your projects. `status:<status>`, such as `status:in-use`, `status:current` or `status:any`, and `tag:work` filter them. `"#work"` works too, with the quotes.             |
 | `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code, or a chat in the project folder.                                                                        |
 | `eva sync`                        | Gets other computers' notes, then saves and pushes this computer's notes.                                                                                                           |
 | `eva update [version] [--check]`  | Installs what the policy allows, or the version given. `--check` only looks.                                                                                                        |
@@ -35,6 +35,26 @@ Run these on the computer where Eva runs. Eight commands need Eva to run: `statu
 | `eva help`                        | Shows every command.                                                                                                                                                                |
 | `eva --instance <name> <command>` | Runs the command for the Eva with this name, as `EVA_INSTANCE=<name>` does. Without it, `eva` asks which Eva, or uses the only one.                                                 |
 
+In Telegram, type `/` to see these commands, each with a short note:
+
+| Command             | What it does                                                                  |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `/new`              | Starts a new chat in a topic of its own.                                      |
+| `/chats`            | Continues a chat from the web page or the terminal here: see [Chats](#chats). |
+| `/rename <title>`   | Renames this chat and its topic.                                              |
+| `/stop`             | Stops Eva's work in this chat.                                                |
+| `/delete`           | Deletes this chat everywhere, with its topic.                                 |
+| `/status`           | Shows Eva's state: "All good", or the problems.                               |
+| `/projects [words]` | Searches your projects, as `eva projects` does.                               |
+| `/schedules`        | Lists the schedules.                                                          |
+| `/link`             | Shows the address that opens Eva on any device.                               |
+| `/sync`             | Syncs the vault now.                                                          |
+| `/conflicts`        | Picks a version of each note in a vault conflict.                             |
+| `/update`           | Checks for updates, or picks a version of Eva.                                |
+| `/logs [count]`     | Shows the last warnings and errors, 20 by default.                            |
+| `/restart`          | Restarts Eva, after you confirm.                                              |
+| `/help`             | Shows the commands.                                                           |
+
 ## Settings
 
 Eva keeps her settings in two places, and her tokens in a third:
@@ -42,28 +62,28 @@ Eva keeps her settings in two places, and her tokens in a third:
 - **Your settings live in your vault,** in `.eva/settings/settings.json`, so every computer with the vault uses the same ones.
 - **This computer's settings live in Eva's home folder** (`~/.config/eva-<name>` on Linux, `%APPDATA%\eva-<name>` on Windows, where `<name>` is the name of this Eva), in `config.json`.
   - **The settings that decide who may open Eva, and what an agent may do, are always computer settings.** The table marks them "(security)". Eva's AI agent edits the vault as part of its work, so these never live there.
-- **Tokens live in `secrets.json`** in Eva's home folder, never in the vault: `githubToken`, `telegramBotToken`, `claudeOauthToken`, `localApiToken`, `googleOauthClientId` and `googleOauthClientSecret`.
+- **Tokens live in `secrets.json`** in Eva's home folder, never in the vault: `githubToken`, `telegramBotToken`, `claudeOauthToken`, `localApiToken`, `googleOauthClientId` and `googleOauthClientSecret`. Eva also keeps there the key of her web push notifications, which she makes by herself.
 
 In the vault:
 
-| Setting                        | Default        | What it does                                                                                  |
-| ------------------------------ | -------------- | --------------------------------------------------------------------------------------------- |
-| `timeZone`                     | Asked at setup | The time zone of the reminders, and of the time in each message.                              |
-| `language`                     | Asked at setup | The language of Eva's answers, such as `Spanish`.                                             |
-| `units`                        | From setup     | `metric` or `imperial`. `null`: not set.                                                      |
-| `clock`                        | From setup     | `24h` or `12h`: the form of each time that Eva writes and shows. `null`: 24-hour.             |
-| `weekStart`                    | From setup     | The first day of the week, `monday` to `sunday`. `null`: Monday.                              |
-| `sync.pullIntervalMinutes`     | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.    |
-| `sync.sweepSeconds`            | `60`           | Seconds between two saves of changed notes.                                                   |
-| `updates.frequency`            | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                               |
-| `updates.install`              | `minor`        | What Eva installs by herself: see [Updates](#updates).                                        |
-| `widgets.checkIntervalMinutes` | `30`           | Minutes between two update checks of your own widgets, 5 at least. Other widgets: once a day. |
-| `engines.default`              | `claude-code`  | The engine of a new chat: `claude-code` or `pi`.                                              |
-| `engines.defaultModel`         | `opus`         | The model of a new chat: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).               |
-| `engines.defaultEffort`        | `medium`       | The effort of a new chat: `low`, `medium`, `high`, `xhigh` or `max`.                          |
-| `engines.pi.models.<model>`    | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default.        |
-| `google.email`                 | `null`         | The Google account. The Google login sets it.                                                 |
-| `voice.language`               | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                          |
+| Setting                        | Default        | What it does                                                                                                                                         |
+| ------------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeZone`                     | Asked at setup | The time zone of the reminders, and of the time in each message.                                                                                     |
+| `language`                     | Asked at setup | The language of Eva's answers, such as `Spanish`.                                                                                                    |
+| `units`                        | From setup     | `metric` or `imperial`. `null`: not set.                                                                                                             |
+| `clock`                        | From setup     | `24h` or `12h`: the form of each time that Eva writes and shows. `null`: 24-hour.                                                                    |
+| `weekStart`                    | From setup     | The first day of the week, `monday` to `sunday`. `null`: Monday.                                                                                     |
+| `sync.pullIntervalMinutes`     | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.                                                           |
+| `sync.sweepSeconds`            | `60`           | Seconds between two saves of changed notes.                                                                                                          |
+| `updates.frequency`            | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                                                                                      |
+| `updates.install`              | `minor`        | What Eva installs by herself: see [Updates](#updates).                                                                                               |
+| `widgets.checkIntervalMinutes` | `30`           | Minutes between two update checks of your own widgets, 5 at least. Other widgets: once a day.                                                        |
+| `engines.default`              | `claude-code`  | The engine of a new chat: `claude-code` or `pi`.                                                                                                     |
+| `engines.defaultModel`         | `opus`         | The model of a new chat: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).                                                                      |
+| `engines.defaultEffort`        | `medium`       | The effort of a new chat: `low`, `medium`, `high`, `xhigh` or `max`.                                                                                 |
+| `engines.pi.models.<model>`    | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default. In Settings, the field suggests the models of your pi logins. |
+| `google.email`                 | `null`         | The Google account. The Google login sets it.                                                                                                        |
+| `voice.language`               | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                                                                                 |
 
 On this computer:
 
@@ -90,11 +110,12 @@ On this computer:
 | `remoteAccess.allowedTailscaleIdentities` (security) | `[]`                                       | The Tailscale accounts that may ask for a device login. `[]`: only the owner of this computer.                                                                                                                                                   |
 | `remoteAccess.hostNames`                             | `[]`                                       | More host names that reach the web page, beside `127.0.0.1` and the Tailscale name.                                                                                                                                                              |
 
-Change a setting on the web Settings page, or with `eva settings set`. The update frequency, the update policy, the vault fetch, the trusted repository owners and the formats (`language`, `units`, `clock` and `weekStart`) apply at once: a new chat and the web page use them. Any other change applies at the next restart.
+Change a setting on the web Settings page, or with `eva settings set`. The update frequency, the update policy, the vault fetch, the widget check interval, the trusted repository owners and the formats (`language`, `units`, `clock` and `weekStart`) apply at once: a new chat and the web page use them. Any other change applies at the next restart.
 
 - **Tokens:** log in to GitHub and Claude Code on the Settings page, or paste their tokens there. Paste the Telegram token there too. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that chats and the vault sync use it too. A card with a done login shows a green panel. Its **Log out** button removes the login, after a warning. Its **Log in again** button shows the steps again. A paired Telegram bot shows **Disconnect** and **Set up again** instead.
 - **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.
 - **A device that you allowed** has the same control as the terminal of Eva's computer: it can change every setting and token. If you lose a phone, tap "Log out every device" on the Settings page.
+- **The guide:** **Settings > Guide** shows this page, the setup guide and [How Eva works inside](how-eva-works.md), with a search. A **?** beside a setting or an alert opens the guide at the part that explains it.
 - **Theme, density and long file names** stay in each browser, so a phone and a computer can differ. A file name that does not fit on one line loses its middle, unless you pick its start or its end in **Settings > Personalize**.
 
 ## Several computers
@@ -182,7 +203,7 @@ This needs git 2.38 or newer on the computer with the conflict. With an older gi
 
 The vault structure is how the folders and notes of your vault are organized. `.eva/vault-structure.json` records its version. A vault with no record follows version 2. An Eva update never changes the structure of your vault: it only tells you that a new one exists. The notification center shows a warning until you mark it as read or update the vault, and your phone gets one message. Its **Open Settings** button opens the card below. The first new Assistant chat after it can mention it too.
 
-**Settings > Vault and sync > Vault structure** shows your version, the newest one, and what changes. To upgrade, press **Update the vault** there or under the Telegram message, or ask the Assistant. Only the hub upgrades the vault. Eva's `vault-upgrade` skill then works with you, in one chat:
+**Settings > Vault and sync > Vault structure** shows your version, the newest one, and what changes. To upgrade, press **Update the vault** there or under the Telegram message, or ask the Assistant. Only the hub upgrades the vault, and only with the automatic sync on. Eva's `vault-upgrade` skill then works with you, in one chat:
 
 1. It reads your vault and plans each move, with no change yet.
 2. It asks every question in one message: your own changes to the template files and where to keep them, where the facts of About me go, each deletion, the schedule changes, and where each git-ignored file goes. In yolo mode, it decides where each note goes by itself. Otherwise it shows the whole plan for your yes.
@@ -195,21 +216,31 @@ Notes that other chats or your phone write during the upgrade are kept. Before t
 
 Eva sends each alert to your Telegram chat when the problem starts, again once a day while it lasts, and once more when it ends. The open problems also show on the web page, because Telegram itself can be the problem. Tap Eva's face in the menu to open the home page, then tap the bell at its top right to open the notification center. It lists each open problem with the button that fixes it, and what Eva told you in the last 30 days.
 
-Press **Mark as read** on a problem to quiet it. It stays in the list, but Eva's face stops counting it, on every device that opens this Eva, until the problem becomes an error or ends. Eva sends no daily reminder for it, also when you mark it as read on another computer. `/status` still counts it.
+Press **Mark as read** on a problem to quiet it. It stays in the list, but Eva's face stops counting it, on every device that opens this Eva, until the problem becomes an error or ends. Eva sends no daily reminder for it, also when you mark it as read on another computer. `/status` still counts it. **Mark all as read** quiets every open problem at once.
 
 From a phone: `/status` shows the problems and the version of Eva and each tool, `/logs [n]` shows the last `n` warnings and errors (20 by default), and `/restart` restarts Eva after you confirm. The Settings page has a **Restart Eva** button too. Its **Updates** section shows the version of Eva and each tool.
 
-| Alert                                | When                                                                                                 |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| The vault sync stopped on a conflict | Two computers changed the same note: see [Vault conflicts](#vault-conflicts).                        |
-| The vault sync failed                | A git step failed two times in a row, for example on a full disk or a refused push.                  |
-| The vault cannot reach GitHub        | The vault was offline for more than 30 minutes.                                                      |
-| The update check or install failed   | The checks failed for 2 hours or more, or an install failed. A failed install keeps the old version. |
-| The Claude Code update failed        | The alert names the reason. Chats keep the old version of Claude Code.                               |
-| A reminder failed to run             | The alert names the reminder.                                                                        |
-| A reminder waits for its card        | No card reached you, so it does not run: see [Optional features](#optional-features).                |
-| Eva started after an unclean exit    | A crash or a power cut stopped her. Send `/logs`.                                                    |
-| Eva cannot read Telegram             | Another program uses the bot, or Telegram failed for over 15 minutes.                                |
+| Alert                                | When                                                                                                                         |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| The vault sync stopped on a conflict | Two computers changed the same note: see [Vault conflicts](#vault-conflicts).                                                |
+| The vault sync failed                | A git step failed two times in a row, for example on a full disk or a refused push.                                          |
+| The vault cannot reach GitHub        | The vault was offline for more than 30 minutes.                                                                              |
+| The update check or install failed   | The checks failed for 2 hours or more, or an install failed. A failed install keeps the old version.                         |
+| The Claude Code update failed        | The alert names the reason. Chats keep the old version of Claude Code.                                                       |
+| A reminder failed to run             | The alert names the reminder.                                                                                                |
+| A reminder waits for its card        | No card reached you, so it does not run: see [Optional features](#optional-features).                                        |
+| Eva started after an unclean exit    | A crash or a power cut stopped her. Send `/logs`.                                                                            |
+| Eva cannot read Telegram             | Another program uses the bot, or Telegram failed for over 15 minutes.                                                        |
+| The vault sync is paused             | The vault is on another branch. Fix it, then send `/sync`.                                                                   |
+| An engine login expired              | Chats with that engine fail. Log in again in **Settings > AI engines**.                                                      |
+| An engine program is missing         | Chats with that engine fail. Press **Install** in **Settings > Updates**, then **Restart now**.                              |
+| The vault needs a newer Eva          | This computer does not change the vault's settings, schedules or hub until you update Eva there.                             |
+| A migration failed                   | The files stay as they were. Eva tries again at the next start.                                                              |
+| Encrypted files need you             | No vault password, a key that changed, or a secret file that stays out of the save: see [Encrypted files](#encrypted-files). |
+| Eva cannot save your location        | The header of `Life/About me.md` has a problem. Eva keeps the location until you fix it.                                     |
+| A project shell can read the vault   | The sandbox of project chats does not work here: see [Set up the sandbox](#set-up-the-sandbox).                              |
+
+A problem on a satellite shows on the hub too, with the name of that computer. Fix it on that computer.
 
 ## Notifications on a device
 
@@ -256,11 +287,19 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Rename or delete a branch:** a branch is the main line of a chat or one of its forks. Right-click the branch, or press and hold it on a phone. Do this in the chat list or in the branch map of the web page. A branch that you did not name shows as "Main line", "Fork 1", "Fork 2", and so on.
 - **Delete fork** deletes only that branch. Its forks stay, with their whole history. The oldest fork that shares its history takes its place. When the main line goes, that fork becomes the main line. The chat keeps its title and its Telegram topic.
 - **Open one chat on the web page:** add `#/chat/<id>` to the address. Telegram sends such links.
+- **Engine, model and effort:** tap the chip in the message box of a web chat to pick the engine (Claude Code or pi), the model (Smart, Balanced or Fast) and the effort of this chat. A new chat uses the defaults from [Settings](#settings).
+- **Stop a turn:** while Eva works, the **Send** button becomes **Stop**. In Telegram, send `/stop`. A message that you send while Eva works waits in line, and goes in her next turn.
+- **Rename or archive a chat:** pick **Rename** or **Archive** in the "More actions" menu (•••) of the chat, or right-click the chat in the list. **Unarchive** brings an archived chat back.
+- **Start over from a summary:** a long chat can confuse the model. Pick **Start a new chat from a summary** in the "More actions" menu. Eva writes a short summary, and a new chat starts from it.
+- **See what a chat knows:** the details of a chat show its **Context**: Eva's prompt, your rules, the pinned files, the instruction files, the skills and the text that each turn adds. Tap a part to read it. Eva shows each part as it is now, so a running chat can still use an older copy. **Context used** shows how full the model's memory of the chat is.
+- **Fork a chat:** press **Fork** under an answer on the web page. The fork copies the chat up to that answer, then continues on its own. For a project chat, see the choices in [Projects](#projects).
 - **Retry an answer:** press **Retry** under it on the web page. The new answer goes in a new branch, and the old answer stays. When the answer, or a later one, changed vault files, Eva asks first:
   - **Undo and retry** puts those files back as they were before the answer, and saves that as a new commit.
   - **Keep and retry** does not change them.
 
   Eva restores only files: a sent message or a calendar event stays. A file that changed after the answer stays too, and so does a file that Eva does not save in git, such as a file in `.eva/scratch/`. The question names them. With the vault sync off, Eva does not ask.
+
+- **pi chats:** a pi chat with Eva asks you questions with the same form as Claude Code. A pi project chat stays as pi is. pi keeps the history of each chat in a file in Eva's folder. When that file is gone, the chat goes on as a new conversation, and Eva tells you and the model.
 
 ## Projects
 
@@ -271,7 +310,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - Tick **Create a Google Drive folder** to get a folder in your Drive. It needs the Drive access "Read and change", in **Settings > Connections > Google**.
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
 - **Status:** each project has one status. **Active** is a project that you develop. **In use** is a project that you use now, such as a project that makes the week's menus. The other statuses are **Idea**, **Paused** and **Closed**.
-  - The Projects page opens with the **Current** filter: the active and in-use projects. Tap a status to see only that status. With no project open, a computer shows the chats that need you, your recent chats, a timeline of the active and paused projects, and the count of each status in a year. Tap a count to filter the list. A phone shows the chats that need you above the list. **Projects**, beside the title of a project, brings you back. In the search, in `eva projects` and in Telegram's `/projects`, type `status:in-use`, `status:current` or `status:any`.
+  - The Projects page opens with the **Current** filter: the active and in-use projects. Tap a status to see only that status. With no project open, a computer shows the chats that need you, your recent chats, a timeline of the active and paused projects, and the count of each status in a year. Tap a count to filter the list. A phone shows the chats that need you above the list. **Projects**, beside the title of a project, brings you back. In the search, in `eva projects` and in Telegram's `/projects`, type `status:in-use`, `status:current` or `status:any`. Add `tag:work`, or `#work` in Telegram, to see only the projects with that tag.
   - Each new chat with Eva pins your active and in-use projects, with the title, the folder and the summary. So Eva knows them without a search. See [Pinned files](#pinned-files).
   - The **New project** form writes the first paragraph of the description as the project's `summary:`. The project page shows it.
 - **Repository setup:** open it from the project page. It checks each repository by its type. A repository with no type, such as one that you added by hand, shows no report: pick its type first.
@@ -294,6 +333,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - A specialist runs with your own permission mode, as a project chat does, but its folder is in your vault. Retry with undo takes back what it changed.
   - It cannot open the rest of the vault: see [What a chat can reach](#what-a-chat-can-reach).
 - **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, and one line that Eva keeps in `repos/AGENTS.md`: the project's notes are two folders above the clone. Eva rewrites that file only while its first line is her marker, so a `repos/AGENTS.md` that you write stays as it is. A clone chat then gets no line about the notes. The sync never saves a file of `repos/`, even when the vault's `.gitignore` does not list it. An extra project root that is a git repository of its own needs the line `*/repos/` in its `.gitignore`. It loads no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
+- **Clone cards:** the project page shows each clone, with its repositories, their branch and their changes. **New clone** makes another copy. **Pull** updates a repository from GitHub, and **Pull all** updates every repository that is behind. **Push** commits every change with your note as the message, then pushes the branch. Leave the note empty, and a model writes the message. **Delete clone** removes a clone.
 - **The file wall:** a project chat cannot open your vault, your other project folders or Eva's own folder. Mention a file to give it a copy. See [What a chat can reach](#what-a-chat-can-reach).
 - **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
   - All its work is on GitHub.
@@ -427,8 +467,11 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
 - **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app. A schedule runs at a time on some days of the week, every few hours, days or weeks from a first run, or once at a date and time. Eva keeps them in `.eva/schedules.json` in the vault, and only the hub runs them. When a chat adds or changes a schedule, Eva asks you first.
   - Before a new or changed schedule runs, Eva shows a card with every detail, in Telegram or in the web app. Check it, and tap **Got it**. If you did not make it, tap **Remove schedule**.
   - A schedule waits until a card reaches you, and Eva sends an alert meanwhile.
-  - The Schedules page shows what runs today, when each schedule repeats, and how its last run went. Tap the pen on a schedule to change it: its history stays.
+  - A schedule sends a text, sends a vault file, or runs a prompt. A prompt starts a new chat, named after the schedule, and can pick a model.
+  - The Schedules page shows what runs today, when each schedule repeats, and how its last run went. Use the switch of a schedule to pause it. Tap the pen to change it: its history stays. `/schedules` in Telegram lists them.
   - A one-off that Eva misses because she is off runs when she is back. When it comes an hour or more late, a line says so. After its run, it shows as "Ended". To run it again, give it a new date.
+  - Ask "tell me when the bank replies" to get a watch. A watch is a schedule that checks, for example once a day, until a last day. A run with nothing new stays quiet. It sends no message and no notification, and Eva deletes its chat. The Schedules page shows "No news" for it. The run that finds the reply sends it, and then the watch ends. The page shows it as "Ended". Turn it on again to watch again: Eva shows a new setup card first.
+  - A watch works with two marker lines that the agent writes in a scheduled run. `[[quiet]]` means "nothing to tell", and `[[done]]` means "the watch is over". Each schedule that repeats can also have a last day (`until`, "Last day" in the form). The last day still runs. After it, the schedule does not run, and the page shows it as "Ended".
 - **Eva's rules.** Your rules for Eva set her tone, how she answers and how proactive she is. Read and change them in **Settings > Personalize > Eva's rules**, or ask Eva to change them. They live in `.eva/assistant.md` in the vault.
   - They apply to each chat with Eva, in Telegram, on the web page and from a schedule, from the next new chat. A project chat never uses them. It uses the harness's own prompt and the instruction files of the project and its repositories, such as `AGENTS.md`. It never loads the vault's instruction files.
   - Eva's built-in rules come first and say how Eva works, such as how she answers from your notes, how she learns, and how she gives work to a project. The page shows them, but only an update of Eva changes them. Where the two disagree, your rules win.
@@ -441,7 +484,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Change them in **Settings > Personalize > Message box menu**, or ask Eva to. Each one is a Markdown file in the vault, in `.eva/settings/text-actions/` or `.eva/settings/saved-prompts/`. The file name is the name in the menu.
   - A text action can start with a `model:` line between two `---` lines: `haiku` (Fast), `sonnet` (Balanced) or `opus` (Smart). With no such line, it uses the fast model.
   - Eva brings Polish and Summary as examples, once. If you delete one, it stays deleted.
-- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and a plain `.env` file. An encrypted file shows a lock: type the vault password to open it. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `.eva/scratch/received/` in the vault. A general or specialist chat gets it in `.eva/scratch/received/<project-id>/`. Git never saves `.eva/scratch/`, and Eva deletes its files after a week. A vault from before this change also has a `Scratch/` folder, which its `.gitignore` lists. Eva writes nothing new there, and the folder goes away once its files are a week old. In a newer vault, `Scratch/` is a folder like any other.
+- **Files.** Open **Files** on the web page to browse the vault. Open a text file to read, edit and save it. You can also rename a file or a folder, download it, and copy the text of a file with **Copy contents**. The search finds a name, or a text inside the files. Eva shows text files up to 1 MB, and images, sounds and videos up to 50 MB. She hides the `.git` folder and a plain `.env` file. An encrypted file shows a lock: type the vault password to open it. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `.eva/scratch/received/` in the vault. A general or specialist chat gets it in `.eva/scratch/received/<project-id>/`. Git never saves `.eva/scratch/`, and Eva deletes its files after a week. A vault from before this change also has a `Scratch/` folder, which its `.gitignore` lists. Eva writes nothing new there, and the folder goes away once its files are a week old. In a newer vault, `Scratch/` is a folder like any other.
   - **In a project chat in a clone,** a file that you send goes into the clone's `.mentions/` folder, outside every repository.
   - To give such a chat a vault file, such as a design or the notes of a meeting, type `@` in the web app and pick the file. Eva puts a copy in `.mentions/` too.
   - The chat gets the name of the copy, never the vault path.
@@ -457,7 +500,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - The list, the order and the inputs live in `.eva/widgets.json` in the vault. The approvals and a read-only copy of each widget stay on this computer. So another computer shows the same widgets, each with **Approve to show this widget**, until you approve it there.
   - **Turn off** hides a widget and keeps its approval. **Remove** drops its approval and its copy. Your data in the vault stays.
   - Each folder where a widget keeps data gets a `DATA_FORMAT.md`. Eva writes the whole file: it lists the files, the fields and the widget of each field. Do not edit it. Write your notes in the `AGENTS.md` or the `README.md` of the folder.
-  - **Turn on** also shows the line that the widget adds to Eva's prompt. Each new chat gets it with your real folder. So when you say "today I trained", Eva saves it where the training widget reads it.
+  - **Turn on** also shows the line that the widget adds to Eva's prompt. Each new chat with Eva gets it with your real folder. A project chat does not. So when you say "today I trained", Eva saves it where the training widget reads it.
   - Two widgets can share a folder. When one names a field with another type than the other, Eva warns you. Then turn the second widget on with read access only, or pick another folder.
   - After each answer, Eva checks the data files that it changed. A file that does not fit a widget goes back to the agent to fix. When the fix fails, the chat says which file and which field.
   - A widget is code from its author. Turn on only a widget whose author you trust.
@@ -465,7 +508,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Eva checks your own widgets every 30 minutes, and every other widget once a day. Change it in **Widget updates**, or press **Check for updates** to check now.
   - On a widget project, **Preview** on a clone shows the widget as the clone holds it, with no push. **Example data** shows its mock files. **My data** shows your vault, and asks first for anything that the installed widget does not have.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `.eva/scratch/` and sends it.
-- **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. The audio never leaves the computer.
+- **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. A voice note that you send in Telegram works too: Eva turns it into text on her computer. The audio never leaves the computer.
   On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt install libgomp1` on Ubuntu.
   To install them by hand, install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Then download a model and put it at `voice/ggml-base.bin` in Eva's home folder.
 - **Google (Calendar, Drive, Contacts, Tasks).** See [Set up Google](#set-up-google).

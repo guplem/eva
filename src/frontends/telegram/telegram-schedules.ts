@@ -10,6 +10,7 @@ import { keyOf } from "./telegram-messages.ts";
 import { telegramMessageLimit, type TelegramSender } from "./telegram-sender.ts";
 import type { BotState } from "./telegram-state.ts";
 import { cardText } from "./telegram-texts.ts";
+import { extractFileMarkers } from "../../shared/file-markers.ts";
 
 export interface TelegramSchedulesOptions {
   readonly api: TelegramApi;
@@ -23,6 +24,8 @@ export interface TelegramSchedulesOptions {
   readonly pairedChat: () => number | null;
   /** Shows "typing" in the topic until the chat's turn ends. */
   readonly startTyping: (chatId: number, topicId: number | null, sessionId: string) => void;
+  /** Stops "typing": a scheduled run ends with its answer, not with a turn end in the topic. */
+  readonly stopTyping: (sessionId: string) => void;
 }
 
 export class TelegramSchedules {
@@ -69,25 +72,45 @@ export class TelegramSchedules {
   async onEvent(event: ScheduleEvent): Promise<boolean> {
     const chatId = this.options.pairedChat();
     if (chatId === null) return false;
-    const { sender, state } = this.options;
+    const { sender } = this.options;
     if (event.kind === "schedule_problems") {
       const text = ["Schedules file problems:", ...event.problems.map((line) => `• ${line}`)].join("\n");
       return (await sender.send(chatId, null, text)) !== null;
     }
     const topicId = await this.topic(chatId, event.scheduleId, event.name);
     if (event.kind === "schedule_card") return this.sendCard(chatId, topicId, event);
-    const current = state.topics[keyOf(chatId, topicId)];
-    const busy = current !== undefined && this.options.eva.sessions.isBusy(current.sessionId);
-    // Never take a chat from a turn that runs (lesson 49): then the firing's answer shows on the web only.
-    if (event.sessionId !== null && !busy) {
-      // Each firing is a fresh chat in the schedule's topic (lesson 126).
-      state.topics[keyOf(chatId, topicId)] = { sessionId: event.sessionId, openedByEva: true, renamed: true };
-      this.options.saveState();
-      this.options.startTyping(chatId, topicId, event.sessionId);
+    if (event.kind === "schedule_answered") {
+      await this.sendAnswer(chatId, topicId, event);
+      return true;
     }
+    // The topic gets the run's chat only when the run ends: a quiet run must leave nothing in it (#687).
+    if (event.sessionId !== null) this.options.startTyping(chatId, topicId, event.sessionId);
     if (event.text !== null) await sender.send(chatId, topicId, event.text);
     if (event.file !== null) await this.options.files.sendVaultFile(chatId, topicId, event.file);
     return true;
+  }
+
+  /** The end of a run with something to tell: its whole answer, its files, and a failure. */
+  private async sendAnswer(
+    chatId: number,
+    topicId: number | null,
+    event: Extract<ScheduleEvent, { kind: "schedule_answered" }>,
+  ): Promise<void> {
+    const { sender, state, files } = this.options;
+    this.options.stopTyping(event.sessionId);
+    const current = state.topics[keyOf(chatId, topicId)];
+    const busy = current !== undefined && this.options.eva.sessions.isBusy(current.sessionId);
+    // Never take a chat from a turn that runs (lesson 49): then a reply goes to that chat, not to this run.
+    if (!busy) {
+      // Each firing is a fresh chat in the schedule's topic (lesson 126).
+      state.topics[keyOf(chatId, topicId)] = { sessionId: event.sessionId, openedByEva: true, renamed: true };
+      this.options.saveState();
+    }
+    const markers = extractFileMarkers(event.text);
+    if (markers.text.length > 0) await sender.sendAnswer(chatId, topicId, markers.text);
+    for (const path of markers.attach) await files.sendVaultFile(chatId, topicId, path);
+    if (markers.offer.length > 0) await files.offerFiles(chatId, topicId, markers.offer);
+    if (event.failure !== null) await sender.send(chatId, topicId, `The turn failed: ${event.failure}`);
   }
 
   /**

@@ -434,6 +434,33 @@ test("a fork continues under its answer, in the same column, and the switcher go
   await expect(page.getByLabel("Message").first()).toHaveValue("Half a thought");
 });
 
+test("on a wide screen, the chat fills the width beside the branch map (issue 828)", async ({ page }) => {
+  test.skip(
+    test.info().project.name === "phone",
+    "A phone shows no branch map, and its chat already fills the screen.",
+  );
+  await page.setViewportSize({ width: 1800, height: 900 });
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Wide chat"));
+  await waitUntilIdle(page, chatId);
+  // The client width leaves out a scrollbar, which shows when the chat grows taller than the window.
+  const freeWidth = (): Promise<number> =>
+    page.locator(".branches").evaluate((area) => {
+      const style = getComputedStyle(area);
+      const inner = area.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const map = area.querySelector(".branch-map-column");
+      const mapWidth = map === null ? 0 : map.getBoundingClientRect().width + parseFloat(style.columnGap);
+      return inner - mapWidth - area.querySelector(".branch")!.getBoundingClientRect().width;
+    });
+  // With no fork, the chat takes the whole area.
+  await expect.poll(freeWidth).toBeLessThanOrEqual(2);
+
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  await expect(page.locator(".branch-map-column")).toBeVisible();
+  // The map takes its column, and the chat takes the rest.
+  await expect.poll(freeWidth).toBeLessThanOrEqual(2);
+});
+
 /** Waits until the element is the given height, give or take the rounding of a pixel. */
 async function expectHeight(element: Locator, expected: number): Promise<void> {
   await expect
@@ -3191,6 +3218,26 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await card.getByRole("button", { name: "Got it" }).click();
   const row = page.getByRole("listitem", { name: `Water ${id}` });
   await expect(row).toContainText("Every 3 days at 07:30 · next 2 Jan 07:30");
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
+test("Schedules page: add a schedule with a last day (#687)", async ({ page }, testInfo) => {
+  const id = `watch-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Watch ${id}`);
+  await form.getByLabel("Time (HH:MM)").fill("08:00");
+  await form.getByLabel(/^Last day/).fill("2030-01-31");
+  await form.getByLabel("Fixed text").fill("Look at the inbox.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Last day");
+  await expect(card).toContainText("2030-01-31");
+  await card.getByRole("button", { name: "Got it" }).click();
   await page.request.delete(`/api/schedules/${id}`);
 });
 

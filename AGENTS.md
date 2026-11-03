@@ -3,6 +3,14 @@
 Eva is a personal "super harness": one service that runs AI coding agents (Claude Code, pi) over a person's vault and projects, from a terminal, Telegram and a web app. TypeScript on Bun.
 The code is the source of truth for every fact. `README.md` and `docs/guide/` are for people.
 
+## Docs
+
+- Keep the docs aligned with the code. Update them in the same PR as the change.
+- `README.md`, `docs/guide/setup.md` and `docs/guide/reference.md` describe what a person sees and does. `docs/guide/how-eva-works.md` describes how Eva works inside. `docs/widgets.md` is the widget contract.
+- Update a page when a change alters a fact on it: a command, a setting, a screen, a behavior, a limit or an inner part.
+- Add a fact that a person or a contributor needs. Leave out a detail that nobody would miss.
+- The guide in Settings shows these pages. Eva's prompt tells her to read them on GitHub when a person asks how she works.
+
 ## What must not change
 
 A change to one of these goals needs the owner.

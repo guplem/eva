@@ -79,6 +79,11 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("`.eva/settings/chat-names.md`");
   });
 
+  test("sends a question about how Eva works to her docs (#832)", () => {
+    expect(assistantBasePrompt).toContain(`https://github.com/${evaRepository}/tree/main/docs/guide`);
+    expect(assistantBasePrompt).toContain("how-eva-works.md");
+  });
+
   test("offers the eva-issue skill when the person reports a problem with Eva, and leaves the procedure to it (#771)", () => {
     expect(assistantBasePrompt).toContain("## Problems with Eva herself");
     expect(assistantBasePrompt).toContain(`https://github.com/${evaRepository}`);

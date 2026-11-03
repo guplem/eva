@@ -165,6 +165,16 @@ export function AddScheduleDialog(props: {
               />
             </label>
           )}
+          {repeat !== "once" && (
+            <label>
+              Last day (empty for no end)
+              <input
+                type="date"
+                value={form.until}
+                onChange={(event) => setForm({ ...form, until: event.target.value })}
+              />
+            </label>
+          )}
           {/* A text in the file may hold line breaks, and a one-line input would drop them. */}
           <label>
             Fixed text

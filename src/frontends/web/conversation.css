@@ -18,10 +18,12 @@
   container-type: inline-size;
 }
 
-/* The column of the shown branch: its path, its switchers and its composer. */
+/*
+ * The column of the shown branch: its path, its switchers and its composer.
+ * It takes all the width that the map leaves (issue 828). The bubbles keep a share of it, so they grow too.
+ */
 .branch {
   min-width: 320px;
-  max-width: 760px;
   flex: 1;
   margin: 0 auto;
   display: flex;

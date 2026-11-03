@@ -145,6 +145,7 @@ describe("the guide pages", () => {
       "README.md",
       "docs/guide/setup.md",
       "docs/guide/reference.md",
+      "docs/guide/how-eva-works.md",
     ]);
   });
 

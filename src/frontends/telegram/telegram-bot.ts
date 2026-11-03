@@ -220,6 +220,9 @@ export class TelegramBot {
         this.saveState();
       },
       pairedChat: () => this.allowedChatId,
+      stopTyping: (sessionId) => {
+        this.stopTyping(sessionId);
+      },
       startTyping: (chatId, topicId, sessionId) => {
         this.startTyping(chatId, topicId, sessionId);
       },
@@ -949,6 +952,8 @@ export class TelegramBot {
       if (event.kind === "text") this.lateTopics.add(event.sessionId);
       if (event.kind === "turn_finished" || event.kind === "turn_failed") {
         this.lateTopics.delete(event.sessionId);
+        // A scheduled run has no topic until its end, and a quiet run never gets one (#687).
+        this.stopTyping(event.sessionId);
         // Never sent, so its warning key stays free for a chat in Telegram.
         this.takeUsageLines(event.sessionId);
       }

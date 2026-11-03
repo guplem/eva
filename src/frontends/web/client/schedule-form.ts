@@ -36,6 +36,8 @@ export interface ScheduleForm {
   readonly count: string;
   readonly unit: Unit;
   readonly from: string;
+  /** The last day, `YYYY-MM-DD`, or empty for no end (#687). */
+  readonly until: string;
   readonly text: string;
   readonly prompt: string;
 }
@@ -51,6 +53,7 @@ export function emptyScheduleForm(now: string | null): ScheduleForm {
     count: "1",
     unit: "d",
     from: now === null ? "" : nextHourSlot(now),
+    until: "",
     text: "",
     prompt: "",
   };
@@ -72,6 +75,7 @@ export function formOf(schedule: Schedule, now: string | null = null): ScheduleF
     count: every === "" ? "1" : every.slice(0, -1),
     unit,
     from: schedule.from ?? emptyScheduleForm(now).from,
+    until: schedule.until ?? "",
     text: schedule.text ?? "",
     prompt: schedule.prompt ?? "",
   };
@@ -98,6 +102,8 @@ export function fieldsOf(form: ScheduleForm): Record<string, unknown> {
     if (form.days.length > 0)
       fields["days"] = weekDays.map(([code]) => code).filter((code) => form.days.includes(code));
   }
+  // A one-off has no later run to end.
+  if (form.repeat !== "once" && form.until.trim() !== "") fields["until"] = form.until.trim();
   if (form.text.trim() !== "") fields["text"] = form.text.trim();
   if (form.prompt.trim() !== "") fields["prompt"] = form.prompt.trim();
   return fields;

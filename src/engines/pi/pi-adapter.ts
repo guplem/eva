@@ -40,13 +40,14 @@ import {
 } from "../../shared/engine-port.ts";
 import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
 import { wallRefusesCall } from "../../shared/path-area.ts";
-import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
+import type { EngineEventPayload, TaskState, TurnUsage } from "../../shared/events.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
 import { questionExtensionSource, questionTitle } from "./pi-question-extension.ts";
+import { subagentExtensionSource, subagentTitle } from "./pi-subagent-extension.ts";
 import { askInTextMessage, collectAnswers } from "../../shared/questions.ts";
 import { describePiContext } from "./pi-context.ts";
 import { describePiPermissions } from "./pi-permissions.ts";
@@ -68,6 +69,8 @@ export interface PiEngineOptions {
   readonly closeTimeoutMs?: number;
   /** How long pi has to answer a stop before Eva stops its process. */
   readonly stopGraceMs?: number;
+  /** Subagents of one turn that run at once (#824). Default: 4. */
+  readonly maxSubagents?: number;
   /** The longest wait for `pi auth check` after a failed turn. */
   readonly loginCheckMs?: number;
 }
@@ -114,7 +117,12 @@ export class PiEngine implements EnginePort {
     return describePiContext(input);
   }
 
-  async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {
+  runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {
+    return this.turn(request, false);
+  }
+
+  /** One pi turn. A subagent's turn gets no subagents and no question form of its own (#824). */
+  private async *turn(request: TurnRequest, subagent: boolean): AsyncIterable<EngineEventPayload> {
     const sessionsFolder = join(this.options.workFolder, "sessions");
     mkdirSync(sessionsFolder, { recursive: true });
     const sessionFile = (id: string): string => join(sessionsFolder, `${id}.jsonl`);
@@ -152,9 +160,10 @@ export class PiEngine implements EnginePort {
 
     const extensionFile = this.writeIfChanged("eva-approval-extension.ts", approvalExtensionSource);
     // A model call has no session to continue, so its prompt file is named by its text, and calls share it.
+    // A subagent's turn is never continued either, so its file is shared the same way.
     const promptName =
-      request.mode === "model-call"
-        ? `model-call-${createHash("sha256")
+      request.mode === "model-call" || subagent
+        ? `${subagent ? "subagent" : "model-call"}-${createHash("sha256")
             .update(request.appendSystemPrompt ?? "")
             .digest("hex")
             .slice(0, 16)}`
@@ -169,8 +178,15 @@ export class PiEngine implements EnginePort {
     const contextExtensionFile =
       request.projectFolder === null ? null : this.writeIfChanged("eva-context-extension.ts", contextExtensionSource);
     // Claude Code's question form, in an Assistant chat (#813). A Project chat is pi as the person runs it.
-    const questionExtensionFile =
-      request.mode === "assistant" ? this.writeIfChanged("eva-question-extension.ts", questionExtensionSource) : null;
+    // A subagent's answer goes to its chat's model, never to the person, so it asks no question form.
+    const assistant = request.mode === "assistant" && !subagent;
+    const questionExtensionFile = assistant
+      ? this.writeIfChanged("eva-question-extension.ts", questionExtensionSource)
+      : null;
+    // Claude Code's subagents, in an Assistant chat (#824). A subagent starts none of its own.
+    const subagentExtensionFile = assistant
+      ? this.writeIfChanged("eva-subagent-extension.ts", subagentExtensionSource)
+      : null;
     // One file per turn: a stopped turn that still closes must not delete the file of the next one.
     const specsFile = hasMcpServers
       ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
@@ -182,6 +198,7 @@ export class PiEngine implements EnginePort {
       mcpExtensionFile,
       contextExtensionFile,
       questionExtensionFile,
+      subagentExtensionFile,
       promptFile,
       model,
     });
@@ -275,9 +292,27 @@ export class PiEngine implements EnginePort {
     let end: TurnEnd | null = null;
     // The run ended well; the turn ends with pi's state answer.
     let finished = false;
+    // The events of the subagents, which end while pi waits and so reach the stream at pi's next record.
+    const side: EngineEventPayload[] = [];
+    const subagents: SubagentRuns = {
+      emit: (event) => {
+        side.push(event);
+      },
+      count: (subagentUsage, subagentCost) => {
+        usage.inputTokens += subagentUsage.inputTokens;
+        usage.outputTokens += subagentUsage.outputTokens;
+        usage.cacheReadTokens += subagentUsage.cacheReadTokens;
+        usage.cacheWriteTokens += subagentUsage.cacheWriteTokens;
+        costUsd += subagentCost;
+      },
+      slots: new Slots(this.options.maxSubagents ?? defaultMaxSubagents),
+      ended: new AbortController(),
+      running: new Set(),
+    };
 
     pi.send({ id: promptRequestId, type: "prompt", message: request.prompt });
     for await (const record of pi.records) {
+      yield* side.splice(0);
       const type = record["type"];
       if (type === "agent_start" && request.signal.aborted) {
         // pi drops an abort that comes before the run starts, such as while the MCP bridge loads.
@@ -336,7 +371,11 @@ export class PiEngine implements EnginePort {
       } else if (type === "extension_ui_request") {
         const notice = extensionNotice(record);
         if (notice !== null) yield { kind: "notice", text: notice };
+        else if (record["method"] === "editor" && record["title"] === subagentTitle)
+          this.startSubagent(pi, request, record, subagents);
         else answerDialog(pi, request, record);
+        // The task shows while it runs: pi sends nothing more until the subagent answers.
+        yield* side.splice(0);
       } else if (type === "auto_retry_start") {
         pendingError = null;
       } else if (type === "agent_end") {
@@ -355,6 +394,10 @@ export class PiEngine implements EnginePort {
       }
       if (end !== null) break;
     }
+    // A pi that ended has nobody to give a subagent's answer to.
+    subagents.ended.abort();
+    await Promise.allSettled([...subagents.running]);
+    yield* side.splice(0);
     // The answers are complete without the state, so a pi that stops before it answers still finished.
     if (end === null && finished) end = { kind: "finished" };
     await pi.close(this.options.closeTimeoutMs ?? 5_000);
@@ -390,6 +433,68 @@ export class PiEngine implements EnginePort {
         model,
       };
     }
+  }
+
+  /**
+   * Runs one subagent of the Task tool as a fresh pi turn of this engine, and answers pi's dialog
+   * with its last answer. The subagent shares the chat's request: its prompt, skills, MCP servers,
+   * approvals and stop. Never throws: pi waits for an answer to every dialog.
+   */
+  private startSubagent(
+    pi: PiProcess,
+    request: TurnRequest,
+    record: Readonly<Record<string, unknown>>,
+    runs: SubagentRuns,
+  ): void {
+    const id = record["id"];
+    if (typeof id !== "string") return;
+    const answer = (reply: { result: string } | { failed: string }): void => {
+      pi.send({ type: "extension_ui_response", id, value: JSON.stringify(reply) });
+    };
+    // Only an Assistant chat loads the tool. Nobody waits for a model call's subagents.
+    if (request.mode !== "assistant") {
+      answer({ failed: "This chat cannot run subagents." });
+      return;
+    }
+    const call = parseSubagentCall(record["prefill"]);
+    if (call === null) {
+      answer({ failed: "The Task call needs a description and a prompt." });
+      return;
+    }
+    const task = (state: TaskState): void => {
+      runs.emit({ kind: "task_changed", taskId: call.toolCallId, description: call.description, state });
+    };
+    task("running");
+    const signal = AbortSignal.any([request.signal, runs.ended.signal]);
+    const work = runs.slots
+      .run(async () => {
+        if (signal.aborted) return { failed: "The turn was stopped." };
+        let last: string | null = null;
+        let failure: string | null = null;
+        const turn = this.turn(
+          {
+            ...request,
+            history: { kind: "new", engineSessionId: crypto.randomUUID() },
+            prompt: subagentPreamble + call.prompt,
+            signal,
+          },
+          true,
+        );
+        for await (const event of turn) {
+          if (event.kind === "text") last = event.text;
+          else if (event.kind === "turn_failed") failure = event.reason;
+          else if (event.kind === "turn_finished") runs.count(event.usage, event.costUsd ?? 0);
+        }
+        if (failure !== null) return { failed: failure };
+        return last === null ? { failed: "The subagent gave no answer." } : { result: last };
+      })
+      .catch((error: unknown) => ({ failed: error instanceof Error ? error.message : String(error) }))
+      .then((reply) => {
+        task("result" in reply ? "done" : "failed");
+        answer(reply);
+      });
+    runs.running.add(work);
+    void work.finally(() => runs.running.delete(work));
   }
 
   /**
@@ -466,6 +571,8 @@ export interface PiArgumentInputs {
   readonly contextExtensionFile: string | null;
   /** Eva's question form tool, in an Assistant chat. */
   readonly questionExtensionFile: string | null;
+  /** Eva's subagent tool, in an Assistant chat that is not itself a subagent. */
+  readonly subagentExtensionFile: string | null;
   readonly promptFile: string | null;
   readonly model: string | null;
 }
@@ -488,6 +595,7 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
   if (inputs.mcpExtensionFile !== null) args.push("-e", inputs.mcpExtensionFile);
   if (inputs.contextExtensionFile !== null) args.push("-e", inputs.contextExtensionFile);
   if (inputs.questionExtensionFile !== null) args.push("-e", inputs.questionExtensionFile);
+  if (inputs.subagentExtensionFile !== null) args.push("-e", inputs.subagentExtensionFile);
   if (inputs.model !== null) args.push("--model", inputs.model);
   // pi has no level above `xhigh`, so Max asks for pi's highest level.
   if (request.effort !== null) args.push("--thinking", request.effort === "max" ? "xhigh" : request.effort);
@@ -627,4 +735,75 @@ function addUsage(usage: { -readonly [Key in keyof TurnUsage]: number }, message
   usage.outputTokens += message.usage?.output ?? 0;
   usage.cacheReadTokens += message.usage?.cacheRead ?? 0;
   usage.cacheWriteTokens += message.usage?.cacheWrite ?? 0;
+}
+
+/**
+ * The line before a subagent's task. The subagent sees none of its chat, and its answer goes to
+ * the chat's model, never to the person.
+ */
+export const subagentPreamble =
+  "You are a subagent of an Eva chat. Do the task below, then end your turn with an answer that holds " +
+  "the whole result: the chat's model reads it, and the person never sees it. Ask no questions.\n\n";
+
+/** Subagents of one turn that run at once. The others wait for a free place. */
+const defaultMaxSubagents = 4;
+
+/** What a turn gives its subagents: where their events go, the turn's totals, and their places. */
+interface SubagentRuns {
+  readonly emit: (event: EngineEventPayload) => void;
+  readonly count: (usage: TurnUsage, costUsd: number) => void;
+  readonly slots: Slots;
+  /** Aborts when the turn's pi ended: nobody waits for a subagent's answer then. */
+  readonly ended: AbortController;
+  /** The work of each subagent, which the turn waits for, so no subagent's pi outlives its turn. */
+  readonly running: Set<Promise<void>>;
+}
+
+/** A bound on the work that runs at once. Work past the bound waits, in order. */
+export class Slots {
+  private free: number;
+  private readonly waiting: (() => void)[];
+
+  constructor(size: number) {
+    this.free = size;
+    this.waiting = [];
+  }
+
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    if (this.free > 0) this.free -= 1;
+    else
+      await new Promise<void>((resolve) => {
+        this.waiting.push(resolve);
+      });
+    try {
+      return await work();
+    } finally {
+      // The place passes straight to the next work, so it never counts as free between them.
+      const next = this.waiting.shift();
+      if (next === undefined) this.free += 1;
+      else next();
+    }
+  }
+}
+
+/** The Task call of pi-subagent-tool.ts, or null for an input that Eva cannot run. */
+function parseSubagentCall(
+  prefill: unknown,
+): { readonly toolCallId: string; readonly description: string; readonly prompt: string } | null {
+  try {
+    const value = JSON.parse(String(prefill)) as { toolCallId?: unknown; input?: unknown };
+    const input = (typeof value.input === "object" && value.input !== null ? value.input : {}) as Record<
+      string,
+      unknown
+    >;
+    const { description, prompt } = input;
+    if (typeof value.toolCallId !== "string" || typeof prompt !== "string" || prompt.trim() === "") return null;
+    return {
+      toolCallId: value.toolCallId,
+      description: typeof description === "string" && description.trim() !== "" ? description : "Subagent",
+      prompt,
+    };
+  } catch {
+    return null;
+  }
 }

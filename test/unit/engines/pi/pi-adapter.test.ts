@@ -7,7 +7,13 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approvalExtensionSource, approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
-import { buildPiArguments, PiEngine } from "../../../../src/engines/pi/pi-adapter.ts";
+import { buildPiArguments, PiEngine, Slots, subagentPreamble } from "../../../../src/engines/pi/pi-adapter.ts";
+import evaSubagents, {
+  subagentTitle as subagentToolTitle,
+  type SubagentContext,
+  type SubagentPi,
+} from "../../../../src/engines/pi/pi-subagent-tool.ts";
+import { subagentExtensionSource, subagentTitle } from "../../../../src/engines/pi/pi-subagent-extension.ts";
 import evaQuestions, {
   noAnswer,
   questionTitle as questionToolTitle,
@@ -118,6 +124,7 @@ describe("buildPiArguments", () => {
     mcpExtensionFile: null,
     contextExtensionFile: null,
     questionExtensionFile: null,
+    subagentExtensionFile: null,
     promptFile: "/eva/pi/prompts/session-1.md",
     model: null,
   };
@@ -1100,5 +1107,205 @@ describe("the question tool inside pi (#813)", () => {
     expect(await failure(JSON.stringify({ refused: "No." }))).toBe("No.");
     expect(await failure(undefined)).toBe(askInTextMessage);
     expect(await failure("not JSON")).toBe(askInTextMessage);
+  });
+});
+
+describe("the subagents of a pi Assistant chat (#824)", () => {
+  /** pi's records of one turn in which the model's Task tool opens Eva's subagent dialog. */
+  function taskTurn(description: string): PiRecord[] {
+    return loadPiFixture("approval-allowed").map((record) =>
+      record["type"] === "extension_ui_request"
+        ? {
+            ...record,
+            method: "editor",
+            title: subagentTitle,
+            prefill: JSON.stringify({ toolCallId: "call-7", input: { description, prompt: "Find the notes." } }),
+          }
+        : record,
+    );
+  }
+
+  function reply(fake: FakePi): unknown {
+    const answer = fake.runs[0]?.sent.find((record) => record["type"] === "extension_ui_response");
+    return JSON.parse(String(answer?.["value"]));
+  }
+
+  test("Eva loads the subagent tool in Assistant chats only, and never in a subagent", async () => {
+    const fake = new FakePi([{ records: taskTurn("Find notes") }, { records: loadPiFixture("plain") }]);
+    await drain(engine(fake).runTurn(request()));
+    const tool = join(folder, "pi", "eva-subagent-extension.ts");
+    expect(fake.runs[0]?.command).toContain(tool);
+    expect(readFileSync(tool, "utf8")).toBe(subagentExtensionSource);
+    // The subagent is a fresh turn with Eva's own approvals, but no subagents and no question form.
+    expect(fake.runs[1]?.command).toContain(join(folder, "pi", "eva-approval-extension.ts"));
+    expect(fake.runs[1]?.command).not.toContain(tool);
+    expect(fake.runs[1]?.command).not.toContain(join(folder, "pi", "eva-question-extension.ts"));
+
+    const project = new FakePi([{ records: loadPiFixture("plain") }]);
+    await drain(engine(project).runTurn(request({ mode: "project", appendSystemPrompt: null, pluginFolders: [] })));
+    expect(project.runs[0]?.command).not.toContain(tool);
+  });
+
+  test("a subagent shows as a task, gets the prompt, and gives its last answer back", async () => {
+    const fake = new FakePi([{ records: taskTurn("Find notes") }, { records: loadPiFixture("plain") }]);
+    const events = await drain(engine(fake).runTurn(request()));
+    expect(events.filter((event) => event.kind === "task_changed")).toEqual([
+      { kind: "task_changed", taskId: "call-7", description: "Find notes", state: "running" },
+      { kind: "task_changed", taskId: "call-7", description: "Find notes", state: "done" },
+    ]);
+    expect(reply(fake)).toEqual({ result: "Hello from the fake model. You said: plain hello" });
+    const prompt = String(fake.runs[1]?.sent[0]?.["message"]);
+    expect(prompt).toStartWith(subagentPreamble);
+    expect(prompt).toEndWith("Find the notes.");
+    // The subagent's own text stays out of the chat: only the task shows.
+    expect(events.filter((event) => event.kind === "text").map((event) => event.text)).not.toContain(
+      "Hello from the fake model. You said: plain hello",
+    );
+    // The subagent's tokens count in the turn's totals.
+    const finished = events.at(-1);
+    expect(finished).toMatchObject({ kind: "turn_finished" });
+    if (finished?.kind !== "turn_finished") throw new Error("The turn did not finish.");
+    expect(finished.usage.inputTokens).toBeGreaterThan(1000);
+  });
+
+  test("a failed subagent tells the model why, and its task shows as failed", async () => {
+    const ready = { records: [{ status: "ready", provider: "fake", authType: "api_key" }], oneShot: true };
+    const fake = new FakePi([{ records: taskTurn("Broken") }, { records: loadPiFixture("error-401") }, ready]);
+    const events = await drain(engine(fake).runTurn(request()));
+    expect(events.filter((event) => event.kind === "task_changed").at(-1)).toMatchObject({ state: "failed" });
+    expect(String((reply(fake) as { failed?: unknown }).failed)).toContain("401");
+  });
+
+  test("a subagent dialog outside an Assistant chat runs nothing", async () => {
+    const fake = new FakePi([{ records: taskTurn("Find notes") }]);
+    await drain(engine(fake).runTurn(request({ mode: "project", appendSystemPrompt: null, pluginFolders: [] })));
+    expect(fake.runs).toHaveLength(1);
+    expect(reply(fake)).toEqual({ failed: "This chat cannot run subagents." });
+  });
+});
+
+describe("the subagent tool inside pi (#824)", () => {
+  type Tool = Parameters<SubagentPi["registerTool"]>[0];
+
+  function registered(): Tool {
+    const tools: Tool[] = [];
+    evaSubagents({
+      registerTool: (definition) => {
+        tools.push(definition);
+      },
+    });
+    const [tool] = tools;
+    if (tool === undefined) throw new Error("No tool registered.");
+    return tool;
+  }
+
+  function context(reply: string | undefined, prefills: string[] = []): SubagentContext {
+    return {
+      hasUI: true,
+      ui: {
+        editor: (title, prefill) => {
+          expect(title).toBe(subagentTitle);
+          prefills.push(prefill ?? "");
+          return Promise.resolve(reply);
+        },
+      },
+    };
+  }
+
+  test("Eva's copy of the title matches the tool, and the tool has Claude Code's name", () => {
+    expect(subagentToolTitle).toBe(subagentTitle);
+    expect(subagentExtensionSource).toContain(`"${subagentTitle}"`);
+    expect(registered().name).toBe("Task");
+  });
+
+  test("the result becomes the tool result, and a failure fails the call", async () => {
+    const tool = registered();
+    const prefills: string[] = [];
+    const input = { description: "Find notes", prompt: "Find them." };
+    const result = await tool.execute(
+      "call-1",
+      input,
+      undefined,
+      undefined,
+      context('{"result":"Found 3."}', prefills),
+    );
+    expect(result.content).toEqual([{ type: "text", text: "Found 3." }]);
+    expect(JSON.parse(prefills[0] ?? "")).toEqual({ toolCallId: "call-1", input });
+    const failure = async (reply: string | undefined): Promise<string> => {
+      const error = await tool
+        .execute("c", input, undefined, undefined, context(reply))
+        .catch((thrown: unknown) => thrown);
+      return error instanceof Error ? error.message : "no failure";
+    };
+    expect(await failure('{"failed":"The turn was stopped."}')).toBe("The turn was stopped.");
+    expect(await failure(undefined)).toBe("The subagent stopped with no answer.");
+  });
+});
+
+describe("the bound on subagents that run at once (#824)", () => {
+  test("work past the bound waits, in order, and a failure frees its place", async () => {
+    const slots = new Slots(2);
+    let running = 0;
+    let most = 0;
+    const order: number[] = [];
+    const work =
+      (index: number, fails = false) =>
+      async (): Promise<number> => {
+        running += 1;
+        most = Math.max(most, running);
+        await Bun.sleep(5);
+        running -= 1;
+        order.push(index);
+        if (fails) throw new Error("failed");
+        return index;
+      };
+    const results = await Promise.allSettled([
+      slots.run(work(1)),
+      slots.run(work(2, true)),
+      slots.run(work(3)),
+      slots.run(work(4)),
+    ]);
+    expect(most).toBe(2);
+    expect(order).toEqual([1, 2, 3, 4]);
+    expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected", "fulfilled", "fulfilled"]);
+  });
+});
+
+describe("a stop while a subagent works (#824)", () => {
+  test("ends the subagent and the turn, once", async () => {
+    const outer = new FakePi([
+      {
+        records: loadPiFixture("approval-allowed").map((record) =>
+          record["type"] === "extension_ui_request"
+            ? {
+                ...record,
+                method: "editor",
+                title: subagentTitle,
+                prefill: JSON.stringify({ toolCallId: "call-9", input: { description: "Slow", prompt: "Wait." } }),
+              }
+            : record,
+        ),
+      },
+    ]);
+    const stuck = deafPi();
+    let runs = 0;
+    const start: PiProcessStarter = (command, options) => {
+      runs += 1;
+      if (runs === 1) return outer.start(command, options);
+      // The stop comes once the subagent's own pi runs.
+      setTimeout(() => {
+        controller.abort();
+      }, 5);
+      return stuck.start(command, options);
+    };
+    const controller = new AbortController();
+    const events: EngineEventPayload[] = [];
+    for await (const event of engine(outer, { start, stopGraceMs: 10 }).runTurn(
+      request({ signal: controller.signal }),
+    )) {
+      events.push(event);
+    }
+    expect(stuck.closeTimeouts.length).toBeGreaterThan(0);
+    expect(events.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed")).toHaveLength(1);
   });
 });

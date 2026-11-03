@@ -3126,6 +3126,19 @@ describe("vault structure (#773)", () => {
     expect(alerts.filter((alert) => alert.key === "vault_structure")).toHaveLength(1);
   });
 
+  test("a hub that cannot record the alert still shows the warning, unsent (#801)", () => {
+    // A folder in place of the state file makes each write fail.
+    mkdirSync(homePaths(home).vaultStructureState, { recursive: true });
+    const instance = start(new FakeEngine());
+    const alerts: Alert[] = [];
+    instance.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    instance.reportStartMigrations(startMigrations);
+    expect(alerts.filter((alert) => alert.key === "vault_structure")).toEqual([]);
+    expect(structureWarnings(instance)).toHaveLength(1);
+  });
+
   test("a satellite shows no warning (#801)", () => {
     sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
@@ -3482,6 +3495,16 @@ describe("machine reports (#126)", () => {
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
     instance.reportProblem("vault_sync", { level: "error", message: "The sync failed.", resolvedMessage: "Ok." });
     instance.reportProblem("telegram", { level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." });
+    await instance.syncVault();
+    expect(readReport("example-pc")).toMatchObject({ problems: [{ key: "telegram" }] });
+  });
+
+  test("the report leaves out the vault structure warning, which belongs to the hub alone (#801)", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportStartMigrations({ machine: { kind: "done", applied: [], later: [] }, vault: null });
+    instance.reportProblem("telegram", { level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." });
+    expect(instance.status().problemDetails.map((problem) => problem.key)).toContain("vault_structure");
     await instance.syncVault();
     expect(readReport("example-pc")).toMatchObject({ problems: [{ key: "telegram" }] });
   });

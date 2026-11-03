@@ -1592,14 +1592,14 @@ export class Eva {
       this.alerts.dismiss(vaultStructureKey);
       return;
     }
-    const send = notices.announced < view.available;
+    let send = notices.announced < view.available;
     if (send) {
       try {
         writeStructureNotices(path, { ...notices, announced: view.available });
       } catch (error) {
-        // An alert at each start is worse than none: it waits for a writable state folder.
+        // A phone alert at each start is worse than none: the center still shows the warning, unsent.
         this.options.logger?.log("warn", "Eva could not record the vault structure notice.", { reason: String(error) });
-        return;
+        send = false;
       }
     }
     const problem = {
@@ -2738,6 +2738,8 @@ export class Eva {
       .openAlerts()
       // A sync problem would travel through the sync that it breaks, so it arrives only after it clears.
       .filter((alert) => alert.key !== "vault_sync" && !alert.key.startsWith("machine:"))
+      // The hub warns about the vault structure itself, so a relay of it would come twice (#801).
+      .filter((alert) => alert.key !== vaultStructureKey)
       // The hub sends the reminders, so it must know which notice the person hid here.
       .map((alert) => (this.alerts.isHidden(alert.key) ? { ...alert, hidden: true as const } : alert));
     const now = this.options.now();

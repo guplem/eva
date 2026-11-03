@@ -241,10 +241,13 @@ export class AssistantPreparer implements TurnPreparer {
     return widgetsBlock(this.options.widgetLines?.() ?? []);
   }
 
-  /** The vault's `.eva/` folder gives the assistant skills, when it is a plugin. */
+  /**
+   * The vault's `.eva/` folder gives the person's skills, when it has a `skills/` folder. Both engines
+   * load it with no manifest: a vault from before the manifest still gets its skills.
+   */
   private pluginFolders(): string[] {
     const pluginFolder = join(this.options.vaultPath, ".eva");
-    return existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [];
+    return existsSync(join(pluginFolder, "skills")) ? [pluginFolder] : [];
   }
 
   /**

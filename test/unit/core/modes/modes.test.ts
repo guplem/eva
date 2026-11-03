@@ -135,6 +135,8 @@ beforeEach(() => {
   sandbox = createGitSandbox();
   vault = sandbox.clone("vault");
   mkdirSync(join(vault, ".eva", ".claude-plugin"), { recursive: true });
+  mkdirSync(join(vault, ".eva", "skills", "mine"), { recursive: true });
+  writeFileSync(join(vault, ".eva", "skills", "mine", "SKILL.md"), "---\nname: mine\n---\n");
   writeFileSync(join(vault, ".eva", "assistant.md"), "# You are Eva\n");
   writeFileSync(
     vaultMigrationRecordPath(vault),
@@ -366,8 +368,10 @@ describe("Assistant mode", () => {
     expect(isEvaError(error, "vault_not_found")).toBe(true);
   });
 
-  test("no plugin folder when .eva/ has no plugin manifest", async () => {
+  test("the vault's skills load with no plugin manifest, and no vault folder goes to the engine without .eva/skills/", async () => {
     rmSync(join(vault, ".eva", ".claude-plugin"), { recursive: true });
+    expect((await assistant(silentRunner).prepare(session())).pluginFolders).toEqual([join(vault, ".eva")]);
+    rmSync(join(vault, ".eva", "skills"), { recursive: true });
     expect((await assistant(silentRunner).prepare(session())).pluginFolders).toEqual([]);
   });
 

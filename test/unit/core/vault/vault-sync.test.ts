@@ -508,6 +508,35 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain("Scratch/");
   });
 
+  // git add refuses an ignored path, even to record its removal (#783).
+  test("in an old vault whose .gitignore lists Scratch/, commits the removal of a Scratch/ file that an old commit holds", async () => {
+    sandbox.write(vault, "Scratch/old.pdf", "Old.\n");
+    sandbox.git(vault, "add", "Scratch/old.pdf");
+    sandbox.git(vault, "commit", "-q", "-m", "old");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    sandbox.write(vault, ".gitignore", "Scratch/\n");
+    sandbox.write(vault, "Scratch/new.pdf", "New.\n");
+    rmSync(join(vault, "Scratch/old.pdf"));
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(state.lastError).toBeNull();
+    expect(remoteFiles()).not.toContain("Scratch/");
+    expect(remoteFiles()).toContain(".gitignore");
+  });
+
+  test("commits the removal of a tracked file in a folder that the .gitignore lists later, and never adds a new one there", async () => {
+    sandbox.write(vault, "Archive/old.md", "Old.\n");
+    sandbox.git(vault, "add", "Archive/old.md");
+    sandbox.git(vault, "commit", "-q", "-m", "old");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    sandbox.write(vault, ".gitignore", "Archive/\n");
+    sandbox.write(vault, "Archive/new.md", "New.\n");
+    rmSync(join(vault, "Archive/old.md"));
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).not.toContain("Archive/");
+  });
+
   test("runs one operation at a time", async () => {
     const sync = createSync(vault);
     sandbox.write(vault, "a.md", "a\n");

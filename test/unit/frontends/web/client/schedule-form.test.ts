@@ -118,3 +118,17 @@ describe("weekDaysFrom (#770)", () => {
     expect(weekDaysFrom("sunday").map(([code]) => code)).toEqual(["sun", "mon", "tue", "wed", "thu", "fri", "sat"]);
   });
 });
+
+describe("one-off schedules (#822)", () => {
+  const call: Schedule = { ...morning, id: "call", name: "Call", at: null, days: null, from: "2026-11-24T10:00" };
+
+  test("fill the form with the choice Once and the date and time", () => {
+    const form = formOf(call);
+    expect([form.repeat, form.from]).toEqual(["once", "2026-11-24T10:00"]);
+  });
+
+  test("send only from, with no every, at or days", () => {
+    const form = { ...formOf(morning), repeat: "once" as const, from: "2026-11-24T10:00" };
+    expect(fieldsOf(form)).toEqual({ name: "Morning", from: "2026-11-24T10:00", text: "Good morning." });
+  });
+});

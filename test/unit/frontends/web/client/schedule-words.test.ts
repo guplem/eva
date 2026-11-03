@@ -6,6 +6,7 @@ import {
   nextHourSlot,
   nextRunWords,
   repeatWords,
+  scheduleStateWords,
   slotWords,
 } from "../../../../../src/frontends/web/client/schedule-words.ts";
 
@@ -187,5 +188,22 @@ describe("the person's clock and week start (#770)", () => {
     const line = dayLine([{ name: "Plan", runsToday: ["18:00"] }], now, "12h");
     expect(line.nowLabel).toBe("Now (10:15 AM)");
     expect(line.runs[0]?.label).toBe("6:00 PM Plan");
+  });
+});
+
+describe("one-off schedules (#822)", () => {
+  test("say the date and time of their one run", () => {
+    expect(repeatWords({ at: null, days: null, every: null, from: "2026-11-24T10:00" })).toBe(
+      "Once on 24 Nov at 10:00",
+    );
+  });
+
+  test("an ended schedule says ended with its date, before off and the next run", () => {
+    expect(scheduleStateWords({ enabled: true, nextRun: null, ended: "2026-10-20T10:00" }, now)).toBe("Ended 20 Oct");
+    expect(scheduleStateWords({ enabled: false, nextRun: null, ended: "2026-10-20T10:00" }, now)).toBe("Ended 20 Oct");
+    expect(scheduleStateWords({ enabled: false, nextRun: null, ended: null }, now)).toBe("off");
+    expect(scheduleStateWords({ enabled: true, nextRun: "2026-10-21T18:30", ended: null }, now)).toBe(
+      "next Today 18:30",
+    );
   });
 });

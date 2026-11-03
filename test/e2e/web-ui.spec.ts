@@ -3149,6 +3149,28 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await page.request.delete(`/api/schedules/${id}`);
 });
 
+test("Schedules page: add a schedule that runs once (#822)", async ({ page }, testInfo) => {
+  const id = `bank-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Bank ${id}`);
+  await form.getByRole("button", { name: "Once" }).click();
+  await expect(form.getByLabel("Every")).toHaveCount(0);
+  await form.getByLabel("Date and time").fill("2030-01-02T07:30");
+  await form.getByLabel("Fixed text").fill("Phone the bank.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Once on 2 Jan at 07:30");
+  await card.getByRole("button", { name: "Got it" }).click();
+  const row = page.getByRole("listitem", { name: `Bank ${id}` });
+  await expect(row).toContainText("Once on 2 Jan at 07:30 · next 2 Jan 07:30");
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
 test("Schedules page: edit a schedule in the same form, and keep the keys that the form does not show (#467)", async ({
   page,
 }, testInfo) => {

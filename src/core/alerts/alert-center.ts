@@ -215,7 +215,9 @@ export class AlertCenter {
   notice(key: string, problem: AlertProblem, send: boolean): void {
     const redacted = { ...problem, message: this.redact(problem.message) };
     const date = this.options.now();
-    const since = send ? date.toISOString() : (this.open.get(key)?.since ?? openSince(this.history, key));
+    // An older version's warning may still be in the history, so the newest warning dates it.
+    const newest = this.history.entries.findLast((entry) => entry.key === key && entry.level === problem.level);
+    const since = send ? date.toISOString() : (this.open.get(key)?.since ?? newest?.at);
     this.open.set(key, { problem: redacted, lastSentAt: date.getTime(), since: since ?? date.toISOString() });
     if (send) this.notify(key, problem.level, problem.message);
   }

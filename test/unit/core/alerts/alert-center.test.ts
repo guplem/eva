@@ -478,3 +478,21 @@ describe("AlertCenter.notice (#801)", () => {
     expect(run.center.problemDetails()).toEqual([]);
   });
 });
+
+describe("AlertCenter.notice after a restart (#801)", () => {
+  test("an unsent notice starts at its newest warning, not at an older version's", () => {
+    const run = harness();
+    const notice = (message: string): AlertProblem => ({ level: "warn", message, resolvedMessage: "" });
+    run.center.notice("vault_structure", notice("Version 3."), true);
+    run.center.dismiss("vault_structure");
+    run.advanceHours(5);
+    run.center.notice("vault_structure", notice("Version 4."), true);
+    const entries = run.center.historyEntries();
+    const restarted = new AlertCenter({
+      now: () => new Date("2026-10-18T10:00:00Z"),
+      history: { nextSeq: entries.length + 1, entries },
+    });
+    restarted.notice("vault_structure", notice("Version 4."), false);
+    expect(restarted.problemDetails()[0]?.since).toBe("2026-10-17T15:00:00.000Z");
+  });
+});

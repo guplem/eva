@@ -82,7 +82,7 @@ Semantic colours do not follow the seed:
 - `--bad` shows a failure, or a button that deletes or refuses.
 - `--warn-ink` is small text on `--warn-bg`. `--on-warn` is text on a solid `--warn`.
 
-The file kinds of the Files page have their own fixed colours, `--type-red` to `--type-pink`. They do not follow the seed either.
+The file kinds of the Files page have their own fixed colours, `--type-red` to `--type-pink`. They do not follow the seed either. The Projects home page gives each project one of them, by a hash of its folder name.
 
 `styles.css` gives a name to each shared value of this guide. Use the name, not the value:
 

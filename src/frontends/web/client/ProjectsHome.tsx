@@ -8,7 +8,7 @@ import { chatTime, type ChatState } from "./chat-list.ts";
 import { ChatStatePill } from "./ChatHeader.tsx";
 import { CardsSkeleton } from "./Loading.tsx";
 import { StatusPill } from "./ProjectPage.tsx";
-import { statusPill } from "./project-format.ts";
+import { countOf, statusLabels, statusPill } from "./project-format.ts";
 import {
   homeChats,
   projectColor,
@@ -117,8 +117,11 @@ export function ProjectsHome({
   onFilterStatus,
 }: ProjectsHomeProps): ReactElement {
   const now = new Date();
-  const [year, setYear] = useState<YearChoice>(now.getFullYear());
+  const [picked, setYear] = useState<YearChoice>(now.getFullYear());
   const known = projects ?? [];
+  const years = projectYears(known, now);
+  // A picked year can lose its last project, such as after a rename: this year then shows.
+  const year = picked === "all" || years.includes(picked) ? picked : now.getFullYear();
   const byId = new Map(known.map((project) => [project.id, project]));
   const projectOf = (chat: SessionRecord): Project | undefined =>
     chat.projectId === null ? undefined : byId.get(chat.projectId);
@@ -134,7 +137,7 @@ export function ProjectsHome({
           <div className="sub">{projects === null ? "" : `${String(known.length)} in total`}</div>
         </div>
         <div className="filter-chips" role="group" aria-label="Year">
-          {[...projectYears(known, now), "all" as const].map((choice) => (
+          {[...years, "all" as const].map((choice) => (
             <button key={choice} className="filter-chip" aria-pressed={year === choice} onClick={() => setYear(choice)}>
               {choice === "all" ? "All" : String(choice)}
             </button>
@@ -168,7 +171,7 @@ export function ProjectsHome({
                 </span>
               ) : (
                 <div className="timeline">
-                  <div className="timeline-marks" aria-hidden="true">
+                  <div className={`timeline-marks${year === "all" ? "" : " months"}`} aria-hidden="true">
                     {shown.marks.map((mark) => (
                       <span key={mark.label} style={{ left: `${String(mark.at * 100)}%` }}>
                         {mark.label}
@@ -179,6 +182,7 @@ export function ProjectsHome({
                     <button
                       key={row.project.id}
                       className={`timeline-row ${row.status}`}
+                      aria-label={`${row.title}, ${statusLabels[row.status]}`}
                       style={colorStyle(row.project)}
                       onClick={() => onOpenProject(row.project)}
                     >
@@ -218,8 +222,7 @@ export function ProjectsHome({
                 ))}
               </div>
               <span className="muted">
-                {yearWords}: {counts.started === 1 ? "1 project started" : `${String(counts.started)} projects started`}
-                .
+                {yearWords}: {countOf(counts.started, "project")} started.
               </span>
             </section>
           </>

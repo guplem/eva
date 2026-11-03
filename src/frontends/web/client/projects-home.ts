@@ -88,13 +88,13 @@ export interface Timeline {
   readonly rows: readonly TimelineRow[];
   /** A month in a year, or a year in all the years, as a share of the width. */
   readonly marks: readonly { readonly label: string; readonly at: number }[];
-  /** Where today is, or null when today is after the timeline. */
+  /** Where today is, or null when today is outside the timeline. */
   readonly today: number | null;
 }
 
 /**
- * The active and the paused projects, each from its creation to today. The person decided against
- * stretches of activity from the chats: a chat can be deleted, so the chats do not tell the truth.
+ * The active and the paused projects, each from its creation to today. The bars show no stretches
+ * of activity from the chats: a deleted chat would take its activity away.
  */
 export function timeline(projects: readonly Project[], year: YearChoice, now: Date): Timeline {
   const shown = projects
@@ -128,7 +128,7 @@ export function timeline(projects: readonly Project[], year: YearChoice, now: Da
           at: shareOf(new Date(firstYear + index, 0, 1).getTime()),
         }))
       : months.map((label, index) => ({ label, at: shareOf(new Date(year, index, 1).getTime()) }));
-  return { rows, marks, today: now.getTime() < to ? end : null };
+  return { rows, marks, today: now.getTime() >= from && now.getTime() < to ? end : null };
 }
 
 /** The fields of a chat that the home page reads. */

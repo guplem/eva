@@ -567,11 +567,11 @@ export function ProjectView({
             <Icon name="plus" /> New project
           </button>
         </div>
-        {page === null && (
+        {page === null && allProjects !== null && (
           <NeedsYouCard
             className="phone-only"
             chats={roots}
-            projects={allProjects ?? []}
+            projects={allProjects}
             stateOf={stateOf}
             onOpenChat={openHomeChat}
           />

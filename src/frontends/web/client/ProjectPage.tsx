@@ -104,7 +104,7 @@ export function ProjectPage({
   return (
     <>
       <div className="main-header">
-        {/* The way back to the home page, beside the title on a computer too (#840). On a phone the list is that page. */}
+        {/* On a computer, this button opens the Projects home page. On a phone, it opens the project list (#840). */}
         <BackButton label="Back to the projects" text="Projects" onClick={onBackToList} />
         <div className="header-text">
           <div className="header-title">

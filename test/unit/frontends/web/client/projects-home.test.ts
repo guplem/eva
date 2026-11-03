@@ -182,6 +182,16 @@ describe("timeline", () => {
     expect(shown.rows.find((row) => row.title === "old")?.startsBefore).toBe(false);
   });
 
+  test("shows no today line in a year after today", () => {
+    const shown = timeline([project("2027-02-01-0000-ahead", "active")], 2027, now);
+    expect(shown.today).toBeNull();
+  });
+
+  test("starts all the years at the oldest active or paused project, not at an older idea", () => {
+    const shown = timeline([project("2019-01-01-0000-dream", "idea"), ...projects], "all", now);
+    expect(shown.marks[0]?.label).toBe("2025");
+  });
+
   test("shows no row and still has marks with no project", () => {
     const shown = timeline([], "all", now);
     expect(shown.rows).toEqual([]);

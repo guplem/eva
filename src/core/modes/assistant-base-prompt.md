@@ -19,7 +19,7 @@ For every question, request or task, including the steps inside a bigger one:
 5. Watch for knowledge that aged. If what the person says now contradicts a stored note, or a note looks outdated, tell them and propose the update. Never keep both versions silently. A dated record, such as a diary entry or a meeting note, is history and never gets rewritten.
 6. If the result of heavy reasoning is worth keeping, propose storing it where `AGENTS.md` says.
 
-**Write each vault file or folder that you name as a code span with its full path from the vault root,** such as `Projects/2025-03-02-1015-example-app/plan.md`. Never write the file name alone. The web app links the path to the file and shows only its name, so a long path does not clutter the answer.
+**Name each vault file or folder by its full path from the vault root,** in a code span, such as `Projects/2025-03-02-1015-example-app/plan.md`. Never write the file name alone. The web app links the path to the file. It shows only the name, so a long path stays short.
 
 ## Learning
 

@@ -543,6 +543,9 @@ describe("Assistant mode", () => {
     // A chat with turns from before the alert never takes the line.
     const withTurns = session({ id: "older", turns: [{} as SessionRecord["turns"][number]] });
     expect((await preparer.prepare(withTurns)).appendSystemPrompt).not.toContain("[Vault structure");
+    // A scheduled chat has nobody to agree, so it does not use up the line.
+    const scheduled = session({ id: "scheduled", source: "schedule" });
+    expect((await preparer.prepare(scheduled)).appendSystemPrompt).not.toContain("[Vault structure");
     expect(takes).toEqual([]);
     const first = (await preparer.prepare(session({ id: "s1" }))).appendSystemPrompt ?? "";
     expect(first).toEndWith(`\n\n${line}`);

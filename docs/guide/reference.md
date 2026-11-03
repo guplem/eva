@@ -184,10 +184,10 @@ The vault structure is how the folders and notes of your vault are organized. `.
 
 **Settings > Vault and sync > Vault structure** shows your version, the newest one, and what changes. To upgrade, press **Update the vault** there, in the notification, or under the Telegram message, or ask the Assistant. Only the hub upgrades the vault. Eva's `vault-upgrade` skill then works with you, in one chat:
 
-1. It makes a backup tag in git, such as `before-v3`, and pushes it. It pauses the sync on the hub and works on a branch, such as `upgrade-v3`.
-2. It asks every question in one message: your own changes to the template files and where to keep them, each deletion, the schedule changes, and where each git-ignored file goes. In yolo mode, it decides where each note goes by itself. Otherwise it shows the whole plan for your yes.
-3. It moves each note with `git mv`, so the note keeps its history, and checks the result against a list of every file. Your _Personal rules_ section of `AGENTS.md` stays as it is.
-4. After your yes, it merges the branch and records the version. Then the sync runs again.
+1. It reads your vault and plans each move, with no change yet.
+2. It asks every question in one message: your own changes to the template files and where to keep them, where the facts of About me go, each deletion, the schedule changes, and where each git-ignored file goes. In yolo mode, it decides where each note goes by itself. Otherwise it shows the whole plan for your yes.
+3. It makes a backup tag in git, such as `before-v3`, and pushes it. It pauses the sync on the hub and works on a branch, such as `upgrade-v3`. It moves each note with `git mv`, so the note keeps its history, and checks the result against a list of every file. Your _Personal rules_ section of `AGENTS.md` stays as it is.
+4. After your yes, it merges the branch and records the version. Then the sync runs again. When a note changed on both sides, Eva keeps both versions, the other one in a copy beside the note.
 
 Notes that other chats or your phone write during the upgrade are kept. Before the merge, ask the Assistant to drop the upgrade: the vault stays as it was. After the merge, ask it to undo the upgrade: the vault goes back to how it was before, with the notes written since.
 

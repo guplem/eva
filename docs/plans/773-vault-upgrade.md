@@ -2,7 +2,7 @@
 
 The built-in `vault-upgrade` skill moves an old vault to the newest vault structure, v3, in one sitting, with the person. Eva tells the person once that a new structure exists: a news alert, a Settings card, and one line in the first new Assistant chat. The skill does the work. Eva's code gives it four safe commands: `eva vault-upgrade start|finish|drop|undo`.
 
-This branch builds on #772 (PR #794), which adds `.eva/vault-structure.json` and the v3 template.
+This branch builds on #772 (PR #794, now merged), which adds `.eva/vault-structure.json` and the v3 template.
 
 ## Motivation
 
@@ -60,3 +60,20 @@ The owner is away. Each decision follows his intentions (decisions.md, ROUND2.md
 11. **The Telegram reply** is recognized by the message id of the last alert, kept in memory. Reason: simple; after a restart the button still works.
 12. **The card has two states.** No "in progress" state and no "Not now" (R1). While an upgrade is open, the button starts a chat whose `start` explains that an upgrade is open.
 13. **The blind-test eval is not added.** Reason: the sets hold personal data, and the owner has not given a copy with neutral names (assumption 18).
+
+## Review fixes
+
+The five reviews found ways to lose data or to get stuck. Each fix follows the owner's "nothing lost" and "every question up front".
+
+14. **Every question before `start`.** The skill reads and plans on the default branch with no change, asks its one message, and runs `start` only after the answers. The person's request is the yes, so no earlier round.
+15. **About me's facts are filed first,** in their own commit, before the new About me replaces it. The new note keeps every identity value and `lastLocation`.
+16. **No conflict stops a step.** `finish`, `drop` and `undo` keep both versions: the path takes the incoming one, the other goes to a copy beside it, and the output names it. About me takes the incoming version with the newest location. Reason: a refusal left the person stuck, and the review asked for no merge of the default branch into the upgrade branch.
+17. **`undo` reverts the upgrade's own commits one by one,** newest first, so a move goes back as a move and keeps a later edit. The notes commits stay. It runs only on the default branch.
+18. **A failed step goes back to its start,** so `drop` and `undo` can run again. `finish` restores the version record.
+19. **`finish` refuses a plain secret or a file over 50 MB** on the branch, since the skill commits with plain git.
+20. **`start` refuses with the sync off:** the backup must reach the remote, and Eva never pushes against the person's setting.
+21. **The working files live in `.eva/scratch/vault-upgrade/`,** which git ignores, so the chat writes the report with no permission question. The skill lists each git-ignored file that it moves there, and `drop` and `undo` move them back.
+22. **The hub holds the location writes** while the branch is open, and writes the newest point after the step. After a `drop` on a satellite, Eva runs no vault migration.
+23. **The prompt line goes only to a chat that a person started,** not to a scheduled chat.
+24. **The web news action shows only while the card offers the upgrade.** Telegram keeps the news id in its state file.
+25. **The stored-names check lists** the hub's notice fields, the branch and tag names, and the commit messages that `undo` reads.

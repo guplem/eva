@@ -13,6 +13,7 @@ import { vaultFolders } from "./vault-folders.ts";
 import { writeVaultKey } from "./secret-state.ts";
 import { evaVersion } from "../../shared/version.ts";
 import { moveAssistantPersonality } from "../migrations/assistant-rules-move.ts";
+import { newVaultStructureFile } from "./vault-structure.ts";
 import type { VaultKeyFile } from "./vault-crypto.ts";
 import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" };
 import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
@@ -66,10 +67,17 @@ const lifeRules: Readonly<Record<string, string>> = {
 };
 
 /**
- * The structure version of this template, which a new vault records in `.eva/vault-structure.json`.
- * The vault upgrade reads it to know which of its changes a vault already has (#773).
+ * The newest texts of the template files that the vault upgrade writes or replaces, with their setup
+ * placeholders, such as `{{name}}`. The `vault-upgrade` skill carries them (#773).
  */
-const vaultStructureVersion = 3;
+export const upgradeTemplateTexts: Readonly<Record<string, string>> = {
+  "AGENTS.md": agentsFile,
+  "README.md": readmeFile,
+  ".eva/assistant.md": assistantFile,
+  "Life/About me.md": aboutFile,
+  "Life/Health/Allergies and Diet.md": allergiesFile,
+  ...lifeRules,
+};
 
 export interface VaultTemplateAnswers {
   readonly name: string;
@@ -115,7 +123,8 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers, now: Date = ne
     "Life/About me.md": fill(aboutFile),
     "Life/Health/Allergies and Diet.md": allergiesFile,
     ...lifeRules,
-    ".eva/vault-structure.json": JSON.stringify({ version: vaultStructureVersion }, null, 2) + "\n",
+    // The newest version of the vault-upgrade CHANGELOG, so a new vault shows no upgrade (#773).
+    ".eva/vault-structure.json": newVaultStructureFile(),
     ".eva/schedules.json": JSON.stringify({ version: 1, schedules: [] }, null, 2) + "\n",
     ".eva/migrations.json":
       JSON.stringify({ applied: [{ id: appliedAtStart, at: now.toISOString(), version: evaVersion }] }, null, 2) + "\n",

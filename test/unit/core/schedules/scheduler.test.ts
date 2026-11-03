@@ -944,9 +944,7 @@ describe("one-off schedules (#822)", () => {
     await scheduler.tick();
     const event = fired()[0];
     expect(event?.kind === "schedule_fired" ? event.text : null).toBe("Call the bank.");
-    expect(sent[0]?.prompt).toStartWith(
-      "[This scheduled run comes late: it was due at 2026-07-01 08:00, but Eva was off.",
-    );
+    expect(sent[0]?.prompt).toStartWith("[This scheduled run comes late: it was due at 2026-07-01 08:00. Say so");
     expect(sent[0]?.prompt).toEndWith("Check the reply.");
   });
 
@@ -958,7 +956,7 @@ describe("one-off schedules (#822)", () => {
     await scheduler.tick();
     const event = fired()[0];
     expect(event?.kind === "schedule_fired" ? event.text : null).toBe(
-      "This message comes late: it was due at 2026-07-01 08:00, but Eva was off.\n\nCall the bank.",
+      "This message comes late: it was due at 2026-07-01 08:00.\n\nCall the bank.",
     );
   });
 
@@ -1000,5 +998,34 @@ describe("one-off schedules (#822)", () => {
     expect(scheduler.edit("call", { name: "Call", from: "2026-07-03T08:00", text: "Call." })?.from).toBe(
       "2026-07-03T08:00",
     );
+  });
+});
+
+describe("one-off edge cases (#822 review)", () => {
+  const call = { id: "call", name: "Call", from: "2026-07-01T08:00", text: "Call the bank." };
+  const at = (wallClock: string): Date => new Date(`${wallClock}:00+02:00`);
+  const fired = (): ScheduleEvent[] => events.filter((event) => event.kind === "schedule_fired");
+
+  test("a one-off that Eva first sees in its own minute still fires", async () => {
+    writeSchedules([call]);
+    clock = at("2026-07-01T08:00");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    await scheduler.tick();
+    expect(fired()).toHaveLength(1);
+  });
+
+  test("an edit that turns an interval into a one-off refuses the old, past first run", () => {
+    const scheduler = createScheduler();
+    scheduler.save({ id: "water", name: "Water", every: "1d", from: "2026-07-01T08:00", text: "Water." });
+    clock = at("2026-07-05T08:00");
+    expect(() => scheduler.edit("water", { name: "Water", from: "2026-07-01T08:00", text: "Water." })).toThrow(
+      "is in the past",
+    );
+  });
+
+  test("a save with every null is a one-off, so a past time is refused", () => {
+    const scheduler = createScheduler();
+    expect(() => scheduler.save({ ...call, from: "2026-07-01T06:00", every: null })).toThrow("is in the past");
   });
 });

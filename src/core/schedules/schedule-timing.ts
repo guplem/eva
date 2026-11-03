@@ -39,7 +39,8 @@ export function dueSlot(
   if (slot === state.lastFired) return null;
   // A one-off has no next slot to wait for, so a run that Eva missed comes late, with no limit.
   // It counts from when Eva first saw it only: a new time after a run may come before the old one.
-  if (runsOnce(schedule)) return latest > minutesOf(state.firstSeen) ? slot : null;
+  // Eva saw a one-off in its own minute in time, so that minute still counts.
+  if (runsOnce(schedule)) return latest >= minutesOf(state.firstSeen) ? slot : null;
   if (nowMinutes - latest >= graceMinutes) return null;
   // A schedule that never fired counts from when Eva first saw it, so a 07:30 schedule
   // written at 07:35 waits for the next day instead of firing at once.

@@ -162,17 +162,18 @@ export class Scheduler {
   edit(scheduleId: string, fields: Readonly<Record<string, unknown>>): Schedule | null {
     assertVaultWritable(this.options.vaultPath);
     const before = readScheduleDefinitions(this.definitionsPath).schedules.find((entry) => entry.id === scheduleId);
-    this.refusePastOnce(fields, before?.from ?? null);
+    this.refusePastOnce(fields, before !== undefined && runsOnce(before) ? before.from : null);
     return editScheduleDefinition(this.definitionsPath, scheduleId, fields);
   }
 
   /**
    * A one-off at a past time would never run, so a save of one throws. An edit that keeps the
-   * old time passes: a one-off that already ran can still get a new name.
+   * old time of a one-off passes: a one-off that already ran can still get a new name.
    */
   private refusePastOnce(fields: Readonly<Record<string, unknown>>, keptFrom: string | null): void {
     const from = fields["from"];
-    if (typeof from !== "string" || fields["every"] !== undefined || from === keptFrom) return;
+    const every = fields["every"];
+    if (typeof from !== "string" || (every !== undefined && every !== null) || from === keptFrom) return;
     if (from <= wallClockOf(this.options.now(), this.options.timeZone))
       throw new EvaError("schedule_invalid", `The time ${from.replace("T", " ")} is in the past: pick a later one.`);
   }
@@ -181,7 +182,7 @@ export class Scheduler {
   private endedAt(schedule: Schedule, now: string): string | null {
     if (!runsOnce(schedule) || schedule.from === null || schedule.from > now) return null;
     const state = this.state.peek(schedule.id);
-    if (state === undefined || state.lastFired === schedule.from || state.firstSeen >= schedule.from)
+    if (state === undefined || state.lastFired === schedule.from || state.firstSeen > schedule.from)
       return schedule.from;
     return null;
   }
@@ -452,11 +453,12 @@ function errorText(error: unknown): string {
 }
 
 /**
- * Only a one-off fires long after its slot (#822), so the person must learn why it comes late.
+ * Only a one-off fires long after its slot (#822), so the person must learn that it comes late.
  * With a prompt, the answer says it; without one, a line before the text says it.
  */
 function lateNotes(slot: string): { text: string; prompt: string } {
-  const due = `it was due at ${slot.replace("T", " ")}, but Eva was off`;
+  // No cause: Eva was off, a setup card came late, or a chat could not start.
+  const due = `it was due at ${slot.replace("T", " ")}`;
   return {
     text: `This message comes late: ${due}.`,
     prompt: `[This scheduled run comes late: ${due}. Say so in one short sentence at the start of your answer.]`,

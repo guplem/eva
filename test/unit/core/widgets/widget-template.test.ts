@@ -25,6 +25,11 @@ describe("widgetTemplate", () => {
     expect(Object.keys(widgetTemplate(names)).sort()).toEqual(trackedTemplateFiles());
   });
 
+  test("keeps the habits of the preview in Life/Health/Habits, a folder of the vault map (#772)", () => {
+    const config = JSON.parse(widgetTemplate(names)["config.json"] ?? "") as { habits: string };
+    expect(config.habits).toBe("Life/Health/Habits");
+  });
+
   test("puts the names of the new repository in place of the example names", () => {
     const files = widgetTemplate(names);
     expect(files["README.md"]).toContain("https://example-user.github.io/habits-widget/");

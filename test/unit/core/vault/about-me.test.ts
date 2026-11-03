@@ -17,14 +17,14 @@ import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { vaultTemplateFiles } from "../../../../src/core/vault/vault-template.ts";
 
 const point = {
-  latitude: 41.39,
-  longitude: 2.17,
+  latitude: 37.77,
+  longitude: -122.42,
   accuracy: 30,
   at: "2026-10-22T08:00:00.000Z",
   source: "telegram",
 } as const;
 const pointLine =
-  'lastLocation: { latitude: 41.39, longitude: 2.17, accuracy: 30, at: "2026-10-22T08:00:00.000Z", source: telegram }';
+  'lastLocation: { latitude: 37.77, longitude: -122.42, accuracy: 30, at: "2026-10-22T08:00:00.000Z", source: telegram }';
 
 let vault: string;
 
@@ -55,7 +55,7 @@ describe("readAboutMe", () => {
       [
         "name: Alex",
         "birthDate: 1990-05-14",
-        "region: ES-CT",
+        "region: US-CA",
         "hemisphere: north",
         "sleep:",
         '  from: "23:30"',
@@ -65,7 +65,7 @@ describe("readAboutMe", () => {
     expect(readAboutMe(vault)).toEqual({
       name: "Alex",
       birthDate: "1990-05-14",
-      region: "ES-CT",
+      region: "US-CA",
       hemisphere: "north",
       problems: [],
     });
@@ -105,7 +105,7 @@ describe("readAboutMe", () => {
     expect(read.hemisphere).toBeNull();
     expect(read.problems).toEqual([
       "birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
-      "region must be a country code, such as ES, or a region code, such as ES-CT.",
+      "region must be a country code, such as US, or a region code, such as US-CA.",
       "hemisphere must be north or south.",
       "sleep.from must be a time as HH:mm.",
       "places must be a set of named places.",
@@ -297,17 +297,17 @@ describe("firstCommitDay", () => {
 
 describe("readHomePlace", () => {
   test("reads the point of the home place", () => {
-    note("places:\n  home: { city: Barcelona, lat: 41.39, lon: 2.17 }");
-    expect(readHomePlace(vault)).toEqual({ lat: 41.39, lon: 2.17 });
+    note("places:\n  home: { city: San Francisco, lat: 37.77, lon: -122.42 }");
+    expect(readHomePlace(vault)).toEqual({ lat: 37.77, lon: -122.42 });
   });
 
   test("is null with no point, a bad point, broken YAML or no header", () => {
     expect(readHomePlace(vault)).toBeNull();
-    note("places:\n  home: { city: Barcelona }");
+    note("places:\n  home: { city: San Francisco }");
     expect(readHomePlace(vault)).toBeNull();
     note("places:\n  home: { lat: 141, lon: 2 }");
     expect(readHomePlace(vault)).toBeNull();
-    note("places:\n  home: { city: Barcelona, lat: , lon: '' }");
+    note("places:\n  home: { city: San Francisco, lat: , lon: '' }");
     expect(readHomePlace(vault)).toBeNull();
     note("places:\n  home: { lat: 0x10, lon: [5] }");
     expect(readHomePlace(vault)).toBeNull();
@@ -370,9 +370,9 @@ describe("withHeaderField", () => {
   const body = "\n# About Alex\n\nlastLocation: in the text, not the header\n";
 
   test("replaces the field in place and keeps every other byte", () => {
-    const text = `---\nname: Alex # the short name\nlastLocation: # Eva fills this\nplaces:\n  home: { city: Barcelona }\n---\n${body}`;
+    const text = `---\nname: Alex # the short name\nlastLocation: # Eva fills this\nplaces:\n  home: { city: San Francisco }\n---\n${body}`;
     expect(withHeaderField(text, "lastLocation", pointLine)).toBe(
-      `---\nname: Alex # the short name\n${pointLine}\nplaces:\n  home: { city: Barcelona }\n---\n${body}`,
+      `---\nname: Alex # the short name\n${pointLine}\nplaces:\n  home: { city: San Francisco }\n---\n${body}`,
     );
   });
 

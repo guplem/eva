@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -261,11 +261,13 @@ describe("templateHistory", () => {
   });
 
   test("knows the last vault version of each skill that moved into Eva, so an untouched copy goes (#771)", () => {
-    for (const name of ["about-me", "schedule"]) {
-      expect(templateHistory[`.eva/skills/${name}/SKILL.md`]).toContain(
-        contentHash(evaCoreFiles()[`skills/${name}/SKILL.md`] ?? ""),
-      );
-    }
+    // The last version that templates/vault held, frozen: Eva's own copy changes after the move (#772).
+    expect(templateHistory[".eva/skills/about-me/SKILL.md"]).toContain(
+      "19224f1e22f00b93be5c558110faf26090c836ed98aaefc46ae6d6bfa02e8e05",
+    );
+    expect(templateHistory[".eva/skills/schedule/SKILL.md"]).toContain(
+      contentHash(evaCoreFiles()["skills/schedule/SKILL.md"] ?? ""),
+    );
   });
 });
 
@@ -328,6 +330,43 @@ describe("the message box menu parts (#661)", () => {
   test("the template holds Polish and Summary, so every vault gets them once", () => {
     expect(Object.keys(templateParts)).toContain(".eva/settings/text-actions/Polish.md");
     expect(Object.keys(templateParts)).toContain(".eva/settings/saved-prompts/Summary.md");
+  });
+});
+
+describe("the guide of .eva/ (#772)", () => {
+  const guide = ".eva/AGENTS.md";
+
+  test("is a part of the template, and no Life/ rule file is", () => {
+    expect(Object.keys(templateParts)).toContain(guide);
+    expect(Object.keys(templateParts).some((path) => path.startsWith("Life/"))).toBe(false);
+    expect(Object.keys(templateParts).some((path) => !path.startsWith(".eva/"))).toBe(false);
+  });
+
+  test("is a guide named .eva, also beside skills", () => {
+    const parts = alignment({ [skill]: newText, [guide]: "# .eva\n" }).align();
+    expect(stateOf(parts, guide)).toMatchObject({ kind: "guide", name: ".eva", state: "current" });
+    expect(stateOf(parts, skill)).toMatchObject({ kind: "skill", name: "demo" });
+  });
+
+  test("a copy that the person changed raises the alert, which names it 'guide .eva'", () => {
+    alignment({ [guide]: "# .eva\n\nOld.\n" }).align();
+    write(guide, "# .eva\n\nMine.\n");
+    const parts = alignment({ [guide]: "# .eva\n\nNew.\n" }).align();
+    expect(stateOf(parts, guide)?.state).toBe("differs");
+    expect(alignmentProblem(parts)?.message).toContain("guide .eva");
+  });
+
+  test("an existing vault gets the guide, and no Life/ folder or note", () => {
+    write("Life/About me.md", "---\nname: Alex\n---\n");
+    new TemplateAlignment({
+      vaultPath: vault,
+      parts: templateParts,
+      history: templateHistory,
+      evaVersion: "1.0.0",
+      now: () => new Date("2026-10-22T08:00:00.000Z"),
+    }).align();
+    expect(read(guide)).toBe(templateParts[guide] ?? "missing");
+    expect(readdirSync(join(vault, "Life"))).toEqual(["About me.md"]);
   });
 });
 

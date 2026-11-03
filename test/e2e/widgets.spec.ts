@@ -2,7 +2,7 @@ import { expect, test, type Frame, type Page } from "@playwright/test";
 
 /**
  * The widgets of the home page in a real browser (#691). The demo server approved the habits
- * widget of the template for `Life/Habits`.
+ * widget of the template for `Life/Health/Habits`.
  */
 
 async function logIn(page: Page): Promise<void> {
@@ -44,7 +44,9 @@ test("the home page shows the widget below the greeting, and a tap marks a habit
   const checkedToday = async (): Promise<boolean> => {
     const texts = await Promise.all(
       ["meditate", "read", "walk"].map(async (habit) => {
-        const answer = await page.request.get(`/api/files?path=${encodeURIComponent(`Life/Habits/${habit}.json`)}`);
+        const answer = await page.request.get(
+          `/api/files?path=${encodeURIComponent(`Life/Health/Habits/${habit}.json`)}`,
+        );
         return ((await answer.json()) as { text?: string }).text ?? "";
       }),
     );

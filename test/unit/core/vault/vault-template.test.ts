@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   createVaultFromTemplate,
   defaultAssistantRules,
@@ -58,16 +58,26 @@ describe("the vault template", () => {
     const files = vaultTemplateFiles(answers);
     expect(Object.keys(files).sort()).toEqual([
       ".eva/.claude-plugin/plugin.json",
+      ".eva/AGENTS.md",
       ".eva/assistant.md",
       ".eva/migrations.json",
       ".eva/schedules.json",
       ".eva/settings/saved-prompts/Summary.md",
       ".eva/settings/text-actions/Polish.md",
+      ".eva/vault-structure.json",
       ".gitignore",
       "AGENTS.md",
       "Library/.gitkeep",
       "Life/About me.md",
+      "Life/Cases/AGENTS.md",
+      "Life/Diary/AGENTS.md",
+      "Life/Finances/AGENTS.md",
+      "Life/Health/AGENTS.md",
       "Life/Health/Allergies and Diet.md",
+      "Life/Objects/AGENTS.md",
+      "Life/People/AGENTS.md",
+      "Life/Periods/AGENTS.md",
+      "Life/Pets/AGENTS.md",
       "Methods/.gitkeep",
       "Principles/.gitkeep",
       "Projects/.gitkeep",
@@ -148,26 +158,83 @@ describe("the vault template", () => {
     ).not.toBe("");
   });
 
-  test("the agent map lists each top-level folder and tells the agent to grow the vault", () => {
+  test("the agent map lists each folder, the outside services and the person's own section (#772)", () => {
     const map = vaultTemplateFiles(answers)["AGENTS.md"] ?? "";
-    for (const folder of [
-      "Principles/",
-      "Methods/",
-      "Toolbox/",
-      "Library/",
-      "Life/",
-      "Projects/",
-      ".eva/scratch/",
-      ".eva/",
-    ]) {
+    for (const folder of ["Principles/", "Methods/", "Toolbox/", "Library/", "Projects/", ".eva/"]) {
       expect(map).toContain(`\`${folder}`);
     }
-    expect(map).toContain("## Grow the vault");
+    for (const folder of ["Cases", "Objects", "People", "Pets", "Periods", "Health", "Finances", "Diary"]) {
+      expect(map).toContain(`\`Life/${folder}/`);
+    }
+    for (const heading of ["## What is where", "## Outside the vault", "## Where things go", "## Entities"]) {
+      expect(map).toContain(`\n${heading}\n`);
+    }
+    // The person's apps start unset, and the agent asks the first time a role matters.
+    expect(map).toContain("## Personal rules\n");
+    expect(map).toContain("| The calendar | not set |");
+    // How pinning works is Eva's logic, in her docs, not in the vault.
+    expect(map).toContain("Keep any key you do not know, such as `summary` or `pinned`.");
+    expect(map).not.toContain("pinned:");
+  });
+
+  test("each folder of Life/ has its own rules, and Eva's folder has its guide (#772)", () => {
+    const files = vaultTemplateFiles(answers);
+    expect(files["Life/Cases/AGENTS.md"]).toContain("Case.md");
+    expect(files["Life/Objects/AGENTS.md"]).toContain("Object.md");
+    expect(files["Life/People/AGENTS.md"]).toContain("Person.md");
+    expect(files["Life/Pets/AGENTS.md"]).toContain("Pet.md");
+    expect(files["Life/Periods/AGENTS.md"]).toContain("Period.md");
+    // About me's `work` and the periods rules name the same key, the one that the reader checks.
+    expect(files["Life/About me.md"]).toContain("\nwork: # period: a link to the open job in Life/Periods/.");
+    expect(files["Life/Periods/AGENTS.md"]).toContain("in its `period` key");
+    expect(files[".eva/AGENTS.md"]).toStartWith("# .eva\n");
+    expect(files[".eva/AGENTS.md"]).toContain("`schedules.json`");
+    expect(files["README.md"]).not.toContain("Life/");
+    // The repository is public: the template keeps neutral examples only.
+    expect(files["Life/Finances/AGENTS.md"]).toContain("Example Bank");
+    expect(Object.values(files).join("\n")).not.toMatch(/ES-CT|Barcelona/);
+    // Review fixes where two texts disagreed (#772).
+    expect(files["AGENTS.md"]).toContain("which win over them");
+    expect(files["AGENTS.md"]).toContain("every other `AGENTS.md` in the vault");
+    expect(files["AGENTS.md"]).not.toContain("offer status `gone`");
+    expect(files["Life/Objects/AGENTS.md"]).toContain("A finished repair → a dated line here.");
+    expect(files["Life/Finances/AGENTS.md"]).toContain("An online-banking login goes in the password manager.");
+    expect(files[".eva/AGENTS.md"]).toContain("`settings/chat-names.md`");
+    expect(files[".eva/AGENTS.md"]).toContain("`eva settings set`");
+    expect(files["Life/Finances/AGENTS.md"]).toContain("**Closing:** When a contract or account ends");
+    expect(files["AGENTS.md"]).toContain("any service, except the person's password manager.");
+  });
+
+  test("every vault migration leaves each file of a new vault as the template wrote it (#772)", () => {
+    const files = vaultTemplateFiles(answers);
+    const vault = join(folder, "migrated");
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(vault, path)), { recursive: true });
+      writeFileSync(join(vault, path), text);
+    }
+    const run = runMigrations({
+      store: "vault",
+      migrations,
+      paths: homePaths(join(folder, "home")),
+      vaultPath: vault,
+      version: "1.0.0",
+      now: () => new Date("2026-11-03T08:00:00.000Z"),
+    });
+    expect(run.kind).toBe("done");
+    for (const [path, text] of Object.entries(files)) {
+      // The runner writes its own record.
+      if (path === ".eva/migrations.json") continue;
+      expect([path, readFileSync(join(vault, path), "utf-8")]).toEqual([path, text]);
+    }
+  });
+
+  test("a new vault records structure version 3 (#772)", () => {
+    expect(JSON.parse(vaultTemplateFiles(answers)[".eva/vault-structure.json"] ?? "")).toEqual({ version: 3 });
   });
 
   test("the agent map names the language that the person chose for notes", () => {
     const map = vaultTemplateFiles(answers)["AGENTS.md"] ?? "";
-    expect(map).toContain("**Write all notes in Spanish**");
+    expect(map).toContain("**Write all notes in Spanish,**");
     expect(map).not.toContain("{{");
   });
 

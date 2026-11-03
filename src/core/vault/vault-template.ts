@@ -22,6 +22,15 @@ import aboutFile from "../../../templates/vault/Life/About me.md" with { type: "
 import allergiesFile from "../../../templates/vault/Life/Health/Allergies and Diet.md" with { type: "text" };
 import polishActionFile from "../../../templates/vault/.eva/settings/text-actions/Polish.md" with { type: "text" };
 import summaryPromptFile from "../../../templates/vault/.eva/settings/saved-prompts/Summary.md" with { type: "text" };
+import evaGuideFile from "../../../templates/vault/.eva/AGENTS.md" with { type: "text" };
+import casesRulesFile from "../../../templates/vault/Life/Cases/AGENTS.md" with { type: "text" };
+import objectsRulesFile from "../../../templates/vault/Life/Objects/AGENTS.md" with { type: "text" };
+import peopleRulesFile from "../../../templates/vault/Life/People/AGENTS.md" with { type: "text" };
+import petsRulesFile from "../../../templates/vault/Life/Pets/AGENTS.md" with { type: "text" };
+import periodsRulesFile from "../../../templates/vault/Life/Periods/AGENTS.md" with { type: "text" };
+import healthRulesFile from "../../../templates/vault/Life/Health/AGENTS.md" with { type: "text" };
+import financesRulesFile from "../../../templates/vault/Life/Finances/AGENTS.md" with { type: "text" };
+import diaryRulesFile from "../../../templates/vault/Life/Diary/AGENTS.md" with { type: "text" };
 
 /**
  * The person's rules for Eva as a new vault gets them. They hold no setup answer, so the settings
@@ -35,9 +44,32 @@ export const defaultAssistantRules: string = assistantFile;
  * ship with Eva instead (`eva-core.ts`), and the person's own skills are no part of the template.
  */
 export const templateParts: Readonly<Record<string, string>> = {
+  // It describes only Eva's own folder, so it is true in every vault, an old one too (#772).
+  ".eva/AGENTS.md": evaGuideFile,
   ".eva/settings/text-actions/Polish.md": polishActionFile,
   ".eva/settings/saved-prompts/Summary.md": summaryPromptFile,
 };
+
+/**
+ * The rules of each folder in `Life/`. Only a new vault gets them: they are no template parts, so an
+ * Eva update never adds a `Life/` folder to an old vault. The vault upgrade carries later changes (#773).
+ */
+const lifeRules: Readonly<Record<string, string>> = {
+  "Life/Cases/AGENTS.md": casesRulesFile,
+  "Life/Objects/AGENTS.md": objectsRulesFile,
+  "Life/People/AGENTS.md": peopleRulesFile,
+  "Life/Pets/AGENTS.md": petsRulesFile,
+  "Life/Periods/AGENTS.md": periodsRulesFile,
+  "Life/Health/AGENTS.md": healthRulesFile,
+  "Life/Finances/AGENTS.md": financesRulesFile,
+  "Life/Diary/AGENTS.md": diaryRulesFile,
+};
+
+/**
+ * The structure version of this template, which a new vault records in `.eva/vault-structure.json`.
+ * The vault upgrade reads it to know which of its changes a vault already has (#773).
+ */
+const vaultStructureVersion = 3;
 
 export interface VaultTemplateAnswers {
   readonly name: string;
@@ -82,6 +114,8 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers, now: Date = ne
     ".eva/assistant.md": defaultAssistantRules,
     "Life/About me.md": fill(aboutFile),
     "Life/Health/Allergies and Diet.md": allergiesFile,
+    ...lifeRules,
+    ".eva/vault-structure.json": JSON.stringify({ version: vaultStructureVersion }, null, 2) + "\n",
     ".eva/schedules.json": JSON.stringify({ version: 1, schedules: [] }, null, 2) + "\n",
     ".eva/migrations.json":
       JSON.stringify({ applied: [{ id: appliedAtStart, at: now.toISOString(), version: evaVersion }] }, null, 2) + "\n",

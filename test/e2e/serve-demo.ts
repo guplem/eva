@@ -109,7 +109,7 @@ sandbox.write(
   "Notes/Benachrichtigungseinstellungen-Datenschutzrichtlinien-Zusammenfassung.md",
   "# Zusammenfassung\n",
 );
-// The habits widget of the template, approved for `Life/Habits`, so the home page shows a widget (#691).
+// The habits widget of the template, approved for `Life/Health/Habits`, so the home page shows a widget (#691).
 // The demo never reaches the real GitHub: its copy comes from a local remote.
 const habitsWidget = createGitSandbox();
 const habitsWidgetFiles = widgetTemplate({ owner: "example-owner", repository: "habits-widget", title: "Habits" });
@@ -120,7 +120,7 @@ habitsWidget.git(habitsWidgetWork, "commit", "-q", "-m", "widget");
 habitsWidget.git(habitsWidgetWork, "push", "-q", "origin", "main");
 for (const [path, text] of Object.entries(habitsWidgetFiles)) {
   if (path.startsWith("data/habits/") && path !== "data/habits/index.json")
-    sandbox.write(vault, `Life/Habits/${path.slice("data/habits/".length)}`, text);
+    sandbox.write(vault, `Life/Health/Habits/${path.slice("data/habits/".length)}`, text);
 }
 // A widget project of the same widget, with one clone, so its page shows Preview (#693).
 const widgetProject = "Projects/2026-01-01-0900-habits-widget";
@@ -138,7 +138,7 @@ habitsWidget.git(join(vault, widgetProject, "repos", "clone-0"), "clone", "-q", 
 // A change that is not pushed: the preview shows it, and the installed widget does not.
 writeFileSync(
   join(vault, widgetProject, "repos", "clone-0", "habits-widget", "config.json"),
-  `${JSON.stringify({ title: "Mock habits", habits: "Life/Habits" }, null, 2)}\n`,
+  `${JSON.stringify({ title: "Mock habits", habits: "Life/Health/Habits" }, null, 2)}\n`,
 );
 
 const writtenNotes = new Set<string>();
@@ -383,7 +383,7 @@ const demoHosts = ["127.0.0.1", "localhost"];
 eva.widgets?.add(`https://github.com/${habitsWidgetId}`);
 const habitsReview = await eva.widgets?.review(habitsWidgetId, demoHosts);
 if (habitsReview !== undefined)
-  await eva.widgets?.approve(habitsWidgetId, habitsReview.commit, { habits: "Life/Habits" }, demoHosts);
+  await eva.widgets?.approve(habitsWidgetId, habitsReview.commit, { habits: "Life/Health/Habits" }, demoHosts);
 // No front end confirms a card here, so each new schedule's card waits for the web UI. A short
 // check keeps the browser tests fast; Eva itself checks every 30 seconds.
 setInterval(() => void eva.schedules?.tick(), 300);

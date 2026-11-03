@@ -69,12 +69,12 @@ describe("writeWidgetList", () => {
     });
     const [habits, weather] = readWidgetList(vault);
     if (habits === undefined || weather === undefined) throw new Error("Both entries must read.");
-    writeWidgetList(vault, [{ ...weather, enabled: true, inputs: { city: "Barcelona" } }, habits]);
+    writeWidgetList(vault, [{ ...weather, enabled: true, inputs: { city: "San Francisco" } }, habits]);
     expect(JSON.parse(readFileSync(widgetListPath(vault), "utf-8"))).toEqual({
       version: 1,
       note: "kept",
       widgets: [
-        { repository: "https://github.com/example-owner/weather", enabled: true, inputs: { city: "Barcelona" } },
+        { repository: "https://github.com/example-owner/weather", enabled: true, inputs: { city: "San Francisco" } },
         { repository: "https://github.com/example-owner/habits", enabled: true, inputs: {}, color: "blue" },
         { repository: "broken" },
       ],

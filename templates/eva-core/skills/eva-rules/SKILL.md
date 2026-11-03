@@ -10,7 +10,7 @@ Each kind of rule has one home. Pick the home, write the rule there, and tell th
 ## 1. Pick the home
 
 - **How Eva behaves and talks,** such as the length of an answer, the tone, or when to ask a question: `.eva/assistant.md`. Put the rule in the section that fits it, such as `## Style` or `## Behaviour`.
-- **Where things go,** such as a folder for a kind of note, a name form, or the app that takes a kind of item: the `## Personal rules` section of the root `AGENTS.md`. A vault upgrade never changes that section, so the rule stays.
+- **Where things go,** such as a folder for a kind of note, a name form, or the app that takes a kind of item: the `## Personal rules` section of the root `AGENTS.md`. A rule there wins over every `AGENTS.md` in the vault, the rules of each `Life/` folder too. A vault upgrade never changes that section, so the rule stays.
 - **A rule for one project:** that project's `AGENTS.md`, in `Projects/<id>/`.
 - **The answer language, the time zone, the units, the clock or the first day of the week:** a setting, never a rule in a file. See step 3.
 

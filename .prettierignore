@@ -5,3 +5,7 @@ bun.lock
 templates/widget/package-lock.json
 templates/widget/.pskill/
 templates/widget/.agents/
+# The vault template's agent files: an agent reads them, and padded tables would add thousands of spaces (#772).
+templates/vault/AGENTS.md
+templates/vault/.eva/AGENTS.md
+templates/vault/Life/*/AGENTS.md

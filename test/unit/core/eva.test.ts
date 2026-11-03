@@ -3099,6 +3099,7 @@ describe("migrations (#119)", () => {
     });
     expect(existsSync(join(vault, ".eva", "settings", "text-actions", "Polish.md"))).toBe(true);
     expect(instance.templateParts()?.parts.map((part) => [part.name, part.state])).toEqual([
+      [".eva", "current"],
       ["Summary", "current"],
       ["Polish", "current"],
     ]);
@@ -3544,13 +3545,13 @@ describe("the person's place (#371)", () => {
 
   test("a phone's point counts for a day, then the home place of About me", () => {
     const instance = start(new FakeEngine());
-    sandbox.write(vault, "Life/About me.md", "---\nplaces:\n  home: { lat: 41.39, lon: 2.17 }\n---\n");
+    sandbox.write(vault, "Life/About me.md", "---\nplaces:\n  home: { lat: 37.77, lon: -122.42 }\n---\n");
     expect(instance.saveLocation(madrid, "telegram", clock, true)).toBe(true);
     expect(instance.currentPlace()).toMatchObject({ latitude: 40.4, source: "telegram" });
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     expect(instance.currentPlace()).toEqual({
-      latitude: 41.39,
-      longitude: 2.17,
+      latitude: 37.77,
+      longitude: -122.42,
       accuracy: null,
       source: "home",
       at: null,

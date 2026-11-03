@@ -11,11 +11,45 @@ import { loggedPath, startLocalApi, type LocalApi } from "../../../../src/fronte
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { idlePiLogin, type PiLogins } from "../../../../src/shared/pi-login.ts";
 import { fakeGh } from "../../../support/fake-gh.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 const token = "local-api-token-for-tests";
+/** The calls that reach pi's login, which runs no pi here. */
+const piLoginCalls: string[] = [];
+const fakePiLogin: PiLogins = {
+  providers: () =>
+    Promise.resolve([
+      { id: "openrouter", name: "OpenRouter", methods: ["api_key"], subscription: false, loggedIn: false },
+    ]),
+  start: (place, provider, method) => {
+    piLoginCalls.push(
+      `start ${provider} ${method} ${place.environment["PI_CODING_AGENT_DIR"] === undefined ? "" : "pi-folder"}`,
+    );
+    return Promise.resolve({
+      ...idlePiLogin,
+      status: "waiting",
+      provider,
+      question: { message: "Key", kind: "secret", placeholder: "", choices: [] },
+    });
+  },
+  answer: (text) => {
+    piLoginCalls.push(`answer ${text}`);
+    // A provider's error can repeat the key that it refused.
+    if (text.startsWith("sk-")) return Promise.resolve({ ...idlePiLogin, status: "failed", error: `Bad key ${text}` });
+    return Promise.resolve({ ...idlePiLogin, status: "done", provider: "openrouter" });
+  },
+  state: () => idlePiLogin,
+  stop: () => {
+    piLoginCalls.push("stop");
+  },
+  logout: (_place, provider) => {
+    piLoginCalls.push(`logout ${provider}`);
+    return Promise.resolve();
+  },
+};
 let sandbox: GitSandbox;
 let home: string;
 let eva: Eva;
@@ -121,6 +155,7 @@ beforeEach(() => {
       show("ABCD-1234", "https://github.com/login/device");
       return Promise.resolve("gho_example-page-login");
     },
+    piLogin: fakePiLogin,
   });
   api = startLocalApi({
     eva,
@@ -1591,6 +1626,36 @@ describe("web routes", () => {
     const early = await finish({ code: "example-code" });
     expect(early.status).toBe(409);
     expect((await json<{ error: string }>(early)).error).toContain("No Claude login waits");
+  });
+
+  test("the pi login lists providers, passes each answer to pi, and logs out", async () => {
+    piLoginCalls.length = 0;
+    expect(await json<{ id: string }[]>(await call("/api/engines/pi/providers"))).toMatchObject([{ id: "openrouter" }]);
+    const started = await call("/api/engines/pi/login", {
+      method: "POST",
+      body: { provider: "openrouter", method: "api_key" },
+    });
+    expect(await json<{ question: { kind: string } }>(started)).toMatchObject({ question: { kind: "secret" } });
+    // Built from parts, so the secret scan of the repository does not take it for a real key.
+    const key = ["sk", "or", "v1", "0123456789abcdef".repeat(2)].join("-");
+    const refused = await call("/api/engines/pi/login/answer", { method: "POST", body: { text: key } });
+    const refusedText = await refused.text();
+    expect(refusedText).toContain("Bad key");
+    expect(refusedText).not.toContain(key);
+    const answered = await call("/api/engines/pi/login/answer", { method: "POST", body: { text: "pasted-key" } });
+    expect(await json<{ status: string }>(answered)).toMatchObject({ status: "done" });
+    expect((await json<{ status: string }>(await call("/api/engines/pi/login"))).status).toBe("idle");
+    expect((await call("/api/engines/pi/login", { method: "DELETE" })).status).toBe(200);
+    expect((await call("/api/engines/pi/providers/openrouter", { method: "DELETE" })).status).toBe(200);
+    const wrong = await call("/api/engines/pi/login", { method: "POST", body: { provider: "x", method: "password" } });
+    expect(wrong.status).toBe(400);
+    expect(piLoginCalls).toEqual([
+      "start openrouter api_key pi-folder",
+      `answer ${key}`,
+      "answer pasted-key",
+      "stop",
+      "logout openrouter",
+    ]);
   });
 
   test("the GitHub login gives the code, then saves the token", async () => {

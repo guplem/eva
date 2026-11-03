@@ -23,6 +23,7 @@ import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
 import { createHomeFolders, instanceNameOf, type EvaConfig, type HomePaths } from "./core/settings/home.ts";
 import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
 import { PiEngine } from "./engines/pi/pi-adapter.ts";
+import { PiLogin } from "./engines/pi/pi-login.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { describeFailure, runCli } from "./frontends/cli/commands.ts";
 import { terminalDeviceApprover } from "./frontends/cli/devices.ts";
@@ -247,6 +248,13 @@ async function serve(paths: HomePaths): Promise<number> {
     },
     claudeExecutable,
     locateEngine: (engine) => locateEngine(config, engine),
+    piLogin: new PiLogin({
+      command: () => {
+        const program = locateEngine(config, "pi");
+        return program === null ? null : [program];
+      },
+      workFolder: join(paths.enginesFolder, "pi"),
+    }),
     remoteAccess,
     toolPlaces: { platform: host.platform, userHome: host.userHome, standalone: host.standalone },
   });

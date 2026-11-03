@@ -160,14 +160,14 @@ function engineStep(input: ProgressInput, make: Make): ProgressStep {
       "engine",
       "An AI engine",
       "missing",
-      "For a Claude subscription, open Settings, AI engines, on Eva's page. Press Install Claude Code, then log in on the same card. For pi, run `pi` on Eva's computer and type /login.",
+      "For a Claude subscription, open Settings, AI engines, on Eva's page. Press Install Claude Code, then log in on the same card. For another provider, or an API key, log in on the pi card there.",
       input.defaultEngine,
     );
   return make(
     "engine",
     "An AI engine",
     "missing",
-    "For a Claude subscription, open Settings, AI engines, on Eva's page, and press Start the login under Claude Code. Or run `claude setup-token` on any computer with a browser, and paste the token in Settings. For another provider, run `pi` on Eva's computer and type /login.",
+    "For a Claude subscription, open Settings, AI engines, on Eva's page, and press Start the login under Claude Code. Or run `claude setup-token` on any computer with a browser, and paste the token in Settings. For another provider, or an API key, log in on the pi card there.",
     input.defaultEngine,
   );
 }

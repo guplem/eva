@@ -118,7 +118,8 @@ describe("setupProgress", () => {
         { name: "pi", found: true, loggedIn: false },
       ],
     };
-    expect(step(piOnly, "engine")?.detail).toContain("/login");
+    expect(step(piOnly, "engine")?.detail).toContain("log in on the pi card");
+    expect(step(piOnly, "engine")?.detail).not.toContain("/login");
     expect(step(piOnly, "engine")?.detail).toContain("Install Claude Code");
     expect(step(piOnly, "engine")?.detail).not.toContain("Start the login");
   });

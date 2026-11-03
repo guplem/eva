@@ -96,12 +96,15 @@ export function engineEnvironment(facts: InstanceFacts, secrets: EvaSecrets): Re
 }
 
 /**
- * The environment of Eva's own `claude` runs, such as `claude update`: the turns' config
- * folder, so the run acts on the same install, and no token, which such a run never needs.
+ * The environment of Eva's own `claude` and `pi` runs, such as `claude update` or the pi login:
+ * the turns' config folders, so the run acts on the same install and the same logins, and no
+ * token, which such a run never needs.
  */
 export function engineToolEnvironment(facts: InstanceFacts): Record<string, string> {
+  const folders = engineFolders(facts.paths);
   return buildChildEnvironment(facts.processEnvironment, baseEnvironmentAllowlist, {
-    CLAUDE_CONFIG_DIR: engineFolders(facts.paths).claude,
+    CLAUDE_CONFIG_DIR: folders.claude,
+    PI_CODING_AGENT_DIR: folders.piAgent,
   });
 }
 

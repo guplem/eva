@@ -8,7 +8,7 @@ When a step says "run", type the command and press Enter.
 
 Create these accounts first, in your browser:
 
-1. **An AI subscription.** A Claude Pro or Max subscription at [claude.ai](https://claude.ai), or a login of another provider that pi supports, such as ChatGPT or GitHub Copilot.
+1. **An AI subscription.** A Claude Pro or Max subscription at [claude.ai](https://claude.ai), or a login of another provider that pi supports, such as ChatGPT, GitHub Copilot or an OpenRouter API key.
 2. **GitHub** at [github.com](https://github.com). Your vault, the private folder of your notes, lives there.
 3. **Telegram** on your phone. It is optional, but it is the easiest way to talk to Eva and to get her alerts. Without it, Eva's page can send you notifications: see [Notifications on a device](reference.md#notifications-on-a-device).
 4. **Tailscale** at [tailscale.com](https://tailscale.com) (free). It is optional: you need it only to open Eva's page from your phone or another computer.
@@ -83,11 +83,15 @@ Eva does not think by herself. She runs a harness: a program that runs an AI age
 
 Or, in a terminal: run `claude setup-token` on any computer with a browser, such as your laptop. Paste the token that it prints into setup at "Claude token", or into **AI engines** in Settings. The token lasts a year.
 
-**pi**, for the subscription of another provider, such as ChatGPT or GitHub Copilot:
+**pi**, for the subscription of another provider, such as ChatGPT or GitHub Copilot, or for an API key, such as an OpenRouter key. Log in from Eva's page, also on a phone:
 
-1. Run the pi command that setup showed after the install. It makes pi use this Eva's own folder.
-2. Type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi costs extra money, on top of your subscription.
-3. In setup, press Enter at "Claude token". If you log in to pi after setup ends, choose pi in Settings, or run `eva setup` again.
+1. Open **AI engines** in Settings. Under pi, choose your provider, and how to log in: with your account, or with an API key.
+2. Press **Log in**. For an account, press **Open the provider's page**, and log in there. When the page shows a code, type it on the provider's page.
+3. If your browser lands on an error page after the login, copy the whole address of that page. Paste it into Eva's page, and press **Send**. For an API key, paste the key, and press **Send**.
+
+pi keeps the login in this Eva's own folder. A chat uses it at once, with no restart. Claude is not in the list: log in to Claude on the Claude Code card. A Claude login in pi costs extra money, on top of your subscription.
+
+Or, in a terminal: run the pi command that setup showed after the install, and type `/login`. In setup, press Enter at "Claude token". If you log in to pi after setup ends, choose pi in Settings, or run `eva setup` again.
 
 A new chat uses Claude Code, unless only pi has a login. Change the engine for new chats in Settings. You can also choose the engine of each chat.
 

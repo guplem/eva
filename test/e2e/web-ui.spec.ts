@@ -6192,7 +6192,51 @@ test("Settings: Claude Code logs in from the page, with a pasted code", async ({
   // The token stays the way that needs a terminal, one tap away.
   await page.getByRole("button", { name: "Get a token in a terminal instead" }).click();
   await expect(page.getByText("claude setup-token").first()).toBeVisible();
-  await expect(page.getByText("The pi login needs a terminal on Eva's computer")).toBeVisible();
+});
+
+test("Settings: pi logs in from the page with an API key, and the key goes only to pi (#811)", async ({ page }) => {
+  const answers: string[] = [];
+  let loggedIn = false;
+  const waiting = {
+    status: "waiting",
+    provider: "openrouter",
+    link: null,
+    question: { message: "Enter OpenRouter API key", kind: "secret", placeholder: "", choices: [] },
+    progress: null,
+    error: null,
+  };
+  await page.route("**/api/engines/pi/providers", (route) =>
+    route.fulfill({
+      json: [{ id: "openrouter", name: "OpenRouter", methods: ["api_key"], subscription: false, loggedIn }],
+    }),
+  );
+  await page.route("**/api/engines/pi/login", (route) =>
+    route.fulfill({
+      json: route.request().method() === "POST" ? waiting : { ...waiting, status: "idle", question: null },
+    }),
+  );
+  // The demo has no pi program: the setup state says that the page installed one.
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...setup, installedEngines: ["pi"] } });
+  });
+  await page.route("**/api/engines/pi/login/answer", async (route) => {
+    answers.push((route.request().postDataJSON() as { text: string }).text);
+    loggedIn = true;
+    await route.fulfill({ json: { ...waiting, status: "done", question: null } });
+  });
+  await logIn(page);
+  await openSettings(page, "AI engines");
+  const card = page.getByRole("region", { name: "pi" });
+  await card.getByRole("button", { name: "Log in", exact: true }).click();
+  const key = card.getByLabel("Enter OpenRouter API key");
+  await expect(key).toHaveAttribute("type", "password");
+  await key.fill("pasted-key");
+  await card.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "pi is logged in to OpenRouter." })).toBeVisible();
+  await expect(card.getByText("pi is logged in to OpenRouter.")).toBeVisible();
+  expect(answers).toEqual(["pasted-key"]);
 });
 
 test("Settings: a done Claude Code login shows as logged in, and logs out after a warning", async ({ page }) => {

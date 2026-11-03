@@ -7,6 +7,7 @@ import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { PermissionsCard } from "./PermissionsCard.tsx";
+import { PiLoginPanel } from "./PiLoginPanel.tsx";
 import { restartNote } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
 import { claudeLoginExpired } from "./problem-actions.ts";
@@ -318,22 +319,13 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
   const changed = modelAliases.some((model) => models[model].trim() !== initial[model]);
   useLeaveGuard(changed, save);
   return (
-    <Card item="pi" title="pi" description="pi runs models of other providers, such as OpenAI. It is optional.">
-      <div className="callout">
-        The pi login needs a terminal on Eva&apos;s computer: pi asks its questions only there. To log in from this page
-        alone, use Claude Code above.
-      </div>
+    <Card
+      item="pi"
+      title="pi"
+      description="pi runs models of other providers, such as ChatGPT, GitHub Copilot or OpenRouter. It is optional."
+    >
       {installed ? (
-        <Steps>
-          <li>
-            On Eva&apos;s computer, open a terminal and run:
-            <CommandLine command="pi" />
-          </li>
-          <li>
-            In pi, type <code>/login</code> and follow its steps.
-          </li>
-          <li>Come back here and press Test.</li>
-        </Steps>
+        <PiLoginPanel context={context} />
       ) : (
         <>
           <div className="callout">

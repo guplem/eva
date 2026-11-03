@@ -2936,6 +2936,23 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
 
+test("Settings: each page lists its cards, and an entry opens its card (issue 820)", async ({ page }) => {
+  await logIn(page);
+  await openSettings(page, "Personalize");
+  // One list shows: in the side list on a computer, at the top of the page on a phone.
+  const index = page.getByRole("list", { name: "On this page" });
+  await expect(index).toHaveCount(1);
+  await expect(index.getByRole("button", { name: "Appearance" })).toHaveAttribute("aria-current", "location");
+  await index.getByRole("button", { name: "Sounds and vibration" }).click();
+  await expect(page).toHaveURL(/#\/settings\/personalize\/sounds$/);
+  await expect(page.getByRole("region", { name: "Sounds and vibration" })).toBeInViewport();
+  await expect(index.getByRole("button", { name: "Sounds and vibration" })).toHaveAttribute("aria-current", "location");
+  // A page of its own, such as a setup step, has no list.
+  await page.goto("/#/settings/setup/engine");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Setup");
+  await expect(page.getByRole("list", { name: "On this page" })).toHaveCount(0);
+});
+
 test("Settings: a search result stays at its card while a card above it loads (issue 720)", async ({ page }) => {
   await logIn(page);
   // Eva's rules fill their card after the page opens, above the message box menu.
@@ -4394,13 +4411,13 @@ test("Settings: Restart Eva in the header names the running chats, then restarts
     await route.fulfill({ response, json: { ...status, busySessionIds: [created.id] } });
   });
   await openSettings(page, "Updates");
-  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Restart Eva" }).click();
   const question = page.getByRole("alertdialog", { name: "Restart Eva" });
   await expect(question).toContainText('"Plan the trip" is running. A restart stops it. Restart Eva now?');
   await question.getByRole("button", { name: "Cancel" }).click();
   await expect(question).toHaveCount(0);
   expect(restarts).toEqual([]);
-  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Restart Eva" }).click();
   await page.getByRole("alertdialog", { name: "Restart Eva" }).getByRole("button", { name: "Yes, restart" }).click();
   await expect(page.getByText("Eva restarted.")).toBeVisible({ timeout: 10_000 });
   expect(restarts).toEqual(["POST"]);

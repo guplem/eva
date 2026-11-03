@@ -1029,3 +1029,34 @@ describe("one-off edge cases (#822 review)", () => {
     expect(() => scheduler.save({ ...call, from: "2026-07-01T06:00", every: null })).toThrow("is in the past");
   });
 });
+
+describe("a one-off time counts from when Eva first saw that time (#822 review)", () => {
+  const at = (wallClock: string): Date => new Date(`${wallClock}:00+02:00`);
+  const fired = (): ScheduleEvent[] => events.filter((event) => event.kind === "schedule_fired");
+
+  test("a known schedule rewritten by hand into a one-off at a past time never fires, and shows as ended", async () => {
+    writeSchedules([{ id: "standup", name: "Standup", every: "1d", from: "2026-06-01T07:30", text: "Standup." }]);
+    clock = at("2026-05-01T07:00");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    writeSchedules([{ id: "standup", name: "Standup", from: "2026-06-01T07:30", text: "Standup." }]);
+    clock = at("2026-07-01T07:10");
+    await scheduler.tick();
+    await scheduler.tick();
+    expect(fired()).toEqual([]);
+    expect(scheduler.list().schedules[0]).toMatchObject({ nextRun: null, ended: "2026-06-01T07:30" });
+  });
+
+  test("a new future time written by hand still fires at that time", async () => {
+    writeSchedules([{ id: "call", name: "Call", from: "2026-07-01T06:00", text: "Call." }]);
+    clock = at("2026-07-01T05:00");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    await scheduler.tick();
+    writeSchedules([{ id: "call", name: "Call", from: "2026-07-01T09:00", text: "Call." }]);
+    await scheduler.tick();
+    clock = at("2026-07-01T09:00");
+    await scheduler.tick();
+    expect(fired()).toHaveLength(1);
+  });
+});

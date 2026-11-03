@@ -139,9 +139,7 @@ describe("typeSoftwareProjects (vault, #768)", () => {
   test("a new vault's map already has the new text, so the migration changes nothing in it", () => {
     const map = vaultTemplateFiles({
       name: "Alex",
-      language: "English",
       notesLanguage: "English",
-      timeZone: "UTC",
       topics: [],
     })["AGENTS.md"];
     writeFileSync(join(vault, "AGENTS.md"), map ?? "");

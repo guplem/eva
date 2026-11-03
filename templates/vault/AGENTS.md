@@ -77,10 +77,10 @@ Then:
 - **Search by name and by alias before you create anything.**
 - **When it fits two places,** put it where the person will open it, and link to it from the other. Never copy it.
 - **When the meaning is unclear, ask.** Never guess.
-- **Nothing moves when it ends.** Change its status.
+- **Nothing moves when it ends.** Change its status, or its summary when it has none.
 - **A password or a key of something in the vault,** such as the Wi-Fi or a project's API key, goes in a `.secrets` file beside what it opens, which the vault stores encrypted. Never in a note or a notes app.
 - **When the person asks for something that breaks a rule,** name the rule and ask once. Their answer wins.
-- **Before deleting anything, confirm,** and offer status `gone` instead.
+- **Before deleting anything, confirm,** and offer to close it instead (its folder's `AGENTS.md` says how).
 
 ## Entities
 
@@ -156,7 +156,7 @@ These rules hold for notes, for agent files and for messages to the person, such
 
 ## Personal rules
 
-This section is the person's own: their exceptions to the rules above, which win over them. Vault upgrades never change it.
+This section is the person's own: their exceptions to the rules above and to every other `AGENTS.md` in the vault, which win over them. Vault upgrades never change it.
 
 ### Outside the vault: my apps
 

@@ -5,7 +5,7 @@ Money that stays: accounts, cards, loans, investment and pension plans, subscrip
 - **One note for each account or contract,** such as `Example Bank Joint Account.md` or `Netflix.md`. Many small subscriptions can share one note, `Subscriptions.md`, as a table.
 - **What each note holds:** the provider, who holds it, the last digits of the account or the policy number, the cost and how often, the renewal date, and how to cancel.
 - **The contract itself** sits beside its note, as a small file.
-- **Never write a full card number, a PIN or a password** in a note. Those go in a file that Eva encrypts.
+- **Never write a full card number, a PIN or a password** in a note. A card PIN or a code goes in a `.secrets` file beside the note. An online-banking login goes in the password manager.
 - **A goal, such as saving for a home,** goes in the note of its account, or in `Goals.md`.
 
 **Not here:**

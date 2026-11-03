@@ -8,6 +8,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approvalExtensionSource, approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
 import { buildPiArguments, PiEngine } from "../../../../src/engines/pi/pi-adapter.ts";
+import evaQuestions, {
+  noAnswer,
+  questionTitle as questionToolTitle,
+  type QuestionContext,
+  type QuestionPi,
+} from "../../../../src/engines/pi/pi-question-tool.ts";
+import { questionExtensionSource, questionTitle } from "../../../../src/engines/pi/pi-question-extension.ts";
+import { askInTextMessage } from "../../../../src/shared/questions.ts";
 import {
   contextExtensionSource,
   contextNoticePrefix,
@@ -104,6 +112,7 @@ describe("buildPiArguments", () => {
     extensionFile: "/eva/pi/eva-approval-extension.ts",
     mcpExtensionFile: null,
     contextExtensionFile: null,
+    questionExtensionFile: null,
     promptFile: "/eva/pi/prompts/session-1.md",
     model: null,
   };
@@ -816,5 +825,153 @@ describe("the file wall of a pi Project chat (#711)", () => {
   test("the extension's refusal names no vault, and says that the path can be outside the chat's folder", () => {
     expect(approvalExtensionSource).toContain("outside this chat's folder");
     expect(approvalExtensionSource).not.toContain("vault");
+  });
+});
+
+describe("the question form of a pi Assistant chat (#813)", () => {
+  const formQuestion = {
+    question: "Which format?",
+    header: "Format",
+    options: [
+      { label: "PDF", description: "A printable file" },
+      { label: "Markdown", description: "A note" },
+    ],
+    multiSelect: false,
+  };
+
+  /** pi's records of one turn in which the model's AskUserQuestion tool opens Eva's dialog. */
+  function formTurn(input: Record<string, unknown>): PiRecord[] {
+    return loadPiFixture("approval-allowed").map((record) =>
+      record["type"] === "extension_ui_request"
+        ? { ...record, method: "editor", title: questionTitle, prefill: JSON.stringify(input) }
+        : record,
+    );
+  }
+
+  test("Eva loads the question tool in Assistant chats only", async () => {
+    const assistant = new FakePi([{ records: loadPiFixture("plain") }]);
+    await drain(engine(assistant).runTurn(request()));
+    const tool = join(folder, "pi", "eva-question-extension.ts");
+    expect(assistant.runs[0]?.command).toContain(tool);
+    expect(readFileSync(tool, "utf8")).toBe(questionExtensionSource);
+
+    const project = new FakePi([{ records: loadPiFixture("plain") }]);
+    await drain(engine(project).runTurn(request({ mode: "project", appendSystemPrompt: null, pluginFolders: [] })));
+    expect(project.runs[0]?.command).not.toContain(tool);
+  });
+
+  test("the form reaches the person, and the answers go back by question text", async () => {
+    const shown: unknown[] = [];
+    const fake = new FakePi([{ records: formTurn({ questions: [formQuestion] }) }]);
+    await drain(
+      engine(fake).runTurn(
+        request({
+          askQuestions: (toolName, questions) => {
+            shown.push({ toolName, questions });
+            return Promise.resolve([{ selected: [1] }]);
+          },
+        }),
+      ),
+    );
+    expect(shown).toEqual([{ toolName: "AskUserQuestion", questions: [formQuestion] }]);
+    const answer = fake.runs[0]?.sent.find((record) => record["type"] === "extension_ui_response");
+    expect(JSON.parse(String(answer?.["value"]))).toEqual({ answers: { "Which format?": "Markdown" } });
+  });
+
+  test("a declined form tells the model so", async () => {
+    const fake = new FakePi([{ records: formTurn({ questions: [formQuestion] }) }]);
+    await drain(engine(fake).runTurn(request({ askQuestions: () => Promise.resolve("declined") })));
+    const answer = fake.runs[0]?.sent.find((record) => record["type"] === "extension_ui_response");
+    expect(JSON.parse(String(answer?.["value"]))).toEqual({
+      refused: "The person chose not to answer these questions.",
+    });
+  });
+
+  test("a form that Eva cannot read asks the model to ask in plain text, with no question to the person", async () => {
+    let asked = false;
+    const fake = new FakePi([{ records: formTurn({ questions: [] }) }]);
+    await drain(
+      engine(fake).runTurn(
+        request({
+          askQuestions: () => {
+            asked = true;
+            return Promise.resolve("declined");
+          },
+        }),
+      ),
+    );
+    expect(asked).toBe(false);
+    const answer = fake.runs[0]?.sent.find((record) => record["type"] === "extension_ui_response");
+    expect(JSON.parse(String(answer?.["value"]))).toEqual({ refused: askInTextMessage });
+  });
+});
+
+describe("the question tool inside pi (#813)", () => {
+  type Tool = Parameters<QuestionPi["registerTool"]>[0];
+
+  function registered(): Tool {
+    const tools: Tool[] = [];
+    evaQuestions({
+      registerTool: (definition) => {
+        tools.push(definition);
+      },
+    });
+    const [tool] = tools;
+    if (tool === undefined) throw new Error("No tool registered.");
+    return tool;
+  }
+
+  function context(reply: string | undefined): QuestionContext & { titles: string[]; prefills: string[] } {
+    const titles: string[] = [];
+    const prefills: string[] = [];
+    return {
+      titles,
+      prefills,
+      hasUI: true,
+      ui: {
+        editor: (title, prefill) => {
+          titles.push(title);
+          prefills.push(prefill ?? "");
+          return Promise.resolve(reply);
+        },
+      },
+    };
+  }
+
+  test("Eva's copy of the title matches the tool", () => {
+    expect(questionToolTitle).toBe(questionTitle);
+    expect(noAnswer).toBe(askInTextMessage);
+    expect(questionExtensionSource).toContain(`"${questionTitle}"`);
+    expect(registered().name).toBe("AskUserQuestion");
+  });
+
+  test("the answers become the tool result", async () => {
+    const tool = registered();
+    const ui = context(JSON.stringify({ answers: { "Which format?": "Markdown" } }));
+    const result = await tool.execute(
+      "call-1",
+      { questions: [{ question: "Which format?" }] },
+      undefined,
+      undefined,
+      ui,
+    );
+    expect(ui.titles).toEqual([questionTitle]);
+    expect(JSON.parse(ui.prefills[0] ?? "")).toEqual({ questions: [{ question: "Which format?" }] });
+    expect(result.content).toEqual([
+      {
+        type: "text",
+        text: 'The person answered your questions: "Which format?"="Markdown". Go on with these answers.',
+      },
+    ]);
+  });
+
+  test("a refusal or a cancel fails the call with the reason", () => {
+    const tool = registered();
+    expect(
+      tool.execute("call-1", {}, undefined, undefined, context(JSON.stringify({ refused: "No." }))),
+    ).rejects.toThrow("No.");
+    expect(tool.execute("call-1", {}, undefined, undefined, context(undefined))).rejects.toThrow(
+      "nobody answered it in time",
+    );
   });
 });

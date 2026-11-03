@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  claudeLoginExpired,
+  engineLoginExpired,
   closedEntryAction,
   isOtherMachineProblem,
   problemAction,
@@ -97,12 +97,16 @@ describe("problemSettingsRoute", () => {
   });
 });
 
-describe("claudeLoginExpired", () => {
-  test("is true only while the Claude Code login problem is open", () => {
-    expect(claudeLoginExpired([{ key: "update" }, { key: "engine_login:claude-code" }])).toBe(true);
+describe("engineLoginExpired", () => {
+  test("is true only while the login problem of that engine is open", () => {
+    expect(engineLoginExpired([{ key: "update" }, { key: "engine_login:claude-code" }], "claude-code")).toBe(true);
     expect(
-      claudeLoginExpired([{ key: "engine_login:pi" }, { key: "machine:example-pc:engine_login:claude-code" }]),
+      engineLoginExpired(
+        [{ key: "engine_login:pi" }, { key: "machine:example-pc:engine_login:claude-code" }],
+        "claude-code",
+      ),
     ).toBe(false);
+    expect(engineLoginExpired([{ key: "engine_login:pi" }], "pi")).toBe(true);
   });
 });
 

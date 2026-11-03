@@ -1,4 +1,5 @@
 /** The button that fixes each open problem, picked from the problem's key, never from its text. */
+import type { EngineName } from "../../../shared/engine-port.ts";
 import type { VaultSyncState } from "./api.ts";
 import { settingsHome, type SettingsRoute } from "./settings-routes.ts";
 
@@ -13,11 +14,9 @@ export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   review_widget_update: "Review the update",
 };
 
-const claudeLoginKey = "engine_login:claude-code";
-
-/** A saved token can still have expired, so the Claude Code card must not say the login works. */
-export function claudeLoginExpired(problems: readonly { readonly key: string }[]): boolean {
-  return problems.some((problem) => problem.key === claudeLoginKey);
+/** A saved login can still have expired, so an engine's card must not say that the login works. */
+export function engineLoginExpired(problems: readonly { readonly key: string }[], engine: EngineName): boolean {
+  return problems.some((problem) => problem.key === `engine_login:${engine}`);
 }
 
 /** A relayed problem belongs to another machine: its own page fixes it. */

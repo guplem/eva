@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { PiLoginMethod, PiLoginState, PiProvider } from "../../../shared/pi-login.ts";
 import { api } from "./api.ts";
 import { LoggedIn } from "./LoggedIn.tsx";
+import { engineLoginExpired } from "./problem-actions.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { CommandLine, errorText, SelectField, Steps, type SettingsContext } from "./SettingsParts.tsx";
 
@@ -71,6 +72,12 @@ export function PiLoginPanel({
           <button className="link-button" onClick={() => void load()}>
             Try again
           </button>
+        </div>
+      )}
+      {/* pi keeps an expired login in its file, so only the alert of a failed chat shows it (#815). */}
+      {engineLoginExpired(context.status?.problemDetails ?? [], "pi") && (
+        <div className="callout warning">
+          A pi chat failed because a pi login expired. Press Log in again on that provider, and log in.
         </div>
       )}
       {chosen === null &&

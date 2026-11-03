@@ -11,7 +11,7 @@ import { PermissionsCard } from "./PermissionsCard.tsx";
 import { PiLoginPanel } from "./PiLoginPanel.tsx";
 import { restartNote } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
-import { claudeLoginExpired } from "./problem-actions.ts";
+import { engineLoginExpired } from "./problem-actions.ts";
 import { stepMark } from "./setup-summary.ts";
 import { ToolInstallButton } from "./ToolInstallButton.tsx";
 import {
@@ -135,7 +135,7 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
   // A failed last test, as of an expired token, keeps the steps. The engine step may test pi instead.
   const testFailed = engineStep?.check === "claude-code" && stepMark(engineStep) === "failed";
   // A chat turn can find the expired token before any test runs.
-  const expired = claudeLoginExpired(context.status?.problemDetails ?? []);
+  const expired = engineLoginExpired(context.status?.problemDetails ?? [], "claude-code");
   const failed = testFailed || expired;
   const loginWorks = installed && saved && !failed;
   if (loginWorks && !loggingInAgain)

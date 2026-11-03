@@ -6,6 +6,15 @@
 import { defaultDisplayFormat, isClock, isWeekStart, type DisplayFormat } from "../../../shared/time-format.ts";
 
 let current: DisplayFormat = defaultDisplayFormat;
+const listeners = new Set<() => void>();
+
+/** Calls the listener after each change, so the app renders again. Returns the unsubscribe. */
+export function onDisplayFormatChange(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 export function displayFormat(): DisplayFormat {
   return current;
@@ -17,5 +26,6 @@ export function setDisplayFormat(next: Partial<DisplayFormat> | undefined): bool
   const weekStart = isWeekStart(next?.weekStart) ? next.weekStart : null;
   if (clock === current.clock && weekStart === current.weekStart) return false;
   current = { clock, weekStart };
+  for (const listener of listeners) listener();
   return true;
 }

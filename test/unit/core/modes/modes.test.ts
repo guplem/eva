@@ -331,6 +331,24 @@ describe("Assistant mode", () => {
     expect(await formatPart("s2")).toContain("Answer language: English");
   });
 
+  test("the local time of a chat uses the zone and the clock of its format block (#770)", async () => {
+    let settings: FormatSettings = {
+      language: null,
+      timeZone: "Asia/Tokyo",
+      units: null,
+      clock: "12h",
+      weekStart: null,
+    };
+    const preparer = assistant(silentRunner, new FakeSync(), [], { formatSettings: () => settings });
+    expect((await preparer.prepare(session())).messagePrefix).toBe("[Local time: 2026-10-14 7:30 PM, Asia/Tokyo]");
+    // A later change reaches the next chat; this one keeps what its block says.
+    settings = { ...settings, timeZone: "Europe/Madrid", clock: "24h" };
+    expect((await preparer.prepare(session())).messagePrefix).toBe("[Local time: 2026-10-14 7:30 PM, Asia/Tokyo]");
+    expect((await preparer.prepare(session({ id: "s2" }))).messagePrefix).toBe(
+      "[Local time: 2026-10-14 12:30, Europe/Madrid]",
+    );
+  });
+
   test("a bad field in Life/About me.md adds a note to the message, so Eva fixes it", async () => {
     mkdirSync(join(vault, "Life"), { recursive: true });
     writeFileSync(join(vault, "Life", "About me.md"), "---\nhemisphere: up\n---\n\n# About Alex\n");

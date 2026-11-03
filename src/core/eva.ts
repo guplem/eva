@@ -165,7 +165,7 @@ import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart
 import { templateParts } from "./vault/vault-template.ts";
 import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
 import { formatSettingsOf } from "./modes/format-block.ts";
-import type { DisplayFormat } from "../shared/time-format.ts";
+import type { DisplayFormat, Units } from "../shared/time-format.ts";
 import { LocationKeeper, type LocationInput, type LocationSource } from "./location/last-location.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
@@ -380,8 +380,26 @@ export interface EvaStatus {
   readonly chatBlocker: ChatBlocker | null;
   /** True when this machine can turn a voice note into text. */
   readonly voiceNotes: boolean;
-  /** The clock and the first day of the week that the screens follow (#770). */
-  readonly format: DisplayFormat;
+  /** The clock and the first day of the week that the screens follow, and the units (#770). */
+  readonly format: StatusFormat;
+}
+
+/** The effective formats, so the Settings page shows a value that is still only in About me. */
+export interface StatusFormat extends DisplayFormat {
+  readonly units: Units | null;
+}
+
+/** The zone that a chat uses: the setting when it is a zone that `Intl` knows, else the computer's. */
+function effectiveTimeZone(setting: string | null): string {
+  if (setting !== null) {
+    try {
+      new Intl.DateTimeFormat("en-GB", { timeZone: setting });
+      return setting;
+    } catch {
+      // A bad zone from another computer falls back below.
+    }
+  }
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 /** The Setup section: the settings' state, and the progress list. */
@@ -764,8 +782,13 @@ export class Eva {
           timeZone: options.config.timeZone ?? "UTC",
           todayTimeZone: options.config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
           mcpServers: this.assistantMcpServers(),
-          // From memory: a save on the Settings page reaches the next new chat with no restart.
-          formatSettings: () => formatSettingsOf(this.settings.config, vaultPath),
+          // From memory: a save on the Settings page reaches the next new chat with no restart. With no
+          // time zone set, the chat says the zone it uses: the computer's, as for today's date.
+          formatSettings: () =>
+            formatSettingsOf(
+              { ...this.settings.config, timeZone: effectiveTimeZone(this.settings.config.timeZone) },
+              vaultPath,
+            ),
           projects: () => this.projects(),
           // Read at each call: the widgets exist only after the session manager.
           widgetLines: () => this.widgets?.formats.promptLines() ?? [],
@@ -1725,10 +1748,10 @@ export class Eva {
     };
   }
 
-  /** The person's clock and week start, with the old About me fields while the hub has not moved them. */
-  displayFormat(): DisplayFormat {
-    const { clock, weekStart } = formatSettingsOf(this.settings.config, this.options.config.vaultPath);
-    return { clock, weekStart };
+  /** The person's clock, week start and units, with the old About me fields while the hub has not moved them. */
+  displayFormat(): StatusFormat {
+    const { clock, weekStart, units } = formatSettingsOf(this.settings.config, this.options.config.vaultPath);
+    return { clock, weekStart, units };
   }
 
   /** Turns a voice note into text on this machine. Throws `voice_unavailable` with no whisper model. */

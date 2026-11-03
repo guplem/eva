@@ -80,7 +80,7 @@ import { startPushPresence } from "./push-presence.ts";
 import { unreadChats } from "./chat-list.ts";
 import { announceShownChats, browserPresencePage } from "./PushCard.tsx";
 import { dialogBackdropClass } from "./Dialog.tsx";
-import { setDisplayFormat } from "./display-format.ts";
+import { onDisplayFormatChange, setDisplayFormat } from "./display-format.ts";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -160,6 +160,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [voiceNotes, setVoiceNotes] = useState(false);
   /** Changes when the clock or the week start changes, so every time on the page renders again (#770). */
   const [, setFormatChanges] = useState(0);
+  useEffect(() => onDisplayFormatChange(() => setFormatChanges((count) => count + 1)), []);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
   const showError = useShowError();
@@ -248,7 +249,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       // An older Eva does not say: the microphone stays hidden.
       setVoiceNotes((status as Partial<EvaStatus>).voiceNotes ?? false);
       // An older Eva does not say: the page keeps the old forms.
-      if (setDisplayFormat((status as Partial<EvaStatus>).format)) setFormatChanges((count) => count + 1);
+      setDisplayFormat((status as Partial<EvaStatus>).format);
     } catch {
       // The next poll or the next reconnect tries again.
     }

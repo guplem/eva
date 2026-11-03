@@ -138,8 +138,8 @@ describe("the format fields that moved to the settings (#770)", () => {
     recordFormatMigration();
     note("name: Alex\nclock: 12h\nweekStart:");
     expect(readAboutMe(vault).problems).toEqual([
-      "clock is an Eva setting now: set it in Eva's Settings, or with eva settings set clock, then remove the field from this note.",
-      "weekStart is an Eva setting now: set it in Eva's Settings, or with eva settings set weekStart, then remove the field from this note.",
+      "clock is an Eva setting now. When the setting is not set, set it with eva settings set clock; when it holds another value, ask the person which one is right first. Then remove the field from this note.",
+      "weekStart is an Eva setting now. When the setting is not set, set it with eva settings set weekStart; when it holds another value, ask the person which one is right first. Then remove the field from this note.",
     ]);
   });
 

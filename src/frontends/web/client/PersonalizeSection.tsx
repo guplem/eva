@@ -4,7 +4,7 @@
  * apply at once. Each item of the message box menu saves on its own.
  */
 import { useEffect, useState, type ReactElement } from "react";
-import { api, ApiError } from "./api.ts";
+import { api, ApiError, type EvaStatus } from "./api.ts";
 import { AssistantRulesCard } from "./AssistantRulesCard.tsx";
 import { ComposerMenuCard } from "./ComposerMenuCard.tsx";
 import { WidgetsCard } from "./WidgetsCard.tsx";
@@ -32,6 +32,7 @@ import { SaveButton } from "./SaveButton.tsx";
 import { restartNote } from "./notes.ts";
 import { knownTimeZones, timeZoneChoices } from "./time-zones.ts";
 import type { Clock, Units, WeekStart } from "../../../shared/time-format.ts";
+import { displayFormat, setDisplayFormat } from "./display-format.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
 const chatNameRulesLength = 4_000;
@@ -172,9 +173,19 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
   const config = context.settings.config;
   const [timeZone, setTimeZone] = useState(config.timeZone ?? "");
   const [language, setLanguage] = useState(config.language ?? "");
-  const [units, setUnits] = useState<Units | "">(config.units ?? "");
-  const [clock, setClock] = useState<Clock | "">(config.clock ?? "");
-  const [weekStart, setWeekStart] = useState<WeekStart | "">(config.weekStart ?? "");
+  // A vault that the hub has not migrated still holds these in About me: the status gives the values in use.
+  const [shown] = useState(() => {
+    const used = (context.status as Partial<EvaStatus> | null)?.format;
+    const fallback = displayFormat();
+    return {
+      units: config.units ?? used?.units ?? null,
+      clock: config.clock ?? used?.clock ?? fallback.clock,
+      weekStart: config.weekStart ?? used?.weekStart ?? fallback.weekStart,
+    };
+  });
+  const [units, setUnits] = useState<Units | "">(shown.units ?? "");
+  const [clock, setClock] = useState<Clock | "">(shown.clock ?? "");
+  const [weekStart, setWeekStart] = useState<WeekStart | "">(shown.weekStart ?? "");
   /** Null until loaded, and when no vault holds the rules. */
   const [chatNameRules, setChatNameRules] = useState<string | null>(null);
   /** Save sends the rules only when they changed, so it never overwrites an edit that Eva made in a chat. */
@@ -221,6 +232,11 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
           : `Saved.${rulesProblem}`,
       );
       context.reloadSettings();
+      // The times on the page follow the new clock at once, not at the next status poll.
+      void api.status().then(
+        (status) => setDisplayFormat((status as Partial<EvaStatus>).format),
+        () => undefined,
+      );
       return rulesProblem === "";
     } catch (error) {
       notify(errorText(error) + rulesProblem);
@@ -230,9 +246,9 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
   useLeaveGuard(
     timeZone !== (config.timeZone ?? "") ||
       language !== (config.language ?? "") ||
-      units !== (config.units ?? "") ||
-      clock !== (config.clock ?? "") ||
-      weekStart !== (config.weekStart ?? "") ||
+      units !== (shown.units ?? "") ||
+      clock !== (shown.clock ?? "") ||
+      weekStart !== (shown.weekStart ?? "") ||
       (chatNameRules !== null && chatNameRules !== savedChatNameRules),
     save,
   );

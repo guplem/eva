@@ -89,4 +89,4 @@ Say in one line what you saved and where, such as "Saved: your birthday is 14 Ma
 
 ## 6. Fix a problem
 
-Before the person's text, a message can have a line that starts with `[Life/About me.md has problems:`. Fix each field that the line names to the form in the table, or to its old form (step 4). When the line says that a field is an Eva setting now, set it with `eva settings set`, then remove the field. When you cannot tell the right value, ask the person, and leave the field empty until they answer.
+Before the person's text, a message can have a line that starts with `[Life/About me.md has problems:`. Fix each field that the line names to the form in the table, or to its old form (step 4). When the line says that a field is an Eva setting now, read the setting with `eva settings get`. When it is not set, set it with `eva settings set`. When it holds another value, tell the person where the field belongs now, and ask which value is right before you change the setting. Then remove the field. When you cannot tell the right value, ask the person, and leave the field empty until they answer.

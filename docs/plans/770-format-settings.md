@@ -20,13 +20,16 @@ Each fact has one home, and Eva's own things live in Eva (decisions.md). Today t
 - **Template, new vaults only.** `templates/vault/Life/About me.md` follows `drafts/about-me-template.md`: slim, `pinned: full`, an empty `summary:`, no Language or Time zone line. `templates/vault/Life/Health/Allergies and Diet.md` follows `drafts/allergies-and-diet-template.md`. The template `.eva/assistant.md` stops sending the agent to About me for the language and the time zone.
 - **About me reader.** `aboutMeHeaderKeys` lists the slim keys and the five old personal keys, which stay valid. `work` accepts a `period` key. `readAboutMe` keeps today's checks for `sleep`, `people`, `dates`, `diet` and `allergies`. It stops checking the form of `units`, `clock` and `weekStart`: after the migration, one of them in the header gets one problem that names the setting where it belongs now.
 - **The migration** `2026-11-03-format-settings` (vault, frozen):
+  - Waits ("later") until `2026-10-30-settings-folder` is in the vault's record, and while only the old `.eva/settings.json` exists: a write from an empty start would hide or cut the person's settings.
+  - Waits while the About me header is broken, so the move runs after the repair.
   - Reads the About me header and body as raw text.
   - For `units`, `clock` and `weekStart`: copies a valid value into the settings when the setting is missing or null. Removes the field from the header when its value is valid or empty. A bad value stays, so nothing is lost.
   - Reads the `- **Language for answers:** …` line: copies its value to `language` when the setting is empty, then deletes the line.
-  - Reads the `- **Time zone:** …` line: copies it to `timeZone` when the setting is null and `Intl` accepts the zone, then deletes the line.
+  - Reads the `- **Time zone:** …` line: copies it to `timeZone` when the setting is null and `Intl` accepts the zone. It deletes the line only when it is empty, copied, or the setting already holds a value; an unknown zone keeps its line, so nothing is lost.
+  - Removes a moved field with its own lines, but keeps a comment line under it.
   - Adds `pinned: full` when the header has no `pinned` key.
   - Checks the result: the header parses, and only `units`, `clock`, `weekStart` and `pinned` changed. The body changed only by the two lines. On any doubt, it leaves About me as it is.
-  - Writes `.eva/settings/settings.json` (and the old `.eva/settings.json` when it exists, as the settings code does) on raw JSON, checked with `parseConfig`. It writes no other file under `Life/`.
+  - Writes `.eva/settings/settings.json`, starting from its own content, and the old `.eva/settings.json` when it exists, as the settings code does, on raw JSON, checked with `parseConfig`. It writes no other file under `Life/`.
 - **The skill.** `templates/vault/.eva/skills/about-me/SKILL.md` describes only the slim fields, says where every other fact goes, and has a short "Old fields" part for a vault before #773.
 
 ## Gaps and decisions
@@ -38,7 +41,7 @@ The owner is away. Each decision below is what his intentions point to (decision
 3. **A bad `units`, `clock` or `weekStart` value stays in the header**, with a problem that names the setting. Reason: nothing is lost, and the agent moves it with the person.
 4. **Live settings.** The four keys join `liveSettingKeys`: a save needs no restart. The prompt block reads the current settings at the first turn of each new chat. Reason: "Plug and play"; no restart for a format choice. `timeZone` keeps its restart, as today.
 5. **The browser gets the format through the status**, not through each component's props. Reason: one read that the app already polls, no prop threading through a dozen components.
-6. **The older-hub risk is accepted, and named in the PR.** A newer satellite can save `clock`, and an older hub's next settings save drops it before the hub updates. The pickers do not wait for the migration. Reason: the loss is one format choice that the person sees and sets again, and a gate would add a new state to the Settings page. Small, human, no over-engineering.
+6. **The older-hub risk is accepted, and named in the PR.** Before this Eva reaches the hub, the hub knows none of the four keys. A newer satellite can save `clock`, and the hub's next settings save drops it, because that older code writes only the keys it knows. The pickers do not wait for the migration. Reason: the loss is one format choice that the person sees and sets again, and a gate would add a new state to the Settings page. From this release on, a settings save keeps every top-level key of the vault's file that it does not know, so the next new setting has no such risk.
 7. **Card layout.** A new card, "Language and formats" (item `formats`), after the Time zone card, in the same form. The Time zone card stays, so its links keep working. Reason: reuse the existing card and form, one Save.
 8. **12-hour form.** `2:05 PM`, with no leading zero, as `en-US` writes it. The day line hour labels show `6 AM`, `12 PM`. Reason: common and short.
 9. **The `[Local time: …]` line** keeps `YYYY-MM-DD`, and only the time follows the clock, such as `2026-10-14 2:30 PM`. Reason: the agent sees the person's form; the date form stays one.
@@ -46,3 +49,6 @@ The owner is away. Each decision below is what his intentions point to (decision
 11. **The template `.eva/assistant.md`** gets a one-line change only: the language and the time zone are Eva settings, and a time follows the clock setting. Reason: a new vault must not hold a false rule; #772 replaces the file later.
 12. **The pinned-files migration** already skips About me. This migration adds the pin. Reason: #769 left it to #770.
 13. **No base prompt edit.** #771 writes the text that explains the block. Reason: assumption 9.
+14. **Effective values everywhere** (review). The format block names the zone in use: the setting, or the computer's zone when it is not set, as for today's date. The `[Local time: …]` line uses the zone and the clock of the chat's block. The Settings pickers show the values in use, also one still only in About me. After a save, the page reads the status at once, so its times follow the new clock.
+15. **Setup forms on a server** (review). A Linux computer with no locale set (no `LC_ALL`, `LC_TIME`, `LC_MESSAGES` or `LANG`, or only `C` or `POSIX`) gives no clock, week start or units: the engine's fallback is `en-US`, which would give a Spanish owner a 12-hour clock and miles. The web setup sends the browser's locale and time zone, so a hub with none still gets the person's forms. A failed settings save at setup is a problem line on both paths, never a stop.
+16. **A moved field after the migration** (review). The problem line and the skill say: set the setting when it is not set; when it holds another value, ask the person which one is right first; then remove the field.

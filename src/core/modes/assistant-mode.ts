@@ -65,12 +65,17 @@ export interface AssistantPreparerOptions {
 const pskillTimeoutMs = 30_000;
 
 /** The parts of the appended prompt that Eva reads from the vault at the first turn of a chat. */
+interface KeptFormat {
+  readonly settings: FormatSettings;
+  readonly text: string;
+}
+
 interface KeptPrompt {
   readonly rules: string;
   /** The pinned files (#769). Its text is null when nothing is pinned. */
   readonly pinned: PinnedBlock;
-  /** Null when the preparer has no format settings. */
-  readonly format: string | null;
+  /** The format settings of the chat's first turn, and their block. Null when the preparer has none. */
+  readonly format: KeptFormat | null;
   /** Null when no widget is on. */
   readonly widgets: string | null;
 }
@@ -112,7 +117,7 @@ export class AssistantPreparer implements TurnPreparer {
       projectFolder: null,
       // The time goes in the message, never in the prompt (lesson 40).
       appendSystemPrompt: this.appendedPrompt(kept),
-      messagePrefix: this.messagePrefix(),
+      messagePrefix: this.messagePrefix(kept.format),
       pluginFolders: this.pluginFolders(),
       mcpServers: this.options.mcpServers,
       trusted: true,
@@ -168,7 +173,7 @@ export class AssistantPreparer implements TurnPreparer {
               group: "prompt" as const,
               title: "Your format settings",
               source: null,
-              text: format,
+              text: format.text,
               note: "Eva reads the answer language, the time zone, the units, the clock and the first day of the week from Settings at the start of each chat. A change shows in the next chat.",
             },
           ]),
@@ -187,7 +192,7 @@ export class AssistantPreparer implements TurnPreparer {
         group: "message",
         title: "Before each message",
         source: null,
-        text: this.messagePrefix(),
+        text: this.messagePrefix(format),
         note: "Eva puts this text before each of your messages, with the time of that message.",
       },
     ];
@@ -207,7 +212,7 @@ export class AssistantPreparer implements TurnPreparer {
   /** Eva's prompt, the person's rules, then the pinned files, the format settings and the widgets, so the person's rules stay next to Eva's. */
   private appendedPrompt(kept: KeptPrompt): string {
     let prompt = `${this.options.basePrompt}\n\n${kept.rules}`;
-    for (const block of [kept.pinned.text, kept.format, kept.widgets])
+    for (const block of [kept.pinned.text, kept.format?.text ?? null, kept.widgets])
       if (block !== null) prompt = `${prompt.trimEnd()}\n\n${block}`;
     return prompt;
   }
@@ -227,9 +232,9 @@ export class AssistantPreparer implements TurnPreparer {
     return block;
   }
 
-  private formatBlockNow(): string | null {
+  private formatBlockNow(): KeptFormat | null {
     const settings = this.options.formatSettings?.();
-    return settings === undefined ? null : formatBlock(settings);
+    return settings === undefined ? null : { settings, text: formatBlock(settings) };
   }
 
   private widgetsBlockNow(): string | null {
@@ -242,10 +247,13 @@ export class AssistantPreparer implements TurnPreparer {
     return existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [];
   }
 
-  /** The local time, and a note when `Life/About me.md` has a field that Eva must fix. */
-  private messagePrefix(): string {
-    const clock = this.options.formatSettings?.().clock ?? null;
-    const time = `[Local time: ${formatLocalTime(this.options.now(), this.options.timeZone, clock)}, ${this.options.timeZone}]`;
+  /**
+   * The local time, and a note when `Life/About me.md` has a field that Eva must fix. The zone and
+   * the clock are the chat's, as its format block says them.
+   */
+  private messagePrefix(format: KeptFormat | null): string {
+    const zone = format?.settings.timeZone ?? this.options.timeZone;
+    const time = `[Local time: ${formatLocalTime(this.options.now(), zone, format?.settings.clock ?? null)}, ${zone}]`;
     const note = aboutMeProblemNote(readAboutMe(this.options.vaultPath).problems);
     return note === null ? time : `${time}\n${note}`;
   }

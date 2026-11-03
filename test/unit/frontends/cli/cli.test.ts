@@ -2129,7 +2129,7 @@ describe("describeStatusLines", () => {
     setupMissing: 0,
     chatBlocker: null,
     voiceNotes: false,
-    format: { clock: null, weekStart: null },
+    format: { clock: null, weekStart: null, units: null },
   };
 
   test("eva status ends with a QR code of the phone address, as setup shows (Telegram does not)", () => {

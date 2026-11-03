@@ -143,7 +143,7 @@ export function readAboutMe(vaultPath: string): AboutMe {
     for (const key of movedFormatKeys)
       if (key in header)
         problems.push(
-          `${key} is an Eva setting now: set it in Eva's Settings, or with eva settings set ${key}, then remove the field from this note.`,
+          `${key} is an Eva setting now. When the setting is not set, set it with eva settings set ${key}; when it holds another value, ask the person which one is right first. Then remove the field from this note.`,
         );
   checkHours(header, "sleep", problems);
   checkHours(header, "work", problems);

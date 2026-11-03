@@ -132,6 +132,14 @@ describe("VaultSetup", () => {
     // An empty answer keeps the recommended language for notes.
     expect(readFileSync(join(folder, "AGENTS.md"), "utf8")).toContain("**Write all notes in English**");
     expect(loadConfig(paths).vaultPath).toBe(folder);
+    // The answer language and this computer's time zone go to the vault's settings, not to the note (#770).
+    const settings = JSON.parse(readFileSync(join(folder, ".eva", "settings", "settings.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(settings["language"]).toBe("English");
+    expect(settings["timeZone"]).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(readFileSync(join(folder, "Life", "About me.md"), "utf8")).not.toContain("Language for answers");
     expect(sandbox.git(join(sandbox.root, "my-vault.git"), "log", "--oneline", "main")).toContain("template");
     expect(await setup(api.baseUrl).needsPush()).toBe(false);
   });

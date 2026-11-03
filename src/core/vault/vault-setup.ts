@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { loadConfig, saveConfig, type HomePaths } from "../settings/home.ts";
-import { loadSettings } from "../settings/settings.ts";
+import { saveNewVaultSettings } from "../settings/format-defaults.ts";
 import { createGitHubRepository, listGitHubRepositories, type GitHubRepository } from "./github-repositories.ts";
 import { checkVaultRepository, cloneVault, isAddress, pushNewVault, vaultNeedsPush } from "./vault-clone.ts";
 import { createVaultKey } from "./vault-crypto.ts";
@@ -96,9 +96,7 @@ export class VaultSetup {
           key,
           answers: {
             name: answers.name.trim() || "the owner",
-            language: answers.language.trim() || "English",
             notesLanguage: answers.notesLanguage.trim() || "English",
-            timeZone: this.timeZone(),
             topics: answers.topics.map((topic) => topic.trim()).filter((topic) => topic !== ""),
           },
           runner: this.options.runner,
@@ -107,6 +105,7 @@ export class VaultSetup {
       );
       // The local vault comes first, so a failed push loses nothing, and the page offers it again.
       this.saveFolder(folder);
+      this.saveSettings(answers.language.trim() || "English");
       if (this.options.githubToken() === undefined && !isAddress(answers.repository))
         return { folder, repository: null, problem: noToken };
       if (answers.repository.trim() === "") return { folder, repository: null, problem: null };
@@ -228,14 +227,13 @@ export class VaultSetup {
     saveConfig(this.options.paths, { ...loadConfig(this.options.paths), vaultPath: folder });
   }
 
-  private timeZone(): string {
+  /** The answer language, and the time zone and the formats of this computer where they are empty (#770). */
+  private saveSettings(language: string): void {
     try {
-      const saved = loadSettings(this.options.paths).config.timeZone;
-      if (saved !== null) return saved;
+      saveNewVaultSettings(this.options.paths, language);
     } catch {
-      // A broken settings file must not stop the new vault; the machine's time zone serves.
+      // A broken settings file must not stop the new vault; the Settings page names the problem.
     }
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
 
   private token(): string {

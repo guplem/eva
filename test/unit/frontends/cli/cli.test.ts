@@ -1413,8 +1413,15 @@ describe("runSetup", () => {
     );
     const newVault = join(home, "vault");
     const about = readFileSync(join(newVault, "Life", "About me.md"), "utf8");
-    expect(about).toContain("- **Name:** Alex");
+    expect(about).toContain("# About Alex");
     expect(about).toContain("- Work\n- music\n");
+    // The answer language goes to the vault's settings, with this computer's time zone (#770).
+    const settings = JSON.parse(readFileSync(join(newVault, ".eva", "settings", "settings.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(settings["language"]).toBe("English");
+    expect(settings["timeZone"]).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
     expect(readFileSync(join(newVault, "AGENTS.md"), "utf8")).toContain("**Write all notes in Catalan**");
     // Before the questions, the person sees each folder of the new vault, and how to change them.
     const said = lines.join("\n");
@@ -2122,6 +2129,7 @@ describe("describeStatusLines", () => {
     setupMissing: 0,
     chatBlocker: null,
     voiceNotes: false,
+    format: { clock: null, weekStart: null },
   };
 
   test("eva status ends with a QR code of the phone address, as setup shows (Telegram does not)", () => {

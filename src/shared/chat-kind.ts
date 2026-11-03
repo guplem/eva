@@ -22,9 +22,9 @@ const kindNames: Readonly<Record<ChatKind, string>> = {
 
 /**
  * The name that every front end shows for a kind of chat. A chat in a project folder is
- * "Specialist" only in a specialist project, and "Project" in a general one (#768).
+ * "Project" in a general project, and "Specialist" otherwise, as before #768.
  */
 export function chatKindName(kind: ChatKind, projectType?: ProjectType): string {
-  if (kind === "specialist" && projectType !== undefined && projectType !== "specialist") return kindNames.project;
+  if (kind === "specialist" && projectType === "general") return kindNames.project;
   return kindNames[kind];
 }

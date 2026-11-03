@@ -55,6 +55,8 @@ export class ChatNotifications {
   private readonly endings: Map<string, string>;
   /** The project chats that report back to another chat: the report is the notification. */
   private readonly reportingChats: Set<string>;
+  /** The scheduled runs that wait for their end, with the push that the run will send, once known. */
+  private readonly heldRuns: Map<string, { kind: ChatNotification["kind"]; body: string } | null>;
 
   constructor(options: ChatNotificationsOptions) {
     this.options = options;
@@ -62,6 +64,7 @@ export class ChatNotifications {
     this.lastTexts = new Map();
     this.endings = new Map();
     this.reportingChats = new Set();
+    this.heldRuns = new Map();
   }
 
   handle(event: SessionEvent): void {
@@ -102,6 +105,7 @@ export class ChatNotifications {
         this.forget(sessionId);
         this.origins.delete(sessionId);
         this.reportingChats.delete(sessionId);
+        this.heldRuns.delete(sessionId);
         return;
       default:
         return;
@@ -120,7 +124,24 @@ export class ChatNotifications {
     const reports = this.reportingChats.delete(sessionId);
     if (ending === undefined || state.stopped || reports) return;
     const kind = this.origins.get(sessionId) === "schedule" ? "schedules" : "replies";
+    // A scheduled run may end quiet, so its push waits for the scheduler's word (#687).
+    if (this.heldRuns.has(sessionId)) {
+      this.heldRuns.set(sessionId, { kind, body: ending });
+      return;
+    }
     this.send(sessionId, kind, ending);
+  }
+
+  /** A scheduled run starts in this chat: its push waits for `endRun`. */
+  holdRun(sessionId: string): void {
+    this.heldRuns.set(sessionId, null);
+  }
+
+  /** The scheduled run is over. `deliver` false: a quiet run, so its push goes nowhere. */
+  endRun(sessionId: string, deliver: boolean): void {
+    const held = this.heldRuns.get(sessionId);
+    this.heldRuns.delete(sessionId);
+    if (deliver && held !== undefined && held !== null) this.send(sessionId, held.kind, held.body);
   }
 
   private forget(sessionId: string): void {

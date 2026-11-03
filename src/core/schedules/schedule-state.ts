@@ -14,11 +14,13 @@ const stateSchema = z.object({
    * The slot of the last firing and whether it failed. Unlike `lastFired`, a slot that a setup
    * card skipped never counts. Optional: a state file from before this field reads as no run yet.
    */
-  lastResult: z.object({ slot: z.string(), failed: z.boolean() }).nullable().optional(),
+  lastResult: z.object({ slot: z.string(), failed: z.boolean(), quiet: z.boolean().optional() }).nullable().optional(),
   /** The fields that the last setup card showed. Null: no card yet. */
   announced: z.record(z.string(), z.string()).nullable(),
   /** True from a pause until the next card. Optional: a state file from before this field reads as not paused. */
   paused: z.boolean().optional(),
+  /** The slot of the run whose [[done]] ended the schedule (#687). Null again once it is on. */
+  done: z.string().nullable().optional(),
   /**
    * The time of a one-off and when Eva first saw that time (#822). A one-off counts from then, so a
    * past time that an edit writes never fires. Optional: a missing field reads as not seen yet.

@@ -24,6 +24,7 @@ import { assertVaultWritable } from "../migrations/migrations.ts";
 import { ScheduleStateStore, type ScheduleState } from "./schedule-state.ts";
 import { dueSlot, isLate, nextSlot, runsOnDay, wallClockOf } from "./schedule-timing.ts";
 import { EvaError } from "../../shared/errors.ts";
+import { extractFileMarkers } from "../../shared/file-markers.ts";
 
 export type ScheduleEvent =
   | {
@@ -46,6 +47,20 @@ export type ScheduleEvent =
       /** The fresh chat that answers the prompt, or null when the schedule has no prompt. */
       readonly sessionId: string | null;
     }
+  | {
+      /**
+       * A scheduled run ended with something to tell, or failed (#687). A front end shows the answer
+       * now: it held the run's text back, so a quiet run reaches nobody.
+       */
+      readonly kind: "schedule_answered";
+      readonly scheduleId: string;
+      readonly name: string;
+      readonly sessionId: string;
+      /** The answer of the run, with its marker lines: a front end reads them as in any answer. */
+      readonly text: string;
+      /** The reason of a failed run, or null. */
+      readonly failure: string | null;
+    }
   | { readonly kind: "schedule_problems"; readonly problems: readonly string[] };
 
 export type ScheduleCard = Extract<ScheduleEvent, { kind: "schedule_card" }>;
@@ -64,6 +79,13 @@ export interface ScheduledChatStarter {
    * A failed turn is no rejection: the session manager turns it into an event.
    */
   send(sessionId: string, prompt: string): Promise<string | null>;
+  /**
+   * The whole answer of the chat's run, and whether the person wrote in the chat during it. A
+   * scheduled run has a fresh chat, so every turn of the chat belongs to the run.
+   */
+  answerOf(sessionId: string): { readonly text: string; readonly personWrote: boolean };
+  /** The run is over. `deliver` false: a quiet run, so its push goes nowhere and its chat goes. */
+  endRun(sessionId: string, deliver: boolean): void;
 }
 
 export interface SchedulerOptions {
@@ -87,7 +109,8 @@ export interface ScheduleView {
   /** The `HH:MM` of each run today, for the day line. */
   readonly runsToday: readonly string[];
   /** The slot of the last firing and whether it failed, or null before the first firing. */
-  readonly lastRun: { readonly slot: string; readonly failed: boolean } | null;
+  /** `quiet`: the run had nothing to tell (#687). */
+  readonly lastRun: { readonly slot: string; readonly failed: boolean; readonly quiet?: boolean | undefined } | null;
   /** The slot when the schedule ended, as "Ended" shows it, or null while it can still run. */
   readonly ended: string | null;
 }
@@ -178,10 +201,18 @@ export class Scheduler {
       throw new EvaError("schedule_invalid", `The time ${from.replace("T", " ")} is in the past: pick a later one.`);
   }
 
-  /** The slot when a one-off ended: it ran, or its time had passed when Eva first saw it. */
+  /**
+   * The slot when a schedule ended, or null: a [[done]] stopped it, no run is left before its
+   * `until` day, or a one-off ran or its time passed before Eva saw it.
+   */
   private endedAt(schedule: Schedule, now: string): string | null {
-    if (!runsOnce(schedule) || schedule.from === null || schedule.from > now) return null;
     const state = this.state.peek(schedule.id);
+    // A [[done]] ends the schedule, also while it is off (#687).
+    if (state?.done !== undefined && state.done !== null) return state.done;
+    // No run remains after the until day: the next slot would be after it.
+    if (schedule.until !== null && !runsOnce(schedule) && nextSlot(schedule, now) === null)
+      return `${schedule.until}T23:59`;
+    if (!runsOnce(schedule) || schedule.from === null || schedule.from > now) return null;
     if (state === undefined || state.lastFired === schedule.from || onceSeenAt(schedule, state, now) > schedule.from)
       return schedule.from;
     return null;
@@ -209,6 +240,9 @@ export class Scheduler {
     const changed = setScheduleEnabled(this.definitionsPath, scheduleId, enabled);
     // A check may not run between off and on, so the pause counts now, or on would need no card.
     if (changed && !enabled) this.pause(scheduleId);
+    // On again starts a new watch, so the end of the last one goes (#687).
+    if (changed && enabled && (this.state.peek(scheduleId)?.done ?? null) !== null)
+      this.state.update(scheduleId, { done: null });
     return changed;
   }
 
@@ -367,6 +401,8 @@ export class Scheduler {
     this.state.update(schedule.id, {
       announced: announcedFields(schedule),
       paused: false,
+      // A card for a schedule that is on again: the end of its last watch goes (#687).
+      ...((state.done ?? null) === null ? {} : { done: null }),
       ...(slot === null ? {} : { lastFired: slot }),
     });
     this.stopWaiting(schedule.id);
@@ -405,12 +441,75 @@ export class Scheduler {
     this.options.reportFiring?.(schedule, null);
     if (sessionId !== null && schedule.prompt !== null) {
       // Nobody awaits the turn, so its failure goes to the log here (lesson 50).
+      const prompt = `${schedule.prompt}\n\n${runNote}`;
       void this.options.chats
-        .send(sessionId, late === null ? schedule.prompt : `${late.prompt}\n\n${schedule.prompt}`)
+        .send(sessionId, late === null ? prompt : `${late.prompt}\n\n${prompt}`)
         .catch((error: unknown) => errorText(error))
-        .then((failure) => {
-          if (failure !== null) this.promptFailed(schedule, slot, failure);
+        .then((failure) => this.runEnded(schedule, slot, sessionId, failure))
+        .catch((error: unknown) => {
+          this.options.logger?.log("error", "Eva could not end a scheduled run.", {
+            scheduleId: schedule.id,
+            reason: errorText(error),
+          });
         });
+    }
+  }
+
+  /**
+   * The chat of a run is free. A run with nothing to tell reaches nobody, and a [[done]] ends the
+   * schedule (#687). A failed run is never quiet and never ends it: the person must learn of it.
+   */
+  private runEnded(schedule: Schedule, slot: string, sessionId: string, failure: string | null): void {
+    const { chats } = this.options;
+    const answer = chats.answerOf(sessionId);
+    const markers = extractFileMarkers(answer.text);
+    // A [[quiet]] line silences the run, also after text that it wrote while it worked, such as
+    // "I check Gmail now". An answer with no words says nothing either. A file still goes out.
+    const files = markers.attach.length + markers.offer.length;
+    const silent = files === 0 && (markers.quiet || markers.text === "");
+    if (failure !== null) {
+      this.promptFailed(schedule, slot, failure);
+      void this.emit({
+        kind: "schedule_answered",
+        scheduleId: schedule.id,
+        name: schedule.name,
+        sessionId,
+        text: answer.text,
+        failure,
+      });
+      chats.endRun(sessionId, true);
+      return;
+    }
+    // Someone who wrote during the run waits for its answer.
+    const quiet = !answer.personWrote && silent;
+    if (quiet) {
+      if (this.state.peek(schedule.id)?.lastResult?.slot === slot)
+        this.state.update(schedule.id, { lastResult: { slot, failed: false, quiet: true } });
+    } else {
+      void this.emit({
+        kind: "schedule_answered",
+        scheduleId: schedule.id,
+        name: schedule.name,
+        sessionId,
+        text: answer.text,
+        failure: null,
+      });
+    }
+    chats.endRun(sessionId, !quiet);
+    if (markers.done) this.endByDone(schedule, slot);
+  }
+
+  /** A [[done]] works like the person's pause, so turning the schedule on again needs a card (lesson 67). */
+  private endByDone(schedule: Schedule, slot: string): void {
+    try {
+      this.setEnabled(schedule.id, false);
+      this.state.update(schedule.id, { done: slot });
+    } catch (error) {
+      // The vault may be read-only. The phone must still learn that the watch did not stop.
+      this.options.reportFiring?.(
+        schedule,
+        `The run asked to stop the schedule, but Eva could not turn it off: ${errorText(error)}`,
+      );
     }
   }
 
@@ -468,6 +567,13 @@ function lateNotes(slot: string): { text: string; prompt: string } {
     prompt: `[This scheduled run comes late: ${due}. Say so in one short sentence at the start of your answer.]`,
   };
 }
+
+/**
+ * Each scheduled prompt ends with this note, so the agent learns the markers. A normal chat gets
+ * no note and pays no tokens for it (#687).
+ */
+const runNote =
+  "[A scheduled run. When nothing is worth telling the person, end your answer with a line [[quiet]]: nobody gets a message. When the job of this schedule is over for good, add a line [[done]]: Eva turns the schedule off.]";
 
 /**
  * When Eva first saw the time of a one-off. A time that she did not check yet counts as seen now,

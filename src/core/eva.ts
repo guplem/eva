@@ -1012,8 +1012,13 @@ export class Eva {
         );
       },
     });
+    /** The scheduled runs that are going on, and whether the person wrote in their chat meanwhile. */
+    const scheduledRuns = new Map<string, boolean>();
     this.sessions.subscribe((event) => {
       chatNotifications.handle(event);
+      // Someone who writes during a run waits for its answer, so the run is never quiet (#687).
+      if (event.kind === "message_received" && event.origin !== "schedule" && event.origin !== "eva")
+        if (scheduledRuns.has(event.sessionId)) scheduledRuns.set(event.sessionId, true);
     });
     this.sessions.onIdle((sessionId, state) => {
       chatNotifications.idle(sessionId, state);
@@ -1035,7 +1040,33 @@ export class Eva {
                   ...(model === undefined ? {} : { model }),
                   title: name,
                 }).id,
-              send: (sessionId, prompt) => this.sessions.sendWithResult(sessionId, prompt, "schedule"),
+              send: (sessionId, prompt) => {
+                scheduledRuns.set(sessionId, false);
+                chatNotifications.holdRun(sessionId);
+                return this.sessions.sendWithResult(sessionId, prompt, "schedule");
+              },
+              answerOf: (sessionId) => ({
+                // A scheduled run has a fresh chat, so each of its turns belongs to the run.
+                text: this.sessions
+                  .get(sessionId)
+                  .turns.map((turn) => turn.answerText)
+                  .join("\n\n"),
+                personWrote: scheduledRuns.get(sessionId) === true,
+              }),
+              endRun: (sessionId, deliver) => {
+                scheduledRuns.delete(sessionId);
+                chatNotifications.endRun(sessionId, deliver);
+                if (deliver) return;
+                // A quiet run leaves nothing behind. A chat that cannot go stays, and still sends nothing.
+                try {
+                  this.sessions.delete(sessionId);
+                } catch (error) {
+                  options.logger?.log("warn", "Eva could not delete the chat of a quiet scheduled run.", {
+                    sessionId,
+                    reason: error instanceof Error ? error.message : String(error),
+                  });
+                }
+              },
             },
             reportFiring: (schedule, failure) => {
               this.alerts.report(

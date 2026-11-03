@@ -220,6 +220,9 @@ export class TelegramBot {
         this.saveState();
       },
       pairedChat: () => this.allowedChatId,
+      stopTyping: (sessionId) => {
+        this.stopTyping(sessionId);
+      },
       startTyping: (chatId, topicId, sessionId) => {
         this.startTyping(chatId, topicId, sessionId);
       },

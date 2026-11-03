@@ -163,3 +163,10 @@ export interface CarryHistoryInput {
 
 /** The closed folders of every Project chat's wall, and the folders inside them that a shell may read (#711). */
 export type WallRoots = Pick<FileWall, "closed" | "readable" | "readOnly" | "socketFilter">;
+
+/**
+ * The line before the message of a turn whose engine lost the chat's history (lesson 46). Each
+ * engine starts a fresh conversation then, and the model must not answer as if it knew the rest.
+ */
+export const lostHistoryPreamble =
+  "(The earlier part of this conversation is lost, because the engine no longer has it. Say so if the message refers to it.)\n\n";

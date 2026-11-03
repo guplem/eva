@@ -32,6 +32,7 @@ const pullProblems: Readonly<Record<Exclude<VaultSyncStatus, "ok">, string>> = {
   conflict: "The vault pull found a conflict",
   error: "The vault pull failed",
   skipped: "The vault is not on its default branch",
+  paused: "The vault sync waits for the vault upgrade",
 };
 
 export interface StartNote {

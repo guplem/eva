@@ -10,6 +10,7 @@ export const syncStatusLabels: Readonly<Record<VaultSyncState["status"], string>
   conflict: "Conflict",
   error: "Error",
   skipped: "Skipped",
+  paused: "Paused for the vault upgrade",
 };
 
 export interface StatusFact {

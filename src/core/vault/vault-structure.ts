@@ -48,7 +48,7 @@ export function vaultStructurePath(vaultPath: string): string {
 /** The vault's structure version. A missing or damaged record, or one with no whole version, reads as version 2. */
 export function readVaultStructure(vaultPath: string): number {
   const read = readJsonTolerant(vaultStructurePath(vaultPath));
-  const version = read.ok && isRecord(read.value) ? read.value.version : undefined;
+  const version = read.ok && isRecord(read.value) ? read.value["version"] : undefined;
   return typeof version === "number" && Number.isInteger(version) && version > 0 ? version : unrecordedStructureVersion;
 }
 
@@ -103,7 +103,7 @@ export function readStructureNotices(path: string): StructureNotices {
   const read = readJsonTolerant(path);
   const value = read.ok && isRecord(read.value) ? read.value : {};
   const number = (raw: unknown): number => (typeof raw === "number" && Number.isInteger(raw) ? raw : 0);
-  return { announced: number(value.announced), prompted: number(value.prompted) };
+  return { announced: number(value["announced"]), prompted: number(value["prompted"]) };
 }
 
 export function writeStructureNotices(path: string, notices: StructureNotices): void {

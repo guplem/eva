@@ -395,6 +395,27 @@ describe("VaultSync.save", () => {
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "ideas")).not.toContain("note.md");
   });
 
+  test("pauses each step while the vault is on the branch of a vault upgrade (#773)", async () => {
+    sandbox.git(vault, "switch", "-q", "-c", "upgrade-v3");
+    sandbox.write(vault, "note.md", "kept\n");
+    const sync = createSync(vault);
+    for (const state of [await sync.save(), await sync.pull()]) {
+      expect(state.status).toBe("paused");
+      expect(state.lastError).toBe("Paused for the vault upgrade. Ask the Assistant to finish or drop it.");
+    }
+    expect(sandbox.git(vault, "status", "--porcelain")).toContain("note.md");
+  });
+
+  test("commitAll commits on any branch with its own message, and pushes nothing (#773)", async () => {
+    sandbox.git(vault, "switch", "-q", "-c", "upgrade-v3");
+    sandbox.write(vault, "note.md", "kept\n");
+    const sync = createSync(vault);
+    expect(await sync.commitAll("Notes written during the upgrade")).toBe(true);
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("Notes written during the upgrade");
+    expect(sandbox.git(sandbox.remote, "branch", "--list", "upgrade-v3")).toBe("");
+    expect(await sync.mainBranch()).toBe("main");
+  });
+
   test("a vault with no remote on master commits and reports no branch mismatch (#505)", async () => {
     sandbox.git(vault, "remote", "remove", "origin");
     sandbox.git(vault, "switch", "-q", "-c", "master");

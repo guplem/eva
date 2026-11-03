@@ -26,6 +26,10 @@ describe("assistantBasePrompt", () => {
     }
   });
 
+  test("asks for each vault path from the vault root, so the web app links it to the right file (#821)", () => {
+    expect(assistantBasePrompt).toContain("full path from the vault root");
+  });
+
   test("leaves the tone and how proactive Eva is to the person's rules, which can change them (#771)", () => {
     for (const section of ["## Style", "## Behaviour"]) {
       expect(assistantBasePrompt).not.toContain(section);

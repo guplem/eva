@@ -9,6 +9,7 @@ import {
   parseScheduleEntry,
   readScheduleDefinitions,
   removeScheduleDefinition,
+  runsOnce,
   saveScheduleDefinition,
   setScheduleEnabled,
   type Schedule,
@@ -92,6 +93,17 @@ describe("parseScheduleEntry", () => {
       expect(typeof parseScheduleEntry({ ...interval, every }, 1)).toBe("object");
   });
 
+  test("a schedule with from and no every runs once (#822)", () => {
+    const parsed = parseScheduleEntry(
+      { id: "call", name: "Call", from: "2026-11-24T10:00", text: "Call." },
+      1,
+    ) as Schedule;
+    expect([parsed.from, parsed.every, parsed.at, parsed.days]).toEqual(["2026-11-24T10:00", null, null, null]);
+    expect(runsOnce(parsed)).toBe(true);
+    expect(runsOnce(parseScheduleEntry(interval, 1) as Schedule)).toBe(false);
+    expect(runsOnce(parseScheduleEntry(morning, 1) as Schedule)).toBe(false);
+  });
+
   test("days are read in any case, without repeats, in week order", () => {
     const parsed = parseScheduleEntry({ ...morning, days: ["FRI", "mon", "fri"] }, 1) as Schedule;
     expect(parsed.days).toEqual([1, 5]);
@@ -124,7 +136,9 @@ describe("parseScheduleEntry", () => {
     [{ ...interval, from: "2026-02-30T07:30" }, "no valid from"],
     [{ ...interval, at: "07:30" }, "both every and at or days"],
     [{ ...interval, days: ["mon"] }, "both every and at or days"],
-    [{ ...morning, from: "2026-10-22T07:30" }, "from without every"],
+    [{ ...morning, from: "2026-10-22T07:30" }, "from with at or days"],
+    [{ id: "call", name: "Call", days: ["mon"], from: "2026-10-22T07:30", text: "Call." }, "from with at or days"],
+    [{ id: "call", name: "Call", from: "2026-10-22 07:30", text: "Call." }, "no valid from"],
   ])("entry %j is skipped: %s", (entry, reason) => {
     expect(parseScheduleEntry(entry, 4)).toContain(reason);
   });

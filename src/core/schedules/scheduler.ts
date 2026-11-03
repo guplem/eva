@@ -13,6 +13,7 @@ import {
   editScheduleDefinition,
   readScheduleDefinitions,
   removeScheduleDefinition,
+  runsOnce,
   saveScheduleDefinition,
   setScheduleEnabled,
   type Schedule,
@@ -20,8 +21,9 @@ import {
   type ScheduleFieldName,
 } from "./schedule-definitions.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
-import { ScheduleStateStore } from "./schedule-state.ts";
-import { dueSlot, nextSlot, runsOnDay, wallClockOf } from "./schedule-timing.ts";
+import { ScheduleStateStore, type ScheduleState } from "./schedule-state.ts";
+import { dueSlot, isLate, nextSlot, runsOnDay, wallClockOf } from "./schedule-timing.ts";
+import { EvaError } from "../../shared/errors.ts";
 
 export type ScheduleEvent =
   | {
@@ -86,6 +88,8 @@ export interface ScheduleView {
   readonly runsToday: readonly string[];
   /** The slot of the last firing and whether it failed, or null before the first firing. */
   readonly lastRun: { readonly slot: string; readonly failed: boolean } | null;
+  /** The slot when the schedule ended, as "Ended" shows it, or null while it can still run. */
+  readonly ended: string | null;
 }
 
 export interface ScheduleList {
@@ -132,12 +136,16 @@ export class Scheduler {
     const now = wallClockOf(this.options.now(), this.options.timeZone);
     const definitions = readScheduleDefinitions(this.definitionsPath);
     return {
-      schedules: definitions.schedules.map((schedule) => ({
-        schedule,
-        nextRun: schedule.enabled ? nextSlot(schedule, now) : null,
-        runsToday: runsOnDay(schedule, now),
-        lastRun: this.state.peek(schedule.id)?.lastResult ?? null,
-      })),
+      schedules: definitions.schedules.map((schedule) => {
+        const ended = this.endedAt(schedule, now);
+        return {
+          schedule,
+          nextRun: schedule.enabled && ended === null ? this.nextRunOf(schedule, now) : null,
+          runsToday: runsOnDay(schedule, now),
+          lastRun: this.state.peek(schedule.id)?.lastResult ?? null,
+          ended,
+        };
+      }),
       problems: definitions.problems,
       timeZone: this.options.timeZone,
       now,
@@ -146,13 +154,43 @@ export class Scheduler {
 
   save(entry: Readonly<Record<string, unknown>>): Schedule {
     assertVaultWritable(this.options.vaultPath);
+    this.refusePastOnce(entry, null);
     return saveScheduleDefinition(this.definitionsPath, entry);
   }
 
   /** Changes the form's fields of one schedule. The next check shows a card for each changed field. */
   edit(scheduleId: string, fields: Readonly<Record<string, unknown>>): Schedule | null {
     assertVaultWritable(this.options.vaultPath);
+    const before = readScheduleDefinitions(this.definitionsPath).schedules.find((entry) => entry.id === scheduleId);
+    this.refusePastOnce(fields, before !== undefined && runsOnce(before) ? before.from : null);
     return editScheduleDefinition(this.definitionsPath, scheduleId, fields);
+  }
+
+  /**
+   * A one-off at a past time would never run, so a save of one throws. An edit that keeps the
+   * old time of a one-off passes: a one-off that already ran can still get a new name.
+   */
+  private refusePastOnce(fields: Readonly<Record<string, unknown>>, keptFrom: string | null): void {
+    const from = fields["from"];
+    const every = fields["every"];
+    if (typeof from !== "string" || (every !== undefined && every !== null) || from === keptFrom) return;
+    if (from <= wallClockOf(this.options.now(), this.options.timeZone))
+      throw new EvaError("schedule_invalid", `The time ${from.replace("T", " ")} is in the past: pick a later one.`);
+  }
+
+  /** The slot when a one-off ended: it ran, or its time had passed when Eva first saw it. */
+  private endedAt(schedule: Schedule, now: string): string | null {
+    if (!runsOnce(schedule) || schedule.from === null || schedule.from > now) return null;
+    const state = this.state.peek(schedule.id);
+    if (state === undefined || state.lastFired === schedule.from || onceSeenAt(schedule, state, now) > schedule.from)
+      return schedule.from;
+    return null;
+  }
+
+  /** The next run. A one-off whose time passed while it waited for its card runs right after the card. */
+  private nextRunOf(schedule: Schedule, now: string): string | null {
+    if (runsOnce(schedule) && this.endedAt(schedule, now) === null && (schedule.from ?? now) <= now) return now;
+    return nextSlot(schedule, now);
   }
 
   remove(scheduleId: string): boolean {
@@ -249,7 +287,11 @@ export class Scheduler {
       this.pause(schedule.id);
       return;
     }
-    const state = this.state.see(schedule.id, now);
+    const seen = this.state.see(schedule.id, now);
+    // A one-off counts from when Eva first saw its time, not its id.
+    if (runsOnce(schedule) && schedule.from !== null && seen.onceSeen?.from !== schedule.from)
+      this.state.update(schedule.id, { onceSeen: { from: schedule.from, at: now } });
+    const state = this.state.peek(schedule.id) ?? seen;
     const fields = announcedFields(schedule);
     if (!this.isAnnounced(schedule)) {
       const changed: ScheduleChange[] = state.announced === null ? [] : changedFields(state.announced, fields);
@@ -260,7 +302,7 @@ export class Scheduler {
         name: schedule.name,
         fields,
         changed,
-        nextRun: nextSlot(schedule, now),
+        nextRun: this.nextRunOf(schedule, now),
         timeZone: this.options.timeZone,
       };
       // The card is the check against a schedule that someone pushed (lessons 66, 67). Until a
@@ -284,8 +326,8 @@ export class Scheduler {
     }
     // The change was undone before anyone saw its card, so that card no longer waits.
     this.stopWaiting(schedule.id);
-    const slot = dueSlot(schedule, state, now);
-    if (slot !== null) await this.fire(schedule, slot);
+    const slot = dueSlot(schedule, { ...state, firstSeen: onceSeenAt(schedule, state, now) }, now);
+    if (slot !== null) await this.fire(schedule, slot, now);
   }
 
   /** True when the file still holds the schedule on, and no pause came since `pausesBefore`. */
@@ -320,7 +362,8 @@ export class Scheduler {
     const state = this.state.peek(schedule.id);
     // A removed schedule stays removed (lesson 67): a later push of it needs a new card.
     if (state === undefined) return;
-    const slot = dueSlot(schedule, state, now);
+    // A one-off has no later slot, so its run, also a late one, comes right after the card.
+    const slot = runsOnce(schedule) ? null : dueSlot(schedule, state, now);
     this.state.update(schedule.id, {
       announced: announcedFields(schedule),
       paused: false,
@@ -336,7 +379,8 @@ export class Scheduler {
     this.options.reportCard?.(scheduleId, card.name, false);
   }
 
-  private async fire(schedule: Schedule, slot: string): Promise<void> {
+  private async fire(schedule: Schedule, slot: string, now: string): Promise<void> {
+    const late = isLate(slot, now) ? lateNotes(slot) : null;
     const model = modelAliases.find((alias) => alias === schedule.model);
     // The chat comes first: when it cannot start, the slot does not count as fired, and the next check tries again.
     let sessionId: string | null;
@@ -351,7 +395,10 @@ export class Scheduler {
       kind: "schedule_fired",
       scheduleId: schedule.id,
       name: schedule.name,
-      text: schedule.text,
+      text:
+        late === null || schedule.prompt !== null
+          ? schedule.text
+          : [late.text, schedule.text].filter(Boolean).join("\n\n"),
       file: schedule.file,
       sessionId,
     });
@@ -359,7 +406,7 @@ export class Scheduler {
     if (sessionId !== null && schedule.prompt !== null) {
       // Nobody awaits the turn, so its failure goes to the log here (lesson 50).
       void this.options.chats
-        .send(sessionId, schedule.prompt)
+        .send(sessionId, late === null ? schedule.prompt : `${late.prompt}\n\n${schedule.prompt}`)
         .catch((error: unknown) => errorText(error))
         .then((failure) => {
           if (failure !== null) this.promptFailed(schedule, slot, failure);
@@ -407,4 +454,26 @@ export class Scheduler {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Only a one-off fires long after its slot (#822), so the person must learn that it comes late.
+ * With a prompt, the answer says it; without one, a line before the text says it.
+ */
+function lateNotes(slot: string): { text: string; prompt: string } {
+  // No cause: Eva was off, a setup card came late, or a chat could not start.
+  const due = `it was due at ${slot.replace("T", " ")}`;
+  return {
+    text: `This message comes late: ${due}.`,
+    prompt: `[This scheduled run comes late: ${due}. Say so in one short sentence at the start of your answer.]`,
+  };
+}
+
+/**
+ * When Eva first saw the time of a one-off. A time that she did not check yet counts as seen now,
+ * as the next check records it. Any other schedule counts from when Eva first saw its id.
+ */
+function onceSeenAt(schedule: Schedule, state: ScheduleState, now: string): string {
+  if (!runsOnce(schedule)) return state.firstSeen;
+  return state.onceSeen?.from === schedule.from ? state.onceSeen.at : now;
 }

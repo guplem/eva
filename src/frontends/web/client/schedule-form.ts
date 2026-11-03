@@ -3,7 +3,8 @@ import type { Schedule } from "../../../core/schedules/schedule-definitions.ts";
 import { intervalUnits, nextHourSlot } from "./schedule-words.ts";
 import { weekOrder, type WeekStart } from "../../../shared/time-format.ts";
 
-export type Repeat = "days" | "every";
+/** On days, at an interval, or once at `from` (#822). */
+export type Repeat = "days" | "every" | "once";
 export type Unit = (typeof intervalUnits)[number][0];
 
 /** The day codes of `.eva/schedules.json`, from Monday, with the names that the buttons show. */
@@ -63,7 +64,7 @@ export function formOf(schedule: Schedule, now: string | null = null): ScheduleF
   return {
     id: schedule.id,
     name: schedule.name,
-    repeat: schedule.every === null ? "days" : "every",
+    repeat: schedule.every !== null ? "every" : schedule.from !== null ? "once" : "days",
     at: schedule.at ?? "",
     // Every day shows as no day picked, so a save keeps the entry without days.
     days:
@@ -89,6 +90,8 @@ export function fieldsOf(form: ScheduleForm): Record<string, unknown> {
   const fields: Record<string, unknown> = { name: form.name.trim() };
   if (form.repeat === "every") {
     fields["every"] = `${form.count.trim()}${form.unit}`;
+    fields["from"] = form.from;
+  } else if (form.repeat === "once") {
     fields["from"] = form.from;
   } else {
     fields["at"] = form.at.trim();

@@ -43,6 +43,13 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("The `active` and `in-use` projects are in the pinned block");
   });
 
+  test("says which status a project gets when the person both develops it and uses it (#831)", () => {
+    expect(assistantBasePrompt).toContain("A project has one status.");
+    expect(assistantBasePrompt).toContain("Pick `active` while the person develops it, even when they also use it.");
+    expect(assistantBasePrompt).toContain('such as "The person uses this every day."');
+    expect(assistantBasePrompt).toContain("Never add a second status field.");
+  });
+
   test("names the words that the pinned block prints, so the block and the prompt stay aligned (#769)", () => {
     for (const word of [
       "`pinned: full`",

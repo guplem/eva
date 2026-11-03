@@ -464,11 +464,12 @@ Some commands work differently in the sandbox:
 
 Each feature stays off until you set it up. `eva doctor` shows which tools are missing.
 
-- **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app. A schedule runs at a time on some days of the week, or every few hours, days or weeks from a first run. Eva keeps them in `.eva/schedules.json` in the vault, and only the hub runs them. When a chat adds or changes a schedule, Eva asks you first.
+- **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app. A schedule runs at a time on some days of the week, every few hours, days or weeks from a first run, or once at a date and time. Eva keeps them in `.eva/schedules.json` in the vault, and only the hub runs them. When a chat adds or changes a schedule, Eva asks you first.
   - Before a new or changed schedule runs, Eva shows a card with every detail, in Telegram or in the web app. Check it, and tap **Got it**. If you did not make it, tap **Remove schedule**.
   - A schedule waits until a card reaches you, and Eva sends an alert meanwhile.
   - A schedule sends a text, sends a vault file, or runs a prompt. A prompt starts a new chat, named after the schedule, and can pick a model.
   - The Schedules page shows what runs today, when each schedule repeats, and how its last run went. Use the switch of a schedule to pause it. Tap the pen to change it: its history stays. `/schedules` in Telegram lists them.
+  - A one-off that Eva misses because she is off runs when she is back. When it comes an hour or more late, a line says so. After its run, it shows as "Ended". To run it again, give it a new date.
 - **Eva's rules.** Your rules for Eva set her tone, how she answers and how proactive she is. Read and change them in **Settings > Personalize > Eva's rules**, or ask Eva to change them. They live in `.eva/assistant.md` in the vault.
   - They apply to each chat with Eva, in Telegram, on the web page and from a schedule, from the next new chat. A project chat never uses them. It uses the harness's own prompt and the instruction files of the project and its repositories, such as `AGENTS.md`. It never loads the vault's instruction files.
   - Eva's built-in rules come first and say how Eva works, such as how she answers from your notes, how she learns, and how she gives work to a project. The page shows them, but only an update of Eva changes them. Where the two disagree, your rules win.

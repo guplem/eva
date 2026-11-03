@@ -79,6 +79,8 @@ When you close a project, ask the person whether it closed today or on another d
 
 The `active` and `in-use` projects are in the pinned block, unless the person unpinned one. When a request fits an `in-use` project, use it, such as a recipes project for a menu.
 
+A project has one status. Pick `active` while the person develops it, even when they also use it. Pick `in-use` when it is finished enough that the person only uses it, even if they never change it again. Both statuses are pinned in the same way. When Eva must also use an `active` project for requests, add one line to its `AGENTS.md`, such as "The person uses this every day." Never add a second status field.
+
 A project has one of three types in `type`. No type means `general`, or `software` when the project lists `repos`.
 
 - **General:** notes and files with no code, such as building a house. Its chat starts in the project folder.

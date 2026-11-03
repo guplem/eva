@@ -11,7 +11,6 @@ import {
   type TemplatePart,
 } from "../../../../src/core/vault/template-alignment.ts";
 import { templateParts } from "../../../../src/core/vault/vault-template.ts";
-import { evaCoreFiles } from "../../../../src/core/modes/eva-core.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 const skill = ".eva/skills/demo/SKILL.md";
@@ -266,7 +265,7 @@ describe("templateHistory", () => {
       "19224f1e22f00b93be5c558110faf26090c836ed98aaefc46ae6d6bfa02e8e05",
     );
     expect(templateHistory[".eva/skills/schedule/SKILL.md"]).toContain(
-      contentHash(evaCoreFiles()["skills/schedule/SKILL.md"] ?? ""),
+      "e4d64b338aeacde23e05122de9316154bc7e179ffa8fa7755909bcfc51da2092",
     );
   });
 });

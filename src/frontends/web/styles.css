@@ -2735,6 +2735,53 @@ button.link-button {
   color: var(--ok);
 }
 
+/* The index of the open page: its cards, under the section in the side list, or in a row on a phone. */
+.page-index {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.page-index-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 var(--space-2) var(--space-5);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--line);
+}
+
+.page-index-item {
+  justify-content: flex-start;
+  width: 100%;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-input);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  text-align: left;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .page-index-item:hover {
+    color: var(--ink);
+  }
+}
+
+/* A word weight and a bar, not colour alone, show the card that the person reads. */
+.page-index-item[aria-current="location"] {
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.page-index-row {
+  display: none;
+}
+
 .settings-content {
   min-width: 0;
   overflow-y: auto;
@@ -3164,6 +3211,27 @@ button.link-button {
 
   .settings-nav {
     display: none;
+  }
+
+  /* The side list is gone, so the index wraps at the top of the page. */
+  .page-index-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+  }
+
+  .page-index-row .page-index-item {
+    width: auto;
+    min-height: var(--touch-target);
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    color: var(--ink);
+  }
+
+  .page-index-row .page-index-item[aria-current="location"] {
+    box-shadow: none;
+    border-color: var(--accent);
   }
 
   .back-button {

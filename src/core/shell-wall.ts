@@ -18,11 +18,26 @@ export interface ShellWallMachine {
 /** A trial run is quick. A machine that hangs on it has no sandbox that works. */
 const trialTimeoutMs = 10_000;
 
-/** Null when the sandbox can run here, else why not, in words for the person. */
-export async function shellWallGap(machine: ShellWallMachine): Promise<string | null> {
+/** Why the shell of a Project chat has no wall here, in words for the person. */
+export interface ShellWallGap {
+  readonly reason: string;
+  /** False where no step of the person gives the shell a wall, such as on Windows (#825). */
+  readonly fixable: boolean;
+}
+
+/** Null when the sandbox can run here, else why not. */
+export async function shellWallGap(machine: ShellWallMachine): Promise<ShellWallGap | null> {
   if (machine.platform === "darwin") return null;
-  if (machine.platform === "win32") return "Claude Code has no shell sandbox that Eva can turn on for you on Windows.";
-  if (machine.platform !== "linux") return `Claude Code has no shell sandbox on ${machine.platform}.`;
+  if (machine.platform === "win32")
+    return { reason: "Claude Code has no shell sandbox that Eva can turn on for you on Windows.", fixable: false };
+  if (machine.platform !== "linux")
+    return { reason: `Claude Code has no shell sandbox on ${machine.platform}.`, fixable: false };
+  const reason = await linuxGap(machine);
+  return reason === null ? null : { reason, fixable: true };
+}
+
+/** Null when bubblewrap can run here, else why not. */
+async function linuxGap(machine: ShellWallMachine): Promise<string | null> {
   const missing = [
     ...(machine.which("bwrap") === null ? ["bubblewrap"] : []),
     ...(machine.which("socat") === null ? ["socat"] : []),

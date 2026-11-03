@@ -80,6 +80,7 @@ describe("parseScheduleEntry", () => {
       enabled: true,
       every: null,
       from: null,
+      until: null,
     });
   });
 
@@ -286,5 +287,24 @@ describe("saving and removing", () => {
     writeFile({ version: 1 });
     expect(() => saveScheduleDefinition(path, morning)).toThrow("holds no list");
     expect(readFileSync(path, "utf8")).toBe(JSON.stringify({ version: 1 }));
+  });
+});
+
+describe("until (#687)", () => {
+  test("an end date reads as a day, and shows on the card only when set", () => {
+    const parsed = parseScheduleEntry({ ...interval, until: "2026-11-30" }, 1) as Schedule;
+    expect(parsed.until).toBe("2026-11-30");
+    expect(announcedFields(parsed).until).toBe("2026-11-30");
+    const without = parseScheduleEntry(interval, 1) as Schedule;
+    expect(without.until).toBeNull();
+    expect("until" in announcedFields(without)).toBe(false);
+  });
+
+  test.each([
+    [{ ...interval, until: "2026-11-31" }, "invalid until"],
+    [{ ...interval, until: "30/11/2026" }, "invalid until"],
+    [{ ...interval, until: 20261130 }, "invalid until"],
+  ])("entry %j is skipped: %s", (entry, reason) => {
+    expect(parseScheduleEntry(entry, 4)).toContain(reason);
   });
 });

@@ -285,6 +285,7 @@ describe("Scheduler", () => {
             enabled: true,
             every: null,
             from: null,
+            until: null,
           },
           nextRun: "2026-07-01T07:30",
           runsToday: ["07:30"],

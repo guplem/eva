@@ -26,6 +26,8 @@ export interface Schedule {
   readonly every: string | null;
   /** The first run of an interval schedule, or the one run of a one-off, as a wall-clock slot `YYYY-MM-DDTHH:MM`. */
   readonly from: string | null;
+  /** The last day that the schedule runs, `YYYY-MM-DD`, or null for no end (#687). */
+  readonly until: string | null;
   readonly text: string | null;
   /** A path from the vault root. */
   readonly file: string | null;
@@ -49,6 +51,7 @@ export const scheduleFieldOrder = [
   "days",
   "every",
   "from",
+  "until",
   "text",
   "file",
   "prompt",
@@ -122,7 +125,10 @@ export function parseScheduleEntry(entry: unknown, position: number): Schedule |
   // A typo such as "false" in quotes must never run a schedule that the person paused.
   if (typeof enabled !== "boolean") return `Schedule ${id} has an invalid enabled: write true or false.`;
   const model = optionalText(fields["model"]);
-  return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model, enabled, every, from };
+  const until = fields["until"] ?? null;
+  if (until !== null && (typeof until !== "string" || !isDay(until)))
+    return `Schedule ${id} has an invalid until: write the last day as YYYY-MM-DD, such as 2026-11-30.`;
+  return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model, enabled, every, from, until };
 }
 
 /** The minutes between two runs of an interval such as `3d`. */
@@ -170,6 +176,11 @@ function parseRepeat(id: string, fields: Record<string, unknown>): Repeat | stri
 }
 
 /** A real date and time: a day such as 30 February fails. */
+/** A real date, `YYYY-MM-DD`: a day such as 31 November fails. */
+function isDay(text: string): boolean {
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(text) && isSlot(`${text}T00:00`);
+}
+
 function isSlot(text: string): boolean {
   if (!slotPattern.test(text)) return false;
   const moment = new Date(`${text}:00Z`);
@@ -185,6 +196,7 @@ export function announcedFields(schedule: Schedule): Partial<Record<ScheduleFiel
     days: schedule.days?.map((day) => dayNames[day]).join(", ") ?? null,
     every: schedule.every,
     from: schedule.from,
+    until: schedule.until,
     text: schedule.text,
     file: schedule.file,
     prompt: schedule.prompt,
@@ -227,7 +239,7 @@ export function removeScheduleDefinition(path: string, scheduleId: string): bool
 }
 
 /** The keys that the schedule form shows: an edit owns them, and keeps every other key. */
-const formKeys = new Set(["name", "at", "days", "every", "from", "text", "prompt"]);
+const formKeys = new Set(["name", "at", "days", "every", "from", "until", "text", "prompt"]);
 
 /**
  * Changes the form's keys of one schedule and keeps every other key, such as `file`, `model` and

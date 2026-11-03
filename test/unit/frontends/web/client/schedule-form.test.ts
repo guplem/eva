@@ -15,6 +15,7 @@ const morning: Schedule = {
   days: [1, 5],
   every: null,
   from: null,
+  until: null,
   text: "Good morning.",
   file: null,
   prompt: null,

@@ -71,8 +71,24 @@ export function runsOnDay(schedule: Schedule, now: string): string[] {
   return runs;
 }
 
-/** The last run at or before now, in minutes. */
+/** The last run at or before now, in minutes. A run after the `until` day counts as none. */
 function latestRun(schedule: Schedule, nowMinutes: number): number | undefined {
+  return beforeEnd(schedule, latestRunAny(schedule, nowMinutes));
+}
+
+/** The first run after now, in minutes, or none after the `until` day. */
+function nextRun(schedule: Schedule, nowMinutes: number): number | undefined {
+  return beforeEnd(schedule, nextRunAny(schedule, nowMinutes));
+}
+
+/** The run, or undefined when it falls after the last day of the schedule (#687). */
+function beforeEnd(schedule: Schedule, run: number | undefined): number | undefined {
+  if (run === undefined || schedule.until === null) return run;
+  return slotText(run).slice(0, 10) > schedule.until ? undefined : run;
+}
+
+/** The last run at or before now, in minutes. */
+function latestRunAny(schedule: Schedule, nowMinutes: number): number | undefined {
   if (runsOnce(schedule)) return onceRun(schedule, (run) => run <= nowMinutes);
   const interval = intervalOf(schedule);
   if (interval === null) return slotsAround(schedule, nowMinutes, -1).find((minutes) => minutes <= nowMinutes);
@@ -81,7 +97,7 @@ function latestRun(schedule: Schedule, nowMinutes: number): number | undefined {
 }
 
 /** The first run after now, in minutes. */
-function nextRun(schedule: Schedule, nowMinutes: number): number | undefined {
+function nextRunAny(schedule: Schedule, nowMinutes: number): number | undefined {
   if (runsOnce(schedule)) return onceRun(schedule, (run) => run > nowMinutes);
   const interval = intervalOf(schedule);
   if (interval === null) return slotsAround(schedule, nowMinutes, 1).find((minutes) => minutes > nowMinutes);

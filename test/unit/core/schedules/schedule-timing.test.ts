@@ -167,3 +167,21 @@ describe("one-off schedules (#822)", () => {
     expect(isLate("2026-11-24T10:00", "2026-11-24T11:00")).toBe(true);
   });
 });
+
+describe("until (#687)", () => {
+  const seenLongAgo = { firstSeen: "2026-01-01T00:00", lastFired: null };
+  const daily = (until: string): Schedule =>
+    parseScheduleEntry({ id: "s", name: "S", at: "07:30", until, text: "hi" }, 1) as Schedule;
+
+  test("the last day still runs, and no slot after it runs, also within the grace time", () => {
+    expect(dueSlot(daily("2026-07-01"), seenLongAgo, "2026-07-01T07:30")).toBe("2026-07-01T07:30");
+    expect(dueSlot(daily("2026-06-30"), seenLongAgo, "2026-07-01T07:30")).toBeNull();
+    expect(dueSlot(daily("2026-06-30"), seenLongAgo, "2026-06-30T23:50")).toBeNull();
+  });
+
+  test("there is no next run after it, and no run on the day line", () => {
+    expect(nextSlot(daily("2026-07-02"), "2026-07-01T08:00")).toBe("2026-07-02T07:30");
+    expect(nextSlot(daily("2026-07-01"), "2026-07-01T08:00")).toBeNull();
+    expect(runsOnDay(daily("2026-06-30"), "2026-07-01T06:00")).toEqual([]);
+  });
+});

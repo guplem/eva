@@ -17,14 +17,14 @@ export interface Schedule {
   readonly name: string;
   /**
    * `HH:MM` on the wall clock of the configured time zone (lesson 68). Null for an interval
-   * schedule, which repeats `every` from `from` instead.
+   * schedule, which repeats `every` from `from` instead, and for a one-off, which runs at `from`.
    */
   readonly at: string | null;
-  /** Day numbers as `Date.getUTCDay` counts them: 0 is Sunday. Null for an interval schedule. */
+  /** Day numbers as `Date.getUTCDay` counts them: 0 is Sunday. Null for an interval schedule or a one-off. */
   readonly days: readonly number[] | null;
-  /** The interval, such as `2h`, `3d` or `1w`, or null for a schedule on days. */
+  /** The interval, such as `2h`, `3d` or `1w`, or null for a schedule on days or a one-off. */
   readonly every: string | null;
-  /** The first run of an interval schedule, as a wall-clock slot `YYYY-MM-DDTHH:MM`. */
+  /** The first run of an interval schedule, or the one run of a one-off, as a wall-clock slot `YYYY-MM-DDTHH:MM`. */
   readonly from: string | null;
   readonly text: string | null;
   /** A path from the vault root. */
@@ -131,9 +131,14 @@ export function intervalMinutes(every: string): number {
   return Number(match?.[1] ?? 1) * unitMinutes[(match?.[2] ?? "d") as keyof typeof unitMinutes];
 }
 
+/** True for a schedule that runs once, at `from` (#822). */
+export function runsOnce(schedule: Pick<Schedule, "every" | "from">): boolean {
+  return schedule.every === null && schedule.from !== null;
+}
+
 type Repeat = Pick<Schedule, "at" | "days" | "every" | "from">;
 
-/** When a schedule runs: `at` on some `days`, or `every` interval from `from`. */
+/** When a schedule runs: `at` on some `days`, `every` interval from `from`, or once at `from`. */
 function parseRepeat(id: string, fields: Record<string, unknown>): Repeat | string {
   const has = (name: string): boolean => fields[name] !== undefined && fields[name] !== null;
   if (has("every")) {
@@ -147,7 +152,14 @@ function parseRepeat(id: string, fields: Record<string, unknown>): Repeat | stri
       return `Schedule ${id} has no valid from: write the first run as YYYY-MM-DDTHH:MM, such as 2026-10-22T07:30.`;
     return { at: null, days: null, every, from };
   }
-  if (has("from")) return `Schedule ${id} has from without every: add every, or remove from.`;
+  if (has("from")) {
+    if (has("at") || has("days"))
+      return `Schedule ${id} has from with at or days: write from alone to run once, or add every.`;
+    const from = fields["from"];
+    if (typeof from !== "string" || !isSlot(from))
+      return `Schedule ${id} has no valid from: write the run as YYYY-MM-DDTHH:MM, such as 2026-10-22T07:30.`;
+    return { at: null, days: null, every: null, from };
+  }
   const at = fields["at"];
   if (typeof at !== "string" || !timePattern.test(at))
     return `Schedule ${id} has no valid time: write it as HH:MM, such as 07:30.`;

@@ -44,8 +44,8 @@ export class TelegramSchedules {
     }
     const { schedules, problems } = scheduler.list();
     const lines = schedules.map(
-      ({ schedule, nextRun }) =>
-        `• ${schedule.name} (${schedule.id}), ${schedule.enabled ? `next: ${nextRun?.replace("T", " ") ?? "never"}` : "off"}`,
+      ({ schedule, nextRun, ended }) =>
+        `• ${schedule.name} (${schedule.id}), ${stateOf(schedule.enabled, nextRun, ended)}`,
     );
     if (problems.length > 0) lines.push("", "Schedules file problems:", ...problems.map((problem) => `• ${problem}`));
     await this.options.sender.send(
@@ -129,4 +129,11 @@ export class TelegramSchedules {
       return null;
     }
   }
+}
+
+/** "Ended" comes first: a schedule that ended stays ended, also when it is off (#822, #687). */
+function stateOf(enabled: boolean, nextRun: string | null, ended: string | null): string {
+  if (ended !== null) return `ended: ${ended.replace("T", " ")}`;
+  if (!enabled) return "off";
+  return `next: ${nextRun?.replace("T", " ") ?? "never"}`;
 }

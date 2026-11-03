@@ -37,9 +37,11 @@ export function ScheduleCardDialog(props: {
   const when =
     every !== undefined && from !== undefined
       ? `${repeatWords({ at: null, days: null, every, from })}, from ${slotWords(from)}`
-      : at === undefined
-        ? ""
-        : repeatWords({ at, days: dayNumbersOf(days ?? ""), every: null, from: null });
+      : from !== undefined
+        ? repeatWords({ at: null, days: null, every: null, from })
+        : at === undefined
+          ? ""
+          : repeatWords({ at, days: dayNumbersOf(days ?? ""), every: null, from: null });
   const row = (name: string, label: string, value: string, isChanged: boolean): ReactElement => (
     <div key={name} style={{ display: "contents" }}>
       <dt className={isChanged ? "changed" : undefined}>{label}</dt>

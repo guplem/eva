@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { AddScheduleDialog } from "./AddScheduleDialog.tsx";
 import { api, type ScheduleList, type ScheduleView } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { dayLine, lastRunWords, nextRunWords, repeatWords } from "./schedule-words.ts";
+import { dayLine, lastRunWords, repeatWords, scheduleStateWords } from "./schedule-words.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { CardsSkeleton } from "./Loading.tsx";
@@ -245,9 +245,10 @@ function ScheduleRow(props: {
   onEdit: () => void;
   onRemove: () => void;
 }): ReactElement {
-  const { schedule, nextRun, lastRun } = props.view;
+  const { schedule, nextRun, lastRun, ended } = props.view;
   const [asking, setAsking] = useState(false);
-  const result = schedule.enabled ? lastRunWords(lastRun, props.now) : { text: "Off", tone: "idle" };
+  // An ended schedule shows its last run, also when it is off.
+  const result = schedule.enabled || ended !== null ? lastRunWords(lastRun, props.now) : { text: "Off", tone: "idle" };
   return (
     <li className={`schedule-panel schedule-row${schedule.enabled ? "" : " off"}`} aria-label={schedule.name}>
       <span className="schedule-row-icon">
@@ -256,7 +257,7 @@ function ScheduleRow(props: {
       <div>
         <div className="schedule-row-name">{schedule.name}</div>
         <div className="schedule-small">
-          {repeatWords(schedule)} · {schedule.enabled ? `next ${nextRunWords(nextRun, props.now)}` : "off"}
+          {repeatWords(schedule)} · {scheduleStateWords({ enabled: schedule.enabled, nextRun, ended }, props.now)}
         </div>
       </div>
       <div className="schedule-row-actions">

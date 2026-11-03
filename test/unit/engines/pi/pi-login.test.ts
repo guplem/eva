@@ -188,6 +188,19 @@ describe("pi login command", () => {
     expect(extension.loginExtensionSource).toContain(`"${loginCommandName}"`);
   });
 
+  test("by default, the command uses the running pi's own runtime", async () => {
+    let handler: ((args: string, context: LoginContext) => Promise<void>) | null = null;
+    evaLogin({ registerCommand: (_name, command) => (handler = command.handler) });
+    const notes: string[] = [];
+    const ui = { notify: (message: string) => notes.push(message), input: () => Promise.resolve(undefined) };
+    const context = {
+      ui: { ...ui, select: () => Promise.resolve(undefined) },
+      modelRegistry: { runtime: fakeRuntime() },
+    };
+    await (handler as ((args: string, context: LoginContext) => Promise<void>) | null)?.("list", context);
+    expect(notes.some((note) => note.includes('"type":"providers"'))).toBe(true);
+  });
+
   test("pi loads only Eva's command, with no network for a list", () => {
     expect(loginArguments("list", "/eva/pi/eva-login-extension.ts")).toEqual([
       "--mode",

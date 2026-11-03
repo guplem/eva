@@ -4,7 +4,7 @@
  * with the same text are the same slot, so the hour that repeats when the clocks go back
  * fires once.
  */
-import { intervalMinutes, type Schedule } from "./schedule-definitions.ts";
+import { intervalMinutes, runsOnce, type Schedule } from "./schedule-definitions.ts";
 
 /** A restart within this time still fires a missed slot; an older miss is skipped. */
 const graceMinutes = 60;
@@ -34,13 +34,23 @@ export function dueSlot(
 ): string | null {
   const nowMinutes = minutesOf(now);
   const latest = latestRun(schedule, nowMinutes);
-  if (latest === undefined || nowMinutes - latest >= graceMinutes) return null;
+  if (latest === undefined) return null;
   const slot = slotText(latest);
   if (slot === state.lastFired) return null;
+  // A one-off has no next slot to wait for, so a run that Eva missed comes late, with no limit.
+  // It counts from when Eva first saw it only: a new time after a run may come before the old one.
+  // Eva saw a one-off in its own minute in time, so that minute still counts.
+  if (runsOnce(schedule)) return latest >= minutesOf(state.firstSeen) ? slot : null;
+  if (nowMinutes - latest >= graceMinutes) return null;
   // A schedule that never fired counts from when Eva first saw it, so a 07:30 schedule
   // written at 07:35 waits for the next day instead of firing at once.
   const since = minutesOf(state.lastFired ?? state.firstSeen);
   return latest > since ? slot : null;
+}
+
+/** True when a run fires so long after its slot that the message must say it is late. */
+export function isLate(slot: string, now: string): boolean {
+  return minutesOf(now) - minutesOf(slot) >= graceMinutes;
 }
 
 /** The first slot after now, for the setup card. */
@@ -63,6 +73,7 @@ export function runsOnDay(schedule: Schedule, now: string): string[] {
 
 /** The last run at or before now, in minutes. */
 function latestRun(schedule: Schedule, nowMinutes: number): number | undefined {
+  if (runsOnce(schedule)) return onceRun(schedule, (run) => run <= nowMinutes);
   const interval = intervalOf(schedule);
   if (interval === null) return slotsAround(schedule, nowMinutes, -1).find((minutes) => minutes <= nowMinutes);
   if (nowMinutes < interval.from) return undefined;
@@ -71,6 +82,7 @@ function latestRun(schedule: Schedule, nowMinutes: number): number | undefined {
 
 /** The first run after now, in minutes. */
 function nextRun(schedule: Schedule, nowMinutes: number): number | undefined {
+  if (runsOnce(schedule)) return onceRun(schedule, (run) => run > nowMinutes);
   const interval = intervalOf(schedule);
   if (interval === null) return slotsAround(schedule, nowMinutes, 1).find((minutes) => minutes > nowMinutes);
   if (nowMinutes < interval.from) return interval.from;
@@ -106,4 +118,10 @@ function minutesOf(slot: string): number {
 
 function slotText(minutes: number): string {
   return new Date(minutes * minuteMs).toISOString().slice(0, 16);
+}
+
+/** The one run of a one-off, in minutes, when it matches. */
+function onceRun(schedule: Schedule, matches: (run: number) => boolean): number | undefined {
+  const run = minutesOf(schedule.from ?? "");
+  return matches(run) ? run : undefined;
 }

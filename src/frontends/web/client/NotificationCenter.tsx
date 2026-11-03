@@ -27,7 +27,7 @@ interface NotificationCenterProps {
   /** The setup steps that are left. */
   readonly steps: readonly ProgressStep[];
   readonly syncStatus: EvaStatus["vaultSync"]["status"];
-  readonly onAction: (action: ProblemAction) => void;
+  readonly onAction: (action: ProblemAction, key: string) => void;
   /** Marks an open problem as read: Eva hides it until it rises to an error or clears. */
   readonly onReadProblem: (key: string) => void;
   readonly onReadEntries: (seqs: readonly number[]) => void;
@@ -128,7 +128,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
                       {since !== undefined && <span className="center-time"> · since {timeLabel(since, now)}</span>}
                     </span>
                     {action !== null && (
-                      <button className="primary" onClick={() => onAction(action)}>
+                      <button className="primary" onClick={() => onAction(action, problem.key)}>
                         {problemActionLabels[action]}
                       </button>
                     )}
@@ -234,7 +234,7 @@ function EntryDetails(props: {
   readonly syncStatus: EvaStatus["vaultSync"]["status"];
   readonly canUpgradeVault: boolean;
   readonly now: Date;
-  readonly onAction: (action: ProblemAction) => void;
+  readonly onAction: (action: ProblemAction, key: string) => void;
 }): ReactElement {
   const { entry, now } = props;
   const topic = notificationTopic(entry.key);
@@ -274,7 +274,7 @@ function EntryDetails(props: {
       )}
       {action !== null && (
         <div className="button-row">
-          <button className="primary" onClick={() => props.onAction(action)}>
+          <button className="primary" onClick={() => props.onAction(action, entry.key)}>
             {problemActionLabels[action]}
           </button>
         </div>

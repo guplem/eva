@@ -4,9 +4,15 @@ import {
   isOtherMachineProblem,
   newsAction,
   problemAction,
+  problemSettingsRoute,
   shownProblems,
   withPendingHides,
 } from "../../../../../src/frontends/web/client/problem-actions.ts";
+import {
+  searchEntries,
+  settingsHome,
+  type SettingsRoute,
+} from "../../../../../src/frontends/web/client/settings-routes.ts";
 
 describe("newsAction", () => {
   test("the vault structure news starts the upgrade, and other news has no button (#773)", () => {
@@ -45,13 +51,47 @@ describe("problemAction", () => {
     expect(problemAction("widget_update:example-owner/habits:0123456789ab", "ok")).toBe("review_widget_update");
   });
 
-  test("an expired Claude Code login opens its card, where the person logs in again", () => {
-    expect(problemAction("engine_login:claude-code", "ok")).toBe("open_claude_login");
+  test("an expired engine login opens Settings, on the card of that engine", () => {
+    expect(problemAction("engine_login:claude-code", "ok")).toBe("open_settings");
+    expect(problemAction("engine_login:pi", "ok")).toBe("open_settings");
   });
 
   test("every other problem opens Settings", () => {
     expect(problemAction("update", "ok")).toBe("open_settings");
     expect(problemAction("telegram_poll", "ok")).toBe("open_settings");
+  });
+});
+
+describe("problemSettingsRoute", () => {
+  test("each problem opens the card that fixes it, as a search result does (#799)", () => {
+    const cases: [string, SettingsRoute][] = [
+      ["vault_sync", { section: "vault", item: "vault-sync" }],
+      ["vault_password", { section: "vault", item: "encrypted-files" }],
+      ["vault_key_changed", { section: "vault", item: "encrypted-files" }],
+      ["vault_secret_files", { section: "vault", item: "encrypted-files" }],
+      ["template_alignment", { section: "vault", item: "template-alignment" }],
+      ["shell_wall", { section: "engines", item: "permissions" }],
+      ["engine_login:claude-code", { section: "engines", item: "claude-code" }],
+      ["engine_login:pi", { section: "engines", item: "pi" }],
+      ["default_engine", { section: "updates", item: "versions" }],
+      ["engine_update", { section: "updates", item: "versions" }],
+      ["default_engine_restart", { section: "updates", item: "restart" }],
+      ["update", { section: "updates", item: "eva-updates" }],
+      ["vault_ahead", { section: "updates", item: "eva-updates" }],
+      ["last_location", { section: "access", item: "location" }],
+      ["telegram_poll", { section: "connections", item: "telegram" }],
+      ["widget_check:example-owner/habits", { section: "personalize", item: "widgets" }],
+      ["widget_update:example-owner/habits:0123456789ab", { section: "personalize", item: "widgets" }],
+    ];
+    for (const [key, route] of cases) {
+      expect([key, problemSettingsRoute(key)]).toEqual([key, route]);
+      // The card exists, so the search finds it too.
+      expect(searchEntries.some((entry) => entry.section === route.section && entry.item === route.item)).toBe(true);
+    }
+  });
+
+  test("an unknown problem opens the Settings home page", () => {
+    expect(problemSettingsRoute("something_new")).toEqual(settingsHome);
   });
 });
 

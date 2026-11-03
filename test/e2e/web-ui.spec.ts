@@ -4053,7 +4053,9 @@ test("the visor counts the open problems, and its center lists each with the but
   await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible();
   await openCenter(page);
   await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Open Settings" }).click();
-  await expect(page).toHaveURL(/#\/settings$/);
+  // Settings opens on the card that fixes the problem, as a search result does (#799).
+  await expect(page).toHaveURL(/#\/settings\/updates\/eva-updates$/);
+  await expect(page.getByRole("region", { name: "Eva updates" })).toBeInViewport();
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -4264,7 +4266,8 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("The engine claude-code is not available.");
   await page.getByRole("alert").getByRole("button", { name: "Open Settings" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page).toHaveURL(/#\/settings$/);
+  // An engine failure names no engine, so Settings opens its AI engines page (#799).
+  await expect(page).toHaveURL(/#\/settings\/engines$/);
 });
 
 test("a chat without a vault offers the vault step, not a terminal command", async ({ page }) => {

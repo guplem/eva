@@ -60,7 +60,7 @@ import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
 import { noticeReconnect } from "./widget-frames.ts";
 import { isLongHide } from "./event-stream.ts";
-import { shownProblems, withPendingHides, type ProblemAction } from "./problem-actions.ts";
+import { problemSettingsRoute, shownProblems, withPendingHides, type ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -625,13 +625,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     runningTurns[mode === "project" ? "project" : "assistant"] += 1;
   }
 
-  const runProblemAction = (action: ProblemAction): void => {
+  const runProblemAction = (action: ProblemAction, key: string): void => {
     if (action === "pick_version") setConflictsOpen(true);
-    else if (action === "choose_template_version") goTo(settingsHash({ section: "vault", item: "template-alignment" }));
-    else if (action === "open_claude_login") goTo(settingsHash({ section: "engines", item: "claude-code" }));
-    else if (action === "review_widget_update") goTo(settingsHash({ section: "personalize", item: "widgets" }));
     else if (action === "update_vault") startVaultUpgrade().catch(showError);
-    else openDestination(action === "open_schedules" ? "schedules" : "settings");
+    else if (action === "open_schedules") openDestination("schedules");
+    // Settings opens on the card that fixes the problem, as a search result does (#799).
+    else goTo(settingsHash(problemSettingsRoute(key)));
   };
   const hideProblem = (key: string): void => {
     // The notice goes at once; the answer brings the true list.

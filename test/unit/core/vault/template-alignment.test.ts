@@ -11,6 +11,7 @@ import {
   type TemplatePart,
 } from "../../../../src/core/vault/template-alignment.ts";
 import { templateParts } from "../../../../src/core/vault/vault-template.ts";
+import { evaCoreFiles } from "../../../../src/core/modes/eva-core.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 const skill = ".eva/skills/demo/SKILL.md";
@@ -123,13 +124,41 @@ describe("align", () => {
     expect(parts.map((part) => part.path)).toEqual([skill]);
   });
 
-  test("keeps a retired part that the person changed, as their own", () => {
+  test("keeps a retired part that the person changed, and its entry marked as retired (#771)", () => {
     alignment({ [skill]: oldText, ".eva/skills/gone/SKILL.md": "# Gone\n" }).align();
     write(".eva/skills/gone/SKILL.md", "# Mine now\n");
-    alignment().align();
+    const parts = alignment().align();
     expect(read(".eva/skills/gone/SKILL.md")).toBe("# Mine now\n");
-    const record = JSON.parse(readFileSync(templateRecordPath(vault), "utf-8")) as { parts: Record<string, unknown> };
-    expect(Object.keys(record.parts)).toEqual([skill]);
+    // The page and the alert never show it: it is no part of this Eva.
+    expect(parts.map((part) => part.path)).toEqual([skill]);
+    expect(
+      alignment()
+        .list()
+        .map((part) => part.path),
+    ).toEqual([skill]);
+    const record = (): Record<string, { installed: string; retired?: boolean }> =>
+      (JSON.parse(read(".eva/template.json")) as { parts: Record<string, { installed: string; retired?: boolean }> })
+        .parts;
+    // The vault upgrade reads the hash that Eva wrote, to show only the person's own change.
+    expect(record()[".eva/skills/gone/SKILL.md"]).toMatchObject({ installed: contentHash("# Gone\n"), retired: true });
+    // A second run keeps the entry, and a deleted copy loses it.
+    alignment().align();
+    expect(record()[".eva/skills/gone/SKILL.md"]?.retired).toBe(true);
+    rmSync(join(vault, ".eva/skills/gone"), { recursive: true });
+    alignment().align();
+    expect(Object.keys(record())).toEqual([skill]);
+  });
+
+  test("removes an untouched old copy with no entry, when the history knows it as a retired part (#771)", () => {
+    write(".eva/skills/gone/SKILL.md", oldText);
+    write(".eva/skills/other/SKILL.md", "# Unknown\n");
+    alignment(
+      { [skill]: newText },
+      { ".eva/skills/gone/SKILL.md": [contentHash(oldText)], ".eva/skills/other/SKILL.md": [contentHash(oldText)] },
+    ).align();
+    expect(existsSync(join(vault, ".eva/skills/gone"))).toBe(false);
+    // A copy that the history does not know stays: it can be the person's.
+    expect(read(".eva/skills/other/SKILL.md")).toBe("# Unknown\n");
   });
 
   test("never touches the person's own skills", () => {
@@ -219,16 +248,35 @@ describe("alignmentProblem", () => {
 });
 
 describe("templateParts", () => {
-  test("holds each skill of the vault template", () => {
-    expect(Object.keys(templateParts)).toContain(".eva/skills/schedule/SKILL.md");
+  test("holds no skill: Eva's skills ship with Eva, and .eva/skills/ holds only the person's (#771)", () => {
+    expect(Object.keys(templateParts).filter((path) => path.startsWith(".eva/skills/"))).toEqual([]);
   });
 });
 
 describe("templateHistory", () => {
-  test("lists only older versions, never the current one", () => {
+  test("lists only older versions of a current part, never the current one", () => {
     for (const [path, hashes] of Object.entries(templateHistory)) {
-      expect(hashes).not.toContain(contentHash(templateParts[path] ?? ""));
+      if (path in templateParts) expect(hashes).not.toContain(contentHash(templateParts[path] ?? ""));
     }
+  });
+
+  test("knows the last vault version of each skill that moved into Eva, so an untouched copy goes (#771)", () => {
+    for (const name of ["about-me", "schedule"]) {
+      expect(templateHistory[`.eva/skills/${name}/SKILL.md`]).toContain(
+        contentHash(evaCoreFiles()[`skills/${name}/SKILL.md`] ?? ""),
+      );
+    }
+  });
+});
+
+describe("a part that comes back", () => {
+  test("loses its retired mark when the template has it again (#771)", () => {
+    alignment({ [skill]: oldText, ".eva/skills/gone/SKILL.md": "# Gone\n" }).align();
+    write(".eva/skills/gone/SKILL.md", "# Mine now\n");
+    alignment().align();
+    alignment({ [skill]: newText, ".eva/skills/gone/SKILL.md": "# Gone\n" }).align();
+    const record = JSON.parse(read(".eva/template.json")) as { parts: Record<string, { retired?: boolean }> };
+    expect(record.parts[".eva/skills/gone/SKILL.md"]?.retired).toBeUndefined();
   });
 });
 
@@ -280,5 +328,24 @@ describe("the message box menu parts (#661)", () => {
   test("the template holds Polish and Summary, so every vault gets them once", () => {
     expect(Object.keys(templateParts)).toContain(".eva/settings/text-actions/Polish.md");
     expect(Object.keys(templateParts)).toContain(".eva/settings/saved-prompts/Summary.md");
+  });
+});
+
+describe("a retired skill with files of the person's", () => {
+  test("stays whole, with its entry marked as retired, when its folder holds another file (#771)", () => {
+    alignment({ [skill]: oldText, ".eva/skills/gone/SKILL.md": "# Gone\n" }).align();
+    write(".eva/skills/gone/notes.md", "The person's own notes.\n");
+    alignment().align();
+    expect(read(".eva/skills/gone/SKILL.md")).toBe("# Gone\n");
+    expect(read(".eva/skills/gone/notes.md")).toBe("The person's own notes.\n");
+    const record = JSON.parse(read(".eva/template.json")) as { parts: Record<string, { retired?: boolean }> };
+    expect(record.parts[".eva/skills/gone/SKILL.md"]?.retired).toBe(true);
+  });
+
+  test("stays whole when it is an old copy with no entry (#771)", () => {
+    write(".eva/skills/gone/SKILL.md", oldText);
+    write(".eva/skills/gone/script.py", "print('mine')\n");
+    alignment({ [skill]: newText }, { ".eva/skills/gone/SKILL.md": [contentHash(oldText)] }).align();
+    expect(read(".eva/skills/gone/SKILL.md")).toBe(oldText);
   });
 });

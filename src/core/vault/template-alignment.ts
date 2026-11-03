@@ -1,12 +1,12 @@
 /**
- * Keeps the vault's template parts, such as the skills in `.eva/skills/`, aligned with this Eva's
- * template. A vault gets its template once, so without this step a person who installed Eva
- * earlier never gets a new skill. The record `.eva/template.json` keeps the hash of each part as
+ * Keeps the vault's template parts, such as the text actions in `.eva/settings/text-actions/`,
+ * aligned with this Eva's template. A vault gets its template once, so without this step a person
+ * who installed Eva earlier never gets a new part. The record `.eva/template.json` keeps the hash of each part as
  * Eva wrote it: a file with another hash is one that the person changed, so Eva never overwrites it.
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -28,7 +28,7 @@ export type PartState = "current" | "pending" | "yours" | "kept" | "differs" | "
 export type PartKind = "skill" | "text action" | "saved prompt";
 
 export interface TemplatePart {
-  /** The path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
+  /** The path from the vault root, such as `.eva/settings/text-actions/Polish.md`. */
   readonly path: string;
   readonly kind: PartKind;
   /** What a person calls the part, such as the skill's name. */
@@ -66,6 +66,12 @@ const recordedPartSchema = z.object({
   /** The hash of Eva's version that the person chose not to take, or null. */
   kept: z.string().nullable(),
   updatedAt: z.string().nullable(),
+  /**
+   * True for a part that this Eva's template no longer has, and that the person changed, so the copy
+   * stays. The vault upgrade reads its `installed` hash to show only the person's own change (#771).
+   * Optional: a record from before has no such field.
+   */
+  retired: z.boolean().optional(),
 });
 
 const recordSchema = z.object({
@@ -101,15 +107,38 @@ export function contentHash(text: string): string {
 /**
  * The older versions of each template part, as hashes: `git show <commit>:<template path> | sha256sum`
  * for each commit that changed the file. A vault from before `.eva/template.json` has no record, so
- * this list tells Eva that its copy is an untouched old version. Later versions need no entry here:
+ * this list tells Eva that its copy is an untouched old version: she updates it, or removes it when the
+ * part left the template, as Eva's skills did (#771). Later versions need no entry here:
  * the record keeps the hash of each version that Eva writes.
  */
 export const templateHistory: Readonly<Record<string, readonly string[]>> = {
+  // Eva's skills left the template (#771), so this lists every version that main ever held, the
+  // last one too: a vault with a lost record still loses an untouched copy.
   ".eva/skills/schedule/SKILL.md": [
-    "4195ce5c1ee02b29acf0407f80423ece5a9568f67725803f99c37af6b4ac0328",
-    "7e1ca739578c02f76375a2934636cdfe19bec5b4f9d58e4dab8485691bdcdc6c",
-    "0bdbe3e81ae2551ea996c5e692e60a1ae76bb7a9a32548723d136972d196a117",
+    "05db965e8a44b750539a1739c423cc572d212c9ed330859079f2c403772b9203",
+    "78572ee7536e111c31bcfe3cf92f37235c7d875c0cf80c0d70fe7fec468c381a",
+    "14af6ca72545537d2130bf9ca6763c44f67751302c03e1f528af667197ade79b",
     "0b5af6b0331b75b41c6612957c75f158988e37d58cdc6b1655a7f09036e4b366",
+    "0bdbe3e81ae2551ea996c5e692e60a1ae76bb7a9a32548723d136972d196a117",
+    "7e1ca739578c02f76375a2934636cdfe19bec5b4f9d58e4dab8485691bdcdc6c",
+    "4195ce5c1ee02b29acf0407f80423ece5a9568f67725803f99c37af6b4ac0328",
+    "a8f5f612e79b593ed6274eedbaefa7cf89a5a3ebb00d1086559e00a52d7b794d",
+    "b508b97a68d8ccdceeafb20725f9de74e4df8256d3311f69582664515b40ede1",
+    "092b035ce61a2a7b16301ce9a6b3f767ba3187e21baa71d66ffcb64bdd48e158",
+    "3d87ebac49b5a4835d6d6948b2367a91f4cdec7b36bb866faea49486daaca1e6",
+    "ea68fd1401ce583d39dca688ad32dd1ca0c46bd981f5213cae4e08285b6de438",
+    "4ac97b72a66903fc8f189426676f0588e74d8d7f835cc641e1210b353a0e079e",
+    "a9a50c1bdb9ccf58da0adfb879615a5beedf856cbea5c3feded24767b9effb13",
+    "9e45302c743a9d03ea11d665414c23a941cb685ff9bade3ad9265be39324f8bd",
+    "e4d64b338aeacde23e05122de9316154bc7e179ffa8fa7755909bcfc51da2092",
+  ],
+  ".eva/skills/about-me/SKILL.md": [
+    "7b2e9354f610adba77f6d1d2faf1666e9129c6c5885c4dbc0104d5bfae9e6bbc",
+    "cad6409861c43aa03265d75a8485f085073c63eaeec13c21aa470a68263cafe0",
+    "7a42453f62b367f02cfac8d0435f0d173c093fb1a86ae37eabbd59e67aa9ce5a",
+    "e8265c061d359c609eb6b2e54cf9d965eaef1a999ecc9b873a9f2eb62e78c16e",
+    "87259c0a08f1177f26301f6eb54108d7eb10d17190e2a6de10cf2e6afa64d041",
+    "19224f1e22f00b93be5c558110faf26090c836ed98aaefc46ae6d6bfa02e8e05",
   ],
 };
 
@@ -136,9 +165,12 @@ export class TemplateAlignment {
     const record = this.writableRecord();
     const parts: Record<string, RecordedPart> = {};
     for (const [path, entry] of Object.entries(record.parts)) {
-      if (path in this.options.parts) parts[path] = entry;
-      else this.retire(path, entry);
+      // A part that comes back to the template is a part again, with no retired mark.
+      if (path in this.options.parts)
+        parts[path] = { installed: entry.installed, kept: entry.kept, updatedAt: entry.updatedAt };
+      else if (this.retire(path, entry)) parts[path] = { ...entry, retired: true };
     }
+    this.removeOldCopies(record);
     const result = this.paths().map((path) => {
       const entry = parts[path];
       const step = this.stepOf(path, entry);
@@ -209,9 +241,42 @@ export class TemplateAlignment {
     return { installed: contentHash(text), kept: null, updatedAt: this.options.now().toISOString() };
   }
 
-  /** A part that this Eva's template no longer has: gone when untouched, the person's own when changed. */
-  private retire(path: string, entry: RecordedPart): void {
-    if (this.fileHash(path) !== entry.installed) return;
+  /**
+   * A part that this Eva's template no longer has: gone when untouched, the person's own when changed.
+   * True when the changed copy stays, so its entry stays too.
+   */
+  private retire(path: string, entry: RecordedPart): boolean {
+    const file = this.fileHash(path);
+    if (file === null) return false;
+    if (file !== entry.installed || this.holdsOtherFiles(path)) return true;
+    this.remove(path);
+    return false;
+  }
+
+  /**
+   * An untouched copy of a retired part from before the record has no entry, so `retire` never
+   * reaches it. Left there, it would replace Eva's own skill for good.
+   */
+  private removeOldCopies(record: TemplateRecord): void {
+    for (const [path, hashes] of Object.entries(this.options.history)) {
+      if (path in this.options.parts || path in record.parts) continue;
+      const file = this.fileHash(path);
+      if (file !== null && hashes.includes(file) && !this.holdsOtherFiles(path)) this.remove(path);
+    }
+  }
+
+  /**
+   * True when a skill's folder holds a file besides the part, such as a script that the person added.
+   * The skill then counts as changed: removing only the part would leave their files without a skill.
+   */
+  private holdsOtherFiles(path: string): boolean {
+    if (describePath(path).kind !== "skill") return false;
+    const target = join(this.options.vaultPath, path);
+    const folder = dirname(target);
+    return existsSync(folder) && readdirSync(folder).some((entry) => entry !== basename(target));
+  }
+
+  private remove(path: string): void {
     const target = join(this.options.vaultPath, path);
     rmSync(target, { force: true });
     const folder = dirname(target);

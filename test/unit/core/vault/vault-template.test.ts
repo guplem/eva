@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +7,9 @@ import {
   defaultAssistantRules,
   vaultTemplateFiles,
 } from "../../../../src/core/vault/vault-template.ts";
+import { migrations } from "../../../../src/core/migrations/migrations.ts";
+import { runMigrations } from "../../../../src/core/migrations/migration-runner.ts";
+import { homePaths } from "../../../../src/core/settings/home.ts";
 import { createVaultKey, type VaultKeyFile } from "../../../../src/core/vault/vault-crypto.ts";
 import { defaultSecretPatterns } from "../../../../src/core/vault/secret-files.ts";
 import { vaultFolders } from "../../../../src/core/vault/vault-folders.ts";
@@ -56,11 +59,10 @@ describe("the vault template", () => {
     expect(Object.keys(files).sort()).toEqual([
       ".eva/.claude-plugin/plugin.json",
       ".eva/assistant.md",
+      ".eva/migrations.json",
       ".eva/schedules.json",
       ".eva/settings/saved-prompts/Summary.md",
       ".eva/settings/text-actions/Polish.md",
-      ".eva/skills/about-me/SKILL.md",
-      ".eva/skills/schedule/SKILL.md",
       ".gitignore",
       "AGENTS.md",
       "Library/.gitkeep",
@@ -85,7 +87,6 @@ describe("the vault template", () => {
     expect(files["Life/About me.md"]).toContain("## Main topics\n\n- Work\n- Music\n");
     // The rules hold no setup answer, so the settings page can restore them as they are.
     expect(files[".eva/assistant.md"]).toBe(defaultAssistantRules);
-    expect(defaultAssistantRules).toContain("`Life/About me.md`");
     expect(vaultTemplateFiles({ ...answers, topics: [] })["Life/About me.md"]).toContain(
       "## Main topics\n\nNone yet.\n",
     );
@@ -93,6 +94,35 @@ describe("the vault template", () => {
     expect(JSON.parse(files[".eva/schedules.json"] ?? "")).toEqual({ version: 1, schedules: [] });
     expect(files[".gitignore"]).toContain("Projects/*/repos/");
     expect(Object.keys(files).some((path) => path.endsWith("CLAUDE.md"))).toBe(false);
+  });
+
+  test("a new vault's rules hold only Style and Behaviour, and keep them after the hub's first start (#771)", async () => {
+    const vault = join(folder, "vault");
+    await createVaultFromTemplate({
+      folder: vault,
+      answers,
+      key: await testKey(),
+      runner: systemProcessRunner,
+      environment,
+    });
+    const sections = (text: string): string[] => text.split("\n").filter((line) => line.startsWith("## "));
+    expect(sections(defaultAssistantRules)).toEqual(["## Style", "## Behaviour"]);
+    // A new vault has no skill of its own: Eva's skills ship with Eva.
+    expect(existsSync(join(vault, ".eva", "skills"))).toBe(false);
+    // The frozen migration of 2026-10-20 would bring back the sections that the base prompt holds now.
+    const paths = homePaths(join(folder, "home"));
+    mkdirSync(paths.root, { recursive: true });
+    const run = runMigrations({
+      store: "vault",
+      migrations,
+      paths,
+      vaultPath: vault,
+      version: "1.0.0",
+      now: () => new Date("2026-11-03T08:00:00.000Z"),
+    });
+    expect(run.kind).toBe("done");
+    expect(readFileSync(join(vault, ".eva", "assistant.md"), "utf-8")).toBe(defaultAssistantRules);
+    expect(git(vault, "status", "--porcelain", "--", ".eva/assistant.md")).toBe("");
   });
 
   test("a new vault keeps the files of the chats in .eva/scratch/, and never names Scratch/ (#767)", () => {

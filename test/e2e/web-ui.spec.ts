@@ -2307,7 +2307,7 @@ test("Settings: Eva's rules show formatted, save from the plain text, and restor
     await expect(
       page.getByRole("status").filter({ hasText: "Your old rules are in .eva/assistant.backup-" }),
     ).toBeVisible();
-    await expect(card.getByRole("heading", { name: "Learning" })).toBeVisible();
+    await expect(card.getByRole("heading", { name: "Behaviour" })).toBeVisible();
     await expect(diff).toContainText("Your rules are the same as the default.");
     await expect(diff.locator(".diff")).toHaveCount(0);
   } finally {

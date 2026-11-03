@@ -11,6 +11,8 @@ import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { vaultFolders } from "./vault-folders.ts";
 import { writeVaultKey } from "./secret-state.ts";
+import { evaVersion } from "../../shared/version.ts";
+import { moveAssistantPersonality } from "../migrations/assistant-rules-move.ts";
 import type { VaultKeyFile } from "./vault-crypto.ts";
 import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" };
 import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
@@ -18,8 +20,6 @@ import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "te
 import assistantFile from "../../../templates/vault/.eva/assistant.md" with { type: "text" };
 import aboutFile from "../../../templates/vault/Life/About me.md" with { type: "text" };
 import allergiesFile from "../../../templates/vault/Life/Health/Allergies and Diet.md" with { type: "text" };
-import aboutMeSkillFile from "../../../templates/vault/.eva/skills/about-me/SKILL.md" with { type: "text" };
-import scheduleSkillFile from "../../../templates/vault/.eva/skills/schedule/SKILL.md" with { type: "text" };
 import polishActionFile from "../../../templates/vault/.eva/settings/text-actions/Polish.md" with { type: "text" };
 import summaryPromptFile from "../../../templates/vault/.eva/settings/saved-prompts/Summary.md" with { type: "text" };
 
@@ -31,11 +31,10 @@ export const defaultAssistantRules: string = assistantFile;
 
 /**
  * The parts of the template that Eva keeps aligned in each vault after an update, by path from the
- * vault root (`template-alignment.ts`). Add each new skill, text action and saved prompt here.
+ * vault root (`template-alignment.ts`). Add each new text action and saved prompt here. Eva's own skills
+ * ship with Eva instead (`eva-core.ts`), and the person's own skills are no part of the template.
  */
 export const templateParts: Readonly<Record<string, string>> = {
-  ".eva/skills/about-me/SKILL.md": aboutMeSkillFile,
-  ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
   ".eva/settings/text-actions/Polish.md": polishActionFile,
   ".eva/settings/saved-prompts/Summary.md": summaryPromptFile,
 };
@@ -59,8 +58,14 @@ export interface NewVaultInputs {
 
 const gitTimeoutMs = 20_000;
 
+/**
+ * The frozen migration of 2026-10-20 appends the sections that the base prompt holds now (#771). A
+ * new vault records it as applied, so its short rules stay short. The hub runs every other migration.
+ */
+const appliedAtStart = moveAssistantPersonality.id;
+
 /** The template's files, by path from the vault root, with the answers filled in. */
-export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string, string> {
+export function vaultTemplateFiles(answers: VaultTemplateAnswers, now: Date = new Date()): Record<string, string> {
   // "None yet." shows that the section is empty on purpose, not broken.
   const topicList = answers.topics.length === 0 ? "None yet." : answers.topics.map((topic) => `- ${topic}`).join("\n");
   const fill = (text: string): string =>
@@ -78,11 +83,13 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
     "Life/About me.md": fill(aboutFile),
     "Life/Health/Allergies and Diet.md": allergiesFile,
     ".eva/schedules.json": JSON.stringify({ version: 1, schedules: [] }, null, 2) + "\n",
+    ".eva/migrations.json":
+      JSON.stringify({ applied: [{ id: appliedAtStart, at: now.toISOString(), version: evaVersion }] }, null, 2) + "\n",
     ".eva/.claude-plugin/plugin.json":
       JSON.stringify(
         {
           name: "eva",
-          description: "Eva's assistant skills for this vault. Eva loads this plugin in Assistant mode only.",
+          description: "Your own skills for Eva. Eva loads this plugin in Assistant mode only.",
           version: "1.0.0",
         },
         null,

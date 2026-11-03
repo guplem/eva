@@ -3097,19 +3097,17 @@ describe("migrations (#119)", () => {
       machine: { kind: "done", applied: [], later: [] },
       vault: { kind: "done", applied: [], later: [] },
     });
-    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(vault, ".eva", "settings", "text-actions", "Polish.md"))).toBe(true);
     expect(instance.templateParts()?.parts.map((part) => [part.name, part.state])).toEqual([
       ["Summary", "current"],
       ["Polish", "current"],
-      ["about-me", "current"],
-      ["schedule", "current"],
     ]);
     expect(instance.templateParts()?.canChoose).toBe(true);
     expect(alerts).toEqual([]);
   });
 
   test("a template part that the person changed waits for their choice, with an alert", () => {
-    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    sandbox.write(vault, ".eva/settings/text-actions/Polish.md", "# My own text action\n");
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
     const alerts = collectAlerts(instance);
     instance.reportStartMigrations({
@@ -3117,30 +3115,30 @@ describe("migrations (#119)", () => {
       vault: { kind: "done", applied: [], later: [] },
     });
     expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["template_alignment", "warn"]]);
-    expect(readFileSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"), "utf-8")).toBe(
-      "# My own schedule skill\n",
+    expect(readFileSync(join(vault, ".eva", "settings", "text-actions", "Polish.md"), "utf-8")).toBe(
+      "# My own text action\n",
     );
-    const parts = instance.chooseTemplateVersion(".eva/skills/schedule/SKILL.md", "mine");
-    expect(parts.find((part) => part.name === "schedule")?.state).toBe("kept");
+    const parts = instance.chooseTemplateVersion(".eva/settings/text-actions/Polish.md", "mine");
+    expect(parts.find((part) => part.name === "Polish")?.state).toBe("kept");
     expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
   });
 
   test("a satellite leaves the template parts alone", () => {
     const instance = start(new FakeEngine());
     instance.reportStartMigrations({ machine: { kind: "done", applied: [], later: [] }, vault: null });
-    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(false);
+    expect(existsSync(join(vault, ".eva", "settings", "text-actions", "Polish.md"))).toBe(false);
   });
 
   test("a satellite shows the template parts but leaves the choice to the hub", () => {
     sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
-    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    sandbox.write(vault, ".eva/settings/text-actions/Polish.md", "# My own text action\n");
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
     expect(instance.templateParts()?.canChoose).toBe(false);
-    expect(() => instance.chooseTemplateVersion(".eva/skills/schedule/SKILL.md", "new")).toThrow("hub");
+    expect(() => instance.chooseTemplateVersion(".eva/settings/text-actions/Polish.md", "new")).toThrow("hub");
   });
 
   test("the alert of a part clears after a sync that brings the person's fix", async () => {
-    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    sandbox.write(vault, ".eva/settings/text-actions/Polish.md", "# My own text action\n");
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
     const alerts = collectAlerts(instance);
     instance.reportStartMigrations({
@@ -3148,7 +3146,11 @@ describe("migrations (#119)", () => {
       vault: { kind: "done", applied: [], later: [] },
     });
     expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
-    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", templateParts[".eva/skills/schedule/SKILL.md"] ?? "");
+    sandbox.write(
+      vault,
+      ".eva/settings/text-actions/Polish.md",
+      templateParts[".eva/settings/text-actions/Polish.md"] ?? "",
+    );
     await instance.syncVault();
     expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
   });
@@ -3271,7 +3273,7 @@ describe("migrations (#119)", () => {
     expect(instance.role()).toBe("hub");
     expect(JSON.parse(readFileSync(join(vault, ".eva", "settings.json"), "utf-8"))).toEqual({});
     expect(existsSync(join(vault, ".eva", "migrations.json"))).toBe(true);
-    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(vault, ".eva", "settings", "text-actions", "Polish.md"))).toBe(true);
   });
 
   test("a machine that is behind the vault cannot become the hub", async () => {

@@ -1,5 +1,5 @@
 /**
- * The Template alignment card: each part of Eva's template in the vault, such as a skill, and its
+ * The Template alignment card: each part of Eva's template in the vault, such as a text action, and its
  * state. A part that the person changed, and that has a new version, offers three choices.
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
@@ -65,7 +65,7 @@ export function TemplateAlignmentCard({ context }: { readonly context: SettingsC
     <Card
       item="template-alignment"
       title="Template alignment"
-      description="Eva puts some files in your vault, such as her skills. After an update, she replaces each file that you did not change. If you changed a file, you choose."
+      description="Eva puts some files in your vault, such as the text actions and saved prompts of the message box. After an update, she replaces each file that you did not change. If you changed a file, you choose."
     >
       {listed === null ? (
         <ProgressBar label="Eva compares the files…" />

@@ -125,7 +125,7 @@ const leafTypes = new Set([
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
 const hubFields = Object.keys({ machine: true, since: true } satisfies Record<keyof HubClaim, true>);
 const favoritesFields = Object.keys({ version: true, paths: true } satisfies Record<keyof StoredFavorites, true>);
-const templatePartFields = Object.keys({ installed: true, kept: true, updatedAt: true } satisfies Record<
+const templatePartFields = Object.keys({ installed: true, kept: true, updatedAt: true, retired: true } satisfies Record<
   keyof RecordedPart,
   true
 >);

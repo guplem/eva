@@ -6,7 +6,7 @@
 
 # Template alignment
 
-- Add each new skill of `templates/vault/` to `templateParts` in `vault-template.ts`, so existing vaults get it.
+- Add each new skill of Eva to `eva-core`, not to `templateParts`.
 - Change a template part freely: the record keeps the hash of each version that Eva wrote.
 
 # Encrypted files

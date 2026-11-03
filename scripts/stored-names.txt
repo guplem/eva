@@ -312,6 +312,7 @@ migration vault 2026-10-30-project-types
 migration vault 2026-10-30-settings-folder
 migration vault 2026-10-31-secret-files
 migration vault 2026-11-02-eva-scratch
+migration vault 2026-11-02-general-project-type
 typed cli --check
 typed cli --clone
 typed cli --engine

@@ -276,3 +276,20 @@ describe("the closing date in the details form (#826)", () => {
     expect(localDay(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
   });
 });
+
+describe("the start date in the details form (#848)", () => {
+  const details = { title: "House", status: "idea" as const, tags: [], repos: [], closed: null };
+
+  test("a choice of Active sends today as the start date, and keeps a date that the project has", () => {
+    expect(withStatus(details, "active", "2026-11-03")).toEqual({
+      ...details,
+      status: "active",
+      started: "2026-11-03",
+    });
+    expect(withStatus({ ...details, started: "2025-05-05" }, "active", "2026-11-03").started).toBe("2025-05-05");
+  });
+
+  test("the start date never makes the form differ, because only the status sets it", () => {
+    expect(sameDetails(details, { ...details, started: "2026-11-03" })).toBe(true);
+  });
+});

@@ -40,11 +40,11 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBe(structureChanges.at(-1)?.version ?? 0);
   });
 
-  test("v4 adds the folder rule for Principles/ and Methods/, with no migration of its own (#851)", () => {
-    const v4 = structureChanges.find((change) => change.version === 4);
-    expect(v4?.summary).toStartWith("Eva reads your principles and your methods before she acts");
-    expect(v4?.migrations).toEqual([]);
-    expect(newestStructureVersion).toBeGreaterThanOrEqual(4);
+  test("v5 adds the folder rule for Principles/ and Methods/, with no migration of its own (#851)", () => {
+    const v5 = structureChanges.find((change) => change.version === 5);
+    expect(v5?.summary).toStartWith("Eva reads your principles and your methods before she acts");
+    expect(v5?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(5);
   });
 
   test("names only migrations that this Eva knows", () => {

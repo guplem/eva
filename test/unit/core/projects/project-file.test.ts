@@ -195,7 +195,7 @@ describe("projectFileOf", () => {
     expect(projectFileOf(file)).toEqual({
       text: file,
       version: fileVersion(file),
-      details: { ...unchanged, type: "software", closed: null, created: "2026-01-31T09:15" },
+      details: { ...unchanged, type: "software", closed: null, started: null, created: "2026-01-31T09:15" },
     });
   });
 
@@ -208,6 +208,7 @@ describe("projectFileOf", () => {
       repos: [],
       type: "general",
       closed: null,
+      started: null,
       created: null,
     });
   });
@@ -375,5 +376,33 @@ describe("the closing date of a project (#826)", () => {
   test("the form reads the date", () => {
     expect(projectFileOf(closedFile).details?.closed).toBe("2026-10-01");
     expect(projectFileOf(file).details?.closed).toBeNull();
+  });
+});
+
+describe("the start date of a project (#848)", () => {
+  const ideaFile = file.replace("status: active # idea, active, paused or closed", "status: idea");
+
+  test("an idea that becomes active writes the day that the form sends, after the status", () => {
+    const result = applyProjectDetails(ideaFile, { ...unchanged, status: "active", started: "2026-11-03" });
+    expect(result).toContain("status: active\nstarted: 2026-11-03\n");
+    expect(parseFrontMatter(result).frontMatter?.extra["started"]).toBe("2026-11-03");
+  });
+
+  test("a project that was active before, or has a start date, keeps its front matter", () => {
+    const paused = file.replace("status: active # idea, active, paused or closed", "status: paused");
+    expect(applyProjectDetails(paused, { ...unchanged, status: "active", started: "2026-11-03" })).not.toContain(
+      "started:",
+    );
+    const started = ideaFile.replace("status: idea", "status: idea\nstarted: 2025-05-05");
+    expect(applyProjectDetails(started, { ...unchanged, status: "active", started: "2026-11-03" })).toContain(
+      "started: 2025-05-05\n",
+    );
+  });
+
+  test("a form that sends no day writes none, and a bad day is refused", () => {
+    expect(applyProjectDetails(ideaFile, { ...unchanged, status: "active" })).not.toContain("started:");
+    expect(invalidCode(() => applyProjectDetails(ideaFile, { ...unchanged, status: "active", started: "soon" }))).toBe(
+      "project_invalid",
+    );
   });
 });

@@ -113,6 +113,10 @@ Each project is a folder `Projects/YYYY-MM-DD-HHmm-name/`, named after the date 
 ---
 created: 2026-01-31T09:15
 status: active # idea, active, in-use, paused or closed
+started: 2026-02-02 # optional
+closed: # YYYY-MM-DD, when the status becomes closed
+objective: The app plans a full week with no manual step. # optional, one line
+deadline: { date: 2026-06-15, cost: The demo day passes } # optional
 type: software # general, software or specialist. No type means general
 summary: A web app that plans the meals of the week. # one line
 repos:
@@ -122,6 +126,13 @@ cv: Built a meal planner that writes the menus of the week. # 1 to 3 lines for a
 ```
 
 A project has one status. `active` is a project that the person develops, even when they also use it. `in-use` is a project that is finished enough that the person only uses it. When the person also uses an `active` project, add one line to its `AGENTS.md` that says so, such as "The person uses this every day." Never add a second status field.
+
+- **`started`** is the day the project became `active` for the first time. Set it in the same change that first sets `status: active`. A project with no `started` started at `created`.
+- **`closed`** is the day the project closed. Set it in the same change that sets `status: closed`. Remove it when the project opens again.
+- **`objective`** says in one line when the project is done. Leave it out for a project that never ends, such as a tool in use. When the objective is reached, propose to close the project.
+- **`deadline`** has the same shape and meaning as in `Life/Cases/AGENTS.md`: a date that someone else set, where missing it costs something. Leave it out when nothing is lost by waiting.
+
+The project types:
 
 - **General:** a folder of notes and files, such as plans, reference photos or drafts: building a house, a scale model, a book. The text under the front matter describes the project.
 - **Software:** work in repositories, such as an app. The text under the front matter describes the project and names the repository to read first. Each repository's own `AGENTS.md` holds the rules for its code.

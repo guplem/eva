@@ -61,7 +61,7 @@ describe("assistantBasePrompt", () => {
     ])
       expect(assistantBasePrompt).toContain(word);
     expect(assistantBasePrompt).toContain(
-      "**A case line marked `DUE`** has a `next` date that has come. **A `DEADLINE` mark** means its deadline is 14 days away or less, or has passed. Tell the person once in the chat, when it fits.",
+      "**A case line marked `DUE`** has a `next` date that has come. **A `DEADLINE` mark** on a case or a project means its deadline is 14 days away or less, or has passed. Tell the person once in the chat, when it fits.",
     );
   });
 

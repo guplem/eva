@@ -82,28 +82,29 @@ export function structurePromptLine(available: number, current: number): string 
   return `[Vault structure: version ${String(available)} is available. This vault is at version ${String(current)}. Run the vault-upgrade skill when the person agrees.]`;
 }
 
-/** The news alert: the versions, what changes, and where to start. No slash command: Telegram would send it to the bot. */
-export function structureNews(available: number, current: number): string {
-  return [
-    `A new vault structure is available: version ${String(available)}. Your vault is at version ${String(current)}.`,
-    pendingSummary(current),
-    "To update the vault, press Update the vault, or open Settings, Vault and sync, Vault structure. You can also ask the Assistant.",
-  ]
-    .filter((part) => part !== "")
-    .join(" ");
+/**
+ * The warning: the versions, and where to start. The Settings card shows what changes (#801). No
+ * slash command: Telegram would send it to the bot.
+ */
+export function structureWarning(available: number, current: number): string {
+  return `A new vault structure (version ${String(available)}) is ready. Your vault is at version ${String(current)}. To update it, open Settings, Vault and sync, Vault structure, or ask the Assistant.`;
 }
 
-/** What the hub told the person, in its state folder: the version of the last alert, and of the last prompt line. */
+/**
+ * What the hub told the person, in its state folder: the version of the last alert, of the last
+ * prompt line, and of the last warning that the person marked as read (#801).
+ */
 export interface StructureNotices {
   readonly announced: number;
   readonly prompted: number;
+  readonly read: number;
 }
 
 export function readStructureNotices(path: string): StructureNotices {
   const read = readJsonTolerant(path);
   const value = read.ok && isRecord(read.value) ? read.value : {};
   const number = (raw: unknown): number => (typeof raw === "number" && Number.isInteger(raw) ? raw : 0);
-  return { announced: number(value["announced"]), prompted: number(value["prompted"]) };
+  return { announced: number(value["announced"]), prompted: number(value["prompted"]), read: number(value["read"]) };
 }
 
 export function writeStructureNotices(path: string, notices: StructureNotices): void {

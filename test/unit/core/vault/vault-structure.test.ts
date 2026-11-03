@@ -5,11 +5,10 @@ import { join } from "node:path";
 import {
   newestStructureVersion,
   parseChangelog,
-  pendingSummary,
   readStructureNotices,
   readVaultStructure,
   structureChanges,
-  structureNews,
+  structureWarning,
   structurePromptLine,
   upgradeBranchVersion,
   vaultStructurePath,
@@ -92,11 +91,14 @@ describe("the record", () => {
 
   test("the hub's notices read tolerantly", () => {
     const path = join(vault, "notices.json");
-    expect(readStructureNotices(path)).toEqual({ announced: 0, prompted: 0 });
+    expect(readStructureNotices(path)).toEqual({ announced: 0, prompted: 0, read: 0 });
     writeFileSync(path, "{");
-    expect(readStructureNotices(path)).toEqual({ announced: 0, prompted: 0 });
-    writeStructureNotices(path, { announced: 3, prompted: 0 });
-    expect(readStructureNotices(path)).toEqual({ announced: 3, prompted: 0 });
+    expect(readStructureNotices(path)).toEqual({ announced: 0, prompted: 0, read: 0 });
+    // The file of #773 has no read version.
+    writeFileSync(path, JSON.stringify({ announced: 3, prompted: 3 }));
+    expect(readStructureNotices(path)).toEqual({ announced: 3, prompted: 3, read: 0 });
+    writeStructureNotices(path, { announced: 3, prompted: 0, read: 3 });
+    expect(readStructureNotices(path)).toEqual({ announced: 3, prompted: 0, read: 3 });
   });
 });
 
@@ -107,12 +109,10 @@ describe("the words", () => {
     );
   });
 
-  test("the alert gives the versions and the summary, and names no slash command", () => {
-    const news = structureNews(3, 2);
-    expect(news).toContain("version 3");
-    expect(news).toContain(pendingSummary(2));
-    expect(news).toContain("Settings, Vault and sync, Vault structure");
-    expect(news).not.toMatch(/(^|\s)\//);
+  test("the warning gives the versions and the Settings card, and names no slash command", () => {
+    expect(structureWarning(3, 2)).toBe(
+      "A new vault structure (version 3) is ready. Your vault is at version 2. To update it, open Settings, Vault and sync, Vault structure, or ask the Assistant.",
+    );
   });
 
   test("only an upgrade branch has a version", () => {

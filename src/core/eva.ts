@@ -163,7 +163,7 @@ import {
   pendingSummary,
   readStructureNotices,
   readVaultStructure,
-  structureNews,
+  structureWarning,
   structurePromptLine,
   upgradeIsOpen,
   writeStructureNotices,
@@ -245,6 +245,9 @@ export interface CurrentPlace {
   /** When the phone sent it; null for the home place. */
   readonly at: string | null;
 }
+
+/** The vault structure warning (#773, #801): its key is a stored name, which an older Eva reads too. */
+const vaultStructureKey = "vault_structure";
 
 /** A location older than this says little about where the person is now, so the home place wins. */
 const locationFreshMs = 24 * 60 * 60_000;
@@ -1444,6 +1447,7 @@ export class Eva {
    * until it rises to an error or clears. False when no such problem is open.
    */
   hideProblem(key: string): boolean {
+    if (key === vaultStructureKey) return this.readVaultStructureWarning();
     return this.alerts.hide(key);
   }
 
@@ -1454,8 +1458,10 @@ export class Eva {
 
   /** "all" also hides every open problem: the center calls a hidden problem read. */
   markNotificationsRead(choice: { readonly seqs: readonly number[] } | { readonly all: true }): NotificationsView {
-    if ("all" in choice) this.alerts.markAllRead();
-    else this.alerts.markRead(choice.seqs);
+    if ("all" in choice) {
+      this.readVaultStructureWarning();
+      this.alerts.markAllRead();
+    } else this.alerts.markRead(choice.seqs);
     return this.notifications();
   }
 
@@ -1468,7 +1474,7 @@ export class Eva {
     if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
-    this.announceVaultStructure();
+    this.reportVaultStructure();
     // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
     if (this.options.engines.some((engine) => engine.name === "claude-code")) {
       void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
@@ -1568,27 +1574,59 @@ export class Eva {
     } finally {
       // The status and the sync alert follow the branch at once: paused, or syncing again.
       this.vault.reportState();
+      // A finish clears the warning, and an undo brings it back (#801).
+      this.reportVaultStructure();
     }
   }
 
   /**
-   * Tells the person once for each version, from the hub, that a newer vault structure exists. The
-   * hub's state file keeps the version, so a restart does not send it again (#773).
+   * Warns the hub while a newer vault structure exists, until the person reads the warning of that
+   * version or the vault reaches it (#801). The phone hears it once for each version: the hub's
+   * state file keeps the version, so a restart opens the warning again unsent (#773).
    */
-  private announceVaultStructure(): void {
+  private reportVaultStructure(): void {
     const view = this.vaultStructure();
-    if (view === null || this.role() !== "hub" || view.available <= view.current) return;
     const path = this.options.paths.vaultStructureState;
     const notices = readStructureNotices(path);
-    if (notices.announced >= view.available) return;
-    try {
-      writeStructureNotices(path, { ...notices, announced: view.available });
-    } catch (error) {
-      // An alert at each start is worse than none: it waits for a writable state folder.
-      this.options.logger?.log("warn", "Eva could not record the vault structure notice.", { reason: String(error) });
+    if (view === null || this.role() !== "hub" || view.available <= view.current || notices.read >= view.available) {
+      this.alerts.dismiss(vaultStructureKey);
       return;
     }
-    this.alerts.notify("vault_structure", "news", structureNews(view.available, view.current));
+    const send = notices.announced < view.available;
+    if (send) {
+      try {
+        writeStructureNotices(path, { ...notices, announced: view.available });
+      } catch (error) {
+        // An alert at each start is worse than none: it waits for a writable state folder.
+        this.options.logger?.log("warn", "Eva could not record the vault structure notice.", { reason: String(error) });
+        return;
+      }
+    }
+    const problem = {
+      level: "warn" as const,
+      message: structureWarning(view.available, view.current),
+      resolvedMessage: "",
+    };
+    this.alerts.notice(vaultStructureKey, problem, send);
+  }
+
+  /** The person read the warning: it goes, and stays gone for this version, as the issue asks (#801). */
+  private readVaultStructureWarning(): boolean {
+    const view = this.vaultStructure();
+    if (view === null || !this.alerts.problemDetails().some((problem) => problem.key === vaultStructureKey))
+      return false;
+    const path = this.options.paths.vaultStructureState;
+    try {
+      writeStructureNotices(path, { ...readStructureNotices(path), read: view.available });
+    } catch (error) {
+      this.options.logger?.log("warn", "Eva could not record that the vault structure warning is read.", {
+        reason: String(error),
+      });
+    }
+    // The hide marks the warning's entries as read; the dismiss closes it.
+    this.alerts.hide(vaultStructureKey);
+    this.alerts.dismiss(vaultStructureKey);
+    return true;
   }
 
   /**
@@ -2605,10 +2643,11 @@ export class Eva {
     // The start ran only the machine migrations on a satellite, and the new hub runs those of the vault.
     if (role === "hub") {
       if (this.runVaultMigrations()?.kind === "done") this.alignTemplate();
-      this.announceVaultStructure();
     } else {
       this.alerts.report("template_alignment", null);
     }
+    // A satellite shows no warning: only the hub upgrades the vault.
+    this.reportVaultStructure();
     for (const listener of this.roleListeners) listener(role);
   }
 

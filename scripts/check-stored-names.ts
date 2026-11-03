@@ -125,7 +125,7 @@ const leafTypes = new Set([
 ]);
 
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
-const structureNoticeFields = Object.keys({ announced: true, prompted: true } satisfies Record<
+const structureNoticeFields = Object.keys({ announced: true, prompted: true, read: true } satisfies Record<
   keyof StructureNotices,
   true
 >);

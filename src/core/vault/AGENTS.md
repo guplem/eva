@@ -9,7 +9,8 @@
 - Add each new skill of Eva to `eva-core`, not to `templateParts`.
 - Change a template part freely: the record keeps the hash of each version that Eva wrote.
 - `.eva/AGENTS.md` is a template part: it describes only Eva's own folder, so it is true in every vault.
-- Never make the root `AGENTS.md` or a `Life/` rule file of `templates/vault/` a template part: alignment would change the structure of every old vault. A change to one needs a matching `vault-upgrade` CHANGELOG entry (#773).
+- Never make the root `AGENTS.md` or a `Life/` rule file of `templates/vault/` a template part: alignment would change the structure of every old vault. A change to the structure of one needs a matching `vault-upgrade` CHANGELOG entry (#773).
+- A change to the words of the root `AGENTS.md` that leaves the structure as it is needs no new version. Commit it, then run `bun run scripts/vault-template-history.ts` in a full clone, not a shallow one: a shallow clone drops the older shipped texts.
 
 # Encrypted files
 

@@ -2964,6 +2964,23 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
 
+test("Settings: each page lists its cards, and an entry opens its card (issue 820)", async ({ page }) => {
+  await logIn(page);
+  await openSettings(page, "Personalize");
+  // One list shows: in the side list on a computer, at the top of the page on a phone.
+  const index = page.getByRole("list", { name: "On this page" });
+  await expect(index).toHaveCount(1);
+  await expect(index.getByRole("button", { name: "Appearance" })).toHaveAttribute("aria-current", "location");
+  await index.getByRole("button", { name: "Sounds and vibration" }).click();
+  await expect(page).toHaveURL(/#\/settings\/personalize\/sounds$/);
+  await expect(page.getByRole("region", { name: "Sounds and vibration" })).toBeInViewport();
+  await expect(index.getByRole("button", { name: "Sounds and vibration" })).toHaveAttribute("aria-current", "location");
+  // A page of its own, such as a setup step, has no list.
+  await page.goto("/#/settings/setup/engine");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Setup");
+  await expect(page.getByRole("list", { name: "On this page" })).toHaveCount(0);
+});
+
 test("Settings: a search result stays at its card while a card above it loads (issue 720)", async ({ page }) => {
   await logIn(page);
   // Eva's rules fill their card after the page opens, above the message box menu.
@@ -3174,6 +3191,28 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await card.getByRole("button", { name: "Got it" }).click();
   const row = page.getByRole("listitem", { name: `Water ${id}` });
   await expect(row).toContainText("Every 3 days at 07:30 · next 2 Jan 07:30");
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
+test("Schedules page: add a schedule that runs once (#822)", async ({ page }, testInfo) => {
+  const id = `bank-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Bank ${id}`);
+  await form.getByRole("button", { name: "Once" }).click();
+  await expect(form.getByLabel("Every")).toHaveCount(0);
+  await form.getByLabel("Date and time").fill("2030-01-02T07:30");
+  await form.getByLabel("Fixed text").fill("Phone the bank.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Once on 2 Jan at 07:30");
+  await card.getByRole("button", { name: "Got it" }).click();
+  const row = page.getByRole("listitem", { name: `Bank ${id}` });
+  await expect(row).toContainText("Once on 2 Jan at 07:30 · next 2 Jan 07:30");
   await page.request.delete(`/api/schedules/${id}`);
 });
 
@@ -4422,13 +4461,13 @@ test("Settings: Restart Eva in the header names the running chats, then restarts
     await route.fulfill({ response, json: { ...status, busySessionIds: [created.id] } });
   });
   await openSettings(page, "Updates");
-  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Restart Eva" }).click();
   const question = page.getByRole("alertdialog", { name: "Restart Eva" });
   await expect(question).toContainText('"Plan the trip" is running. A restart stops it. Restart Eva now?');
   await question.getByRole("button", { name: "Cancel" }).click();
   await expect(question).toHaveCount(0);
   expect(restarts).toEqual([]);
-  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Restart Eva" }).click();
   await page.getByRole("alertdialog", { name: "Restart Eva" }).getByRole("button", { name: "Yes, restart" }).click();
   await expect(page.getByText("Eva restarted.")).toBeVisible({ timeout: 10_000 });
   expect(restarts).toEqual(["POST"]);

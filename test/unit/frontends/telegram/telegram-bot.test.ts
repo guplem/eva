@@ -2909,13 +2909,19 @@ describe("schedules (lessons 66, 70, 126)", () => {
   });
 
   test("/schedules lists them with a remove button, and the button removes one", async () => {
-    writeSchedules([morning, { ...morning, id: "evening", name: "Evening", enabled: false }, { id: "Bad" }]);
+    writeSchedules([
+      morning,
+      { ...morning, id: "evening", name: "Evening", enabled: false },
+      { id: "call", name: "Call", from: "2026-10-01T08:00", text: "Call the bank." },
+      { id: "Bad" },
+    ]);
     const bot = createBot();
     telegram.sendText(owner, "/schedules");
     await settle(bot, () => telegram.sentTexts().length >= 1);
     const listing = telegram.callsTo("sendMessage").at(-1)?.params;
     expect(String(listing?.["text"])).toContain("• Morning (morning), next: 2026-10-14 10:45");
     expect(String(listing?.["text"])).toContain("• Evening (evening), off");
+    expect(String(listing?.["text"])).toContain("• Call (call), ended: 2026-10-01 08:00");
     expect(String(listing?.["text"])).toContain("Schedules file problems:");
     expect(JSON.stringify(listing?.["reply_markup"])).toContain("s:morning");
     telegram.pressButton(owner, "s:morning");

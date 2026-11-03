@@ -29,3 +29,4 @@ The owner is away. Each decision follows his intentions (decisions.md, ROUND2.md
 7. **No version gating, no damaged-file rule, no re-reads.** Reason: R2 drops them.
 8. **Migration tests that read the live template** get a frozen copy of the text they expect, as the migrations themselves freeze it. Reason: issue notes; the new map has no "A project is one of three types:" line.
 9. **Captures.** Setup's folder list changes two purposes. The web setup page shows them, so it gets a before and after capture with the demo data. The Template alignment card only gains one row of data, so no capture.
+10. **The template's Markdown is out of Prettier** (`templates/vault/**/*.md` in `.prettierignore`). Prettier pads each table to its widest cell, which adds about 6,000 spaces to the root map that every chat reads, and changes the approved text. Reason: small prompt, exact approved text.

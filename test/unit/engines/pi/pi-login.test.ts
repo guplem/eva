@@ -379,6 +379,78 @@ describe("PiLogin", () => {
     expect(piLogin.state().link).toBeNull();
     piLogin.stop();
   });
+
+  test("a stop ends the login that waits, and closes pi", async () => {
+    const { piLogin, processes } = login(
+      fakeRuntime(async (interaction) => {
+        await interaction.prompt({ type: "secret", message: "Key" });
+      }),
+    );
+    await piLogin.start(place, "openrouter", "api_key");
+
+    piLogin.stop();
+
+    expect(processes[0]?.closed).toBe(true);
+    expect(piLogin.state().status).toBe("idle");
+  });
+
+  test("an answer after pi's own callback ended the login gives the end, not an error", async () => {
+    let finishAlone = (): void => undefined;
+    const alone = new Promise<string>((resolve) => (finishAlone = () => resolve("")));
+    const { piLogin } = login(
+      fakeRuntime(async (interaction) => {
+        interaction.notify({ type: "auth_url", url: "https://auth.example.com/authorize" });
+        // pi races its local callback against the pasted address, and the callback wins here.
+        await Promise.race([interaction.prompt({ type: "manual_code", message: "Paste" }), alone]);
+      }),
+    );
+    await piLogin.start(place, "openai-codex", "oauth");
+    await waitFor(piLogin, (state) => state.question !== null);
+    finishAlone();
+    await waitFor(piLogin, (state) => state.status === "done");
+
+    expect(await piLogin.answer("http://localhost:1455/callback?code=late")).toMatchObject({ status: "done" });
+  });
+
+  test("a second question cancels the open one, so pi never waits on it", async () => {
+    const answers: (string | undefined)[] = [];
+    const { piLogin, processes } = login(
+      fakeRuntime(async (interaction) => {
+        const first = interaction.prompt({ type: "text", message: "First" }).catch(() => undefined);
+        const second = interaction.prompt({ type: "text", message: "Second" });
+        answers.push(await first);
+        answers.push(await second);
+      }),
+    );
+    await piLogin.start(place, "openrouter", "api_key");
+    await waitFor(piLogin, (state) => state.question?.message === "Second");
+
+    expect(await piLogin.answer("two")).toMatchObject({ status: "done" });
+    expect(answers).toEqual([undefined, "two"]);
+    expect(processes[0]?.sent.filter((record) => record["cancelled"] === true)).toHaveLength(1);
+  });
+
+  test("a dialog that is not a login question gets a cancel", async () => {
+    const pi = new LoginPi(fakeRuntime());
+    const sent: PiRecord[] = [];
+    const tracked: PiProcess = {
+      send: (record) => {
+        sent.push(record);
+        pi.send(record);
+      },
+      records: (async function* () {
+        yield { type: "extension_ui_request", id: "other", method: "confirm", title: "Trust this folder?" };
+        yield* pi.records;
+      })(),
+      close: () => pi.close(),
+      stderrTail: () => "",
+    };
+    const piLogin = new PiLogin({ command: () => ["pi"], workFolder: folder, start: () => tracked, waitMs: 2_000 });
+
+    await piLogin.providers(place);
+
+    expect(sent).toContainEqual({ type: "extension_ui_response", id: "other", cancelled: true });
+  });
 });
 
 async function waitFor(

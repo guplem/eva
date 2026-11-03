@@ -2628,10 +2628,14 @@ export class Eva {
     return { cwd: this.options.paths.root, environment: engineToolEnvironment(this.facts) };
   }
 
-  /** A login that worked ends the alert of an expired pi login at once, before the next chat. */
+  /**
+   * A login that worked ends the alert of an expired pi login at once, before the next chat. pi's
+   * own lines leave the core redacted: a provider's error can repeat the key that it refused.
+   */
   private afterPiLogin(state: PiLoginState): PiLoginState {
     if (state.status === "done") this.alerts.report("engine_login:pi", null);
-    return state;
+    const redact = (text: string | null): string | null => (text === null ? null : this.redactor.redact(text));
+    return { ...state, error: redact(state.error), progress: redact(state.progress) };
   }
 
   /** Starts the GitHub browser login, or gives the code of the login that waits. */

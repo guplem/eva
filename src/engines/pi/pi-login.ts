@@ -74,6 +74,8 @@ export class PiLogin implements PiLogins {
   }
 
   async answer(text: string): Promise<PiLoginState> {
+    // pi's own callback can end an OAuth login on Eva's computer while the page still asks for the address.
+    if (this.current?.state.status === "done") return this.state();
     const run = this.current?.state.question === null ? null : this.current;
     if (run === null) throw failure(`No pi login waits for an answer. A login ends after 15 minutes. ${tryAgain}`);
     if (text.length > answerLimit) throw failure("The answer is too long. Paste one line.");
@@ -242,12 +244,17 @@ class LoginRun {
       const tail = this.pi.stderrTail().trim().split("\n").at(-1)?.slice(0, 300) ?? "";
       this.finish(
         doneSeen ? "done" : "failed",
-        doneSeen ? null : `pi ended before the login ended.${tail === "" ? "" : ` It said: "${tail}".`} ${tryAgain}`,
+        doneSeen
+          ? null
+          : `pi stopped before the login finished.${tail === "" ? "" : ` It said: "${tail}".`} ${tryAgain}`,
       );
     }
   }
 
-  /** A question of pi's login, or any other dialog, which Eva cancels so that pi never waits on it. */
+  /**
+   * A question of pi's login, or any other dialog, which Eva cancels so that pi never waits on it.
+   * The other methods, such as `notify`, wait for no answer.
+   */
   private dialog(record: Readonly<Record<string, unknown>>): void {
     const id = record["id"];
     const method = record["method"];
@@ -257,6 +264,8 @@ class LoginRun {
       this.pi.send({ type: "extension_ui_response", id, cancelled: true });
       return;
     }
+    // The page shows one question. An older one that is still open would hold pi for good.
+    if (this.dialogId !== null) this.pi.send({ type: "extension_ui_response", id: this.dialogId, cancelled: true });
     this.dialogId = id;
     this.change({ question });
   }

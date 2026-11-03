@@ -37,6 +37,8 @@ const fakePiLogin: PiLogins = {
   },
   answer: (text) => {
     piLoginCalls.push(`answer ${text}`);
+    // A provider's error can repeat the key that it refused.
+    if (text.startsWith("sk-")) return Promise.resolve({ ...idlePiLogin, status: "failed", error: `Bad key ${text}` });
     return Promise.resolve({ ...idlePiLogin, status: "done", provider: "openrouter" });
   },
   state: () => idlePiLogin,
@@ -1634,7 +1636,12 @@ describe("web routes", () => {
       body: { provider: "openrouter", method: "api_key" },
     });
     expect(await json<{ question: { kind: string } }>(started)).toMatchObject({ question: { kind: "secret" } });
-    const answered = await call("/api/engines/pi/login/answer", { method: "POST", body: { text: "sk-or-key" } });
+    const key = "sk-or-v1-0123456789abcdef0123456789abcdef";
+    const refused = await call("/api/engines/pi/login/answer", { method: "POST", body: { text: key } });
+    const refusedText = await refused.text();
+    expect(refusedText).toContain("Bad key");
+    expect(refusedText).not.toContain(key);
+    const answered = await call("/api/engines/pi/login/answer", { method: "POST", body: { text: "pasted-key" } });
     expect(await json<{ status: string }>(answered)).toMatchObject({ status: "done" });
     expect((await json<{ status: string }>(await call("/api/engines/pi/login"))).status).toBe("idle");
     expect((await call("/api/engines/pi/login", { method: "DELETE" })).status).toBe(200);
@@ -1643,7 +1650,8 @@ describe("web routes", () => {
     expect(wrong.status).toBe(400);
     expect(piLoginCalls).toEqual([
       "start openrouter api_key pi-folder",
-      "answer sk-or-key",
+      "answer sk-or-v1-0123456789abcdef0123456789abcdef",
+      "answer pasted-key",
       "stop",
       "logout openrouter",
     ]);

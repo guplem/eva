@@ -1,8 +1,8 @@
 /**
  * What the person does with the vault's encryption (#707): set the password, unlock and lock a
  * device, read and save an encrypted file, change the patterns, confirm a removal, change the
- * password, make a new key, and accept a key that changed on another machine. Each change of the
- * vault runs between two steps of the vault sync, so it never races a commit.
+ * password, which makes a new key (#775), and accept a key that changed on another machine. Each
+ * change of the vault runs between two steps of the vault sync, so it never races a commit.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -13,19 +13,14 @@ import {
   encryptAgain,
   filesFreedBy,
   readEncryptedFile,
+  moveToCurrentKey,
   saveEncryptedFile,
   type OpenedFile,
 } from "./encrypted-files.ts";
 import { defaultSecretPatterns, SecretMatcher, secretFilesPath, type SecretFilesChanges } from "./secret-files.ts";
 import { activeSecretPatterns, addedBack, signedPayload } from "./secret-policy.ts";
 import { readVaultKey, vaultKeyPath, writeSignedState, writeVaultKey } from "./secret-state.ts";
-import {
-  createVaultKey,
-  keyFingerprint,
-  rewrapVaultKey,
-  unlockVaultKey,
-  type UnlockedVaultKey,
-} from "./vault-crypto.ts";
+import { createVaultKey, keyFingerprint, nextVaultKey, unlockVaultKey, type UnlockedVaultKey } from "./vault-crypto.ts";
 import type { VaultKeys } from "./vault-keys.ts";
 import type { VaultSecrets } from "./vault-secrets.ts";
 
@@ -139,8 +134,28 @@ export class VaultEncryption {
     await this.persist();
   }
 
-  unlock(deviceToken: string | null, password: string): Promise<string> {
-    return this.options.keys.unlock(deviceToken, password);
+  async unlock(deviceToken: string | null, password: string): Promise<string> {
+    const secret = await this.options.keys.unlock(deviceToken, password);
+    // In the background: the move waits for the sync, which can wait on a slow network.
+    void this.moveOldFiles(deviceToken, secret);
+    return secret;
+  }
+
+  /**
+   * Moves each file that another computer left on an older key to the current one (#775). It runs at
+   * each unlock, the first moment that this device holds the keys. A fault here never stops the unlock.
+   */
+  private async moveOldFiles(deviceToken: string | null, secret: string): Promise<void> {
+    try {
+      const vaultPath = this.vaultPath();
+      const moved = await this.options.vault.exclusive(() => {
+        if (this.secrets().inputs().keyChanged) return [];
+        return moveToCurrentKey(vaultPath, this.options.keys.keyFor(deviceToken, secret), this.currentKey(vaultPath));
+      });
+      if (moved.length > 0) await this.persist();
+    } catch {
+      // The files stay on the old key, which the new password still opens: the next unlock tries again.
+    }
   }
 
   lock(deviceToken: string | null): void {
@@ -244,29 +259,27 @@ export class VaultEncryption {
     return decrypted;
   }
 
-  /** Wraps the same keys with a new password. No file changes. */
-  async changePassword(deviceToken: string | null, secret: string | null, password: string): Promise<void> {
-    const unlocked = this.options.keys.keyFor(deviceToken, secret);
-    const vaultPath = this.vaultPath();
-    const rewrapped = await rewrapVaultKey(this.currentKey(vaultPath), unlocked, password, this.options.cost);
-    await this.options.vault.exclusive(() => {
-      writeVaultKey(vaultPath, rewrapped);
-    });
-    await this.persist();
-  }
-
   /**
-   * Makes new keys, encrypts every encrypted file again to them, and signs the record again, for
-   * when the old password leaked. Every device locks: the old key opens nothing any more.
+   * Makes new keys for the new password, signed by the old key, and encrypts every encrypted file again
+   * to them (#775). The old key stays in the git history, so a change that kept it would leave every
+   * file open to the old password. Each computer that trusts the old key trusts the new one by its
+   * signature. Every device locks: the old key opens nothing new.
    */
-  async newKey(deviceToken: string | null, secret: string | null, password: string): Promise<void> {
-    this.options.keys.keyFor(deviceToken, secret);
+  async changePassword(deviceToken: string | null, secret: string | null, password: string): Promise<void> {
+    const current = this.options.keys.keyFor(deviceToken, secret);
     const vaultPath = this.vaultPath();
-    const next = await createVaultKey(password, this.options.cost);
+    const next = await nextVaultKey(this.currentKey(vaultPath), current, password, this.options.cost);
     const nextUnlocked = await unlockVaultKey(next, password);
-    // Another machine may have pushed a file on the old key: it must move to the new key too.
-    await this.options.vault.pull();
+    // Another machine may have pushed a file on the old key: it must move to the new key too. With no
+    // pull, such a file could stay on the old key, which the old password opens.
+    const pulled = await this.options.vault.pull();
+    if (pulled.status === "offline" || pulled.status === "error" || pulled.status === "conflict")
+      throw new EvaError(
+        "vault_key_invalid",
+        "Eva cannot sync the vault now, so she changes no password: a file from another computer could stay on the old one. Try again when the sync works.",
+      );
     await this.options.vault.exclusive(() => {
+      // A pull that brought another key locks this device here, since it unlocked an old one.
       const unlocked = this.options.keys.keyFor(deviceToken, secret);
       this.refuseChangedKey();
       const secrets = this.secrets();
@@ -276,7 +289,7 @@ export class VaultEncryption {
       if (unreadable.length > 0)
         throw new EvaError(
           "vault_file_unreadable",
-          `The vault's key does not open ${unreadable.join(", ")}, so Eva made no new key. Restore each file from an older commit, or delete it.`,
+          `The vault's key does not open ${unreadable.join(", ")}, so Eva made no password change. Restore each file from an older commit, or delete it.`,
         );
       secrets.pinKey(keyFingerprint(next));
       if (input.signed !== null) {

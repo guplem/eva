@@ -3,6 +3,7 @@ import {
   forgetUnlockSecret,
   keepUnlockSecret,
   onUnlockForgotten,
+  thenForgetUnlock,
   unlockHeaders,
   unlockSecret,
   type UnlockStorage,
@@ -68,5 +69,19 @@ describe("the tab's own store (#707)", () => {
     expect(unlockSecret()).toBeNull();
     expect(unlockHeaders()).toEqual({});
     forgetUnlockSecret();
+  });
+});
+
+describe("a change that locks every device (#775)", () => {
+  test("a change that works forgets the tab's unlock, and one that fails keeps it", async () => {
+    const store = memory();
+    keepUnlockSecret("the tab's secret", store);
+    const failed = await thenForgetUnlock(() => Promise.reject(new Error("Offline.")), store).catch(
+      (error: unknown) => (error as Error).message,
+    );
+    expect(failed).toBe("Offline.");
+    expect(unlockSecret(store)).toBe("the tab's secret");
+    expect(await thenForgetUnlock(() => Promise.resolve("changed"), store)).toBe("changed");
+    expect(unlockSecret(store)).toBeNull();
   });
 });

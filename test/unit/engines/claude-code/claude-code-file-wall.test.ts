@@ -4,7 +4,12 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallback, Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildQueryOptions } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
-import { chatDataFolders, fileWallSandbox } from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
+import {
+  chatDataFolders,
+  fileWallSandbox,
+  outsideMessage,
+  searchMessage,
+} from "../../../../src/engines/claude-code/claude-code-file-wall.ts";
 import type { ApprovalAnswer, QuestionsOutcome, TurnRequest } from "../../../../src/shared/engine-port.ts";
 
 let vault: string;
@@ -272,5 +277,90 @@ describe("the socket filter (#760)", () => {
       }
     ).sandbox.filesystem.denyRead;
     expect(denied).toEqual([vault, "/srv/projects"]);
+  });
+});
+
+describe("a clone chat reads its project's notes (#774)", () => {
+  const project = (): string => join(vault, "Projects", "2025-03-02-1015-example-app");
+  const notesWall = (): TurnRequest["fileWall"] => ({
+    area: clone,
+    closed: [vault, join(project(), "repos")],
+    readable: [],
+    readOnly: [project()],
+    socketFilter: true,
+  });
+  const filesystem = (platform: NodeJS.Platform): { denyRead: string[]; allowRead: string[]; allowWrite: string[] } =>
+    (
+      fileWallSandbox(notesWall() ?? { area: clone, closed: [], readable: [], socketFilter: true }, {
+        runtimeFolder: null,
+        platform,
+      }) as { filesystem: { denyRead: string[]; allowRead: string[]; allowWrite: string[] } }
+    ).filesystem;
+
+  test("the shell reads the project folder but not `repos/`, and writes only in the clone", () => {
+    const linux = filesystem("linux");
+    expect(linux.denyRead).toEqual([vault, join(project(), "repos")]);
+    expect(linux.allowRead).toEqual([clone, project()]);
+    expect(linux.allowWrite).not.toContain(project());
+  });
+
+  test("on macOS, `repos/` closes as a glob, since its last matching rule wins and would close the clone", () => {
+    expect(filesystem("darwin").denyRead).toEqual([vault, `${join(project(), "repos")}/**`]);
+  });
+
+  test("on macOS, each glob character of the path becomes `?`, since no escape is sure to work", () => {
+    const odd = join(vault, "Projects", "2025-03-02-1015-a[b]*{c}");
+    const sandbox = fileWallSandbox(
+      {
+        area: join(odd, "repos", "clone-0"),
+        closed: [vault, join(odd, "repos")],
+        readable: [],
+        readOnly: [odd],
+        socketFilter: true,
+      },
+      { runtimeFolder: null, platform: "darwin" },
+    ) as { filesystem: { denyRead: string[] } };
+    expect(sandbox.filesystem.denyRead[1]).toBe(`${join(vault, "Projects", "2025-03-02-1015-a?b???c?", "repos")}/**`);
+  });
+
+  test("a read of a note keeps its mode's path, a write to it is refused, and the other clones stay closed", async () => {
+    mkdirSync(join(project(), "repos", "clone-1"), { recursive: true });
+    writeFileSync(join(project(), "plan.md"), "");
+    const options = buildQueryOptions(projectRequest({ fileWall: notesWall() }), "/bin/claude", "auto");
+    expect(await decide(options, "Read", { file_path: "../../plan.md" })).toBeUndefined();
+    expect(await decide(options, "Grep", { pattern: "x", path: project(), glob: "*.md" })).toBe("deny");
+    expect(await decide(options, "Write", { file_path: "../../plan.md" })).toBe("deny");
+    expect(await decide(options, "Edit", { file_path: join(project(), "plan.md") })).toBe("deny");
+    expect(await decide(options, "Read", { file_path: "../clone-1/a.ts" })).toBe("deny");
+    expect(await decide(options, "Read", { file_path: "src/a.ts" })).toBeUndefined();
+    expect(await decide(options, "Read", { file_path: join(vault, "AGENTS.md") })).toBe("deny");
+  });
+
+  test("a search of the whole project folder, a Glob too, says how to find a note, and an LS of it passes", async () => {
+    mkdirSync(join(project(), "repos", "clone-1"), { recursive: true });
+    const options = buildQueryOptions(projectRequest({ fileWall: notesWall() }), "/bin/claude", "auto");
+    const reason = async (tool: string, input: Record<string, unknown>): Promise<unknown> => {
+      const answer = await wallHook(options)(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: tool,
+          tool_input: input,
+          tool_use_id: "t1",
+        } as Parameters<HookCallback>[0],
+        "t1",
+        { signal: new AbortController().signal },
+      );
+      return (answer as { hookSpecificOutput?: { permissionDecisionReason?: string } }).hookSpecificOutput
+        ?.permissionDecisionReason;
+    };
+    expect(await reason("Grep", { pattern: "x", path: "../.." })).toBe(searchMessage);
+    expect(await reason("Glob", { pattern: "../../**/*.md" })).toBe(searchMessage);
+    expect(await reason("Read", { file_path: "../clone-1/a.ts" })).toBe(outsideMessage);
+    expect(await decide(options, "Glob", { pattern: "../../*.md" })).toBe("deny");
+    expect(await decide(options, "Glob", { pattern: "*.md", path: "../.." })).toBe("deny");
+    expect(await reason("Glob", { pattern: join(project(), "*.md") })).toBe(searchMessage);
+    expect(await decide(options, "LS", { path: "../.." })).toBeUndefined();
+    // A tool that Eva does not know, such as an MCP tool, may write: the project folder stays closed to it.
+    expect(await decide(options, "mcp__files__write", { path: "../../plan.md" })).toBe("deny");
   });
 });

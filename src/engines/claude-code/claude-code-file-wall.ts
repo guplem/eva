@@ -12,10 +12,14 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallbackMatcher, HookEvent } from "@anthropic-ai/claude-agent-sdk";
 import type { FileWall } from "../../shared/engine-port.ts";
-import { wallRefusesCall, type WallFolders } from "../../shared/path-area.ts";
+import { isInside, wallRefusal, type WallFolders, type WallRefusal } from "../../shared/path-area.ts";
 
 /** What the agent reads when Eva refuses a path. It names no vault: the chat must not know of one. */
 export const outsideMessage = "This path is outside this chat's folder.";
+
+/** What the agent reads when it searches a whole read-only folder that holds a closed one (#774). */
+export const searchMessage =
+  "This search holds the project's clones. Search a sub-folder of the project, or list the notes with the shell.";
 
 /**
  * The cache folders of the package tools, moved to the temporary folder. A sandboxed command may
@@ -64,11 +68,19 @@ const patternKeys: Readonly<Record<string, readonly string[]>> = { Glob: ["patte
 /** The tools that write a file. A write to the folder's own settings could run code at the next turn. */
 const writeTools = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
-/** True when a tool call names a path or a pattern that the wall closes. */
-export function isOutsideWall(wall: WallFolders, cwd: string, toolName: string, input: unknown): boolean {
-  return wallRefusesCall(wall, cwd, input, {
+/** The tools that only read. Only they open a read-only folder, so an MCP tool cannot write there (#774). */
+const readTools = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead"]);
+
+/** The tools that list one level of a folder. Glob is a search: it runs `rg --files`, which goes to any depth. */
+const listTools = new Set(["LS"]);
+
+/** Why the wall refuses a tool call, or null when it does not. */
+function refusalOf(wall: WallFolders, cwd: string, toolName: string, input: unknown): WallRefusal | null {
+  return wallRefusal(wall, cwd, input, {
     patternKeys: patternKeys[toolName] ?? [],
     write: writeTools.has(toolName),
+    reads: readTools.has(toolName),
+    lists: listTools.has(toolName),
     dropsAt: false,
   });
 }
@@ -109,16 +121,14 @@ export function fileWallHooks(
             // A relative path starts where the tool runs, which the hook input names.
             const cwd = input.cwd || startFolder;
             const open = chatDataFolders(configFolder, startFolder);
-            if (
-              input.hook_event_name !== "PreToolUse" ||
-              !isOutsideWall({ ...wall, open }, cwd, input.tool_name, input.tool_input)
-            )
-              return Promise.resolve({});
+            if (input.hook_event_name !== "PreToolUse") return Promise.resolve({});
+            const refusal = refusalOf({ ...wall, open }, cwd, input.tool_name, input.tool_input);
+            if (refusal === null) return Promise.resolve({});
             return Promise.resolve({
               hookSpecificOutput: {
                 hookEventName: "PreToolUse",
                 permissionDecision: "deny",
-                permissionDecisionReason: outsideMessage,
+                permissionDecisionReason: refusal === "search" ? searchMessage : outsideMessage,
               },
             });
           },
@@ -156,6 +166,20 @@ export interface SandboxMachine {
   readonly platform: NodeJS.Platform;
 }
 
+/**
+ * A closed folder as the sandbox's `denyRead` names it. On macOS, the last rule that matches wins,
+ * and the sandbox adds a literal deny again after the allows. So a closed folder inside a read-only
+ * one, such as `repos/`, would close the chat's own clone there. Its glob form keeps the clone open
+ * (#774): the sandbox bundled in Claude Code turns a `denyRead` glob into its matches and spares
+ * each path that `allowRead` names. The review of #774 read that code. The globs take no escape that Eva can count on, so each glob character becomes `?`, as in
+ * `hiddenInstructionPatterns`: it also matches a sibling with a similar name, which only closes more.
+ */
+function deniedFolder(wall: FileWall, folder: string, platform: NodeJS.Platform): string {
+  const nested = (wall.readOnly ?? []).some((readOnly) => readOnly !== folder && isInside(readOnly, folder));
+  if (!nested || platform !== "darwin") return folder;
+  return `${folder.replace(/[*?[\]{}()!+@]/g, "?")}/**`;
+}
+
 /** The sandbox of the chat's shell, in the shape of the `settings` option. */
 export function fileWallSandbox(
   wall: FileWall,
@@ -189,9 +213,9 @@ export function fileWallSandbox(
       ...(noFilter ? { allowAllUnixSockets: true } : {}),
     },
     filesystem: {
-      denyRead: [...wall.closed, ...socketFolders],
-      // The chat's folder, and the parts of Eva's folder that its git and its shell need.
-      allowRead: [wall.area, ...wall.readable, ...(noFilter ? nameServerPlaces : [])],
+      denyRead: [...wall.closed.map((folder) => deniedFolder(wall, folder, machine.platform)), ...socketFolders],
+      // The chat's folder, its read-only folders, and the parts of Eva's folder that its git and its shell need.
+      allowRead: [wall.area, ...(wall.readOnly ?? []), ...wall.readable, ...(noFilter ? nameServerPlaces : [])],
       // npm checks each package of its cache. The other tools use the temporary folder.
       allowWrite: [wall.area, tmpdir(), join(homedir(), ".npm", "_cacache")],
     },

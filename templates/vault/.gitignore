@@ -5,7 +5,7 @@
 Projects/*/repos/
 
 # Files made only to send to a chat, and files received from it. Eva removes them after a week.
-Scratch/
+.eva/scratch/
 
 # Local settings of a tool on this machine.
 settings.local.json

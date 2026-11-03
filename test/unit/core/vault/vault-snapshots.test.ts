@@ -53,7 +53,7 @@ beforeEach(() => {
   vault = sandbox.clone("vault");
   sandbox.write(vault, "Notes/Plan.md", "The first plan.\n");
   sandbox.write(vault, "Notes/Old.md", "An old note.\n");
-  sandbox.write(vault, ".gitignore", "Scratch/\n");
+  sandbox.write(vault, ".gitignore", "Scratch/\n.eva/scratch/\n");
   sandbox.git(vault, "add", "-A");
   sandbox.git(vault, "commit", "-q", "-m", "notes");
   sandbox.git(vault, "push", "-q", "origin", "HEAD:main");
@@ -124,39 +124,56 @@ describe("VaultSync undo of an answer", () => {
     expect(read("Notes/Mine.md")).toBe("My own note.\n");
   });
 
-  test("names a Scratch file and a withheld secret as not restored, and keeps the secret out of git", async () => {
+  test("names a scratch file and a withheld secret as not restored, and keeps the secret out of git", async () => {
     const sync = createSync();
     const secret = "token ghp_" + "a".repeat(36) + "\n";
     await runAnswer(sync, "chat", 0, () => {
-      sandbox.write(vault, "Scratch/report.pdf", "A report.\n");
+      sandbox.write(vault, ".eva/scratch/report.pdf", "A report.\n");
       sandbox.write(vault, "Toolbox/keys.md", secret);
     });
 
     expect(await sync.undoPreview([answer("chat", 0)])).toEqual({
       restore: [],
       changed: [],
-      notKept: ["Scratch/report.pdf", "Toolbox/keys.md"],
+      notKept: [".eva/scratch/report.pdf", "Toolbox/keys.md"],
       answers: 1,
     });
     const tree = sandbox.git(vault, "ls-tree", "-r", "--name-only", turnSnapshotRef("chat", 0, "after"));
     expect(tree).not.toContain("Toolbox/keys.md");
-    expect(tree).not.toContain("Scratch/report.pdf");
+    expect(tree).not.toContain(".eva/scratch/report.pdf");
+  });
+
+  test("names a file in the old Scratch/ as not restored, while that folder exists (#767)", async () => {
+    const sync = createSync();
+    await runAnswer(sync, "chat", 0, () => {
+      sandbox.write(vault, "Scratch/report.pdf", "A report.\n");
+    });
+    expect((await sync.undoPreview([answer("chat", 0)])).notKept).toEqual(["Scratch/report.pdf"]);
+  });
+
+  test("a full old Scratch/ never pushes a new .eva/scratch file out of the list", async () => {
+    for (let index = 0; index < 1_000; index += 1) sandbox.write(vault, `Scratch/old-${String(index)}.txt`, "old\n");
+    const sync = createSync();
+    await runAnswer(sync, "chat", 0, () => {
+      sandbox.write(vault, ".eva/scratch/new.txt", "new\n");
+    });
+    expect((await sync.undoPreview([answer("chat", 0)])).notKept).toContain(".eva/scratch/new.txt");
   });
 
   test("a left-out file that the answer changed counts, one that it did not change does not", async () => {
-    sandbox.write(vault, "Scratch/old.txt", "old\n");
+    sandbox.write(vault, ".eva/scratch/old.txt", "old\n");
     const sync = createSync();
     await runAnswer(sync, "chat", 0, () => {
-      sandbox.write(vault, "Scratch/new.txt", "new\n");
+      sandbox.write(vault, ".eva/scratch/new.txt", "new\n");
     });
-    expect((await sync.undoPreview([answer("chat", 0)])).notKept).toEqual(["Scratch/new.txt"]);
+    expect((await sync.undoPreview([answer("chat", 0)])).notKept).toEqual([".eva/scratch/new.txt"]);
 
     await runAnswer(sync, "chat", 1, () => {
       const later = new Date(Date.now() + 60_000);
-      sandbox.write(vault, "Scratch/old.txt", "changed\n");
-      utimesSync(join(vault, "Scratch/old.txt"), later, later);
+      sandbox.write(vault, ".eva/scratch/old.txt", "changed\n");
+      utimesSync(join(vault, ".eva/scratch/old.txt"), later, later);
     });
-    expect((await sync.undoPreview([answer("chat", 1)])).notKept).toEqual(["Scratch/old.txt"]);
+    expect((await sync.undoPreview([answer("chat", 1)])).notKept).toEqual([".eva/scratch/old.txt"]);
   });
 
   test("never touches a withheld file, even when the answer took its secret out (review of #525)", async () => {
@@ -205,6 +222,15 @@ describe("VaultSync undo of an answer", () => {
     const tree = sandbox.git(vault, "ls-tree", "-r", "--name-only", turnSnapshotRef("chat", 0, "before"));
     expect(tree).toContain("Notes/Staged.md");
     expect(tree).toContain("Notes/Unstaged.md");
+  });
+
+  test("a snapshot takes no file of a project's `repos/` folder (#774)", async () => {
+    sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/AGENTS.md", "Eva's line for a clone chat.\n");
+    sandbox.write(vault, "Notes/Unstaged.md", "unstaged\n");
+    expect(await createSync().snapshot(turnSnapshotRef("chat", 0, "before"))).toBe(true);
+    const tree = sandbox.git(vault, "ls-tree", "-r", "--name-only", turnSnapshotRef("chat", 0, "before"));
+    expect(tree).toContain("Notes/Unstaged.md");
+    expect(tree).not.toContain("repos/");
   });
 
   test("a turn with no snapshots adds nothing", async () => {
@@ -301,7 +327,7 @@ describe("VaultSync changed files of an answer", () => {
 
 describe("snapshot helpers", () => {
   test("a snapshot message keeps its left-out files, and a bad one lists none", () => {
-    const files = [{ path: "Scratch/a.txt", size: 3, changedAt: 1000 }];
+    const files = [{ path: ".eva/scratch/a.txt", size: 3, changedAt: 1000 }];
     expect(parseSnapshotCommit(`tree abc\n\n${snapshotMessage(files)}`)).toEqual(files);
     expect(parseSnapshotCommit("tree abc\n\neva: snapshot\n\nnot json")).toEqual([]);
     expect(parseSnapshotCommit('tree abc\n\neva: snapshot\n\n{"leftOut":[{"path":1}]}')).toEqual([]);

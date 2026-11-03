@@ -710,6 +710,29 @@ describe("device login", () => {
     );
     expect(status).toMatchObject({ hasKey: true, unlocked: true });
   });
+
+  test("a password change, by its own path or an older page's new-key path, locks the page (#775)", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const device = { cookie, "content-type": "application/json" };
+    const first = { password: "correct horse battery" };
+    await call("/api/vault/secrets/password", { method: "POST", body: first, headers: device });
+    let password = first;
+    for (const [path, next] of [
+      ["/api/vault/secrets/change-password", { password: "a second long password" }],
+      ["/api/vault/secrets/new-key", { password: "a third long password" }],
+    ] as const) {
+      const unlocked = await call("/api/vault/secrets/unlock", { method: "POST", body: password, headers: device });
+      const { secret } = await json<{ secret: string }>(unlocked);
+      const changed = await call(path, { method: "POST", body: next, headers: { ...device, "x-eva-unlock": secret } });
+      expect(changed.status).toBe(200);
+      expect(await json<{ unlocked: boolean }>(changed)).toMatchObject({ unlocked: false });
+      // The old password opens nothing any more.
+      const old = await call("/api/vault/secrets/unlock", { method: "POST", body: password, headers: device });
+      expect(old.status).not.toBe(200);
+      password = next;
+    }
+  });
 });
 
 describe("routes", () => {
@@ -2148,7 +2171,7 @@ describe("web routes", () => {
     expect((await call("/api/files/rename", { method: "POST", body: { path: "README.md" } })).status).toBe(400);
   });
 
-  test("files: a file from the chat lands in Scratch/received/ and answers its note (issue 409)", async () => {
+  test("files: a file from the chat lands in .eva/scratch/received/ and answers its note (issue 409)", async () => {
     const vaultPath = eva.status().vaultPath ?? "";
     const response = await fetch(`${api.url}/api/files/received?name=${encodeURIComponent("my photo.jpg")}`, {
       method: "POST",
@@ -2157,7 +2180,7 @@ describe("web routes", () => {
     });
     expect(response.status).toBe(201);
     const saved = await json<{ path: string; note: string }>(response);
-    expect(saved.path).toMatch(/^Scratch\/received\/my-photo-[0-9a-f]{12}\.jpg$/);
+    expect(saved.path).toMatch(/^\.eva\/scratch\/received\/my-photo-[0-9a-f]{12}\.jpg$/);
     expect(saved.note).toBe(`[The person sent a file, saved as ${saved.path}]`);
     expect([...readFileSync(join(vaultPath, saved.path))]).toEqual([7, 8, 9]);
 
@@ -2167,7 +2190,7 @@ describe("web routes", () => {
       body: new Uint8Array(26 * 1024 * 1024),
     });
     expect(tooLarge.status).toBe(413);
-    expect(existsSync(join(vaultPath, "Scratch", "received", "big.bin"))).toBe(false);
+    expect(existsSync(join(vaultPath, ".eva", "scratch", "received", "big.bin"))).toBe(false);
   });
 
   test("a chat in a clone: an attached file lands in the clone, and a gone mention stops the message (#706)", async () => {

@@ -9,7 +9,8 @@
  * no record of cloning, or that is not the folder she cloned, is asked about too, and the
  * answer holds for that folder only.
  */
-import { basename, delimiter, dirname } from "node:path";
+import { readFileSync } from "node:fs";
+import { basename, delimiter, dirname, join } from "node:path";
 import {
   isTrustedByDefault,
   listRepositories,
@@ -20,6 +21,8 @@ import {
 } from "../projects/clones.ts";
 import type { WallRoots } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
+import type { Logger } from "../../shared/logger.ts";
+import { writeFileAtomic } from "../../shared/files.ts";
 import { withCloneMentions } from "../projects/clone-files.ts";
 import { deleteSnapshots, restoreSnapshot, takeSnapshot, type SnapshotRun } from "../projects/clone-snapshots.ts";
 import type {
@@ -48,19 +51,37 @@ export interface ProjectPreparerOptions {
   readonly vaultPath?: () => string | null;
   /** The folders that the chat may not open, read at each turn (#711). */
   readonly wallRoots: () => WallRoots;
+  readonly logger?: Logger;
 }
 
 export class ProjectPreparer implements TurnPreparer {
   private readonly options: ProjectPreparerOptions;
+  /** The text of each `repos/AGENTS.md` that Eva left and logged, so she logs it once, not at each turn. */
+  private readonly leftFiles = new Map<string, string>();
 
   constructor(options: ProjectPreparerOptions) {
     this.options = options;
   }
 
   async prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn> {
+    const projectFolder = projectFolderOf(session.startFolder, session.clone);
+    const roots = this.options.wallRoots();
+    // A chat in a clone reads its project's notes, but no other clone and no file of `repos/` (#774).
+    const reposFolder = dirname(session.startFolder);
+    const fileWall =
+      session.clone === null
+        ? { area: session.startFolder, ...roots }
+        : {
+            area: session.startFolder,
+            ...roots,
+            closed: [...roots.closed, reposFolder],
+            readOnly: [...(roots.readOnly ?? []), projectFolder],
+          };
+    // Before the engine starts: it reads its instruction files only then.
+    if (session.clone !== null) writeNotesFile(reposFolder, this.leftFiles, this.options.logger);
     return {
       startFolder: session.startFolder,
-      projectFolder: projectFolderOf(session.startFolder, session.clone),
+      projectFolder,
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
@@ -69,7 +90,7 @@ export class ProjectPreparer implements TurnPreparer {
       // As in a session that the person opens by hand.
       harnessMemory: true,
       folderHooks: true,
-      fileWall: { area: session.startFolder, ...this.options.wallRoots() },
+      fileWall,
       environment: withGitCeiling(this.options.environment, dirname(session.startFolder)),
     };
   }
@@ -227,4 +248,51 @@ export function withGitCeiling(
   const current = environment["GIT_CEILING_DIRECTORIES"];
   const ceiling = current === undefined || current === "" ? clonesFolder : `${current}${delimiter}${clonesFolder}`;
   return { ...environment, GIT_CEILING_DIRECTORIES: ceiling };
+}
+
+/** The first line of a file that Eva owns and rewrites. A file without it is the person's own. */
+export const evaFileMarker = "<!-- Written by Eva. She rewrites this file. -->";
+
+/**
+ * The one line that Eva adds to a chat in a clone (#774), in `repos/AGENTS.md`. Nothing else tells
+ * the chat where the project's notes are. The engines read it as an instruction file of `repos/`,
+ * from the clone up to the project folder. The sync never commits `repos/`, so each computer has its own.
+ */
+export const cloneNotesFile =
+  `${evaFileMarker}\n` +
+  "The notes of this project are in the project folder, two levels above each clone (`../../` from the clone folder). " +
+  "Read them when they help. To find one, list `../../` or search a sub-folder of it. " +
+  "Never write there: write only in the clone.\n";
+
+/**
+ * Writes the file when it is missing, or when it is Eva's and its text differs. A file that the
+ * person wrote stays as it is. A turn runs on without the line: the chat still reads a note that the person mentions.
+ */
+function writeNotesFile(reposFolder: string, leftFiles: Map<string, string>, logger: Logger | undefined): void {
+  const path = join(reposFolder, "AGENTS.md");
+  let current: string | null;
+  try {
+    current = readFileSync(path, "utf8");
+  } catch (error) {
+    // Only a missing file is Eva's to write. A file that she cannot read may be the person's own:
+    // its error stands for its text, so it is left and logged once.
+    current = (error as NodeJS.ErrnoException).code === "ENOENT" ? null : `\0${String(error)}`;
+  }
+  if (current === cloneNotesFile) return;
+  if (current !== null && current.split(/\r?\n/)[0] !== evaFileMarker) {
+    if (leftFiles.get(path) === current) return;
+    leftFiles.set(path, current);
+    logger?.log("warn", "A clone chat gets no line about the project's notes: Eva left repos/AGENTS.md as it is.", {
+      path,
+    });
+    return;
+  }
+  try {
+    writeFileAtomic(path, cloneNotesFile);
+  } catch (error) {
+    logger?.log("warn", "Eva could not write the line about the project's notes in repos/AGENTS.md.", {
+      path,
+      reason: String(error),
+    });
+  }
 }

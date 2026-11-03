@@ -91,6 +91,12 @@ describe("the vault template", () => {
     expect(Object.keys(files).some((path) => path.endsWith("CLAUDE.md"))).toBe(false);
   });
 
+  test("a new vault keeps the files of the chats in .eva/scratch/, and never names Scratch/ (#767)", () => {
+    const files = vaultTemplateFiles(answers);
+    expect((files[".gitignore"] ?? "").split("\n")).toContain(".eva/scratch/");
+    for (const text of Object.values(files)) expect(text).not.toContain("Scratch/");
+  });
+
   test("the .gitignore ignores no secret file and no plain .env, since Eva commits them encrypted or checked (#707)", () => {
     const repository = join(folder, "ignore-check");
     mkdirSync(repository);
@@ -117,7 +123,7 @@ describe("the vault template", () => {
       "Library/",
       "Life/",
       "Projects/",
-      "Scratch/",
+      ".eva/scratch/",
       ".eva/",
     ]) {
       expect(map).toContain(`\`${folder}`);

@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   isProtectedInArea,
+  wallRefusal,
   wallRefusesCall,
   wallRefusesPath,
   wallRefusesPattern,
@@ -225,5 +226,109 @@ describe("the wall: what a Project chat may not open (review of #711)", () => {
     // A repository's own settings are the repository's content: Claude Code reads only the start folder's.
     expect(isProtectedInArea(area, "example-app/.claude/settings.json", area)).toBe(false);
     expect(isProtectedInArea(area, "src/a.ts", area)).toBe(false);
+  });
+});
+
+describe("the wall's read-only folders (#774)", () => {
+  let project: string;
+  let clone: string;
+  /** A chat in a clone: the vault closed, its project folder read-only, the other clones closed. */
+  const wall = (): { area: string; closed: string[]; readOnly: string[] } => ({
+    area: clone,
+    closed: [root, join(project, "repos")],
+    readOnly: [project],
+  });
+  const read = { patternKeys: ["pattern"], write: false, reads: true, dropsAt: false };
+  const write = { ...read, write: true, reads: false };
+  // A tool that Eva does not know, such as an MCP tool, may write: it opens no read-only folder.
+  const unknown = { ...read, reads: false };
+  const list = { ...read, lists: true };
+
+  beforeEach(() => {
+    project = join(root, "Projects", "2026-01-01-0900-example-app");
+    clone = join(project, "repos", "clone-0");
+    mkdirSync(join(clone, "example-app"), { recursive: true });
+    mkdirSync(join(project, "repos", "clone-1", "example-app"), { recursive: true });
+    mkdirSync(join(project, "decisions"), { recursive: true });
+    writeFileSync(join(project, "plan.md"), "");
+    writeFileSync(join(project, "repos", "AGENTS.md"), "");
+  });
+
+  test("a read in the read-only folder passes, by a relative or an absolute path, dot files too", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../plan.md" }, read)).toBe(false);
+    expect(wallRefusesCall(wall(), clone, { file_path: join(project, ".secrets") }, read)).toBe(false);
+    expect(wallRefusesCall(wall(), clone, { path: "../../decisions", pattern: "*.md" }, read)).toBe(false);
+  });
+
+  test("a write in the read-only folder is refused, and a write in the area passes", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../plan.md" }, write)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: join(project, "new.md") }, write)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: "example-app/a.ts" }, write)).toBe(false);
+  });
+
+  test("a closed folder inside the read-only one stays closed, and so does a search that holds it", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../clone-1/example-app/a.ts" }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: "../AGENTS.md" }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { path: "../.." }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { pattern: "../../**/*.ts" }, read)).toBe(true);
+  });
+
+  test("the rest of the vault stays closed", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: join(outside, "plan.md") }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../../x.md" }, read)).toBe(true);
+  });
+
+  test("a read-only folder opens any folder, such as one beside the area", () => {
+    const received = { area: clone, closed: [root], readOnly: [outside] };
+    expect(wallRefusesCall(received, clone, { file_path: join(outside, "plan.md") }, read)).toBe(false);
+    expect(wallRefusesCall(received, clone, { file_path: join(outside, "plan.md") }, write)).toBe(true);
+    expect(wallRefusesCall(received, clone, { file_path: "../../plan.md" }, read)).toBe(true);
+  });
+
+  test("only a tool that Eva knows as a read opens the read-only folder", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../plan.md" }, unknown)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: "example-app/a.ts" }, unknown)).toBe(false);
+  });
+
+  test("a link or a climb that leads into another clone is refused, and so is a clone that does not exist yet", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../decisions/../repos/clone-1/x" }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: "../clone-9/x" }, read)).toBe(true);
+    if (link(join(project, "repos", "clone-1"), join(project, "other"))) {
+      expect(wallRefusesCall(wall(), clone, { file_path: "../../other/example-app/a.ts" }, read)).toBe(true);
+      expect(wallRefusesCall(wall(), clone, { path: "../../other" }, list)).toBe(true);
+    }
+  });
+
+  test("a link in the clone that leads to a note reads it, but a write through it is refused", () => {
+    if (!link(join(project, "decisions"), join(clone, "notes"))) return;
+    expect(wallRefusesCall(wall(), clone, { file_path: "notes/a.md" }, read)).toBe(false);
+    expect(wallRefusesCall(wall(), clone, { file_path: "notes/a.md" }, write)).toBe(true);
+  });
+
+  test.skipIf(process.platform === "linux")("on a system that ignores case, `REPOS/` is `repos/`", () => {
+    expect(wallRefusesCall(wall(), clone, { file_path: "../../REPOS/clone-1/x" }, read)).toBe(true);
+  });
+
+  test("a listing of the project folder passes, and a search of it is refused as a search", () => {
+    expect(wallRefusesCall(wall(), clone, { path: "../.." }, list)).toBe(false);
+    expect(wallRefusesCall(wall(), clone, { pattern: "../../*.md" }, list)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { path: "../..", pattern: "*.{md,txt}" }, list)).toBe(true);
+    // Claude Code's Glob runs `rg --files --glob`, so even `*.md` matches at any depth: no Glob is a listing.
+    expect(wallRefusesCall(wall(), clone, { pattern: join(project, "*.md") }, read)).toBe(true);
+    expect(wallRefusal(wall(), clone, { pattern: join(project, "*.md") }, read)).toBe("search");
+    expect(wallRefusesCall(wall(), clone, { pattern: "../../**/*.md" }, list)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { path: "../..", pattern: "**/*.md" }, list)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { path: "../..", pattern: "*/*.md" }, list)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { file_path: project }, read)).toBe(true);
+    expect(wallRefusal(wall(), clone, { path: "../.." }, read)).toBe("search");
+    expect(wallRefusal(wall(), clone, { file_path: "../clone-1/x" }, read)).toBe("outside");
+    // A listing never opens a closed folder itself, or a folder above the read-only one.
+    expect(wallRefusesCall(wall(), clone, { path: ".." }, list)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { path: root }, list)).toBe(true);
+  });
+
+  test("a pattern starts at the call's own path, not at the start folder", () => {
+    expect(wallRefusesCall(wall(), clone, { path: "../../decisions", pattern: "../repos/clone-1/*" }, read)).toBe(true);
+    expect(wallRefusesCall(wall(), clone, { path: "../../decisions", pattern: "*.md" }, read)).toBe(false);
   });
 });

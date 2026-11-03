@@ -776,6 +776,7 @@ export class Eva {
           isSyncing: (folder) => this.projectWork.isSyncingFolder(folder),
           vaultPath: () => this.options.config.vaultPath,
           wallRoots: () => this.wallRoots(),
+          ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         specialist: new SpecialistPreparer({
           vaultSync,
@@ -2383,7 +2384,7 @@ export class Eva {
   }
 
   /**
-   * Removes old logs and Scratch files once a day, with or without vault sync. It waits
+   * Removes old logs and scratch files once a day, with or without vault sync. It waits
    * for the end of an Assistant turn, so a file never goes away under a running agent (lessons 22, 30).
    */
   private cleanUpIfDue(): void {

@@ -101,11 +101,11 @@ describe("stepParts", () => {
   });
 
   test("hides the file markers of a message, also one that the 200-character cut left open", () => {
-    expect(stepParts(step("message", "Here it is.\n[[attach: Scratch/example-app.zip]]"))).toEqual({
+    expect(stepParts(step("message", "Here it is.\n[[attach: .eva/scratch/example-app.zip]]"))).toEqual({
       action: "Message",
       detail: "Here it is.",
     });
-    expect(stepParts(step("message", "Here it is.\n[[attach: Scratch/exa…"))).toEqual({
+    expect(stepParts(step("message", "Here it is.\n[[attach: .eva/scratch/exa…"))).toEqual({
       action: "Message",
       detail: "Here it is.",
     });
@@ -115,7 +115,7 @@ describe("stepParts", () => {
 describe("wholeAnswerAddsText", () => {
   test("is true when an earlier message has words, and false when it holds file markers only", () => {
     expect(wholeAnswerAddsText("Let me look.\n\nHere it is.", "Here it is.")).toBe(true);
-    expect(wholeAnswerAddsText("[[attach: Scratch/a.pdf]]\n\nHere it is.", "Here it is.")).toBe(false);
+    expect(wholeAnswerAddsText("[[attach: .eva/scratch/a.pdf]]\n\nHere it is.", "Here it is.")).toBe(false);
     expect(wholeAnswerAddsText("Here it is.", "Here it is.")).toBe(false);
   });
 });
@@ -123,16 +123,16 @@ describe("wholeAnswerAddsText", () => {
 describe("answerFiles", () => {
   test("lists each file of the whole answer once, with its name, attach first", () => {
     const answer =
-      "First.\n[[offer: Methods/Plan.md]]\n\nThen.\n[[attach: Scratch/example-app.zip]]\n[[attach: Methods/Plan.md]]";
+      "First.\n[[offer: Methods/Plan.md]]\n\nThen.\n[[attach: .eva/scratch/example-app.zip]]\n[[attach: Methods/Plan.md]]";
     expect(answerFiles(answer)).toEqual([
-      { path: "Scratch/example-app.zip", name: "example-app.zip" },
+      { path: ".eva/scratch/example-app.zip", name: "example-app.zip" },
       { path: "Methods/Plan.md", name: "Plan.md" },
     ]);
   });
 
   test("names a file of a Windows path by its last part", () => {
-    expect(answerFiles("[[attach: Scratch\\report.pdf]]")).toEqual([
-      { path: "Scratch\\report.pdf", name: "report.pdf" },
+    expect(answerFiles("[[attach: .eva\\scratch\\report.pdf]]")).toEqual([
+      { path: ".eva\\scratch\\report.pdf", name: "report.pdf" },
     ]);
   });
 
@@ -546,7 +546,7 @@ describe("undoQuestion", () => {
 
   test("asks only when a file can go back, and names the later answers", () => {
     expect(undoQuestion(none)).toBeNull();
-    expect(undoQuestion({ ...none, notKept: ["Scratch/a.pdf"], changed: ["Plan.md"] })).toBeNull();
+    expect(undoQuestion({ ...none, notKept: [".eva/scratch/a.pdf"], changed: ["Plan.md"] })).toBeNull();
     expect(undoQuestion({ ...none, restore: ["Plan.md"] })).toBe("Undo the changes of this answer?");
     expect(undoQuestion({ ...none, restore: ["Plan.md"], answers: 3 })).toBe(
       "Undo the changes of this answer and the later ones?",

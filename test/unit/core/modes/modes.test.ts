@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
 import { AssistantPreparer, type AssistantPreparerOptions } from "../../../../src/core/modes/assistant-mode.ts";
-import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
+import { cloneNotesFile, evaFileMarker, ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { widgetsIntro } from "../../../../src/core/modes/widgets-block.ts";
 import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
 import { discoverProjects } from "../../../../src/core/projects/project-catalog.ts";
@@ -615,23 +615,86 @@ describe("Project mode", () => {
 
   test("the file wall closes the vault and each extra project root, read at each turn (#711)", async () => {
     let closed = [vault];
+    let readOnly: string[] = [];
     const preparer = new ProjectPreparer({
       trustStore: new TrustStore(join(sandbox.root, "trust.json")),
       cloneOrigins: origins,
       trustedOwners: () => ["owner"],
       environment: {},
       readRemote: () => Promise.resolve(null),
-      wallRoots: () => ({ closed, readable: [], socketFilter: true }),
+      wallRoots: () => ({ closed, readable: [], readOnly, socketFilter: true }),
     });
     const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
     expect((await preparer.prepare(chat, deny)).fileWall).toEqual({
       area: cloneFolder,
-      closed: [vault],
+      // The other clones stay closed, though the project folder opens for reads (#774).
+      closed: [vault, sandbox.root],
       readable: [],
+      readOnly: [dirname(sandbox.root)],
       socketFilter: true,
     });
     closed = [vault, "/srv/projects"];
-    expect((await preparer.prepare(chat, deny)).fileWall?.closed).toEqual([vault, "/srv/projects"]);
+    expect((await preparer.prepare(chat, deny)).fileWall?.closed).toEqual([vault, "/srv/projects", sandbox.root]);
+    // A read-only folder of the roots, such as the files sent to a chat (#768), stays read-only.
+    readOnly = ["/srv/received"];
+    expect((await preparer.prepare(chat, deny)).fileWall?.readOnly).toEqual(["/srv/received", dirname(sandbox.root)]);
+  });
+
+  test("a chat in a clone learns where the project's notes are, from a file that Eva owns in `repos/` (#774)", async () => {
+    const hint = join(sandbox.root, "AGENTS.md");
+    const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
+    await project(["owner"]).prepare(chat, deny);
+    expect(readFileSync(hint, "utf8")).toBe(cloneNotesFile);
+    expect(cloneNotesFile.split("\n")[0]).toBe(evaFileMarker);
+    expect(cloneNotesFile).toContain("../../");
+    // Eva's own file, changed, gets her text again before the next turn.
+    writeFileSync(hint, `${evaFileMarker}\nAn old line.\n`);
+    await project(["owner"]).prepare(chat, deny);
+    expect(readFileSync(hint, "utf8")).toBe(cloneNotesFile);
+    // A chat with no clone gets no such file.
+    const folder = join(vault, "Projects", "2025-03-02-1015-notes");
+    mkdirSync(folder, { recursive: true });
+    await project(["owner"]).prepare(session({ mode: "project", startFolder: folder, clone: null }), deny);
+    expect(readdirSync(folder)).toEqual([]);
+  });
+
+  test("Eva keeps a `repos/AGENTS.md` that the person wrote, and logs that she left it (#774)", async () => {
+    const hint = join(sandbox.root, "AGENTS.md");
+    writeFileSync(hint, "The person's own rules for every clone.\n");
+    const logs: string[] = [];
+    const preparer = new ProjectPreparer({
+      wallRoots: noWall,
+      trustStore: new TrustStore(join(sandbox.root, "trust.json")),
+      cloneOrigins: origins,
+      trustedOwners: () => ["owner"],
+      environment: {},
+      readRemote: () => Promise.resolve(null),
+      logger: { log: (level, message) => logs.push(`${level}: ${message}`) },
+    });
+    const chat = session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" });
+    await preparer.prepare(chat, deny);
+    expect(readFileSync(hint, "utf8")).toBe("The person's own rules for every clone.\n");
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toStartWith("warn: ");
+    // The same file logs once, not at each turn. A new text of it logs again.
+    await preparer.prepare(chat, deny);
+    expect(logs).toHaveLength(1);
+    writeFileSync(hint, "New rules of the person.\n");
+    await preparer.prepare(chat, deny);
+    expect(logs).toHaveLength(2);
+    // A file that exists but cannot be read is left as it is, with a log, and the turn runs on.
+    rmSync(hint);
+    mkdirSync(hint);
+    await preparer.prepare(chat, deny);
+    expect(logs).toHaveLength(3);
+    expect(readdirSync(hint)).toEqual([]);
+  });
+
+  test("Eva rewrites her own `repos/AGENTS.md` when its text is old (#774)", async () => {
+    const hint = join(sandbox.root, "AGENTS.md");
+    writeFileSync(hint, `${evaFileMarker}\nThe notes are somewhere else.\n`);
+    await project(["owner"]).prepare(session({ mode: "project", startFolder: cloneFolder, clone: "clone-0" }), deny);
+    expect(readFileSync(hint, "utf8")).toBe(cloneNotesFile);
   });
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
@@ -650,8 +713,14 @@ describe("Project mode", () => {
       trusted: true,
       harnessMemory: true,
       folderHooks: true,
-      // A chat in a clone reads and writes its clone only (#711).
-      fileWall: { area: cloneFolder, closed: [], readable: [], socketFilter: true },
+      // A chat in a clone writes its clone only (#711), and reads its project folder but no other clone (#774).
+      fileWall: {
+        area: cloneFolder,
+        closed: [sandbox.root],
+        readable: [],
+        readOnly: [dirname(sandbox.root)],
+        socketFilter: true,
+      },
       // Git stops at the folder of the clones, so a git command in the clone folder never reads the vault.
       environment: { PATH: "/bin", GIT_CEILING_DIRECTORIES: sandbox.root },
     });

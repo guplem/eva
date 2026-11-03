@@ -10,7 +10,8 @@ import { failureReason, type ProcessRunner } from "../../shared/process-runner.t
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { plainSecretsIn } from "./plain-secrets.ts";
-import { scratchFolderName } from "../files/vault-files.ts";
+import { scratchFolderOf } from "../files/scratch-folders.ts";
+import { keepsOldScratch, scratchFolders } from "../files/vault-files.ts";
 import {
   changedLeftOut,
   parseDiffTree,
@@ -147,7 +148,7 @@ const staleIndexLockMs = 30 * 60_000;
  * --pathspec-file-nul, git reads each path as it is, with no quoting.
  */
 const pathsOnStdin: readonly string[] = ["--pathspec-from-file=-", "--pathspec-file-nul"];
-/** A snapshot lists at most this many Scratch files: the folder is for files of a chat, and Eva empties it each week. */
+/** A snapshot lists at most this many scratch files: they are files of a chat, and Eva empties the folders each week. */
 const maxScratchFiles = 1_000;
 
 interface GitResult {
@@ -294,13 +295,15 @@ export class VaultSync {
         ...(await this.statusEntries()).map((entry) => entry.path),
         ...(tracked.exitCode === 0 ? tracked.stdout.split("\0").filter((path) => path.length > 0) : []),
       ]);
-      for (const path of paths) if (!path.endsWith("/") && !this.isScratchFile(path)) prepare(path);
+      const oldScratch = keepsOldScratch(this.options.vaultPath);
+      for (const path of paths)
+        if (!path.endsWith("/") && !this.isScratchFile(path, oldScratch) && !isCloneFolderFile(path)) prepare(path);
     });
   }
 
   /**
    * Saves the files of the vault as a commit with no parent under `ref`, for the undo of a retry
-   * (#525). A temporary index builds the tree, so the real index never changes. Scratch and
+   * (#525). A temporary index builds the tree, so the real index never changes. Scratch files and
    * withheld files stay out, as in a commit; the message lists them. False when git failed.
    */
   snapshot(ref: string): Promise<boolean> {
@@ -309,10 +312,12 @@ export class VaultSync {
       const paths: string[] = [];
       // A snapshot holds a secret only encrypted, as a commit does (#707).
       const prepare = this.options.secrets?.round() ?? null;
+      const oldScratch = keepsOldScratch(this.options.vaultPath);
       for (const { path } of await this.statusEntries()) {
         // A folder entry is a repository inside the vault, which a commit does not take either.
         if (path.endsWith("/")) continue;
-        if (!this.isScratchFile(path) && this.withheldReason(path, prepare) === null) paths.push(path);
+        if (isCloneFolderFile(path)) continue;
+        if (!this.isScratchFile(path, oldScratch) && this.withheldReason(path, prepare) === null) paths.push(path);
         else this.addLeftOut(leftOut, path);
       }
       for (const path of this.scratchFiles()) this.addLeftOut(leftOut, path);
@@ -487,23 +492,19 @@ export class VaultSync {
     }
   }
 
-  /** The files in Scratch. The vault's .gitignore usually hides the folder from git status. */
+  /** The files in the scratch folders. The vault's .gitignore usually hides them from git status. */
   private scratchFiles(): string[] {
-    let root: string | undefined;
-    try {
-      root = readdirSync(this.options.vaultPath).find((name) => name.toLowerCase() === scratchFolderName.toLowerCase());
-    } catch {
-      return [];
-    }
-    if (root === undefined) return [];
-    try {
-      return readdirSync(join(this.options.vaultPath, root), { recursive: true, encoding: "utf-8" })
-        .map((name) => `${root}/${name.split(sep).join("/")}`)
-        .filter((path) => fileKind(join(this.options.vaultPath, path)) === "file")
-        .slice(0, maxScratchFiles);
-    } catch {
-      return [];
-    }
+    return scratchFolders(this.options.vaultPath)
+      .flatMap((root) => {
+        try {
+          return readdirSync(join(this.options.vaultPath, root), { recursive: true, encoding: "utf-8" })
+            .map((name) => `${root}/${name.split(sep).join("/")}`)
+            .filter((path) => fileKind(join(this.options.vaultPath, path)) === "file");
+        } catch {
+          return [];
+        }
+      })
+      .slice(0, maxScratchFiles);
   }
 
   /** A failed snapshot only logs: the turn goes on, and its retry then offers no undo. */
@@ -852,9 +853,10 @@ export class VaultSync {
     const withheld: WithheldFile[] = [];
     const kept: string[] = [];
     let stagedScratch = false;
+    const oldScratch = keepsOldScratch(this.options.vaultPath);
     for (const { code, path } of entries) {
       if (unmerged.includes(path)) continue;
-      if (this.isScratchFile(path)) {
+      if (this.isScratchFile(path, oldScratch) || isCloneFolderFile(path)) {
         // An untracked file stays out of a plain commit anyway; a staged one needs --only.
         if (!code.startsWith(" ") && !code.startsWith("?")) stagedScratch = true;
         continue;
@@ -900,7 +902,7 @@ export class VaultSync {
     if ((await this.git(["diff", "--cached", "--quiet"], localTimeoutMs)).exitCode === 0) return true;
     const plural = committed.length === 1 ? "file" : "files";
     // git refuses a full commit while a file has conflict markers, and a pick or a person can stage
-    // a withheld or Scratch file: --only commits just the kept files.
+    // a withheld or scratch file: --only commits just the kept files.
     const needsOnly = unmerged.length > 0 || withheld.length > 0 || stagedScratch;
     const onlyKept = needsOnly ? ["--only", ...pathsOnStdin] : [];
     const commit = await this.git(
@@ -1176,13 +1178,14 @@ export class VaultSync {
   }
 
   /**
-   * Scratch holds files received from a chat, such as a bank statement, so it never reaches a
-   * commit, whatever the vault's .gitignore says (#415). A removal still commits: it takes an old
-   * Scratch file out of the tree. lstat, so a broken link in Scratch is not read as a removal.
+   * A scratch folder holds files received from a chat, such as a bank statement, so it never reaches
+   * a commit, whatever the vault's .gitignore says (#415). A removal still commits: it takes an old
+   * scratch file out of the tree. lstat, so a broken link in a scratch folder is not read as a removal.
+   * The old `Scratch/` counts only in an old vault: in a new one, it is the person's own folder (#767).
    */
-  private isScratchFile(relativePath: string): boolean {
-    // Windows and macOS ignore the case, so Eva writes into a "scratch" folder that exists already.
-    if (relativePath.split("/")[0]?.toLowerCase() !== scratchFolderName.toLowerCase()) return false;
+  private isScratchFile(relativePath: string, oldScratch: boolean): boolean {
+    const folder = scratchFolderOf(relativePath);
+    if (folder === null || (!folder.includes("/") && !oldScratch)) return false;
     try {
       lstatSync(join(this.options.vaultPath, relativePath));
       return true;
@@ -1333,4 +1336,14 @@ function fileKind(path: string): "file" | "absent" | "other" {
   } catch {
     return "absent";
   }
+}
+
+/**
+ * True for a path in a project's `repos/` folder: the clones, and the line that Eva writes there
+ * for a clone chat (#774). The vault's `.gitignore` usually lists the folder. A vault without that
+ * line must not commit them either. Windows and macOS ignore the case of a name.
+ */
+function isCloneFolderFile(relativePath: string): boolean {
+  const parts = relativePath.split("/").map((part) => part.toLowerCase());
+  return parts.length > 3 && parts[0] === "projects" && parts[2] === "repos";
 }

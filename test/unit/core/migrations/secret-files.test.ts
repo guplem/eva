@@ -37,6 +37,9 @@ const oldIgnore = [
 const oldSecretRule =
   "- **Secrets** (keys, passwords) may live only in the folder of the project that uses them. Never copy one into a note outside that folder. One known place for each secret makes it possible to change it later.";
 
+/** What the template's .gitignore ignored on 2026-10-31, frozen with the migration. */
+const templateIgnoreLines = ["Projects/*/repos/", "Scratch/", "settings.local.json", "desktop.ini", ".DS_Store"];
+
 const template = (path: string): string =>
   readFileSync(join(import.meta.dir, "../../../../templates/vault", path), "utf-8");
 
@@ -107,7 +110,7 @@ describe("commitSecretFiles (vault, #707)", () => {
     const lines = (text: string): string[] => text.split("\n").filter((line) => line !== "" && !line.startsWith("#"));
     const envLines = [".env", "*.env", "!Projects/**/.env", "!Projects/**/*.env"];
     expect(lines(readFileSync(join(vault, ".gitignore"), "utf-8")).filter((line) => !envLines.includes(line))).toEqual(
-      lines(template(".gitignore")),
+      templateIgnoreLines,
     );
   });
 

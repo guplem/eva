@@ -9,11 +9,14 @@ import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
+import { isScratchPath } from "../files/scratch-folders.ts";
 import type { SecretMatcher } from "./secret-files.ts";
 import {
   decryptFile,
+  encryptedFingerprint,
   encryptedState,
   encryptFile,
+  keyFingerprint,
   type DecryptedFile,
   type UnlockedVaultKey,
   type VaultKeyFile,
@@ -123,7 +126,7 @@ export function encryptAgain(
   return { moved: planned.map(({ path }) => path), unreadable };
 }
 
-/** Each regular file of the vault with Eva's header, outside git's folder, the clones and Scratch. */
+/** Each regular file of the vault with Eva's header, outside git's folder, the clones and the scratch folders. */
 function encryptedFiles(vaultPath: string): string[] {
   const found: string[] = [];
   const visit = (folder: string): void => {
@@ -149,7 +152,9 @@ function skippedFolder(relativePath: string): boolean {
   const parts = relativePath.split("/");
   const top = parts[0]?.toLowerCase();
   return (
-    parts.at(-1) === ".git" || top === "scratch" || (top === "projects" && parts.length === 3 && parts[2] === "repos")
+    parts.at(-1) === ".git" ||
+    isScratchPath(relativePath) ||
+    (top === "projects" && parts.length === 3 && parts[2] === "repos")
   );
 }
 
@@ -193,4 +198,33 @@ function readHead(path: string): Uint8Array {
   } finally {
     closeSync(descriptor);
   }
+}
+
+/**
+ * Moves each encrypted file that is on an older key of the chain to the vault's current key (#775).
+ * Another computer may have encrypted a file to the old key before it learned of a password change.
+ * A file that no key opens stays as it is. Answers the paths that moved.
+ */
+export function moveToCurrentKey(
+  vaultPath: string,
+  unlocked: UnlockedVaultKey,
+  current: Pick<VaultKeyFile, "publicKey" | "signingKey">,
+): string[] {
+  const moved: string[] = [];
+  const fingerprint = keyFingerprint(current);
+  for (const relativePath of encryptedFiles(vaultPath)) {
+    try {
+      const bytes = new Uint8Array(readFileSync(join(vaultPath, relativePath)));
+      if (encryptedFingerprint(bytes) === fingerprint) continue;
+      const opened = decryptFile(bytes, unlocked);
+      writeFileAtomic(
+        join(vaultPath, relativePath),
+        new TextDecoder().decode(encryptFile(opened.plain, current, opened.path)),
+      );
+      moved.push(relativePath);
+    } catch {
+      // A file that no key of this device opens, or that went away, stays as it is: the others still move.
+    }
+  }
+  return moved;
 }

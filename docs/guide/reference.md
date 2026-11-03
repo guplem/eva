@@ -145,10 +145,13 @@ Your vault can hold secrets, such as API keys, but only encrypted. Eva encrypts 
 - **Which files.** The defaults are `.env.local`, `.env.*.local`, `.env.secrets`, `*.secrets`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `.npmrc`, `.pypirc`, `.netrc`, `secrets.json`, `credentials.json` and `client_secret*.json`. A plain `.env` and `.env.example` stay plain: keep only values that are safe to share in them. A plain `.env` with a key or a token stays out of each save, and the phone says so. A vault from before this feature keeps its plain `.env` files outside `Projects/` on each computer, as before: move a secret into a `.env.local` file to sync it.
   - The Settings card shows each default with a switch, and your own patterns, in `.gitignore` syntax, such as `Life/Health/**`. Eva keeps your changes in `.eva/secret-files` in the vault.
   - A new pattern encrypts its files at once. A pattern that you take out keeps its files encrypted until you confirm it from an unlocked device. Then Eva decrypts them, and your vault remote gets their plain text.
-  - Eva never encrypts `.eva/`, any `AGENTS.md`, `.gitignore` or `.gitattributes`, so the Assistant always works. Keep no secret in those files.
+  - Eva never encrypts `.eva/`, any `AGENTS.md`, `.gitignore` or `.gitattributes`, so the Assistant always works. Keep no secret in those files. The secret patterns still apply inside `.eva/scratch/`: Eva refuses to send such a file there, and the Files page and the search mark it as secret.
 - **Read a file.** Open it in **Files** on the web page and type the vault password. This browser tab can then open encrypted files for 8 hours, until you press **Lock**, or until Eva restarts. Eva decrypts only for a device that logged in with a code or a link, never with the token. Telegram never shows an encrypted file. A browser on Eva's own computer keeps its login and its unlock in your browser profile, where an agent that runs as you can read them: press **Lock** when you are done there.
-- **Change the password** in the Settings card. When the old password leaked, press **Make a new key** instead. Eva encrypts every file again, and each device must unlock again. Old commits still open with the old password.
-- **A key that changed on another computer** stops new encryption on this one. The phone asks you to confirm it in Settings. Do not confirm a key that you did not make.
+- **Change the password** in the Settings card. Eva makes a new key for the new password and encrypts every file again, so the old password opens no file that Eva encrypted after the change. Each device must unlock again. Eva makes no change until a sync with the remote works, so a file from another computer does not stay on the old key. A file that another computer still put on the old key moves to the new key at the next unlock.
+  - Old commits still hold the old key, and the old password opens them. So when you think someone knows the old password, also change the secrets in these files, such as an API key.
+  - The old key signs the new one: it adds a proof that only the old key can make. So each other computer that shares the vault trusts the new key by itself after its next sync, with no question. An Eva from before this feature cannot read that proof, so update every computer first. A password change on such an older Eva also drops the older keys, so a file still on one of them stops opening.
+- **A key that changed with no signature** of the key that a computer trusts stops new encryption on that computer. The phone asks you to confirm it in Settings. Your own password change always signs its key, so such a key may be someone else's. Do not confirm it unless you know why it changed, such as an older Eva that made it.
+  - A limit: someone who knows the old password can also sign a key with the old key. A computer that has not synced your change yet would trust such a key. So after a leak, change the password at once.
 - **Before an update of this feature,** a secret may already sit in old commits of the vault, on its remote and on each computer. Change such a secret. Update Eva on every computer that shares the vault.
 
 ### Vault conflicts
@@ -239,7 +242,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - **Undo and retry** puts those files back as they were before the answer, and saves that as a new commit.
   - **Keep and retry** does not change them.
 
-  Eva restores only files: a sent message or a calendar event stays. A file that changed after the answer stays too, and so does a file that Eva does not save in git, such as a file in `Scratch/`. The question names them. With the vault sync off, Eva does not ask.
+  Eva restores only files: a sent message or a calendar event stays. A file that changed after the answer stays too, and so does a file that Eva does not save in git, such as a file in `.eva/scratch/`. The question names them. With the vault sync off, Eva does not ask.
 
 ## Projects
 
@@ -265,7 +268,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - In Telegram, the chat list names it "Specialist". A file that you send to its chat gets the answer that this chat takes no files.
   - A specialist runs with your own permission mode, as a project chat does, but its folder is in your vault. Retry with undo takes back what it changed.
   - It cannot open the rest of the vault: see [What a chat can reach](#what-a-chat-can-reach).
-- **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, but no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
+- **Clones and chats:** a clone is a copy of every repository of a project, in `Projects/<project>/repos/clone-<n>/`. Each repository has its own folder inside it. A project chat starts in the clone folder, so the agent sees every repository. It loads the project's `AGENTS.md`, and one line that Eva keeps in `repos/AGENTS.md`: the project's notes are two folders above the clone. Eva rewrites that file only while its first line is her marker, so a `repos/AGENTS.md` that you write stays as it is. A clone chat then gets no line about the notes. The sync never saves a file of `repos/`, even when the vault's `.gitignore` does not list it. An extra project root that is a git repository of its own needs the line `*/repos/` in its `.gitignore`. It loads no instruction file above the project folder, such as the vault's `AGENTS.md`. So the chat does not know that it runs inside your vault. Claude Code reads hooks, `.claude/settings.json` and `.mcp.json` only in its start folder. So it loads none of them from a repository. Git hooks still run.
 - **The file wall:** a project chat cannot open your vault, your other project folders or Eva's own folder. Mention a file to give it a copy. See [What a chat can reach](#what-a-chat-can-reach).
 - **New chat:** tap **New chat** on the project page. Eva picks the clone. A clone has one chat and its forks. Eva reuses a clone only when three things are true:
   - All its work is on GitHub.
@@ -306,18 +309,18 @@ The Assistant needs the whole vault and the `eva` command. So Eva puts no wall a
 
 ### The file wall of a project chat
 
-A project chat works in its own folder: its clone folder, or a specialist's project folder. The wall closes these folders to it:
+A project chat works in its own folder: its clone folder, or a specialist's project folder. A chat in a clone also reads, but never writes, its project folder. The wall closes these folders to it:
 
 - your vault,
 - your other project folders,
 - Eva's own folder, with her logins and secrets,
 - the folder of Eva's own Tailscale, if she installed it for your user: a command could open a public tunnel with it.
 
-So a chat in a clone cannot read the project's notes or its other clones. To give it a vault file, mention the file. Eva then puts a copy in the clone. The other files of the computer stay open.
+So a chat in a clone reads the notes of its project. It opens a secret file there too, such as a `.secrets` file: once Eva has saved the file encrypted, the chat sees only the encrypted text. It cannot read the other clones of the project or any other note. To give it another vault file, mention the file. Eva then puts a copy in the clone. The other files of the computer stay open.
 
 The wall has two parts.
 
-**The file tools.** Before each read, write or search, Eva checks the path. A path in a closed folder gets the answer "This path is outside this chat's folder." This works in every permission mode, and with both engines. A file tool also cannot write some files of the chat's own folder: its `.claude` or `.pi` settings, its `.mcp.json`, and a `.git` folder. Such a file could run code at the next turn.
+**The file tools.** Before each read, write or search, Eva checks the path. A path in a closed folder gets the answer "This path is outside this chat's folder." So does a write to the project folder of a clone chat, and any tool there that Eva does not know as a read, such as an MCP tool. This works in every permission mode, and with both engines. A clone chat can list its whole project folder, such as with pi's `ls`. A file search of the whole folder is refused, a Glob too, since the folder holds the other clones. The answer then says to search a sub-folder, or to list the notes with the shell. A search of the shell skips the other clones. A file tool also cannot write some files of the chat's own folder: its `.claude` or `.pi` settings, its `.mcp.json`, and a `.git` folder. Such a file could run code at the next turn.
 
 **The shell, in a sandbox.** A sandbox is a box that the system builds around a program. Claude Code has one, and Eva turns it on for each project chat. Inside the sandbox, the closed folders look empty or missing. So every program fails to read them, not only `cat`. On Linux the message is "No such file or directory". On macOS it is "Operation not permitted".
 
@@ -392,7 +395,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Change them in **Settings > Personalize > Message box menu**, or ask Eva to. Each one is a Markdown file in the vault, in `.eva/settings/text-actions/` or `.eva/settings/saved-prompts/`. The file name is the name in the menu.
   - A text action can start with a `model:` line between two `---` lines: `haiku` (Fast), `sonnet` (Balanced) or `opus` (Smart). With no such line, it uses the fast model.
   - Eva brings Polish and Summary as examples, once. If you delete one, it stays deleted.
-- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and a plain `.env` file. An encrypted file shows a lock: type the vault password to open it. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `Scratch/received/` in the vault. Git never saves `Scratch/`, and Eva deletes its files after a week.
+- **Files.** Open **Files** on the web page to browse the vault and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and a plain `.env` file. An encrypted file shows a lock: type the vault password to open it. Eva can also send a vault file in Telegram. In a chat with Eva, she saves each file, photo or audio file that you send her in `.eva/scratch/received/` in the vault. Git never saves `.eva/scratch/`, and Eva deletes its files after a week. A vault from before this change also has a `Scratch/` folder, which its `.gitignore` lists. Eva writes nothing new there, and the folder goes away once its files are a week old. In a newer vault, `Scratch/` is a folder like any other.
   - **In a project chat in a clone,** a file that you send goes into the clone's `.mentions/` folder, outside every repository.
   - To give such a chat a vault file, such as a design or the notes of a meeting, type `@` in the web app and pick the file. Eva puts a copy in `.mentions/` too.
   - The chat gets the name of the copy, never the vault path.
@@ -415,7 +418,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Eva keeps each widget up to date. A new version that asks for nothing new installs by itself. A new version that asks for more waits: the old version keeps running, and Eva sends you a notice with what is new. In the list, press **Review the update** to approve it, or **Keep this version**.
   - Eva checks your own widgets every 30 minutes, and every other widget once a day. Change it in **Widget updates**, or press **Check for updates** to check now.
   - On a widget project, **Preview** on a clone shows the widget as the clone holds it, with no push. **Example data** shows its mock files. **My data** shows your vault, and asks first for anything that the installed widget does not have.
-- **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
+- **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `.eva/scratch/` and sends it.
 - **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. The audio never leaves the computer.
   On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt install libgomp1` on Ubuntu.
   To install them by hand, install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Then download a model and put it at `voice/ggml-base.bin` in Eva's home folder.

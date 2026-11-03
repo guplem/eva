@@ -53,7 +53,7 @@ import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { ChangelogEntry } from "../../../core/updates/release-policy.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
-import type { PiLoginMethod, PiLoginState, PiProvider } from "../../../shared/pi-login.ts";
+import type { PiLoginMethod, PiLoginState, PiModel, PiProvider } from "../../../shared/pi-login.ts";
 import type {
   ConflictChoice,
   ConflictResolution,
@@ -534,6 +534,8 @@ export const api = {
   answerPiLogin: (text: string): Promise<PiLoginState> => request("POST", "/api/engines/pi/login/answer", { text }),
   piLoginState: (): Promise<PiLoginState> => request("GET", "/api/engines/pi/login", undefined, { limit: quickRead }),
   stopPiLogin: (): Promise<PiLoginState> => request("DELETE", "/api/engines/pi/login"),
+  /** The models of pi's logins, which the tier fields suggest. */
+  piModels: (): Promise<PiModel[]> => request("GET", "/api/engines/pi/models"),
   logOutOfPi: (provider: string): Promise<{ ok: true }> =>
     request("DELETE", `/api/engines/pi/providers/${encodeURIComponent(provider)}`),
   startGoogleLogin: (): Promise<{ url: string }> => request("POST", "/api/google/login", {}),

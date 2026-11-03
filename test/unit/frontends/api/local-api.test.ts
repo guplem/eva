@@ -45,6 +45,7 @@ const fakePiLogin: PiLogins = {
   stop: () => {
     piLoginCalls.push("stop");
   },
+  models: () => Promise.resolve([{ id: "openrouter/z/model", name: "Z Model", provider: "openrouter" }]),
   logout: (_place, provider) => {
     piLoginCalls.push(`logout ${provider}`);
     return Promise.resolve();
@@ -1631,6 +1632,9 @@ describe("web routes", () => {
   test("the pi login lists providers, passes each answer to pi, and logs out", async () => {
     piLoginCalls.length = 0;
     expect(await json<{ id: string }[]>(await call("/api/engines/pi/providers"))).toMatchObject([{ id: "openrouter" }]);
+    expect(await json<unknown>(await call("/api/engines/pi/models"))).toEqual([
+      { id: "openrouter/z/model", name: "Z Model", provider: "openrouter" },
+    ]);
     const started = await call("/api/engines/pi/login", {
       method: "POST",
       body: { provider: "openrouter", method: "api_key" },

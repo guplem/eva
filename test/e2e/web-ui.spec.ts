@@ -6221,6 +6221,9 @@ test("Settings: pi logs in from the page with an API key, and the key goes only 
     const setup = (await response.json()) as Record<string, unknown>;
     await route.fulfill({ response, json: { ...setup, installedEngines: ["pi"] } });
   });
+  await page.route("**/api/engines/pi/models", (route) =>
+    route.fulfill({ json: loggedIn ? [{ id: "openrouter/z/model", name: "Z Model", provider: "openrouter" }] : [] }),
+  );
   await page.route("**/api/engines/pi/login/answer", async (route) => {
     answers.push((route.request().postDataJSON() as { text: string }).text);
     loggedIn = true;
@@ -6237,6 +6240,8 @@ test("Settings: pi logs in from the page with an API key, and the key goes only 
   await expect(page.getByRole("status").filter({ hasText: "pi is logged in to OpenRouter." })).toBeVisible();
   await expect(card.getByText("pi is logged in to OpenRouter.")).toBeVisible();
   expect(answers).toEqual(["pasted-key"]);
+  // The tier fields suggest the models of the new login (#817).
+  await expect(page.locator('#pi-model-choices option[value="openrouter/z/model"]')).toHaveCount(1);
 });
 
 test("Settings: a done Claude Code login shows as logged in, and logs out after a warning", async ({ page }) => {

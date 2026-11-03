@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { PiLoginMethod, PiLoginState, PiProvider } from "../../../shared/pi-login.ts";
 import { api } from "./api.ts";
 import { LoggedIn } from "./LoggedIn.tsx";
+import { engineLoginExpired } from "./problem-actions.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { CommandLine, errorText, SelectField, Steps, type SettingsContext } from "./SettingsParts.tsx";
 
@@ -21,7 +22,14 @@ const methodNames: Readonly<Record<PiLoginMethod, string>> = {
  */
 const pollMs = 2_000;
 
-export function PiLoginPanel({ context }: { readonly context: SettingsContext }): ReactElement {
+export function PiLoginPanel({
+  context,
+  onLoginsChanged,
+}: {
+  readonly context: SettingsContext;
+  /** A login or a log out changes the models that pi can run, which the tier fields suggest. */
+  readonly onLoginsChanged: () => void;
+}): ReactElement {
   const [providers, setProviders] = useState<readonly PiProvider[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Null: the login steps show only when no provider has a login, or when the person asks.
@@ -66,6 +74,12 @@ export function PiLoginPanel({ context }: { readonly context: SettingsContext })
           </button>
         </div>
       )}
+      {/* pi keeps an expired login in its file, so only the alert of a failed chat shows it (#815). */}
+      {engineLoginExpired(context.status?.problemDetails ?? [], "pi") && (
+        <div className="callout warning">
+          A pi chat failed because a pi login expired. Press Log in again on that provider, and log in.
+        </div>
+      )}
       {chosen === null &&
         loggedIn.map((provider) => (
           <LoggedIn
@@ -75,6 +89,7 @@ export function PiLoginPanel({ context }: { readonly context: SettingsContext })
             warning={`Eva asks pi to remove its ${provider.name} login from this machine. Chats with pi that use ${provider.name} stop until you log in again.`}
             logOut={async () => {
               await api.logOutOfPi(provider.id);
+              onLoginsChanged();
               await load();
               return { restartNeeded: false };
             }}
@@ -98,6 +113,7 @@ export function PiLoginPanel({ context }: { readonly context: SettingsContext })
           onDone={() => {
             setChosen(null);
             setRunning(null);
+            onLoginsChanged();
             void load();
           }}
           onCancel={loggedIn.length > 0 ? () => setChosen(null) : null}

@@ -17,6 +17,7 @@ import {
   type PiLoginQuestion,
   type PiLogins,
   type PiLoginState,
+  type PiModel,
   type PiProvider,
 } from "../../shared/pi-login.ts";
 import { loginCommandName, loginExtensionSource, loginRecordPrefix } from "./pi-login-extension.ts";
@@ -38,6 +39,7 @@ const defaultWaitMs = 60_000;
 const lifetimeMs = 15 * 60_000;
 const closeTimeoutMs = 5_000;
 const commandsRequestId = "eva-login-commands";
+const modelsRequestId = "eva-login-models";
 const answerLimit = 10_000;
 const tryAgain = "Press Log in to try again.";
 
@@ -101,6 +103,43 @@ export class PiLogin implements PiLogins {
     await run.until((state) => state.status !== "waiting", this.waitMs());
     run.stop();
     if (run.state.status !== "done") throw failure(run.state.error ?? "pi did not log out in time.");
+  }
+
+  /** pi's own RPC command lists the models with a login, so this run needs no command of Eva's. */
+  async models(place: PiLoginPlace): Promise<PiModel[]> {
+    const command = this.options.command();
+    if (command === null)
+      throw failure("Eva did not find the pi program on this machine. Press Install pi in Settings, AI engines.");
+    let pi: PiProcess;
+    try {
+      pi = (this.options.start ?? systemPiProcessStarter)(
+        [...command, "--mode", "rpc", "--no-session", "--offline", "--no-extensions", "--no-skills", "--no-tools"],
+        place,
+      );
+    } catch (error) {
+      throw failure("Eva could not start the pi program.", error);
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        resolve(null);
+      }, this.waitMs());
+    });
+    const answer = (async (): Promise<unknown> => {
+      pi.send({ id: modelsRequestId, type: "get_available_models" });
+      for await (const record of pi.records) {
+        if (record["type"] === "response" && record["id"] === modelsRequestId) return record["data"];
+      }
+      return null;
+    })().catch(() => null);
+    try {
+      const data = await Promise.race([answer, late]);
+      if (data === null) throw failure("pi did not list its models in time.");
+      return modelsOf(data);
+    } finally {
+      clearTimeout(timer);
+      void pi.close(closeTimeoutMs).catch(() => undefined);
+    }
   }
 
   private waitMs(): number {
@@ -391,4 +430,17 @@ function text(value: unknown): string | null {
 
 function failure(message: string, cause?: unknown): EvaError {
   return new EvaError("pi_login_failed", message, cause === undefined ? undefined : { cause });
+}
+
+/** pi's models, as names for `--model`, with no Anthropic one: Eva never uses a Claude login through pi. */
+function modelsOf(data: unknown): PiModel[] {
+  const models = (data as { models?: unknown } | null)?.models;
+  if (!Array.isArray(models)) return [];
+  return models.flatMap((entry: unknown) => {
+    const fields = (typeof entry === "object" && entry !== null ? entry : {}) as Record<string, unknown>;
+    const provider = text(fields["provider"]);
+    const id = text(fields["id"]);
+    if (provider === null || id === null || provider === "anthropic") return [];
+    return [{ id: `${provider}/${id}`, name: text(fields["name"]) ?? id, provider }];
+  });
 }

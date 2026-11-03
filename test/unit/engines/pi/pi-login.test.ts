@@ -361,6 +361,47 @@ describe("PiLogin", () => {
     expect((missing as EvaError).message).toContain("Press Install pi");
   });
 
+  test("lists the models of pi's logins, never an Anthropic one (#817)", async () => {
+    const records: PiRecord[] = [
+      {
+        type: "response",
+        id: "eva-login-models",
+        command: "get_available_models",
+        success: true,
+        data: {
+          models: [
+            { provider: "openai-codex", id: "gpt-5", name: "GPT-5", contextWindow: 400000 },
+            { provider: "anthropic", id: "claude-x", name: "Claude X" },
+            { provider: "openrouter", id: "z/model", name: "Z Model" },
+            { provider: "broken" },
+          ],
+        },
+      },
+    ];
+    const sent: PiRecord[] = [];
+    const commands: (readonly string[])[] = [];
+    const start: PiProcessStarter = (command) => {
+      commands.push(command);
+      return {
+        send: (record) => sent.push(record),
+        records: (async function* () {
+          while (sent.length === 0) await Bun.sleep(1);
+          yield* records;
+        })(),
+        close: () => Promise.resolve(),
+        stderrTail: () => "",
+      };
+    };
+    const piLogin = new PiLogin({ command: () => ["pi"], workFolder: folder, start, waitMs: 2_000 });
+
+    expect(await piLogin.models(place)).toEqual([
+      { id: "openai-codex/gpt-5", name: "GPT-5", provider: "openai-codex" },
+      { id: "openrouter/z/model", name: "Z Model", provider: "openrouter" },
+    ]);
+    expect(sent).toEqual([{ id: "eva-login-models", type: "get_available_models" }]);
+    expect(commands[0]).toContain("--offline");
+  });
+
   test("logs out of one provider", async () => {
     const runtime = fakeRuntime();
     const { piLogin } = login(runtime);

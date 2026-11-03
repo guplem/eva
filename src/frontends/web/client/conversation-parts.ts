@@ -7,9 +7,10 @@ import type { IconName } from "./icons.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 
 /**
- * The bubble shows the last message in full. Every other step goes in the step list, in order,
- * so an earlier message is one line there. While a turn runs, steps can come after the last
- * message, so the list also keeps that message in its place: without it, the order of the list breaks.
+ * The bubble shows the last message in full. The step list shows every other step, in order, so an
+ * earlier message is one line there. When steps come after the last message, as while a turn runs,
+ * the list also keeps that message in its place. Otherwise those steps read as if they follow the
+ * message before it.
  */
 export function foldSteps(steps: readonly TurnStep[]): {
   listed: readonly TurnStep[];

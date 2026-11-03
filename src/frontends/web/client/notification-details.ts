@@ -70,7 +70,7 @@ const topics: Readonly<Record<string, NotificationTopic>> = {
   vault_structure: {
     title: "New vault structure",
     meaning:
-      "The vault structure is how the folders and notes of your vault are organized. An Eva update never changes it by itself. When a new structure comes, Eva tells you once. Press Update the vault, or open Settings, Vault and sync, Vault structure, and Eva moves your notes in a chat: she asks every question first, keeps your own changes, and you can go back.",
+      "The vault structure is how the folders and notes of your vault are organized. An Eva update never changes it by itself. When a new structure comes, Eva warns you until you mark it as read or update the vault. Press Open Settings to see what changes, then Update the vault, and Eva moves your notes in a chat: she asks every question first, keeps your own changes, and you can go back.",
   },
   vault_ahead: {
     title: "Vault from a newer Eva",

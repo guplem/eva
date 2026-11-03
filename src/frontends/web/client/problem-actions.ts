@@ -3,12 +3,7 @@ import type { VaultSyncState } from "./api.ts";
 import { settingsHome, type SettingsRoute } from "./settings-routes.ts";
 
 export type ProblemAction =
-  | "pick_version"
-  | "open_schedules"
-  | "open_settings"
-  | "choose_template_version"
-  | "review_widget_update"
-  | "update_vault";
+  "pick_version" | "open_schedules" | "open_settings" | "choose_template_version" | "review_widget_update";
 
 export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   pick_version: "Pick a version",
@@ -16,7 +11,6 @@ export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   open_settings: "Open Settings",
   choose_template_version: "Choose a version",
   review_widget_update: "Review the update",
-  update_vault: "Update the vault",
 };
 
 const claudeLoginKey = "engine_login:claude-code";
@@ -48,6 +42,8 @@ const problemCards: Readonly<Record<string, SettingsRoute>> = {
   vault_key_changed: { section: "vault", item: "encrypted-files" },
   vault_secret_files: { section: "vault", item: "encrypted-files" },
   template_alignment: { section: "vault", item: "template-alignment" },
+  // The person updates the vault from its card (#801).
+  vault_structure: { section: "vault", item: "vault-structure" },
   // Its help explains what the shell of a chat can reach.
   shell_wall: { section: "engines", item: "permissions" },
   default_engine: { section: "updates", item: "versions" },
@@ -71,11 +67,11 @@ export function problemSettingsRoute(key: string): SettingsRoute {
 }
 
 /**
- * The button of a news entry, which is never open: the vault structure news starts the upgrade
- * (#773), while the Settings card would offer it on this computer.
+ * The button of a news entry, which is never open: the vault structure news of #773 opens its
+ * Settings card, while the upgrade is open to this computer. The card is the one way in (#801).
  */
 export function newsAction(key: string, canUpgradeVault: boolean): ProblemAction | null {
-  return key === "vault_structure" && canUpgradeVault ? "update_vault" : null;
+  return key === "vault_structure" && canUpgradeVault ? "open_settings" : null;
 }
 
 /** The problems that the person did not read: not one that the person hid. An older Eva sends no mark. */

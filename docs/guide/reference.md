@@ -180,9 +180,9 @@ This needs git 2.38 or newer on the computer with the conflict. With an older gi
 
 ## Vault structure
 
-The vault structure is how the folders and notes of your vault are organized. `.eva/vault-structure.json` records its version. A vault with no record follows version 2. An Eva update never changes the structure of your vault: it only tells you once that a new one exists, with a notification on the web page and the phone. The first new Assistant chat after it can mention it too.
+The vault structure is how the folders and notes of your vault are organized. `.eva/vault-structure.json` records its version. A vault with no record follows version 2. An Eva update never changes the structure of your vault: it only tells you that a new one exists. The notification center shows a warning until you mark it as read or update the vault, and your phone gets one message. Its **Open Settings** button opens the card below. The first new Assistant chat after it can mention it too.
 
-**Settings > Vault and sync > Vault structure** shows your version, the newest one, and what changes. To upgrade, press **Update the vault** there, in the notification, or under the Telegram message, or ask the Assistant. Only the hub upgrades the vault. Eva's `vault-upgrade` skill then works with you, in one chat:
+**Settings > Vault and sync > Vault structure** shows your version, the newest one, and what changes. To upgrade, press **Update the vault** there or under the Telegram message, or ask the Assistant. Only the hub upgrades the vault. Eva's `vault-upgrade` skill then works with you, in one chat:
 
 1. It reads your vault and plans each move, with no change yet.
 2. It asks every question in one message: your own changes to the template files and where to keep them, where the facts of About me go, each deletion, the schedule changes, and where each git-ignored file goes. In yolo mode, it decides where each note goes by itself. Otherwise it shows the whole plan for your yes.

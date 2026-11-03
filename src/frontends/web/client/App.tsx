@@ -74,7 +74,6 @@ import { chatPanelKeptShown } from "./ChatPanel.tsx";
 import { SpecialDayProvider } from "./FestiveDay.tsx";
 import { useLocationSharing } from "./LocationCard.tsx";
 import { goTo, layersOfEntry, replaceAddress } from "./back-layers.ts";
-import { startVaultUpgrade } from "./vault-upgrade-chat.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { startPushPresence } from "./push-presence.ts";
@@ -627,7 +626,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   const runProblemAction = (action: ProblemAction, key: string): void => {
     if (action === "pick_version") setConflictsOpen(true);
-    else if (action === "update_vault") startVaultUpgrade().catch(showError);
     else if (action === "open_schedules") openDestination("schedules");
     // Settings opens on the card that fixes the problem, as a search result does (#799).
     else goTo(settingsHash(problemSettingsRoute(key)));

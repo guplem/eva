@@ -9,7 +9,7 @@ nickname:
 pronouns:
 birthDate: # YYYY-MM-DD
 contact: # the person's own phone and email
-region: # ISO 3166 code, such as ES or ES-CT
+region: # ISO 3166 code, such as US or US-CA
 hemisphere: # north or south
 places: # home, with its address and city
 work: # period: a link to the open job in Life/Periods/. Also the work hours: from, to and days

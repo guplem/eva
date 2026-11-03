@@ -1944,14 +1944,14 @@ describe("web routes", () => {
     mkdirSync(join(vaultPath, "Life"), { recursive: true });
     writeFileSync(
       join(vaultPath, "Life", "About me.md"),
-      "---\nplaces:\n  home: { city: Barcelona, lat: 41.39, lon: 2.17 }\n---\n",
+      "---\nplaces:\n  home: { city: San Francisco, lat: 37.77, lon: -122.42 }\n---\n",
     );
     // The old names stay for one release, for a web app that loaded before the update (#689).
     expect((await json<Place>(await call("/api/location"))).place).toEqual({
-      latitude: 41.39,
-      longitude: 2.17,
-      lat: 41.39,
-      lon: 2.17,
+      latitude: 37.77,
+      longitude: -122.42,
+      lat: 37.77,
+      lon: -122.42,
       accuracy: null,
       source: "home",
       at: null,

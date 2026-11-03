@@ -2638,21 +2638,21 @@ describe("files (lessons 72, 74, 124)", () => {
 
   test("a shared location is kept for the scripts, and a live location moves with no new reply", async () => {
     const bot = createBot();
-    telegram.sendMessageWith(owner, { location: { latitude: 41.39, longitude: 2.17, live_period: 3600 } });
+    telegram.sendMessageWith(owner, { location: { latitude: 37.77, longitude: -122.42, live_period: 3600 } });
     await settle(bot, () => telegram.sentTexts().length === 1);
     expect(telegram.sentTexts()[0]).toContain("while you share it");
-    expect(eva.currentPlace()).toMatchObject({ latitude: 41.39, longitude: 2.17, source: "telegram" });
+    expect(eva.currentPlace()).toMatchObject({ latitude: 37.77, longitude: -122.42, source: "telegram" });
     // Eva keeps one point every 15 minutes, so the next move counts only after that.
     clock = new Date(clock.getTime() + 16 * 60_000);
-    telegram.editMessageWith(owner, { location: { latitude: 41.4, longitude: 2.18, horizontal_accuracy: 12 } });
-    await settle(bot, () => eva.currentPlace()?.latitude === 41.4);
+    telegram.editMessageWith(owner, { location: { latitude: 37.78, longitude: -122.41, horizontal_accuracy: 12 } });
+    await settle(bot, () => eva.currentPlace()?.latitude === 37.78);
     expect(telegram.sentTexts()).toHaveLength(1);
     expect(engine.requests).toEqual([]);
   });
 
   test("a new shared point counts at once, and a venue never counts", async () => {
     const bot = createBot();
-    telegram.sendMessageWith(owner, { location: { latitude: 41.39, longitude: 2.17 } });
+    telegram.sendMessageWith(owner, { location: { latitude: 37.77, longitude: -122.42 } });
     await settle(bot, () => telegram.sentTexts().length === 1);
     telegram.sendMessageWith(owner, { venue: { title: "Cafe" }, location: { latitude: 1, longitude: 1 } });
     telegram.sendMessageWith(owner, { location: { latitude: 40.4, longitude: -3.7 } });

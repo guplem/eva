@@ -49,7 +49,7 @@ export interface PersonalFacts {
   readonly birthDate: string | null;
   /** The day that Eva started on the vault, as `YYYY-MM-DD`. */
   readonly installedOn: string | null;
-  /** An ISO 3166 code, such as `ES` or `ES-CT`. With no region, every local day shows. */
+  /** An ISO 3166 code, such as `US` or `US-CA`. With no region, every local day shows. */
   readonly region?: string | null;
   /** With no hemisphere, the seasons follow the northern one. */
   readonly hemisphere?: "north" | "south" | null;

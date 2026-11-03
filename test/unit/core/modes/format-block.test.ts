@@ -34,8 +34,12 @@ describe("formatSettingsOf", () => {
   });
 
   test("a null setting falls back to the old About me field, for a vault that the hub has not migrated", () => {
-    writeFileSync(join(vault, "Life", "About me.md"), "---\nunits: imperial\nclock: 12h\nweekStart: someday\n---\n");
+    writeFileSync(
+      join(vault, "Life", "About me.md"),
+      "---\nunits: imperial\nclock: 12h\nweekStart: someday\n---\n\n- **Language for answers:** Spanish\n",
+    );
     expect(formatSettingsOf({ ...defaultConfig, units: "metric" }, vault)).toMatchObject({
+      language: "Spanish",
       units: "metric",
       clock: "12h",
       weekStart: null,

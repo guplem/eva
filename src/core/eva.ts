@@ -387,6 +387,7 @@ export interface EvaStatus {
 /** The effective formats, so the Settings page shows a value that is still only in About me. */
 export interface StatusFormat extends DisplayFormat {
   readonly units: Units | null;
+  readonly language: string | null;
 }
 
 /** The zone that a chat uses: the setting when it is a zone that `Intl` knows, else the computer's. */
@@ -1748,10 +1749,10 @@ export class Eva {
     };
   }
 
-  /** The person's clock, week start and units, with the old About me fields while the hub has not moved them. */
+  /** The person's clock, week start, units and answer language, with the old About me fields while the hub has not moved them. */
   displayFormat(): StatusFormat {
-    const { clock, weekStart, units } = formatSettingsOf(this.settings.config, this.options.config.vaultPath);
-    return { clock, weekStart, units };
+    const { clock, weekStart, units, language } = formatSettingsOf(this.settings.config, this.options.config.vaultPath);
+    return { clock, weekStart, units, language };
   }
 
   /** Turns a voice note into text on this machine. Throws `voice_unavailable` with no whisper model. */

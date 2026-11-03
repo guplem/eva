@@ -158,22 +158,27 @@ export function readAboutMe(vaultPath: string): AboutMe {
 
 /** The format fields of the header before 2026-11-03 (#770). Null for a bad, empty or missing one. */
 export interface OldFormatFields {
+  /** From the `- **Language for answers:** …` line of the body. */
+  readonly language: string | null;
   readonly units: Units | null;
   readonly clock: Clock | null;
   readonly weekStart: WeekStart | null;
 }
 
 /**
- * The valid format fields of the header. A satellite reads them while the hub has not moved them
+ * The valid format fields of the header, and the answer language line of the body. A satellite reads them while the hub has not moved them
  * to the settings yet. Remove this one release after #770.
  */
 export function readOldFormatFields(vaultPath: string): OldFormatFields {
-  const header = readHeader(vaultPath);
+  const text = readTextTolerant(join(vaultPath, aboutMeFile)) ?? "";
+  const header = headerOf(text);
   const field = (key: string): unknown => (isMap(header) ? header[key] : undefined);
   const units = field("units");
   const clock = field("clock");
   const weekStart = field("weekStart");
+  const language = /^- \*\*Language for answers:\*\*([^\r\n]*)(?=\r?$)/m.exec(text)?.[1]?.trim() ?? "";
   return {
+    language: language === "" ? null : language,
     units: isUnits(units) ? units : null,
     clock: isClock(clock) ? clock : null,
     weekStart: isWeekStart(weekStart) ? weekStart : null,

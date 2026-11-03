@@ -22,10 +22,11 @@ type FormatConfig = Pick<EvaConfig, "language" | "timeZone" | "units" | "clock" 
  * the hub moves the fields to the settings. Remove the fallback one release after #770.
  */
 export function formatSettingsOf(config: FormatConfig, vaultPath: string | null): FormatSettings {
-  const missing = config.units === null || config.clock === null || config.weekStart === null;
+  const missing =
+    config.language === null || config.units === null || config.clock === null || config.weekStart === null;
   const old = vaultPath === null || !missing ? null : readOldFormatFields(vaultPath);
   return {
-    language: config.language,
+    language: config.language ?? old?.language ?? null,
     timeZone: config.timeZone,
     units: config.units ?? old?.units ?? null,
     clock: config.clock ?? old?.clock ?? null,

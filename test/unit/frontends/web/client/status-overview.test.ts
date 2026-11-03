@@ -22,7 +22,7 @@ function status(change: Partial<EvaStatus> = {}): EvaStatus {
     setupMissing: 0,
     chatBlocker: null,
     voiceNotes: false,
-    format: { clock: null, weekStart: null, units: null },
+    format: { clock: null, weekStart: null, units: null, language: null },
     ...change,
   };
 }

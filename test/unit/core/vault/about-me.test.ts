@@ -169,15 +169,20 @@ describe("the format fields that moved to the settings (#770)", () => {
 
 describe("readOldFormatFields", () => {
   test("reads the valid units, clock and week start of the header", () => {
-    note("units: imperial\nclock: 12h\nweekStart: sunday");
-    expect(readOldFormatFields(vault)).toEqual({ units: "imperial", clock: "12h", weekStart: "sunday" });
+    note("units: imperial\nclock: 12h\nweekStart: sunday", "# About Alex\n\n- **Language for answers:** Spanish\r\n");
+    expect(readOldFormatFields(vault)).toEqual({
+      language: "Spanish",
+      units: "imperial",
+      clock: "12h",
+      weekStart: "sunday",
+    });
   });
 
   test("reads a bad, empty or missing one as null", () => {
-    note("units: cubits\nclock:");
-    expect(readOldFormatFields(vault)).toEqual({ units: null, clock: null, weekStart: null });
+    note("units: cubits\nclock:", "- **Language for answers:**\n");
+    expect(readOldFormatFields(vault)).toEqual({ language: null, units: null, clock: null, weekStart: null });
     rmSync(join(vault, "Life", "About me.md"));
-    expect(readOldFormatFields(vault)).toEqual({ units: null, clock: null, weekStart: null });
+    expect(readOldFormatFields(vault)).toEqual({ language: null, units: null, clock: null, weekStart: null });
   });
 });
 

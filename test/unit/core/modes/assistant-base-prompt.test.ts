@@ -4,6 +4,7 @@ import { projectStatuses } from "../../../../src/shared/project-statuses.ts";
 import { projectTypes } from "../../../../src/shared/project-types.ts";
 import { defaultAssistantRules } from "../../../../src/core/vault/vault-template.ts";
 import { evaRepository } from "../../../../src/shared/version.ts";
+import { evaCoreSkillNames } from "../../../../src/core/modes/eva-core.ts";
 
 describe("assistantBasePrompt", () => {
   test("holds the rules every person needs", () => {
@@ -14,13 +15,19 @@ describe("assistantBasePrompt", () => {
       "## Your own state",
       "## Your files in the vault",
       "## Sending files",
+      "## Answering from the notes",
+      "## Learning",
+      "## Limits",
+      "## Pinned files",
+      "## Format settings",
+      "## Eva's skills",
     ]) {
       expect(assistantBasePrompt).toContain(section);
     }
   });
 
-  test("leaves the personality to the person's rules, which can change it", () => {
-    for (const section of ["## Answering from the notes", "## Learning", "## Style"]) {
+  test("leaves the tone and how proactive Eva is to the person's rules, which can change them (#771)", () => {
+    for (const section of ["## Style"]) {
       expect(assistantBasePrompt).not.toContain(section);
       expect(defaultAssistantRules).toContain(section);
     }
@@ -61,21 +68,16 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("`.eva/settings/chat-names.md`");
   });
 
-  test("offers to open a detailed issue in Eva's own repository when the person reports a problem with Eva", () => {
+  test("offers the eva-issue skill when the person reports a problem with Eva, and leaves the procedure to it (#771)", () => {
     expect(assistantBasePrompt).toContain("## Problems with Eva herself");
-    expect(assistantBasePrompt).toContain(`gh issue create --repo ${evaRepository}`);
-    expect(assistantBasePrompt).toContain("Done when");
+    expect(assistantBasePrompt).toContain(`https://github.com/${evaRepository}`);
+    expect(assistantBasePrompt).toContain("offer to report it with the `eva-issue` skill");
+    expect(assistantBasePrompt).not.toContain("gh issue create");
     expect(assistantBasePrompt).not.toContain("{{");
   });
 
-  test("puts the device facts in an issue, and scrubs the personal data out of its log lines", () => {
-    for (const fact of ["screen size", "phone, tablet or computer", "through Tailscale", "operating system"]) {
-      expect(assistantBasePrompt).toContain(fact);
-    }
-    for (const placeholder of ["`<vault>`", "`<home>`", "`<machine>`", "`<person>`"]) {
-      expect(assistantBasePrompt).toContain(placeholder);
-    }
-    expect(assistantBasePrompt).toContain("Report a bug");
+  test("lists each of Eva's own skills, so the agent knows that they ship with Eva (#771)", () => {
+    for (const name of evaCoreSkillNames) expect(assistantBasePrompt).toContain(`- \`${name}\`:`);
   });
 
   test("installs missing programs without administrator rights: a service has no terminal for a sudo password", () => {

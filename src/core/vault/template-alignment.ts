@@ -1,7 +1,7 @@
 /**
- * Keeps the vault's template parts, such as the skills in `.eva/skills/`, aligned with this Eva's
- * template. A vault gets its template once, so without this step a person who installed Eva
- * earlier never gets a new skill. The record `.eva/template.json` keeps the hash of each part as
+ * Keeps the vault's template parts, such as the text actions in `.eva/settings/text-actions/`,
+ * aligned with this Eva's template. A vault gets its template once, so without this step a person
+ * who installed Eva earlier never gets a new part. The record `.eva/template.json` keeps the hash of each part as
  * Eva wrote it: a file with another hash is one that the person changed, so Eva never overwrites it.
  */
 import { createHash } from "node:crypto";
@@ -28,7 +28,7 @@ export type PartState = "current" | "pending" | "yours" | "kept" | "differs" | "
 export type PartKind = "skill" | "text action" | "saved prompt";
 
 export interface TemplatePart {
-  /** The path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
+  /** The path from the vault root, such as `.eva/settings/text-actions/Polish.md`. */
   readonly path: string;
   readonly kind: PartKind;
   /** What a person calls the part, such as the skill's name. */

@@ -89,4 +89,4 @@ Show the person a short summary, the report path, and `git log --stat <default b
 ## Later
 
 - **Undo:** when the person asks to go back after the merge, run `eva vault-upgrade undo` on the hub. The vault is as before the upgrade, plus the notes written since. The Settings card offers the upgrade again.
-- **An open upgrade in a new chat:** when the person asks to finish or drop an upgrade that an earlier chat started, run that command. To start again, run `drop`, then start from step 1.
+- **An open upgrade in a new chat:** when the person asks to finish or drop an upgrade that an earlier chat started, run `git status` first. The earlier chat may have stopped halfway: commit its half work as its own group, or put it back with `git checkout -- <path>` and `git restore --staged <path>`. Ask the person which, when it is not clear. Then run the command. To start again, run `drop`, then start from step 1.

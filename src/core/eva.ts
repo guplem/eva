@@ -1927,15 +1927,25 @@ export class Eva {
     // Eva may have given the clone of a closed chat to another chat (issue 521), so a late file must not land there.
     if (chat?.closed === true)
       throw new EvaError("session_closed", "This chat is closed, because Eva reused its clone. Start a new chat.");
+    this.checkFileProject(sessionId);
     const kind = chat === null ? "assistant" : chatKind(chat);
-    if (kind === "specialist" && !this.projects().some((project) => project.id === chat?.projectId))
-      throw new EvaError("project_not_found", "The project of this chat is gone, so it takes no file.");
     const path =
       kind === "project" && chat !== null
         ? saveInClone(chat.startFolder, name, bytes)
         : saveReceivedFile(this.browsedVault(), name, bytes, kind === "specialist" ? (chat?.projectId ?? null) : null);
     if (kind === "specialist") return { path, note: receivedFileNote(join(this.browsedVault(), path), true) };
     return { path, note: receivedFileNote(path) };
+  }
+
+  /**
+   * Throws when the chat runs in a project folder whose project is gone, so a front end can refuse
+   * a file before it downloads it (#768).
+   */
+  checkFileProject(sessionId: string | null): void {
+    const chat = sessionId === null ? null : this.sessions.get(sessionId);
+    if (chat === null || chatKind(chat) !== "specialist") return;
+    if (!this.projects().some((project) => project.id === chat.projectId))
+      throw new EvaError("project_not_found", "The project of this chat is gone, so it takes no file.");
   }
 
   /**

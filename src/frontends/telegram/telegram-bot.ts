@@ -487,6 +487,12 @@ export class TelegramBot {
       await this.send(chatId, topicId, "No vault is configured, so Eva cannot keep the file.");
       return;
     }
+    try {
+      this.options.eva.checkFileProject(existing);
+    } catch (error) {
+      await this.send(chatId, topicId, `Eva cannot keep the file: ${this.describeError(error)}`);
+      return;
+    }
     const bytes = await this.files.download(chatId, topicId, file);
     if (bytes === null) return;
     let note: string;

@@ -2589,6 +2589,26 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(telegram.sentTexts()).not.toContain("This chat takes no files.");
   });
 
+  test("a file for a chat whose project is gone is refused before the download (#768)", async () => {
+    sandbox.write(vault(), "Projects/2026-01-01-0000-coach/AGENTS.md", "---\nstatus: active\ntype: specialist\n---\n");
+    const chat = eva.sessions.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: join(vault(), "Projects", "2026-01-01-0000-coach"),
+      source: "web",
+      projectId: "2026-01-01-0000-coach",
+    });
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${chat.id}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
+    rmSync(join(vault(), "Projects", "2026-01-01-0000-coach"), { recursive: true, force: true });
+    telegram.sendFile(owner, "document", new Uint8Array([4, 5]), { fileName: "plan.pdf", topicId: 500 });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("The project of this chat is gone")));
+    expect(telegram.callsTo("getFile")).toEqual([]);
+    expect(engine.requests).toEqual([]);
+  });
+
   test("an audio file is saved like a document", async () => {
     const bot = createBot();
     telegram.sendFile(owner, "audio", new Uint8Array([4, 5]), { fileName: "memo.mp3" });

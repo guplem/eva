@@ -30,6 +30,7 @@ import { ignoreEvaScratch } from "./scratch-folder.ts";
 import { typeSoftwareProjects } from "./general-project-type.ts";
 import { pinFiles } from "./pinned-files.ts";
 import { moveFormatSettings } from "./format-settings.ts";
+import { upgradeIsOpen } from "../vault/vault-structure.ts";
 
 /** Add each new migration here. The runner sorts them by id. */
 export const migrations: readonly Migration[] = [
@@ -86,7 +87,10 @@ function vaultAheadReason(ahead: VaultAhead): string {
 
 export interface StartMigrations {
   readonly machine: MigrationRun;
-  /** Null on a satellite: only the hub runs the vault migrations, so two machines never race on them. */
+  /**
+   * Null on a satellite: only the hub runs the vault migrations, so two machines never race on them.
+   * Null too while a vault upgrade is open: they run after it.
+   */
   readonly vault: MigrationRun | null;
 }
 
@@ -108,6 +112,8 @@ export interface StartMigrationsOptions {
 export function runStartMigrations(options: StartMigrationsOptions): StartMigrations {
   const common = { ...options, migrations: options.migrations ?? migrations };
   const machine = runMigrations({ ...common, store: "machine" });
-  const vault = options.isHub() ? runMigrations({ ...common, store: "vault" }) : null;
+  // While a vault upgrade is open, the vault is on its branch, and a drop would leave a migration behind (#773).
+  const upgrading = options.vaultPath !== null && upgradeIsOpen(options.vaultPath);
+  const vault = options.isHub() && !upgrading ? runMigrations({ ...common, store: "vault" }) : null;
   return { machine, vault };
 }

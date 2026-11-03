@@ -63,7 +63,9 @@ export type EvaErrorCode =
   /** The widget has no approved record on this computer, or its record no longer matches the vault. */
   | "widget_needs_approval"
   /** A written data format of the widget conflicts with the format of its folder (#692). */
-  | "widget_format_conflict";
+  | "widget_format_conflict"
+  /** A vault upgrade command cannot run now, such as on a satellite or with no upgrade open (#773). */
+  | "vault_upgrade_refused";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

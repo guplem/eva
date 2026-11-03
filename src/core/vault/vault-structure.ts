@@ -5,7 +5,7 @@
  * vault's structure, with the person.
  */
 import { join } from "node:path";
-import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
+import { readJsonTolerant, readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import changelogFile from "../../../templates/eva-core/skills/vault-upgrade/CHANGELOG.md" with { type: "text" };
 
 export interface StructureChange {
@@ -119,6 +119,16 @@ export function upgradeBranch(version: number): string {
 export function upgradeBranchVersion(branch: string): number | null {
   const match = /^upgrade-v(\d+)$/.exec(branch);
   return match === null ? null : Number(match[1]);
+}
+
+/**
+ * True while the vault is on the branch of a vault upgrade. It reads `.git/HEAD` with no git
+ * process, so a start can check it before anything else. A vault that is no plain repository reads as false.
+ */
+export function upgradeIsOpen(vaultPath: string): boolean {
+  const head = readTextTolerant(join(vaultPath, ".git", "HEAD"));
+  const branch = /^ref: refs\/heads\/(.+)$/m.exec(head ?? "")?.[1]?.trim();
+  return branch !== undefined && upgradeBranchVersion(branch) !== null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

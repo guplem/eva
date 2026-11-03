@@ -60,6 +60,11 @@ export interface AssistantPreparerOptions {
   readonly widgetLines?: () => readonly string[];
   /** Checks the data files that a turn changed against the widget schemas: one sentence for each problem. */
   readonly checkWidgetData?: (paths: readonly string[]) => readonly string[];
+  /**
+   * The line that tells the first new chat on the hub that a newer vault structure exists (#773).
+   * Each call that returns a line uses it up.
+   */
+  readonly vaultStructureLine?: () => string | null;
   /** Where pskill's error output goes. */
   readonly logger?: Logger;
 }
@@ -80,6 +85,8 @@ interface KeptPrompt {
   readonly format: KeptFormat | null;
   /** Null when no widget is on. */
   readonly widgets: string | null;
+  /** The vault structure line, which only the first new chat after the alert gets (#773). */
+  readonly structureLine: string | null;
 }
 
 export class AssistantPreparer implements TurnPreparer {
@@ -115,6 +122,8 @@ export class AssistantPreparer implements TurnPreparer {
       pinned: this.pinnedBlockNow(),
       format: this.formatBlockNow(),
       widgets: this.widgetsBlockNow(),
+      // Only a new chat: a chat with turns started before the alert, or got the line already.
+      structureLine: session.turns.length === 0 ? (this.options.vaultStructureLine?.() ?? null) : null,
     };
     this.promptBySession.set(session.id, kept);
     const pluginFolders = this.pluginFolders();
@@ -195,6 +204,17 @@ export class AssistantPreparer implements TurnPreparer {
               note: "Eva lists the widgets that are on at the start of each chat. A change shows in the next chat.",
             },
           ]),
+      ...(kept?.structureLine === null || kept?.structureLine === undefined
+        ? []
+        : [
+            {
+              group: "prompt" as const,
+              title: "Vault structure",
+              source: null,
+              text: kept.structureLine,
+              note: "Eva tells the first new chat after the notice that a newer vault structure exists. Later chats do not get this line.",
+            },
+          ]),
       {
         group: "message",
         title: "Before each message",
@@ -217,10 +237,13 @@ export class AssistantPreparer implements TurnPreparer {
     });
   }
 
-  /** Eva's prompt, the person's rules, then the pinned files, the format settings and the widgets, so the person's rules stay next to Eva's. */
+  /**
+   * Eva's prompt, the person's rules, then the pinned files, the format settings, the widgets and the
+   * vault structure line, so the person's rules stay next to Eva's.
+   */
   private appendedPrompt(kept: KeptPrompt): string {
     let prompt = `${this.options.basePrompt}\n\n${kept.rules}`;
-    for (const block of [kept.pinned.text, kept.format?.text ?? null, kept.widgets])
+    for (const block of [kept.pinned.text, kept.format?.text ?? null, kept.widgets, kept.structureLine])
       if (block !== null) prompt = `${prompt.trimEnd()}\n\n${block}`;
     return prompt;
   }

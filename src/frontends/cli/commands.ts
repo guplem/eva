@@ -37,6 +37,7 @@ import {
   requestDeviceAllow,
   requestRestart,
   startHint,
+  requestVaultUpgrade,
   startProjectWork,
 } from "./client.ts";
 import { allowDevice, canOpenBrowser, openEva, openLoggedIn } from "./devices.ts";
@@ -145,6 +146,7 @@ async function runCommand(command: CliCommand, host: CliHost, wiring: CliWiring)
     case "projects":
     case "chat":
     case "work":
+    case "vault-upgrade":
       return runClientCommand(host, paths, command);
     case "run":
       return serveOrExplain(host, paths, wiring);
@@ -341,7 +343,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
 async function runClientCommand(
   host: CliHost,
   paths: HomePaths,
-  command: Extract<CliCommand, { command: "status" | "projects" | "chat" | "work" }>,
+  command: Extract<CliCommand, { command: "status" | "projects" | "chat" | "work" | "vault-upgrade" }>,
 ): Promise<number> {
   const config = loadSettings(paths).config;
   const token = loadSecrets(paths).localApiToken;
@@ -369,6 +371,8 @@ async function runClientCommand(
       writeLine(host, status);
     } else if (command.command === "projects") {
       writeLine(host, await describeProjects(client, command.query));
+    } else if (command.command === "vault-upgrade") {
+      writeLine(host, await requestVaultUpgrade(client, command.action));
     } else if (command.command === "work") {
       writeLine(
         host,

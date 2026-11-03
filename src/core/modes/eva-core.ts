@@ -80,6 +80,11 @@ export class EvaCore {
     this.renameOnce = rename;
   }
 
+  /** The folder of one of Eva's skills in the main plugin folder, with the files that the skill reads. */
+  skillFolder(name: string): string {
+    return join(this.enginesFolder, pluginName, "skills", name);
+  }
+
   /**
    * The plugin folder for one turn: `eva-core`, or a copy without the skills that the vault replaces.
    * `vaultSkills` are the names of the skills in the vault's `.eva/skills/`.

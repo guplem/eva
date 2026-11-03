@@ -311,6 +311,14 @@ export async function requestUpdate(
   };
 }
 
+/** `eva vault-upgrade <action>`: one step of a vault upgrade, run by the running Eva (#773). Its report, for the chat. */
+export async function requestVaultUpgrade(
+  options: ClientOptions,
+  action: "start" | "finish" | "drop" | "undo",
+): Promise<string> {
+  return (await postJson<{ text: string }>(options, "/api/vault/upgrade", { action })).text;
+}
+
 /** `eva sync` while Eva runs: her sync state after the sync. */
 export function requestSync(options: ClientOptions): Promise<SyncNowState> {
   return postJson<SyncNowState>(options, "/api/vault/sync", {});

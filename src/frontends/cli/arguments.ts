@@ -44,6 +44,11 @@ export type CliCommand =
       readonly model?: ModelAlias;
       readonly engine?: EngineName;
     }
+  | {
+      readonly command: "vault-upgrade";
+      readonly instance: string | undefined;
+      readonly action: "start" | "finish" | "drop" | "undo";
+    }
   | { readonly command: "usage-error"; readonly message: string };
 
 export const usageText = `Usage: eva [--instance <name>] [command]
@@ -74,6 +79,10 @@ Commands:
   hub               Make this machine the hub, which runs Telegram and the schedules
   link              Show the address that opens Eva on your phone and other computers
   open              Open Eva in this computer's browser, logged in, with no token or code
+  vault-upgrade start   Back up the vault, pause the sync and open the branch of a vault structure upgrade
+  vault-upgrade finish  Merge the upgrade, record the new structure version and sync again
+  vault-upgrade drop    Leave the upgrade before its merge: the vault stays as it was, with the notes written meanwhile
+  vault-upgrade undo    Take back the last upgrade after its merge, and keep the notes written since
   settings          Show every setting; "(vault)" marks the settings that every machine shares
   settings get <key>          Show one setting, such as updates.frequency
   settings set <key> <value>  Change one setting, such as: settings set updates.frequency weekly
@@ -100,6 +109,10 @@ export const cliCommands: readonly string[] = [
   "hub",
   "link",
   "open",
+  "vault-upgrade start",
+  "vault-upgrade finish",
+  "vault-upgrade drop",
+  "vault-upgrade undo",
   "settings",
   "settings get",
   "settings set",
@@ -172,6 +185,12 @@ export function parseArguments(argv: readonly string[]): CliCommand {
       const [projectId, ...request] = rest;
       if (projectId === undefined || request.length === 0) return usageError("Use: eva work <project> <request>");
       return { command: "work", instance, projectId, request: request.join(" ") };
+    }
+    case "vault-upgrade": {
+      const action = rest[0];
+      return rest.length === 1 && (action === "start" || action === "finish" || action === "drop" || action === "undo")
+        ? { command: "vault-upgrade", instance, action }
+        : usageError("Use: eva vault-upgrade start, finish, drop or undo");
     }
     case "service":
       return rest[0] === "install" ? { command: "service-install", instance } : usageError("Use: eva service install");

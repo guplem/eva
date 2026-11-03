@@ -354,6 +354,10 @@ typed cli status
 typed cli supervise
 typed cli sync
 typed cli update
+typed cli vault-upgrade drop
+typed cli vault-upgrade finish
+typed cli vault-upgrade start
+typed cli vault-upgrade undo
 typed cli version
 typed cli work
 typed telegram /chats

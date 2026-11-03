@@ -1,3 +1,5 @@
+import type { StartMigrations } from "../../../src/core/migrations/migrations.ts";
+import { newestStructureVersion } from "../../../src/core/vault/vault-structure.ts";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -3028,6 +3030,56 @@ describe("Eva alerts", () => {
   });
 });
 
+describe("vault structure (#773)", () => {
+  const startMigrations: StartMigrations = { machine: { kind: "done", applied: [], later: [] }, vault: null };
+
+  test("the hub tells the person once for each version, and the first new chat gets the line once", async () => {
+    const engine = new FakeEngine();
+    const instance = start(engine);
+    const alerts: Alert[] = [];
+    instance.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    expect(instance.vaultStructure()).toMatchObject({
+      current: 2,
+      available: newestStructureVersion,
+      canUpgrade: true,
+    });
+    instance.reportStartMigrations(startMigrations);
+    instance.reportStartMigrations(startMigrations);
+    const news = alerts.filter((alert) => alert.key === "vault_structure");
+    expect(news.map((alert) => alert.level)).toEqual(["news"]);
+    expect(news[0]?.message).toContain("Vault and sync, Vault structure");
+    // A restart reads the hub's memory, so the alert does not come again.
+    const again = start(engine);
+    const later: Alert[] = [];
+    again.onAlert((alert) => {
+      later.push(alert);
+    });
+    again.reportStartMigrations(startMigrations);
+    expect(later.filter((alert) => alert.key === "vault_structure")).toEqual([]);
+    const line = `[Vault structure: version ${String(newestStructureVersion)} is available. This vault is at version 2.`;
+    const first = again.createAssistantSession({ source: "web" });
+    await again.sessions.send(first.id, "Hello");
+    const second = again.createAssistantSession({ source: "web" });
+    await again.sessions.send(second.id, "Hello again");
+    const prompts = engine.requests.map((request) => request.appendSystemPrompt ?? "");
+    expect(prompts.filter((prompt) => prompt.includes(line))).toHaveLength(1);
+  });
+
+  test("a vault with the newest structure gets no alert, and the card says so", () => {
+    sandbox.write(vault, ".eva/vault-structure.json", JSON.stringify({ version: newestStructureVersion }));
+    const instance = start(new FakeEngine());
+    const alerts: Alert[] = [];
+    instance.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    instance.reportStartMigrations(startMigrations);
+    expect(alerts.filter((alert) => alert.key === "vault_structure")).toEqual([]);
+    expect(instance.vaultStructure()).toMatchObject({ current: newestStructureVersion, summary: "" });
+  });
+});
+
 describe("migrations (#119)", () => {
   function collectAlerts(instance: Eva): Alert[] {
     const alerts: Alert[] = [];
@@ -3037,6 +3089,10 @@ describe("migrations (#119)", () => {
     return alerts;
   }
   const futureRecord = JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] });
+  // A vault with the newest structure, so no vault structure alert mixes in.
+  beforeEach(() => {
+    sandbox.write(vault, ".eva/vault-structure.json", JSON.stringify({ version: newestStructureVersion }));
+  });
 
   test("a vault that needs a newer Eva makes the update install at least that version, past the policy", async () => {
     sandbox.write(

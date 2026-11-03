@@ -86,6 +86,8 @@ export class AssistantPreparer implements TurnPreparer {
   private readonly options: AssistantPreparerOptions;
   /** The appended prompt of each session, read at its first turn. */
   private readonly promptBySession: Map<string, KeptPrompt>;
+  /** The plugin folders of each session's last turn, so its details list the skills that it got. */
+  private readonly foldersBySession: Map<string, readonly string[]>;
   private readonly vaultTurns: VaultTurns;
   /** The sessions whose last turn was a fix of widget data that Eva asked for. */
   private readonly fixingData: Set<string>;
@@ -93,6 +95,7 @@ export class AssistantPreparer implements TurnPreparer {
   constructor(options: AssistantPreparerOptions) {
     this.options = options;
     this.promptBySession = new Map();
+    this.foldersBySession = new Map();
     this.vaultTurns = new VaultTurns(options.vaultSync);
     this.fixingData = new Set();
   }
@@ -114,13 +117,15 @@ export class AssistantPreparer implements TurnPreparer {
       widgets: this.widgetsBlockNow(),
     };
     this.promptBySession.set(session.id, kept);
+    const pluginFolders = this.pluginFolders();
+    this.foldersBySession.set(session.id, pluginFolders);
     return {
       startFolder: session.startFolder,
       projectFolder: null,
       // The time goes in the message, never in the prompt (lesson 40).
       appendSystemPrompt: this.appendedPrompt(kept),
       messagePrefix: this.messagePrefix(kept.format),
-      pluginFolders: this.pluginFolders(),
+      pluginFolders,
       mcpServers: this.options.mcpServers,
       trusted: true,
       // The engine turns both off in Assistant mode by itself; these say the same.
@@ -205,7 +210,8 @@ export class AssistantPreparer implements TurnPreparer {
         startFolder: session.startFolder,
         projectFolder: null,
         trusted: true,
-        pluginFolders: this.pluginFolders(),
+        // A chat with no turn since Eva started shows what its next turn gets.
+        pluginFolders: this.foldersBySession.get(session.id) ?? this.pluginFolders(),
         environment: this.options.environment,
       },
     });
@@ -328,15 +334,24 @@ export class AssistantPreparer implements TurnPreparer {
   }
 }
 
-/** The names of the skills in a folder: each subfolder with a `SKILL.md`. */
+/**
+ * The names of the skills in a folder: the name of each subfolder with a `SKILL.md`, also through a
+ * link, and the `name:` in its header. Claude Code and pi name a skill by its header.
+ */
 function skillNames(folder: string): string[] {
+  let entries: string[];
   try {
-    return readdirSync(folder, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && existsSync(join(folder, entry.name, "SKILL.md")))
-      .map((entry) => entry.name);
+    entries = readdirSync(folder);
   } catch {
     return [];
   }
+  return entries.flatMap((entry) => {
+    const text = readTextTolerant(join(folder, entry, "SKILL.md"));
+    if (text === null) return [];
+    const header = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? "";
+    const name = /^name:[ \t]*["']?([^"'\r\n]*?)["']?[ \t]*$/m.exec(header)?.[1];
+    return name === undefined || name === "" || name === entry ? [entry] : [entry, name];
+  });
 }
 
 /** How Eva picks the pinned files, and what the caps or the walk left out. */

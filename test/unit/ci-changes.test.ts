@@ -27,7 +27,7 @@ describe("isDocsPath", () => {
     // The vault template ships inside the executable.
     "templates/vault/README.md",
     "templates/vault/AGENTS.md",
-    "templates/vault/.eva/skills/schedule/SKILL.md",
+    "templates/eva-core/skills/schedule/SKILL.md",
     "docs/diagram.png",
     // Upper case is rare: when in doubt, the full set runs.
     "docs/NOTES.MD",

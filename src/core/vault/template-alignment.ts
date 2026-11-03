@@ -107,7 +107,8 @@ export function contentHash(text: string): string {
 /**
  * The older versions of each template part, as hashes: `git show <commit>:<template path> | sha256sum`
  * for each commit that changed the file. A vault from before `.eva/template.json` has no record, so
- * this list tells Eva that its copy is an untouched old version. Later versions need no entry here:
+ * this list tells Eva that its copy is an untouched old version: she updates it, or removes it when the
+ * part left the template, as Eva's skills did (#771). Later versions need no entry here:
  * the record keeps the hash of each version that Eva writes.
  */
 export const templateHistory: Readonly<Record<string, readonly string[]>> = {

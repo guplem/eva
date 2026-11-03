@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
 import { AssistantPreparer, type AssistantPreparerOptions } from "../../../../src/core/modes/assistant-mode.ts";
+import { EvaCore } from "../../../../src/core/modes/eva-core.ts";
 import { cloneNotesFile, evaFileMarker, ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { widgetsIntro } from "../../../../src/core/modes/widgets-block.ts";
 import type { FormatSettings } from "../../../../src/core/modes/format-block.ts";
@@ -96,6 +97,11 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
   };
 }
 
+/** Eva's engines folder, beside the vault. */
+function engines(): string {
+  return join(sandbox.root, "engines");
+}
+
 function assistant(
   runner: ProcessRunner,
   sync = new FakeSync(),
@@ -107,6 +113,7 @@ function assistant(
     vaultPath: vault,
     vaultSync: sync,
     basePrompt: "Base rules.",
+    evaCore: new EvaCore(engines()),
     mcpServers: { google: { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: {} } },
     runner,
     environment: { PATH: "/bin" },
@@ -170,7 +177,7 @@ describe("Assistant mode", () => {
       startFolder: vault,
       projectFolder: null,
       trusted: true,
-      pluginFolders: [join(vault, ".eva")],
+      pluginFolders: [join(engines(), "eva-core"), join(vault, ".eva")],
       environment: { PATH: "/bin" },
     });
   });
@@ -201,7 +208,7 @@ describe("Assistant mode", () => {
     expect(prepared).toMatchObject({
       startFolder: vault,
       appendSystemPrompt: "Base rules.\n\n# You are Eva\n",
-      pluginFolders: [join(vault, ".eva")],
+      pluginFolders: [join(engines(), "eva-core"), join(vault, ".eva")],
       mcpServers: { google: { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: {} } },
       trusted: true,
       harnessMemory: false,
@@ -369,10 +376,34 @@ describe("Assistant mode", () => {
   });
 
   test("the vault's skills load with no plugin manifest, and no vault folder goes to the engine without .eva/skills/", async () => {
+    const core = join(engines(), "eva-core");
     rmSync(join(vault, ".eva", ".claude-plugin"), { recursive: true });
-    expect((await assistant(silentRunner).prepare(session())).pluginFolders).toEqual([join(vault, ".eva")]);
+    expect((await assistant(silentRunner).prepare(session())).pluginFolders).toEqual([core, join(vault, ".eva")]);
     rmSync(join(vault, ".eva", "skills"), { recursive: true });
-    expect((await assistant(silentRunner).prepare(session())).pluginFolders).toEqual([]);
+    // A new vault has no skill of its own, and still gets Eva's (#771).
+    expect((await assistant(silentRunner).prepare(session())).pluginFolders).toEqual([core]);
+  });
+
+  test("a vault skill with the name of one of Eva's replaces it, in the turn and in the details (#771)", async () => {
+    const preparer = assistant(silentRunner);
+    mkdirSync(join(vault, ".eva", "skills", "schedule"));
+    writeFileSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"), "---\nname: schedule\n---\nMine.\n");
+    const copy = join(engines(), "eva-core-without-schedule");
+    expect((await preparer.prepare(session())).pluginFolders).toEqual([copy, join(vault, ".eva")]);
+    expect((await preparer.describe(session())).engine.pluginFolders).toEqual([copy, join(vault, ".eva")]);
+    expect(readdirSync(join(copy, "skills")).sort()).toEqual(["about-me", "eva-issue", "eva-rules", "vault-upgrade"]);
+    // A chat whose vault skill is gone again gets Eva's whole plugin; the copy stays for a running turn.
+    rmSync(join(vault, ".eva", "skills", "schedule"), { recursive: true });
+    expect((await preparer.prepare(session({ id: "s2" }))).pluginFolders[0]).toBe(join(engines(), "eva-core"));
+    expect(readdirSync(join(copy, "skills"))).toContain("about-me");
+  });
+
+  test("a turn runs without Eva's skills when Eva cannot write them, and the log says why", async () => {
+    writeFileSync(engines(), "a file where the folder goes");
+    const logged: string[] = [];
+    const prepared = await assistant(silentRunner, new FakeSync(), logged).prepare(session());
+    expect(prepared.pluginFolders).toEqual([join(vault, ".eva")]);
+    expect(logged.some((line) => line.startsWith("Eva could not write her own skills."))).toBe(true);
   });
 
   test("snapshots the vault after the pull and before the save, under the index of the turn (#525)", async () => {

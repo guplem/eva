@@ -18,8 +18,6 @@ import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "te
 import assistantFile from "../../../templates/vault/.eva/assistant.md" with { type: "text" };
 import aboutFile from "../../../templates/vault/Life/About me.md" with { type: "text" };
 import allergiesFile from "../../../templates/vault/Life/Health/Allergies and Diet.md" with { type: "text" };
-import aboutMeSkillFile from "../../../templates/vault/.eva/skills/about-me/SKILL.md" with { type: "text" };
-import scheduleSkillFile from "../../../templates/vault/.eva/skills/schedule/SKILL.md" with { type: "text" };
 import polishActionFile from "../../../templates/vault/.eva/settings/text-actions/Polish.md" with { type: "text" };
 import summaryPromptFile from "../../../templates/vault/.eva/settings/saved-prompts/Summary.md" with { type: "text" };
 
@@ -31,11 +29,10 @@ export const defaultAssistantRules: string = assistantFile;
 
 /**
  * The parts of the template that Eva keeps aligned in each vault after an update, by path from the
- * vault root (`template-alignment.ts`). Add each new skill, text action and saved prompt here.
+ * vault root (`template-alignment.ts`). Add each new text action and saved prompt here. Eva's own skills
+ * ship with Eva instead (`eva-core.ts`), and the person's own skills are no part of the template.
  */
 export const templateParts: Readonly<Record<string, string>> = {
-  ".eva/skills/about-me/SKILL.md": aboutMeSkillFile,
-  ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
   ".eva/settings/text-actions/Polish.md": polishActionFile,
   ".eva/settings/saved-prompts/Summary.md": summaryPromptFile,
 };
@@ -82,7 +79,7 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
       JSON.stringify(
         {
           name: "eva",
-          description: "Eva's assistant skills for this vault. Eva loads this plugin in Assistant mode only.",
+          description: "Your own skills for Eva. Eva loads this plugin in Assistant mode only.",
           version: "1.0.0",
         },
         null,

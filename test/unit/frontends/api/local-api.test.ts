@@ -2009,23 +2009,23 @@ describe("web routes", () => {
       parts: { path: string; name: string; state: string; updatedAt: string | null; newText: string | null }[];
     }
     const vaultPath = eva.status().vaultPath ?? "";
-    mkdirSync(join(vaultPath, ".eva", "skills", "schedule"), { recursive: true });
-    writeFileSync(join(vaultPath, ".eva", "skills", "schedule", "SKILL.md"), "# My own skill\n");
+    mkdirSync(join(vaultPath, ".eva", "settings", "text-actions"), { recursive: true });
+    writeFileSync(join(vaultPath, ".eva", "settings", "text-actions", "Polish.md"), "My own action.\n");
     const listed = await json<Parts>(await call("/api/template-parts"));
-    const schedule = listed.parts.find((part) => part.name === "schedule");
-    expect([schedule?.path, schedule?.state, schedule?.updatedAt]).toEqual([
-      ".eva/skills/schedule/SKILL.md",
+    const polish = listed.parts.find((part) => part.name === "Polish");
+    expect([polish?.path, polish?.state, polish?.updatedAt]).toEqual([
+      ".eva/settings/text-actions/Polish.md",
       "differs",
       null,
     ]);
-    expect(schedule?.newText).toContain("# Schedule a message");
+    expect(polish?.newText).toContain("Polish this text before I send it.");
     const kept = await json<Parts>(
       await call("/api/template-parts", {
         method: "POST",
-        body: { path: ".eva/skills/schedule/SKILL.md", choice: "mine" },
+        body: { path: ".eva/settings/text-actions/Polish.md", choice: "mine" },
       }),
     );
-    expect(kept.parts.find((part) => part.name === "schedule")?.state).toBe("kept");
+    expect(kept.parts.find((part) => part.name === "Polish")?.state).toBe("kept");
     const unknown = await call("/api/template-parts", {
       method: "POST",
       body: { path: ".eva/assistant.md", choice: "new" },

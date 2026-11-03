@@ -247,8 +247,8 @@ describe("alignmentProblem", () => {
 });
 
 describe("templateParts", () => {
-  test("holds each skill of the vault template", () => {
-    expect(Object.keys(templateParts)).toContain(".eva/skills/schedule/SKILL.md");
+  test("holds no skill: Eva's skills ship with Eva, and .eva/skills/ holds only the person's (#771)", () => {
+    expect(Object.keys(templateParts).filter((path) => path.startsWith(".eva/skills/"))).toEqual([]);
   });
 });
 

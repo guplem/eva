@@ -1,0 +1,5 @@
+{
+  "name": "eva-core",
+  "description": "Eva's own skills. They ship with Eva, and Eva loads them in Assistant mode only.",
+  "version": "1.0.0"
+}

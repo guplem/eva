@@ -3,7 +3,7 @@
  * Before a turn: pull the vault, snapshot it, build the prompt. After a turn: snapshot and save the vault, and keep
  * an open pskill run of this session going, since the vault has no hooks.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readTextTolerant } from "../../shared/files.ts";
@@ -22,6 +22,7 @@ import { pinnedBlock, type PinnedBlock } from "./pinned-block.ts";
 import { findPinnedFiles, readsOldImportant } from "./pinned-files.ts";
 import { VaultTurns, type TurnSnapshots, type VaultSyncPort } from "./vault-turns.ts";
 import { widgetsBlock } from "./widgets-block.ts";
+import type { EvaCore } from "./eva-core.ts";
 import { formatBlock, type FormatSettings } from "./format-block.ts";
 import { clockTime, type Clock } from "../../shared/time-format.ts";
 
@@ -35,6 +36,8 @@ export interface AssistantPreparerOptions {
   readonly beforeEndSnapshot?: (sessionId: string) => Promise<void>;
   /** Eva's base prompt, shipped with the engine. */
   readonly basePrompt: string;
+  /** Eva's own skills, loaded before the vault's (#771). */
+  readonly evaCore: EvaCore;
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
   readonly now: () => Date;
@@ -242,12 +245,22 @@ export class AssistantPreparer implements TurnPreparer {
   }
 
   /**
-   * The vault's `.eva/` folder gives the person's skills, when it has a `skills/` folder. Both engines
-   * load it with no manifest: a vault from before the manifest still gets its skills.
+   * Eva's own skills first, without each one that the vault replaces, then the vault's `.eva/` folder,
+   * when it has a `skills/` folder. Both engines load the vault's folder with no manifest: a vault
+   * from before the manifest still gets its skills. `describe` and the turn share this, so the
+   * details list the skills that the turn gets.
    */
   private pluginFolders(): string[] {
     const pluginFolder = join(this.options.vaultPath, ".eva");
-    return existsSync(join(pluginFolder, "skills")) ? [pluginFolder] : [];
+    const skillsFolder = join(pluginFolder, "skills");
+    const vaultFolder = existsSync(skillsFolder) ? [pluginFolder] : [];
+    try {
+      return [this.options.evaCore.folderFor(skillNames(skillsFolder)), ...vaultFolder];
+    } catch (error) {
+      // A broken engines folder must not stop every chat: the turn runs without Eva's skills.
+      this.options.logger?.log("warn", "Eva could not write her own skills.", { reason: String(error) });
+      return vaultFolder;
+    }
   }
 
   /**
@@ -326,6 +339,17 @@ export class AssistantPreparer implements TurnPreparer {
       this.options.logger?.log("warn", "pskill could not run.", { reason: String(error) });
       return null;
     }
+  }
+}
+
+/** The names of the skills in a folder: each subfolder with a `SKILL.md`. */
+function skillNames(folder: string): string[] {
+  try {
+    return readdirSync(folder, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(join(folder, entry.name, "SKILL.md")))
+      .map((entry) => entry.name);
+  } catch {
+    return [];
   }
 }
 

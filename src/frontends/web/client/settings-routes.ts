@@ -192,7 +192,7 @@ export const searchEntries: readonly SearchEntry[] = [
     item: "template-alignment",
     section: "vault",
     title: "Template alignment",
-    words: "skills update template version merge",
+    words: "text actions saved prompts update template version merge",
   },
   {
     item: "github",

@@ -63,7 +63,7 @@ The root `AGENTS.md` has the v3 sections, such as _Personal rules_. Each folder 
 
 - **Version:** 4
 - **Date:** 2026-11-03
-- **Pull request:** https://github.com/guplem/eva/issues/848
+- **Pull request:** https://github.com/guplem/eva/pull/850
 - **Summary:** Your projects get clear dates and goals: the day they started and closed, an optional objective and an optional deadline.
 - **Migrations first:**
 

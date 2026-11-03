@@ -24,6 +24,7 @@ export interface ProjectDetails {
   readonly title: string;
   /** Null removes the key. */
   readonly status: ProjectStatus | null;
+  readonly started?: string;
   readonly tags: readonly string[];
   readonly repos: readonly string[];
   /** Absent keeps the type, as from an older page. Every type writes the key (#768). */
@@ -33,6 +34,11 @@ export interface ProjectDetails {
    * keeps the key, as from an older page. A change to another status removes it.
    */
   readonly closed?: string | null | undefined;
+  /**
+   * The day the project became active for the first time, as `YYYY-MM-DD` (#848). Eva writes it
+   * only when an `idea` becomes `active` and the file has no `started` key.
+   */
+  readonly started?: string | null | undefined;
 }
 
 /** A day such as `2026-11-03`, the form of the `closed` key. */
@@ -61,6 +67,22 @@ function changedClosed(
   return { closed };
 }
 
+/**
+ * The change of the `started` key, if any. Only an `idea` that becomes `active` starts: another
+ * status was active before, and a project with no `started` started at `created`.
+ */
+function changedStarted(
+  current: { readonly status: ProjectStatus | null },
+  details: ProjectDetails,
+  source: string,
+): FrontMatterChanges {
+  if (details.status !== "active" || current.status !== "idea" || hasKey(source, "started")) return {};
+  const started = details.started?.trim() ?? "";
+  if (started === "") return {};
+  if (!isDay(started)) throw invalid(`The start date must be a day such as 2026-11-03, not "${started}".`);
+  return { started };
+}
+
 /** The text of a project file with these details. Throws `project_invalid` for a bad value or file. */
 export function applyProjectDetails(text: string, details: ProjectDetails): string {
   const bom = text.startsWith("\uFEFF") ? "\uFEFF" : "";
@@ -85,6 +107,7 @@ export function applyProjectDetails(text: string, details: ProjectDetails): stri
     // The form shows "None" for a status it cannot read, so None there keeps the person's value.
     ...(details.status === current.status ? {} : { status: details.status }),
     ...changedClosed(current, details, source),
+    ...changedStarted(current, details, source),
     ...changedList("tags", current.tags, details.tags, (tag) => tag.replace(/^#/, ""), "A tag"),
     ...repos,
     ...(writesType ? { type } : {}),
@@ -192,7 +215,7 @@ function hasKey(source: string, key: string): boolean {
 }
 
 /** The key that a new key follows, so related keys stay together. */
-const placedAfter: Readonly<Record<string, string>> = { closed: "status" };
+const placedAfter: Readonly<Record<string, string>> = { closed: "status", started: "status" };
 
 /** The new front matter, or null when no field changes, so an untouched file keeps every byte. */
 function editFrontMatter(source: string, changes: FrontMatterChanges): string | null {
@@ -310,6 +333,7 @@ export function projectFileOf(text: string): ProjectFile {
           repos: frontMatter.repos,
           type: frontMatter.type,
           closed: frontMatter.closed,
+          started: typeof frontMatter.extra["started"] === "string" ? frontMatter.extra["started"] : null,
           created: frontMatter.created,
         };
   return { text, version: fileVersion(text), details };

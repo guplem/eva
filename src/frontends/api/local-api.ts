@@ -173,6 +173,8 @@ const projectDetailsSchema = z.object({
   type: z.enum(projectTypes).optional(),
   /** An older page sends none, which keeps the date (#826). */
   closed: z.string().max(20).nullable().optional(),
+  /** The day on the person's clock when an idea becomes active. An older page sends none (#848). */
+  started: z.string().max(20).nullable().optional(),
 });
 const repositoryTypeNames = repositoryCatalog.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
 const repositoryTypeSchema = z.object({ repository: z.string().min(1).max(2_000), type: z.enum(repositoryTypeNames) });

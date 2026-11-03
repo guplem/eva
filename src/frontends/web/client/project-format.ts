@@ -251,8 +251,10 @@ export function closingDate(value: string): string | null {
  * The details with a new status. A choice of Closed starts the closing date at today, so the
  * person keeps it or picks another day (#826). Another status keeps the date in the form only, so
  * a choice of Closed again brings it back: the save removes the date of a project that is not closed.
+ * A choice of Active sends today as the start date. The save writes it only for an idea (#848).
  */
 export function withStatus(details: ProjectDetails, status: ProjectStatus | null, today: string): ProjectDetails {
+  if (status === "active") return { ...details, status, started: details.started ?? today };
   if (status !== "closed") return { ...details, status };
   return { ...details, status, closed: closingDate(details.closed ?? "") ?? today };
 }

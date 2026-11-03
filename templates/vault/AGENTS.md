@@ -115,7 +115,7 @@ cv: Built a meal planner that writes the menus of the week. # 1 to 3 lines for a
 ---
 ```
 
-`active` is a project that the person develops. `in-use` is a project that the person uses now.
+A project has one status. `active` is a project that the person develops, even when they also use it. `in-use` is a project that is finished enough that the person only uses it. When the person also uses an `active` project, one line in its `AGENTS.md` says so, such as "The person uses this every day." Never add a second status field.
 
 - **General:** a folder of notes and files, such as plans, reference photos or drafts: building a house, a scale model, a book. The text under the front matter describes the project.
 - **Software:** work in repositories, such as an app. The text under the front matter describes the project and names the repository to read first. Each repository's own `AGENTS.md` holds the rules for its code.

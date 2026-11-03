@@ -3556,6 +3556,19 @@ describe("machine reports (#126)", () => {
     expect(alerts[1]?.message).toBe("On laptop: Fixed.");
   });
 
+  test("the shell sandbox gap of another machine ends with no resolved alert: it may have become news (#825)", async () => {
+    const wall = { key: "shell_wall", level: "warn", message: "No sandbox.", resolvedMessage: "Walled." };
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([wall]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([]));
+    await instance.syncVault();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["machine:laptop:shell_wall", "warn"]]);
+    expect(instance.status().problems).toEqual([]);
+  });
+
   test("a satellite's report marks a problem that the person hid there, and only that one (#541)", async () => {
     sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
     const instance = start(new FakeEngine(), { machineName: "example-pc" });

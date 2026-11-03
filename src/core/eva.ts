@@ -33,7 +33,6 @@ import type { SessionEvent, TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
-import type { ShellWallGap } from "./shell-wall.ts";
 import { ChatNotifications, holdingChat, type NotificationKind } from "./alerts/chat-notifications.ts";
 import { readHiddenProblems, writeHiddenProblems } from "./alerts/hidden-problems.ts";
 import { readNotificationHistory, writeNotificationHistory, type HistoryEntry } from "./alerts/notification-history.ts";
@@ -222,6 +221,7 @@ import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format
 import { Widgets } from "./widgets/widgets.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
 import { PreviewGrants } from "./widgets/widget-previews.ts";
+import type { ShellWallGap } from "./shell-wall.ts";
 
 /** The Vault structure card (#773). */
 export interface VaultStructureView {
@@ -2843,7 +2843,12 @@ export class Eva {
       relayed.set(file, keys);
     }
     for (const [file, keys] of this.relayed)
-      for (const key of keys) if (relayed.get(file)?.has(key) !== true) this.alerts.report(key, null);
+      for (const key of keys) {
+        if (relayed.get(file)?.has(key) === true) continue;
+        // Windows sends its gap as news now, so "The shell stays out of the vault" would be false (#825).
+        if (key.endsWith(":shell_wall")) this.alerts.dismiss(key);
+        else this.alerts.report(key, null);
+      }
     this.relayed = relayed;
     this.forgetStaleRelayedMarks();
   }

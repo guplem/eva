@@ -22,6 +22,8 @@ export type EvaErrorCode =
   | "github_failed"
   | "google_failed"
   | "claude_login_failed"
+  /** pi's login from the web page did not start or did not end well (#811). */
+  | "pi_login_failed"
   | "tailscale_install_failed"
   | "tailscale_account_refused"
   | "engine_install_failed"

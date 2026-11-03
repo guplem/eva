@@ -454,6 +454,7 @@ vault .eva/template.json eva
 vault .eva/template.json parts
 vault .eva/template.json parts{}.installed
 vault .eva/template.json parts{}.kept
+vault .eva/template.json parts{}.retired
 vault .eva/template.json parts{}.updatedAt
 vault .eva/template.json version
 vault .eva/template.json version=1

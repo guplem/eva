@@ -66,6 +66,12 @@ const recordedPartSchema = z.object({
   /** The hash of Eva's version that the person chose not to take, or null. */
   kept: z.string().nullable(),
   updatedAt: z.string().nullable(),
+  /**
+   * True for a part that this Eva's template no longer has, and that the person changed, so the copy
+   * stays. The vault upgrade reads its `installed` hash to show only the person's own change (#771).
+   * Optional: a record from before has no such field.
+   */
+  retired: z.boolean().optional(),
 });
 
 const recordSchema = z.object({
@@ -137,8 +143,9 @@ export class TemplateAlignment {
     const parts: Record<string, RecordedPart> = {};
     for (const [path, entry] of Object.entries(record.parts)) {
       if (path in this.options.parts) parts[path] = entry;
-      else this.retire(path, entry);
+      else if (this.retire(path, entry)) parts[path] = { ...entry, retired: true };
     }
+    this.removeOldCopies(record);
     const result = this.paths().map((path) => {
       const entry = parts[path];
       const step = this.stepOf(path, entry);
@@ -209,9 +216,31 @@ export class TemplateAlignment {
     return { installed: contentHash(text), kept: null, updatedAt: this.options.now().toISOString() };
   }
 
-  /** A part that this Eva's template no longer has: gone when untouched, the person's own when changed. */
-  private retire(path: string, entry: RecordedPart): void {
-    if (this.fileHash(path) !== entry.installed) return;
+  /**
+   * A part that this Eva's template no longer has: gone when untouched, the person's own when changed.
+   * True when the changed copy stays, so its entry stays too.
+   */
+  private retire(path: string, entry: RecordedPart): boolean {
+    const file = this.fileHash(path);
+    if (file === null) return false;
+    if (file !== entry.installed) return true;
+    this.remove(path);
+    return false;
+  }
+
+  /**
+   * An untouched copy of a retired part from before the record has no entry, so `retire` never
+   * reaches it. Left there, it would replace Eva's own skill for good.
+   */
+  private removeOldCopies(record: TemplateRecord): void {
+    for (const [path, hashes] of Object.entries(this.options.history)) {
+      if (path in this.options.parts || path in record.parts) continue;
+      const file = this.fileHash(path);
+      if (file !== null && hashes.includes(file)) this.remove(path);
+    }
+  }
+
+  private remove(path: string): void {
     const target = join(this.options.vaultPath, path);
     rmSync(target, { force: true });
     const folder = dirname(target);

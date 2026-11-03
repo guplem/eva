@@ -123,13 +123,41 @@ describe("align", () => {
     expect(parts.map((part) => part.path)).toEqual([skill]);
   });
 
-  test("keeps a retired part that the person changed, as their own", () => {
+  test("keeps a retired part that the person changed, and its entry marked as retired (#771)", () => {
     alignment({ [skill]: oldText, ".eva/skills/gone/SKILL.md": "# Gone\n" }).align();
     write(".eva/skills/gone/SKILL.md", "# Mine now\n");
-    alignment().align();
+    const parts = alignment().align();
     expect(read(".eva/skills/gone/SKILL.md")).toBe("# Mine now\n");
-    const record = JSON.parse(readFileSync(templateRecordPath(vault), "utf-8")) as { parts: Record<string, unknown> };
-    expect(Object.keys(record.parts)).toEqual([skill]);
+    // The page and the alert never show it: it is no part of this Eva.
+    expect(parts.map((part) => part.path)).toEqual([skill]);
+    expect(
+      alignment()
+        .list()
+        .map((part) => part.path),
+    ).toEqual([skill]);
+    const record = (): Record<string, { installed: string; retired?: boolean }> =>
+      (JSON.parse(read(".eva/template.json")) as { parts: Record<string, { installed: string; retired?: boolean }> })
+        .parts;
+    // The vault upgrade reads the hash that Eva wrote, to show only the person's own change.
+    expect(record()[".eva/skills/gone/SKILL.md"]).toMatchObject({ installed: contentHash("# Gone\n"), retired: true });
+    // A second run keeps the entry, and a deleted copy loses it.
+    alignment().align();
+    expect(record()[".eva/skills/gone/SKILL.md"]?.retired).toBe(true);
+    rmSync(join(vault, ".eva/skills/gone"), { recursive: true });
+    alignment().align();
+    expect(Object.keys(record())).toEqual([skill]);
+  });
+
+  test("removes an untouched old copy with no entry, when the history knows it as a retired part (#771)", () => {
+    write(".eva/skills/gone/SKILL.md", oldText);
+    write(".eva/skills/other/SKILL.md", "# Unknown\n");
+    alignment(
+      { [skill]: newText },
+      { ".eva/skills/gone/SKILL.md": [contentHash(oldText)], ".eva/skills/other/SKILL.md": [contentHash(oldText)] },
+    ).align();
+    expect(existsSync(join(vault, ".eva/skills/gone"))).toBe(false);
+    // A copy that the history does not know stays: it can be the person's.
+    expect(read(".eva/skills/other/SKILL.md")).toBe("# Unknown\n");
   });
 
   test("never touches the person's own skills", () => {

@@ -3,7 +3,11 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from "node:path";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { VaultUpgrade } from "../../../../src/core/vault/vault-upgrade.ts";
-import { readVaultStructure, structureChanges } from "../../../../src/core/vault/vault-structure.ts";
+import {
+  newestStructureVersion,
+  readVaultStructure,
+  structureChanges,
+} from "../../../../src/core/vault/vault-structure.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
@@ -16,6 +20,7 @@ let syncOn: boolean;
 let afterBranch: number;
 
 const neededMigrations = structureChanges.flatMap((change) => change.migrations);
+const newest = newestStructureVersion;
 
 function upgrade(): { upgrade: VaultUpgrade; sync: VaultSync } {
   const sync = new VaultSync({
@@ -88,13 +93,13 @@ describe("start", () => {
     sandbox.write(vault, ".eva/scratch/temp.txt", "temporary\n");
     const { upgrade: command, sync } = upgrade();
     const text = await command.run("start");
-    expect(branch()).toBe("upgrade-v3");
-    expect(sandbox.git(sandbox.remote, "tag", "--list")).toBe("before-v3");
+    expect(branch()).toBe(`upgrade-v${newest}`);
+    expect(sandbox.git(sandbox.remote, "tag", "--list")).toBe(`before-v${newest}`);
     // The work starts from a saved vault.
     expect(remoteFile("Methods/Unsaved.md")).toBe("Not saved yet.");
     expect(sync.currentState.status).toBe("paused");
     // Inside the vault's ignored scratch folder, so the chat reads it with no permission question.
-    const inventoryPath = join(vault, ".eva", "scratch", "vault-upgrade", "v3-inventory.tsv");
+    const inventoryPath = join(vault, ".eva", "scratch", "vault-upgrade", `v${newest}-inventory.tsv`);
     expect(text).toContain(inventoryPath);
     const inventory = readFileSync(inventoryPath, "utf-8");
     const carHash = sandbox.git(vault, "rev-parse", "HEAD:Life/Car/Car.md");
@@ -125,7 +130,9 @@ describe("start", () => {
 
   test("refuses while an upgrade is open, and when the vault is up to date", async () => {
     await upgrade().upgrade.run("start");
-    expect(await refusal(upgrade().upgrade.run("start"))).toContain("An upgrade is open on the branch upgrade-v3");
+    expect(await refusal(upgrade().upgrade.run("start"))).toContain(
+      `An upgrade is open on the branch upgrade-v${newest}`,
+    );
     await upgrade().upgrade.run("finish");
     expect(await refusal(upgrade().upgrade.run("start"))).toContain("the newest structure");
   });
@@ -138,27 +145,27 @@ describe("finish", () => {
     // Another chat writes a note while the upgrade runs.
     sandbox.write(vault, "Life/Diary/2026-11-03.md", "A day.\n");
     const text = await upgrade().upgrade.run("finish");
-    expect(text).toContain("version 3");
+    expect(text).toContain(`version ${newest}`);
     expect(text).toContain("committed apart: Life/Diary/2026-11-03.md");
     expect(branch()).toBe("main");
-    expect(sandbox.git(vault, "branch", "--list", "upgrade-v3")).toBe("");
-    expect(readVaultStructure(vault)).toBe(3);
+    expect(sandbox.git(vault, "branch", "--list", `upgrade-v${newest}`)).toBe("");
+    expect(readVaultStructure(vault)).toBe(newest);
     expect(remoteFile("Life/Car-old.md")).toBe("# Car");
     expect(remoteFile("Life/Diary/2026-11-03.md")).toBe("A day.");
-    expect(JSON.parse(remoteFile(".eva/vault-structure.json"))).toEqual({ version: 3 });
+    expect(JSON.parse(remoteFile(".eva/vault-structure.json"))).toEqual({ version: newest });
     // git mv keeps the history of a moved note.
     expect(sandbox.git(vault, "log", "--follow", "--format=%s", "HEAD^2", "--", "Life/Car-old.md")).toContain(
       "an old vault",
     );
-    expect(sandbox.git(vault, "tag", "--list")).toBe("before-v3");
+    expect(sandbox.git(vault, "tag", "--list")).toBe(`before-v${newest}`);
     expect(afterBranch).toBe(1);
   });
 
   test("a vault that has the structure already only gets the record", async () => {
     await upgrade().upgrade.run("start");
     await upgrade().upgrade.run("finish");
-    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("Upgrade the vault structure to v3");
-    expect(readVaultStructure(vault)).toBe(3);
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe(`Upgrade the vault structure to v${newest}`);
+    expect(readVaultStructure(vault)).toBe(newest);
   });
 
   test("a conflict with the remote keeps both versions and names the copy", async () => {
@@ -182,7 +189,7 @@ describe("finish", () => {
     sandbox.git(vault, "add", "Toolbox/Keys.md");
     sandbox.git(vault, "commit", "-q", "-m", "A note with a key", "--", "Toolbox/Keys.md");
     expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Toolbox/Keys.md");
-    expect(branch()).toBe("upgrade-v3");
+    expect(branch()).toBe(`upgrade-v${newest}`);
     expect(readVaultStructure(vault)).toBe(2);
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).not.toContain("Keys.md");
   });
@@ -197,7 +204,7 @@ describe("finish", () => {
     sandbox.git(vault, "mv", "Life/Car/Old key.md", "Toolbox/Old key.md");
     sandbox.git(vault, "commit", "-q", "-m", "Move the note", "--", "Life/Car/Old key.md", "Toolbox/Old key.md");
     await upgrade().upgrade.run("finish");
-    expect(readVaultStructure(vault)).toBe(3);
+    expect(readVaultStructure(vault)).toBe(newest);
     expect(remoteFile("Toolbox/Old key.md")).toContain("sk-ant-");
   });
 
@@ -252,12 +259,16 @@ describe("drop", () => {
     sandbox.write(vault, "Life/Diary/2026-11-03.md", "A day.\n");
     // The skill moved a git-ignored file by hand, and wrote the move down.
     renameSync(join(vault, "Life/Car/.env"), join(vault, "Life/Objects-car.env"));
-    sandbox.write(vault, ".eva/scratch/vault-upgrade/v3-ignored-moves.tsv", "Life/Car/.env\tLife/Objects-car.env\n");
+    sandbox.write(
+      vault,
+      `.eva/scratch/vault-upgrade/v${newest}-ignored-moves.tsv`,
+      "Life/Car/.env\tLife/Objects-car.env\n",
+    );
     const { upgrade: command, sync } = upgrade();
     expect(await command.run("drop")).toContain("dropped");
     expect(readFileSync(join(vault, "Life/Car/.env"), "utf-8")).toBe("PLATE_API=demo\n");
     expect(branch()).toBe("main");
-    expect(sandbox.git(vault, "branch", "--list", "upgrade-v3")).toBe("");
+    expect(sandbox.git(vault, "branch", "--list", `upgrade-v${newest}`)).toBe("");
     expect(existsSync(join(vault, "Life/Car-old.md"))).toBe(false);
     expect(remoteFile("Life/Car/Car.md")).toBe("# Car\n\nNew tyres.");
     expect(remoteFile("Life/Diary/2026-11-03.md")).toBe("A day.");
@@ -343,7 +354,7 @@ describe("undo", () => {
     // The upgrade can run again.
     expect(await refusal(upgrade().upgrade.run("undo"))).toContain("no upgrade to version 2");
     await upgrade().upgrade.run("start");
-    expect(sandbox.git(vault, "tag", "--list")).toBe("before-v3\nbefore-v3-2");
+    expect(sandbox.git(vault, "tag", "--list")).toBe(`before-v${newest}\nbefore-v${newest}-2`);
   });
 });
 
@@ -410,7 +421,7 @@ describe("nothing lost (second review)", () => {
     for (const step of ["drop", "finish"] as const) {
       const refused = await refusal(upgrade().upgrade.run(step));
       expect(refused).toContain("Life/Car/Car.md");
-      expect(branch()).toBe("upgrade-v3");
+      expect(branch()).toBe(`upgrade-v${newest}`);
     }
   });
 
@@ -418,7 +429,7 @@ describe("nothing lost (second review)", () => {
     await upgrade().upgrade.run("start");
     rmSync(join(vault, "Life/Car/Car.md"));
     expect(await refusal(upgrade().upgrade.run("drop"))).toContain("Life/Car/Car.md");
-    expect(branch()).toBe("upgrade-v3");
+    expect(branch()).toBe(`upgrade-v${newest}`);
   });
 
   test("S2: an undo never leaves a moved note deleted, even after a full rewrite", async () => {
@@ -479,7 +490,7 @@ describe("nothing lost (second review)", () => {
     await upgrade().upgrade.run("start");
     writeAboutMe("---\nname: Sam\n---\n");
     expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Life/About me.md");
-    expect(branch()).toBe("upgrade-v3");
+    expect(branch()).toBe(`upgrade-v${newest}`);
     expect(readVaultStructure(vault)).toBe(2);
   });
 
@@ -495,7 +506,7 @@ describe("nothing lost (second review)", () => {
   test("an undo after the scratch folder was emptied moves the git-ignored files back from Eva's own copy", async () => {
     await upgrade().upgrade.run("start");
     renameSync(join(vault, "Life/Car/.env"), join(vault, "Life/car.env"));
-    sandbox.write(vault, ".eva/scratch/vault-upgrade/v3-ignored-moves.tsv", "Life/Car/.env\tLife/car.env\n");
+    sandbox.write(vault, `.eva/scratch/vault-upgrade/v${newest}-ignored-moves.tsv`, "Life/Car/.env\tLife/car.env\n");
     await upgrade().upgrade.run("finish");
     rmSync(join(vault, ".eva", "scratch"), { recursive: true, force: true });
     await upgrade().upgrade.run("undo");

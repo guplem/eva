@@ -75,6 +75,12 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("Start the Google login");
   });
 
+  test("leaves the rules of each vault folder to the vault's AGENTS.md, which the person can change (#851)", () => {
+    for (const folder of ["Principles/", "Methods/", "Toolbox/", "Library/", "Life/Cases/", "Objects/", "People/"])
+      expect(assistantBasePrompt).not.toContain(`\`${folder}\``);
+    expect(assistantBasePrompt).toContain("how to use each folder");
+  });
+
   test("says where the rules for chat names go, so the person can change them in a chat (issue 50)", () => {
     expect(assistantBasePrompt).toContain("`.eva/settings/chat-names.md`");
   });

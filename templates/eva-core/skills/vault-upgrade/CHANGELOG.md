@@ -58,3 +58,23 @@ The root `AGENTS.md` has the v3 sections, such as _Personal rules_. Each folder 
 7. The schedule edits that the moves need, approved once for all.
 8. The git-ignored files of the vault, and where each one goes.
 9. Each other note that mentions `Scratch/` (not a replaced file, not an existing _Personal rules_ section): point it to `.eva/scratch/`. A dated record, such as a diary day, stays as it is.
+
+## v4
+
+- **Version:** 4
+- **Date:** 2026-11-03
+- **Pull request:** https://github.com/guplem/eva/issues/851
+- **Summary:** Eva reads your principles and your methods before she acts, and follows the steps that you keep, such as how to start a project. The rule now lives in your vault's map, so you can change it.
+
+### What changes, and why
+
+1. **The root `AGENTS.md` gets the folder rule for `Principles/` and `Methods/`,** in the exact text of the template, below the table of _What they know_. Before the agent acts on a request, it lists both folders, reads the notes that fit, and follows each method that fits. It never greps them. Why: Eva's base prompt held the rule for `Principles/` only, and the person could not change it. A method, such as the steps for a new project, was read only when a search found it.
+2. **The rest of the root `AGENTS.md` stays as it is.** Keep each of the person's own lines where it is. A line of the person that already says the new rule is proposed to leave out.
+
+### How to detect a vault that has it
+
+The root `AGENTS.md` says "Before you act on a request, list `Principles/` and `Methods/`." Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. The person's own lines in the root `AGENTS.md` that the new rule already says, and whether to leave each one out.

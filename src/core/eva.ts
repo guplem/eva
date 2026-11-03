@@ -33,6 +33,7 @@ import type { SessionEvent, TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
+import type { ShellWallGap } from "./shell-wall.ts";
 import { ChatNotifications, holdingChat, type NotificationKind } from "./alerts/chat-notifications.ts";
 import { readHiddenProblems, writeHiddenProblems } from "./alerts/hidden-problems.ts";
 import { readNotificationHistory, writeNotificationHistory, type HistoryEntry } from "./alerts/notification-history.ts";
@@ -278,7 +279,7 @@ export interface EvaOptions {
   readonly secrets: EvaSecrets;
   readonly engines: readonly EnginePort[];
   /** Why the shell of a Project chat has no wall on this computer, or null when it has one (#711). */
-  readonly shellWallGap?: () => Promise<string | null>;
+  readonly shellWallGap?: () => Promise<ShellWallGap | null>;
   /**
    * Whether a sandbox can start inside the sandbox on this computer, as Claude Code's Unix socket
    * filter needs (#760). Without it, the filter stays off.
@@ -1488,7 +1489,10 @@ export class Eva {
     // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
     if (this.options.engines.some((engine) => engine.name === "claude-code")) {
       void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
-        this.alerts.report("shell_wall", shellWallProblem(gap));
+        const problem = shellWallProblem(gap?.reason ?? null);
+        // A gap that no step of the person closes would wait in "Needs you" forever (#825).
+        if (problem !== null && gap?.fixable === false) this.alerts.notifyOnce("shell_wall", "news", problem.message);
+        else this.alerts.report("shell_wall", problem);
       });
       void (this.options.nestedSandbox?.() ?? Promise.resolve(false)).then((works) => {
         this.socketFilter = works;

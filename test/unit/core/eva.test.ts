@@ -3191,7 +3191,9 @@ describe("migrations (#119)", () => {
     const instance = start(
       new FakeEngine(),
       {},
-      { shellWallGap: () => Promise.resolve("Claude Code's shell sandbox needs bubblewrap.") },
+      {
+        shellWallGap: () => Promise.resolve({ reason: "Claude Code's shell sandbox needs bubblewrap.", fixable: true }),
+      },
     );
     const alerts = collectAlerts(instance);
     instance.reportStartMigrations({
@@ -3199,7 +3201,26 @@ describe("migrations (#119)", () => {
       vault: { kind: "done", applied: [], later: [] },
     });
     await Promise.resolve();
+    expect(alerts.find((alert) => alert.key === "shell_wall")).toMatchObject({ level: "warn" });
     expect(alerts.find((alert) => alert.key === "shell_wall")?.message).toContain("bubblewrap");
+  });
+
+  test("a gap that the person cannot fix, as on Windows, is news and not a problem that stays open (#825)", async () => {
+    const instance = start(
+      new FakeEngine(),
+      {},
+      {
+        shellWallGap: () => Promise.resolve({ reason: "Claude Code has no shell sandbox on Windows.", fixable: false }),
+      },
+    );
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await Promise.resolve();
+    expect(alerts.filter((alert) => alert.key === "shell_wall").map((alert) => alert.level)).toEqual(["news"]);
+    expect(instance.status().problemDetails.some((problem) => problem.key === "shell_wall")).toBe(false);
   });
 
   test("a failed migration at start sends an alert with its id and the error", () => {

@@ -209,6 +209,15 @@ export class AlertCenter {
   }
 
   /**
+   * News that the person needs to hear once, such as a lasting limit of this computer (#825). The
+   * history keeps it, so a restart sends no copy. After the history drops it, Eva sends it again.
+   */
+  notifyOnce(key: string, level: AlertLevel | "news", message: string): void {
+    if (this.history.entries.some((entry) => entry.key === key && entry.level === level)) return;
+    this.notify(key, level, message);
+  }
+
+  /**
    * A warning that stays open with no reminder until `dismiss`, such as a new vault structure (#801).
    * `send` sends it and adds its entry: the caller sends it once, and opens it unsent after a restart.
    */

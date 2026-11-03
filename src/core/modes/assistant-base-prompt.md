@@ -75,6 +75,8 @@ The `status` is one of these:
 - `in-use`: the person uses it now, such as a project that makes the week's menus.
 - `paused` or `closed`: the person does not work on it now.
 
+When you close a project, ask the person whether it closed today or on another day. Write that day in `closed: YYYY-MM-DD`, right after `status`. When a closed project gets another status, remove `closed`.
+
 The `active` and `in-use` projects are in the pinned block, unless the person unpinned one. When a request fits an `in-use` project, use it, such as a recipes project for a menu.
 
 A project has one of three types in `type`. No type means `general`, or `software` when the project lists `repos`.

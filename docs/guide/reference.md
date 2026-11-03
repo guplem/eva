@@ -440,7 +440,7 @@ Without the filter, the wall is weaker: Eva's list can miss a socket in another 
 
 - **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The one-command install adds them. For an Eva from before, run the install command again, or run `sudo apt install bubblewrap socat`. Then restart Eva.
 - **macOS:** the sandbox needs nothing.
-- **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders, and a notice says so. The file tools stay walled.
+- **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders. Eva tells you this once, in the notification center. The file tools stay walled.
 
 At start, Eva tries the sandbox. When it cannot start, a notice says why. The chats still run, and their file tools stay walled.
 

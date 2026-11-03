@@ -142,5 +142,7 @@ export function sameProblemEntries(entries: readonly HistoryEntry[], key: string
  */
 export function entryState(entry: HistoryEntry, openKeys: ReadonlySet<string>): "open" | "solved" | null {
   if (entry.level === "news" || oneOffKinds.has(kindOf(entry.key)) || entry.key === "vault_structure") return null;
-  return openKeys.has(entry.key) ? "open" : "solved";
+  if (openKeys.has(entry.key)) return "open";
+  // A Windows gap that an older Eva kept open is now news, so its old entry is not solved (#825).
+  return entry.key.endsWith("shell_wall") ? null : "solved";
 }

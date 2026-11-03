@@ -204,9 +204,11 @@ function projectText(
   // The body keeps the whole description. A JSON string is a YAML string too, so `: ` stays one value.
   const summary = oneLineSummary(description.split(/\n\s*\n/)[0] ?? "");
   const summaryLine = summary === null ? "" : `summary: ${JSON.stringify(summary)}\n`;
+  // A project made as closed closes on the day it is made (#826).
+  const closedLine = input.status === "closed" ? `closed: ${wallClock.slice(0, 10)}\n` : "";
   // Every type writes its key, so a later change of `repos` never changes the type (#768).
   return applyProjectDetails(
-    `---\ncreated: ${wallClock}\n${summaryLine}status: ${input.status}\ntype: ${input.type}\n---\n\n${body}\n`,
+    `---\ncreated: ${wallClock}\n${summaryLine}status: ${input.status}\n${closedLine}type: ${input.type}\n---\n\n${body}\n`,
     {
       title,
       status: input.status,

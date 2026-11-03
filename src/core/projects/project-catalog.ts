@@ -32,6 +32,10 @@ export interface ProjectFrontMatter {
   readonly repoTypes: Readonly<Record<string, string>>;
   /** From the `type` key. No key, or a value that Eva does not know, reads as software. */
   readonly type: ProjectType;
+  /** The one line that says what the project holds, cut to 300 characters (#769). */
+  readonly summary: string | null;
+  /** The `pinned` value as text, such as `false`, or null. The pinned block reads it. */
+  readonly pinned: string | null;
   /** Every key Eva does not know, kept as it is. */
   readonly extra: Readonly<Record<string, unknown>>;
 }
@@ -47,7 +51,7 @@ export interface Project {
   readonly parsedId: ParsedProjectId;
   readonly frontMatter: ProjectFrontMatter;
   readonly title: string;
-  /** The first paragraph after the title, in one line. */
+  /** The `summary`, or else the first paragraph after the title, in one line. */
   readonly description: string | null;
   /**
    * The folder in the vault, such as `Projects/<id>`. Null for a project in an extra root: the Files
@@ -73,6 +77,8 @@ export const projectFrontMatterKeys = [
   "legacy_id",
   "repo_types",
   "type",
+  "summary",
+  "pinned",
 ] as const;
 const knownKeys: ReadonlySet<string> = new Set(projectFrontMatterKeys);
 /** The warning of a `repo_types` value that is not a map of text values. */
@@ -125,6 +131,8 @@ export function parseFrontMatter(text: string): FrontMatterResult {
   if (projectTypes.includes(fields["type"] as ProjectType)) type = fields["type"] as ProjectType;
   else if (fields["type"] !== undefined) warnings.push("type must be software or specialist");
 
+  const summary = typeof fields["summary"] === "string" ? oneLineSummary(fields["summary"]) : null;
+  const pinned = typeof fields["pinned"] === "string" ? fields["pinned"] : null;
   const extra = Object.fromEntries(Object.entries(fields).filter(([key]) => !knownKeys.has(key)));
   return {
     frontMatter: {
@@ -135,6 +143,8 @@ export function parseFrontMatter(text: string): FrontMatterResult {
       legacyId,
       repoTypes: repoTypes ?? {},
       type,
+      summary,
+      pinned,
       extra,
     },
     warnings,
@@ -259,7 +269,7 @@ function readProject(path: string, name: string, vaultFolder: string | null): Pr
     parsedId,
     frontMatter,
     title: readTitle(text) ?? parsedId.slug,
-    description: readDescription(text),
+    description: frontMatter.summary ?? readDescription(text),
     clones,
     warnings: allWarnings,
   };
@@ -306,9 +316,16 @@ function readDescription(text: string): string | null {
     .join(" ")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/(\*\*|__|`)/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/(\*\*|__|`)/g, "");
+  return oneLineSummary(plain);
+}
+
+/**
+ * The text in one line of at most 300 characters, or null when it is empty. Every summary in the
+ * pinned block goes through it, so one long line cannot fill the block.
+ */
+export function oneLineSummary(text: string): string | null {
+  const plain = text.replace(/\s+/g, " ").trim();
   if (plain.length === 0) return null;
   return plain.length <= descriptionLimit ? plain : `${plain.slice(0, descriptionLimit - 1).trimEnd()}…`;
 }

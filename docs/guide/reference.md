@@ -254,7 +254,8 @@ A request from Eva's own computer can come from any program there, so only the t
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
 - **Status:** each project has one status. **Active** is a project that you develop. **In use** is a project that you use now, such as a project that makes the week's menus. The other statuses are **Idea**, **Paused** and **Closed**.
   - The Projects page opens with the **Current** filter: the active and in-use projects. Tap a status to see only that status. In the search, in `eva projects` and in Telegram's `/projects`, type `status:in-use`, `status:current` or `status:any`.
-  - Each new chat with Eva gets a list of your active and in-use projects, with the title, the folder name and the description. So Eva knows them without a search. A changed status shows in the next new chat. A project chat gets no list.
+  - Each new chat with Eva pins your active and in-use projects, with the title, the folder and the summary. So Eva knows them without a search. See [Pinned files](#pinned-files).
+  - The **New project** form writes the first paragraph of the description as the project's `summary:`. The project page shows it.
 - **Repository setup:** open it from the project page. It checks each repository by its type. A repository with no type, such as one that you added by hand, shows no report: pick its type first.
   - **Fix** on an item that a command can fix runs it on GitHub at once. Press **Refresh** to see the item turn green. Any other **Fix** opens a chat with the request.
   - A file fix, such as a skill copy, goes straight to the default branch. When the branch requires checks, Eva opens a pull request with auto-merge instead. It merges by itself when CI passes, and the item turns green then.
@@ -291,6 +292,25 @@ A request from Eva's own computer can come from any program there, so only the t
 
 - **Trusted repositories:** a project chat uses the project's own agent settings and tools (the hooks, settings and MCP servers of its clone) only when Eva trusts every repository in it. Eva trusts the repositories of the GitHub account that she logs in with. She also trusts the owners in `trust.trustedRepositoryOwners`. She asks about any other repository once, and keeps your answer. **Settings > Trusted repositories** lists the trusted accounts and the saved answers. Add or remove one there. A change applies to the next project chat.
 - **What Eva may do:** **Settings > AI engines > What Eva may do** lists, for each engine and each kind of chat, what runs with no question, what Eva asks you first and what never runs. See also [What a chat can reach](#what-a-chat-can-reach). It also lists your own Claude Code `allow`, `ask` and `deny` rules apart, with the file that holds them: the `settings.json` in this Eva's Claude Code folder, and `.claude/settings.json` in your vault.
+
+## Pinned files
+
+Eva knows some files in every chat with no search. At the start of each new chat, she builds a pinned block from the front matter of your files:
+
+- `summary:` is one line that says what the file holds.
+- `pinned: full` puts the whole file in the block. Keep such a file short.
+- `pinned: summary` puts the file's path and its summary in the block.
+- `pinned: false` keeps the file out of the block.
+- With no `pinned:` value, the status decides. Your active and in-use projects, your open and waiting cases (`Life/Cases/<folder>/Case.md`) and your open period (`Life/Periods/<folder>/Period.md`) each get a summary line.
+
+How the block works:
+
+- **Order and limits.** The `full` files come first, then the `summary` files, each by path. Then come the cases with a mark, the other cases, the period and the projects. The block holds about 25 summary lines and about 2,000 tokens of full text. A full file that does not fit shows as its summary line, or as its path with "(open it when needed)". A project outside `Projects/`, in `projectRoots`, always shows as a summary line, also with `pinned: full`. Over a limit, the block ends with "N more not shown", and Eva offers which files to unpin.
+- **Marks on a case.** `DUE` means that the case's `next` date has come. `DEADLINE` means that its deadline is 14 days away or less, or has passed. Eva counts the days in your time zone.
+- **Data, not orders.** A full file sits between markers that name its path, and Eva reads it as facts about you. Its front matter shows with no comments, no empty keys and no `lastLocation`.
+- **Safe.** The block never holds a secret file, an encrypted file, a link, a file in `.eva/`, in the old `Scratch/` folder, in a `node_modules` folder or in a project's clones. A full file that holds a key or a token shows only as its summary line.
+- **Fixed for the chat.** A change to a pinned file shows in the next new chat. The chat details show the block under **Your pinned files**. A project chat gets no block.
+- **Older vaults.** An update of Eva gives each project of `Projects/` a `summary:` with its first paragraph. A note with a `> Important: <why>` line under its title gets `pinned: summary`, and the reason becomes its summary.
 
 ## What a chat can reach
 

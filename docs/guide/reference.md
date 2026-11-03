@@ -48,6 +48,10 @@ In the vault:
 | Setting                        | Default        | What it does                                                                                  |
 | ------------------------------ | -------------- | --------------------------------------------------------------------------------------------- |
 | `timeZone`                     | Asked at setup | The time zone of the reminders, and of the time in each message.                              |
+| `language`                     | Asked at setup | The language of Eva's answers, such as `Spanish`.                                             |
+| `units`                        | From setup     | `metric` or `imperial`. `null`: not set.                                                      |
+| `clock`                        | From setup     | `24h` or `12h`: the form of each time that Eva writes and shows. `null`: 24-hour.             |
+| `weekStart`                    | From setup     | The first day of the week, `monday` to `sunday`. `null`: Monday.                              |
 | `sync.pullIntervalMinutes`     | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.    |
 | `sync.sweepSeconds`            | `60`           | Seconds between two saves of changed notes.                                                   |
 | `updates.frequency`            | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                               |
@@ -85,7 +89,7 @@ On this computer:
 | `remoteAccess.allowedTailscaleIdentities` (security) | `[]`                                       | The Tailscale accounts that may ask for a device login. `[]`: only the owner of this computer.                                                                                                                                                   |
 | `remoteAccess.hostNames`                             | `[]`                                       | More host names that reach the web page, beside `127.0.0.1` and the Tailscale name.                                                                                                                                                              |
 
-Change a setting on the web Settings page, or with `eva settings set`. The update frequency, the update policy, the vault fetch and the trusted repository owners apply at once. Any other change applies at the next restart.
+Change a setting on the web Settings page, or with `eva settings set`. The update frequency, the update policy, the vault fetch, the trusted repository owners and the formats (`language`, `units`, `clock` and `weekStart`) apply at once: a new chat and the web page use them. Any other change applies at the next restart.
 
 - **Tokens:** log in to GitHub and Claude Code on the Settings page, or paste their tokens there. Paste the Telegram token there too. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that chats and the vault sync use it too. A card with a done login shows a green panel. Its **Log out** button removes the login, after a warning. Its **Log in again** button shows the steps again. A paired Telegram bot shows **Disconnect** and **Set up again** instead.
 - **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.

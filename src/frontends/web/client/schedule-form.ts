@@ -1,6 +1,7 @@
 /** The logic of the schedule form, apart from its markup: the values of a new or edited schedule. */
 import type { Schedule } from "../../../core/schedules/schedule-definitions.ts";
 import { intervalUnits, nextHourSlot } from "./schedule-words.ts";
+import { weekOrder, type WeekStart } from "../../../shared/time-format.ts";
 
 export type Repeat = "days" | "every";
 export type Unit = (typeof intervalUnits)[number][0];
@@ -18,6 +19,11 @@ export const weekDays = [
 
 /** The day codes as `Date.getUTCDay` counts them, as the parsed schedule holds its days. */
 const dayCodes = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** The day buttons in the order of the person's week (#770). The file keeps the order of `weekDays`. */
+export function weekDaysFrom(weekStart: WeekStart | null): (typeof weekDays)[number][] {
+  return weekOrder(weekStart).map((day) => weekDays[(day + 6) % 7] ?? weekDays[0]);
+}
 
 export interface ScheduleForm {
   readonly id: string;

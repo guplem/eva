@@ -1,5 +1,7 @@
 /** The words and the order of the notification center (#566). The page itself is NotificationCenter.tsx. */
 import type { HistoryEntry } from "../../../core/alerts/notification-history.ts";
+import { clockTime, type Clock } from "../../../shared/time-format.ts";
+import { displayFormat } from "./display-format.ts";
 
 export type CenterFilter = "all" | "unread" | "problems";
 
@@ -27,9 +29,9 @@ export function dayLabel(at: string, now: Date): string {
 }
 
 /** The hour and minute, after the day when the day is not today. */
-export function timeLabel(at: string, now: Date): string {
+export function timeLabel(at: string, now: Date, clock: Clock | null = displayFormat().clock): string {
   const date = new Date(at);
-  const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const time = clockTime(date.getHours(), date.getMinutes(), clock);
   const day = dayLabel(at, now);
   return day === "Today" ? time : `${day}, ${time}`;
 }

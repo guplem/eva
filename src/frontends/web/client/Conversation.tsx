@@ -74,6 +74,7 @@ import {
 } from "../../../shared/project-report.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
+import { displayFormat } from "./display-format.ts";
 
 interface ConversationProps {
   readonly root: SessionRecord;
@@ -500,7 +501,7 @@ function Branch({
       <TurnNotes notes={notes} live />
       {usageLimit !== undefined && !hasReset(usageLimit, new Date()) && (
         <div className={`usage-limit ${usageLimit.status}`} role="status">
-          {describeUsageLimit(usageLimit, new Date())}
+          {describeUsageLimit(usageLimit, new Date(), undefined, displayFormat().clock)}
         </div>
       )}
       {session.parentId === null &&

@@ -960,6 +960,8 @@ describe("routes", () => {
       ["prompt", "Your rules for Eva"],
       // The test vault has an active project, so the pinned files are a part too (#690, #769).
       ["prompt", "Your pinned files"],
+      // The format settings follow the pinned files (#770).
+      ["prompt", "Your format settings"],
       ["message", "Before each message"],
     ]);
     expect((await call("/api/sessions/unknown/context")).status).toBe(404);

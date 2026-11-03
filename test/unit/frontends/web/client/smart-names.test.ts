@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { dayOf, smartName } from "../../../../../src/frontends/web/client/smart-names.ts";
+import { setDisplayFormat } from "../../../../../src/frontends/web/client/display-format.ts";
 
 describe("smartName: a date at the start", () => {
   test("a year moves to the date, and the badge carries the extension (issue 429)", () => {
@@ -73,6 +74,18 @@ describe("smartName: a project folder", () => {
 describe("dayOf", () => {
   test("drops the time, and keeps a date with no time", () => {
     expect(dayOf("2 Mar 2026, 10:15")).toBe("2 Mar 2026");
+    expect(dayOf("2 Mar 2026, 10:15 AM")).toBe("2 Mar 2026");
     expect(dayOf("Mar 2026")).toBe("Mar 2026");
+  });
+});
+
+describe("the clock of a date in a name (#770)", () => {
+  test("follows the person's clock", () => {
+    setDisplayFormat({ clock: "12h", weekStart: null });
+    try {
+      expect(smartName("2026-03-02-1815-example-app", {}).date).toBe("2 Mar 2026, 6:15 PM");
+    } finally {
+      setDisplayFormat(undefined);
+    }
   });
 });

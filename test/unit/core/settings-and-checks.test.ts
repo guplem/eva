@@ -524,6 +524,29 @@ describe("settings", () => {
     expect(saved.widgets).toEqual({ checkIntervalMinutes: 120 });
     expect(() => eva.updateSettings({ widgets: { checkIntervalMinutes: 2 } })).toThrow("checkIntervalMinutes");
   });
+
+  test("the format settings live in the vault and apply with no restart (#770)", () => {
+    const config = eva.publicSettings().config;
+    expect([config.language, config.units, config.clock, config.weekStart]).toEqual([null, null, null, null]);
+    expect(eva.updateSettings({ language: "Spanish", units: "imperial", clock: "12h", weekStart: "sunday" })).toEqual({
+      saved: true,
+      restartNeeded: false,
+    });
+    const saved = JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8")) as Record<string, unknown>;
+    expect(saved).toMatchObject({ language: "Spanish", units: "imperial", clock: "12h", weekStart: "sunday" });
+    expect(() => eva.updateSettings({ clock: "13h" })).toThrow("clock");
+    expect(() => eva.updateSettings({ weekStart: "Sunday" })).toThrow("weekStart");
+  });
+
+  test("a save keeps a top-level key of the vault's file that this Eva does not know, such as a newer satellite's", () => {
+    const file = vaultSettingsPath(vault);
+    eva.updateSettings({ language: "Spanish" });
+    const before = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
+    writeFileSync(file, JSON.stringify({ ...before, aNewerSetting: "kept" }));
+    eva.updateSettings({ language: "Catalan" });
+    const saved = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
+    expect(saved).toMatchObject({ language: "Catalan", aNewerSetting: "kept" });
+  });
 });
 
 describe("runCheck", () => {

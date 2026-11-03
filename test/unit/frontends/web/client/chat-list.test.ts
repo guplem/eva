@@ -57,6 +57,7 @@ describe("chatGroup", () => {
 describe("chatTime", () => {
   test("shows the hour today, the weekday this week, and the date before", () => {
     expect(chatTime(new Date(2026, 9, 19, 9, 4), now)).toBe("09:04");
+    expect(chatTime(new Date(2026, 9, 19, 21, 4), now, "12h")).toBe("9:04 PM");
     expect(chatTime(new Date(2026, 9, 18, 9, 4), now)).toBe("Sun");
     expect(chatTime(new Date(2026, 9, 2, 9, 4), now)).toBe("2 Oct");
     expect(chatTime(new Date(2025, 11, 31, 9, 4), now)).toBe("31 Dec 2025");

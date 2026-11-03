@@ -40,9 +40,7 @@ afterEach(() => {
 
 const answers = {
   name: "Alex",
-  language: "English",
   notesLanguage: "Spanish",
-  timeZone: "Europe/Madrid",
   topics: ["Work", "Music"],
 };
 
@@ -67,13 +65,20 @@ describe("the vault template", () => {
       "AGENTS.md",
       "Library/.gitkeep",
       "Life/About me.md",
+      "Life/Health/Allergies and Diet.md",
       "Methods/.gitkeep",
       "Principles/.gitkeep",
       "Projects/.gitkeep",
       "README.md",
       "Toolbox/.gitkeep",
     ]);
-    expect(files["Life/About me.md"]).toContain("- **Name:** Alex");
+    // The answer language and the time zone are settings now (#770): no line in the note.
+    expect(files["Life/About me.md"]).toContain("# About Alex");
+    expect(files["Life/About me.md"]).not.toContain("Language for answers");
+    expect(files["Life/About me.md"]).not.toContain("Time zone");
+    expect(files["Life/About me.md"]).toContain("\npinned: full ");
+    expect(files["Life/Health/Allergies and Diet.md"]).toContain("pinned: full");
+    expect(files["Life/Health/Allergies and Diet.md"]).toContain("None recorded.");
     // The header holds the name as one YAML value, and every other fact empty.
     expect(files["Life/About me.md"]).toStartWith("---\n");
     expect(files["Life/About me.md"]).toContain('\nname: "Alex"\n');
@@ -84,7 +89,6 @@ describe("the vault template", () => {
     expect(vaultTemplateFiles({ ...answers, topics: [] })["Life/About me.md"]).toContain(
       "## Main topics\n\nNone yet.\n",
     );
-    expect(files["Life/About me.md"]).toContain("Europe/Madrid");
     expect(Object.values(files).join("\n")).not.toContain("{{");
     expect(JSON.parse(files[".eva/schedules.json"] ?? "")).toEqual({ version: 1, schedules: [] });
     expect(files[".gitignore"]).toContain("Projects/*/repos/");

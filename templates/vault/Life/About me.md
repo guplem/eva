@@ -1,32 +1,26 @@
 ---
-# The basic facts about the person, for Eva and her scripts. The about-me skill says how to fill each field.
+# The basic identity of the person, for Eva and her scripts. The about-me skill says how to fill each field.
+pinned: full # full, summary or false. full: Eva reads this whole note in every chat
+summary: # one line about the person, which Eva reads when pinned is summary
 name: "{{nameInQuotes}}"
 givenName:
 familyName:
 nickname:
 pronouns:
 birthDate: # YYYY-MM-DD
+contact: # the person's own phone and email
 region: # ISO 3166 code, such as ES or ES-CT
 hemisphere: # north or south
-units: # metric or imperial
-clock: # 24h or 12h
-weekStart: # monday to sunday
-sleep: # from and to, as HH:mm
-work: # from, to and days
-places: # home, work and other places, each with a city
-people: # each with a name, a relation and a birthDate
-dates: # each with a name and a date
-diet:
-allergies:
+places: # home, with its address and city
+work: # a link to the open job in Life/Periods/, and the work hours: from, to and days
+languages: # each with a level, such as native or B2
 # Eva's code fills lastLocation from your phone. Keep it as it is.
 lastLocation:
 ---
 
 # About {{name}}
 
-- **Name:** {{name}}
-- **Language for answers:** {{language}}
-- **Time zone:** {{timeZone}}
+This note holds only the basic identity of {{name}}. Everything else has its own place, as `AGENTS.md` says.
 
 ## Main topics
 

@@ -7,6 +7,7 @@ import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migrat
 import { AssistantPreparer, type AssistantPreparerOptions } from "../../../../src/core/modes/assistant-mode.ts";
 import { cloneNotesFile, evaFileMarker, ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { widgetsIntro } from "../../../../src/core/modes/widgets-block.ts";
+import type { FormatSettings } from "../../../../src/core/modes/format-block.ts";
 import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
 import { discoverProjects } from "../../../../src/core/projects/project-catalog.ts";
 import { CloneOriginStore, TrustStore } from "../../../../src/core/projects/clones.ts";
@@ -291,6 +292,61 @@ describe("Assistant mode", () => {
     const second = await preparer.prepare(session());
     expect(second.appendSystemPrompt).toBe(first.appendSystemPrompt);
     expect(first.messagePrefix).toBe("[Local time: 2026-10-14 12:30, Europe/Madrid]");
+  });
+
+  test("the format settings follow the pinned files, fixed for the chat, and the clock shapes the local time (#770)", async () => {
+    let settings: FormatSettings = {
+      language: "Spanish",
+      timeZone: "Europe/Madrid",
+      units: null,
+      clock: "12h",
+      weekStart: "sunday",
+    };
+    const preparer = assistant(silentRunner, new FakeSync(), [], { formatSettings: () => settings });
+    const first = await preparer.prepare(session());
+    expect(first.appendSystemPrompt).toBe(
+      [
+        "Base rules.",
+        "",
+        "# You are Eva",
+        "",
+        "# The person's format settings",
+        "",
+        "- Answer language: Spanish",
+        "- Time zone: Europe/Madrid",
+        "- Units: not set",
+        "- Clock: 12h",
+        "- First day of the week: sunday",
+        "",
+        "These settings win over any older rule about the answer language, dates, times or units.",
+        "",
+      ].join("\n"),
+    );
+    expect(first.messagePrefix).toBe("[Local time: 2026-10-14 12:30 PM, Europe/Madrid]");
+    settings = { ...settings, language: "English" };
+    expect((await preparer.prepare(session())).appendSystemPrompt).toBe(first.appendSystemPrompt);
+    const formatPart = async (id: string): Promise<string | null | undefined> =>
+      (await preparer.describe(session({ id }))).parts.find((part) => part.title === "Your format settings")?.text;
+    expect(await formatPart("s1")).toContain("Answer language: Spanish");
+    expect(await formatPart("s2")).toContain("Answer language: English");
+  });
+
+  test("the local time of a chat uses the zone and the clock of its format block (#770)", async () => {
+    let settings: FormatSettings = {
+      language: null,
+      timeZone: "Asia/Tokyo",
+      units: null,
+      clock: "12h",
+      weekStart: null,
+    };
+    const preparer = assistant(silentRunner, new FakeSync(), [], { formatSettings: () => settings });
+    expect((await preparer.prepare(session())).messagePrefix).toBe("[Local time: 2026-10-14 7:30 PM, Asia/Tokyo]");
+    // A later change reaches the next chat; this one keeps what its block says.
+    settings = { ...settings, timeZone: "Europe/Madrid", clock: "24h" };
+    expect((await preparer.prepare(session())).messagePrefix).toBe("[Local time: 2026-10-14 7:30 PM, Asia/Tokyo]");
+    expect((await preparer.prepare(session({ id: "s2" }))).messagePrefix).toBe(
+      "[Local time: 2026-10-14 12:30, Europe/Madrid]",
+    );
   });
 
   test("a bad field in Life/About me.md adds a note to the message, so Eva fixes it", async () => {

@@ -10,6 +10,7 @@ import {
   readAboutMe,
   readHomePlace,
   readLastLocation,
+  readOldFormatFields,
   withHeaderField,
 } from "../../../../src/core/vault/about-me.ts";
 import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -34,6 +35,15 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(vault, { recursive: true, force: true });
 });
+
+/** Records the format migration in the vault, as the hub does at start. */
+function recordFormatMigration(): void {
+  mkdirSync(join(vault, ".eva"), { recursive: true });
+  writeFileSync(
+    join(vault, ".eva", "migrations.json"),
+    JSON.stringify({ applied: [{ id: "2026-11-03-format-settings", at: "", version: "1.50.0" }] }),
+  );
+}
 
 function note(header: string, body = "# About Alex\n"): void {
   writeFileSync(join(vault, "Life", "About me.md"), `---\n${header}\n---\n\n${body}`);
@@ -78,9 +88,6 @@ describe("readAboutMe", () => {
         "birthDate: 14 May 1990",
         "region: Catalonia",
         "hemisphere: up",
-        "clock: 25h",
-        "units: cubits",
-        "weekStart: someday",
         "sleep:",
         "  from: late",
         "places: home",
@@ -100,9 +107,6 @@ describe("readAboutMe", () => {
       "birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
       "region must be a country code, such as ES, or a region code, such as ES-CT.",
       "hemisphere must be north or south.",
-      "clock must be 12h or 24h.",
-      "units must be metric or imperial.",
-      "weekStart must be a day, such as monday.",
       "sleep.from must be a time as HH:mm.",
       "places must be a set of named places.",
       "people[0].birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
@@ -121,6 +125,64 @@ describe("readAboutMe", () => {
     expect(readAboutMe(vault).problems).toEqual([
       "birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
     ]);
+  });
+});
+
+describe("the format fields that moved to the settings (#770)", () => {
+  test("before the hub migrates the vault, they raise no problem, also with a bad value", () => {
+    note("clock: 12h\nunits: cubits\nweekStart: someday");
+    expect(readAboutMe(vault).problems).toEqual([]);
+  });
+
+  test("after the migration, each one in the header names the setting where it belongs now", () => {
+    recordFormatMigration();
+    note("name: Alex\nclock: 12h\nweekStart:");
+    expect(readAboutMe(vault).problems).toEqual([
+      "clock is an Eva setting now. When the setting is not set, set it with eva settings set clock; when it holds another value, ask the person which one is right first. Then remove the field from this note.",
+      "weekStart is an Eva setting now. When the setting is not set, set it with eva settings set weekStart; when it holds another value, ask the person which one is right first. Then remove the field from this note.",
+    ]);
+  });
+
+  test("the old personal fields stay valid until the vault upgrade", () => {
+    recordFormatMigration();
+    note(
+      [
+        'sleep: { from: "23:30", to: "07:30" }',
+        "people:",
+        "  - { name: Sam, relation: partner, birthDate: 1991-02-03 }",
+        "dates:",
+        "  - { name: Wedding anniversary, date: 2018-09-15 }",
+        "diet: [vegetarian]",
+        "allergies: [peanuts]",
+        'work: { period: "[[Life/Periods/2024-01-08-example-job/Period]]" }',
+        "contact: { email: alex@example.com }",
+        "languages: [English (native)]",
+      ].join("\n"),
+    );
+    expect(readAboutMe(vault).problems).toEqual([]);
+    note("people:\n  - { name: Sam, birthDate: soon }");
+    expect(readAboutMe(vault).problems).toEqual([
+      "people[0].birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
+    ]);
+  });
+});
+
+describe("readOldFormatFields", () => {
+  test("reads the valid units, clock and week start of the header", () => {
+    note("units: imperial\nclock: 12h\nweekStart: sunday", "# About Alex\n\n- **Language for answers:** Spanish\r\n");
+    expect(readOldFormatFields(vault)).toEqual({
+      language: "Spanish",
+      units: "imperial",
+      clock: "12h",
+      weekStart: "sunday",
+    });
+  });
+
+  test("reads a bad, empty or missing one as null", () => {
+    note("units: cubits\nclock:", "- **Language for answers:**\n");
+    expect(readOldFormatFields(vault)).toEqual({ language: null, units: null, clock: null, weekStart: null });
+    rmSync(join(vault, "Life", "About me.md"));
+    expect(readOldFormatFields(vault)).toEqual({ language: null, units: null, clock: null, weekStart: null });
   });
 });
 
@@ -163,9 +225,7 @@ describe("a new vault's note", () => {
   test("reads with the name and no problem", () => {
     const files = vaultTemplateFiles({
       name: 'Alex "Lex" Example',
-      language: "English",
       notesLanguage: "English",
-      timeZone: "UTC",
       topics: [],
     });
     writeFileSync(join(vault, "Life", "About me.md"), files["Life/About me.md"] ?? "");
@@ -181,9 +241,7 @@ describe("a new vault's note", () => {
   test("has an empty lastLocation that Eva fills in place", () => {
     const text = vaultTemplateFiles({
       name: "Alex",
-      language: "English",
       notesLanguage: "English",
-      timeZone: "UTC",
       topics: [],
     })["Life/About me.md"];
     expect(parseLastLocation(text ?? "")).toBeNull();

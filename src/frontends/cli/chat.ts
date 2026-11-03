@@ -3,6 +3,7 @@ import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 import type { ApprovalQuestion, QuestionAnswer, SessionEvent } from "../../shared/events.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
+import { isClock, type Clock } from "../../shared/time-format.ts";
 import { refusalOf } from "./client.ts";
 
 export interface ChatOptions {
@@ -17,6 +18,18 @@ export interface ChatOptions {
   /** The next line the person typed, or null at the end of input. */
   readonly readLine: () => Promise<string | null>;
   readonly write: (text: string) => void;
+}
+
+/** The person's clock, from Eva's status. Null when an older Eva does not say, or the read fails. */
+async function readClock(baseUrl: string, headers: Readonly<Record<string, string>>): Promise<Clock | null> {
+  try {
+    const response = await fetch(`${baseUrl}/api/status`, { headers });
+    if (!response.ok) return null;
+    const clock = ((await response.json()) as { format?: { clock?: unknown } }).format?.clock;
+    return isClock(clock) ? clock : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function runChat(options: ChatOptions): Promise<void> {
@@ -39,6 +52,8 @@ export async function runChat(options: ChatOptions): Promise<void> {
   const session = (await created.json()) as { id: string; startFolder: string };
   options.write(`Chat ${session.id} in ${session.startFolder}. Type /rename <title> to name it, or /exit to leave.\n`);
 
+  // Before the stream opens, so the wait never drops an event.
+  const clock = await readClock(options.baseUrl, headers);
   const socket = new WebSocket(`${options.baseUrl.replace(/^http/, "ws")}/api/events`, {
     headers,
   } as unknown as string[]);
@@ -79,7 +94,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
   const waiting: Extract<SessionEvent, { kind: "approval_needed" }>[] = [];
   /** The requests that another front end answered, so the terminal stops asking about them. */
   const resolved = new Map<string, Extract<SessionEvent, { kind: "approval_resolved" }>>();
-  const print = createEventPrinter();
+  const print = createEventPrinter(clock);
   socket.addEventListener("message", (message) => {
     const event = JSON.parse(String(message.data)) as SessionEvent;
     if (event.sessionId !== session.id) return;
@@ -251,7 +266,7 @@ async function renameChat(
  * Prints each event of one chat. It writes the pieces of a block as they come, so at the block's
  * final text it writes only the rest. A final text that differs, such as a redacted one, comes again in full.
  */
-export function createEventPrinter(): (event: SessionEvent) => string | null {
+export function createEventPrinter(clock: Clock | null = null): (event: SessionEvent) => string | null {
   let written = "";
   let lineOpen = false;
   return (event) => {
@@ -262,7 +277,7 @@ export function createEventPrinter(): (event: SessionEvent) => string | null {
       lineOpen = true;
       return `${endLine}${event.text}`;
     }
-    const described = describeEvent(event);
+    const described = describeEvent(event, clock);
     if (event.kind === "text" && written !== "") {
       const block = written;
       const endLine = lineOpen ? "\n" : "";
@@ -278,7 +293,8 @@ export function createEventPrinter(): (event: SessionEvent) => string | null {
   };
 }
 
-export function describeEvent(event: SessionEvent): string | null {
+/** `clock` shapes the reset time of a usage limit. */
+export function describeEvent(event: SessionEvent, clock: Clock | null = null): string | null {
   switch (event.kind) {
     case "text":
       return `${event.text}\n`;
@@ -294,7 +310,7 @@ export function describeEvent(event: SessionEvent): string | null {
     case "history_lost":
       return "  (The earlier history of this chat is lost.)\n";
     case "usage_limit":
-      return `  (${describeUsageLimit(event, new Date())})\n`;
+      return `  (${describeUsageLimit(event, new Date(), undefined, clock)})\n`;
     case "turn_failed":
       return `  The turn failed: ${event.reason}\n`;
     case "session_deleted":

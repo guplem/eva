@@ -225,6 +225,9 @@ const newVaultSchema = z.object({
   repository: z.string().max(2_000),
   // A page from before #707 sends none, and the core then says that the password is too short.
   password: z.string().max(1_000).default(""),
+  // The browser's locale and zone (#770). A page from before sends none: the hub's own serve.
+  locale: z.string().max(100).optional(),
+  timeZone: z.string().max(100).optional(),
 });
 const claudeLoginSchema = z.object({ code: z.string().min(1).max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });

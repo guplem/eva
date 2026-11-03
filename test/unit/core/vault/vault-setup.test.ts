@@ -132,8 +132,37 @@ describe("VaultSetup", () => {
     // An empty answer keeps the recommended language for notes.
     expect(readFileSync(join(folder, "AGENTS.md"), "utf8")).toContain("**Write all notes in English**");
     expect(loadConfig(paths).vaultPath).toBe(folder);
+    // The answer language and this computer's time zone go to the vault's settings, not to the note (#770).
+    const settings = JSON.parse(readFileSync(join(folder, ".eva", "settings", "settings.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(settings["language"]).toBe("English");
+    expect(settings["timeZone"]).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(readFileSync(join(folder, "Life", "About me.md"), "utf8")).not.toContain("Language for answers");
     expect(sandbox.git(join(sandbox.root, "my-vault.git"), "log", "--oneline", "main")).toContain("template");
     expect(await setup(api.baseUrl).needsPush()).toBe(false);
+  });
+
+  test("a new vault takes the formats and the zone of the browser, since the hub may have none (#770)", async () => {
+    const result = await setup().create({
+      ...answers,
+      repository: "",
+      language: "Spanish",
+      locale: "es-ES",
+      timeZone: "Europe/Madrid",
+    });
+    expect(result.problem).toBeNull();
+    const settings = JSON.parse(
+      readFileSync(join(result.folder, ".eva", "settings", "settings.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(settings).toMatchObject({
+      language: "Spanish",
+      timeZone: "Europe/Madrid",
+      clock: "24h",
+      weekStart: "monday",
+      units: "metric",
+    });
   });
 
   test("a failed create keeps the local vault, and a push later puts it on GitHub", async () => {

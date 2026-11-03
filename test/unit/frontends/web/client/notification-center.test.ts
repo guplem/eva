@@ -27,6 +27,7 @@ describe("dayLabel and timeLabel", () => {
     expect(timeLabel(at(25, 9), now)).toBe("09:05");
     expect(timeLabel(at(24, 18), now)).toBe("Yesterday, 18:05");
     expect(timeLabel(at(20, 7), now)).toBe("Tue 20 Oct, 07:05");
+    expect(timeLabel(at(24, 18), now, "12h")).toBe("Yesterday, 6:05 PM");
   });
 });
 

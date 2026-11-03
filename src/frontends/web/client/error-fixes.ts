@@ -32,3 +32,8 @@ export function errorFix(code: EvaErrorCode | null): ErrorFix | null {
   const route = fixedInSettings[code];
   return route === undefined ? null : { label: "Open Settings", address: settingsHash(route) };
 }
+
+/** A press on the button where it leads would do nothing, so the button shows only on another page. */
+export function fixButtonShown(fix: ErrorFix | null, hash: string): fix is ErrorFix {
+  return fix !== null && fix.address !== hash;
+}

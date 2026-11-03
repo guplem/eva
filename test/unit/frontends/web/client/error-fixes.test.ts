@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { errorFix } from "../../../../../src/frontends/web/client/error-fixes.ts";
+import { errorFix, fixButtonShown } from "../../../../../src/frontends/web/client/error-fixes.ts";
 import { setupBlock } from "../../../../../src/frontends/web/client/new-chat.ts";
 
 describe("errorFix", () => {
@@ -21,5 +21,23 @@ describe("errorFix", () => {
   test("a failure that Settings cannot fix has no button", () => {
     expect(errorFix("session_not_found")).toBeNull();
     expect(errorFix(null)).toBeNull();
+  });
+});
+
+describe("fixButtonShown", () => {
+  const fix = { label: "Open Settings", address: "#/settings/connections/github" };
+
+  test("shows the button on any other page, also on another Settings page (#799)", () => {
+    expect(fixButtonShown(fix, "#/chats")).toBe(true);
+    expect(fixButtonShown(fix, "#/settings")).toBe(true);
+    expect(fixButtonShown(fix, "#/settings/updates/versions")).toBe(true);
+  });
+
+  test("hides the button where it leads, since a press there would do nothing", () => {
+    expect(fixButtonShown(fix, "#/settings/connections/github")).toBe(false);
+  });
+
+  test("hides it when no page fixes the failure", () => {
+    expect(fixButtonShown(null, "#/chats")).toBe(false);
   });
 });

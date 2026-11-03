@@ -82,6 +82,11 @@ describe("entryState", () => {
     expect(entryState(entry(1, "a", "news"), new Set(["a"]))).toBeNull();
   });
 
+  test("gives the vault structure warning no state: a read warning is not solved (#801)", () => {
+    expect(entryState(entry(1, "vault_structure", "warn"), new Set())).toBeNull();
+    expect(entryState(entry(1, "vault_structure", "warn"), new Set(["vault_structure"]))).toBeNull();
+  });
+
   test("gives a one-off problem no state: it is never open, but not solved either", () => {
     expect(entryState(entry(1, "migration_failed:vault", "error"), new Set())).toBeNull();
     expect(entryState(entry(1, "unclean_exit", "warn"), new Set())).toBeNull();

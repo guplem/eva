@@ -4060,6 +4060,26 @@ test("the visor counts the open problems, and its center lists each with the but
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("the vault structure warning opens Settings on the Vault structure card (#801)", async ({ page }) => {
+  await routeProblems(page, [
+    {
+      key: "vault_structure",
+      level: "warn",
+      message: "A new vault structure (version 3) is ready. Your vault is at version 2.",
+    },
+  ]);
+  await logIn(page);
+  await openCenter(page);
+  const needs = page.getByRole("region", { name: "Problems" });
+  await expect(needs).toContainText("A new vault structure (version 3) is ready.");
+  await expect(needs.getByRole("button", { name: "Mark as read" })).toBeVisible();
+  await needs.getByRole("button", { name: "Open Settings" }).click();
+  await expect(page).toHaveURL(/#\/settings\/vault\/vault-structure$/);
+  await expect(page.getByRole("region", { name: "Vault structure" })).toBeInViewport();
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("the center keeps its settings gear beside the title, and 'Mark all as read' beside the filters", async ({
   page,
 }) => {

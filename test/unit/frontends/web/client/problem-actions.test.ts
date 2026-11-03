@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   claudeLoginExpired,
+  closedEntryAction,
   isOtherMachineProblem,
-  newsAction,
   problemAction,
   problemSettingsRoute,
   shownProblems,
@@ -14,12 +14,12 @@ import {
   type SettingsRoute,
 } from "../../../../../src/frontends/web/client/settings-routes.ts";
 
-describe("newsAction", () => {
-  test("the vault structure news of #773 opens its Settings card, and other news has no button (#801)", () => {
-    expect(newsAction("vault_structure", true)).toBe("open_settings");
-    // After the upgrade, or on a satellite, the old news has no button.
-    expect(newsAction("vault_structure", false)).toBeNull();
-    expect(newsAction("update_held_back", true)).toBeNull();
+describe("closedEntryAction", () => {
+  test("a vault structure entry of any level opens its Settings card, and other entries have no button (#801)", () => {
+    expect(closedEntryAction("vault_structure", true)).toBe("open_settings");
+    // After the upgrade, or on a satellite, the entry has no button.
+    expect(closedEntryAction("vault_structure", false)).toBeNull();
+    expect(closedEntryAction("update_held_back", true)).toBeNull();
   });
 });
 

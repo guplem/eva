@@ -136,10 +136,11 @@ export function sameProblemEntries(entries: readonly HistoryEntry[], key: string
 }
 
 /**
- * Whether the problem of an entry is still open. Null for news, which is no problem, and for a
- * one-off problem: it is never open, but that does not make it solved.
+ * Whether the problem of an entry is still open. Null for news, which is no problem, for a
+ * one-off problem: it is never open, but that does not make it solved, and for the vault
+ * structure warning: a read warning is not solved (#801).
  */
 export function entryState(entry: HistoryEntry, openKeys: ReadonlySet<string>): "open" | "solved" | null {
-  if (entry.level === "news" || oneOffKinds.has(kindOf(entry.key))) return null;
+  if (entry.level === "news" || oneOffKinds.has(kindOf(entry.key)) || entry.key === "vault_structure") return null;
   return openKeys.has(entry.key) ? "open" : "solved";
 }

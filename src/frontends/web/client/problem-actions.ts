@@ -67,10 +67,11 @@ export function problemSettingsRoute(key: string): SettingsRoute {
 }
 
 /**
- * The button of a news entry, which is never open: the vault structure news of #773 opens its
- * Settings card, while the upgrade is open to this computer. The card is the one way in (#801).
+ * The button of an entry whose problem is not open: a vault structure entry, news of #773 or a
+ * warning of #801, opens its Settings card while the upgrade is open to this computer. The card is
+ * the one way in.
  */
-export function newsAction(key: string, canUpgradeVault: boolean): ProblemAction | null {
+export function closedEntryAction(key: string, canUpgradeVault: boolean): ProblemAction | null {
   return key === "vault_structure" && canUpgradeVault ? "open_settings" : null;
 }
 

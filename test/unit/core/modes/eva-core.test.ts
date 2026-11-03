@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { upgradeTemplateTexts } from "../../../../src/core/vault/vault-template.ts";
 import {
   existsSync,
   mkdirSync,
@@ -31,7 +32,30 @@ describe("eva-core", () => {
     const files = evaCoreFiles();
     expect(JSON.parse(files[".claude-plugin/plugin.json"] ?? "")).toMatchObject({ name: "eva-core" });
     for (const name of evaCoreSkillNames) expect(files[`skills/${name}/SKILL.md`]).toContain(`\nname: ${name}\n`);
-    expect(Object.values(files).join("\n")).not.toContain("{{");
+    // The vault upgrade keeps the setup placeholders of the template on purpose: one matches any value.
+    const filled = Object.entries(files).filter(([path]) => !path.startsWith("skills/vault-upgrade/"));
+    expect(filled.map(([, text]) => text).join("\n")).not.toContain("{{");
+  });
+
+  test("vault-upgrade carries its CHANGELOG, the newest template, and every shipped version of the replaced files (#773)", () => {
+    const files = evaCoreFiles();
+    expect(files["skills/vault-upgrade/CHANGELOG.md"]).toContain("## v3");
+    for (const [path, text] of Object.entries(upgradeTemplateTexts)) {
+      expect(files[`skills/vault-upgrade/template/${path}`]).toBe(text);
+    }
+    // When a replaced file of the template changes, run scripts/vault-template-history.ts.
+    for (const path of ["AGENTS.md", "README.md", ".eva/assistant.md", "Life/About me.md"]) {
+      const shipped = Object.entries(files)
+        .filter(([file]) => file.startsWith(`skills/vault-upgrade/shipped/${path}/`))
+        .map(([, text]) => text);
+      expect(shipped.length).toBeGreaterThan(1);
+      expect(shipped).toContain(upgradeTemplateTexts[path] ?? "");
+    }
+    expect(files["skills/vault-upgrade/shipped/AGENTS.md/01.md"]).toBeDefined();
+    const skill = files["skills/vault-upgrade/SKILL.md"] ?? "";
+    for (const step of ["start", "finish", "drop", "undo"]) expect(skill).toContain(`eva vault-upgrade ${step}`);
+    for (const rule of ["byte for byte", "Yolo mode", "one message", "git mv", "git status --ignored"])
+      expect(skill).toContain(rule);
   });
 
   test("eva-issue holds the issue procedure, in Eva's own repository (#771)", () => {

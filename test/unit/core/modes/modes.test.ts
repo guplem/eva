@@ -287,12 +287,12 @@ describe("Assistant mode", () => {
     expect((await preparer.describe(session())).parts.map((part) => part.title)).not.toContain("Your pinned files");
   });
 
-  test("before the hub migrates the vault, the prompt adds the sections that left the built-in prompt", async () => {
+  test("the prompt sends the person's rules as they are, also before the hub migrates the vault (#771)", async () => {
     rmSync(vaultMigrationRecordPath(vault));
-    const prompt = (await assistant(silentRunner).prepare(session())).appendSystemPrompt ?? "";
-    expect(prompt.startsWith("Base rules.\n\n# You are Eva\n\n## Answering from the notes\n")).toBe(true);
-    expect(prompt).toContain("\n## Learning\n");
-    expect(prompt).toContain("\n## Style\n");
+    expect((await assistant(silentRunner).prepare(session())).appendSystemPrompt).toBe(
+      "Base rules.\n\n# You are Eva\n",
+    );
+    expect((await assistant(silentRunner).describe(session({ id: "s2" }))).parts[1]?.text).toBe("# You are Eva\n");
   });
 
   test("the prompt is byte-identical every turn, and the local time goes in the message (lesson 40)", async () => {

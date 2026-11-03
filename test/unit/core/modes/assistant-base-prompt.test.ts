@@ -27,7 +27,7 @@ describe("assistantBasePrompt", () => {
   });
 
   test("leaves the tone and how proactive Eva is to the person's rules, which can change them (#771)", () => {
-    for (const section of ["## Style"]) {
+    for (const section of ["## Style", "## Behaviour"]) {
       expect(assistantBasePrompt).not.toContain(section);
       expect(defaultAssistantRules).toContain(section);
     }

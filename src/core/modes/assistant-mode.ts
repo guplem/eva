@@ -14,7 +14,6 @@ import type { ContextPart } from "../../shared/chat-context.ts";
 import type { Project } from "../projects/project-catalog.ts";
 import type { ModeContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
-import { moveAssistantPersonality, withMovedSections } from "../migrations/assistant-rules-move.ts";
 import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 import { aboutMeProblemNote, readAboutMe } from "../vault/about-me.ts";
 import { pinFiles } from "../migrations/pinned-files.ts";
@@ -109,7 +108,7 @@ export class AssistantPreparer implements TurnPreparer {
     // (lesson 115), so the appended text stays byte-identical and the prompt cache holds (lesson 40).
     // A restart reads it again.
     const kept = this.promptBySession.get(session.id) ?? {
-      rules: this.personalRules(personalRulesPath),
+      rules: readFileSync(personalRulesPath, "utf-8"),
       pinned: this.pinnedBlockNow(),
       format: this.formatBlockNow(),
       widgets: this.widgetsBlockNow(),
@@ -140,7 +139,7 @@ export class AssistantPreparer implements TurnPreparer {
     // A file that Eva cannot read must not break the whole details, so this read never throws.
     const onDisk = readTextTolerant(rulesPath);
     // A running chat keeps the rules and the pinned files of its first turn since Eva started, even when they changed.
-    const rules = kept?.rules ?? (onDisk === null ? null : this.withPersonality(onDisk));
+    const rules = kept?.rules ?? onDisk;
     const pinned = kept === undefined ? this.pinnedBlockNow() : kept.pinned;
     const format = kept === undefined ? this.formatBlockNow() : kept.format;
     const widgets = kept === undefined ? this.widgetsBlockNow() : kept.widgets;
@@ -272,19 +271,6 @@ export class AssistantPreparer implements TurnPreparer {
     const time = `[Local time: ${formatLocalTime(this.options.now(), zone, format?.settings.clock ?? null)}, ${zone}]`;
     const note = aboutMeProblemNote(readAboutMe(this.options.vaultPath).problems);
     return note === null ? time : `${time}\n${note}`;
-  }
-
-  /**
-   * Only the hub migrates the vault. Until it does, a satellite adds the sections that left the
-   * built-in prompt itself, so its rules stay whole. Remove this after one release.
-   */
-  private personalRules(path: string): string {
-    return this.withPersonality(readFileSync(path, "utf-8"));
-  }
-
-  private withPersonality(text: string): string {
-    const migrated = migrationApplied(vaultMigrationRecordPath(this.options.vaultPath), moveAssistantPersonality.id);
-    return migrated ? text : (withMovedSections(text) ?? text);
   }
 
   async afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null> {

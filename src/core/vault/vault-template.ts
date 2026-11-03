@@ -11,6 +11,8 @@ import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { vaultFolders } from "./vault-folders.ts";
 import { writeVaultKey } from "./secret-state.ts";
+import { evaVersion } from "../../shared/version.ts";
+import { moveAssistantPersonality } from "../migrations/assistant-rules-move.ts";
 import type { VaultKeyFile } from "./vault-crypto.ts";
 import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" };
 import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
@@ -56,8 +58,14 @@ export interface NewVaultInputs {
 
 const gitTimeoutMs = 20_000;
 
+/**
+ * The frozen migration of 2026-10-20 appends the sections that the base prompt holds now (#771). A
+ * new vault records it as applied, so its short rules stay short. The hub runs every other migration.
+ */
+const appliedAtStart = moveAssistantPersonality.id;
+
 /** The template's files, by path from the vault root, with the answers filled in. */
-export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string, string> {
+export function vaultTemplateFiles(answers: VaultTemplateAnswers, now: Date = new Date()): Record<string, string> {
   // "None yet." shows that the section is empty on purpose, not broken.
   const topicList = answers.topics.length === 0 ? "None yet." : answers.topics.map((topic) => `- ${topic}`).join("\n");
   const fill = (text: string): string =>
@@ -75,6 +83,8 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
     "Life/About me.md": fill(aboutFile),
     "Life/Health/Allergies and Diet.md": allergiesFile,
     ".eva/schedules.json": JSON.stringify({ version: 1, schedules: [] }, null, 2) + "\n",
+    ".eva/migrations.json":
+      JSON.stringify({ applied: [{ id: appliedAtStart, at: now.toISOString(), version: evaVersion }] }, null, 2) + "\n",
     ".eva/.claude-plugin/plugin.json":
       JSON.stringify(
         {

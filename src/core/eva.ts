@@ -26,6 +26,7 @@ import {
   type PiLoginMethod,
   type PiLogins,
   type PiLoginState,
+  type PiModel,
   type PiProvider,
 } from "../shared/pi-login.ts";
 import type { SessionEvent, TurnUsage } from "../shared/events.ts";
@@ -2612,6 +2613,11 @@ export class Eva {
 
   stopPiLogin(): void {
     this.options.piLogin?.stop();
+  }
+
+  /** The models of pi's logins, for the tier fields of the pi card. */
+  piModels(): Promise<PiModel[]> {
+    return this.piLogins().models(this.piLoginPlace());
   }
 
   async logOutOfPi(provider: string): Promise<void> {

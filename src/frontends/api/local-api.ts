@@ -1118,6 +1118,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (method === "POST" && url.pathname === "/api/engines/claude-code/login") return json(await eva.startClaudeLogin());
   if (method === "POST" && url.pathname === "/api/engines/claude-code/login/finish")
     return json(await eva.finishClaudeLogin(claudeLoginSchema.parse(await request.json()).code));
+  if (url.pathname === "/api/engines/pi/models" && method === "GET") return json(await eva.piModels());
   if (url.pathname === "/api/engines/pi/providers" && method === "GET") return json(await eva.piProviders());
   if (url.pathname.startsWith("/api/engines/pi/providers/") && method === "DELETE") {
     await eva.logOutOfPi(decodeURIComponent(url.pathname.slice("/api/engines/pi/providers/".length)));

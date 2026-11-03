@@ -1,7 +1,8 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { effortLevels, modelAliases, modelTierName, type ModelAlias } from "../../../shared/engine-port.ts";
 import { effortName } from "./conversation-parts.ts";
+import type { PiModel } from "../../../shared/pi-login.ts";
 import { api, type PublicSettings } from "./api.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
@@ -318,6 +319,14 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
   // The save trims, so a space at the end is no change.
   const changed = modelAliases.some((model) => models[model].trim() !== initial[model]);
   useLeaveGuard(changed, save);
+  // The models of pi's logins, which each field suggests. Free text still saves: a list that fails stays empty.
+  const [choices, setChoices] = useState<readonly PiModel[]>([]);
+  const loadChoices = (): void => {
+    api.piModels().then(setChoices, () => undefined);
+  };
+  useEffect(() => {
+    if (installed) loadChoices();
+  }, [installed]);
   return (
     <Card
       item="pi"
@@ -325,7 +334,7 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
       description="pi runs models of other providers, such as ChatGPT, GitHub Copilot or OpenRouter. It is optional."
     >
       {installed ? (
-        <PiLoginPanel context={context} />
+        <PiLoginPanel context={context} onLoginsChanged={loadChoices} />
       ) : (
         <>
           <div className="callout">
@@ -335,17 +344,28 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
         </>
       )}
       <p className="field-hint">
-        The pi model of each tier, such as openai/gpt-5. An empty field uses pi&apos;s own default.
+        {choices.length > 0
+          ? "The pi model of each tier. Type to pick one of your logins' models, or any name that pi knows. An empty field uses pi's own default."
+          : "The pi model of each tier, such as openai/gpt-5. An empty field uses pi's own default."}
       </p>
       {modelAliases.map((model) => (
         <label key={model} className="field">
           <span className="field-label">{modelTierName(model)} model in pi</span>
           <input
+            list="pi-model-choices"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
             value={models[model]}
             onChange={(event) => setModels((texts) => ({ ...texts, [model]: event.target.value }))}
           />
         </label>
       ))}
+      <datalist id="pi-model-choices">
+        {choices.map((choice) => (
+          <option key={choice.id} value={choice.id} label={choice.name} />
+        ))}
+      </datalist>
       <div className="button-row">
         <SaveButton className="primary" disabled={!changed} onSave={save}>
           Save the models

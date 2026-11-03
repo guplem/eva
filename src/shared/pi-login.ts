@@ -76,6 +76,16 @@ export interface PiLogins {
   state(): PiLoginState;
   /** Ends the login that runs, if any. */
   stop(): void;
+  /** The models of pi's logins, never an Anthropic one, for the tier fields. */
+  models(place: PiLoginPlace): Promise<PiModel[]>;
   /** Removes the saved login of one provider. */
   logout(place: PiLoginPlace, provider: string): Promise<void>;
+}
+
+/** A model that pi can run with one of its logins, such as `openai-codex/gpt-5`. */
+export interface PiModel {
+  /** The name for pi's `--model`: the provider, a slash, and the model's id. */
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
 }

@@ -21,7 +21,14 @@ const methodNames: Readonly<Record<PiLoginMethod, string>> = {
  */
 const pollMs = 2_000;
 
-export function PiLoginPanel({ context }: { readonly context: SettingsContext }): ReactElement {
+export function PiLoginPanel({
+  context,
+  onLoginsChanged,
+}: {
+  readonly context: SettingsContext;
+  /** A login or a log out changes the models that pi can run, which the tier fields suggest. */
+  readonly onLoginsChanged: () => void;
+}): ReactElement {
   const [providers, setProviders] = useState<readonly PiProvider[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Null: the login steps show only when no provider has a login, or when the person asks.
@@ -75,6 +82,7 @@ export function PiLoginPanel({ context }: { readonly context: SettingsContext })
             warning={`Eva asks pi to remove its ${provider.name} login from this machine. Chats with pi that use ${provider.name} stop until you log in again.`}
             logOut={async () => {
               await api.logOutOfPi(provider.id);
+              onLoginsChanged();
               await load();
               return { restartNeeded: false };
             }}
@@ -98,6 +106,7 @@ export function PiLoginPanel({ context }: { readonly context: SettingsContext })
           onDone={() => {
             setChosen(null);
             setRunning(null);
+            onLoginsChanged();
             void load();
           }}
           onCancel={loggedIn.length > 0 ? () => setChosen(null) : null}

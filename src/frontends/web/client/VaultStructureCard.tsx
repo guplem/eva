@@ -47,12 +47,11 @@ export function VaultStructureCard({ context }: { readonly context: SettingsCont
         <ProgressBar label="Eva reads the vault…" />
       ) : (
         <>
-          <p className="field-hint">
+          <p>
             {available
-              ? `Your vault follows version ${String(structure.current)}. Version ${String(structure.available)} is available.`
+              ? `Your vault follows version ${String(structure.current)}. Version ${String(structure.available)} is available. ${structure.summary}`.trim()
               : `Your vault follows version ${String(structure.current)}, the newest structure.`}
           </p>
-          {available && structure.summary !== "" && <p>{structure.summary}</p>}
           {available && !structure.canUpgrade && (
             <div className="field-hint">Only the hub computer updates the vault structure. Open its page to start.</div>
           )}

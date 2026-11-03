@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -248,7 +248,7 @@ export class TemplateAlignment {
   private retire(path: string, entry: RecordedPart): boolean {
     const file = this.fileHash(path);
     if (file === null) return false;
-    if (file !== entry.installed) return true;
+    if (file !== entry.installed || this.holdsOtherFiles(path)) return true;
     this.remove(path);
     return false;
   }
@@ -261,8 +261,19 @@ export class TemplateAlignment {
     for (const [path, hashes] of Object.entries(this.options.history)) {
       if (path in this.options.parts || path in record.parts) continue;
       const file = this.fileHash(path);
-      if (file !== null && hashes.includes(file)) this.remove(path);
+      if (file !== null && hashes.includes(file) && !this.holdsOtherFiles(path)) this.remove(path);
     }
+  }
+
+  /**
+   * True when a skill's folder holds a file besides the part, such as a script that the person added.
+   * The skill then counts as changed: removing only the part would leave their files without a skill.
+   */
+  private holdsOtherFiles(path: string): boolean {
+    if (describePath(path).kind !== "skill") return false;
+    const target = join(this.options.vaultPath, path);
+    const folder = dirname(target);
+    return existsSync(folder) && readdirSync(folder).some((entry) => entry !== basename(target));
   }
 
   private remove(path: string): void {

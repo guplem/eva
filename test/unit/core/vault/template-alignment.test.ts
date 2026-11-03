@@ -330,3 +330,22 @@ describe("the message box menu parts (#661)", () => {
     expect(Object.keys(templateParts)).toContain(".eva/settings/saved-prompts/Summary.md");
   });
 });
+
+describe("a retired skill with files of the person's", () => {
+  test("stays whole, with its entry marked as retired, when its folder holds another file (#771)", () => {
+    alignment({ [skill]: oldText, ".eva/skills/gone/SKILL.md": "# Gone\n" }).align();
+    write(".eva/skills/gone/notes.md", "The person's own notes.\n");
+    alignment().align();
+    expect(read(".eva/skills/gone/SKILL.md")).toBe("# Gone\n");
+    expect(read(".eva/skills/gone/notes.md")).toBe("The person's own notes.\n");
+    const record = JSON.parse(read(".eva/template.json")) as { parts: Record<string, { retired?: boolean }> };
+    expect(record.parts[".eva/skills/gone/SKILL.md"]?.retired).toBe(true);
+  });
+
+  test("stays whole when it is an old copy with no entry (#771)", () => {
+    write(".eva/skills/gone/SKILL.md", oldText);
+    write(".eva/skills/gone/script.py", "print('mine')\n");
+    alignment({ [skill]: newText }, { ".eva/skills/gone/SKILL.md": [contentHash(oldText)] }).align();
+    expect(read(".eva/skills/gone/SKILL.md")).toBe(oldText);
+  });
+});

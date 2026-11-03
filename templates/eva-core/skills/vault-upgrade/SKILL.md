@@ -13,7 +13,7 @@ An Eva update never changes the structure of a vault. This skill does, with the 
 
 - Change nothing before the person answers your one message and `eva vault-upgrade start` succeeds, except when the vault already has every change (step 1). Then change the vault only on the upgrade branch.
 - Never touch the `## Personal rules` section of the root `AGENTS.md`. Keep it byte for byte. You may only add what a CHANGELOG entry says, such as a missing apps table, at the end of the section.
-- Lose nothing. Each file of the inventory is kept, moved, merged, or deleted with the person's yes. Each fact of a file that you rewrite goes to its new place before you rewrite the file.
+- Lose nothing. Each file of the inventory is kept, moved, merged, or deleted with the person's yes. Each fact of a file that you rewrite goes to its new place before you rewrite the file. A note merged into _Personal rules_ keeps each of its facts.
 - Move each note with `git mv`, so it keeps its history. Never copy and delete.
 - Commit each group of changes in its own commit. Name only the paths that you wrote or moved, and for a move both the old and the new path: `git commit -m "<group>" -- <paths>`. Other chats can write notes meanwhile, and Eva keeps them apart.
 - Before each commit, run `git branch --show-current`. When it does not name the upgrade branch, stop and tell the person.
@@ -29,21 +29,23 @@ An Eva update never changes the structure of a vault. This skill does, with the 
 2. Check what `start` needs, so the person does not answer for nothing: this computer is the hub and the vault sync is on (`eva status`), no branch `upgrade-v*` exists (`git branch --list "upgrade-v*"`), and `.eva/migrations.json` lists each id of the entry's "Migrations first" line. When one fails, tell the person what to do, and stop.
 3. For each entry, check "How to detect a vault that has it". When the vault already has every change, tell the person, run `eva vault-upgrade start`, then `eva vault-upgrade finish`, and stop: only the record changes.
 4. List every file: `git ls-files`, and the git-ignored ones with `git ls-files -o -i --exclude-standard --directory`. Leave out `.eva/scratch/`, `Scratch/` and `Projects/*/repos/`.
-5. Read each file and decide its place in the new structure, by the root `AGENTS.md` and the `AGENTS.md` of each `Life/` folder in `template/`. When your engine has subagents, give them the files in batches, with those rules. Otherwise, work in batches in this chat.
+5. Read each file and decide its place in the new structure, by the root `AGENTS.md` and the `AGENTS.md` of each `Life/` folder in `template/`. A note that mixes kinds splits by section, each section to its own place. Note the likely duplicates: the same title, or the same first paragraph. When your engine has subagents, give them the files in batches, with those rules. Otherwise, work in batches in this chat.
 6. For each replaced file (root `AGENTS.md`, `README.md`, `.eva/assistant.md`, `Life/About me.md`), find the person's own lines:
    - Compare the file with each shipped version: `git diff --no-index --stat <shipped file> <vault file>`. Take the version with the fewest changed lines. The vault's first commit, "Start the vault from Eva's template", is a second source.
    - A placeholder of a shipped text, such as `{{name}}`, `{{nameInQuotes}}`, `{{notesLanguage}}` or `{{topics}}`, matches any value.
-   - A line that no shipped version has is the person's own. A file that matches no version at all is the person's own: ask about the whole file.
+   - A line that no shipped version has is the person's own. A file that matches no version at all is all the person's own: sort each of its lines.
+   - An own line that the v3 template, Eva's base prompt or a `Life/*/AGENTS.md` already says, or that a v3 rule contradicts, such as a rule about the old `Scratch/`: propose to leave it out.
 7. Find each other matter that the entry's "What to ask" list names, such as the facts of About me that leave it, a changed copy of one of Eva's skills in `.eva/skills/`, a person's own file at a path that the new template writes, and each stored path that a move breaks in `.eva/widgets.json`, `.eva/schedules.json` or `.eva/secret-files`.
 
 ## 2. Ask everything in one message
 
 The person already asked for the upgrade, through the button, the notification or their own words. So this message is the only question round: no "shall I start?" before it. Say in two or three sentences what changes and why. Then ask each question of the entry's "What to ask" list, numbered, each with a default, so the person can answer "yes to all":
 
-- Show each of the person's own lines in a replaced file as a diff against Eva's shipped text, with the default "keep it in <place>".
+- Show each of the person's own lines in a replaced file as a diff against Eva's shipped text, with the default "keep it in <place>". For a line that v3 already says or contradicts, the default is "leave it out", with the rule that says it.
 - Yolo mode "yes": you decide where each file goes, alone. "No": the whole move plan follows in this message, grouped by target folder, for the person's approval.
 - For About me's facts, say which ones you cannot write, such as for a contacts app that you cannot reach: they stay in About me until the person adds them there.
 - Show the diff of a changed copy of one of Eva's skills.
+- For each likely duplicate, propose which copy stays. The lines that only the other has merge into it.
 
 In yolo mode, still ask every other question. Never decide a deletion or a person's own line alone.
 
@@ -63,7 +65,7 @@ Compare the inventory that `start` printed with your plan. Place each file that 
 1. Make every schedule edit in one write to `.eva/schedules.json`, first, while the person is still here: each write asks them. Make the edits of `.eva/secret-files` and `.eva/widgets.json` too. Commit these three files in their own group.
 2. File the facts of About me where the person said, in their own commit: merge diet and allergies into `Life/Health/Allergies and Diet.md`, or create it from `template/` when it is missing; write sleep, each person and each date in their places. A fact that you cannot place stays in About me.
 3. Write the new skeleton with the exact texts of `template/`: each `Life/<folder>/AGENTS.md`, the root `AGENTS.md`, `README.md`, `.eva/assistant.md` and `Life/About me.md`. Fill each placeholder with the vault's own value. In About me, keep the vault's value of every identity field (such as `name`, `givenName`, `pronouns`, `birthDate`, `contact`, `region`, `places`, `languages`) and its `lastLocation` exactly as they are: never empty one. Put back the lines that the person chose to keep, where they said. Keep the existing `## Personal rules` section as it is.
-4. Move the notes, one commit for each group, such as "Move the car to Life/Objects". Fix each link that a move breaks.
+4. Move the notes, one commit for each group, such as "Move the car to Life/Objects". Fix each link that a move breaks. Point each mention of `Scratch/` in the vault's skills and notes to `.eva/scratch/`.
 5. Move each git-ignored file where the person said. Write each move as one `<from><TAB><to>` line in the list that `start` named, so `drop` and `undo` can move it back.
 6. Delete only what the person approved.
 7. Run `git status`. Commit your own work that is left: nothing that you staged or deleted may stay uncommitted, or `finish` and `drop` stop and name it. A file that you did not write stays as it is: Eva commits it apart as a note written meanwhile.
@@ -76,6 +78,7 @@ Check the result against the inventory:
 - Each link that worked before still works.
 - Each git-ignored file is where the person said.
 - Each secret file still matches a pattern of `.eva/secret-files` or the defaults. A moved secret file still names its old path inside, and opens as before. List each one.
+- Each test of "How to detect a vault that has it" passes on the branch. Name each one that fails in the summary, with its paths and a fix to propose. The person decides.
 
 Write the report to the path that `start` printed: each file and what happened to it, each link that you fixed, and what the person must do. That is: each widget that needs a new approval, each changed schedule that shows its setup card again, and each fact for an app that you cannot reach, such as a birthday for the contacts app.
 

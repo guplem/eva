@@ -4,6 +4,9 @@ import type { SessionEvent, TurnMessage } from "../../../shared/events.ts";
 import { addNote, addStep, type TurnStep } from "../../../shared/turn-steps.ts";
 import type { UsageLimit } from "../../../shared/usage-limit.ts";
 
+/** The message of a turn, with the `seq` of the event or the snapshot that brought it. */
+export type LiveMessage = TurnMessage & { readonly seq: number };
+
 export interface LiveState {
   /** The steps of each running turn so far, by session id. A key means that a turn runs. */
   readonly steps: Readonly<Record<string, readonly TurnStep[]>>;
@@ -30,7 +33,7 @@ export interface LiveState {
    * They outlive their turns, so nothing blinks before the stored turn arrives: the page shows each
    * one by its `turnIndex`. A turn can start before the list brings the turn before it, so a few stay.
    */
-  readonly messages: Readonly<Record<string, readonly TurnMessage[]>>;
+  readonly messages: Readonly<Record<string, readonly LiveMessage[]>>;
   /**
    * While the page reads the running turns again: the id of the newest read, and each event that
    * came since it started. Null when no read is open.
@@ -104,15 +107,29 @@ export function withRunningTurns(state: LiveState, id: number, snapshot: TurnSna
   const draftsFromCore = Object.fromEntries(
     turns.flatMap((turn) => (turn.draft === undefined || turn.draft === "" ? [] : [[turn.sessionId, turn.draft]])),
   );
-  // Like the steps, the core's messages replace the ones that this page knew: a chat that runs no turn shows none.
-  const messagesFromCore = Object.fromEntries(
-    turns.flatMap((turn) => (turn.message === undefined ? [] : [[turn.sessionId, [turn.message]]])),
+  // A message that the core no longer runs ended, and its stored turn comes soon, so it stays. Only
+  // one newer than the snapshot is from before an Eva restart, which counts its events from 1 again.
+  const kept =
+    snapshot === null
+      ? state.messages
+      : Object.fromEntries(
+          Object.entries(state.messages).flatMap(([sessionId, list]) => {
+            const older = list.filter((message) => message.seq <= snapshot.seq);
+            return older.length === 0 ? [] : [[sessionId, older]];
+          }),
+        );
+  const withCore = turns.reduce(
+    (messages, turn) =>
+      turn.message === undefined || snapshot === null
+        ? messages
+        : withMessage(messages, turn.sessionId, { ...turn.message, seq: snapshot.seq }),
+    kept,
   );
   return {
     ...state,
     steps: newer.reduce(stepsAfter, fromCore),
     drafts: newer.reduce(draftsAfter, draftsFromCore),
-    messages: newer.reduce(messagesAfter, snapshot === null ? state.messages : messagesFromCore),
+    messages: newer.reduce(messagesAfter, withCore),
     recovery: null,
   };
 }
@@ -184,10 +201,8 @@ const keptMessages = 5;
  * turn, such as one that a restart lost, and a delete drops them all.
  */
 function messagesAfter(messages: LiveState["messages"], event: SessionEvent): LiveState["messages"] {
-  if (event.kind === "turn_started") {
-    const older = (messages[event.sessionId] ?? []).filter((turn) => turn.turnIndex < event.message.turnIndex);
-    return { ...messages, [event.sessionId]: [...older, event.message].slice(-keptMessages) };
-  }
+  if (event.kind === "turn_started")
+    return withMessage(messages, event.sessionId, { ...event.message, seq: event.seq });
   if (event.kind !== "session_deleted" || !(event.sessionId in messages)) return messages;
   const rest = { ...messages };
   Reflect.deleteProperty(rest, event.sessionId);
@@ -287,4 +302,10 @@ export function latestId(sessionId: string, heirs: LiveState["heirs"]): string {
     id = heir;
   }
   return id;
+}
+
+/** The messages with one more, which replaces the message of its own or a later turn. */
+function withMessage(messages: LiveState["messages"], sessionId: string, message: LiveMessage): LiveState["messages"] {
+  const older = (messages[sessionId] ?? []).filter((turn) => turn.turnIndex < message.turnIndex);
+  return { ...messages, [sessionId]: [...older, message].slice(-keptMessages) };
 }

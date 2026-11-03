@@ -433,13 +433,13 @@ describe("the messages of the running turns (#804)", () => {
 
   test("the turn start brings the message, and the chat runs from then", () => {
     const state = started(emptyLiveState, message);
-    expect(state.messages).toEqual({ s1: [message] });
+    expect(state.messages).toMatchObject({ s1: [message] });
     expect(state.steps).toEqual({ s1: [] });
   });
 
   test("the message outlives the turn end, so it does not blink before the stored turn arrives", () => {
     const state = started(emptyLiveState, message);
-    expect(applyEvent(state, event({ kind: "turn_finished", ...finished })).messages).toEqual({ s1: [message] });
+    expect(applyEvent(state, event({ kind: "turn_finished", ...finished })).messages).toMatchObject({ s1: [message] });
     seq += 1;
     expect(applyEvent(state, { ...stamp, seq, kind: "session_deleted" }).messages).toEqual({});
   });
@@ -448,7 +448,7 @@ describe("the messages of the running turns (#804)", () => {
     let state = started(emptyLiveState, message);
     state = applyEvent(state, event({ kind: "turn_finished", ...finished }));
     state = started(state, next);
-    expect(state.messages).toEqual({ s1: [message, next] });
+    expect(state.messages).toMatchObject({ s1: [message, next] });
   });
 
   test("a turn start replaces a message of the same or a later turn, and keeps only a few older ones", () => {
@@ -463,13 +463,13 @@ describe("the messages of the running turns (#804)", () => {
 
   test("each chat keeps its own messages, so a branch never shows another branch's message", () => {
     const state = started(started(emptyLiveState, message), next, "fork");
-    expect(state.messages).toEqual({ s1: [message], fork: [next] });
+    expect(state.messages).toMatchObject({ s1: [message], fork: [next] });
   });
 
   test("a page that missed the turn start reads the message from the snapshot", () => {
     const state = startRecovery(emptyLiveState, 1);
     const after = withRunningTurns(state, 1, { seq, turns: [{ sessionId: "s1", steps: [], message }] });
-    expect(after.messages).toEqual({ s1: [message] });
+    expect(after.messages).toMatchObject({ s1: [message] });
     expect(after.steps).toEqual({ s1: [] });
   });
 
@@ -477,12 +477,25 @@ describe("the messages of the running turns (#804)", () => {
     const read = seq;
     const state = started(startRecovery(emptyLiveState, 1), next);
     const after = withRunningTurns(state, 1, { seq: read, turns: [{ sessionId: "s1", steps: [], message }] });
-    expect(after.messages).toEqual({ s1: [message, next] });
+    expect(after.messages).toMatchObject({ s1: [message, next] });
   });
 
-  test("the snapshot drops the messages of chats that run no turn, such as a turn lost in a restart", () => {
+  test("a snapshot keeps the messages whose stored turn has not come, beside the core's own", () => {
+    // The page reads the running turns at each tab focus. Turn 0 ended, and the list has not brought it.
     const known = startRecovery(started(emptyLiveState, message), 1);
-    expect(withRunningTurns(known, 1, { seq, turns: [] }).messages).toEqual({});
+    expect(withRunningTurns(known, 1, { seq, turns: [] }).messages).toMatchObject({ s1: [message] });
+    const after = withRunningTurns(known, 1, { seq, turns: [{ sessionId: "s1", steps: [], message: next }] });
+    expect(after.messages).toMatchObject({ s1: [message, next] });
+  });
+
+  test("after an Eva restart the snapshot drops the messages of turns that the restart lost", () => {
+    const known = startRecovery(started(emptyLiveState, message), 1);
+    // Eva counts the events from 1 again after a restart, so the snapshot is older than the events seen.
+    const restarted = withRunningTurns(known, 1, { seq: 1, turns: [] });
+    expect(restarted.messages).toEqual({});
+    // The next snapshot of the new Eva is no restart.
+    const later = withRunningTurns(started(startRecovery(restarted, 2), next), 2, { seq: 2, turns: [] });
+    expect(later.messages).toMatchObject({ s1: [next] });
   });
 
   test("an older Eva sends no message in the snapshot: the page shows none, with no error", () => {
@@ -496,6 +509,6 @@ describe("the messages of the running turns (#804)", () => {
 
   test("a failed read keeps the messages that the page knows", () => {
     const known = startRecovery(started(emptyLiveState, message), 1);
-    expect(withRunningTurns(known, 1, null).messages).toEqual({ s1: [message] });
+    expect(withRunningTurns(known, 1, null).messages).toMatchObject({ s1: [message] });
   });
 });

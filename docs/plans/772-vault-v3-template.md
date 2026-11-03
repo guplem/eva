@@ -30,3 +30,19 @@ The owner is away. Each decision follows his intentions (decisions.md, ROUND2.md
 8. **Migration tests that read the live template** get a frozen copy of the text they expect, as the migrations themselves freeze it. Reason: issue notes; the new map has no "A project is one of three types:" line.
 9. **Captures.** Setup's folder list changes two purposes. The web setup page shows them, so it gets a before and after capture with the demo data. The Template alignment card only gains one row of data, so no capture.
 10. **The template's Markdown is out of Prettier** (`templates/vault/**/*.md` in `.prettierignore`). Prettier pads each table to its widest cell, which adds about 6,000 spaces to the root map that every chat reads, and changes the approved text. Reason: small prompt, exact approved text.
+
+## Review fixes
+
+Where two approved texts disagreed, the smallest change makes them agree. Each one:
+
+- **Root map, Where things go:** "Before deleting anything, confirm, and offer status `gone` instead" becomes "offer to close it instead (its folder's `AGENTS.md` says how)": only objects have `gone`. "Nothing moves when it ends. Change its status." adds "or its summary when it has none", for people and pets.
+- **Root map, Personal rules:** the person's rules win over "the rules above and every other `AGENTS.md` in the vault". The `eva-rules` skill says the same.
+- **`Life/Objects/AGENTS.md`:** a repair, claim or return goes to `Life/Cases/` only when it needs follow-up; a finished repair is a dated line in the object's note, as the root map says.
+- **`Life/Finances/AGENTS.md`:** a card PIN or a code goes in a `.secrets` file beside the note; an online-banking login goes in the password manager, as _Outside the vault_ says.
+- **`.eva/AGENTS.md`:** names `settings/chat-names.md` (the person's rules for chat names), and `eva settings set` beside the Settings page.
+- **About me template:** the region comment says "such as US or US-CA".
+- **`about-me` skill:** the `work.period` example is a plain path in the folder form of `Life/Periods/AGENTS.md`, and `places` names `address`.
+- **No personal places in the public repository:** the `ES-CT` and Barcelona examples (skill, code comments, error text, tests, `docs/widgets.md`) became `US-CA` and San Francisco. The Sant Jordi region list keeps `ES-CT`: it is data of the special days, not an example.
+- **Habits widget:** the template's example folder is `Life/Health/Habits` (habit logs are health records; the v3 map has no `Life/Habits`). A widget that the person already set up keeps its folder.
+- **Prettier** skips only the agent files of the vault template (root map, `.eva/AGENTS.md`, `Life/*/AGENTS.md`); the other template files stay formatted.
+- **Stored names:** `vault .eva/vault-structure.json version`.

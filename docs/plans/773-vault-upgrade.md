@@ -77,3 +77,12 @@ The five reviews found ways to lose data or to get stuck. Each fix follows the o
 23. **The prompt line goes only to a chat that a person started,** not to a scheduled chat.
 24. **The web news action shows only while the card offers the upgrade.** Telegram keeps the news id in its state file.
 25. **The stored-names check lists** the hub's notice fields, the branch and tag names, and the commit messages that `undo` reads.
+
+## Second review fixes
+
+26. **About me in a conflict keeps both sides.** The path keeps one side with the newest location. When the other side differs in more than the location, it goes to a conflict copy, which the output names. A drop keeps the old note at its path; finish and undo keep the incoming one.
+27. **Work that the skill did not commit stops `finish` and `drop`,** with its files: a staged change or a deleted file is never a note of another chat. Committed as notes, a half move would leave a note deleted after a drop or an undo. The skill names both paths of a move, and checks the branch before each commit.
+28. **Eva keeps a copy of the inventory, the report and the list of the git-ignored moves** in `<state>/vault-upgrade/<backup tag>/`. The merge commit names the tag, so `undo` finds the copy after the scratch folder emptied. With no list, `undo` names the git-ignored files of the inventory that are not at their place.
+29. **A merge or a switch that a local file blocks names the files.**
+30. **The location job checks the upgrade branch again** inside its turn in the sync queue.
+31. **The skill checks what `start` needs before its questions,** places each file that came in after its plan, and points to the CHANGELOG's "What to ask" list instead of repeating it.

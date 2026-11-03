@@ -211,6 +211,9 @@ describe("received files and the scratch cleanup", () => {
     expect(saved).toMatch(/^\.eva\/scratch\/received\/2025-03-04-1015-house\/plan-[0-9a-f]{12}\.pdf$/);
     expect(cleanScratch(vault, new Date(Date.now() + 8 * 24 * 60 * 60 * 1000))).toBe(1);
     expect(existsSync(join(vault, saved))).toBe(false);
+    // The empty project folder goes too, but the received folder and .eva/scratch stay.
+    expect(existsSync(join(vault, ".eva", "scratch", "received", "2025-03-04-1015-house"))).toBe(false);
+    expect(existsSync(join(vault, ".eva", "scratch", "received"))).toBe(true);
   });
 
   test("a hostile name cannot leave the folder", () => {

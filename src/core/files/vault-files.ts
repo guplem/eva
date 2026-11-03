@@ -173,8 +173,22 @@ export function cleanScratch(vaultPath: string, now: Date): number {
   for (const folder of scratchFolders(vaultPath)) {
     removed += cleanFolder(join(vaultPath, folder), now);
     if (!folder.includes("/")) removeEmptyFolders(join(vaultPath, folder));
+    // A project's received folder goes once it is empty, so the folders of old projects never pile up.
+    else if (folder === scratchFolder && hasFolder(join(vaultPath, folder), "received"))
+      removeEmptySubfolders(join(vaultPath, receivedFolder()));
   }
   return removed;
+}
+
+/** Removes each empty folder inside the folder, never the folder itself. A link is never followed. */
+function removeEmptySubfolders(folder: string): void {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(folder, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) if (entry.isDirectory()) removeEmptyFolders(join(folder, entry.name));
 }
 
 /**

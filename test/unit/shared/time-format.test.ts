@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  regionalLocale,
   clockTime,
   hourLabel,
   isClock,
@@ -66,5 +67,13 @@ describe("the value checks", () => {
     expect(isClock("12")).toBe(false);
     expect(isWeekStart("sunday")).toBe(true);
     expect(isWeekStart("Sunday")).toBe(false);
+  });
+});
+
+describe("regionalLocale", () => {
+  test("takes the first browser locale with a region, else the first one", () => {
+    expect(regionalLocale(["es", "es-ES", "en-US"])).toBe("es-ES");
+    expect(regionalLocale(["en", "de"])).toBe("en");
+    expect(regionalLocale([])).toBeUndefined();
   });
 });

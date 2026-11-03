@@ -17,23 +17,28 @@ export interface LocalFormats {
   readonly clock: Clock | null;
   /** Null when this JavaScript engine cannot tell the locale's week. */
   readonly weekStart: WeekStart | null;
-  /** Null for a locale with no region. */
+  /** Null for a locale with no region, as the clock and the week start. */
   readonly units: Units | null;
 }
 
 /** The regions that measure in imperial units. */
 const imperialRegions = new Set(["US", "LR", "MM"]);
 
-/** The variables that set a computer's locale. With none, or only `C` or `POSIX`, the engine falls back to `en-US`. */
-const localeVariables = ["LC_ALL", "LC_TIME", "LC_MESSAGES", "LANG"] as const;
+/** The variables that name a computer's locale, in the order that ICU reads them. */
+const localeVariables = ["LC_ALL", "LC_MESSAGES", "LANG"] as const;
 
-/** True when the computer names a real locale, such as `es_ES.UTF-8`. Windows and macOS always have one. */
-export function hasLocale(environment: Readonly<Record<string, string | undefined>> = process.env): boolean {
-  if (process.platform === "win32" || process.platform === "darwin") return true;
-  return localeVariables.some((name) => {
-    const value = environment[name]?.trim() ?? "";
-    return value !== "" && !/^(C|POSIX)([._@].*)?$/.test(value);
-  });
+/**
+ * True when the computer names a real locale, such as `es_ES.UTF-8`. Like ICU, it takes the first
+ * variable that is set: `C`, `POSIX` or none make the engine fall back to `en-US`, so they count
+ * as no locale. Windows always has one.
+ */
+export function hasLocale(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform === "win32") return true;
+  const value = localeVariables.map((name) => environment[name]?.trim() ?? "").find((each) => each !== "");
+  return value !== undefined && !/^(C|POSIX)([._@].*)?$/.test(value);
 }
 
 /**
@@ -52,11 +57,14 @@ function formsOf(locale: string | undefined): LocalFormats {
   const options = format.resolvedOptions();
   const hourCycle = options.hourCycle;
   const parsed = new Intl.Locale(locale ?? options.locale);
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // A language with no region, such as `en`, says nothing sure about the clock, the week or the units.
+  if (parsed.region === undefined) return { timeZone, clock: null, weekStart: null, units: null };
   return {
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone,
     clock: hourCycle === "h11" || hourCycle === "h12" ? "12h" : "24h",
     weekStart: weekStartOf(parsed),
-    units: parsed.region === undefined ? null : imperialRegions.has(parsed.region) ? "imperial" : "metric",
+    units: imperialRegions.has(parsed.region) ? "imperial" : "metric",
   };
 }
 

@@ -72,3 +72,18 @@ export function weekOrder(weekStart: WeekStart | null): number[] {
   const first = weekStarts.indexOf(weekStart ?? "monday");
   return Array.from({ length: 7 }, (_, index) => (first + index) % 7);
 }
+
+/**
+ * The first locale with a region, such as `es-ES` from `["es", "es-ES", "en"]`, since a bare
+ * language says nothing sure about the clock or the week. None: the first entry.
+ */
+export function regionalLocale(languages: readonly string[]): string | undefined {
+  const hasRegion = (tag: string): boolean => {
+    try {
+      return new Intl.Locale(tag).region !== undefined;
+    } catch {
+      return false;
+    }
+  };
+  return languages.find(hasRegion) ?? languages[0];
+}

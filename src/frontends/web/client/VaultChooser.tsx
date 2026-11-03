@@ -2,6 +2,7 @@
  * The vault step on the page, as in `eva setup`: pick the vault from the GitHub repositories, type
  * its address, or start a new vault in a new private repository. Eva clones it into her home folder.
  */
+import { regionalLocale } from "../../../shared/time-format.ts";
 import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
 import type { NewVaultAnswers } from "../../../core/vault/vault-setup.ts";
@@ -231,7 +232,7 @@ function NewVault({
       // With no token, the vault stays on this computer, and the page offers the push later.
       repository: hasToken ? repository : "",
       // The person's own forms, since the hub is often a server with none (#770).
-      locale: navigator.language,
+      locale: regionalLocale(navigator.languages.length > 0 ? navigator.languages : [navigator.language]),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   };

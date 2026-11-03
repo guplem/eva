@@ -11,8 +11,9 @@ describe("localFormats", () => {
     expect(localFormats("es-ES")).toMatchObject({ clock: "24h", weekStart: "monday", units: "metric" });
   });
 
-  test("a locale with no region leaves the units unset", () => {
-    expect(localFormats("de").units).toBeNull();
+  test("a locale with no region leaves the clock, the week start and the units unset", () => {
+    expect(localFormats("de")).toMatchObject({ clock: null, weekStart: null, units: null });
+    expect(localFormats("en", undefined, true)).toMatchObject({ clock: null, weekStart: null, units: null });
   });
 
   test("a computer with no locale set gives no forms, not the US fallback of the engine", () => {
@@ -37,13 +38,22 @@ describe("localFormats", () => {
   });
 });
 
-describe.if(process.platform === "linux")("hasLocale", () => {
-  test("only a named locale counts, not C or POSIX", () => {
-    expect(hasLocale({})).toBe(false);
-    expect(hasLocale({ LANG: "C.UTF-8" })).toBe(false);
-    expect(hasLocale({ LC_ALL: "POSIX" })).toBe(false);
-    expect(hasLocale({ LANG: "es_ES.UTF-8" })).toBe(true);
-    expect(hasLocale({ LANG: "C", LC_TIME: "en_GB.UTF-8" })).toBe(true);
+describe("hasLocale", () => {
+  test("like ICU, the first variable that is set decides, and C or POSIX is no locale", () => {
+    expect(hasLocale({}, "linux")).toBe(false);
+    expect(hasLocale({ LANG: "C.UTF-8" }, "linux")).toBe(false);
+    expect(hasLocale({ LC_ALL: "POSIX" }, "linux")).toBe(false);
+    expect(hasLocale({ LANG: "es_ES.UTF-8" }, "linux")).toBe(true);
+    expect(hasLocale({ LANG: "C", LC_TIME: "en_GB.UTF-8" }, "linux")).toBe(false);
+    expect(hasLocale({ LC_ALL: "C", LANG: "es_ES.UTF-8" }, "linux")).toBe(false);
+    expect(hasLocale({ LC_ALL: "es_ES.UTF-8", LANG: "C" }, "linux")).toBe(true);
+    expect(hasLocale({ LC_MESSAGES: "es_ES.UTF-8", LANG: "C" }, "linux")).toBe(true);
+  });
+
+  test("a Mac with no locale variable has none, and Windows always has one", () => {
+    expect(hasLocale({}, "darwin")).toBe(false);
+    expect(hasLocale({ LANG: "es_ES.UTF-8" }, "darwin")).toBe(true);
+    expect(hasLocale({}, "win32")).toBe(true);
   });
 });
 

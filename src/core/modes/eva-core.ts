@@ -10,7 +10,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { evaRepository } from "../../shared/version.ts";
-import manifestFile from "../../../templates/eva-core/.claude-plugin/plugin.json" with { type: "text" };
 import aboutMeSkill from "../../../templates/eva-core/skills/about-me/SKILL.md" with { type: "text" };
 import evaIssueSkill from "../../../templates/eva-core/skills/eva-issue/SKILL.md" with { type: "text" };
 import evaRulesSkill from "../../../templates/eva-core/skills/eva-rules/SKILL.md" with { type: "text" };
@@ -30,6 +29,17 @@ const evaCoreSkills: Readonly<Record<string, string>> = {
 export const evaCoreSkillNames: readonly string[] = Object.keys(evaCoreSkills).sort();
 
 const pluginName = "eva-core";
+
+const manifestFile =
+  JSON.stringify(
+    {
+      name: pluginName,
+      description: "Eva's own skills. They ship with Eva, and Eva loads them in Assistant mode only.",
+      version: "1.0.0",
+    },
+    null,
+    2,
+  ) + "\n";
 const copyPrefix = `${pluginName}-without-`;
 
 /** The plugin's files, by path from its folder, without the skills in `left`. */

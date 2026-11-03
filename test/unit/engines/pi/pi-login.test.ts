@@ -339,23 +339,26 @@ describe("PiLogin", () => {
     expect(piLogin.state().status).toBe("idle");
   });
 
-  test("an answer with no open question fails", () => {
+  test("an answer with no open question fails", async () => {
     const { piLogin } = login(fakeRuntime());
 
-    expect(piLogin.answer("x")).rejects.toThrow(EvaError);
+    expect(await piLogin.answer("x").catch((error: unknown) => error)).toBeInstanceOf(EvaError);
   });
 
-  test("a provider name that is not one word never reaches pi", () => {
+  test("a provider name that is not one word never reaches pi", async () => {
     const { piLogin, processes } = login(fakeRuntime());
 
-    expect(piLogin.start(place, "openrouter api_key; rm", "api_key")).rejects.toThrow(EvaError);
+    const refused = await piLogin.start(place, "openrouter api_key; rm", "api_key").catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(EvaError);
     expect(processes).toEqual([]);
   });
 
-  test("no pi program gives the install step", () => {
+  test("no pi program gives the install step", async () => {
     const piLogin = new PiLogin({ command: () => null, workFolder: folder });
 
-    expect(piLogin.providers(place)).rejects.toThrow("Press Install pi");
+    const missing = await piLogin.providers(place).catch((error: unknown) => error);
+    expect(missing).toBeInstanceOf(EvaError);
+    expect((missing as EvaError).message).toContain("Press Install pi");
   });
 
   test("logs out of one provider", async () => {

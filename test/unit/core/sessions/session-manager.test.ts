@@ -395,6 +395,50 @@ describe("a conversation", () => {
     expect(started[1]).toMatchObject({ userText: stored?.userText, fromEva: stored?.fromEva });
   });
 
+  test("the turn start keeps a result and the person's words apart, as the stored turn does (#804)", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const report = {
+      projectId: "example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix it.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    await Promise.all([
+      manager.send(sessionId, "[Project work finished: example-app]", "eva", { projectReport: report }),
+      manager.send(sessionId, "and a question", "telegram"),
+    ]);
+    const started = events.find((event) => event.kind === "turn_started");
+    const stored = manager.get(sessionId).turns[0];
+    expect(started).toMatchObject({
+      message: {
+        userText: stored?.userText,
+        fromEva: false,
+        personText: "and a question",
+        projectReports: [report],
+      },
+    });
+  });
+
+  test("a retry starts with the person's words as the person's, in its own branch (#804)", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one", "api");
+    events.length = 0;
+    const retry = await manager.retry(sessionId, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    const started = events.find((event) => event.kind === "turn_started");
+    expect(started).toMatchObject({
+      sessionId: retry.id,
+      message: { userText: "one", fromEva: false, turnIndex: 0, clientIds: [] },
+    });
+  });
+
   test("a message sent during a turn is told when its own turn starts, after the turn before (lesson 114)", async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (release = resolve));

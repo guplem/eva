@@ -80,6 +80,19 @@ const shellSignPattern = /[\\*?<>|"`$;={}@]/;
 const placeSuffixPattern = /(?:(?<=\.md)#[^/]*|:\d+(?::\d+)?)$/i;
 
 /**
+ * The short text of a vault link: the last part of the path, with a folder's `/` and a note's
+ * heading or line. Eva writes each path from the vault root, so a project file's path is long (#821).
+ */
+export function vaultPathLabel(code: string): string {
+  const text = code.trim();
+  const place = placeSuffixPattern.exec(text)?.[0] ?? "";
+  const path = text.slice(0, text.length - place.length);
+  const slash = path.endsWith("/") ? "/" : "";
+  const bare = path.slice(0, path.length - slash.length);
+  return `${bare.slice(bare.lastIndexOf("/") + 1)}${slash}${place}`;
+}
+
+/**
  * The vault path that a code span of an Assistant answer names, or null. Its agent works in
  * the vault root, so a relative path is a vault path. A lone name counts only as a folder
  * (`Toolbox/`) or a note (`.md`): `package.json` or `console.log` in an answer is code.

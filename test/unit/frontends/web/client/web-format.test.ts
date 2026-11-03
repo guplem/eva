@@ -173,11 +173,18 @@ describe("nestedWebHtml", () => {
 describe("toWebHtml with vault links", () => {
   test("a code span that names a vault path links to the Files page", () => {
     expect(toWebHtml("Added to `Toolbox/Health/Workout Routines.md`.", { vaultLinks: true })).toBe(
-      '<p>Added to <a class="vault-link" href="#/files/Toolbox/Health/Workout%20Routines.md">' +
-        "<code>Toolbox/Health/Workout Routines.md</code></a>.</p>",
+      '<p>Added to <a class="vault-link" href="#/files/Toolbox/Health/Workout%20Routines.md" ' +
+        'title="Toolbox/Health/Workout Routines.md"><code>Workout Routines.md</code></a>.</p>',
     );
     expect(toWebHtml("See `R&D/`", { vaultLinks: true })).toBe(
-      '<p>See <a class="vault-link" href="#/files/R%26D"><code>R&amp;D/</code></a></p>',
+      '<p>See <a class="vault-link" href="#/files/R%26D" title="R&amp;D"><code>R&amp;D/</code></a></p>',
+    );
+  });
+
+  test("a full path shows only its name, and its title holds the path (#821)", () => {
+    expect(toWebHtml("See `Projects/2026-09-11-0949-example-app/R&D Plan.md#Next`", { vaultLinks: true })).toBe(
+      '<p>See <a class="vault-link" href="#/files/Projects/2026-09-11-0949-example-app/R%26D%20Plan.md" ' +
+        'title="Projects/2026-09-11-0949-example-app/R&amp;D Plan.md"><code>R&amp;D Plan.md#Next</code></a></p>',
     );
   });
 

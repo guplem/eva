@@ -325,6 +325,18 @@ describe("AlertCenter history (#566)", () => {
     expect(run.center.historyEntries().map((entry) => entry.seq)).toEqual([1, 2, 3, 4]);
   });
 
+  test("news that the person needs once is sent once, also across a restart (#825)", () => {
+    const run = historyRun();
+    run.center.notifyOnce("shell_wall", "news", "The shell of a Project chat has no sandbox here.");
+    run.center.notifyOnce("shell_wall", "news", "The shell of a Project chat has no sandbox here.");
+    expect(levels(run.center)).toEqual(["shell_wall:news"]);
+    const restarted = historyRun(run.written.at(-1));
+    restarted.center.notifyOnce("shell_wall", "news", "The shell of a Project chat has no sandbox here.");
+    expect(levels(restarted.center)).toEqual(["shell_wall:news"]);
+    // It is news, not a problem: nothing stays open.
+    expect(restarted.center.openProblems()).toEqual([]);
+  });
+
   test("records the redacted text only", () => {
     const redactor = new Redactor();
     redactor.addSecret("secret-value-for-tests");

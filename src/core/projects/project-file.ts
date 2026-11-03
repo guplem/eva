@@ -28,6 +28,37 @@ export interface ProjectDetails {
   readonly repos: readonly string[];
   /** Absent keeps the type, as from an older page. Every type writes the key (#768). */
   readonly type?: ProjectType | undefined;
+  /**
+   * The day the project closed, as `YYYY-MM-DD`, for a `closed` status (#826). Absent or null
+   * keeps the key, as from an older page. A change to another status removes it.
+   */
+  readonly closed?: string | null | undefined;
+}
+
+/** A day such as `2026-11-03`, the form of the `closed` key. */
+const dayPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** True for a real day of the calendar, such as `2024-02-29` but not `2026-02-30`. */
+function isDay(value: string): boolean {
+  const match = dayPattern.exec(value);
+  if (match === null) return false;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return date.toISOString().slice(0, 10) === value;
+}
+
+/** The change of the `closed` key, if any. */
+function changedClosed(
+  current: { readonly status: ProjectStatus | null; readonly closed: string | null },
+  details: ProjectDetails,
+  source: string,
+): FrontMatterChanges {
+  const status = details.status;
+  // A project that opens again has no closing date. A date with no status change stays as it is.
+  if (status !== "closed") return current.status === "closed" && hasKey(source, "closed") ? { closed: null } : {};
+  const closed = details.closed?.trim() ?? "";
+  if (closed === "" || closed === current.closed) return {};
+  if (!isDay(closed)) throw invalid(`The closing date must be a day such as 2026-11-03, not "${closed}".`);
+  return { closed };
 }
 
 /** The text of a project file with these details. Throws `project_invalid` for a bad value or file. */
@@ -53,6 +84,7 @@ export function applyProjectDetails(text: string, details: ProjectDetails): stri
   const frontMatter = editFrontMatter(source, {
     // The form shows "None" for a status it cannot read, so None there keeps the person's value.
     ...(details.status === current.status ? {} : { status: details.status }),
+    ...changedClosed(current, details, source),
     ...changedList("tags", current.tags, details.tags, (tag) => tag.replace(/^#/, ""), "A tag"),
     ...repos,
     ...(writesType ? { type } : {}),
@@ -103,6 +135,7 @@ export function fileVersion(text: string): string {
 /** Only the fields that changed. A list that the person left alone is neither checked nor cleaned. */
 interface FrontMatterChanges {
   readonly status?: ProjectStatus | null;
+  readonly closed?: string | null;
   readonly tags?: readonly string[];
   readonly repos?: readonly string[];
   readonly repo_types?: Readonly<Record<string, string>> | null;
@@ -158,6 +191,9 @@ function hasKey(source: string, key: string): boolean {
   return isMap(document.contents) && document.has(key);
 }
 
+/** The key that a new key follows, so related keys stay together. */
+const placedAfter: Readonly<Record<string, string>> = { closed: "status" };
+
 /** The new front matter, or null when no field changes, so an untouched file keeps every byte. */
 function editFrontMatter(source: string, changes: FrontMatterChanges): string | null {
   // Failsafe, as the catalog reads it: every value stays text, such as `created: 2026-01-31T09:15`.
@@ -188,7 +224,13 @@ function editFrontMatter(source: string, changes: FrontMatterChanges): string | 
       if (isSeq(old)) node.flow = old.flow ?? false;
     }
     if (isNode(old) && old.comment !== undefined && old.comment !== null) node.comment = old.comment;
-    document.set(key, node);
+    const neighbour = placedAfter[key];
+    const map = document.contents;
+    const index =
+      neighbour === undefined ? -1 : map.items.findIndex((pair) => isScalar(pair.key) && pair.key.value === neighbour);
+    // A new key that belongs with another one, such as `closed` with `status`, goes right after it.
+    if (old === undefined && index >= 0) map.items.splice(index + 1, 0, document.createPair(key, node));
+    else document.set(key, node);
   }
   return document.toString({ lineWidth: 0, flowCollectionPadding: false }).replace(/\n$/, "");
 }
@@ -252,7 +294,7 @@ export interface ProjectFile {
   readonly text: string;
   readonly version: string;
   /** The form's values, or null when Eva cannot read the front matter. */
-  readonly details: (ProjectDetails & { readonly created: string | null }) | null;
+  readonly details: (ProjectDetails & { readonly created: string | null; readonly closed: string | null }) | null;
 }
 
 export function projectFileOf(text: string): ProjectFile {
@@ -267,6 +309,7 @@ export function projectFileOf(text: string): ProjectFile {
           tags: frontMatter.tags,
           repos: frontMatter.repos,
           type: frontMatter.type,
+          closed: frontMatter.closed,
           created: frontMatter.created,
         };
   return { text, version: fileVersion(text), details };

@@ -294,6 +294,11 @@ export class VaultSync {
     return this.git(arguments_, timeoutMs);
   }
 
+  /** True for a file that the secret list matches and that is not encrypted: it must never reach the remote. */
+  isPlainSecret(relativePath: string, bytes: Uint8Array): boolean {
+    return this.options.secrets?.isPlainSecret(relativePath, bytes) ?? false;
+  }
+
   /** The branch that Eva syncs. */
   mainBranch(): Promise<string> {
     return this.serialize(async () => {

@@ -659,11 +659,12 @@ export class Eva {
             vaultPath,
             sync: gitSync,
             isHub: () => this.role() === "hub",
-            folder: join(options.paths.stateFolder, "vault-upgrade"),
+            syncEnabled: () => options.config.sync.enabled,
             skillFolder: () => evaCore.skillFolder("vault-upgrade"),
-            // The open branch held these back.
+            // The open branch held these back. Only the hub runs the vault migrations: a drop also runs on a satellite.
             afterBranch: () => {
-              if (this.runVaultMigrations()?.kind === "done") this.alignTemplate();
+              if (this.role() === "hub" && this.runVaultMigrations()?.kind === "done") this.alignTemplate();
+              this.inBackground("The location write", () => this.writeLocationIfDue());
             },
           });
     this.vault = new VaultUpkeep({
@@ -1320,6 +1321,9 @@ export class Eva {
       return;
     }
     if (!this.locations.hasWork) return;
+    // The upgrade branch holds only the upgrade and the notes of other chats: the point waits for its end (#773).
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath !== null && upgradeIsOpen(vaultPath)) return;
     // One job in the sync queue is enough. The end of a turn still queues its own, before its snapshot.
     const queues = endingTurn === undefined;
     if (queues && this.locationWriteQueued) return;

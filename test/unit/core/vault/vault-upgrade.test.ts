@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { VaultUpgrade } from "../../../../src/core/vault/vault-upgrade.ts";
@@ -12,6 +12,7 @@ let sandbox: GitSandbox;
 let vault: string;
 let other: string;
 let hub: boolean;
+let syncOn: boolean;
 let afterBranch: number;
 
 const neededMigrations = structureChanges.flatMap((change) => change.migrations);
@@ -29,7 +30,7 @@ function upgrade(): { upgrade: VaultUpgrade; sync: VaultSync } {
       vaultPath: vault,
       sync,
       isHub: () => hub,
-      folder: join(sandbox.root, "state", "vault-upgrade"),
+      syncEnabled: () => syncOn,
       skillFolder: () => join(sandbox.root, "engines", "eva-core", "skills", "vault-upgrade"),
       afterBranch: () => {
         afterBranch += 1;
@@ -56,6 +57,7 @@ beforeEach(() => {
   vault = sandbox.clone("vault");
   other = sandbox.clone("other");
   hub = true;
+  syncOn = true;
   afterBranch = 0;
   sandbox.write(
     vault,
@@ -90,7 +92,8 @@ describe("start", () => {
     // The work starts from a saved vault.
     expect(remoteFile("Methods/Unsaved.md")).toBe("Not saved yet.");
     expect(sync.currentState.status).toBe("paused");
-    const inventoryPath = join(sandbox.root, "state", "vault-upgrade", "v3-inventory.tsv");
+    // Inside the vault's ignored scratch folder, so the chat reads it with no permission question.
+    const inventoryPath = join(vault, ".eva", "scratch", "vault-upgrade", "v3-inventory.tsv");
     expect(text).toContain(inventoryPath);
     const inventory = readFileSync(inventoryPath, "utf-8");
     const carHash = sandbox.git(vault, "rev-parse", "HEAD:Life/Car/Car.md");
@@ -104,6 +107,12 @@ describe("start", () => {
   test("refuses on a satellite, and changes nothing", async () => {
     hub = false;
     expect(await refusal(upgrade().upgrade.run("start"))).toContain("Only the hub computer");
+    expect(branch()).toBe("main");
+  });
+
+  test("refuses with the sync off: the backup must reach the remote", async () => {
+    syncOn = false;
+    expect(await refusal(upgrade().upgrade.run("start"))).toContain("Turn on the vault sync first");
     expect(branch()).toBe("main");
   });
 
@@ -129,6 +138,7 @@ describe("finish", () => {
     sandbox.write(vault, "Life/Diary/2026-11-03.md", "A day.\n");
     const text = await upgrade().upgrade.run("finish");
     expect(text).toContain("version 3");
+    expect(text).toContain("committed apart: Life/Diary/2026-11-03.md");
     expect(branch()).toBe("main");
     expect(sandbox.git(vault, "branch", "--list", "upgrade-v3")).toBe("");
     expect(readVaultStructure(vault)).toBe(3);
@@ -150,7 +160,7 @@ describe("finish", () => {
     expect(readVaultStructure(vault)).toBe(3);
   });
 
-  test("stops on a conflict with the remote, names the file, and stays on the branch", async () => {
+  test("a conflict with the remote keeps both versions and names the copy", async () => {
     await upgrade().upgrade.run("start");
     sandbox.write(vault, "Life/Car/Car.md", "# Car\n\nThe upgrade's text.\n");
     sandbox.git(vault, "commit", "-q", "-am", "Rewrite the car");
@@ -158,9 +168,22 @@ describe("finish", () => {
     sandbox.write(other, "Life/Car/Car.md", "# Car\n\nA satellite's text.\n");
     sandbox.git(other, "commit", "-q", "-am", "A satellite edit");
     sandbox.git(other, "push", "-q", "origin", "main");
-    expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Life/Car/Car.md");
+    const text = await upgrade().upgrade.run("finish");
+    expect(text).toContain("Life/Car/Car (conflict copy).md");
+    expect(branch()).toBe("main");
+    expect(remoteFile("Life/Car/Car.md")).toContain("The upgrade's text.");
+    expect(remoteFile("Life/Car/Car (conflict copy).md")).toContain("A satellite's text.");
+  });
+
+  test("refuses a branch that holds a secret in plain text, and changes nothing", async () => {
+    await upgrade().upgrade.run("start");
+    sandbox.write(vault, "Toolbox/Keys.md", `key: sk-ant-${"a".repeat(30)}\n`);
+    sandbox.git(vault, "add", "Toolbox/Keys.md");
+    sandbox.git(vault, "commit", "-q", "-m", "A note with a key", "--", "Toolbox/Keys.md");
+    expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Toolbox/Keys.md");
     expect(branch()).toBe("upgrade-v3");
-    expect(readFileSync(join(vault, "Life/Car/Car.md"), "utf-8")).not.toContain("<<<<<<<");
+    expect(readVaultStructure(vault)).toBe(2);
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).not.toContain("Keys.md");
   });
 
   test("refuses on a satellite and with no upgrade open", async () => {
@@ -177,8 +200,12 @@ describe("drop", () => {
     // A chat edits the car note at its new path, and writes a new note.
     sandbox.write(vault, "Life/Car-old.md", "# Car\n\nNew tyres.\n");
     sandbox.write(vault, "Life/Diary/2026-11-03.md", "A day.\n");
+    // The skill moved a git-ignored file by hand, and wrote the move down.
+    renameSync(join(vault, "Life/Car/.env"), join(vault, "Life/Objects-car.env"));
+    sandbox.write(vault, ".eva/scratch/vault-upgrade/v3-ignored-moves.tsv", "Life/Car/.env\tLife/Objects-car.env\n");
     const { upgrade: command, sync } = upgrade();
     expect(await command.run("drop")).toContain("dropped");
+    expect(readFileSync(join(vault, "Life/Car/.env"), "utf-8")).toBe("PLATE_API=demo\n");
     expect(branch()).toBe("main");
     expect(sandbox.git(vault, "branch", "--list", "upgrade-v3")).toBe("");
     expect(existsSync(join(vault, "Life/Car-old.md"))).toBe(false);
@@ -190,7 +217,62 @@ describe("drop", () => {
   });
 });
 
+describe("drop with a conflict", () => {
+  test("keeps both versions of a note that the upgrade and a chat both changed, and can run again", async () => {
+    await upgrade().upgrade.run("start");
+    sandbox.write(vault, "Life/Car/Car.md", "# Car\n\nThe upgrade's text.\n");
+    sandbox.git(vault, "commit", "-q", "-am", "Rewrite the car");
+    sandbox.write(vault, "Life/Car/Car.md", "# Car\n\nThe upgrade's text, and a chat's line.\n");
+    const text = await upgrade().upgrade.run("drop");
+    expect(text).toContain("Life/Car/Car (conflict copy).md");
+    expect(branch()).toBe("main");
+    expect(remoteFile("Life/Car/Car.md")).toContain("a chat's line");
+    expect(remoteFile("Life/Car/Car (conflict copy).md")).toBe("# Car");
+    expect(await refusal(upgrade().upgrade.run("drop"))).toContain("No vault upgrade is open");
+  });
+});
+
 describe("undo", () => {
+  test("takes a move back when the note was edited after the merge, with the edit", async () => {
+    await upgrade().upgrade.run("start");
+    moveTheCar();
+    await upgrade().upgrade.run("finish");
+    sandbox.write(vault, "Life/Car-old.md", "# Car\n\nNew tyres.\n");
+    await upgrade().sync.save();
+    await upgrade().upgrade.run("undo");
+    expect(remoteFile("Life/Car/Car.md")).toBe("# Car\n\nNew tyres.");
+    expect(existsSync(join(vault, "Life/Car-old.md"))).toBe(false);
+  });
+
+  test("keeps the newest location of About me when the upgrade rewrote the note", async () => {
+    const location = (at: string): string =>
+      `lastLocation: { latitude: 41.4, longitude: 2.2, accuracy: null, at: "${at}", source: web }`;
+    sandbox.write(
+      vault,
+      "Life/About me.md",
+      `---\nname: Sam\ndiet: vegetarian\n${location("2026-10-20T10:00:00.000Z")}\n---\n`,
+    );
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "About me");
+    await upgrade().upgrade.run("start");
+    sandbox.write(vault, "Life/About me.md", `---\nname: Sam\n${location("2026-10-20T10:00:00.000Z")}\n---\n`);
+    sandbox.git(vault, "commit", "-q", "-am", "Slim About me");
+    await upgrade().upgrade.run("finish");
+    sandbox.write(vault, "Life/About me.md", `---\nname: Sam\n${location("2026-10-25T10:00:00.000Z")}\n---\n`);
+    await upgrade().sync.save();
+    expect(await upgrade().upgrade.run("undo")).not.toContain("conflict copy");
+    const aboutMe = remoteFile("Life/About me.md");
+    expect(aboutMe).toContain("diet: vegetarian");
+    expect(aboutMe).toContain("2026-10-25T10:00:00.000Z");
+  });
+
+  test("refuses off the default branch", async () => {
+    await upgrade().upgrade.run("start");
+    await upgrade().upgrade.run("finish");
+    sandbox.git(vault, "switch", "-q", "-c", "ideas");
+    expect(await refusal(upgrade().upgrade.run("undo"))).toContain("Switch the vault to main first");
+  });
+
   test("takes the upgrade back and keeps the notes written during and since it", async () => {
     await upgrade().upgrade.run("start");
     moveTheCar();

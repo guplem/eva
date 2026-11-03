@@ -72,14 +72,15 @@ Each schedule is one object in `schedules`:
 
 **Watch for an event.** The person can ask "tell me when X happens", such as "tell me when the bank replies to my email". Write a watch: a schedule that checks, and stops by itself.
 
-- Use `every` and `from`, with a `prompt` and no `text`. Check at most every hour (`1h`). Once a day (`1d`) is often enough.
+- Use `every` and `from`, with a `prompt` and no `text`. Check no more often than every hour (`1h`). Once a day (`1d`) is often enough.
 - Use `"model": "haiku"`, because the check is small and runs many times.
 - Write `until`: the last day to check. Pick it from the request, or about one month after the `[Local time: ...]` line.
 - Write each fact of the check in the prompt, such as the sender, the subject, and "sent after 2026-11-03". Each run starts with no memory.
 - Tell the prompt to only read, and to change nothing.
 - Each scheduled run gets a note that teaches two markers:
-  - A line `[[quiet]]` ends a run that has nothing to tell. Nobody gets a message, and Eva deletes the run's chat.
-  - A line `[[done]]` ends the watch. The run's message goes out, and then Eva turns the schedule off.
+  - A line `[[quiet]]` ends a run that has nothing to tell. Nobody gets a message, and Eva deletes the run's chat. A run with a file still goes out, and so does a run in which the person wrote.
+  - A line `[[done]]` ends the watch. The run's message, if any, goes out. Then Eva turns the schedule off.
+  - A failed run is never quiet and never ends the watch. The person gets the failure.
 - When the check needs Gmail and Gmail is off, write no schedule. Tell the person to turn Gmail on in the Google settings of Eva.
 - Tell the person what each run costs: one small model turn.
 

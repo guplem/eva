@@ -1434,7 +1434,10 @@ describe("Eva", () => {
       const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
       const { path, note } = instance.receiveFile("plan.pdf", new Uint8Array([1, 2, 3]), chat.id);
       expect(path).toMatch(new RegExp(`^\\.eva/scratch/received/${coachId}/plan-[0-9a-f]{12}\\.pdf$`));
-      expect(note).toBe(`[The person sent a file, saved as ${path}]`);
+      // The file is outside the chat's folder, so the note gives its full path and says what to do with it.
+      expect(note).toBe(
+        `[The person sent a file, saved as ${join(vault, path)}. It is temporary and read-only: to keep it, copy it into the project folder.]`,
+      );
       expect(readFileSync(join(vault, path))).toEqual(Buffer.from([1, 2, 3]));
       // Nothing new lands in the project folder.
       expect(readdirSync(coachFolder())).toEqual(["AGENTS.md"]);

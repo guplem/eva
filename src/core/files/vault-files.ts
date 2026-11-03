@@ -153,9 +153,14 @@ export function saveReceivedFile(
   return `${folder}/${name}`;
 }
 
-/** The line that tells the agent where a received file is. Every front end sends the same line. */
-export function receivedFileNote(savedPath: string): string {
-  return `[The person sent a file, saved as ${savedPath}]`;
+/**
+ * The line that tells the agent where a received file is. Every front end sends the same line. A
+ * chat in a project folder gets the full path, since the file is outside its folder, and one more
+ * sentence: Eva adds no prompt to that chat, so the note says what the file is for (#768).
+ */
+export function receivedFileNote(savedPath: string, inProjectFolder = false): string {
+  if (!inProjectFolder) return `[The person sent a file, saved as ${savedPath}]`;
+  return `[The person sent a file, saved as ${savedPath}. It is temporary and read-only: to keep it, copy it into the project folder.]`;
 }
 
 /**

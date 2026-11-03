@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assistantBasePrompt } from "../../../../src/core/modes/assistant-base-prompt.ts";
 import { projectStatuses } from "../../../../src/shared/project-statuses.ts";
+import { projectTypes } from "../../../../src/shared/project-types.ts";
 import { defaultAssistantRules } from "../../../../src/core/vault/vault-template.ts";
 import { evaRepository } from "../../../../src/shared/version.ts";
 
@@ -29,6 +30,12 @@ describe("assistantBasePrompt", () => {
   test("names each project status, so the agent of an older vault learns in-use (#690)", () => {
     for (const status of projectStatuses) expect(assistantBasePrompt).toContain(`\`${status}\``);
     expect(assistantBasePrompt).toContain("a list of them comes after the person's rules");
+  });
+
+  test("names each project type, and the default by repos, so the agent never writes a wrong type (#768)", () => {
+    for (const type of projectTypes)
+      expect(assistantBasePrompt).toContain(`**${type.charAt(0).toUpperCase()}${type.slice(1)}:**`);
+    expect(assistantBasePrompt).toContain("No type means `general`, or `software` when the project lists `repos`.");
   });
 
   test("sends a Google login to Settings: the login link of the Google tools opens only on Eva's computer", () => {

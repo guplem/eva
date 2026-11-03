@@ -1933,6 +1933,7 @@ export class Eva {
       kind === "project" && chat !== null
         ? saveInClone(chat.startFolder, name, bytes)
         : saveReceivedFile(this.browsedVault(), name, bytes, kind === "specialist" ? (chat?.projectId ?? null) : null);
+    if (kind === "specialist") return { path, note: receivedFileNote(join(this.browsedVault(), path), true) };
     return { path, note: receivedFileNote(path) };
   }
 

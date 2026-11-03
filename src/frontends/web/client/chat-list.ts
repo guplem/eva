@@ -3,6 +3,8 @@ import { shownAnswerText } from "../../../shared/file-markers.ts";
 import type { SessionRecord } from "./api.ts";
 import { branchNames, hasUnseenTurns, type BranchSession, type UnseenFacts } from "./branch-path.ts";
 import { turnLine } from "../../../shared/project-report.ts";
+import { clockTime, type Clock } from "../../../shared/time-format.ts";
+import { displayFormat } from "./display-format.ts";
 
 export type ChatGroup = "Today" | "This week" | "Older";
 
@@ -33,12 +35,12 @@ export function chatGroup(at: Date, now: Date): ChatGroup {
   return days < 7 ? "This week" : "Older";
 }
 
-/** "09:14" today, "Mon" this week, "12 Oct" before, and "12 Oct 2025" in another year. */
-export function chatTime(at: Date, now: Date): string {
+/** "09:14" (or "9:14 AM") today, "Mon" this week, "12 Oct" before, and "12 Oct 2025" in another year. */
+export function chatTime(at: Date, now: Date, clock: Clock | null = displayFormat().clock): string {
   if (Number.isNaN(at.getTime())) return "";
   const group = chatGroup(at, now);
   if (group === "Today") {
-    return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+    return clockTime(at.getHours(), at.getMinutes(), clock);
   }
   if (group === "This week") return weekdays[at.getDay()] ?? "";
   const day = `${String(at.getDate())} ${months[at.getMonth()] ?? ""}`;

@@ -10,6 +10,8 @@ import { dayLine, lastRunWords, nextRunWords, repeatWords } from "./schedule-wor
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { CardsSkeleton } from "./Loading.tsx";
+import { hourLabel } from "../../../shared/time-format.ts";
+import { displayFormat } from "./display-format.ts";
 
 /** Another part of the page, such as a setup card, fires this after it changes a schedule. */
 export const schedulesChangedEvent = "eva:schedules-changed";
@@ -223,7 +225,7 @@ function DayLine({ list }: { list: ScheduleList }): ReactElement {
                   : { left: percent(hour / 24) }
             }
           >
-            {`${String(hour).padStart(2, "0")}:00`}
+            {hourLabel(hour, displayFormat().clock)}
           </span>
         ))}
       </div>

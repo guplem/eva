@@ -56,3 +56,11 @@ describe("describeUsageLimit", () => {
     expect(describeUsageLimit(limit(), now, "Not/AZone")).toStartWith("You used 86% of your 5-hour usage limit.");
   });
 });
+
+describe("the reset time follows the clock setting (#770)", () => {
+  test("a 12-hour clock writes AM or PM", () => {
+    expect(describeUsageLimit(limit(), now, "Europe/Madrid", "12h")).toBe(
+      "You used 86% of your 5-hour usage limit. It resets at 2:30 PM.",
+    );
+  });
+});

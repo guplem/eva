@@ -1493,6 +1493,16 @@ describe("usage limits (issue #67)", () => {
     );
   });
 
+  test("the reset time follows the clock setting (#770)", async () => {
+    createEva(engineWith(() => warning));
+    eva.updateSettings({ timeZone: "Asia/Tokyo", clock: "12h" });
+    const bot = createBot();
+    telegram.sendText(owner, "first");
+    await settle(bot, () =>
+      telegram.sentTexts().includes("You used 86% of your 5-hour usage limit. It resets at 9:00 PM."),
+    );
+  });
+
   test("a warning in a chat outside Telegram leaves the warning free for the phone", async () => {
     createEva(engineWith(() => warning));
     const bot = createBot();

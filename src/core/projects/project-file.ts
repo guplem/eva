@@ -24,7 +24,6 @@ export interface ProjectDetails {
   readonly title: string;
   /** Null removes the key. */
   readonly status: ProjectStatus | null;
-  readonly started?: string;
   readonly tags: readonly string[];
   readonly repos: readonly string[];
   /** Absent keeps the type, as from an older page. Every type writes the key (#768). */
@@ -159,6 +158,7 @@ export function fileVersion(text: string): string {
 interface FrontMatterChanges {
   readonly status?: ProjectStatus | null;
   readonly closed?: string | null;
+  readonly started?: string;
   readonly tags?: readonly string[];
   readonly repos?: readonly string[];
   readonly repo_types?: Readonly<Record<string, string>> | null;

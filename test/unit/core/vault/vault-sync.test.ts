@@ -185,6 +185,16 @@ describe("VaultSync.save", () => {
     expect(existsSync(join(vault, "Toolbox/keys.md"))).toBe(true);
   });
 
+  test("commits a binary file whose bytes happen to match a token shape", async () => {
+    mkdirSync(join(vault, "Life"), { recursive: true });
+    const photo = Buffer.concat([Buffer.from([0xff, 0xd8, 0x00]), Buffer.from("ghp_" + "c".repeat(36))]);
+    writeFileSync(join(vault, "Life/Photo.jpg"), photo);
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(state.withheldFiles).toEqual([]);
+    expect(remoteFiles()).toContain("Life/Photo.jpg");
+  });
+
   test("a project folder keeps no plain secret any more: its secrets reach the vault only encrypted (#707)", async () => {
     sandbox.write(vault, "Projects/2025-01-01-1200-app/.env", "TOKEN=ghp_" + "b".repeat(36) + "\n");
     const state = await createSync(vault).save();

@@ -61,6 +61,14 @@ export function containsSecretPattern(text: string): boolean {
 }
 
 /**
+ * True when a file's bytes hold a well-known secret shape. A binary file, marked by a NUL byte as
+ * git marks one, is never read as text: a photo can hold a token shape by chance.
+ */
+export function bytesContainSecretPattern(bytes: Uint8Array): boolean {
+  return !bytes.includes(0) && containsSecretPattern(new TextDecoder().decode(bytes));
+}
+
+/**
  * Redacts the text of one block while the engine still writes it. A piece can end in the middle
  * of a secret, and the redactor sees only whole strings. So the stream redacts the whole block at
  * each piece, sends whole words only, and holds back enough text to cover a known secret.

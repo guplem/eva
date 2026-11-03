@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Redactor, TextStreamRedactor } from "../../../src/shared/redaction.ts";
+import { bytesContainSecretPattern, Redactor, TextStreamRedactor } from "../../../src/shared/redaction.ts";
 
 /** Sends each piece and returns everything the stream let through. */
 function streamed(stream: TextStreamRedactor, pieces: readonly string[]): string {
@@ -52,5 +52,18 @@ describe("TextStreamRedactor", () => {
     expect(stream.push("first block ")).toBe("first block ");
     stream.reset();
     expect(stream.push("second ")).toBe("second ");
+  });
+});
+
+describe("bytesContainSecretPattern", () => {
+  const token = "ghp_" + "d".repeat(36);
+
+  test("finds a token shape in text", () => {
+    expect(bytesContainSecretPattern(new TextEncoder().encode(`token ${token}\n`))).toBe(true);
+    expect(bytesContainSecretPattern(new TextEncoder().encode("plain text\n"))).toBe(false);
+  });
+
+  test("never reads a binary file as text: a NUL byte marks it", () => {
+    expect(bytesContainSecretPattern(new Uint8Array([0xff, 0x00, ...new TextEncoder().encode(token)]))).toBe(false);
   });
 });

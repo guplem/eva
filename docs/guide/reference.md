@@ -263,6 +263,7 @@ A request from Eva's own computer can come from any program there, so only the t
 - **General projects:** a general project is a folder of notes and files with no code, such as building a house, a scale model or a book. A project with no `type` and no `repos` is general. A project with `repos` and no `type` stays software.
   - Its chat starts in the project folder and works like a specialist's chat, below, but with no rules of its own. A new general project opens its page, not a chat. It can have a Google Drive folder, but no repository and no clone.
   - General and specialist switch in **Details** at any time. A change to or from software waits until the project has no chats and no clones.
+  - A general project must be in the vault's `Projects/` folder. The project page shows a warning for a general project outside the vault, with `repos`, or with a clone on this computer. Write `type: general` before you add `repos` to a project with no `type`: the `repos` alone make it software.
   - In the chat header, the Mode line and Telegram's chat list, its chat is a "Project" chat.
 - **Specialists:** a specialist is a project that you chat with directly, such as a gym coach. It has its own rules and memory. Its `AGENTS.md` has `type: specialist` in the front matter.
   - The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. At your first message, a new specialist asks what it does. Then it writes its rules into this file.
@@ -270,7 +271,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - Eva syncs the vault around each of its turns, so a file that it writes reaches your other computers. Its hooks and Claude Code's own memory are off: it keeps its memory in its folder.
   - It has no clones and no repository. A fork or a retry stays in its folder. A retry can undo the files that the chat changed, as in a chat with Eva. It takes no `@` mentions.
   - A file that you send to its chat lands in `.eva/scratch/received/<project-id>/`, not in the project folder. The chat can read it, but not change it. Ask the chat to copy a file worth keeping into the project folder: the copy in `.eva/scratch/` goes after a week.
-  - A specialist must be in the vault's `Projects/` folder. The type changes in **Details**, only while the project has no chats and no clones. The project page shows a warning for a specialist outside the vault, with `repos`, or with a clone on this computer.
+  - A specialist must be in the vault's `Projects/` folder. The type changes in **Details**: to general at any time, to software only while the project has no chats and no clones. The project page shows a warning for a specialist outside the vault, with `repos`, or with a clone on this computer.
   - In Telegram, the chat list names it "Specialist".
   - A specialist runs with your own permission mode, as a project chat does, but its folder is in your vault. Retry with undo takes back what it changed.
   - It cannot open the rest of the vault: see [What a chat can reach](#what-a-chat-can-reach).

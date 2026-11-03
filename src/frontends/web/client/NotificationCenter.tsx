@@ -9,7 +9,13 @@ import type { HistoryEntry } from "../../../core/alerts/notification-history.ts"
 import { Icon, type IconName } from "./icons.tsx";
 import { centerFilters, historyGroups, shownNeeds, timeLabel, type CenterFilter } from "./notification-center.ts";
 import { entryState, notificationTopic, sameProblemEntries } from "./notification-details.ts";
-import { problemAction, problemActionLabels, shownProblems, type ProblemAction } from "./problem-actions.ts";
+import {
+  newsAction,
+  problemAction,
+  problemActionLabels,
+  shownProblems,
+  type ProblemAction,
+} from "./problem-actions.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { HelpLink } from "./HelpLink.tsx";
@@ -221,7 +227,12 @@ function EntryDetails(props: {
   const { entry, now } = props;
   const topic = notificationTopic(entry.key);
   const state = entryState(entry, props.openKeys);
-  const action = state === "open" ? problemAction(entry.key, props.syncStatus) : null;
+  const action =
+    state === "open"
+      ? problemAction(entry.key, props.syncStatus)
+      : entry.level === "news"
+        ? newsAction(entry.key)
+        : null;
   const steps = sameProblemEntries(props.entries, entry.key);
   return (
     <div id={props.id} className="center-details">

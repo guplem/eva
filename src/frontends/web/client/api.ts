@@ -14,6 +14,7 @@ import type {
   PermissionsOverview,
   ToolInstallResult,
   TrustOverview,
+  VaultStructureView,
 } from "../../../core/eva.ts";
 import type { ChatBlocker, ProgressStep } from "../../../core/setup/progress.ts";
 import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
@@ -82,7 +83,7 @@ export type { EventSubscription };
 export type TemplatePartView = TemplatePart;
 export type { ComposerMenuItems, SavedPrompt, TextAction };
 
-export type { PersonalFactsView };
+export type { PersonalFactsView, VaultStructureView };
 export type { VaultSecretsStatus };
 export type { WidgetFrame, WidgetInputValue, WidgetItem, WidgetReview, PreviewMode, PreviewPlace, WidgetPreview };
 /** Where the person is, for scripts: a recent point from a phone, or the home place. */
@@ -467,6 +468,8 @@ export const api = {
   ): Promise<{ saved: boolean }> => request("POST", "/api/location", { latitude, longitude, accuracy, takenAt }),
   /** Answers 409 when no vault is configured. */
   aboutMe: (): Promise<PersonalFactsView> => request("GET", "/api/about-me"),
+  /** The Vault structure card (#773). Answers 409 when no vault is configured. */
+  vaultStructure: (): Promise<VaultStructureView> => request("GET", "/api/vault/structure"),
   /** Answers 409 when no vault is configured. */
   templateParts: (): Promise<{ parts: TemplatePartView[]; canChoose: boolean }> =>
     request("GET", "/api/template-parts"),

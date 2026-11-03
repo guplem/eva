@@ -7,7 +7,8 @@ export type ProblemAction =
   | "open_settings"
   | "choose_template_version"
   | "open_claude_login"
-  | "review_widget_update";
+  | "review_widget_update"
+  | "update_vault";
 
 export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   pick_version: "Pick a version",
@@ -16,6 +17,7 @@ export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   choose_template_version: "Choose a version",
   open_claude_login: "Open Settings",
   review_widget_update: "Review the update",
+  update_vault: "Update the vault",
 };
 
 const claudeLoginKey = "engine_login:claude-code";
@@ -39,6 +41,11 @@ export function problemAction(key: string, syncStatus: VaultSyncState["status"])
   if (key === claudeLoginKey) return "open_claude_login";
   if (key.startsWith("widget_update:")) return "review_widget_update";
   return "open_settings";
+}
+
+/** The button of a news entry, which is never open: the vault structure news starts the upgrade (#773). */
+export function newsAction(key: string): ProblemAction | null {
+  return key === "vault_structure" ? "update_vault" : null;
 }
 
 /** The problems that the person did not read: not one that the person hid. An older Eva sends no mark. */

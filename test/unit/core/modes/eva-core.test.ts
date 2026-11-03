@@ -64,7 +64,7 @@ describe("eva-core", () => {
   test("a turn gets a copy without each skill that the vault replaces, written once", () => {
     const core = new EvaCore(engines);
     const folder = core.folderFor(["schedule", "about-me", "mine"]);
-    expect(folder).toBe(join(engines, "eva-core-without-about-me-schedule"));
+    expect(folder).toStartWith(join(engines, "eva-core-without-about-me-schedule-"));
     expect(skillsIn(folder)).toEqual(["eva-issue", "eva-rules", "vault-upgrade"]);
     // Another chat may read it: a later turn never rewrites it.
     writeFileSync(join(folder, "skills", "eva-rules", "SKILL.md"), "read by a running turn");
@@ -93,5 +93,31 @@ describe("eva-core", () => {
     const before = statSync(join(main, "skills", "schedule", "SKILL.md")).ino;
     new EvaCore(engines).folderFor([]);
     expect(statSync(join(main, "skills", "schedule", "SKILL.md")).ino).toBe(before);
+  });
+});
+
+describe("eva-core, when the folder is not as Eva left it", () => {
+  test("a copy of an older Eva, left behind, never serves a turn", () => {
+    const stale = join(engines, "eva-core-without-schedule");
+    mkdirSync(join(stale, "skills", "eva-rules"), { recursive: true });
+    const folder = new EvaCore(engines).folderFor(["schedule"]);
+    expect(folder).not.toBe(stale);
+    expect(skillsIn(folder)).toEqual(["about-me", "eva-issue", "eva-rules", "vault-upgrade"]);
+  });
+
+  test("a deleted eva-core comes back at the next turn", () => {
+    const core = new EvaCore(engines);
+    const main = core.folderFor([]);
+    rmSync(main, { recursive: true });
+    expect(core.folderFor([])).toBe(main);
+    expect(skillsIn(main)).toEqual([...evaCoreSkillNames]);
+  });
+
+  test("the swap leaves no new or old folder behind", () => {
+    const main = join(engines, "eva-core");
+    new EvaCore(engines).folderFor([]);
+    writeFileSync(join(main, "skills", "schedule", "SKILL.md"), "an older Eva's text");
+    new EvaCore(engines).folderFor([]);
+    expect(readdirSync(engines)).toEqual(["eva-core"]);
   });
 });

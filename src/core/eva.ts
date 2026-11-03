@@ -779,7 +779,7 @@ export class Eva {
           vaultSync,
           beforeEndSnapshot: (sessionId) => this.writeLocationIfDue(sessionId),
           basePrompt: options.basePrompt,
-          evaCore: new EvaCore(options.paths.enginesFolder),
+          evaCore: new EvaCore(options.paths.enginesFolder, options.logger ?? null),
           runner: options.runner,
           environment: agentEnvironment,
           now: options.now,

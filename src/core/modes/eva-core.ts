@@ -7,8 +7,10 @@
  * engine does this by itself: Claude Code would load both, and pi keeps the first one. So a turn
  * gets a copy of `eva-core` without the replaced skills.
  */
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { Logger } from "../../shared/logger.ts";
 import { evaRepository } from "../../shared/version.ts";
 import aboutMeSkill from "../../../templates/eva-core/skills/about-me/SKILL.md" with { type: "text" };
 import evaIssueSkill from "../../../templates/eva-core/skills/eva-issue/SKILL.md" with { type: "text" };
@@ -40,7 +42,6 @@ const manifestFile =
     null,
     2,
   ) + "\n";
-const copyPrefix = `${pluginName}-without-`;
 
 /** The plugin's files, by path from its folder, without the skills in `left`. */
 export function evaCoreFiles(left: readonly string[] = []): Record<string, string> {
@@ -51,13 +52,21 @@ export function evaCoreFiles(left: readonly string[] = []): Record<string, strin
   return files;
 }
 
+/**
+ * A short hash of this Eva's text, in the name of each copy. So a copy that an older Eva wrote, and
+ * that Eva could not delete, never serves a turn of a newer Eva.
+ */
+const textHash = createHash("sha256").update(JSON.stringify(evaCoreFiles())).digest("hex").slice(0, 8);
+
 export class EvaCore {
   private readonly enginesFolder: string;
+  private readonly logger: Logger | null;
   private installed = false;
 
   /** `enginesFolder` is `<EVA_HOME>/engines/`, which only this instance uses. */
-  constructor(enginesFolder: string) {
+  constructor(enginesFolder: string, logger: Logger | null = null) {
     this.enginesFolder = enginesFolder;
+    this.logger = logger;
   }
 
   /**
@@ -65,10 +74,13 @@ export class EvaCore {
    * `vaultSkills` are the names of the skills in the vault's `.eva/skills/`.
    */
   folderFor(vaultSkills: readonly string[]): string {
+    const main = join(this.enginesFolder, pluginName);
+    // A person or a clean-up tool can delete the folder while Eva runs.
+    if (!existsSync(join(main, "skills"))) this.installed = false;
     this.install();
     const replaced = evaCoreSkillNames.filter((name) => vaultSkills.includes(name));
-    if (replaced.length === 0) return join(this.enginesFolder, pluginName);
-    const folder = join(this.enginesFolder, `${copyPrefix}${replaced.join("-")}`);
+    if (replaced.length === 0) return main;
+    const folder = join(this.enginesFolder, `${pluginName}-without-${replaced.join("-")}-${textHash}`);
     // Another chat may read a copy during its turn, so Eva writes each copy once and never rewrites it.
     if (!existsSync(folder)) writeFolder(folder, evaCoreFiles(replaced));
     return folder;
@@ -76,21 +88,50 @@ export class EvaCore {
 
   /**
    * Runs once in each Eva process, before its first turn, so no turn reads a folder that changes.
-   * The copies of an earlier process may hold an older Eva's text, so they go.
+   * The copies and leftovers of an earlier process go, when the system lets Eva delete them.
    */
   private install(): void {
     if (this.installed) return;
     mkdirSync(this.enginesFolder, { recursive: true });
+    const main = join(this.enginesFolder, pluginName);
     for (const entry of readdirSync(this.enginesFolder)) {
-      if (entry.startsWith(copyPrefix)) rmSync(join(this.enginesFolder, entry), { recursive: true, force: true });
+      if (entry.startsWith(`${pluginName}-without-`) || entry.startsWith(`${pluginName}.`))
+        this.removeQuietly(join(this.enginesFolder, entry));
     }
-    const folder = join(this.enginesFolder, pluginName);
-    const files = evaCoreFiles();
-    if (!holds(folder, files)) {
-      rmSync(folder, { recursive: true, force: true });
-      writeFolder(folder, files);
-    }
+    if (!holds(main, evaCoreFiles())) this.replace(main);
     this.installed = true;
+  }
+
+  /** Writes this Eva's text next to the folder, then swaps the two. On a failure the older text stays in use. */
+  private replace(main: string): void {
+    const stamp = String(Date.now());
+    const fresh = `${main}.new-${stamp}`;
+    const old = `${main}.old-${stamp}`;
+    try {
+      writeFolder(fresh, evaCoreFiles());
+      if (existsSync(main)) renameSync(main, old);
+      renameSync(fresh, main);
+    } catch (error) {
+      // Windows refuses to rename or delete a file that another program holds open.
+      if (!existsSync(main) && existsSync(old)) renameSync(old, main);
+      if (!existsSync(main)) throw error;
+      this.logger?.log("warn", "Eva could not update her own skills, so the chats use the older ones.", {
+        reason: String(error),
+      });
+      return;
+    }
+    this.removeQuietly(old);
+  }
+
+  private removeQuietly(path: string): void {
+    try {
+      rmSync(path, { recursive: true, force: true });
+    } catch (error) {
+      this.logger?.log("warn", "Eva could not remove an old copy of her own skills.", {
+        path,
+        reason: String(error),
+      });
+    }
   }
 }
 

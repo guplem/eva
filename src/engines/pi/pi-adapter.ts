@@ -46,6 +46,8 @@ import { writeFileAtomic } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
+import { questionExtensionSource, questionTitle } from "./pi-question-extension.ts";
+import { askInTextMessage, collectAnswers } from "../../shared/questions.ts";
 import { describePiContext } from "./pi-context.ts";
 import { describePiPermissions } from "./pi-permissions.ts";
 import { contextExtensionSource, contextNoticePrefix, projectFolderVariable } from "./pi-context-extension.ts";
@@ -166,6 +168,9 @@ export class PiEngine implements EnginePort {
     // A Project chat hides each instruction file above its project folder, such as the vault's map (#702).
     const contextExtensionFile =
       request.projectFolder === null ? null : this.writeIfChanged("eva-context-extension.ts", contextExtensionSource);
+    // Claude Code's question form, in an Assistant chat (#813). A Project chat is pi as the person runs it.
+    const questionExtensionFile =
+      request.mode === "assistant" ? this.writeIfChanged("eva-question-extension.ts", questionExtensionSource) : null;
     // One file per turn: a stopped turn that still closes must not delete the file of the next one.
     const specsFile = hasMcpServers
       ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
@@ -176,6 +181,7 @@ export class PiEngine implements EnginePort {
       extensionFile,
       mcpExtensionFile,
       contextExtensionFile,
+      questionExtensionFile,
       promptFile,
       model,
     });
@@ -458,6 +464,8 @@ export interface PiArgumentInputs {
   readonly mcpExtensionFile: string | null;
   /** Eva's filter of the instruction files above a Project chat's project folder. */
   readonly contextExtensionFile: string | null;
+  /** Eva's question form tool, in an Assistant chat. */
+  readonly questionExtensionFile: string | null;
   readonly promptFile: string | null;
   readonly model: string | null;
 }
@@ -479,6 +487,7 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
   ];
   if (inputs.mcpExtensionFile !== null) args.push("-e", inputs.mcpExtensionFile);
   if (inputs.contextExtensionFile !== null) args.push("-e", inputs.contextExtensionFile);
+  if (inputs.questionExtensionFile !== null) args.push("-e", inputs.questionExtensionFile);
   if (inputs.model !== null) args.push("--model", inputs.model);
   // pi has no level above `xhigh`, so Max asks for pi's highest level.
   if (request.effort !== null) args.push("--thinking", request.effort === "max" ? "xhigh" : request.effort);
@@ -517,19 +526,51 @@ function extensionNotice(record: Record<string, unknown>): string | null {
   return prefix === undefined ? null : message.slice(prefix.length);
 }
 
-/** Answers Eva's approval dialog through the person, and cancels any other dialog. Never blocks the stream. */
+/**
+ * Answers Eva's approval dialog and question form through the person, and cancels any other
+ * dialog. Never blocks the stream.
+ */
 function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string, unknown>): void {
   const id = record["id"];
   const method = String(record["method"]);
   if (typeof id !== "string" || !answeredDialogMethods.includes(method)) return;
+  if (method === "editor" && record["title"] === questionTitle) {
+    // A failure in the core must still answer pi: an open dialog holds the turn until a hard stop.
+    void answerForm(request, record["prefill"])
+      .catch(() => ({ refused: askInTextMessage }))
+      .then((reply) => {
+        pi.send({ type: "extension_ui_response", id, value: JSON.stringify(reply) });
+      });
+    return;
+  }
   if (method !== "confirm" || record["title"] !== approvalTitle) {
     pi.send({ type: "extension_ui_response", id, cancelled: true });
     return;
   }
   const call = parseToolCall(record["message"]);
-  void decide(request, call.toolName, call.input).then((answer) => {
-    pi.send({ type: "extension_ui_response", id, confirmed: answer === "allow" });
-  });
+  void decide(request, call.toolName, call.input)
+    .catch((): ApprovalAnswer => "deny")
+    .then((answer) => {
+      pi.send({ type: "extension_ui_response", id, confirmed: answer === "allow" });
+    });
+}
+
+/** The reply to the question tool of pi-question-tool.ts: the answers, or why there are none. */
+async function answerForm(
+  request: TurnRequest,
+  prefill: unknown,
+): Promise<{ answers: Readonly<Record<string, string>> } | { refused: string }> {
+  // Only an Assistant chat loads the tool, and nobody waits for a question in a model call.
+  if (request.mode !== "assistant") return { refused: askInTextMessage };
+  let input: unknown;
+  try {
+    input = JSON.parse(String(prefill));
+  } catch {
+    return { refused: askInTextMessage };
+  }
+  if (typeof input !== "object" || input === null) return { refused: askInTextMessage };
+  const collected = await collectAnswers(input as Record<string, unknown>, request.askQuestions);
+  return collected.kind === "answered" ? { answers: collected.answers } : { refused: collected.message };
 }
 
 /** pi's fields that hold a file pattern, by tool. Every path field of every tool is walled. */

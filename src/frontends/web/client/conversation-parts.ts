@@ -8,7 +8,8 @@ import { stateFaces, type Face } from "./visor-faces.ts";
 
 /**
  * The bubble shows the last message in full. Every other step goes in the step list, in order,
- * so an earlier message is one line there.
+ * so an earlier message is one line there. While a turn runs, steps can come after the last
+ * message, so the list also keeps that message in its place: without it, the order of the list breaks.
  */
 export function foldSteps(steps: readonly TurnStep[]): {
   listed: readonly TurnStep[];
@@ -16,7 +17,8 @@ export function foldSteps(steps: readonly TurnStep[]): {
 } {
   const last = steps.findLastIndex((step) => step.kind === "message");
   if (last === -1) return { listed: steps, lastMessage: undefined };
-  return { listed: steps.filter((_, index) => index !== last), lastMessage: steps[last] };
+  if (last < steps.length - 1) return { listed: steps, lastMessage: steps[last] };
+  return { listed: steps.slice(0, last), lastMessage: steps[last] };
 }
 
 const kindIcons: Readonly<Record<TurnStep["kind"], IconName>> = {

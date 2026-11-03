@@ -40,10 +40,17 @@ function step(kind: TurnStep["kind"], text: string, isError = false): TurnStep {
 }
 
 describe("foldSteps", () => {
-  test("lists every step but the last message, in order, and keeps the last message for the bubble", () => {
+  test("lists every step but the last message when it ends the steps, and keeps it for the bubble", () => {
+    const steps = [step("message", "first"), step("tool", "Read a.md"), step("message", "last")];
+    const { listed, lastMessage } = foldSteps(steps);
+    expect(listed.map((each) => each.text)).toEqual(["first", "Read a.md"]);
+    expect(lastMessage?.text).toBe("last");
+  });
+
+  test("also lists the last message in its place when steps come after it", () => {
     const steps = [step("message", "first"), step("tool", "Read a.md"), step("message", "last"), step("command", "ls")];
     const { listed, lastMessage } = foldSteps(steps);
-    expect(listed.map((each) => each.text)).toEqual(["first", "Read a.md", "ls"]);
+    expect(listed.map((each) => each.text)).toEqual(["first", "Read a.md", "last", "ls"]);
     expect(lastMessage?.text).toBe("last");
   });
 

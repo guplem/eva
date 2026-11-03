@@ -467,7 +467,7 @@ export class Eva {
   readonly unsentTexts: UnsentTextStore;
   /** The person's rules for Eva, in `.eva/assistant.md`. Null when no vault is configured. */
   readonly assistantRules: AssistantRules | null;
-  /** The vault's template parts, such as the skills. Null when no vault is configured. */
+  /** The vault's template parts, such as the text actions. Null when no vault is configured. */
   readonly templateAlignment: TemplateAlignment | null;
   /** One question to a model with one answer, for any feature that needs a short text. */
   readonly modelCalls: ModelCalls;

@@ -1341,7 +1341,7 @@ async function assistantRulesRoute(
   return json({ error: "Not found." }, 404);
 }
 
-/** The vault's template parts, such as the skills: their states, and the person's choice for one that differs. */
+/** The vault's template parts, such as the text actions: their states, and the person's choice for one that differs. */
 async function templatePartsRoute(request: Request, method: string, eva: Eva): Promise<Response> {
   if (method !== "GET" && method !== "POST") return json({ error: "Not found." }, 404);
   const listed = eva.templateParts();

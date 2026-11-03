@@ -5,8 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { ApiError } from "./api.ts";
 import { playCue } from "./cues.ts";
-import { errorFix, type ErrorFix } from "./error-fixes.ts";
-import { destinationOf } from "./navigation.ts";
+import { errorFix, fixButtonShown, type ErrorFix } from "./error-fixes.ts";
 import { Toast } from "./Toast.tsx";
 import { goTo } from "./back-layers.ts";
 
@@ -28,10 +27,10 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
   const [toast, setToast] = useState<ErrorMessage | null>(null);
   // A new error restarts the ring, even with the same words as the last one.
   const [shown, setShown] = useState(0);
-  // On the Settings page, a button to it would do nothing.
-  const [settingsIsOpen, setSettingsIsOpen] = useState(() => destinationOf(window.location.hash) === "settings");
+  // The button hides where it leads; it shows on another Settings page, since it opens a card there (#799).
+  const [hash, setHash] = useState(() => window.location.hash);
   useEffect(() => {
-    const onHashChange = (): void => setSettingsIsOpen(destinationOf(window.location.hash) === "settings");
+    const onHashChange = (): void => setHash(window.location.hash);
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -52,7 +51,7 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
           role="alert"
           onClose={() => setToast(null)}
           actions={
-            fix !== null && !settingsIsOpen ? (
+            fixButtonShown(fix, hash) ? (
               <button
                 className="primary"
                 onClick={() => {

@@ -1,12 +1,12 @@
 /** The button that fixes each open problem, picked from the problem's key, never from its text. */
 import type { VaultSyncState } from "./api.ts";
+import { settingsHome, type SettingsRoute } from "./settings-routes.ts";
 
 export type ProblemAction =
   | "pick_version"
   | "open_schedules"
   | "open_settings"
   | "choose_template_version"
-  | "open_claude_login"
   | "review_widget_update"
   | "update_vault";
 
@@ -15,7 +15,6 @@ export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   open_schedules: "Open schedules",
   open_settings: "Open Settings",
   choose_template_version: "Choose a version",
-  open_claude_login: "Open Settings",
   review_widget_update: "Review the update",
   update_vault: "Update the vault",
 };
@@ -38,9 +37,37 @@ export function problemAction(key: string, syncStatus: VaultSyncState["status"])
   if (isOtherMachineProblem(key)) return null;
   if (key === "vault_sync" && syncStatus === "conflict") return "pick_version";
   if (key === "template_alignment") return "choose_template_version";
-  if (key === claudeLoginKey) return "open_claude_login";
   if (key.startsWith("widget_update:")) return "review_widget_update";
   return "open_settings";
+}
+
+/** The card that fixes each problem, by its key: the card that the problem's message names (#799). */
+const problemCards: Readonly<Record<string, SettingsRoute>> = {
+  vault_sync: { section: "vault", item: "vault-sync" },
+  vault_password: { section: "vault", item: "encrypted-files" },
+  vault_key_changed: { section: "vault", item: "encrypted-files" },
+  vault_secret_files: { section: "vault", item: "encrypted-files" },
+  template_alignment: { section: "vault", item: "template-alignment" },
+  // Its help explains what the shell of a chat can reach.
+  shell_wall: { section: "engines", item: "permissions" },
+  default_engine: { section: "updates", item: "versions" },
+  engine_update: { section: "updates", item: "versions" },
+  default_engine_restart: { section: "updates", item: "restart" },
+  update: { section: "updates", item: "eva-updates" },
+  vault_ahead: { section: "updates", item: "eva-updates" },
+  last_location: { section: "access", item: "location" },
+  telegram_poll: { section: "connections", item: "telegram" },
+};
+
+/** The part of Settings that fixes a problem, as a search result opens it. An unknown key opens the home page. */
+export function problemSettingsRoute(key: string): SettingsRoute {
+  const card = problemCards[key];
+  if (card !== undefined) return card;
+  // The engine name is also the id of its card.
+  if (key.startsWith("engine_login:")) return { section: "engines", item: key.slice("engine_login:".length) };
+  if (key.startsWith("widget_check:") || key.startsWith("widget_update:"))
+    return { section: "personalize", item: "widgets" };
+  return settingsHome;
 }
 
 /**

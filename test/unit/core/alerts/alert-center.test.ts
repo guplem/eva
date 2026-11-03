@@ -449,3 +449,32 @@ describe("AlertCenter history edge cases (#566)", () => {
     expect(center.problemDetails()[0]?.since).toBe("2026-10-17T15:00:00.000Z");
   });
 });
+
+describe("AlertCenter.notice (#801)", () => {
+  const structure: AlertProblem = {
+    level: "warn",
+    message: "A new vault structure (version 3) is ready.",
+    resolvedMessage: "",
+  };
+
+  test("a sent notice alerts once, stays open with no reminder, and leaves one entry", () => {
+    const run = harness();
+    run.center.notice("vault_structure", structure, true);
+    run.advanceHours(25);
+    run.center.notice("vault_structure", structure, false);
+    expect(run.alerts.map((alert) => [alert.key, alert.level])).toEqual([["vault_structure", "warn"]]);
+    expect(run.center.problemDetails()).toMatchObject([{ key: "vault_structure", level: "warn", hidden: false }]);
+    expect(run.center.historyEntries().map((entry) => entry.level)).toEqual(["warn"]);
+  });
+
+  test("an unsent notice opens with no alert and no entry, and dismiss closes it with no resolved alert", () => {
+    const run = harness();
+    run.center.notice("vault_structure", structure, false);
+    expect(run.alerts).toEqual([]);
+    expect(run.center.historyEntries()).toEqual([]);
+    expect(run.center.problemDetails()).toHaveLength(1);
+    run.center.dismiss("vault_structure");
+    expect(run.alerts).toEqual([]);
+    expect(run.center.problemDetails()).toEqual([]);
+  });
+});

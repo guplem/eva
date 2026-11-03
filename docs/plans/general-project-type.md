@@ -48,3 +48,4 @@ The reviews ran in five rounds. Each finding below is fixed, or kept with its re
 - **Kept:** the vault map comment "No type means general". #772 replaces the map, and the base prompt states the `repos` rule.
 - **Kept:** a malformed scalar `repos` reads as general. The warning still shows.
 - **Kept:** the note of a received file differs from the Assistant's. A chat in a project folder gets no prompt of Eva's, so the note carries the line.
+- **Fixed:** the e2e test "a right click on a project opens its pages from the menu" timed out on the phone. The desktop run's new projects, a general one among them, push the card down, so the project list scrolls. A refresh of the list while earlier chats end scrolls it again, and a scroll closes the menu, as designed. The test now waits until no chat works, and retries the right click and the pick.

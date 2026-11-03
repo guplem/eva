@@ -1,6 +1,6 @@
 ---
 name: schedule
-description: Create, change, pause or remove a scheduled message by editing .eva/schedules.json. Use when the person asks for a reminder, a summary or any message at a set time, every day, on some days or every few hours, days or weeks, in any wording, or asks to change, pause, resume or stop one.
+description: Create, change, pause or remove a scheduled message by editing .eva/schedules.json. Use when Eva must do or send something at a set time, once, every day, on some days or every few hours, days or weeks, in any wording, or when the person asks to change, pause, resume or stop a schedule. For a plain reminder of a task, first follow the vault's rules for reminders.
 ---
 
 # Schedule a message
@@ -8,6 +8,15 @@ description: Create, change, pause or remove a scheduled message by editing .eva
 A schedule makes Eva post on her own, at a set time, in a chat of its own (a Telegram topic). The schedules live in `.eva/schedules.json`. Eva reads the file every 30 seconds, so a change takes effect within a minute. Eva's autosave commits the file like a note, so never commit it yourself.
 
 After a new schedule, a change, or a start after a pause, Eva opens the schedule's chat within a minute and posts a setup card there. A card for a new schedule shows every field and the next run. A card for a change names what changed. Without Telegram, the web app shows the card in a dialog. The schedule runs only after a card reaches the person: in the web app, after they tap "Got it".
+
+## 0. Pick the place
+
+A schedule is not the only place for a reminder. Pick the place by the kind of request:
+
+- **A reminder only for the person**, such as "remind me to call the bank on 24 November": follow the vault's rules for reminders and tasks. Look in `AGENTS.md` at the vault root and in the `AGENTS.md` of the folder that the reminder is about. When they name a place, such as the task app, put the reminder there, and do not write a schedule.
+- **Work that you must do at that time**, such as "on 24 November, check Gmail for a reply and tell me": always write a schedule with a `prompt`.
+- **The person asks Eva herself to send the message:** write a schedule.
+- **The vault names no place for reminders, or the task app is not set:** write a schedule. Tell the person that the vault names no task app.
 
 ## 1. Read the file
 
@@ -45,6 +54,11 @@ Each schedule is one object in `schedules`:
   - **`every`**: a number from 1 to 999 and a unit: `h` for hours, `d` for days, `w` for weeks. Examples: `2h`, `3d`, `1w`.
   - **`from`**: the first run, as `YYYY-MM-DDTHH:MM`, such as `2026-10-22T07:30`. Each later run comes one interval after the last. A day or week interval keeps the time of day of `from`.
   - Example: `"every": "3d", "from": "2026-10-22T07:30"` runs at 07:30 every third day from 22 October.
+- **Once instead of a repeat.** To run one time only, write `from` alone, and leave out `at`, `days` and `every`. Example: `"from": "2026-11-24T10:00"` runs once, at 10:00 on 24 November.
+  - Pick a time later than the `[Local time: ...]` line. A time in the past never runs.
+  - If Eva is off at that time, the run comes when she is back, with a line that says it is late.
+  - After the run, the schedule stays in the file, and the Schedules page shows it as "Ended". Do not remove it, and do not tell the person to remove it.
+  - Never fake a one-off with a long interval, such as `"every": "999w"`.
 - **At least one step.** `text` is a fixed message. `file` is a path from the vault root, as an `[[attach:]]` marker names it. Never use `.eva/scratch/`, because that folder empties after a week, and Eva skips such an entry. `prompt` is a message that you answer, in a fresh chat, at that time. The steps run in that order.
 - **`model`**: optional, for a `prompt` only. Use `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast). Without it, or with any other value, the chat uses the model from the settings.
 - **`enabled`**: optional. Write `false` to turn the schedule off. It then never runs, and it keeps its fields. Leave the key out to turn it on. Use only `true` or `false` as the value. Never write it in quotes.
@@ -62,7 +76,7 @@ If the write fails for another reason, do not try a second way, such as a shell 
 Read the file again after you edit it, and check each point:
 
 - The file is valid JSON.
-- The entry has `at`, or `every` and `from`, never both.
+- The entry has `at`, or `every` and `from`, or `from` alone for a one-off. It never has `at` or `days` together with `from`.
 - `at` has two digits on each side, such as `07:30` and never `7:30`.
 - `every` is a number and `h`, `d` or `w`, and `from` is a date and a time, such as `2026-10-22T07:30`.
 - Every `id` is a slug of lowercase letters, digits or dashes, and no two entries share one.
@@ -74,7 +88,7 @@ Eva skips an entry that fails a check. It says so once in the main chat, in a me
 
 ## 4. Change, pause or remove one
 
-To change a schedule, edit its entry and keep its `id`. Eva then posts a setup card that names what changed.
+To change a schedule, edit its entry and keep its `id`. Eva then posts a setup card that names what changed. To run an ended one-off again, give it a new `from` in the future.
 
 To pause one (turn it off), set `"enabled": false`. Within a minute it stops, and Eva posts no card. To start it again, delete the `enabled` key. Eva then posts a new setup card.
 
@@ -82,4 +96,4 @@ To remove one, delete its entry. The topic stays in Telegram, and the person can
 
 ## 5. Reply
 
-Say in one sentence what Eva sends, when, and in which topic. A schedule created after its time today first runs on the next matching day. Tell the person to check the setup card that Eva posts within a minute. Tell them that the schedule runs only after the card reaches them. Without Telegram, the card is a dialog in the web app, and they must tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.
+Say in one sentence what Eva sends, when, and in which topic. When you followed the vault's rules and wrote no schedule, say where the reminder went. A schedule created after its time today first runs on the next matching day. Tell the person to check the setup card that Eva posts within a minute. Tell them that the schedule runs only after the card reaches them. Without Telegram, the card is a dialog in the web app, and they must tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.

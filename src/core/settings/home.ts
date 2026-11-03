@@ -9,6 +9,7 @@ import { effortLevels, modelAliases } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { googleAccessLevels } from "../google/google-access.ts";
+import { clocks, unitSystems, weekStarts } from "../../shared/time-format.ts";
 
 /** The variable that names the instance of an `eva` command, as `--instance` does. */
 export const instanceVariable = "EVA_INSTANCE";
@@ -275,6 +276,12 @@ export const configSchema = z.object({
   machineName: z.string().min(1).nullable().default(null),
   port: z.number().int().min(1024).max(65535).default(7420),
   timeZone: z.string().min(1).nullable().default(null),
+  /** The language of Eva's answers, as the person writes it, such as Spanish. Null: not set. */
+  language: z.string().min(1).nullable().default(null),
+  /** Null: not set, so Eva keeps her old forms: metric, a 24-hour clock and a week from Monday. */
+  units: z.enum(unitSystems).nullable().default(null),
+  clock: z.enum(clocks).nullable().default(null),
+  weekStart: z.enum(weekStarts).nullable().default(null),
   projectRoots: z.array(z.string().min(1)).default([]),
   sync: z
     .object({

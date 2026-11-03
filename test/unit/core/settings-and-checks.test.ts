@@ -524,6 +524,19 @@ describe("settings", () => {
     expect(saved.widgets).toEqual({ checkIntervalMinutes: 120 });
     expect(() => eva.updateSettings({ widgets: { checkIntervalMinutes: 2 } })).toThrow("checkIntervalMinutes");
   });
+
+  test("the format settings live in the vault and apply with no restart (#770)", () => {
+    const config = eva.publicSettings().config;
+    expect([config.language, config.units, config.clock, config.weekStart]).toEqual([null, null, null, null]);
+    expect(eva.updateSettings({ language: "Spanish", units: "imperial", clock: "12h", weekStart: "sunday" })).toEqual({
+      saved: true,
+      restartNeeded: false,
+    });
+    const saved = JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8")) as Record<string, unknown>;
+    expect(saved).toMatchObject({ language: "Spanish", units: "imperial", clock: "12h", weekStart: "sunday" });
+    expect(() => eva.updateSettings({ clock: "13h" })).toThrow("clock");
+    expect(() => eva.updateSettings({ weekStart: "Sunday" })).toThrow("weekStart");
+  });
 });
 
 describe("runCheck", () => {

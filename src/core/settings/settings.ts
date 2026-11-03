@@ -14,6 +14,10 @@ import { assertVaultWritable, vaultAhead } from "../migrations/migrations.ts";
 /** The settings that the vault holds, as dotted keys. Every other key belongs to the machine. */
 export const sharedSettingKeys: readonly string[] = [
   "timeZone",
+  "language",
+  "units",
+  "clock",
+  "weekStart",
   "sync.sweepSeconds",
   "sync.pullIntervalMinutes",
   "updates",

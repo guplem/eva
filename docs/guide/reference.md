@@ -48,6 +48,10 @@ In the vault:
 | Setting                        | Default        | What it does                                                                                  |
 | ------------------------------ | -------------- | --------------------------------------------------------------------------------------------- |
 | `timeZone`                     | Asked at setup | The time zone of the reminders, and of the time in each message.                              |
+| `language`                     | Asked at setup | The language of Eva's answers, such as `Spanish`.                                             |
+| `units`                        | From setup     | `metric` or `imperial`. `null`: not set.                                                      |
+| `clock`                        | From setup     | `24h` or `12h`: the form of each time that Eva writes and shows. `null`: 24-hour.             |
+| `weekStart`                    | From setup     | The first day of the week, `monday` to `sunday`. `null`: Monday.                              |
 | `sync.pullIntervalMinutes`     | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.    |
 | `sync.sweepSeconds`            | `60`           | Seconds between two saves of changed notes.                                                   |
 | `updates.frequency`            | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                               |

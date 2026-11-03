@@ -2571,7 +2571,7 @@ describe("Eva alerts", () => {
     const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
     expect(result.found).toBe(false);
     expect(result.state.status).toBe("skipped");
-    expect(result.state.lastError).toContain("an Assistant or specialist chat");
+    expect(result.state.lastError).toContain("an Assistant or project chat");
     release();
     await turn;
   });

@@ -1,7 +1,7 @@
 /**
  * The answers that a retry undoes (#525): every turn of the chat tree that ended at or after the
- * retried turn, in an Assistant or specialist chat. Every chat shares the one vault, so a later
- * answer in a fork counts too.
+ * retried turn, in an Assistant chat or a chat in a project folder. Every chat shares the one
+ * vault, so a later answer in a fork counts too.
  */
 import { chatKind } from "../../shared/chat-kind.ts";
 import { turnSnapshotRef, type UndoAnswer } from "../vault/vault-snapshots.ts";

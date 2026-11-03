@@ -25,18 +25,18 @@ description: Save or fix a basic fact about the person in the header of Life/Abo
 
 Read the note first. Change only the field that the person gave. Keep every other line, and keep the text under the header as it is. When the note has no header, add one at the top: only the fields that the person gave, in the form of the example, with `pinned: full`.
 
-| Field                                 | Form                                                                                                            | Example                  |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| `name`                                | What Eva calls the person                                                                                       | `Alex`                   |
-| `givenName`, `familyName`, `nickname` | Text                                                                                                            | `Alex`, `Example`, `Lex` |
-| `pronouns`                            | Text                                                                                                            | `they/them`              |
-| `birthDate`                           | `YYYY-MM-DD`, or `--MM-DD` when the person gives no year                                                        | `1990-05-14`, `--05-14`  |
-| `contact`                             | The person's own `phone` and `email`                                                                            | see the example          |
-| `region`                              | ISO 3166 code: a country, or a country and a region                                                             | `ES`, `ES-CT`, `US-CA`   |
-| `hemisphere`                          | `north` or `south`, from where the person lives                                                                 | `north`                  |
-| `places`                              | A key for each place the person goes to often, such as `home`. Each has `city`. Add `name`, `lat` and `lon`     | see the example          |
-| `work`                                | `period`: a link to the open job in `Life/Periods/`. `from` and `to` as `HH:mm`, and `days` from `mon` to `sun` | see the example          |
-| `languages`                           | A list. Each has `name` and `level`, such as `native` or `B2`                                                   | see the example          |
+| Field                                 | Form                                                                                                                   | Example                  |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `name`                                | What Eva calls the person                                                                                              | `Alex`                   |
+| `givenName`, `familyName`, `nickname` | Text                                                                                                                   | `Alex`, `Example`, `Lex` |
+| `pronouns`                            | Text                                                                                                                   | `they/them`              |
+| `birthDate`                           | `YYYY-MM-DD`, or `--MM-DD` when the person gives no year                                                               | `1990-05-14`, `--05-14`  |
+| `contact`                             | The person's own `phone` and `email`                                                                                   | see the example          |
+| `region`                              | ISO 3166 code: a country, or a country and a region                                                                    | `US`, `US-CA`, `GB`      |
+| `hemisphere`                          | `north` or `south`, from where the person lives                                                                        | `north`                  |
+| `places`                              | A key for each place the person goes to often, such as `home`. Each has `city`. Add `name`, `address`, `lat` and `lon` | see the example          |
+| `work`                                | `period`: a link to the open job in `Life/Periods/`. `from` and `to` as `HH:mm`, and `days` from `mon` to `sun`        | see the example          |
+| `languages`                           | A list. Each has `name` and `level`, such as `native` or `B2`                                                          | see the example          |
 
 When the person says where they live, fill `region`, `hemisphere` and `places.home` together.
 
@@ -57,12 +57,12 @@ nickname: Lex
 pronouns: they/them
 birthDate: 1990-05-14
 contact: { phone: "+1 555 0100", email: alex@example.com }
-region: ES-CT
+region: US-CA
 hemisphere: north
 places:
-  home: { city: Barcelona, lat: 41.39, lon: 2.17 }
+  home: { address: 1 Example Street, city: San Francisco, lat: 37.77, lon: -122.42 }
 work:
-  period: "[[Life/Periods/2024-03 Example Job]]"
+  period: Life/Periods/2024-09-01-example-job
   from: "09:00"
   to: "18:00"
   days: [mon, tue, wed, thu, fri]

@@ -3,7 +3,7 @@
  * uses the same rules for its vault picker, so this file reads no disk. `widget-data.ts` adds the
  * checks that need the disk, such as a symbolic link.
  *
- * A path here is a forward-slash path from the vault root, such as `Life/Habits/walk.json`.
+ * A path here is a forward-slash path from the vault root, such as `Life/Health/Habits/walk.json`.
  */
 import { isScratchPath } from "../files/scratch-folders.ts";
 

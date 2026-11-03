@@ -462,6 +462,7 @@ vault .eva/template.json parts{}.retired
 vault .eva/template.json parts{}.updatedAt
 vault .eva/template.json version
 vault .eva/template.json version=1
+vault .eva/vault-structure.json version
 vault .eva/widgets.json version
 vault .eva/widgets.json version=1
 vault .eva/widgets.json widgets

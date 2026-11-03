@@ -54,7 +54,7 @@ The manifest says what the widget is and what it needs. [`widgets/manifest-v1.js
 | `hosts`    | no       | The web addresses that the widget calls. Each has a `url` (`https`, with no path) and a `why`.   |
 | `prompt`   | no       | One line for Eva's prompt, such as "Habits live in {habits}." `{habits}` names an input's value. |
 
-Eva adds the `prompt` line of each widget that is on to the prompt of each new chat, with the person's values in place of the placeholders. A placeholder of an empty input reads "(not set)". The person sees the line when they turn the widget on. A widget with no `prompt` gets a default line, such as "Habits data lives in Life/Habits. Read Life/Habits/DATA_FORMAT.md before you write."
+Eva adds the `prompt` line of each widget that is on to the prompt of each new chat, with the person's values in place of the placeholders. A placeholder of an empty input reads "(not set)". The person sees the line when they turn the widget on. A widget with no `prompt` gets a default line, such as "Habits data lives in Life/Health/Habits. Read Life/Health/Habits/DATA_FORMAT.md before you write."
 
 Eva shows each `why` to the person when the person turns the widget on. Write each `why` for the person: say what the widget does with the permission.
 
@@ -104,7 +104,7 @@ A widget talks to its host only through `fetch` to relative paths. The host deci
 - A widget never reaches `.git/`, `.eva/`, `Scratch/`, the clones in `Projects/*/repos/`, `Life/About me.md` or any hidden file, also inside a folder that the person picked.
 - A widget writes only a JSON or YAML file whose name matches `files`, and never a rule file of an agent: `AGENTS.md`, `CLAUDE.md`, `README.md` or `DATA_FORMAT.md`. A write is 5 MB at most. Eva refuses a text that holds a secret, such as a token.
 - `eva/location.json` answers `null` for a widget with no `eva-location` input.
-- `eva/location.json` holds `{ "latitude": 41.39, "longitude": 2.17, "accuracy": 30, "at": "2026-01-01T09:30:00Z" }`. `accuracy` is in meters. `at` is the time of the newest stored point.
+- `eva/location.json` holds `{ "latitude": 37.77, "longitude": -122.42, "accuracy": 30, "at": "2026-01-01T09:30:00Z" }`. `accuracy` is in meters. `at` is the time of the newest stored point.
 - A `PUT` or a `DELETE` fails outside Eva. Handle the failure. See [Outside Eva: the demo](#outside-eva-the-demo).
 - A data file is JSON or YAML.
 
@@ -202,14 +202,14 @@ The field names of a data schema follow strict rules, so that people, agents and
 - Put the unit in the name: `durationMinutes`, `distanceMeters`.
 - Use the common vocabulary below when it has a name for your field.
 
-| Name       | What it holds                                           |
-| ---------- | ------------------------------------------------------- |
-| `date`     | A day, as `YYYY-MM-DD` (`"format": "date"`).            |
-| `startAt`  | A start time, in ISO 8601 (`"format": "date-time"`).    |
-| `endAt`    | An end time, in ISO 8601 (`"format": "date-time"`).     |
-| `location` | A place, as `{ "latitude": 41.39, "longitude": 2.17 }`. |
-| `note`     | A free text of the person.                              |
-| `tags`     | A list of short texts.                                  |
+| Name       | What it holds                                              |
+| ---------- | ---------------------------------------------------------- |
+| `date`     | A day, as `YYYY-MM-DD` (`"format": "date"`).               |
+| `startAt`  | A start time, in ISO 8601 (`"format": "date-time"`).       |
+| `endAt`    | An end time, in ISO 8601 (`"format": "date-time"`).        |
+| `location` | A place, as `{ "latitude": 37.77, "longitude": -122.42 }`. |
+| `note`     | A free text of the person.                                 |
+| `tags`     | A list of short texts.                                     |
 
 A machine checks two of these rules: camelCase, and a list of refused abbreviations, such as `loc`, `temp`, `qty` and `desc`. "Full words" and "the unit in the name" stay rules for people and agents.
 
@@ -283,7 +283,7 @@ A browser blocks `fetch` on `file://`, so a double-click on `index.html` does no
 
 This widget shows the person's habits and checks a habit for today. The [base habits widget](https://github.com/guplem/eva-widget-habits) of Eva uses the same data format.
 
-The person picks a folder, such as `Life/Habits/`. The folder has one file for each habit, such as `meditate.json`. The file name is the habit name in lower case, with ASCII letters, digits and hyphens only. The name `index` is not allowed.
+The person picks a folder, such as `Life/Health/Habits/`. The folder has one file for each habit, such as `meditate.json`. The file name is the habit name in lower case, with ASCII letters, digits and hyphens only. The name `index` is not allowed.
 
 `eva-widget.json`:
 

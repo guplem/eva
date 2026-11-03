@@ -192,6 +192,17 @@ describe("the vault template", () => {
     expect(files["README.md"]).not.toContain("Life/");
     // The repository is public: the template keeps neutral examples only.
     expect(files["Life/Finances/AGENTS.md"]).toContain("Example Bank");
+    expect(Object.values(files).join("\n")).not.toMatch(/ES-CT|Barcelona/);
+    // Review fixes where two texts disagreed (#772).
+    expect(files["AGENTS.md"]).toContain("which win over them");
+    expect(files["AGENTS.md"]).toContain("every other `AGENTS.md` in the vault");
+    expect(files["AGENTS.md"]).not.toContain("offer status `gone`");
+    expect(files["Life/Objects/AGENTS.md"]).toContain("A finished repair → a dated line here.");
+    expect(files["Life/Finances/AGENTS.md"]).toContain("An online-banking login goes in the password manager.");
+    expect(files[".eva/AGENTS.md"]).toContain("`settings/chat-names.md`");
+    expect(files[".eva/AGENTS.md"]).toContain("`eva settings set`");
+    expect(files["Life/Finances/AGENTS.md"]).toContain("**Closing:** When a contract or account ends");
+    expect(files["AGENTS.md"]).toContain("any service, except the person's password manager.");
   });
 
   test("every vault migration leaves each file of a new vault as the template wrote it (#772)", () => {

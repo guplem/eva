@@ -261,11 +261,13 @@ describe("templateHistory", () => {
   });
 
   test("knows the last vault version of each skill that moved into Eva, so an untouched copy goes (#771)", () => {
-    for (const name of ["about-me", "schedule"]) {
-      expect(templateHistory[`.eva/skills/${name}/SKILL.md`]).toContain(
-        contentHash(evaCoreFiles()[`skills/${name}/SKILL.md`] ?? ""),
-      );
-    }
+    // The last version that templates/vault held, frozen: Eva's own copy changes after the move (#772).
+    expect(templateHistory[".eva/skills/about-me/SKILL.md"]).toContain(
+      "19224f1e22f00b93be5c558110faf26090c836ed98aaefc46ae6d6bfa02e8e05",
+    );
+    expect(templateHistory[".eva/skills/schedule/SKILL.md"]).toContain(
+      contentHash(evaCoreFiles()["skills/schedule/SKILL.md"] ?? ""),
+    );
   });
 });
 

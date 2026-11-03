@@ -31,7 +31,7 @@ function keeper(vaultPath: string | null = vault): LocationKeeper {
   return new LocationKeeper({ vaultPath, oldFilePath: oldFile, now: () => clock });
 }
 
-const here = { latitude: 41.39, longitude: 2.17, accuracy: 20 };
+const here = { latitude: 37.77, longitude: -122.42, accuracy: 20 };
 
 function minutes(count: number): Date {
   return new Date(start + count * 60_000);
@@ -72,7 +72,7 @@ describe("LocationKeeper.keep", () => {
     first.writeIfDue();
     const kept = keeper();
     expect(kept.keep({ ...here, latitude: 1 }, "telegram", minutes(-60), true)).toBe(false);
-    expect(kept.newest()?.latitude).toBe(41.39);
+    expect(kept.newest()?.latitude).toBe(37.77);
   });
 
   test("takes a time in the future as now, so a fast phone clock blocks nothing", () => {
@@ -100,7 +100,7 @@ describe("LocationKeeper.writeIfDue", () => {
     expect(kept.writeIfDue()).toBe("written");
     expect(readFileSync(note, "utf-8")).toBe(
       "---\nname: Alex\n" +
-        `lastLocation: { latitude: 41.39, longitude: 2.17, accuracy: 20, at: "${minutes(-1).toISOString()}", source: telegram }\n` +
+        `lastLocation: { latitude: 37.77, longitude: -122.42, accuracy: 20, at: "${minutes(-1).toISOString()}", source: telegram }\n` +
         "---\n\n# About Alex\n",
     );
     expect(keeper().newest()).toEqual({ ...here, at: minutes(-1).toISOString(), source: "telegram" });
@@ -117,7 +117,7 @@ describe("LocationKeeper.writeIfDue", () => {
     clock = minutes(14);
     kept.keep(north(5_000), "telegram", clock, false);
     expect(kept.writeIfDue()).toBe("waiting");
-    expect(readLastLocation(vault)?.latitude).toBe(41.39);
+    expect(readLastLocation(vault)?.latitude).toBe(37.77);
     // The hub knows the newer point before it writes it.
     expect(kept.newest()?.latitude).toBe(north(5_000).latitude);
     clock = minutes(15);
@@ -191,7 +191,7 @@ describe("LocationKeeper.writeIfDue", () => {
     expect(readFileSync(note, "utf-8")).toBe("---\nplaces: [home\n---\n");
     writeFileSync(note, "# About Alex\n");
     expect(kept.writeIfDue()).toBe("written");
-    expect(readLastLocation(vault)?.latitude).toBe(41.39);
+    expect(readLastLocation(vault)?.latitude).toBe(37.77);
   });
 
   test("waits with no alert while the vault folder is not there yet, such as before its clone", () => {
@@ -204,7 +204,7 @@ describe("LocationKeeper.writeIfDue", () => {
     const kept = keeper(null);
     kept.keep(here, "telegram", clock, true);
     expect(kept.writeIfDue()).toBe("waiting");
-    expect(kept.newest()?.latitude).toBe(41.39);
+    expect(kept.newest()?.latitude).toBe(37.77);
   });
 });
 
@@ -212,7 +212,7 @@ describe("LocationKeeper and a time in the future", () => {
   test("reads a stored time in the future as old, so it blocks no new point, also in the same place", () => {
     writeFileSync(
       note,
-      '---\nlastLocation: { latitude: 41.39, longitude: 2.17, accuracy: 20, at: "2026-10-22T10:00:00.000Z", source: web }\n---\n',
+      '---\nlastLocation: { latitude: 37.77, longitude: -122.42, accuracy: 20, at: "2026-10-22T10:00:00.000Z", source: web }\n---\n',
     );
     const kept = keeper();
     expect(kept.keep(here, "telegram", minutes(-1), false)).toBe(true);

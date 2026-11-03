@@ -113,7 +113,7 @@ beforeEach(() => {
     previewGrants: new PreviewGrants(join(folder, "state", "widget-previews.json")),
     projects: () => [project as unknown as Project],
     baseWidgets: [],
-    location: () => ({ latitude: 41.39, longitude: 2.17, accuracy: 30, at: "2026-01-01T08:00:00Z", source: "web" }),
+    location: () => ({ latitude: 37.77, longitude: -122.42, accuracy: 30, at: "2026-01-01T08:00:00Z", source: "web" }),
     exclusive: (work) => Promise.resolve().then(work),
     redact: (value) => value,
     now: () => new Date("2026-01-01T09:00:00Z"),
@@ -178,7 +178,7 @@ describe("the preview of a clone", () => {
     expect(approved.ask).toBeNull();
     expect(JSON.parse((await get(token, "config.json")).body)).toEqual({ habits: "Life/Habits" });
     expect((await get(token, "data/habits/walk.json")).body).toContain('"Walk"');
-    expect(JSON.parse((await get(token, "eva/location.json")).body)).toMatchObject({ latitude: 41.39 });
+    expect(JSON.parse((await get(token, "eva/location.json")).body)).toMatchObject({ latitude: 37.77 });
     // My data writes the real vault.
     const put = await widgets.serve(token, "data/habits/walk.json", "PUT", Buffer.from('{"name":"Walk","checks":[1]}'));
     expect(put?.status).toBe(204);

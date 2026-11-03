@@ -129,7 +129,7 @@ beforeEach(() => {
   vaultFile("Notes/other.json", "{}");
   mkdirSync(join(vault, ".eva"), { recursive: true });
   now = new Date("2026-01-01T09:00:00Z");
-  location = { latitude: 41.39, longitude: 2.17, accuracy: 30, at: "2026-01-01T08:00:00Z", source: "web" };
+  location = { latitude: 37.77, longitude: -122.42, accuracy: 30, at: "2026-01-01T08:00:00Z", source: "web" };
   projects = [];
   options = {
     vaultPath: vault,
@@ -477,8 +477,8 @@ describe("the widget routes", () => {
       "walk.json",
     ]);
     expect(JSON.parse(text((await widgets.serve(token, "eva/location.json", "GET", null))?.body))).toEqual({
-      latitude: 41.39,
-      longitude: 2.17,
+      latitude: 37.77,
+      longitude: -122.42,
       accuracy: 30,
       at: "2026-01-01T08:00:00Z",
     });

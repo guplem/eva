@@ -188,6 +188,8 @@ export function currentNames(): string[] {
       "parts",
       ...templatePartFields.map((field) => `parts{}.${field}`),
     ].map((name) => `vault .eva/template.json ${name}`),
+    // A new vault records its structure version, which the vault upgrade reads (#772).
+    "vault .eva/vault-structure.json version",
     // A line of the snapshot is three words, so the path of the note drops its space.
     ...aboutMeHeaderKeys.map((key) => `vault Life/About-me.md ${key}`),
     ...[...lastLocationFields, "source=telegram", "source=web"].map(

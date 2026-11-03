@@ -24,7 +24,7 @@ export interface AboutMe {
   readonly name: string | null;
   /** `YYYY-MM-DD`. */
   readonly birthDate: string | null;
-  /** An ISO 3166 code, such as `ES` or `ES-CT`: it picks the local days. */
+  /** An ISO 3166 code, such as `US` or `US-CA`: it picks the local days. */
   readonly region: string | null;
   readonly hemisphere: Hemisphere | null;
   /** One sentence for each field that Eva must fix. */
@@ -135,7 +135,7 @@ export function readAboutMe(vaultPath: string): AboutMe {
   const region = text1(
     "region",
     (value) => regionPattern.test(value),
-    "must be a country code, such as ES, or a region code, such as ES-CT.",
+    "must be a country code, such as US, or a region code, such as US-CA.",
   );
   const hemisphere = text1("hemisphere", (value) => value === "north" || value === "south", "must be north or south.");
   // Before the hub migrates, Eva still reads these fields, so the agent must not move them yet.

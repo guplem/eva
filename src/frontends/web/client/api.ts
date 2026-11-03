@@ -78,7 +78,7 @@ const keepaliveTextLength = 16_000;
 
 export type { EventSubscription };
 
-/** A template part of the vault, such as a skill, and how it compares with this Eva's version. */
+/** A template part of the vault, such as a text action, and how it compares with this Eva's version. */
 export type TemplatePartView = TemplatePart;
 export type { ComposerMenuItems, SavedPrompt, TextAction };
 

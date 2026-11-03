@@ -65,7 +65,7 @@ const topics: Readonly<Record<string, NotificationTopic>> = {
   template_alignment: {
     title: "Vault template",
     meaning:
-      "Eva gives each vault some standard files, such as skills. When Eva has a new version of a file that you changed, she asks which version to keep.",
+      "Eva gives each vault some standard files, such as text actions and saved prompts. When Eva has a new version of a file that you changed, she asks which version to keep.",
   },
   vault_ahead: {
     title: "Vault from a newer Eva",

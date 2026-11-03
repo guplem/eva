@@ -255,7 +255,7 @@ const savedPromptSchema = z.object({
 const menuItemNameSchema = z.object({ name: menuNameSchema });
 /** The typed text of a message box, which can hold a long paste. */
 const textActionRunSchema = z.object({ name: menuNameSchema, engine: engineSchema, text: z.string().max(200_000) });
-/** A template part is a path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
+/** A template part is a path from the vault root, such as `.eva/settings/text-actions/Polish.md`. */
 const templateChoiceSchema = z.object({ path: z.string().min(1).max(500), choice: z.enum(["new", "mine"]) });
 /**
  * A point from the web app's location, with the radius of its error in meters. A web app that
@@ -1341,7 +1341,7 @@ async function assistantRulesRoute(
   return json({ error: "Not found." }, 404);
 }
 
-/** The vault's template parts, such as the skills: their states, and the person's choice for one that differs. */
+/** The vault's template parts, such as the text actions: their states, and the person's choice for one that differs. */
 async function templatePartsRoute(request: Request, method: string, eva: Eva): Promise<Response> {
   if (method !== "GET" && method !== "POST") return json({ error: "Not found." }, 404);
   const listed = eva.templateParts();

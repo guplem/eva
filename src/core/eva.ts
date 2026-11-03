@@ -88,6 +88,7 @@ import {
 import { claimHub, claimHubIfUnclaimed, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
+import { EvaCore } from "./modes/eva-core.ts";
 import { SpecialistPreparer } from "./modes/specialist-mode.ts";
 import type { VaultSyncPort } from "./modes/vault-turns.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
@@ -466,7 +467,7 @@ export class Eva {
   readonly unsentTexts: UnsentTextStore;
   /** The person's rules for Eva, in `.eva/assistant.md`. Null when no vault is configured. */
   readonly assistantRules: AssistantRules | null;
-  /** The vault's template parts, such as the skills. Null when no vault is configured. */
+  /** The vault's template parts, such as the text actions. Null when no vault is configured. */
   readonly templateAlignment: TemplateAlignment | null;
   /** One question to a model with one answer, for any feature that needs a short text. */
   readonly modelCalls: ModelCalls;
@@ -778,6 +779,7 @@ export class Eva {
           vaultSync,
           beforeEndSnapshot: (sessionId) => this.writeLocationIfDue(sessionId),
           basePrompt: options.basePrompt,
+          evaCore: new EvaCore(options.paths.enginesFolder, options.logger ?? null),
           runner: options.runner,
           environment: agentEnvironment,
           now: options.now,

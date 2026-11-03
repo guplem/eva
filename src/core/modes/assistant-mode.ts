@@ -3,7 +3,7 @@
  * Before a turn: pull the vault, snapshot it, build the prompt. After a turn: snapshot and save the vault, and keep
  * an open pskill run of this session going, since the vault has no hooks.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readTextTolerant } from "../../shared/files.ts";
@@ -14,7 +14,6 @@ import type { ContextPart } from "../../shared/chat-context.ts";
 import type { Project } from "../projects/project-catalog.ts";
 import type { ModeContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
-import { moveAssistantPersonality, withMovedSections } from "../migrations/assistant-rules-move.ts";
 import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 import { aboutMeProblemNote, readAboutMe } from "../vault/about-me.ts";
 import { pinFiles } from "../migrations/pinned-files.ts";
@@ -22,6 +21,7 @@ import { pinnedBlock, type PinnedBlock } from "./pinned-block.ts";
 import { findPinnedFiles, readsOldImportant } from "./pinned-files.ts";
 import { VaultTurns, type TurnSnapshots, type VaultSyncPort } from "./vault-turns.ts";
 import { widgetsBlock } from "./widgets-block.ts";
+import type { EvaCore } from "./eva-core.ts";
 import { formatBlock, type FormatSettings } from "./format-block.ts";
 import { clockTime, type Clock } from "../../shared/time-format.ts";
 
@@ -35,6 +35,8 @@ export interface AssistantPreparerOptions {
   readonly beforeEndSnapshot?: (sessionId: string) => Promise<void>;
   /** Eva's base prompt, shipped with the engine. */
   readonly basePrompt: string;
+  /** Eva's own skills, loaded before the vault's (#771). */
+  readonly evaCore: EvaCore;
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
   readonly now: () => Date;
@@ -84,6 +86,8 @@ export class AssistantPreparer implements TurnPreparer {
   private readonly options: AssistantPreparerOptions;
   /** The appended prompt of each session, read at its first turn. */
   private readonly promptBySession: Map<string, KeptPrompt>;
+  /** The plugin folders of each session's last turn, so its details list the skills that it got. */
+  private readonly foldersBySession: Map<string, readonly string[]>;
   private readonly vaultTurns: VaultTurns;
   /** The sessions whose last turn was a fix of widget data that Eva asked for. */
   private readonly fixingData: Set<string>;
@@ -91,6 +95,7 @@ export class AssistantPreparer implements TurnPreparer {
   constructor(options: AssistantPreparerOptions) {
     this.options = options;
     this.promptBySession = new Map();
+    this.foldersBySession = new Map();
     this.vaultTurns = new VaultTurns(options.vaultSync);
     this.fixingData = new Set();
   }
@@ -106,19 +111,21 @@ export class AssistantPreparer implements TurnPreparer {
     // (lesson 115), so the appended text stays byte-identical and the prompt cache holds (lesson 40).
     // A restart reads it again.
     const kept = this.promptBySession.get(session.id) ?? {
-      rules: this.personalRules(personalRulesPath),
+      rules: readFileSync(personalRulesPath, "utf-8"),
       pinned: this.pinnedBlockNow(),
       format: this.formatBlockNow(),
       widgets: this.widgetsBlockNow(),
     };
     this.promptBySession.set(session.id, kept);
+    const pluginFolders = this.pluginFolders();
+    this.foldersBySession.set(session.id, pluginFolders);
     return {
       startFolder: session.startFolder,
       projectFolder: null,
       // The time goes in the message, never in the prompt (lesson 40).
       appendSystemPrompt: this.appendedPrompt(kept),
       messagePrefix: this.messagePrefix(kept.format),
-      pluginFolders: this.pluginFolders(),
+      pluginFolders,
       mcpServers: this.options.mcpServers,
       trusted: true,
       // The engine turns both off in Assistant mode by itself; these say the same.
@@ -137,7 +144,7 @@ export class AssistantPreparer implements TurnPreparer {
     // A file that Eva cannot read must not break the whole details, so this read never throws.
     const onDisk = readTextTolerant(rulesPath);
     // A running chat keeps the rules and the pinned files of its first turn since Eva started, even when they changed.
-    const rules = kept?.rules ?? (onDisk === null ? null : this.withPersonality(onDisk));
+    const rules = kept?.rules ?? onDisk;
     const pinned = kept === undefined ? this.pinnedBlockNow() : kept.pinned;
     const format = kept === undefined ? this.formatBlockNow() : kept.format;
     const widgets = kept === undefined ? this.widgetsBlockNow() : kept.widgets;
@@ -203,7 +210,8 @@ export class AssistantPreparer implements TurnPreparer {
         startFolder: session.startFolder,
         projectFolder: null,
         trusted: true,
-        pluginFolders: this.pluginFolders(),
+        // A chat with no turn since Eva started shows what its next turn gets.
+        pluginFolders: this.foldersBySession.get(session.id) ?? this.pluginFolders(),
         environment: this.options.environment,
       },
     });
@@ -241,10 +249,23 @@ export class AssistantPreparer implements TurnPreparer {
     return widgetsBlock(this.options.widgetLines?.() ?? []);
   }
 
-  /** The vault's `.eva/` folder gives the assistant skills, when it is a plugin. */
+  /**
+   * Eva's own skills first, without each one that the vault replaces, then the vault's `.eva/` folder,
+   * when it has a `skills/` folder. Both engines load the vault's folder with no manifest: a vault
+   * from before the manifest still gets its skills. `describe` and the turn share this, so the
+   * details list the skills that the turn gets.
+   */
   private pluginFolders(): string[] {
     const pluginFolder = join(this.options.vaultPath, ".eva");
-    return existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [];
+    const skillsFolder = join(pluginFolder, "skills");
+    const vaultFolder = existsSync(skillsFolder) ? [pluginFolder] : [];
+    try {
+      return [this.options.evaCore.folderFor(skillNames(skillsFolder)), ...vaultFolder];
+    } catch (error) {
+      // A broken engines folder must not stop every chat: the turn runs without Eva's skills.
+      this.options.logger?.log("warn", "Eva could not write her own skills.", { reason: String(error) });
+      return vaultFolder;
+    }
   }
 
   /**
@@ -256,19 +277,6 @@ export class AssistantPreparer implements TurnPreparer {
     const time = `[Local time: ${formatLocalTime(this.options.now(), zone, format?.settings.clock ?? null)}, ${zone}]`;
     const note = aboutMeProblemNote(readAboutMe(this.options.vaultPath).problems);
     return note === null ? time : `${time}\n${note}`;
-  }
-
-  /**
-   * Only the hub migrates the vault. Until it does, a satellite adds the sections that left the
-   * built-in prompt itself, so its rules stay whole. Remove this after one release.
-   */
-  private personalRules(path: string): string {
-    return this.withPersonality(readFileSync(path, "utf-8"));
-  }
-
-  private withPersonality(text: string): string {
-    const migrated = migrationApplied(vaultMigrationRecordPath(this.options.vaultPath), moveAssistantPersonality.id);
-    return migrated ? text : (withMovedSections(text) ?? text);
   }
 
   async afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null> {
@@ -324,6 +332,26 @@ export class AssistantPreparer implements TurnPreparer {
       return null;
     }
   }
+}
+
+/**
+ * The names of the skills in a folder: the name of each subfolder with a `SKILL.md`, also through a
+ * link, and the `name:` in its header. Claude Code and pi name a skill by its header.
+ */
+function skillNames(folder: string): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(folder);
+  } catch {
+    return [];
+  }
+  return entries.flatMap((entry) => {
+    const text = readTextTolerant(join(folder, entry, "SKILL.md"));
+    if (text === null) return [];
+    const header = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? "";
+    const name = /^name:[ \t]*["']?([^"'\r\n]*?)["']?[ \t]*$/m.exec(header)?.[1];
+    return name === undefined || name === "" || name === entry ? [entry] : [entry, name];
+  });
 }
 
 /** How Eva picks the pinned files, and what the caps or the walk left out. */

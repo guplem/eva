@@ -125,6 +125,8 @@ To change a schedule, edit its entry and keep its `id`. Eva then posts a setup c
 
 To pause one (turn it off), set `"enabled": false`. Within a minute it stops, and Eva posts no card. To start it again, delete the `enabled` key. Eva then posts a new setup card.
 
+A watch that a `[[done]]` ended is off. To watch again, delete the `enabled` key. If its `until` day has passed, also write a later `until`.
+
 To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
 
 ## 6. Reply

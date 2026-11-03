@@ -104,6 +104,8 @@ export interface HomePaths {
   readonly notificationHistory: string;
   /** The newest held-back release that Eva already announced. */
   readonly updatesState: string;
+  /** The hub's memory of the vault structure notices: the version of the last alert and prompt line (#773). */
+  readonly vaultStructureState: string;
   /** The code that pairs the first Telegram chat; present only while no chat is paired. */
   readonly telegramPairingCode: string;
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
@@ -148,6 +150,7 @@ export function homePaths(root: string): HomePaths {
     hiddenProblems: join(stateFolder, "hidden-problems.json"),
     notificationHistory: join(stateFolder, "notification-history.json"),
     updatesState: join(stateFolder, "updates.json"),
+    vaultStructureState: join(stateFolder, "vault-structure.json"),
     telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),
     devices: join(stateFolder, "devices.json"),

@@ -144,6 +144,12 @@ export class VaultUpkeep {
     return { ...result, state: this.logSyncState(result.state) };
   }
 
+  /** Logs and reports the sync's current state, such as after a step of a vault upgrade that paused it or ended the pause. */
+  reportState(): void {
+    const vaultSync = this.options.vaultSync;
+    if (vaultSync !== null) this.logSyncState(vaultSync.currentState);
+  }
+
   /** Runs an edit of Eva's own between two sync steps. With no vault sync, it runs at once. */
   exclusive<Result>(work: () => Result): Promise<Result> {
     const vaultSync = this.options.vaultSync;

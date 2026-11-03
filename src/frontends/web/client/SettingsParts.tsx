@@ -306,6 +306,7 @@ const syncMarks: Readonly<Record<VaultSyncState["status"], StepMark>> = {
   conflict: "missing",
   error: "failed",
   skipped: "optional",
+  paused: "optional",
 };
 
 const withheldReasons: Readonly<Record<VaultSyncState["withheldFiles"][number]["reason"], string>> = {

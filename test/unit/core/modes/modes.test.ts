@@ -528,6 +528,34 @@ describe("Assistant mode", () => {
     );
   });
 
+  test("only a new chat takes the vault structure line, at the end of its prompt, fixed for the chat (#773)", async () => {
+    const line =
+      "[Vault structure: version 3 is available. This vault is at version 2. Run the vault-upgrade skill when the person agrees.]";
+    let left = 1;
+    const takes: string[] = [];
+    const preparer = assistant(silentRunner, new FakeSync(), [], {
+      vaultStructureLine: () => {
+        takes.push("take");
+        left -= 1;
+        return left === 0 ? line : null;
+      },
+    });
+    // A chat with turns from before the alert never takes the line.
+    const withTurns = session({ id: "older", turns: [{} as SessionRecord["turns"][number]] });
+    expect((await preparer.prepare(withTurns)).appendSystemPrompt).not.toContain("[Vault structure");
+    // A scheduled chat has nobody to agree, so it does not use up the line.
+    const scheduled = session({ id: "scheduled", source: "schedule" });
+    expect((await preparer.prepare(scheduled)).appendSystemPrompt).not.toContain("[Vault structure");
+    expect(takes).toEqual([]);
+    const first = (await preparer.prepare(session({ id: "s1" }))).appendSystemPrompt ?? "";
+    expect(first).toEndWith(`\n\n${line}`);
+    expect((await preparer.prepare(session({ id: "s1" }))).appendSystemPrompt).toBe(first);
+    expect((await preparer.describe(session({ id: "s1" }))).parts.map((part) => part.title)).toContain(
+      "Vault structure",
+    );
+    expect((await preparer.prepare(session({ id: "s2" }))).appendSystemPrompt).not.toContain("[Vault structure");
+  });
+
   test("after a turn that breaks a widget's format, the agent gets the problems, then the chat gets a note (#692)", async () => {
     const sync = new FakeSync();
     sync.changed = ["Life/Habits/walk.json"];

@@ -3,6 +3,7 @@
  * and 123 to 127. Each topic is one chat of the instance's single conversation list;
  * a message outside every topic belongs to the main chat.
  */
+import { vaultUpgradeRequest } from "../../core/vault/upgrade-request.ts";
 import { dirname, join } from "node:path";
 import type { Alert } from "../../core/alerts/alert-center.ts";
 import type { Eva } from "../../core/eva.ts";
@@ -344,6 +345,17 @@ export class TelegramBot {
   /** Sends an alert to the main chat; before pairing, there is no chat to send it to. */
   private async sendAlert(alert: Alert): Promise<void> {
     if (this.allowedChatId === null) return;
+    if (alert.key === "vault_structure") {
+      // The news carries the action, and a reply to it starts the upgrade too (#773).
+      const sent = await this.send(this.allowedChatId, null, alert.message, {
+        inline_keyboard: [[{ text: "Update the vault", callback_data: "v:upgrade" }]],
+      });
+      if (sent !== null) {
+        this.state.vaultNewsMessageId = sent;
+        this.saveState();
+      }
+      return;
+    }
     await this.send(
       this.allowedChatId,
       null,
@@ -459,6 +471,10 @@ export class TelegramBot {
     }
     // A plain text that is no reply goes to the chat as before, and the question stays open.
     const repliedTo = message.reply_to_message?.message_id;
+    if (repliedTo !== undefined && repliedTo === this.state.vaultNewsMessageId) {
+      await this.startVaultUpgrade(chatId);
+      return;
+    }
     if (repliedTo !== undefined && (await this.questions.reply(chatId, repliedTo, text))) return;
     await this.forward(chatId, topicId, text);
   }
@@ -668,6 +684,34 @@ export class TelegramBot {
 
   /** /new: a topic with its own chat, and the model picker first (lessons 41, 61). */
   private async openChat(chatId: number, fromTopicId: number | null): Promise<void> {
+    const opened = await this.openTopicChat(chatId, fromTopicId, "Send /new again");
+    if (opened === null) return;
+    await this.send(chatId, opened.topicId, "Which model for this chat?", {
+      inline_keyboard: [
+        modelAliases.map((model) => ({
+          text: modelTierName(model),
+          callback_data: `m:${opened.sessionId}:${model}`,
+        })),
+      ],
+    });
+  }
+
+  /**
+   * The vault structure news: a new chat that runs the vault-upgrade skill (#773). A plain request,
+   * as the web app sends: Eva routes no slash command into a chat.
+   */
+  private async startVaultUpgrade(chatId: number): Promise<void> {
+    const opened = await this.openTopicChat(chatId, null, "Press Update the vault again");
+    if (opened === null) return;
+    await this.forward(chatId, opened.topicId, vaultUpgradeRequest);
+  }
+
+  /** A new topic with a new Assistant chat, or the main chat when the group has no topics. Null when it could not open. */
+  private async openTopicChat(
+    chatId: number,
+    fromTopicId: number | null,
+    retry: string,
+  ): Promise<{ readonly topicId: number | null; readonly sessionId: string } | null> {
     let topicId: number | null = null;
     try {
       const topic = await this.sender.callWithRetry<{ message_thread_id: number }>(
@@ -683,8 +727,8 @@ export class TelegramBot {
       // Only a 400 means "no topics" (lesson 61); a short Telegram problem must not reset the main chat.
       if (!(error instanceof TelegramError && error.code === 400)) {
         const reason = this.describeError(error).replace(/(?<![.!?])$/, ".");
-        await this.send(chatId, fromTopicId, `Telegram did not open the topic: ${reason} Send /new again.`);
-        return;
+        await this.send(chatId, fromTopicId, `Telegram did not open the topic: ${reason} ${retry}.`);
+        return null;
       }
       await this.send(
         chatId,
@@ -695,8 +739,8 @@ export class TelegramBot {
     const current = this.state.topics[keyOf(chatId, topicId)];
     if (topicId === null && current !== undefined && this.options.eva.sessions.isBusy(current.sessionId)) {
       // Never reset a chat while its turn runs (lesson 49).
-      await this.send(chatId, null, "Eva is still working in this chat. Send /new again when she finishes.");
-      return;
+      await this.send(chatId, null, `Eva is still working in this chat. ${retry} when she finishes.`);
+      return null;
     }
     const session = this.options.eva.createAssistantSession({
       source: "telegram",
@@ -708,11 +752,7 @@ export class TelegramBot {
       renamed: false,
     };
     this.saveState();
-    await this.send(chatId, topicId, "Which model for this chat?", {
-      inline_keyboard: [
-        modelAliases.map((model) => ({ text: modelTierName(model), callback_data: `m:${session.id}:${model}` })),
-      ],
-    });
+    return { topicId, sessionId: session.id };
   }
 
   /**
@@ -857,6 +897,8 @@ export class TelegramBot {
           const update = await this.options.eva.updateNow(version);
           return update === null ? "This Eva cannot update herself." : describeUpdate(update);
         });
+    } else if (kind === "v" && first === "upgrade") {
+      await this.startVaultUpgrade(chatId);
     } else if (kind === "r" && first === "now") {
       await this.send(chatId, topicOf(query.message), "Restarting… Eva answers again in a moment.");
       this.options.eva.restart();

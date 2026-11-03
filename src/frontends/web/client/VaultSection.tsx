@@ -10,6 +10,7 @@ import { EncryptedFilesCard } from "./EncryptedFilesCard.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { TemplateAlignmentCard } from "./TemplateAlignmentCard.tsx";
+import { VaultStructureCard } from "./VaultStructureCard.tsx";
 import { VaultChooser, VaultPush } from "./VaultChooser.tsx";
 
 const pullChoices: readonly { value: string; label: string }[] = [
@@ -27,6 +28,7 @@ export function VaultSection({ context }: { readonly context: SettingsContext })
       <VaultSyncCard context={context} />
       <ProjectFoldersCard context={context} />
       {context.settings.config.vaultPath !== null && <EncryptedFilesCard />}
+      {context.settings.config.vaultPath !== null && <VaultStructureCard context={context} />}
       {context.settings.config.vaultPath !== null && <TemplateAlignmentCard context={context} />}
     </>
   );

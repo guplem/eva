@@ -6,9 +6,21 @@ function usagePhrases(): string[] {
   const section = usageText.slice(usageText.indexOf("Commands:"));
   return section
     .split("\n")
-    .flatMap((line) => /^ {2}([a-z]+(?: [a-z]+)*)/.exec(line)?.[1] ?? [])
+    .flatMap((line) => /^ {2}([a-z][a-z-]*(?: [a-z]+)*)/.exec(line)?.[1] ?? [])
     .sort();
 }
+
+describe("vault-upgrade", () => {
+  test("takes one of its four steps (#773)", () => {
+    expect(parseArguments(["vault-upgrade", "finish"])).toEqual({
+      command: "vault-upgrade",
+      instance: undefined,
+      action: "finish",
+    });
+    expect(parseArguments(["vault-upgrade"]).command).toBe("usage-error");
+    expect(parseArguments(["vault-upgrade", "later"]).command).toBe("usage-error");
+  });
+});
 
 describe("cliCommands", () => {
   test("lists each command of the usage text, and no other", () => {

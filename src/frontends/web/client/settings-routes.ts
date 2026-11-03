@@ -189,6 +189,12 @@ export const searchEntries: readonly SearchEntry[] = [
     words: "secrets password key encrypt decrypt lock unlock env pem patterns",
   },
   {
+    item: "vault-structure",
+    section: "vault",
+    title: "Vault structure",
+    words: "upgrade update version folders life new structure",
+  },
+  {
     item: "template-alignment",
     section: "vault",
     title: "Template alignment",

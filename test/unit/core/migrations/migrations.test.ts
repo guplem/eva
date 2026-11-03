@@ -121,6 +121,15 @@ describe("runStartMigrations", () => {
     expect(existsSync(paths.config)).toBe(false);
   });
 
+  test("holds the vault migrations while a vault upgrade is open (#773)", () => {
+    mkdirSync(join(vault, ".git"));
+    writeFileSync(join(vault, ".git", "HEAD"), "ref: refs/heads/upgrade-v3\n");
+    expect(start().vault).toBeNull();
+    expect(existsSync(record())).toBe(false);
+    writeFileSync(join(vault, ".git", "HEAD"), "ref: refs/heads/main\n");
+    expect(start().vault?.kind).toBe("done");
+  });
+
   test("an install from before the migrations gets the new layout on the hub", () => {
     writeFileSync(paths.config, JSON.stringify({ vaultPath: vault, port: 4000, timeZone: "Europe/Madrid" }));
     writeFileSync(

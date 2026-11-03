@@ -157,6 +157,17 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
+import { VaultUpgrade, type UpgradeAction } from "./vault/vault-upgrade.ts";
+import {
+  newestStructureVersion,
+  pendingSummary,
+  readStructureNotices,
+  readVaultStructure,
+  structureNews,
+  structurePromptLine,
+  upgradeIsOpen,
+  writeStructureNotices,
+} from "./vault/vault-structure.ts";
 import { VaultEncryption } from "./vault/vault-encryption.ts";
 import { VaultKeys } from "./vault/vault-keys.ts";
 import { VaultSecrets } from "./vault/vault-secrets.ts";
@@ -202,6 +213,18 @@ import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format
 import { Widgets } from "./widgets/widgets.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
 import { PreviewGrants } from "./widgets/widget-previews.ts";
+
+/** The Vault structure card (#773). */
+export interface VaultStructureView {
+  /** The version that the vault follows: 2 when it has no record. */
+  readonly current: number;
+  /** The newest version that this Eva knows. */
+  readonly available: number;
+  /** What the newer versions change, in one or two sentences each. Empty when the vault is up to date. */
+  readonly summary: string;
+  /** False on a satellite: only the hub upgrades the vault. */
+  readonly canUpgrade: boolean;
+}
 
 /** The person's facts as the web page reads them. */
 export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
@@ -509,6 +532,8 @@ export class Eva {
   private readonly checkResults: Map<CheckName, CheckRecord>;
   private readonly facts: InstanceFacts;
   private readonly vault: VaultUpkeep;
+  /** The steps of a vault upgrade (#773). Null when no vault is configured. */
+  private readonly vaultUpgrade: VaultUpgrade | null;
   private readonly locations: LocationKeeper;
   /** True while a location write waits in the sync queue. */
   private locationWriteQueued = false;
@@ -614,19 +639,37 @@ export class Eva {
         ? null
         : new VaultSecrets({ vaultPath, machineStatePath: join(options.paths.stateFolder, "vault-secrets.json") });
     this.vaultSecrets = vaultSecrets;
+    const gitSync =
+      vaultPath === null
+        ? null
+        : new VaultSync({
+            vaultPath,
+            runner: options.runner,
+            environment: ownGitEnvironment,
+            now: options.now,
+            redact: (text) => redactor.redact(text),
+            ...(vaultSecrets === null ? {} : { secrets: vaultSecrets }),
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
+    const evaCore = new EvaCore(options.paths.enginesFolder, options.logger ?? null);
+    this.vaultUpgrade =
+      vaultPath === null || gitSync === null
+        ? null
+        : new VaultUpgrade({
+            vaultPath,
+            sync: gitSync,
+            isHub: () => this.role() === "hub",
+            syncEnabled: () => options.config.sync.enabled,
+            stateFolder: join(options.paths.stateFolder, "vault-upgrade"),
+            skillFolder: () => evaCore.skillFolder("vault-upgrade"),
+            // The open branch held these back. Only the hub runs the vault migrations: a drop also runs on a satellite.
+            afterBranch: () => {
+              if (this.role() === "hub" && this.runVaultMigrations()?.kind === "done") this.alignTemplate();
+              this.inBackground("The location write", () => this.writeLocationIfDue());
+            },
+          });
     this.vault = new VaultUpkeep({
-      vaultSync:
-        vaultPath === null
-          ? null
-          : new VaultSync({
-              vaultPath,
-              runner: options.runner,
-              environment: ownGitEnvironment,
-              now: options.now,
-              redact: (text) => redactor.redact(text),
-              ...(vaultSecrets === null ? {} : { secrets: vaultSecrets }),
-              ...(options.logger === undefined ? {} : { logger: options.logger }),
-            }),
+      vaultSync: gitSync,
       now: options.now,
       // The start value, as the sweep timer reads it: a change of the setting waits for a restart.
       syncEnabled: () => options.config.sync.enabled,
@@ -779,7 +822,8 @@ export class Eva {
           vaultSync,
           beforeEndSnapshot: (sessionId) => this.writeLocationIfDue(sessionId),
           basePrompt: options.basePrompt,
-          evaCore: new EvaCore(options.paths.enginesFolder, options.logger ?? null),
+          evaCore,
+          vaultStructureLine: () => this.takeVaultStructureLine(),
           runner: options.runner,
           environment: agentEnvironment,
           now: options.now,
@@ -1278,6 +1322,9 @@ export class Eva {
       return;
     }
     if (!this.locations.hasWork) return;
+    // The upgrade branch holds only the upgrade and the notes of other chats: the point waits for its end (#773).
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath !== null && upgradeIsOpen(vaultPath)) return;
     // One job in the sync queue is enough. The end of a turn still queues its own, before its snapshot.
     const queues = endingTurn === undefined;
     if (queues && this.locationWriteQueued) return;
@@ -1287,6 +1334,8 @@ export class Eva {
         // From here on, a new point needs a new job.
         if (queues) this.locationWriteQueued = false;
         if (this.vaultTurnRunning(endingTurn)) return;
+        // A vault upgrade can start while the job waits in the queue.
+        if (vaultPath !== null && upgradeIsOpen(vaultPath)) return;
         const problem = lastLocationProblem(this.locations.writeIfDue());
         if (problem !== "keep") this.alerts.report("last_location", problem);
       });
@@ -1419,6 +1468,7 @@ export class Eva {
     if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
+    this.announceVaultStructure();
     // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
     if (this.options.engines.some((engine) => engine.name === "claude-code")) {
       void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
@@ -1495,6 +1545,71 @@ export class Eva {
   }
 
   /**
+   * The vault's structure version, the newest one that this Eva knows, and what the newer ones
+   * change (#773). Null when no vault is configured.
+   */
+  vaultStructure(): VaultStructureView | null {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null || !existsSync(vaultPath)) return null;
+    const current = readVaultStructure(vaultPath);
+    return {
+      current,
+      available: newestStructureVersion,
+      summary: pendingSummary(current),
+      canUpgrade: this.role() === "hub",
+    };
+  }
+
+  /** Runs one step of a vault upgrade for the `vault-upgrade` skill, and returns its report (#773). */
+  async upgradeVault(action: UpgradeAction): Promise<string> {
+    if (this.vaultUpgrade === null) throw new EvaError("vault_not_found", "No vault is configured.");
+    try {
+      return await this.vaultUpgrade.run(action);
+    } finally {
+      // The status and the sync alert follow the branch at once: paused, or syncing again.
+      this.vault.reportState();
+    }
+  }
+
+  /**
+   * Tells the person once for each version, from the hub, that a newer vault structure exists. The
+   * hub's state file keeps the version, so a restart does not send it again (#773).
+   */
+  private announceVaultStructure(): void {
+    const view = this.vaultStructure();
+    if (view === null || this.role() !== "hub" || view.available <= view.current) return;
+    const path = this.options.paths.vaultStructureState;
+    const notices = readStructureNotices(path);
+    if (notices.announced >= view.available) return;
+    try {
+      writeStructureNotices(path, { ...notices, announced: view.available });
+    } catch (error) {
+      // An alert at each start is worse than none: it waits for a writable state folder.
+      this.options.logger?.log("warn", "Eva could not record the vault structure notice.", { reason: String(error) });
+      return;
+    }
+    this.alerts.notify("vault_structure", "news", structureNews(view.available, view.current));
+  }
+
+  /**
+   * The line for the first new Assistant chat on the hub after the alert, once. Null for every other chat:
+   * the Settings card keeps offering the upgrade (#773).
+   */
+  private takeVaultStructureLine(): string | null {
+    const view = this.vaultStructure();
+    if (view === null || this.role() !== "hub" || view.available <= view.current) return null;
+    const path = this.options.paths.vaultStructureState;
+    const notices = readStructureNotices(path);
+    if (notices.announced < view.available || notices.prompted >= notices.announced) return null;
+    try {
+      writeStructureNotices(path, { ...notices, prompted: notices.announced });
+    } catch {
+      return null;
+    }
+    return structurePromptLine(view.available, view.current);
+  }
+
+  /**
    * Brings the vault's template parts up to date on the hub, after the vault migrations. Only the
    * hub writes them, so two machines never race on one file. A part that the person changed raises an alert.
    */
@@ -1502,6 +1617,8 @@ export class Eva {
     const alignment = this.templateAlignment;
     const vaultPath = this.options.config.vaultPath;
     if (alignment === null || vaultPath === null || !existsSync(vaultPath) || this.role() !== "hub") return;
+    // The upgrade branch must hold only the upgrade's work and the notes written meanwhile (#773).
+    if (upgradeIsOpen(vaultPath)) return;
     try {
       this.alerts.report("template_alignment", alignmentProblem(alignment.align()));
     } catch (caught) {
@@ -2488,6 +2605,7 @@ export class Eva {
     // The start ran only the machine migrations on a satellite, and the new hub runs those of the vault.
     if (role === "hub") {
       if (this.runVaultMigrations()?.kind === "done") this.alignTemplate();
+      this.announceVaultStructure();
     } else {
       this.alerts.report("template_alignment", null);
     }
@@ -2497,7 +2615,8 @@ export class Eva {
   private runVaultMigrations(): MigrationRun | null {
     const vaultPath = this.options.config.vaultPath;
     // A vault folder that is not cloned yet has no hub file, so this machine reads as the hub.
-    if (vaultPath === null || !existsSync(vaultPath)) return null;
+    // An open vault upgrade holds them until its end (#773).
+    if (vaultPath === null || !existsSync(vaultPath) || upgradeIsOpen(vaultPath)) return null;
     const run = runMigrations({
       store: "vault",
       migrations,

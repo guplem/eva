@@ -106,6 +106,17 @@ function newer(first: LastLocation | null, second: LastLocation | null, now: num
  */
 const commentLine = "# Eva's code fills lastLocation from your phone. Keep it as it is.";
 
+/**
+ * The note `target` with the newer `lastLocation` of the two texts. A vault upgrade uses it when it
+ * keeps one version of About me, so the newest point from the phone stays (#773).
+ */
+export function withNewerLocation(target: string, other: string, now: number = Date.now()): string {
+  const kept = parseLastLocation(target);
+  const point = newer(kept, parseLastLocation(other), now);
+  if (point === null || point === kept) return target;
+  return withHeaderField(target, lastLocationKey, headerLine(point), commentLine) ?? target;
+}
+
 /** The header line, in flow form, so a write changes one line of the note. */
 function headerLine(point: LastLocation): string {
   const accuracy = point.accuracy === null ? "null" : String(point.accuracy);

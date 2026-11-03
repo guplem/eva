@@ -27,7 +27,7 @@ import { claimHubIfUnclaimed, machineRole } from "./hub.ts";
 const remoteListTimeoutMs = 20_000;
 
 /** Why a start did not claim the hub. */
-const pullProblems: Readonly<Record<Exclude<VaultSyncStatus, "ok">, string>> = {
+const pullProblems: Readonly<Record<Exclude<VaultSyncStatus, "ok" | "paused">, string>> = {
   offline: "The vault pull could not reach the remote",
   conflict: "The vault pull found a conflict",
   error: "The vault pull failed",
@@ -101,7 +101,8 @@ async function migrateAfterPull(
     // A failed pull may hide a claim that another machine pushed. A vault with no remote has no such claim.
     // A vault with an unpushed merge commit skips the fetch, and "ok" is then the state before the pull.
     const { status } = pulled;
-    if (status !== "ok" && !(await hasNoOrigin(vaultPath, options.runner, environment)))
+    // A pause for a vault upgrade is no failure: the hub works on its upgrade branch (#773).
+    if (status !== "ok" && status !== "paused" && !(await hasNoOrigin(vaultPath, options.runner, environment)))
       notes.push({
         level: "warn",
         message: `${pullProblems[status]}, so this machine did not claim the hub yet.`,

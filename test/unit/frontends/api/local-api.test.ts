@@ -2037,6 +2037,21 @@ describe("web routes", () => {
     expect((await call("/api/template-parts", { method: "DELETE" })).status).toBe(404);
   });
 
+  test("vault structure: the card's versions, and a refused upgrade step names its reason (#773)", async () => {
+    const structure = await json<{ current: number; available: number; canUpgrade: boolean }>(
+      await call("/api/vault/structure"),
+    );
+    expect(structure).toMatchObject({ current: 2, canUpgrade: true });
+    expect(structure.available).toBeGreaterThan(2);
+    const refused = await call("/api/vault/upgrade", { method: "POST", body: { action: "finish" } });
+    expect(refused.status).toBe(409);
+    expect(await json(refused)).toEqual({
+      error: "No vault upgrade is open on this computer.",
+      code: "vault_upgrade_refused",
+    });
+    expect((await call("/api/vault/upgrade", { method: "POST", body: { action: "later" } })).status).toBe(400);
+  });
+
   test("files: the vault root lists, a text file shows, and a path out of the vault is not found (issue 253)", async () => {
     const root = await json<{ kind: string; entries: { name: string }[] }>(await call("/api/files"));
     expect(root.kind).toBe("folder");

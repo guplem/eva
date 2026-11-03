@@ -36,6 +36,9 @@ export function vaultSyncProblem(
   switch (state.status) {
     case "ok":
       return null;
+    // The person started the vault upgrade, and the Assistant ends it: no alert (#773).
+    case "paused":
+      return null;
     case "skipped":
       // A skip with a reason is a vault on another branch: the sync stops until a person acts (#505).
       if (state.lastError === null) return "keep";

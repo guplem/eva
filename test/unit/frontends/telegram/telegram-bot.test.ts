@@ -2202,6 +2202,33 @@ describe("alerts, logs and restart", () => {
     await bot.stop();
   });
 
+  test("the vault structure news has a button, and the button or a reply starts the upgrade in a new chat (#773)", async () => {
+    const bot = createBot();
+    eva.reportStartMigrations({ machine: { kind: "done", applied: [], later: [] }, vault: null });
+    const news = (): Record<string, unknown> | undefined =>
+      telegram
+        .callsTo("sendMessage")
+        .find((call) => JSON.stringify(call.params["reply_markup"] ?? null).includes("v:upgrade"))?.params;
+    await settle(bot, () => news() !== undefined);
+    expect(String(news()?.["text"])).toContain("Vault and sync, Vault structure");
+    expect(String(news()?.["text"])).not.toContain("/vault");
+    // The news is the first message of the test, so the fake gave it its first id. The bot's state
+    // file keeps it, so a reply works after a restart too.
+    await bot.stop();
+    const restarted = createBot();
+    const replyTo = { message_id: 100, chat: { id: owner, type: "private" } };
+    telegram.sendMessageWith(owner, { text: "yes, do it", reply_to_message: replyTo });
+    await settle(restarted, () => engine.requests.length === 1);
+    expect(engine.requests[0]?.prompt).toContain("with the vault-upgrade skill");
+    telegram.pressButton(owner, "v:upgrade");
+    await settle(restarted, () => engine.requests.length === 2);
+    expect(engine.requests[1]?.prompt).toContain("with the vault-upgrade skill");
+    // Each start is a new chat, in a topic of its own.
+    expect(telegram.callsTo("createForumTopic")).toHaveLength(2);
+    expect(new Set(eva.sessions.list().map((session) => session.id)).size).toBe(2);
+    await restarted.stop();
+  });
+
   test("before pairing, an alert goes nowhere; after a stop, the bot sends no more alerts", async () => {
     const unpaired = createBot(null);
     eva.reportProblem("vault_sync", problem);

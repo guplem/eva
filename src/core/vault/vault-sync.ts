@@ -12,6 +12,7 @@ import { containsSecretPattern } from "../../shared/redaction.ts";
 import { plainSecretsIn } from "./plain-secrets.ts";
 import { scratchFolderOf } from "../files/scratch-folders.ts";
 import { keepsOldScratch, scratchFolders } from "../files/vault-files.ts";
+import { upgradeBranchVersion } from "./vault-structure.ts";
 import {
   changedLeftOut,
   parseDiffTree,
@@ -29,7 +30,11 @@ import {
   type UndoPreview,
 } from "./vault-snapshots.ts";
 
-export type VaultSyncStatus = "ok" | "offline" | "conflict" | "error" | "skipped";
+/** "paused": the vault is on the branch of a vault upgrade, and every step waits for its end (#773). */
+export type VaultSyncStatus = "ok" | "offline" | "conflict" | "error" | "skipped" | "paused";
+
+/** The text of a sync that waits for a vault upgrade. */
+export const upgradePausedText = "Paused for the vault upgrade. Ask the Assistant to finish or drop it.";
 
 /**
  * Why a file stays out of the commit. A stored and sent name: the Settings page and the terminal map
@@ -123,7 +128,7 @@ export interface VaultSyncOptions {
 const networkTimeoutMs = 60_000;
 const localTimeoutMs = 20_000;
 /** The git commands that write a commit, and so need a name and an email. */
-const committingCommands = new Set(["commit", "commit-tree", "merge", "rebase", "stash"]);
+const committingCommands = new Set(["commit", "commit-tree", "merge", "rebase", "stash", "cherry-pick", "revert"]);
 /** The same identity as the first commit of a new vault (vault-template.ts). */
 const evaIdentity: Readonly<Record<string, string>> = {
   GIT_AUTHOR_NAME: "Eva",
@@ -151,7 +156,7 @@ const pathsOnStdin: readonly string[] = ["--pathspec-from-file=-", "--pathspec-f
 /** A snapshot lists at most this many scratch files: they are files of a chat, and Eva empties the folders each week. */
 const maxScratchFiles = 1_000;
 
-interface GitResult {
+export interface GitResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
@@ -279,6 +284,36 @@ export class VaultSync {
    */
   exclusive<Result>(work: () => Result): Promise<Result> {
     return this.serialize(() => Promise.resolve().then(work));
+  }
+
+  /**
+   * Runs one git step in the vault, with Eva's environment and identity, for the steps of a vault
+   * upgrade (#773). Call it inside `exclusive` when a sync step must not run between two steps.
+   */
+  runGit(arguments_: readonly string[], timeoutMs: number = localTimeoutMs): Promise<GitResult> {
+    return this.git(arguments_, timeoutMs);
+  }
+
+  /** True for a file that the secret list matches and that is not encrypted: it must never reach the remote. */
+  isPlainSecret(relativePath: string, bytes: Uint8Array): boolean {
+    return this.options.secrets?.isPlainSecret(relativePath, bytes) ?? false;
+  }
+
+  /** The branch that Eva syncs. */
+  mainBranch(): Promise<string> {
+    return this.serialize(async () => {
+      const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
+      return this.defaultBranch(current);
+    });
+  }
+
+  /**
+   * Commits every change on the current branch, with Eva's secret scan and encryption, and pushes
+   * nothing. The vault upgrade commits the notes that other chats wrote meanwhile with it (#773).
+   * False when the commit failed.
+   */
+  commitAll(message: string): Promise<boolean> {
+    return this.serialize(async () => this.commitChanges(await this.statusEntries(), false, message));
   }
 
   /**
@@ -805,6 +840,11 @@ export class VaultSync {
   private async checkedDefaultBranch(): Promise<string | null> {
     if (this.rebaseInProgress() && !(await this.abortLeftoverRebase())) return null;
     const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
+    // The open branch of a vault upgrade is its mark, so the pause survives a restart (#773).
+    if (upgradeBranchVersion(current) !== null) {
+      this.update({ status: "paused", lastError: upgradePausedText });
+      return null;
+    }
     const defaultBranch = await this.defaultBranch(current);
     if (current !== defaultBranch) {
       // The person may have meant the switch, so the text names both branches and asks, not orders.
@@ -845,7 +885,7 @@ export class VaultSync {
   }
 
   /** Returns false when the commit failed; true when it committed or had nothing to commit. */
-  private async commitChanges(given: readonly StatusEntry[], retried = false): Promise<boolean> {
+  private async commitChanges(given: readonly StatusEntry[], retried = false, message?: string): Promise<boolean> {
     const prepare = this.options.secrets?.round() ?? null;
     // The round can write .gitattributes, so the status is read again after it starts.
     const entries = prepare === null ? given : await this.statusEntries();
@@ -887,7 +927,7 @@ export class VaultSync {
       if (!retried) {
         const fresh = await this.statusEntries();
         const listed = new Set(fresh.map((entry) => entry.path));
-        if (toAdd.some((path) => !listed.has(path))) return this.commitChanges(fresh, true);
+        if (toAdd.some((path) => !listed.has(path))) return this.commitChanges(fresh, true, message);
       }
       this.update({ status: "error", lastError: `git add failed: ${failureReason(add, "git")}` });
       return false;
@@ -907,7 +947,14 @@ export class VaultSync {
     const onlyKept = needsOnly ? ["--only", ...pathsOnStdin] : [];
     const commit = await this.git(
       // --no-verify: a git hook in the vault must never block an autosave (lesson 27).
-      ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(committed.length)} ${plural})`, ...onlyKept],
+      [
+        "commit",
+        "-q",
+        "--no-verify",
+        "-m",
+        message ?? `eva: autosave (${String(committed.length)} ${plural})`,
+        ...onlyKept,
+      ],
       localTimeoutMs,
       {},
       needsOnly ? committed.join("\0") : undefined,

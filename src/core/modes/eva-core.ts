@@ -17,6 +17,9 @@ import evaIssueSkill from "../../../templates/eva-core/skills/eva-issue/SKILL.md
 import evaRulesSkill from "../../../templates/eva-core/skills/eva-rules/SKILL.md" with { type: "text" };
 import scheduleSkill from "../../../templates/eva-core/skills/schedule/SKILL.md" with { type: "text" };
 import vaultUpgradeSkill from "../../../templates/eva-core/skills/vault-upgrade/SKILL.md" with { type: "text" };
+import vaultUpgradeChangelog from "../../../templates/eva-core/skills/vault-upgrade/CHANGELOG.md" with { type: "text" };
+import shippedTexts from "../../../templates/eva-core/skills/vault-upgrade/shipped-texts.json";
+import { upgradeTemplateTexts } from "../vault/vault-template.ts";
 
 /** Eva's skills, by name. Add each new skill of Eva here, not to the vault template. */
 const evaCoreSkills: Readonly<Record<string, string>> = {
@@ -43,11 +46,31 @@ const manifestFile =
     2,
   ) + "\n";
 
+/**
+ * The files that the `vault-upgrade` skill reads beside its `SKILL.md` (#773): its CHANGELOG, the
+ * newest template texts, and each version of the replaced files that Eva ever shipped, so the skill
+ * can show the person only the lines that they wrote. `scripts/vault-template-history.ts` makes the
+ * shipped versions.
+ */
+function vaultUpgradeFiles(): Record<string, string> {
+  const files: Record<string, string> = { "CHANGELOG.md": vaultUpgradeChangelog };
+  for (const [path, text] of Object.entries(upgradeTemplateTexts)) files[`template/${path}`] = text;
+  for (const [path, texts] of Object.entries(shippedTexts as Readonly<Record<string, readonly string[]>>)) {
+    texts.forEach((text, index) => {
+      files[`shipped/${path}/${String(index + 1).padStart(2, "0")}.md`] = text;
+    });
+  }
+  return files;
+}
+
 /** The plugin's files, by path from its folder, without the skills in `left`. */
 export function evaCoreFiles(left: readonly string[] = []): Record<string, string> {
   const files: Record<string, string> = { ".claude-plugin/plugin.json": manifestFile };
   for (const name of evaCoreSkillNames) {
-    if (!left.includes(name)) files[`skills/${name}/SKILL.md`] = evaCoreSkills[name] ?? "";
+    if (left.includes(name)) continue;
+    files[`skills/${name}/SKILL.md`] = evaCoreSkills[name] ?? "";
+    if (name === "vault-upgrade")
+      for (const [path, text] of Object.entries(vaultUpgradeFiles())) files[`skills/${name}/${path}`] = text;
   }
   return files;
 }
@@ -78,6 +101,11 @@ export class EvaCore {
     this.enginesFolder = enginesFolder;
     this.logger = logger;
     this.renameOnce = rename;
+  }
+
+  /** The folder of one of Eva's skills in the main plugin folder, with the files that the skill reads. */
+  skillFolder(name: string): string {
+    return join(this.enginesFolder, pluginName, "skills", name);
   }
 
   /**

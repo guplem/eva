@@ -255,6 +255,8 @@ const savedPromptSchema = z.object({
 const menuItemNameSchema = z.object({ name: menuNameSchema });
 /** The typed text of a message box, which can hold a long paste. */
 const textActionRunSchema = z.object({ name: menuNameSchema, engine: engineSchema, text: z.string().max(200_000) });
+/** A step of a vault upgrade (#773). */
+const vaultUpgradeSchema = z.object({ action: z.enum(["start", "finish", "drop", "undo"]) });
 /** A template part is a path from the vault root, such as `.eva/settings/text-actions/Polish.md`. */
 const templateChoiceSchema = z.object({ path: z.string().min(1).max(500), choice: z.enum(["new", "mine"]) });
 /**
@@ -1124,6 +1126,15 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (method === "POST" && url.pathname === "/api/notifications/read")
     return json(eva.markNotificationsRead(notificationsReadSchema.parse(await request.json())));
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
+  if (method === "GET" && url.pathname === "/api/vault/structure") {
+    const structure = eva.vaultStructure();
+    return structure === null ? json({ error: "No vault is configured." }, 409) : json(structure);
+  }
+  // The steps of a vault upgrade, which the `vault-upgrade` skill runs with `eva vault-upgrade` (#773).
+  if (method === "POST" && url.pathname === "/api/vault/upgrade") {
+    const { action } = vaultUpgradeSchema.parse(await request.json());
+    return json({ text: await eva.upgradeVault(action) });
+  }
   if (method === "GET" && url.pathname === "/api/vault/repositories") return json(await eva.vaultRepositories());
   if (method === "POST" && url.pathname === "/api/vault/clone")
     return json(await eva.cloneVault(vaultCloneSchema.parse(await request.json()).repository));

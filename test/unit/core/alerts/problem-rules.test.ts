@@ -77,6 +77,10 @@ describe("vaultSyncProblem", () => {
     expect(vaultSyncProblem(syncState("skipped"), 0, 0)).toBe("keep");
   });
 
+  test("a pause for the vault upgrade raises no alert (#773)", () => {
+    expect(vaultSyncProblem(syncState("paused", "Paused for the vault upgrade."), 0, 0)).toBeNull();
+  });
+
   test("a skip on the wrong branch warns, with the reason and a fix from a phone (#505)", () => {
     const reason =
       "Eva syncs main, but the vault is on feat/work. If main is right, ask the Assistant to switch the vault back to it.";

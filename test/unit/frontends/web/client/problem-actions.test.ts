@@ -2,10 +2,20 @@ import { describe, expect, test } from "bun:test";
 import {
   claudeLoginExpired,
   isOtherMachineProblem,
+  newsAction,
   problemAction,
   shownProblems,
   withPendingHides,
 } from "../../../../../src/frontends/web/client/problem-actions.ts";
+
+describe("newsAction", () => {
+  test("the vault structure news starts the upgrade, and other news has no button (#773)", () => {
+    expect(newsAction("vault_structure", true)).toBe("update_vault");
+    // After the upgrade, or on a satellite, the old news has no button.
+    expect(newsAction("vault_structure", false)).toBeNull();
+    expect(newsAction("update_held_back", true)).toBeNull();
+  });
+});
 
 describe("problemAction", () => {
   test("a vault conflict opens the note picker", () => {

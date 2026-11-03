@@ -30,7 +30,7 @@ Eva is one program that runs on a computer of yours. She does not think by herse
 
 **One instance, one process.** An instance is one Eva with her own name, vault, logins and Telegram bot. Each instance runs as one core process. A computer can run any number of instances, such as one for each person.
 
-**The instance folder.** Each instance keeps her files in her own folder: `eva-<name>` in `~/.config` on Linux, or in `%APPDATA%` on Windows. The folder holds:
+**The instance folder.** Each instance keeps her files in her own folder: `eva-<name>` in `~/.config` (or in `XDG_CONFIG_HOME`) on Linux, or in `%APPDATA%` on Windows. The folder holds, among other files:
 
 | File or folder | What it holds                                                                                                   |
 | -------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -60,7 +60,7 @@ Eva is written in TypeScript and runs on Bun. A release is one executable file. 
 
 `src/main.ts` only joins the layers. A check (`bun run arch`) refuses an import that crosses the layers in the wrong direction. For example, the core never imports an engine.
 
-Eva starts each child program through a seam, with a timeout, and with a short list of environment variables. A child program never sees Eva's own secrets.
+Eva starts each child program through a seam, with a timeout, and with a short list of environment variables. A child program gets only the secrets that it needs. For example, Claude Code gets your Claude login token, but never the Telegram token.
 
 ## What happens when you send a message
 
@@ -99,7 +99,7 @@ An engine adapter turns the harness's output into Eva's events, and turns Eva's 
 
 **Claude Code.** Eva runs the installed `claude` program through the Claude Agent SDK. She never puts `claude` inside her own executable. It uses your subscription login, never an API key.
 
-**pi.** Eva runs `pi --mode rpc` as a child process, and reads its JSON output line by line. pi never runs inside the core process, so it never sees Eva's secrets. pi uses your own subscription login or API key, but never a Claude login. Eva adds small pi extensions for the approvals, the questions, the context, the subagents and the MCP servers.
+**pi.** Eva runs `pi --mode rpc` as a child process, and reads its JSON output line by line. pi never runs inside the core process, so it never sees the secrets that it does not need. pi uses your own subscription login or API key, but never a Claude login. Eva adds small pi extensions for the approvals, the questions, the context, the subagents and the MCP servers.
 
 Each instance gives each harness its own config folder (`CLAUDE_CONFIG_DIR` and `PI_CODING_AGENT_DIR`), so two instances never share a login.
 
@@ -116,7 +116,7 @@ Each instance gives each harness its own config folder (`CLAUDE_CONFIG_DIR` and 
 **Eva owns the vault sync in her own code.** No harness hook does it. The sync:
 
 - Pulls before each turn that works in the vault, then commits and pushes after it.
-- Runs an idle sweep every minute, and a pull every 5 minutes. No sync step runs during a turn in the vault.
+- By default, runs an idle sweep every minute, and a pull every 5 minutes. The settings can change both. No sync step runs during a turn in the vault.
 - Never enters `Projects/*/repos/`: each clone has its own git.
 - Never loses a change. On a conflict, Eva stops the pushes and asks you to pick a version. See [Vault conflicts](reference.md#vault-conflicts).
 - Leaves out a file that looks like a secret, and tells you. See [Encrypted files](reference.md#encrypted-files).
@@ -136,13 +136,13 @@ Two or more computers can run Eva with the same vault. The vault names the hub i
 - **Remote access only through Tailscale.** The local API listens on the computer itself. Tailscale gives the address to your devices only.
 - **Settings have homes.** Your personal settings live in the vault. The settings of the computer, and each security setting, stay in `config.json`. An agent can edit the vault, so Eva never reads a security setting from it.
 - **Secrets never reach a front end.** The `Redactor` removes each known secret, and each common token shape, from the text of each event and log line.
-- **The file wall.** A Project chat cannot open the vault, the other projects or Eva's folder. On Linux and macOS, a sandbox also walls the shell of the chat. See [What a chat can reach](reference.md#what-a-chat-can-reach).
+- **The file wall.** A Project chat cannot open the vault, the other projects or Eva's folder. On Linux and macOS, a sandbox also walls the shell of the chat, when the computer can run it. See [What a chat can reach](reference.md#what-a-chat-can-reach).
 - **Trust of a clone.** A clone of an unknown repository runs with its hooks, project settings and MCP servers off, until you trust it.
 - **Signed updates.** See below.
 
 ## Updates
 
-The release workflow publishes a release after each change to `main`. The commit prefixes decide the version number. The workflow signs the list of checksums with a key that only it holds. Eva checks the signature before she replaces her executable, so a changed download never runs.
+After the checks pass on `main`, the release workflow publishes a release when a change alters the executable. The commit prefixes decide the version number. The workflow signs the list of checksums with a key that only it holds. Eva checks the signature before she replaces her executable, so a changed download never runs.
 
 Eva installs an update only when no chat runs a turn. Your update policy decides which releases she installs by herself. An Eva that runs from a git checkout updates with a fast-forward of `main`. See [Updates](reference.md#updates).
 

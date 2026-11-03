@@ -32,28 +32,30 @@ irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
 The command does these steps:
 
 - It installs git when git is missing, and on Linux curl too. On Linux, this needs administrator rights, so `sudo` asks for your password. On Windows, it uses winget, the program installer of Windows.
+- On Linux, it also installs the OpenMP library for voice notes, and bubblewrap and socat for the sandbox of project chats. When `sudo` is missing or refuses, it skips them and tells you how to install them later.
 - It downloads Eva from the latest release, and checks the download, so a broken download stops.
-- It puts Eva where your terminal finds her: `~/.local/bin` on Linux, `%LOCALAPPDATA%\Programs\Eva` on Windows.
+- It puts Eva where your terminal finds her: `~/.local/bin` on Linux, `%LOCALAPPDATA%\Programs\Eva` on Windows. On Linux, it adds `~/.local/bin` to the `PATH` in your shell start files, such as `~/.profile`.
 - It starts `eva setup`, the next step.
 
 Eva runs on Linux and Windows, not on macOS. If your Linux user has no `sudo`, or your Windows has no winget, install git yourself first, then run the command again.
 
 ## 2. Answer the setup
 
-Setup first asks for a name for this Eva. Enter keeps the name of your computer user, such as `ana`. Then it goes through 8 numbered steps, and says which ones are done.
+Setup goes through 9 numbered steps, and says which ones are done. The terminal shows each one as "Step 2 of 9".
 
 In the terminal, a line that starts with `>` is a question: type the answer, or press Enter to keep the value in `[brackets]` or to skip it. `[ok]` marks what is done. `>> Your turn:` means that setup waits for you to do something in a browser. When you are done, setup continues.
 
-1. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), uv (for the Google tools), and gh (for your agents' pushes and pull requests). It also replaces a gh older than 2.40.
-2. **Phone access.** Press Enter to install Tailscale, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page.
-3. **Start Eva.** Press Enter. Eva starts now, and again each time you log in. On Windows, this needs no administrator, and no window stays open.
-4. **Your devices.** Press Enter to open Eva in this computer's browser, already logged in. Then open Eva's address on your phone and your other computers. Each device needs the Tailscale app, signed in with your Tailscale account (see [Open Eva on your phone](#open-eva-on-your-phone)). Each page shows a short code: type it in the terminal. Press Enter after you allow every device. Then setup asks where to continue:
-   - Type `1`, or press Enter, to answer steps 5 to 8 in the terminal.
+1. **Name.** A name for this Eva. Enter keeps the name of your computer user, such as `ana`.
+2. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), uv (for the Google tools), and gh (for your agents' pushes and pull requests). It also replaces a gh older than 2.40.
+3. **Phone access.** Press Enter to install Tailscale, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page. On Windows, the Tailscale install asks for administrator rights: accept the prompt.
+4. **Start Eva.** Press Enter. Eva starts now, and again each time you log in. On Windows, this needs no administrator, and no window stays open.
+5. **Your devices.** Press Enter to open Eva in this computer's browser, already logged in. Then open Eva's address on your phone and your other computers. Each device needs the Tailscale app, signed in with your Tailscale account (see [Open Eva on your phone](#open-eva-on-your-phone)). Each page shows a short code: type it in the terminal. Press Enter after you allow every device. Then setup asks where to continue:
+   - Type `1`, or press Enter, to answer steps 6 to 9 in the terminal.
    - Type `2` to finish on Eva's web page. Setup opens the Setup page in this computer's browser, and shows the steps to follow there. Then you can close the terminal.
-5. **Vault and GitHub.** Your time zone, the GitHub login, your vault, and other GitHub accounts that you trust, such as an organization. Eva trusts the account of her GitHub login already.
-6. **AI login.** The Claude token, or the pi login.
-7. **Telegram** (optional). Your bot.
-8. **Google and voice notes** (optional).
+6. **Vault and GitHub.** Your time zone, the GitHub login, your vault, and other GitHub accounts that you trust, such as an organization. Eva trusts the account of her GitHub login already.
+7. **AI login.** The Claude token, or the pi login.
+8. **Telegram** (optional). Your bot.
+9. **Google and voice notes** (optional).
 
 On the page, **Settings > Setup** lists each step that is left. Setup saves each answer at once, so the terminal and the page both see it. You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
 
@@ -108,7 +110,7 @@ In the terminal, setup first logs in to GitHub:
    - **To start a new vault,** type `0`, and answer the questions about you. Type a vault password twice: Eva encrypts your secret files with it, and nobody can recover it. Then type a name for its private repository, such as `vault`. Eva creates it from her template.
    - **For no vault now,** press Enter.
 
-On the page, open **Connect GitHub** and press **Log in with GitHub**. Enter the code on GitHub. Then pick or create the vault in **Set up your vault**. To use a token instead, press **Paste a token instead**.
+On the page, open **Settings > Setup**, then the **GitHub** step, and press **Log in with GitHub**. Enter the code on GitHub. Then pick or create the vault in the **Your vault** step. To use a token instead, press **Paste a token instead**.
 
 What the GitHub login does:
 
@@ -126,7 +128,7 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 
 1. In Telegram, open a chat with **@BotFather** (the official bot that makes bots), and send `/newbot`.
 2. Give it a name, such as `My Eva`, and a user name that ends in `bot`, such as `my_eva_123_bot`.
-3. BotFather answers with a **token**: a long code such as `123456789:AAH...`. Paste it into setup, or into **Connect Telegram** in Settings. Never share it: whoever has it controls the bot.
+3. BotFather answers with a **token**: a long code such as `123456789:AAH...`. Paste it into setup, or into the **Telegram** step of **Settings > Setup**. Never share it: whoever has it controls the bot.
 4. Pair your Telegram chat, so that Eva answers only you. The Telegram card in **Settings > Connections** shows a pairing code, such as `EVA-1A2B3C4D`. On Eva's computer, `eva status` shows it too. Send that code to your bot.
 5. Optional: give your bot Eva's face. Save [this picture](../../src/frontends/web/icons/icon-512.png), send `/setuserpic` to BotFather, pick your bot and send the picture.
 
@@ -134,11 +136,11 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 
 Each device needs the Tailscale app, signed in with the same account as Eva's computer. Then:
 
-1. Open Eva's address. To find it, send `/link` to your bot, or open **Settings > Access > Use Eva from any device**.
+1. Open Eva's address. To find it, run `eva link` on Eva's computer, send `/link` to your bot, or open **Settings > Access > Use Eva from any device**.
 2. The first time, the page shows a short code. Allow the device, for example with `eva devices allow <code>` on Eva's computer, or with **Allow** in Telegram. [Logging in to the web page](reference.md#logging-in-to-the-web-page) lists every way.
 3. On a phone, choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
-You can also set up Tailscale later, from your phone: send `/link` to your bot, or open **Set up phone access** in Settings.
+You can also set up Tailscale later, from your phone: send `/link` to your bot, or open the **Phone access (Tailscale)** step in **Settings > Setup**.
 
 ## Add the optional tools
 
@@ -243,7 +245,7 @@ The command asks before each step. Each question shows the safe answer in `[brac
 4. **The eva program.** When no other Eva uses the computer, the command asks to remove the `eva` program. Enter removes it.
 5. **The shared programs.** The command asks about each program that Eva installed: pi, gh, ffmpeg, whisper.cpp, Tailscale, Claude Code and uv. Other programs can use them too, so Enter keeps each one.
 
-The command never changes your vault on GitHub, or your own Claude Code settings in `~/.claude`.
+The command never changes your vault on GitHub, or your own Claude Code settings in `~/.claude`. It also keeps the system packages that the install command added (git, curl, bubblewrap, socat and the OpenMP library), and the `PATH` lines that it added to your shell start files.
 
 Then do these steps outside the computer:
 
@@ -255,5 +257,5 @@ Then do these steps outside the computer:
 
 **By hand.** To read each step before it runs, read [uninstall.sh](../../install/uninstall.sh) or [uninstall.ps1](../../install/uninstall.ps1). Or do the main steps yourself, for each Eva:
 
-- On Linux, run `systemctl --user disable --now eva-<name>`. Then delete `~/.config/systemd/user/eva-<name>.service`, the folder `~/.config/eva-<name>` and the program `~/.local/bin/eva`.
+- On Linux, run `systemctl --user disable --now eva-<name>`. Then delete `~/.config/systemd/user/eva-<name>.service`, the folder `~/.config/eva-<name>` and the program `~/.local/bin/eva`. Delete the `Added by the Eva installer` lines in `~/.profile` and your other shell start files.
 - On Windows, choose **Quit Eva** in the menu of her tray icon, or end each `eva.exe` task in Task Manager. Then run `Remove-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run Eva-<name>` in PowerShell. Delete the folders `%APPDATA%\eva-<name>` and `%LOCALAPPDATA%\Programs\Eva`, and remove the second one from your `PATH`.

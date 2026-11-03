@@ -58,3 +58,24 @@ The root `AGENTS.md` has the v3 sections, such as _Personal rules_. Each folder 
 7. The schedule edits that the moves need, approved once for all.
 8. The git-ignored files of the vault, and where each one goes.
 9. Each other note that mentions `Scratch/` (not a replaced file, not an existing _Personal rules_ section): point it to `.eva/scratch/`. A dated record, such as a diary day, stays as it is.
+
+## v4
+
+- **Version:** 4
+- **Date:** 2026-11-03
+- **Pull request:** https://github.com/guplem/eva/pull/850
+- **Summary:** Your projects get clear dates and goals: the day they started and closed, an optional objective and an optional deadline.
+- **Migrations first:**
+
+### What changes, and why
+
+1. **The _Projects_ section of the root `AGENTS.md` names four more keys** in its front matter example, each with one line that says what it means: `started`, `closed`, `objective` and `deadline`. Replace the _Projects_ section with the exact text of `template/`. Leave the rest of the file as it is. Why: an agent that reads only the vault knows when a project began, when it is done, and which date it must not miss.
+2. **Nothing else moves.** No note changes. A project keeps the keys that it has. A project with no `started` started at `created`.
+
+### How to detect a vault that has it
+
+The front matter example in the _Projects_ section of the root `AGENTS.md` names `closed`, `started`, `objective` and `deadline`. Then the upgrade only records the version. Otherwise it runs, and asks only about what differs.
+
+### What to ask, all in the one message up front
+
+1. Each line of _Personal rules_ that now says the same as the new _Projects_ text, such as a rule about `closed`. The default is "leave it out". This is the one change to _Personal rules_ that the person can approve, because the line is now a template rule.

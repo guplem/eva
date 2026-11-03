@@ -236,8 +236,8 @@ describe("the vault template", () => {
     }
   });
 
-  test("a new vault records structure version 3 (#772)", () => {
-    expect(JSON.parse(vaultTemplateFiles(answers)[".eva/vault-structure.json"] ?? "")).toEqual({ version: 3 });
+  test("a new vault records structure version 4 (#848)", () => {
+    expect(JSON.parse(vaultTemplateFiles(answers)[".eva/vault-structure.json"] ?? "")).toEqual({ version: 4 });
   });
 
   test("the agent map names the language that the person chose for notes", () => {

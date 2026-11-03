@@ -238,6 +238,9 @@ const newVaultSchema = z.object({
   timeZone: z.string().max(100).optional(),
 });
 const claudeLoginSchema = z.object({ code: z.string().min(1).max(10_000) });
+const piLoginStartSchema = z.object({ provider: z.string().min(1).max(100), method: z.enum(["oauth", "api_key"]) });
+// An empty answer is valid: pi asks, for example, for an optional enterprise address.
+const piLoginAnswerSchema = z.object({ text: z.string().max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
@@ -1115,6 +1118,24 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (method === "POST" && url.pathname === "/api/engines/claude-code/login") return json(await eva.startClaudeLogin());
   if (method === "POST" && url.pathname === "/api/engines/claude-code/login/finish")
     return json(await eva.finishClaudeLogin(claudeLoginSchema.parse(await request.json()).code));
+  if (url.pathname === "/api/engines/pi/providers" && method === "GET") return json(await eva.piProviders());
+  if (url.pathname.startsWith("/api/engines/pi/providers/") && method === "DELETE") {
+    await eva.logOutOfPi(decodeURIComponent(url.pathname.slice("/api/engines/pi/providers/".length)));
+    return json({ ok: true });
+  }
+  if (url.pathname === "/api/engines/pi/login") {
+    if (method === "GET") return json(eva.piLoginState());
+    if (method === "DELETE") {
+      eva.stopPiLogin();
+      return json(eva.piLoginState());
+    }
+    if (method === "POST") {
+      const start = piLoginStartSchema.parse(await request.json());
+      return json(await eva.startPiLogin(start.provider, start.method));
+    }
+  }
+  if (method === "POST" && url.pathname === "/api/engines/pi/login/answer")
+    return json(await eva.answerPiLogin(piLoginAnswerSchema.parse(await request.json()).text));
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/devices/allow") {
     // Only the label comes back: the device token reaches only the browser that asked.

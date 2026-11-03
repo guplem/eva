@@ -21,6 +21,13 @@ import { readJsonTolerant, writeFileAtomic } from "../shared/files.ts";
 import { readRecentLogEntries, type LogEntry, type Logger, type RecentLogQuery } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import { systemTerminalProcessStarter, type TerminalProcessStarter } from "../shared/terminal-process.ts";
+import {
+  idlePiLogin,
+  type PiLoginMethod,
+  type PiLogins,
+  type PiLoginState,
+  type PiProvider,
+} from "../shared/pi-login.ts";
 import type { SessionEvent, TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
@@ -315,6 +322,8 @@ export interface EvaOptions {
   readonly githubBrowserLogin?: DeviceLogin | null;
   /** Starts a program in a pseudo-terminal, for the Claude login. Default: Bun's terminal. */
   readonly startTerminal?: TerminalProcessStarter;
+  /** pi's login for the web page (#811). Null: no pi login from the page. */
+  readonly piLogin?: PiLogins | null;
   /** Where the tools live, for their versions. Default: this machine, not the single executable. */
   readonly toolPlaces?: Pick<ToolPlaces, "platform" | "userHome" | "standalone">;
   /** The processor and the release downloads of the tool installs; a test points them at a fake. */
@@ -1730,6 +1739,7 @@ export class Eva {
 
   stop(): void {
     this.claudeLogin.stop();
+    this.options.piLogin?.stop();
     this.githubLogin.stop();
     if (this.sweepTimer !== null) clearInterval(this.sweepTimer);
     if (this.scheduleTimer !== null) clearInterval(this.scheduleTimer);
@@ -2578,6 +2588,50 @@ export class Eva {
   async finishClaudeLogin(code: string): Promise<{ restartNeeded: true }> {
     const { token } = await this.claudeLogin.finish(code);
     return { restartNeeded: this.settings.saveSecret("claudeOauthToken", token).restartNeeded };
+  }
+
+  /** pi's providers that the page can log in to, with their login state (#811). */
+  piProviders(): Promise<PiProvider[]> {
+    return this.piLogins().providers(this.piLoginPlace());
+  }
+
+  /** Starts pi's login of one provider. pi reads its logins at each turn, so a login needs no restart. */
+  async startPiLogin(provider: string, method: PiLoginMethod): Promise<PiLoginState> {
+    return this.afterPiLogin(await this.piLogins().start(this.piLoginPlace(), provider, method));
+  }
+
+  /** Passes the person's answer to the question of pi's login. */
+  async answerPiLogin(text: string): Promise<PiLoginState> {
+    return this.afterPiLogin(await this.piLogins().answer(text));
+  }
+
+  /** The state of pi's login, which the page reads while the provider confirms a device code. */
+  piLoginState(): PiLoginState {
+    return this.afterPiLogin(this.options.piLogin?.state() ?? idlePiLogin);
+  }
+
+  stopPiLogin(): void {
+    this.options.piLogin?.stop();
+  }
+
+  async logOutOfPi(provider: string): Promise<void> {
+    await this.piLogins().logout(this.piLoginPlace(), provider);
+  }
+
+  private piLogins(): PiLogins {
+    const logins = this.options.piLogin ?? null;
+    if (logins === null) throw new EvaError("pi_login_failed", "This Eva cannot run the pi login.");
+    return logins;
+  }
+
+  private piLoginPlace(): { cwd: string; environment: Record<string, string> } {
+    return { cwd: this.options.paths.root, environment: engineToolEnvironment(this.facts) };
+  }
+
+  /** A login that worked ends the alert of an expired pi login at once, before the next chat. */
+  private afterPiLogin(state: PiLoginState): PiLoginState {
+    if (state.status === "done") this.alerts.report("engine_login:pi", null);
+    return state;
   }
 
   /** Starts the GitHub browser login, or gives the code of the login that waits. */

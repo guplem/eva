@@ -53,6 +53,7 @@ import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { ChangelogEntry } from "../../../core/updates/release-policy.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
+import type { PiLoginMethod, PiLoginState, PiProvider } from "../../../shared/pi-login.ts";
 import type {
   ConflictChoice,
   ConflictResolution,
@@ -525,6 +526,16 @@ export const api = {
   /** Takes the code that Claude's page shows after the login. */
   finishClaudeLogin: (code: string): Promise<{ restartNeeded: boolean }> =>
     request("POST", "/api/engines/claude-code/login/finish", { code }),
+  /** pi's providers that the page can log in to, with their login state. */
+  piProviders: (): Promise<PiProvider[]> => request("GET", "/api/engines/pi/providers"),
+  startPiLogin: (provider: string, method: PiLoginMethod): Promise<PiLoginState> =>
+    request("POST", "/api/engines/pi/login", { provider, method }),
+  /** Passes the answer to the open question of pi's login. A key goes to pi, and nowhere else. */
+  answerPiLogin: (text: string): Promise<PiLoginState> => request("POST", "/api/engines/pi/login/answer", { text }),
+  piLoginState: (): Promise<PiLoginState> => request("GET", "/api/engines/pi/login", undefined, { limit: quickRead }),
+  stopPiLogin: (): Promise<PiLoginState> => request("DELETE", "/api/engines/pi/login"),
+  logOutOfPi: (provider: string): Promise<{ ok: true }> =>
+    request("DELETE", `/api/engines/pi/providers/${encodeURIComponent(provider)}`),
   startGoogleLogin: (): Promise<{ url: string }> => request("POST", "/api/google/login", {}),
   /** Takes the address that Google sent the browser to, or its code alone. */
   finishGoogleLogin: (address: string): Promise<{ email: string; restartNeeded: boolean }> =>

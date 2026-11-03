@@ -37,23 +37,23 @@ Run these on the computer where Eva runs. Eight commands need Eva to run: `statu
 
 In Telegram, type `/` to see these commands, each with a short note:
 
-| Command             | What it does                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------ |
-| `/new`              | Starts a new chat in a topic of its own.                                             |
-| `/chats`            | Continues a chat from the web page or the terminal here: see [Chats](#chats).        |
-| `/rename <title>`   | Renames this chat and its topic.                                                     |
-| `/stop`             | Stops Eva's work in this chat.                                                       |
-| `/delete`           | Deletes this chat everywhere, with its topic.                                        |
-| `/status`           | Shows Eva's state: "All good", or the problems.                                      |
-| `/projects [words]` | Searches your projects, as `eva projects` does.                                      |
-| `/schedules`        | Lists the schedules.                                                                 |
-| `/link`             | Shows the address that opens Eva on any device.                                      |
-| `/sync`             | Syncs the vault now.                                                                 |
-| `/conflicts`        | Picks a version of each note in a conflict: see [Vault conflicts](#vault-conflicts). |
-| `/update`           | Checks for updates, or picks a version of Eva.                                       |
-| `/logs [count]`     | Shows the last warnings and errors, 20 by default.                                   |
-| `/restart`          | Restarts Eva, after you confirm.                                                     |
-| `/help`             | Shows the commands.                                                                  |
+| Command             | What it does                                                                  |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `/new`              | Starts a new chat in a topic of its own.                                      |
+| `/chats`            | Continues a chat from the web page or the terminal here: see [Chats](#chats). |
+| `/rename <title>`   | Renames this chat and its topic.                                              |
+| `/stop`             | Stops Eva's work in this chat.                                                |
+| `/delete`           | Deletes this chat everywhere, with its topic.                                 |
+| `/status`           | Shows Eva's state: "All good", or the problems.                               |
+| `/projects [words]` | Searches your projects, as `eva projects` does.                               |
+| `/schedules`        | Lists the schedules.                                                          |
+| `/link`             | Shows the address that opens Eva on any device.                               |
+| `/sync`             | Syncs the vault now.                                                          |
+| `/conflicts`        | Picks a version of each note in a vault conflict.                             |
+| `/update`           | Checks for updates, or picks a version of Eva.                                |
+| `/logs [count]`     | Shows the last warnings and errors, 20 by default.                            |
+| `/restart`          | Restarts Eva, after you confirm.                                              |
+| `/help`             | Shows the commands.                                                           |
 
 ## Settings
 

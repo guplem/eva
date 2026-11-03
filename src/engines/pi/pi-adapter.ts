@@ -31,6 +31,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  lostHistoryPreamble,
   modelTierName,
   type ApprovalAnswer,
   type EnginePort,
@@ -45,6 +46,8 @@ import { writeFileAtomic } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
+import { questionExtensionSource, questionTitle } from "./pi-question-extension.ts";
+import { askInTextMessage, collectAnswers } from "../../shared/questions.ts";
 import { describePiContext } from "./pi-context.ts";
 import { describePiPermissions } from "./pi-permissions.ts";
 import { contextExtensionSource, contextNoticePrefix, projectFolderVariable } from "./pi-context-extension.ts";
@@ -65,6 +68,8 @@ export interface PiEngineOptions {
   readonly closeTimeoutMs?: number;
   /** How long pi has to answer a stop before Eva stops its process. */
   readonly stopGraceMs?: number;
+  /** The longest wait for `pi auth check` after a failed turn. */
+  readonly loginCheckMs?: number;
 }
 
 interface PiMessage {
@@ -73,6 +78,8 @@ interface PiMessage {
   readonly stopReason?: string;
   readonly errorMessage?: string;
   readonly model?: string;
+  /** The provider that answered, such as `openai-codex`: its login is the one to check after a failure. */
+  readonly provider?: string;
   readonly usage?: {
     readonly input?: number;
     readonly output?: number;
@@ -128,8 +135,9 @@ export class PiEngine implements EnginePort {
       engineSessionId = request.history.engineSessionId;
       historyLost = request.history.kind === "continue" && !existsSync(sessionFile(engineSessionId));
     }
-    // Lesson 46: the turn still runs, in a fresh conversation, and the person is told.
+    // Lesson 46: the turn still runs, in a fresh conversation, and the person and the model are told.
     if (historyLost) yield { kind: "history_lost" };
+    const prompt = historyLost ? lostHistoryPreamble + request.prompt : request.prompt;
     const model = this.options.models[request.model];
     // With no --model flag, pi goes on with the model that the session last used, not the new tier.
     if (model === null && request.previousModel !== undefined && request.previousModel !== request.model) {
@@ -160,6 +168,9 @@ export class PiEngine implements EnginePort {
     // A Project chat hides each instruction file above its project folder, such as the vault's map (#702).
     const contextExtensionFile =
       request.projectFolder === null ? null : this.writeIfChanged("eva-context-extension.ts", contextExtensionSource);
+    // Claude Code's question form, in an Assistant chat (#813). A Project chat is pi as the person runs it.
+    const questionExtensionFile =
+      request.mode === "assistant" ? this.writeIfChanged("eva-question-extension.ts", questionExtensionSource) : null;
     // One file per turn: a stopped turn that still closes must not delete the file of the next one.
     const specsFile = hasMcpServers
       ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
@@ -170,6 +181,7 @@ export class PiEngine implements EnginePort {
       extensionFile,
       mcpExtensionFile,
       contextExtensionFile,
+      questionExtensionFile,
       promptFile,
       model,
     });
@@ -232,7 +244,7 @@ export class PiEngine implements EnginePort {
         close,
         stderrTail: () => pi.stderrTail(),
       };
-      yield* this.streamTurn(tracked, request, engineSessionId, sessionFile(engineSessionId));
+      yield* this.streamTurn(tracked, { ...request, prompt }, engineSessionId, sessionFile(engineSessionId));
     } finally {
       clearTimeout(hardStop);
       // A caller that leaves the stream early, such as a model call at its deadline, ends it at a
@@ -255,6 +267,7 @@ export class PiEngine implements EnginePort {
     let contextTokens: number | null = null;
     let contextWindow: number | null = null;
     let model: string | null = null;
+    let provider: string | null = null;
     let answers = 0;
     // True from the start of an answer until its first text piece.
     let messageStarts = false;
@@ -294,6 +307,7 @@ export class PiEngine implements EnginePort {
         addUsage(usage, message);
         contextTokens = contextOf(message) ?? contextTokens;
         model = message.model ?? model;
+        provider = message.provider ?? provider;
         costUsd += message.usage?.cost?.total ?? 0;
         const text = (message.content ?? [])
           .filter((part) => part.type === "text")
@@ -345,12 +359,25 @@ export class PiEngine implements EnginePort {
     if (end === null && finished) end = { kind: "finished" };
     await pi.close(this.options.closeTimeoutMs ?? 5_000);
 
-    if (end === null && request.signal.aborted) {
+    if (request.signal.aborted && end?.kind !== "finished") {
       yield { kind: "turn_failed", reason: "The turn was stopped." };
-    } else if (end === null) {
-      yield { kind: "turn_failed", reason: `pi stopped before the turn ended. ${pi.stderrTail().trim()}`.trim() };
-    } else if (end.kind === "failed") {
-      yield { kind: "turn_failed", reason: end.reason };
+    } else if (end === null || end.kind === "failed") {
+      // pi's error text differs by provider, so pi's own structured check tells a lost login apart (lesson 36).
+      const target = this.checkTarget(request, provider);
+      const missing = target !== null && (await this.loginMissing(request, target));
+      if (request.signal.aborted) {
+        yield { kind: "turn_failed", reason: "The turn was stopped." };
+      } else if (missing) {
+        const name = target[1];
+        yield {
+          kind: "turn_failed",
+          reason: `The pi login of "${name}" expired or is missing. Log in again in Settings, AI engines, pi.`,
+          loginExpired: true,
+        };
+      } else {
+        const reason = end?.reason ?? `pi stopped before the turn ended. ${pi.stderrTail().trim()}`.trim();
+        yield { kind: "turn_failed", reason };
+      }
     } else {
       yield {
         kind: "turn_finished",
@@ -362,6 +389,62 @@ export class PiEngine implements EnginePort {
         contextWindow,
         model,
       };
+    }
+  }
+
+  /**
+   * The target of `pi auth check`: the provider that answered, or the tier's model when pi gave no
+   * answer. Null when there is none, or when the turn needs no check: a model call reports no login.
+   */
+  private checkTarget(request: TurnRequest, provider: string | null): readonly [string, string] | null {
+    if (request.mode === "model-call") return null;
+    const target = provider ?? this.options.models[request.model];
+    // A name that starts with a dash would read as a flag of pi.
+    if (target === null || !/^\w[\w./:-]*$/.test(target)) return null;
+    return provider === null ? ["--model", target] : ["--provider", target];
+  }
+
+  /**
+   * Asks `pi auth check` whether pi has a working login for the provider. True only for pi's
+   * "credentials not configured": a refresh of an expired subscription login fails that way.
+   * Never throws. A check that is slow or stopped counts as a working login.
+   */
+  private async loginMissing(request: TurnRequest, target: readonly [string, string]): Promise<boolean> {
+    let check: PiProcess;
+    try {
+      check = (this.options.start ?? systemPiProcessStarter)(
+        [...this.options.command, "auth", "check", ...target, "--json"],
+        { cwd: request.startFolder, environment: request.environment },
+      );
+    } catch {
+      return false;
+    }
+    const answer = (async (): Promise<boolean> => {
+      for await (const record of check.records) {
+        if (typeof record["status"] === "string")
+          return record["status"] === "not_ready" && record["reason"] === "credentials_not_configured";
+      }
+      return false;
+    })().catch(() => false);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort = (): void => undefined;
+    // The check may refresh a subscription login over a slow line, so it gets more time than a close.
+    const late = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => {
+        resolve(false);
+      }, this.options.loginCheckMs ?? 20_000);
+      onAbort = () => {
+        resolve(false);
+      };
+      request.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    try {
+      return await Promise.race([answer, late]);
+    } finally {
+      clearTimeout(timer);
+      request.signal.removeEventListener("abort", onAbort);
+      // A grace time, not a kill: pi may still save a new refresh token, and a kill would lose it.
+      await check.close(this.options.closeTimeoutMs ?? 5_000).catch(() => undefined);
     }
   }
 
@@ -381,6 +464,8 @@ export interface PiArgumentInputs {
   readonly mcpExtensionFile: string | null;
   /** Eva's filter of the instruction files above a Project chat's project folder. */
   readonly contextExtensionFile: string | null;
+  /** Eva's question form tool, in an Assistant chat. */
+  readonly questionExtensionFile: string | null;
   readonly promptFile: string | null;
   readonly model: string | null;
 }
@@ -402,6 +487,7 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
   ];
   if (inputs.mcpExtensionFile !== null) args.push("-e", inputs.mcpExtensionFile);
   if (inputs.contextExtensionFile !== null) args.push("-e", inputs.contextExtensionFile);
+  if (inputs.questionExtensionFile !== null) args.push("-e", inputs.questionExtensionFile);
   if (inputs.model !== null) args.push("--model", inputs.model);
   // pi has no level above `xhigh`, so Max asks for pi's highest level.
   if (request.effort !== null) args.push("--thinking", request.effort === "max" ? "xhigh" : request.effort);
@@ -440,19 +526,51 @@ function extensionNotice(record: Record<string, unknown>): string | null {
   return prefix === undefined ? null : message.slice(prefix.length);
 }
 
-/** Answers Eva's approval dialog through the person, and cancels any other dialog. Never blocks the stream. */
+/**
+ * Answers Eva's approval dialog and question form through the person, and cancels any other
+ * dialog. Never blocks the stream.
+ */
 function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string, unknown>): void {
   const id = record["id"];
   const method = String(record["method"]);
   if (typeof id !== "string" || !answeredDialogMethods.includes(method)) return;
+  if (method === "editor" && record["title"] === questionTitle) {
+    // A failure in the core must still answer pi: an open dialog holds the turn until a hard stop.
+    void answerForm(request, record["prefill"])
+      .catch(() => ({ refused: askInTextMessage }))
+      .then((reply) => {
+        pi.send({ type: "extension_ui_response", id, value: JSON.stringify(reply) });
+      });
+    return;
+  }
   if (method !== "confirm" || record["title"] !== approvalTitle) {
     pi.send({ type: "extension_ui_response", id, cancelled: true });
     return;
   }
   const call = parseToolCall(record["message"]);
-  void decide(request, call.toolName, call.input).then((answer) => {
-    pi.send({ type: "extension_ui_response", id, confirmed: answer === "allow" });
-  });
+  void decide(request, call.toolName, call.input)
+    .catch((): ApprovalAnswer => "deny")
+    .then((answer) => {
+      pi.send({ type: "extension_ui_response", id, confirmed: answer === "allow" });
+    });
+}
+
+/** The reply to the question tool of pi-question-tool.ts: the answers, or why there are none. */
+async function answerForm(
+  request: TurnRequest,
+  prefill: unknown,
+): Promise<{ answers: Readonly<Record<string, string>> } | { refused: string }> {
+  // Only an Assistant chat loads the tool, and nobody waits for a question in a model call.
+  if (request.mode !== "assistant") return { refused: askInTextMessage };
+  let input: unknown;
+  try {
+    input = JSON.parse(String(prefill));
+  } catch {
+    return { refused: askInTextMessage };
+  }
+  if (typeof input !== "object" || input === null) return { refused: askInTextMessage };
+  const collected = await collectAnswers(input as Record<string, unknown>, request.askQuestions);
+  return collected.kind === "answered" ? { answers: collected.answers } : { refused: collected.message };
 }
 
 /** pi's fields that hold a file pattern, by tool. Every path field of every tool is walled. */

@@ -460,56 +460,62 @@ export class Scheduler {
    * schedule (#687). A failed run is never quiet and never ends it: the person must learn of it.
    */
   private runEnded(schedule: Schedule, slot: string, sessionId: string, failure: string | null): void {
-    const { chats } = this.options;
-    const answer = chats.answerOf(sessionId);
+    // The run always ends, also when its chat is gone: a held push and "typing" must not wait for good.
+    let deliver = true;
+    try {
+      deliver = this.judgeRun(schedule, slot, sessionId, failure);
+    } finally {
+      this.options.chats.endRun(sessionId, deliver);
+    }
+  }
+
+  /** Tells the front ends the answer of the run, and false when the run was quiet. */
+  private judgeRun(schedule: Schedule, slot: string, sessionId: string, failure: string | null): boolean {
+    const answer = this.options.chats.answerOf(sessionId);
     const markers = extractFileMarkers(answer.text);
     // A [[quiet]] line silences the run, also after text that it wrote while it worked, such as
-    // "I check Gmail now". An answer with no words says nothing either. A file still goes out.
+    // "I check Gmail now". So does a [[done]] with no words. A file still goes out. An answer with
+    // no words and no marker, such as a stopped run, is no word from the agent, so it stays.
     const files = markers.attach.length + markers.offer.length;
-    const silent = files === 0 && (markers.quiet || markers.text === "");
+    const silent = files === 0 && (markers.quiet || (markers.done && markers.text === ""));
+    const answered = { kind: "schedule_answered", scheduleId: schedule.id, name: schedule.name, sessionId } as const;
     if (failure !== null) {
       this.promptFailed(schedule, slot, failure);
-      void this.emit({
-        kind: "schedule_answered",
-        scheduleId: schedule.id,
-        name: schedule.name,
-        sessionId,
-        text: answer.text,
-        failure,
-      });
-      chats.endRun(sessionId, true);
-      return;
+      void this.emit({ ...answered, text: answer.text, failure });
+      return true;
     }
     // Someone who wrote during the run waits for its answer.
     const quiet = !answer.personWrote && silent;
-    if (quiet) {
-      if (this.state.peek(schedule.id)?.lastResult?.slot === slot)
-        this.state.update(schedule.id, { lastResult: { slot, failed: false, quiet: true } });
-    } else {
-      void this.emit({
-        kind: "schedule_answered",
-        scheduleId: schedule.id,
-        name: schedule.name,
-        sessionId,
-        text: answer.text,
-        failure: null,
-      });
-    }
-    chats.endRun(sessionId, !quiet);
+    if (!quiet) void this.emit({ ...answered, text: answer.text, failure: null });
+    else if (this.state.peek(schedule.id)?.lastResult?.slot === slot)
+      this.state.update(schedule.id, { lastResult: { slot, failed: false, quiet: true } });
     if (markers.done) this.endByDone(schedule, slot);
+    return !quiet;
   }
 
   /** A [[done]] works like the person's pause, so turning the schedule on again needs a card (lesson 67). */
   private endByDone(schedule: Schedule, slot: string): void {
     try {
       this.setEnabled(schedule.id, false);
-      this.state.update(schedule.id, { done: slot });
     } catch (error) {
       // The vault may be read-only. The phone must still learn that the watch did not stop.
       this.options.reportFiring?.(
         schedule,
         `The run asked to stop the schedule, but Eva could not turn it off: ${errorText(error)}`,
       );
+    }
+    // The schedule is off now. Only the "Ended" mark may fail, and the list then shows it as off.
+    try {
+      if (
+        readScheduleDefinitions(this.definitionsPath).schedules.find((entry) => entry.id === schedule.id)?.enabled ===
+        false
+      )
+        this.state.update(schedule.id, { done: slot });
+    } catch (error) {
+      this.options.logger?.log("error", "Eva could not mark the end of a watch.", {
+        scheduleId: schedule.id,
+        reason: errorText(error),
+      });
     }
   }
 

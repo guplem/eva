@@ -128,6 +128,8 @@ export function parseScheduleEntry(entry: unknown, position: number): Schedule |
   const until = fields["until"] ?? null;
   if (until !== null && (typeof until !== "string" || !isDay(until)))
     return `Schedule ${id} has an invalid until: write the last day as YYYY-MM-DD, such as 2026-11-30.`;
+  if (until !== null && every === null && from !== null)
+    return `Schedule ${id} has until on a one-off: until is for a schedule that repeats, so remove it.`;
   return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model, enabled, every, from, until };
 }
 
@@ -175,12 +177,12 @@ function parseRepeat(id: string, fields: Record<string, unknown>): Repeat | stri
   return { at, days, every: null, from: null };
 }
 
-/** A real date and time: a day such as 30 February fails. */
 /** A real date, `YYYY-MM-DD`: a day such as 31 November fails. */
 function isDay(text: string): boolean {
   return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(text) && isSlot(`${text}T00:00`);
 }
 
+/** A real date and time: a day such as 30 February fails. */
 function isSlot(text: string): boolean {
   if (!slotPattern.test(text)) return false;
   const moment = new Date(`${text}:00Z`);

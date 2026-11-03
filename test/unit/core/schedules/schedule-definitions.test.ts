@@ -308,3 +308,11 @@ describe("until (#687)", () => {
     expect(parseScheduleEntry(entry, 4)).toContain(reason);
   });
 });
+
+describe("until on a one-off (#687 review)", () => {
+  test("is refused: a one-off has no later run to end", () => {
+    expect(
+      parseScheduleEntry({ id: "c", name: "C", from: "2026-11-24T10:00", until: "2026-11-30", text: "x" }, 1),
+    ).toContain("until is for a schedule that repeats");
+  });
+});

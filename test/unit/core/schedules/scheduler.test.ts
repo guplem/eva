@@ -1183,3 +1183,54 @@ describe("a one-off time counts from when Eva first saw that time (#822 review)"
     expect(fired()).toHaveLength(1);
   });
 });
+
+describe("the end of a run, when something goes wrong (#687 review)", () => {
+  const watch = { id: "reply", name: "Reply", every: "1d", from: "2026-07-01T08:00", prompt: "Did she reply?" };
+  const at = (wallClock: string): Date => new Date(`${wallClock}:00+02:00`);
+  const runAt = async (scheduler: Scheduler, wallClock: string): Promise<void> => {
+    clock = at(wallClock);
+    await scheduler.tick();
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+  };
+
+  test("an answer with no words and no marker, such as a stopped run, is delivered and not deleted", async () => {
+    writeSchedules([watch]);
+    answers.set("session-1", { text: "", personWrote: false });
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    await runAt(scheduler, "2026-07-01T08:00");
+    expect(endedRuns).toEqual([{ sessionId: "session-1", deliver: true }]);
+  });
+
+  test("a chat that is gone at the end still ends the run", async () => {
+    writeSchedules([watch]);
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    answers.set("session-1", {
+      get text(): string {
+        throw new Error("Chat session-1 is gone.");
+      },
+      personWrote: false,
+    });
+    await runAt(scheduler, "2026-07-01T08:00");
+    expect(endedRuns).toEqual([{ sessionId: "session-1", deliver: true }]);
+  });
+});
+
+describe("a [[done]] that Eva cannot write (#687 review)", () => {
+  test("alerts the phone, and the schedule stays on, with no end mark", async () => {
+    writeSchedules([{ id: "reply", name: "Reply", every: "1d", from: "2026-07-01T08:00", prompt: "Did she reply?" }]);
+    answers.set("session-1", { text: "She replied.\n[[done]]", personWrote: false });
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    writeFileSync(
+      join(vault, ".eva", "migrations.json"),
+      JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] }),
+    );
+    clock = new Date("2026-07-01T08:00:00+02:00");
+    await scheduler.tick();
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    expect(firings.at(-1)?.failure).toContain("could not turn it off");
+    expect(scheduler.list().schedules[0]).toMatchObject({ ended: null, schedule: { enabled: true } });
+  });
+});

@@ -146,13 +146,19 @@ function changedList(
   return sameList(current, cleaned) ? {} : { [key]: cleaned };
 }
 
-/** The new front matter, or null when no field changes, so an untouched file keeps every byte. */
+/** True when the project file writes a `type` key, with any value. */
+export function hasTypeKey(text: string): boolean {
+  const match = frontMatterPattern.exec(text.replace(/^\uFEFF/, ""));
+  return match !== null && hasKey((match[1] ?? "").replaceAll("\r\n", "\n"), "type");
+}
+
 /** True when the front matter has the key, with any value. */
 function hasKey(source: string, key: string): boolean {
   const document = parseDocument(source, { schema: "failsafe" });
   return isMap(document.contents) && document.has(key);
 }
 
+/** The new front matter, or null when no field changes, so an untouched file keeps every byte. */
 function editFrontMatter(source: string, changes: FrontMatterChanges): string | null {
   // Failsafe, as the catalog reads it: every value stays text, such as `created: 2026-01-31T09:15`.
   const document = parseDocument(source, { schema: "failsafe" });

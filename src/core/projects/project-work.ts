@@ -52,6 +52,7 @@ import {
   applyProjectDetails,
   checkProjectFile,
   fileVersion,
+  hasTypeKey,
   matchFileStyle,
   projectFileOf,
   setRepositoryType,
@@ -949,8 +950,14 @@ export class ProjectWork {
     const project = this.project(projectId);
     if (project.clones.length > 0)
       throw new EvaError("project_invalid", `${project.title} has clones. Delete them before you change its type.`);
-    if (this.options.sessions.list().some((chat) => chat.projectId === projectId))
-      throw new EvaError("project_invalid", `${project.title} has chats. Delete them before you change its type.`);
+    if (this.options.sessions.list().some((chat) => chat.projectId === projectId)) {
+      // With no key, `repos` alone makes a project software, so the person may not see the change.
+      const hint =
+        inClones(after) === true && !hasTypeKey(after)
+          ? "Its repos make it a software project. To keep it general, write `type: general`."
+          : "Delete them before you change its type.";
+      throw new EvaError("project_invalid", `${project.title} has chats. ${hint}`);
+    }
   }
 
   /** The path comes from the project list, never from the id, so an id cannot point outside it. */

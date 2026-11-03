@@ -1545,6 +1545,19 @@ describe("Eva", () => {
       expect(isEvaError(caught, "project_invalid")).toBe(true);
     });
 
+    test("a raw save that adds repos to a general project with no type key says how to keep it general", async () => {
+      const instance = start(new FakeEngine());
+      await instance.createProjectSession({ projectId: houseId, source: "web" });
+      const file = instance.projectFile(houseId);
+      const edited = file.text.replace(
+        "status: active\n",
+        "status: active\nrepos:\n  - https://github.com/example/example-app\n",
+      );
+      expect(() => instance.saveProjectFile(houseId, file.version, edited)).toThrow(
+        "Its repos make it a software project. To keep it general, write `type: general`.",
+      );
+    });
+
     test("a new general project from the form opens no chat and has no specialist line", async () => {
       const instance = start(new FakeEngine());
       const result = await instance.createProject({

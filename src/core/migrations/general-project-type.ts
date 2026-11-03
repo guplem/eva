@@ -3,7 +3,8 @@
  * project lists no repository (#768). A project with `repos` and no type still reads as software,
  * but the key makes that clear to a person and to an agent. So this migration writes
  * `type: software` into each vault project with `repos` and no `type`. It changes nothing else in
- * that file, and skips a file with a broken front matter.
+ * that file, and skips a file with a broken front matter. A folder of `Projects/` whose name is no
+ * project id is no project, so it stays as it is.
  *
  * It also fixes the vault map's _Projects_ section where Eva's exact text is still there: the
  * comment of the type line, the count of types, and a General bullet above Eva's Software bullet.
@@ -17,6 +18,8 @@ import { parse as parseYaml } from "yaml";
 import type { Migration, MigrationContext } from "./migration-runner.ts";
 
 const frontMatterPattern = /^(\uFEFF?---\r?\n)([\s\S]*?)(\r?\n---(?:\r?\n|$))/;
+/** A frozen copy of the project id rule of `src/core/projects/project-id.ts`: an old id can hold only a year. */
+const projectIdPattern = /^\d{4}(?:-\d{2}(?:-\d{2}(?:-\d{4})?)?)?-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const mapLines: readonly (readonly [string, string])[] = [
   [
@@ -37,7 +40,8 @@ export const typeSoftwareProjects: Migration = {
     const vaultPath = context.vaultPath;
     if (vaultPath === null || !existsSync(vaultPath)) return "later";
     const projects = join(vaultPath, "Projects");
-    for (const name of folderNames(projects)) typeSoftwareProject(context, join(projects, name, "AGENTS.md"));
+    for (const name of folderNames(projects).filter((name) => projectIdPattern.test(name)))
+      typeSoftwareProject(context, join(projects, name, "AGENTS.md"));
     fixVaultMap(context, join(vaultPath, "AGENTS.md"));
     return "done";
   },

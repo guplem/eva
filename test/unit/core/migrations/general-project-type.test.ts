@@ -97,6 +97,13 @@ describe("typeSoftwareProjects (vault, #768)", () => {
     expect(files.map((file) => readFileSync(file, "utf-8"))).toEqual(texts);
   });
 
+  test("skips a folder of Projects/ whose name is no project id", () => {
+    const text = "---\nstatus: active\nrepos:\n  - https://github.com/example/example-app\n---\n";
+    const files = ["Templates", "2025-03-02-1015-App", "notes"].map((name) => project(name, text));
+    migrate();
+    expect(files.map((file) => readFileSync(file, "utf-8"))).toEqual(files.map(() => text));
+  });
+
   test("waits for a vault folder that is not there yet", () => {
     expect(migrate(join(root, "missing"))).toEqual({
       kind: "done",

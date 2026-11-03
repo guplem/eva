@@ -8,6 +8,7 @@ import {
   pathCrumbs,
   sizeWords,
   splitFrontMatter,
+  vaultPathLabel,
   vaultPathOf,
 } from "../../../../../src/frontends/web/client/file-paths.ts";
 
@@ -157,5 +158,20 @@ describe("vaultPathOf", () => {
     expect(vaultPathOf("a / b")).toBeNull();
     expect(vaultPathOf("Projects//a.md")).toBeNull();
     expect(vaultPathOf("a/b\\c.md")).toBeNull();
+  });
+});
+
+describe("vaultPathLabel", () => {
+  test("shows the last part of a vault path, so a full path stays short in the chat (#821)", () => {
+    expect(vaultPathLabel("Projects/2026-09-11-0949-example-app/Next Steps.md")).toBe("Next Steps.md");
+    expect(vaultPathLabel("Next Steps.md")).toBe("Next Steps.md");
+    expect(vaultPathLabel("./Inbox.md")).toBe("Inbox.md");
+  });
+
+  test("keeps the final slash of a folder and the place in a note", () => {
+    expect(vaultPathLabel("Toolbox/Health/")).toBe("Health/");
+    expect(vaultPathLabel(" Notes/a.md#Plan ")).toBe("a.md#Plan");
+    expect(vaultPathLabel("Notes/a.md:12:4")).toBe("a.md:12:4");
+    expect(vaultPathLabel("Notes/C# tips.md")).toBe("C# tips.md");
   });
 });

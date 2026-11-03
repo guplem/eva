@@ -254,8 +254,9 @@ export const api = {
       `/api/files/received?name=${encodeURIComponent(file.name)}${sessionId === null ? "" : `&session=${encodeURIComponent(sessionId)}`}`,
       file,
     ),
-  send: (sessionId: string, text: string): Promise<void> =>
-    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }, { limit: quickSend }),
+  /** `id`: the page names its own message, so it shows the message once when its turn starts (#804). */
+  send: (sessionId: string, text: string, id?: string): Promise<void> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text, id }, { limit: quickSend }),
   /** A fork of a Project chat can run in a new clone (issue 523). The notice says why it lost its history. */
   fork: (sessionId: string, atMessageId: string, files?: ForkFiles): Promise<BranchResult> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork`, { atMessageId, files }),

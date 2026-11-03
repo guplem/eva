@@ -339,6 +339,7 @@ describe("a conversation", () => {
     await manager.send(sessionId, "one");
     expect(events.map((event) => [event.kind, event.sessionId])).toEqual([
       ["message_received", sessionId],
+      ["turn_started", sessionId],
       ["text", sessionId],
       ["turn_finished", sessionId],
     ]);
@@ -356,6 +357,7 @@ describe("a conversation", () => {
     expect(events.map((event) => event.kind)).toEqual([
       "message_received",
       "message_received",
+      "turn_started",
       "text",
       "turn_finished",
     ]);
@@ -363,6 +365,78 @@ describe("a conversation", () => {
       { sessionId, text: "from the phone", origin: "telegram" },
       { sessionId, text: "the key is [redacted]", origin: "eva" },
     ]);
+  });
+
+  test("a turn starts with its whole message, as its stored turn will show it, redacted (#804)", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "first", "api");
+    await Promise.all([
+      manager.send(sessionId, "from the phone", "telegram"),
+      manager.send(sessionId, "the key is the-secret-value-123", "api", { clientId: "page-1" }),
+    ]);
+    const started = events.flatMap((event) => (event.kind === "turn_started" ? [event.message] : []));
+    expect(started).toEqual([
+      { userText: "first", fromEva: false, personText: null, projectReports: [], turnIndex: 0, clientIds: [] },
+      {
+        userText: "from the phone\n\nthe key is [redacted]",
+        fromEva: false,
+        personText: null,
+        projectReports: [],
+        turnIndex: 1,
+        clientIds: ["page-1"],
+      },
+    ]);
+    // The event comes first, so a front end shows the message before any step of its answer.
+    expect(events.find((event) => event.kind !== "message_received")?.kind).toBe("turn_started");
+    const stored = manager.get(sessionId).turns[1];
+    expect(started[1]).toMatchObject({ userText: stored?.userText, fromEva: stored?.fromEva });
+  });
+
+  test("the turn start keeps a result and the person's words apart, as the stored turn does (#804)", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const report = {
+      projectId: "example-app",
+      projectTitle: "Example app",
+      projectSessionId: "p1",
+      request: "Fix it.",
+      clone: "clone-0",
+      repositories: [],
+      failed: false,
+      result: "Fixed it.",
+      resultCut: false,
+    };
+    await Promise.all([
+      manager.send(sessionId, "[Project work finished: example-app]", "eva", { projectReport: report }),
+      manager.send(sessionId, "and a question", "telegram"),
+    ]);
+    const started = events.find((event) => event.kind === "turn_started");
+    const stored = manager.get(sessionId).turns[0];
+    expect(started).toMatchObject({
+      message: {
+        userText: stored?.userText,
+        fromEva: false,
+        personText: "and a question",
+        projectReports: [report],
+      },
+    });
+  });
+
+  test("a retry starts with the person's words as the person's, in its own branch (#804)", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one", "api");
+    events.length = 0;
+    const retry = await manager.retry(sessionId, 0);
+    await waitUntil(() => !manager.isActive(retry.id));
+    const started = events.find((event) => event.kind === "turn_started");
+    expect(started).toMatchObject({
+      sessionId: retry.id,
+      message: { userText: "one", fromEva: false, turnIndex: 0, clientIds: [] },
+    });
   });
 
   test("a message sent during a turn is told when its own turn starts, after the turn before (lesson 114)", async () => {
@@ -382,11 +456,13 @@ describe("a conversation", () => {
     await Promise.all([first, second]);
     expect(events.map((event) => (event.kind === "message_received" ? `message ${event.text}` : event.kind))).toEqual([
       "message one",
+      "turn_started",
       "text",
       "turn_finished",
       // Telegram showed the first answer.
       "session_seen",
       "message two",
+      "turn_started",
       "text",
       "turn_finished",
     ]);
@@ -1176,7 +1252,7 @@ describe("exactly one end event (lesson 47)", () => {
     const manager = createManager(new FakeEngine(() => crashing));
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "go");
-    expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_failed"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_started", "turn_failed"]);
     expect(manager.isBusy(sessionId)).toBe(false);
   });
 
@@ -1189,7 +1265,7 @@ describe("exactly one end event (lesson 47)", () => {
       ]),
     );
     await manager.send(newAssistantSession(manager), "go");
-    expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_started", "text", "turn_finished"]);
   });
 });
 
@@ -2576,7 +2652,7 @@ describe("running turns", () => {
       await waitUntil(() => events.some((event) => event.kind === "tool_started"));
       // The page replays only the events newer than the snapshot.
       expect(manager.runningTurns().seq).toBe(events.at(-1)?.seq ?? -1);
-      expect(manager.runningTurns().turns).toEqual([
+      expect(manager.runningTurns().turns).toMatchObject([
         {
           sessionId,
           steps: [
@@ -2584,6 +2660,43 @@ describe("running turns", () => {
             { kind: "command", text: "ls", isError: false, id: "t1" },
           ],
           draft: "",
+        },
+      ]);
+    } finally {
+      release();
+      await turn;
+    }
+    expect(manager.runningTurns().turns).toEqual([]);
+  });
+
+  test("the snapshot holds the message of a running turn, also before its first step (#804)", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        await released;
+        yield* FakeEngine.answer(request, "done");
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "update the vault", "api", { clientId: "page-1" });
+    try {
+      await waitUntil(() => events.some((event) => event.kind === "turn_started"));
+      expect(manager.runningTurns().turns).toEqual([
+        {
+          sessionId,
+          steps: [],
+          draft: "",
+          message: {
+            userText: "update the vault",
+            fromEva: false,
+            personText: null,
+            projectReports: [],
+            turnIndex: 0,
+            clientIds: ["page-1"],
+          },
         },
       ]);
     } finally {
@@ -2611,7 +2724,9 @@ describe("running turns", () => {
     const turn = manager.send(sessionId, "go");
     try {
       await waitUntil(() => events.filter((event) => event.kind === "text_delta").length === 3);
-      expect(manager.runningTurns().turns).toEqual([{ sessionId, steps: [], draft: "Here is the answer so far " }]);
+      expect(manager.runningTurns().turns).toMatchObject([
+        { sessionId, steps: [], draft: "Here is the answer so far " },
+      ]);
     } finally {
       release();
       await turn;
@@ -2923,7 +3038,7 @@ describe("persistence and redaction", () => {
       { redactor },
     );
     await manager.send(newAssistantSession(manager), "show it");
-    expect(events[1]).toMatchObject({ kind: "text", text: "token: [redacted]" });
+    expect(events[2]).toMatchObject({ kind: "text", text: "token: [redacted]" });
   });
 });
 

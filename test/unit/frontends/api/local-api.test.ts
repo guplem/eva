@@ -754,12 +754,15 @@ describe("routes", () => {
       await call("/api/sessions", { method: "POST", body: { mode: "assistant", model: "default" } }),
     );
     expect(
-      (await call(`/api/sessions/${session.id}/messages`, { method: "POST", body: { text: "Hello" } })).status,
+      (await call(`/api/sessions/${session.id}/messages`, { method: "POST", body: { text: "Hello", id: "page-1" } }))
+        .status,
     ).toBe(202);
     while (!events.some((event) => event.kind === "turn_finished")) await Bun.sleep(10);
     socket.close();
 
-    expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_started", "text", "turn_finished"]);
+    // The page knows its own message in the turn by the id that it sent (#804).
+    expect(events.find((event) => event.kind === "turn_started")).toMatchObject({ message: { clientIds: ["page-1"] } });
     const listed = await json<{ id: string; turns: unknown[] }[]>(await call("/api/sessions"));
     expect(listed.find((entry) => entry.id === session.id)?.turns).toHaveLength(1);
   });
@@ -808,7 +811,7 @@ describe("routes", () => {
     try {
       const deadline = Date.now() + 5_000;
       while (eva.sessions.runningTurns().turns.at(0)?.steps.length !== 1 && Date.now() < deadline) await Bun.sleep(5);
-      expect((await json<{ turns: unknown[] }>(await call("/api/turns"))).turns).toEqual([
+      expect((await json<{ turns: unknown[] }>(await call("/api/turns"))).turns).toMatchObject([
         {
           sessionId: session.id,
           steps: [{ kind: "message", text: "First block.", isError: false, id: "m1" }],
@@ -1193,6 +1196,9 @@ describe("routes", () => {
 
   test("an unknown session is a 404, and a bad body is a 400", async () => {
     expect((await call("/api/sessions/missing/messages", { method: "POST", body: { text: "x" } })).status).toBe(404);
+    // The page's id comes back in every event, so it takes only plain letters, digits and dashes (#804).
+    const badId = { text: "x", id: "<script>" };
+    expect((await call("/api/sessions/missing/messages", { method: "POST", body: badId })).status).toBe(400);
     expect((await call("/api/sessions", { method: "POST", body: { mode: "dreaming" } })).status).toBe(400);
     expect((await call("/api/nothing-here")).status).toBe(404);
   });

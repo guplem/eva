@@ -39,6 +39,9 @@ import {
   foldSteps,
   followsBottom,
   keptPending,
+  newMessageId,
+  notInTurn,
+  runningMessages,
   snapsToBottom,
   liveFace,
   runningUntil,
@@ -71,6 +74,7 @@ import {
   reportPreview,
   reportResultText,
   type ProjectReport,
+  type TurnWords,
 } from "../../../shared/project-report.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
@@ -99,6 +103,8 @@ interface ConversationProps {
 export interface SentMessage {
   readonly sessionId: string;
   readonly text: string;
+  /** The id that the page sent with the message (#804). */
+  readonly id: string;
 }
 
 export function Conversation({
@@ -210,7 +216,7 @@ export function Conversation({
         approvals={approvals}
         blocker={blocker}
         voiceNotes={voiceNotes}
-        firstMessage={firstMessage?.sessionId === branch.id ? firstMessage.text : null}
+        firstMessage={firstMessage?.sessionId === branch.id ? firstMessage : null}
         projectTitle={projectTitle}
         forkedFrom={forkedFromNote(root, sessions)}
       />
@@ -242,7 +248,7 @@ function Branch({
   approvals: ConversationProps["approvals"];
   blocker: ChatBlocker | null;
   voiceNotes: boolean;
-  firstMessage: string | null;
+  firstMessage: SentMessage | null;
   projectTitle: string | null;
   /** The note of a chat that came from another clone, with the chat to link, or null. */
   forkedFrom: { readonly text: string; readonly chatId: string | null } | null;
@@ -253,7 +259,7 @@ function Branch({
   const endedWork = useMemo(() => endedProjectWork(tree.flatMap((chat) => chat.turns)), [tree]);
   // The New chat page sent this message before the chat opened here, so the chat starts with it.
   const [sent, setSent] = useState<readonly PendingMessage[]>(
-    firstMessage === null ? [] : [{ text: firstMessage, turnCount: 0 }],
+    firstMessage === null ? [] : [{ text: firstMessage.text, turnCount: 0, id: firstMessage.id }],
   );
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<PathStep<SessionRecord> | "running" | null>(null);
@@ -282,6 +288,12 @@ function Branch({
   const liveSteps = live.steps[session.id];
   const turnRuns = useTurnRuns(liveSteps !== undefined, turnCount);
   const working = isWorking({ live: liveSteps !== undefined, turnRuns, pending, turnCount });
+  // The core says what the running turn shows, so a message that another sender sent shows too (#804).
+  const turnMessages = runningMessages(live.messages[session.id], turnCount, {
+    live: liveSteps !== undefined,
+    turnRuns,
+  });
+  const ownPending = notInTurn(pending, turnMessages);
   const startedAt = useStartTime(working);
 
   // Only the stored turn of a message clears it. A message sent during a turn outlives that turn.
@@ -297,10 +309,10 @@ function Branch({
   const notes = live.notes[session.id] ?? [];
 
   const send = async (message: string): Promise<boolean> => {
-    const entry = { text: message, turnCount: sentTurnCount(turnCount, turnRuns) };
+    const entry = { text: message, turnCount: sentTurnCount(turnCount, turnRuns), id: newMessageId() };
     setSent((current) => [...current, entry]);
     try {
-      await api.send(session.id, message);
+      await api.send(session.id, message, entry.id);
       return true;
     } catch (caught) {
       setSent((current) => current.filter((candidate) => candidate !== entry));
@@ -374,18 +386,9 @@ function Branch({
         const { turn, index } = step;
         const owner = step.session;
         const point = branchesAfter(path, position, session, tree);
-        const words = personWords(turn);
         return (
           <div key={stepKey(owner.id, index)} style={{ display: "contents" }}>
-            {/* A project work result shows as a card of the Project side, not as a message of the person. */}
-            {turn.projectReports.map((report) => (
-              <ProjectReportCard
-                key={report.projectSessionId}
-                report={report}
-                turnKey={words === null ? stepKey(owner.id, index) : undefined}
-              />
-            ))}
-            {words !== null && <UserMessage text={words} fromEva={turn.fromEva} turnKey={stepKey(owner.id, index)} />}
+            <TurnWordsView turn={turn} turnKey={stepKey(owner.id, index)} />
             <EvaMessage face={stateFaces.idle} mode={owner.mode}>
               <AnswerBody
                 steps={turn.steps}
@@ -450,11 +453,15 @@ function Branch({
           </div>
         );
       })}
-      {pending
+      {ownPending
         .filter((message) => message.turnCount === turnCount)
         .map((message, index) => (
           <UserMessage key={`sent-${String(index)}`} text={message.text} />
         ))}
+      {/* As its stored turn will show it, so nothing changes at the turn end. */}
+      {turnMessages.map((message) => (
+        <TurnWordsView key={`running-${String(message.turnIndex)}`} turn={message} turnKey={undefined} />
+      ))}
       {/* A live region on the streaming text would read the whole answer again at each token. */}
       <span className="visually-hidden" role="status">
         {turnEnd}
@@ -463,7 +470,7 @@ function Branch({
         <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
       )}
       {/* A message sent during a turn waits for that turn to end, so it shows below the running answer. */}
-      {pending
+      {ownPending
         .filter((message) => message.turnCount > turnCount)
         .map((message, index) => (
           <UserMessage key={`queued-${String(index)}`} text={message.text} />
@@ -539,6 +546,33 @@ function Branch({
   );
 }
 
+/**
+ * Who wrote the message of a turn, and what: a card for each project work result, and the person's
+ * words. A running turn shows its message with it too. Without `turnKey`, the branch map cannot scroll to it.
+ */
+function TurnWordsView({
+  turn,
+  turnKey,
+}: {
+  readonly turn: TurnWords;
+  readonly turnKey: string | undefined;
+}): ReactElement {
+  const words = personWords(turn);
+  return (
+    <>
+      {/* A project work result shows as a card of the Project side, not as a message of the person. */}
+      {turn.projectReports?.map((report) => (
+        <ProjectReportCard
+          key={report.projectSessionId}
+          report={report}
+          turnKey={words === null ? turnKey : undefined}
+        />
+      ))}
+      {words !== null && <UserMessage text={words} fromEva={turn.fromEva === true} turnKey={turnKey} />}
+    </>
+  );
+}
+
 /** The person's message. A voice note is text too: the person read and fixed it in the box. */
 function UserMessage({
   text,
@@ -549,7 +583,7 @@ function UserMessage({
   /** Eva sent it, such as a project work result. */
   readonly fromEva?: boolean;
   /** The key of its turn, so a pick in the branch map can scroll to it. */
-  readonly turnKey?: string;
+  readonly turnKey?: string | undefined;
 }): ReactElement {
   return (
     <div className="msg me" data-turn={turnKey}>

@@ -32,6 +32,9 @@ import {
   stepParts,
   turnEndNotice,
   senderName,
+  runningMessages,
+  notInTurn,
+  newMessageId,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
 
@@ -565,5 +568,61 @@ describe("senderName", () => {
   test("names Eva on a message that she sent, such as a project work result", () => {
     expect(senderName(true)).toBe("Sent by Eva");
     expect(senderName(false)).toBe("You");
+  });
+});
+
+describe("the messages of the running turns (#804)", () => {
+  const message = {
+    userText: "Update my vault",
+    fromEva: false,
+    personText: null,
+    projectReports: [],
+    turnIndex: 2,
+    clientIds: ["page-1"],
+  } as const;
+  const next = { ...message, userText: "And this", turnIndex: 3, clientIds: [] };
+
+  const live = { live: true, turnRuns: true };
+  const waits = { live: false, turnRuns: true };
+  const free = { live: false, turnRuns: false };
+
+  test("shows while a turn runs and its stored turn has not come", () => {
+    expect(runningMessages([message], 2, live)).toEqual([message]);
+  });
+
+  test("keeps showing after the live steps end, until the stored turn arrives, so it does not blink", () => {
+    // The live steps end at the turn end event. The list brings the stored turn a moment later.
+    expect(runningMessages([message], 2, waits)).toEqual([message]);
+    expect(runningMessages([message], 3, waits)).toEqual([]);
+  });
+
+  test("shows each turn that is not stored yet, in order, when a turn starts before the list brings the one before", () => {
+    expect(runningMessages([message, next], 2, live)).toEqual([message, next]);
+    expect(runningMessages([message, next], 3, live)).toEqual([next]);
+  });
+
+  test("shows nothing while no turn runs, so an old message never shows beside a new send", () => {
+    expect(runningMessages([message], 2, free)).toEqual([]);
+    // An older Eva sends no message.
+    expect(runningMessages(undefined, 2, live)).toEqual([]);
+  });
+
+  test("hides each message of this page that a running turn shows already", () => {
+    const pending = [
+      { text: "Update my vault", turnCount: 2, id: "page-1" },
+      { text: "Queued", turnCount: 3, id: "page-2" },
+      { text: "From an older page", turnCount: 2 },
+    ];
+    expect(notInTurn(pending, [message]).map((entry) => entry.text)).toEqual(["Queued", "From an older page"]);
+    expect(notInTurn(pending, [message, { ...next, clientIds: ["page-2"] }]).map((entry) => entry.text)).toEqual([
+      "From an older page",
+    ]);
+    expect(notInTurn(pending, [])).toBe(pending);
+  });
+});
+
+describe("newMessageId", () => {
+  test("gives a new id at each call", () => {
+    expect(newMessageId()).not.toBe(newMessageId());
   });
 });

@@ -88,7 +88,14 @@ const newSessionSchema = z.object({
   projectId: z.string().min(1).optional(),
   clone: z.string().min(1).optional(),
 });
-const messageSchema = z.object({ text: z.string().min(1) });
+/** `id`: the page names its own message, so it shows the message once when the turn starts (#804). */
+const messageSchema = z.object({
+  text: z.string().min(1),
+  id: z
+    .string()
+    .regex(/^[\w-]{1,100}$/)
+    .optional(),
+});
 /** About 20 minutes of the page's Opus recording: more than any voice note needs. */
 const maxVoiceNoteBytes = 25 * 1024 * 1024;
 /** Above the 20 MB that Telegram lets Eva download, so the web chat takes at least what Telegram takes. */
@@ -886,10 +893,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     const sessionId = decodeURIComponent(parts[2]);
     const action = parts[3];
     if (action === "messages") {
-      const { text } = messageSchema.parse(await request.json());
+      const { text, id } = messageSchema.parse(await request.json());
       // Before the 202: a gone or refused file must stop the message, and the person must hear why.
       eva.checkMessage(sessionId, text);
-      void eva.sessions.send(sessionId, text, "api");
+      void eva.sessions.send(sessionId, text, "api", id === undefined ? {} : { clientId: id });
       return json({ accepted: true }, 202);
     }
     if (action === "fork") {

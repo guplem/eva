@@ -8,6 +8,7 @@ import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { Composer, unsentTexts, type ChatChoices } from "./Composer.tsx";
 import type { SentMessage } from "./Conversation.tsx";
+import { newMessageId } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
@@ -116,8 +117,9 @@ export function NewChatDraft({
     try {
       // The chat runs with the choices that the chip shows, even when the settings changed since the read.
       made.current ??= await api.newAssistantChat(shown?.model, shown?.engine, shown?.effort);
-      onSending({ sessionId: made.current.id, text: message });
-      await api.send(made.current.id, message);
+      const sent = { sessionId: made.current.id, text: message, id: newMessageId() };
+      onSending(sent);
+      await api.send(sent.sessionId, message, sent.id);
       await onStarted(made.current);
       return true;
     } catch (caught) {

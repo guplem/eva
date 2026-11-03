@@ -24,7 +24,7 @@ import {
 export const maxSummaryLines = 25;
 /** A token is about 4 characters. The exact count does not matter: the cap only keeps the block small. */
 export const maxFullCharacters = 8_000;
-/** A deadline this close, or passed, flags its case. */
+/** A deadline this close, or passed, flags its case or project. */
 const deadlineDays = 14;
 const markerName = "pinned-file";
 
@@ -135,7 +135,7 @@ function orderedEntries(input: PinnedBlockInput): Entry[] {
     shownProjects
       .filter((project) => (project.frontMatter.status === "in-use" ? "in-use" : "active") === group)
       .sort((first, second) => second.id.localeCompare(first.id))
-      .map((project) => projectLine(project)),
+      .map((project) => projectLine(project, today)),
   );
   return [
     ...manual,
@@ -158,10 +158,15 @@ function projectPath(project: Project): string {
   return project.vaultFolder === null ? join(project.path, "AGENTS.md") : `${project.vaultFolder}/AGENTS.md`;
 }
 
-/** The title, the path, the kind and status, then the summary or the first paragraph. */
-function projectLine(project: Project, oldImportant: string | null = null): string {
+/**
+ * The title, the path, the kind and status, the `DEADLINE` mark of a project that is not closed
+ * (#848), then the summary or the first paragraph.
+ */
+function projectLine(project: Project, today: string, oldImportant: string | null = null): string {
   const status = project.frontMatter.status;
-  const head = `- ${project.title}, \`${projectPath(project)}\` (project${status === null ? "" : `, ${status}`})`;
+  const flags = status === "closed" ? [] : deadlineFlags(project.frontMatter.extra, today);
+  const marks = flags.map((flag) => ` [${flag}]`).join("");
+  const head = `- ${project.title}, \`${projectPath(project)}\` (project${status === null ? "" : `, ${status}`})${marks}`;
   // A `> Important:` line is a quote, never a first paragraph, so its reason is the only summary.
   const summary = project.description ?? (oldImportant === null ? null : oneLineSummary(oldImportant));
   if (summary !== null) return `${head}: ${summary}`;
@@ -186,7 +191,7 @@ function statusOf(file: PinnedFile): string | null {
 
 /** One summary line: the path, the kind and status when it has them, the flags, then the summary. */
 function fileLine(file: PinnedFile, today: string, project: Project | null): string {
-  if (project !== null) return projectLine(project, file.oldImportant);
+  if (project !== null) return projectLine(project, today, file.oldImportant);
   const status = statusOf(file);
   const about =
     file.kind === null
@@ -213,6 +218,12 @@ export function caseFlags(fields: Readonly<Record<string, unknown>>, today: stri
   const flags: string[] = [];
   const next = validDate(nestedText(fields, "next", "date"));
   if (next !== null && next <= today) flags.push(withText(`DUE ${next}`, nestedText(fields, "next", "step")));
+  return [...flags, ...deadlineFlags(fields, today)];
+}
+
+/** The `DEADLINE` mark of a case or a project whose `deadline` is near or passed. */
+function deadlineFlags(fields: Readonly<Record<string, unknown>>, today: string): string[] {
+  const flags: string[] = [];
   const deadline = validDate(nestedText(fields, "deadline", "date"));
   if (deadline !== null) {
     const days = daysBetween(today, deadline);

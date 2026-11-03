@@ -349,3 +349,22 @@ describe("caseFlags", () => {
     expect(text()).toContain("- `Life/Cases/c/Case.md` (case, waiting) [DUE 2026-11-01: Call]: The claim.\n");
   });
 });
+
+describe("the deadline of a project (#848)", () => {
+  test("a project line shows a near deadline, as a case does", () => {
+    addProject(
+      "2025-01-01-0900-talk",
+      "status: active\nsummary: The slides of the talk.\ndeadline: { date: 2026-11-10, cost: The talk starts }",
+      "# Talk\n",
+    );
+    expect(text()).toContain(
+      "- Talk, `Projects/2025-01-01-0900-talk/AGENTS.md` (project, active) [DEADLINE in 8 days (2026-11-10): The talk starts]: The slides of the talk.\n",
+    );
+  });
+
+  test("a far deadline, or a closed project, shows no mark", () => {
+    addProject("2025-01-01-0900-far", "status: active\ndeadline: { date: 2027-01-10 }", "# Far\n");
+    addProject("2025-01-01-0901-done", "status: closed\npinned: summary\ndeadline: { date: 2026-11-04 }", "# Done\n");
+    expect(text()).not.toContain("DEADLINE");
+  });
+});

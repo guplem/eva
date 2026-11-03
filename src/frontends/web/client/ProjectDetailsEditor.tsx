@@ -15,6 +15,7 @@ import {
   projectTypeChoices,
   projectTypeOf,
   removedRepositoriesHint,
+  sameDetails,
   statusChoices,
   statusOf,
 } from "./project-format.ts";
@@ -318,18 +319,6 @@ function ListField({ name, heading, icon, hint, values, draft, onDraft, onChange
 /** A tag or repository has no space, so a space or a comma separates two of them. */
 export function splitWords(text: string): string[] {
   return text.split(/[\s,]+/).filter((word) => word.length > 0);
-}
-
-function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {
-  const sameList = (one: readonly string[], two: readonly string[]): boolean =>
-    one.length === two.length && one.every((value, index) => value === two[index]);
-  return (
-    first.title === second.title &&
-    first.status === second.status &&
-    (first.type ?? "software") === (second.type ?? "software") &&
-    sameList(first.tags, second.tags) &&
-    sameList(first.repos, second.repos)
-  );
 }
 
 function titleOf(file: ProjectFile, projectId: string): string {

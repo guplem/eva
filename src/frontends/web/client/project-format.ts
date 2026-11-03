@@ -1,6 +1,6 @@
 /** The words and colours of the project pages. */
 import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
-import type { Project } from "./api.ts";
+import type { Project, ProjectDetails } from "./api.ts";
 import { projectTypes, worksInClones, type ProjectType } from "../../../shared/project-types.ts";
 import { repositoryName } from "../../../core/projects/repository-name.ts";
 
@@ -220,4 +220,17 @@ export function canPush(clone: { readonly changes: number | null; readonly ahead
 export function widgetRepositoryNames(project: Pick<Project, "frontMatter">): Set<string> {
   const { repos, repoTypes } = project.frontMatter;
   return new Set(repos.filter((url) => repoTypes[url] === "widget").map(repositoryName));
+}
+
+/** True when the form holds the details as loaded. A missing type is general, as the form shows it (#768). */
+export function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {
+  const sameList = (one: readonly string[], two: readonly string[]): boolean =>
+    one.length === two.length && one.every((value, index) => value === two[index]);
+  return (
+    first.title === second.title &&
+    first.status === second.status &&
+    (first.type ?? "general") === (second.type ?? "general") &&
+    sameList(first.tags, second.tags) &&
+    sameList(first.repos, second.repos)
+  );
 }

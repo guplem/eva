@@ -10,6 +10,7 @@ import {
   tagsByUse,
   removedRepositoriesHint,
   repositoryLabel,
+  sameDetails,
   repositoryWebUrl,
   statusPill,
   syncPills,
@@ -221,5 +222,21 @@ describe("widgetRepositoryNames", () => {
       },
     };
     expect([...widgetRepositoryNames({ frontMatter } as unknown as Project)]).toEqual(["habits", "w"]);
+  });
+});
+
+describe("sameDetails", () => {
+  const details = { title: "House", status: "active" as const, tags: ["home"], repos: [] };
+
+  test("a missing type is general, as the form shows it (#768)", () => {
+    expect(sameDetails(details, { ...details, type: "general" })).toBe(true);
+    expect(sameDetails(details, { ...details, type: "software" })).toBe(false);
+  });
+
+  test("a changed title, status, tag or repository differs", () => {
+    expect(sameDetails(details, { ...details, title: "Home" })).toBe(false);
+    expect(sameDetails(details, { ...details, status: "paused" })).toBe(false);
+    expect(sameDetails(details, { ...details, tags: [] })).toBe(false);
+    expect(sameDetails(details, { ...details, repos: ["https://github.com/example/example-app"] })).toBe(false);
   });
 });

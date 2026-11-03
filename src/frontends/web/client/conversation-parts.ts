@@ -1,6 +1,7 @@
 /** The rules of the conversation view that need no React: the step line, the faces and the chips. */
 import { modelTierName, type EffortLevel, type EngineName, type ModelAlias } from "../../../shared/engine-port.ts";
 import { extractFileMarkers, shownAnswerText } from "../../../shared/file-markers.ts";
+import type { TurnMessage } from "../../../shared/events.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { UndoPreview } from "./api.ts";
 import type { IconName } from "./icons.tsx";
@@ -258,6 +259,8 @@ export function modelNote(
 export interface PendingMessage {
   readonly text: string;
   readonly turnCount: number;
+  /** The id that the page sent with the message, so the running turn's message can stand for it (#804). */
+  readonly id?: string;
 }
 
 /**
@@ -399,4 +402,27 @@ export function undoQuestion(preview: UndoPreview): string | null {
 /** Who sent the message of a turn. Eva sends a project work result to the chat that asked for it. */
 export function senderName(fromEva: boolean): string {
   return fromEva ? "Sent by Eva" : "You";
+}
+
+/**
+ * The message of the turn that runs now, or null (#804). The live state keeps the message of the
+ * last turn until a newer turn starts, so the stored turn count tells whether it is still to come.
+ */
+export function runningMessage(
+  message: TurnMessage | undefined,
+  turnCount: number,
+  working: boolean,
+): TurnMessage | null {
+  return working && message?.turnIndex === turnCount ? message : null;
+}
+
+/** The sent messages that the running turn's message does not hold, so each message shows once. */
+export function notInTurn(pending: readonly PendingMessage[], message: TurnMessage | null): readonly PendingMessage[] {
+  if (message === null) return pending;
+  return pending.filter((entry) => entry.id === undefined || !message.clientIds.includes(entry.id));
+}
+
+/** A new id for a message of this page. It needs no strength, and a page on plain http has no `crypto.randomUUID`. */
+export function newMessageId(): string {
+  return `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

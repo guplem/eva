@@ -414,3 +414,55 @@ describe("withRunningTurns and drafts", () => {
     ).toEqual({});
   });
 });
+
+describe("the message of a running turn (#804)", () => {
+  const message = {
+    userText: "Update my vault",
+    fromEva: false,
+    personText: null,
+    projectReports: [],
+    turnIndex: 0,
+    clientIds: [],
+  } as const;
+  const stamp = { sessionId: "s1", at: "2026-10-18T10:00:00.000Z" };
+
+  test("the turn start brings the message, and the chat runs from then", () => {
+    seq += 1;
+    const state = applyEvent(emptyLiveState, { ...stamp, seq, kind: "turn_started", message });
+    expect(state.messages).toEqual({ s1: message });
+    expect(state.steps).toEqual({ s1: [] });
+  });
+
+  test("the message outlives the turn end, so it does not blink before the stored turn arrives", () => {
+    seq += 1;
+    const started = applyEvent(emptyLiveState, { ...stamp, seq, kind: "turn_started", message });
+    expect(applyEvent(started, event({ kind: "turn_finished", ...finished })).messages).toEqual({ s1: message });
+    seq += 1;
+    expect(applyEvent(started, { ...stamp, seq, kind: "session_deleted" }).messages).toEqual({});
+  });
+
+  test("a page that missed the turn start reads the message from the snapshot", () => {
+    const state = startRecovery(emptyLiveState, 1);
+    const after = withRunningTurns(state, 1, { seq, turns: [{ sessionId: "s1", steps: [], message }] });
+    expect(after.messages).toEqual({ s1: message });
+    expect(after.steps).toEqual({ s1: [] });
+  });
+
+  test("a turn start newer than the snapshot wins over it", () => {
+    const read = seq;
+    const next = { ...message, userText: "And this", turnIndex: 1 };
+    let state = startRecovery(emptyLiveState, 1);
+    seq += 1;
+    state = applyEvent(state, { ...stamp, seq, kind: "turn_started", message: next });
+    const after = withRunningTurns(state, 1, { seq: read, turns: [{ sessionId: "s1", steps: [], message }] });
+    expect(after.messages).toEqual({ s1: next });
+  });
+
+  test("an older Eva sends no message, and the page keeps what it knows", () => {
+    seq += 1;
+    const known = startRecovery(applyEvent(emptyLiveState, { ...stamp, seq, kind: "turn_started", message }), 1);
+    expect(withRunningTurns(known, 1, { seq, turns: [{ sessionId: "s1", steps: [] }] }).messages).toEqual({
+      s1: message,
+    });
+  });
+});

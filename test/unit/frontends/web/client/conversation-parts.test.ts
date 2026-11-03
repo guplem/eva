@@ -32,6 +32,9 @@ import {
   stepParts,
   turnEndNotice,
   senderName,
+  runningMessage,
+  notInTurn,
+  newMessageId,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
 
@@ -558,5 +561,43 @@ describe("senderName", () => {
   test("names Eva on a message that she sent, such as a project work result", () => {
     expect(senderName(true)).toBe("Sent by Eva");
     expect(senderName(false)).toBe("You");
+  });
+});
+
+describe("the message of a running turn (#804)", () => {
+  const message = {
+    userText: "Update my vault",
+    fromEva: false,
+    personText: null,
+    projectReports: [],
+    turnIndex: 2,
+    clientIds: ["page-1"],
+  } as const;
+
+  test("shows while the chat works on the turn after the stored ones", () => {
+    expect(runningMessage(message, 2, true)).toBe(message);
+  });
+
+  test("hides once its stored turn arrives, while the chat is free, or with an older Eva that sends none", () => {
+    expect(runningMessage(message, 3, true)).toBeNull();
+    // A stale message of an earlier turn must not show above a new message of this page.
+    expect(runningMessage(message, 2, false)).toBeNull();
+    expect(runningMessage(undefined, 2, true)).toBeNull();
+  });
+
+  test("hides each message of this page that the running turn shows already", () => {
+    const pending = [
+      { text: "Update my vault", turnCount: 2, id: "page-1" },
+      { text: "Queued", turnCount: 3, id: "page-2" },
+      { text: "From an older page", turnCount: 2 },
+    ];
+    expect(notInTurn(pending, message).map((entry) => entry.text)).toEqual(["Queued", "From an older page"]);
+    expect(notInTurn(pending, null)).toBe(pending);
+  });
+});
+
+describe("newMessageId", () => {
+  test("gives a new id at each call", () => {
+    expect(newMessageId()).not.toBe(newMessageId());
   });
 });

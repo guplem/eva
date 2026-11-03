@@ -1,6 +1,6 @@
 /** What the web UI learns from the event stream while turns run. */
 import type { TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
-import type { SessionEvent } from "../../../shared/events.ts";
+import type { SessionEvent, TurnMessage } from "../../../shared/events.ts";
 import { addNote, addStep, type TurnStep } from "../../../shared/turn-steps.ts";
 import type { UsageLimit } from "../../../shared/usage-limit.ts";
 
@@ -26,6 +26,11 @@ export interface LiveState {
   /** The text of the block that the engine writes now, by session id. It is live only: the core never stores it. */
   readonly drafts: Readonly<Record<string, string>>;
   /**
+   * The message of the last turn that started in each chat, by session id (#804). It outlives its
+   * turn, so it does not blink before the stored turn arrives: the page shows it by its `turnIndex`.
+   */
+  readonly messages: Readonly<Record<string, TurnMessage>>;
+  /**
    * While the page reads the running turns again: the id of the newest read, and each event that
    * came since it started. Null when no read is open.
    */
@@ -44,6 +49,7 @@ export const emptyLiveState: LiveState = {
   usageLimits: {},
   notes: {},
   drafts: {},
+  messages: {},
   recovery: null,
   heirs: {},
 };
@@ -97,10 +103,15 @@ export function withRunningTurns(state: LiveState, id: number, snapshot: TurnSna
   const draftsFromCore = Object.fromEntries(
     turns.flatMap((turn) => (turn.draft === undefined || turn.draft === "" ? [] : [[turn.sessionId, turn.draft]])),
   );
+  // An older Eva sends no message. The page then keeps the ones it knows: each shows only until its stored turn.
+  const messagesFromCore = Object.fromEntries(
+    turns.flatMap((turn) => (turn.message === undefined ? [] : [[turn.sessionId, turn.message]])),
+  );
   return {
     ...state,
     steps: newer.reduce(stepsAfter, fromCore),
     drafts: newer.reduce(draftsAfter, draftsFromCore),
+    messages: newer.reduce(messagesAfter, { ...state.messages, ...messagesFromCore }),
     recovery: null,
   };
 }
@@ -137,7 +148,9 @@ export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
       ? { ...state, heirs: { ...state.heirs, [event.sessionId]: event.heirId } }
       : state;
   const withDraft = drafts === state.drafts ? withHeir : { ...withHeir, drafts };
-  const next = applyToTurn(applyToNotes(withDraft, event), event);
+  const messages = messagesAfter(state.messages, event);
+  const withMessage = messages === state.messages ? withDraft : { ...withDraft, messages };
+  const next = applyToTurn(applyToNotes(withMessage, event), event);
   if (next.recovery === null) return next;
   return { ...next, recovery: { ...next.recovery, events: [...next.recovery.events, event] } };
 }
@@ -162,6 +175,15 @@ function draftsAfter(drafts: LiveState["drafts"], event: SessionEvent): LiveStat
   return rest;
 }
 
+/** The message of each chat's last turn after one event. A turn start replaces it, and a delete drops it. */
+function messagesAfter(messages: LiveState["messages"], event: SessionEvent): LiveState["messages"] {
+  if (event.kind === "turn_started") return { ...messages, [event.sessionId]: event.message };
+  if (event.kind !== "session_deleted" || !(event.sessionId in messages)) return messages;
+  const rest = { ...messages };
+  Reflect.deleteProperty(rest, event.sessionId);
+  return rest;
+}
+
 /** The steps of the running turns after one event. A key means that a turn runs. */
 function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["steps"] {
   // The core's own events are no step of a turn: the list shows their effect after a reload.
@@ -176,6 +198,7 @@ function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["
   // A turn whose first event is a piece or a note runs too, such as a turn that waits for another chat in its clone.
   if (
     event.kind === "message_received" ||
+    event.kind === "turn_started" ||
     event.kind === "text_delta" ||
     event.kind === "notice" ||
     event.kind === "history_lost"

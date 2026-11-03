@@ -1305,6 +1305,38 @@ test("a request of another chat gets a notice that opens it, and an answer from 
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: deny");
 });
 
+test("a message sent outside the page shows while its turn runs, once, also after a reload (#804)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const chatId = await newChat(page);
+  const words = page.locator(".message.user");
+  const card = page.getByRole("region", { name: "Eva asks for permission" });
+  // A Settings card, Telegram or another tab sends it: this page did not.
+  await page.request.post(`/api/sessions/${chatId}/messages`, { data: { text: "please approve the outside words" } });
+  // The approval holds the turn, so the message must show before the turn ends.
+  await expect(card).toBeVisible();
+  await expect(words.filter({ hasText: "please approve the outside words" })).toHaveCount(1);
+  await expect(words.first().locator(".who")).toHaveText("You");
+  // A page that loads during the turn reads the message from the running turns.
+  await page.reload();
+  await expect(card).toBeVisible();
+  await expect(words.filter({ hasText: "please approve the outside words" })).toHaveCount(1);
+  await card.getByRole("button", { name: "Deny" }).click();
+  await expect(page.locator(".message.answer").first()).toContainText("The person answered: deny");
+  await expect(words).toHaveCount(1);
+
+  // The page's own message comes back from the core too, and still shows once.
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("please approve the page words");
+  await composer.press("Enter");
+  await expect(card).toBeVisible();
+  await expect(words.filter({ hasText: "please approve the page words" })).toHaveCount(1);
+  await card.getByRole("button", { name: "Deny" }).click();
+  await expect(page.locator(".message.answer")).toHaveCount(2);
+  await expect(words).toHaveCount(2);
+});
+
 test("Copy copies the text of an answer", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await logIn(page);

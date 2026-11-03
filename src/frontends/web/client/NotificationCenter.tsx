@@ -3,8 +3,8 @@
  * with the button that fixes it, and each setup step that is left. "Earlier" is the history of
  * the last 30 days. One page serves a computer and a phone.
  */
-import { useState, type ReactElement } from "react";
-import type { EvaStatus, ProgressStep } from "./api.ts";
+import { useEffect, useState, type ReactElement } from "react";
+import { api, type EvaStatus, type ProgressStep } from "./api.ts";
 import type { HistoryEntry } from "../../../core/alerts/notification-history.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { centerFilters, historyGroups, shownNeeds, timeLabel, type CenterFilter } from "./notification-center.ts";
@@ -62,6 +62,16 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
   const groups = historyGroups(entries, filter, now);
   const unread = shownProblems(problems).length + entries.filter((entry) => !entry.read).length;
   const openKeys = new Set(problems.map((problem) => problem.key));
+  const hasStructureNews = entries.some((entry) => entry.key === "vault_structure");
+  /** The vault structure news offers its action only while the upgrade is open to this computer. */
+  const [canUpgradeVault, setCanUpgradeVault] = useState(false);
+  useEffect(() => {
+    if (!hasStructureNews) return;
+    api
+      .vaultStructure()
+      .then((structure) => setCanUpgradeVault(structure.canUpgrade && structure.available > structure.current))
+      .catch(() => setCanUpgradeVault(false));
+  }, [hasStructureNews]);
 
   return (
     <div className="main">
@@ -186,6 +196,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
                               entries={entries}
                               openKeys={openKeys}
                               syncStatus={syncStatus}
+                              canUpgradeVault={canUpgradeVault}
                               now={now}
                               onAction={onAction}
                             />
@@ -221,6 +232,7 @@ function EntryDetails(props: {
   readonly entries: readonly HistoryEntry[];
   readonly openKeys: ReadonlySet<string>;
   readonly syncStatus: EvaStatus["vaultSync"]["status"];
+  readonly canUpgradeVault: boolean;
   readonly now: Date;
   readonly onAction: (action: ProblemAction) => void;
 }): ReactElement {
@@ -231,7 +243,7 @@ function EntryDetails(props: {
     state === "open"
       ? problemAction(entry.key, props.syncStatus)
       : entry.level === "news"
-        ? newsAction(entry.key)
+        ? newsAction(entry.key, props.canUpgradeVault)
         : null;
   const steps = sameProblemEntries(props.entries, entry.key);
   return (

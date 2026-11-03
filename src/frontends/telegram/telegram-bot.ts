@@ -137,8 +137,6 @@ export class TelegramBot {
   /** The blocks of such a turn after its topic opened, for a turn end with no recorded answer. */
   private readonly pendingText: Map<string, string[]>;
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
-  /** The message of the last vault structure news: a reply to it starts the upgrade (#773). Memory is enough: its button still works after a restart. */
-  private vaultNewsMessageId: number | null = null;
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
   private readonly unsubscribeAlerts: () => void;
@@ -349,9 +347,13 @@ export class TelegramBot {
     if (this.allowedChatId === null) return;
     if (alert.key === "vault_structure") {
       // The news carries the action, and a reply to it starts the upgrade too (#773).
-      this.vaultNewsMessageId = await this.send(this.allowedChatId, null, alert.message, {
+      const sent = await this.send(this.allowedChatId, null, alert.message, {
         inline_keyboard: [[{ text: "Update the vault", callback_data: "v:upgrade" }]],
       });
+      if (sent !== null) {
+        this.state.vaultNewsMessageId = sent;
+        this.saveState();
+      }
       return;
     }
     await this.send(
@@ -469,7 +471,7 @@ export class TelegramBot {
     }
     // A plain text that is no reply goes to the chat as before, and the question stays open.
     const repliedTo = message.reply_to_message?.message_id;
-    if (repliedTo !== undefined && repliedTo === this.vaultNewsMessageId) {
+    if (repliedTo !== undefined && repliedTo === this.state.vaultNewsMessageId) {
       await this.startVaultUpgrade(chatId);
       return;
     }

@@ -10,8 +10,10 @@ import {
 
 describe("newsAction", () => {
   test("the vault structure news starts the upgrade, and other news has no button (#773)", () => {
-    expect(newsAction("vault_structure")).toBe("update_vault");
-    expect(newsAction("update_held_back")).toBeNull();
+    expect(newsAction("vault_structure", true)).toBe("update_vault");
+    // After the upgrade, or on a satellite, the old news has no button.
+    expect(newsAction("vault_structure", false)).toBeNull();
+    expect(newsAction("update_held_back", true)).toBeNull();
   });
 });
 

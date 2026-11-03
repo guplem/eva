@@ -43,9 +43,12 @@ export function problemAction(key: string, syncStatus: VaultSyncState["status"])
   return "open_settings";
 }
 
-/** The button of a news entry, which is never open: the vault structure news starts the upgrade (#773). */
-export function newsAction(key: string): ProblemAction | null {
-  return key === "vault_structure" ? "update_vault" : null;
+/**
+ * The button of a news entry, which is never open: the vault structure news starts the upgrade
+ * (#773), while the Settings card would offer it on this computer.
+ */
+export function newsAction(key: string, canUpgradeVault: boolean): ProblemAction | null {
+  return key === "vault_structure" && canUpgradeVault ? "update_vault" : null;
 }
 
 /** The problems that the person did not read: not one that the person hid. An older Eva sends no mark. */

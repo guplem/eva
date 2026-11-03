@@ -2212,18 +2212,21 @@ describe("alerts, logs and restart", () => {
     await settle(bot, () => news() !== undefined);
     expect(String(news()?.["text"])).toContain("Vault and sync, Vault structure");
     expect(String(news()?.["text"])).not.toContain("/vault");
-    // The news is the first message of the test, so the fake gave it its first id.
+    // The news is the first message of the test, so the fake gave it its first id. The bot's state
+    // file keeps it, so a reply works after a restart too.
+    await bot.stop();
+    const restarted = createBot();
     const replyTo = { message_id: 100, chat: { id: owner, type: "private" } };
     telegram.sendMessageWith(owner, { text: "yes, do it", reply_to_message: replyTo });
-    await settle(bot, () => engine.requests.length === 1);
+    await settle(restarted, () => engine.requests.length === 1);
     expect(engine.requests[0]?.prompt).toContain("with the vault-upgrade skill");
     telegram.pressButton(owner, "v:upgrade");
-    await settle(bot, () => engine.requests.length === 2);
+    await settle(restarted, () => engine.requests.length === 2);
     expect(engine.requests[1]?.prompt).toContain("with the vault-upgrade skill");
     // Each start is a new chat, in a topic of its own.
     expect(telegram.callsTo("createForumTopic")).toHaveLength(2);
     expect(new Set(eva.sessions.list().map((session) => session.id)).size).toBe(2);
-    await bot.stop();
+    await restarted.stop();
   });
 
   test("before pairing, an alert goes nowhere; after a stop, the bot sends no more alerts", async () => {

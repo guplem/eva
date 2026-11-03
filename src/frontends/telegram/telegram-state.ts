@@ -13,6 +13,8 @@ export interface BotState {
   topics: Record<string, TopicEntry>;
   /** The topic of each schedule, by schedule id. */
   scheduleTopics: Record<string, number>;
+  /** The message of the last vault structure news: a reply to it starts the upgrade (#773). */
+  vaultNewsMessageId?: number;
 }
 
 export function loadBotState(path: string): BotState {
@@ -20,7 +22,12 @@ export function loadBotState(path: string): BotState {
   if (read.ok && typeof read.value === "object" && read.value !== null) {
     const value = read.value as Partial<BotState>;
     if (typeof value.offset === "number" && typeof value.topics === "object")
-      return { offset: value.offset, topics: value.topics, scheduleTopics: value.scheduleTopics ?? {} };
+      return {
+        offset: value.offset,
+        topics: value.topics,
+        scheduleTopics: value.scheduleTopics ?? {},
+        ...(typeof value.vaultNewsMessageId === "number" ? { vaultNewsMessageId: value.vaultNewsMessageId } : {}),
+      };
   }
   return { offset: 0, topics: {}, scheduleTopics: {} };
 }

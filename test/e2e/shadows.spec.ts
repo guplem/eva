@@ -115,6 +115,10 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
     if (address.startsWith("#/files")) {
       cards.push(page.getByRole("navigation", { name: "Favorites" }).getByRole("link", { name: "Notes" }));
     }
+    // With no project open, a computer shows the home page of Projects beside the list (#840).
+    if (address === "#/projects" && testInfo.project.name !== "phone") {
+      cards.push(page.getByRole("region", { name: "Timeline" }));
+    }
     for (const card of cards) await expect(card).toBeVisible();
     expect(await cutShadows(page), address).toEqual([]);
   }

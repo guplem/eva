@@ -2154,6 +2154,23 @@ test("on a phone, the project list is the page, and Back to the projects returns
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
 });
 
+test("on a computer, Back to the projects shows the home page, and its timeline opens a project (#840)", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name === "phone", "A phone shows the list as the home page.");
+  await logIn(page);
+  await openExampleApp(page);
+  await page.getByRole("button", { name: "Back to the projects" }).click();
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  await expect(timeline).toBeVisible();
+  await expect(page.getByRole("region", { name: "Recent" })).toBeVisible();
+  // Only the active and the paused projects show: Family recipes is in use.
+  await expect(timeline.getByRole("button", { name: /Family recipes/ })).toHaveCount(0);
+  await page.getByRole("group", { name: "Year" }).getByRole("button", { name: "All" }).click();
+  await timeline.getByRole("button", { name: /Example app/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+});
+
 test("on a phone, Back goes from a clone's chat to its project, then to the project list", async ({ page }) => {
   test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
   await logIn(page);

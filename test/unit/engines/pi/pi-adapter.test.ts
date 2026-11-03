@@ -1376,7 +1376,8 @@ describe("background subagents of a pi Assistant chat (#843)", () => {
   }
 
   /** The model starts one background subagent, ends its answer, and answers again with the result. */
-  function chatPi(): ReturnType<typeof scriptedPi> {
+  function chatPi(refusals = 0): ReturnType<typeof scriptedPi> {
+    let refused = 0;
     return scriptedPi((record, push) => {
       if (record["type"] === "get_state") push({ type: "response", id: record["id"], success: true, data: {} });
       else if (record["type"] === "extension_ui_response") answerEnd("I started it.", push);
@@ -1392,6 +1393,10 @@ describe("background subagents of a pi Assistant chat (#843)", () => {
             input: { description: "Read notes", prompt: "Read them.", run_in_background: true },
           }),
         });
+      } else if (record["type"] === "prompt" && refused < refusals) {
+        // pi is still busy, such as with a compaction, and refuses the new round.
+        refused += 1;
+        push({ type: "response", id: record["id"], success: false, error: "Agent is already processing." });
       } else if (record["type"] === "prompt") {
         push({ type: "agent_start" });
         answerEnd(`Got it: ${String(record["message"]).includes("plain hello") ? "yes" : "no"}`, push);
@@ -1403,13 +1408,16 @@ describe("background subagents of a pi Assistant chat (#843)", () => {
     chat: ReturnType<typeof scriptedPi>,
     subagent: PiProcessStarter,
     signal?: AbortSignal,
+    options: Partial<ConstructorParameters<typeof PiEngine>[0]> = {},
   ): Promise<EngineEventPayload[]> {
     let runs = 0;
     const start: PiProcessStarter = (command, options) => {
       runs += 1;
       return runs === 1 ? chat.process : subagent(command, options);
     };
-    return drain(engine(new FakePi([]), { start }).runTurn(request(signal === undefined ? {} : { signal })));
+    return drain(
+      engine(new FakePi([]), { start, ...options }).runTurn(request(signal === undefined ? {} : { signal })),
+    );
   }
 
   test("the model goes on, and gets the result in a new round of the same turn", async () => {
@@ -1430,17 +1438,40 @@ describe("background subagents of a pi Assistant chat (#843)", () => {
     expect(events.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed")).toHaveLength(1);
   });
 
+  test("a round that pi refuses goes again, and too many refusals fail the turn", async () => {
+    const twice = chatPi(2);
+    const events = await run(twice, new FakePi([{ records: loadPiFixture("plain") }]).start, undefined, {
+      backgroundRetryMs: 1,
+    });
+    expect(events.filter((event) => event.kind === "text").map((event) => event.text)).toContain("Got it: yes");
+    expect(events.at(-1)).toMatchObject({ kind: "turn_finished" });
+
+    const always = chatPi(10);
+    const failed = await run(always, new FakePi([{ records: loadPiFixture("plain") }]).start, undefined, {
+      backgroundRetryMs: 1,
+    });
+    expect(failed.at(-1)).toEqual({ kind: "turn_failed", reason: "Agent is already processing." });
+    // The first try and 3 more.
+    expect(always.sent.filter((record) => record["id"] === "eva-background")).toHaveLength(4);
+  });
+
   test("a stop while pi waits for a background subagent ends the turn once", async () => {
     const chat = chatPi();
-    const stuck = deafPi();
+    // The subagent's pi ends at an abort, as a real pi does. The chat's idle pi ignores it.
+    const sub = scriptedPi((record) => {
+      if (record["type"] === "abort") void sub.process.close(0);
+    });
     const controller = new AbortController();
-    const subagent: PiProcessStarter = (command, options) => {
+    const subagent: PiProcessStarter = () => {
       setTimeout(() => {
         controller.abort();
       }, 5);
-      return stuck.start(command, options);
+      return sub.process;
     };
+    const started = Date.now();
     const events = await run(chat, subagent, controller.signal);
+    // At once, not after the hard stop of 15 s.
+    expect(Date.now() - started).toBeLessThan(3_000);
     expect(events.at(-1)).toEqual({ kind: "turn_failed", reason: "The turn was stopped." });
     expect(events.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed")).toHaveLength(1);
     // No new round starts after the stop.

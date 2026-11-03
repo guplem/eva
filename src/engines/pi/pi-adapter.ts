@@ -71,6 +71,8 @@ export interface PiEngineOptions {
   readonly stopGraceMs?: number;
   /** Subagents of one turn that run at once (#824). Default: 4. */
   readonly maxSubagents?: number;
+  /** The wait before a refused round of background results goes again (#843). Default: 1 s. */
+  readonly backgroundRetryMs?: number;
   /** The longest wait for `pi auth check` after a failed turn. */
   readonly loginCheckMs?: number;
 }
@@ -98,6 +100,8 @@ const promptRequestId = "eva-prompt";
 const settleRequestId = "eva-settle";
 /** The new round that gives pi the results of its background subagents (#843). */
 const backgroundRequestId = "eva-background";
+/** How often a refused round of background results goes again before the turn fails. */
+const maxBackgroundRetries = 3;
 /** Asks pi for its state after a good turn: pi names the context window there, not in its turn events. */
 const stateRequestId = "eva-state";
 /** Extension dialogs that wait for an answer; Eva answers the ones that are not hers with a cancel. */
@@ -310,7 +314,7 @@ export class PiEngine implements EnginePort {
       slots: new Slots(this.options.maxSubagents ?? defaultMaxSubagents),
       ended: new AbortController(),
       running: new Set(),
-      background: { pending: 0, results: [], waiting: false },
+      background: { pending: 0, results: [], waiting: false, sent: [], retries: 0 },
       deliver: () => {
         const background = subagents.background;
         if (!background.waiting || background.results.length === 0) return;
@@ -321,13 +325,22 @@ export class PiEngine implements EnginePort {
           return;
         }
         // Every result that came in meanwhile goes in one message, so they start one round, not one each.
+        background.sent = background.results.splice(0);
         pi.send({
           id: backgroundRequestId,
           type: "prompt",
-          message: backgroundResultsPreamble + background.results.splice(0).join("\n\n"),
+          message: backgroundResultsPreamble + background.sent.join("\n\n"),
         });
       },
     };
+    // pi ignores an abort while it waits with no run, so a stop then closes pi and ends the turn at once.
+    const stopWaiting = (): void => {
+      if (!subagents.background.waiting) return;
+      subagents.background.waiting = false;
+      subagents.ended.abort();
+      void pi.close(0);
+    };
+    request.signal.addEventListener("abort", stopWaiting);
 
     pi.send({ id: promptRequestId, type: "prompt", message: request.prompt });
     for await (const record of pi.records) {
@@ -338,6 +351,21 @@ export class PiEngine implements EnginePort {
         pi.send({ type: "abort" });
       }
       if (
+        type === "response" &&
+        record["id"] === backgroundRequestId &&
+        record["success"] === false &&
+        subagents.background.retries < maxBackgroundRetries
+      ) {
+        // pi can still be busy just after its run ended, such as with a compaction. The results wait, and go again.
+        const background = subagents.background;
+        background.retries += 1;
+        background.results.unshift(...background.sent);
+        background.sent = [];
+        background.waiting = true;
+        setTimeout(() => {
+          subagents.deliver();
+        }, this.options.backgroundRetryMs ?? 1_000);
+      } else if (
         type === "response" &&
         (record["id"] === promptRequestId || record["id"] === backgroundRequestId) &&
         record["success"] === false
@@ -422,6 +450,7 @@ export class PiEngine implements EnginePort {
       if (end !== null) break;
     }
     // A pi that ended has nobody to give a subagent's answer to.
+    request.signal.removeEventListener("abort", stopWaiting);
     subagents.ended.abort();
     await Promise.allSettled([...subagents.running]);
     yield* side.splice(0);
@@ -805,7 +834,14 @@ interface SubagentRuns {
   /** The work of each subagent, which the turn waits for, so no subagent's pi outlives its turn. */
   readonly running: Set<Promise<void>>;
   /** The background subagents: how many still work, their results that wait, and whether pi waits for them. */
-  readonly background: { pending: number; readonly results: string[]; waiting: boolean };
+  readonly background: {
+    pending: number;
+    readonly results: string[];
+    waiting: boolean;
+    /** The results of the last round prompt, which go back to the queue when pi refuses it. */
+    sent: string[];
+    retries: number;
+  };
   /** Gives each waiting result to pi in a new round, once the model's answer ended. */
   readonly deliver: () => void;
 }

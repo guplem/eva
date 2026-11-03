@@ -109,14 +109,17 @@ Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes
 
 To run Eva from source, clone this repository and run `bun install`. Then type `bun run eva` where the guides say `eva`. A copy from source updates itself from `main`, not from releases.
 
-| Task                                       | Command          |
-| ------------------------------------------ | ---------------- |
-| Install the dependencies and the git hooks | `bun install`    |
-| Run every check                            | `bun run check`  |
-| Format the code                            | `bun run format` |
-| Run the tests                              | `bun run test`   |
+| Task                                       | Command                    |
+| ------------------------------------------ | -------------------------- |
+| Install the dependencies and the git hooks | `bun install`              |
+| Run every check                            | `bun run check`            |
+| Format the code                            | `bun run format`           |
+| Run the tests                              | `bun run test`             |
+| Run every check but the tests              | `bun run check:static`     |
+| Run the browser tests                      | `bun run test:e2e`         |
+| Build the single executable                | `bun run build:executable` |
 
-`bun run check` runs the same checks as the continuous integration (CI, the checks that GitHub runs) on every pull request.
+`bun run check` runs the same checks as the Linux job of the continuous integration (CI, the checks that GitHub runs) on every pull request. CI also runs the tests on Windows, the browser tests, the checks of the widget template, a build of the executable and a secret scan.
 
 [How Eva works inside](docs/guide/how-eva-works.md) explains her parts, one turn step by step, the vault sync and the safety rules.
 

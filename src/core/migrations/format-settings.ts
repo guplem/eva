@@ -10,8 +10,14 @@
  * - The header gets `pinned: full` when it has no `pinned` key, so Eva reads the note in every chat.
  *
  * Every other byte of the note stays, the old personal fields (`sleep`, `people`, `dates`, `diet`,
- * `allergies`) included: the vault upgrade files them with the person. The migration writes no
- * other file under `Life/`. The migration is frozen: it holds its own key list and header edits.
+ * `allergies`) included: the vault upgrade files them with the person. A line whose value could not
+ * be copied stays too, so nothing is lost. The migration writes no other file under `Life/`.
+ *
+ * It waits for `2026-10-30-settings-folder`, which copies the old `.eva/settings.json` to its new
+ * place: before it, the new file is missing, and a write would hide the person's settings. It
+ * waits as well while the note's header is broken, so the move runs after the repair.
+ *
+ * The migration is frozen: it holds its own key list, ids and header edits.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -32,6 +38,8 @@ const validValues: Readonly<Record<string, readonly string[]>> = {
 const pinnedLine = "pinned: full # full, summary or false. full: Eva reads this whole note in every chat";
 const languageLine = /^- \*\*Language for answers:\*\*([^\r\n]*)(?:\r?\n|$)/m;
 const timeZoneLine = /^- \*\*Time zone:\*\*([^\r\n]*)(?:\r?\n|$)/m;
+/** The migration that moves the settings file into `.eva/settings/`, copied here to stay frozen. */
+const settingsFolderId = "2026-10-30-settings-folder";
 
 export const moveFormatSettings: Migration = {
   id: "2026-11-03-format-settings",
@@ -39,11 +47,14 @@ export const moveFormatSettings: Migration = {
   run: (context) => {
     const vaultPath = context.vaultPath;
     if (vaultPath === null || !existsSync(vaultPath)) return "later";
+    if (!settingsFolderDone(vaultPath)) return "later";
     const newFile = join(vaultPath, ".eva", "settings", "settings.json");
     const oldFile = join(vaultPath, ".eva", "settings.json");
     const read = readJsonTolerant(newFile);
     // A broken settings file waits: the person or the agent repairs it first.
     if (!read.ok && read.reason !== "missing") return "later";
+    // Only an old file holds the settings: a new one would hide them.
+    if (!read.ok && existsSync(oldFile)) return "later";
     if (read.ok && !isObject(read.value)) return "later";
     const settings: JsonObject = read.ok ? { ...(read.value as JsonObject) } : {};
     if (!isReadable(settings)) return "later";
@@ -52,6 +63,8 @@ export const moveFormatSettings: Migration = {
     if (!existsSync(notePath)) return "done";
     const text = readFileSync(notePath, "utf-8");
     const changed = migrateNote(text, settings);
+    // A broken header waits for its repair, and a check that fails leaves the note as it is.
+    if (changed === "broken") return "later";
     if (changed === null) return "done";
     if (!isReadable(changed.settings)) return "done";
     if (!isDeepStrictEqual(changed.settings, settings)) writeSettings(context, newFile, oldFile, changed.settings);
@@ -60,12 +73,12 @@ export const moveFormatSettings: Migration = {
   },
 };
 
-/** The note and the settings after the move, or null when the note's header is broken. */
-function migrateNote(text: string, before: JsonObject): { text: string; settings: JsonObject } | null {
+/** The note and the settings after the move. Null when the check fails, "broken" for a broken header. */
+function migrateNote(text: string, before: JsonObject): { text: string; settings: JsonObject } | null | "broken" {
   const bom = text.startsWith("\uFEFF") ? "\uFEFF" : "";
   const rest = text.slice(bom.length);
   const header = headerOf(rest);
-  if (header === "broken") return null;
+  if (header === "broken") return "broken";
   const settings = { ...before };
   // An empty header has no line between its two `---` lines, so the pattern does not match it.
   const match = frontMatterPattern.exec(rest) ?? /^---\r?\n---(?:\r?\n|$)/.exec(rest);
@@ -81,17 +94,21 @@ function migrateNote(text: string, before: JsonObject): { text: string; settings
     headerText = headerText === null ? null : withoutField(headerText, key);
   }
 
-  const language = languageLine.exec(body);
-  if (language !== null) {
-    const value = (language[1] ?? "").trim();
-    if (value !== "" && isUnset(settings["language"])) settings["language"] = value;
-    body = body.slice(0, language.index) + body.slice(language.index + language[0].length);
-  }
-  const zone = timeZoneLine.exec(body);
-  if (zone !== null) {
-    const value = (zone[1] ?? "").trim();
-    if (isUnset(settings["timeZone"]) && isTimeZone(value)) settings["timeZone"] = value;
-    body = body.slice(0, zone.index) + body.slice(zone.index + zone[0].length);
+  // A line leaves when it is empty, when its value is copied, or when the setting already holds one.
+  // A value that the setting cannot take, such as an unknown zone, keeps its line, so nothing is lost.
+  const lines: readonly [RegExp, string, (value: string) => boolean][] = [
+    [languageLine, "language", (value) => value !== ""],
+    [timeZoneLine, "timeZone", isTimeZone],
+  ];
+  for (const [pattern, key, accepts] of lines) {
+    const line = pattern.exec(body);
+    if (line === null) continue;
+    const value = (line[1] ?? "").trim();
+    if (value !== "" && isUnset(settings[key])) {
+      if (!accepts(value)) continue;
+      settings[key] = value;
+    }
+    body = body.slice(0, line.index) + body.slice(line.index + line[0].length);
   }
 
   const newline = (headerText ?? rest).includes("\r\n") ? "\r\n" : "\n";
@@ -131,7 +148,9 @@ function withoutField(headerText: string, key: string): string {
   let end = start + 1;
   while (end < lines.length - 1 && /^(\s|-(\s|$))/.test(lines[end] ?? "")) end += 1;
   while (end > start + 1 && (lines[end - 1] ?? "").trim() === "") end -= 1;
-  return [...lines.slice(0, start), ...lines.slice(end)].join("");
+  // A comment line under the field may describe the next one, so it stays.
+  const comments = lines.slice(start + 1, end).filter((line) => line.trim().startsWith("#"));
+  return [...lines.slice(0, start), ...comments, ...lines.slice(end)].join("");
 }
 
 function headerOf(text: string): JsonObject | null | "broken" {
@@ -145,11 +164,22 @@ function headerOf(text: string): JsonObject | null | "broken" {
   }
 }
 
-/** Eva writes both places of the settings file while an older satellite may still read the old one. */
+/**
+ * Eva writes both places of the settings file while an older satellite may still read the old one.
+ * The run starts from the new file, so the old one never gets a partial copy.
+ */
 function writeSettings(context: MigrationContext, newFile: string, oldFile: string, settings: JsonObject): void {
   const content = JSON.stringify(settings, null, 2) + "\n";
   if (existsSync(oldFile)) context.write(oldFile, content);
   context.write(newFile, content);
+}
+
+/** True once the settings folder migration is in the vault's record. A broken record counts as not yet. */
+function settingsFolderDone(vaultPath: string): boolean {
+  const read = readJsonTolerant(join(vaultPath, ".eva", "migrations.json"));
+  if (!read.ok || !isObject(read.value)) return false;
+  const applied = read.value["applied"];
+  return Array.isArray(applied) && applied.some((entry) => isObject(entry) && entry["id"] === settingsFolderId);
 }
 
 function isReadable(settings: JsonObject): boolean {

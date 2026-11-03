@@ -96,6 +96,8 @@ type TurnEnd = { readonly kind: "finished" } | { readonly kind: "failed"; readon
 
 const promptRequestId = "eva-prompt";
 const settleRequestId = "eva-settle";
+/** The new round that gives pi the results of its background subagents (#843). */
+const backgroundRequestId = "eva-background";
 /** Asks pi for its state after a good turn: pi names the context window there, not in its turn events. */
 const stateRequestId = "eva-state";
 /** Extension dialogs that wait for an answer; Eva answers the ones that are not hers with a cancel. */
@@ -308,6 +310,23 @@ export class PiEngine implements EnginePort {
       slots: new Slots(this.options.maxSubagents ?? defaultMaxSubagents),
       ended: new AbortController(),
       running: new Set(),
+      background: { pending: 0, results: [], waiting: false },
+      deliver: () => {
+        const background = subagents.background;
+        if (!background.waiting || background.results.length === 0) return;
+        background.waiting = false;
+        // A stopped turn starts no new round: a closed pi ends the record stream, and so the turn.
+        if (request.signal.aborted) {
+          void pi.close(0);
+          return;
+        }
+        // Every result that came in meanwhile goes in one message, so they start one round, not one each.
+        pi.send({
+          id: backgroundRequestId,
+          type: "prompt",
+          message: backgroundResultsPreamble + background.results.splice(0).join("\n\n"),
+        });
+      },
     };
 
     pi.send({ id: promptRequestId, type: "prompt", message: request.prompt });
@@ -318,7 +337,11 @@ export class PiEngine implements EnginePort {
         // pi drops an abort that comes before the run starts, such as while the MCP bridge loads.
         pi.send({ type: "abort" });
       }
-      if (type === "response" && record["id"] === promptRequestId && record["success"] === false) {
+      if (
+        type === "response" &&
+        (record["id"] === promptRequestId || record["id"] === backgroundRequestId) &&
+        record["success"] === false
+      ) {
         const error = record["error"];
         end = { kind: "failed", reason: typeof error === "string" ? error : "pi refused the message." };
       } else if (type === "response" && record["id"] === settleRequestId && pendingError !== null) {
@@ -387,6 +410,10 @@ export class PiEngine implements EnginePort {
           pi.send({ id: settleRequestId, type: "get_state" });
         } else if (last?.stopReason === "aborted") {
           end = { kind: "failed", reason: "The turn was stopped." };
+        } else if (subagents.background.pending > 0 || subagents.background.results.length > 0) {
+          // The model answered, but background subagents still work: pi stays open for their results (#843).
+          subagents.background.waiting = true;
+          subagents.deliver();
         } else {
           finished = true;
           pi.send({ id: stateRequestId, type: "get_state" });
@@ -471,6 +498,11 @@ export class PiEngine implements EnginePort {
       runs.emit({ kind: "task_changed", taskId: call.toolCallId, description: call.description, state });
     };
     task("running");
+    // A background subagent returns at once, and its result comes in a new round of the same pi (#843).
+    if (call.background) {
+      runs.background.pending += 1;
+      answer({ result: backgroundStartedNote });
+    }
     const signal = AbortSignal.any([request.signal, runs.ended.signal]);
     const work = runs.slots
       .run(async () => {
@@ -496,8 +528,16 @@ export class PiEngine implements EnginePort {
       })
       .catch((error: unknown) => ({ failed: error instanceof Error ? error.message : String(error) }))
       .then((reply) => {
-        task("result" in reply ? "done" : "failed");
-        answer(reply);
+        const done = "result" in reply;
+        task(done ? "done" : "failed");
+        if (!call.background) {
+          answer(reply);
+          return;
+        }
+        runs.background.pending -= 1;
+        const text = "result" in reply ? reply.result : reply.failed;
+        runs.background.results.push(`Task "${call.description}" (${done ? "done" : "failed"}):\n${text}`);
+        runs.deliver();
       });
     runs.running.add(work);
     void work.finally(() => runs.running.delete(work)).catch(() => undefined);
@@ -764,6 +804,10 @@ interface SubagentRuns {
   readonly ended: AbortController;
   /** The work of each subagent, which the turn waits for, so no subagent's pi outlives its turn. */
   readonly running: Set<Promise<void>>;
+  /** The background subagents: how many still work, their results that wait, and whether pi waits for them. */
+  readonly background: { pending: number; readonly results: string[]; waiting: boolean };
+  /** Gives each waiting result to pi in a new round, once the model's answer ended. */
+  readonly deliver: () => void;
 }
 
 /** A bound on the work that runs at once. Work past the bound waits, in order. */
@@ -794,9 +838,13 @@ export class Slots {
 }
 
 /** The Task call of pi-subagent-tool.ts, or null for an input that Eva cannot run. */
-function parseSubagentCall(
-  prefill: unknown,
-): { readonly toolCallId: string; readonly description: string; readonly prompt: string } | null {
+function parseSubagentCall(prefill: unknown): {
+  readonly toolCallId: string;
+  readonly description: string;
+  readonly prompt: string;
+  /** Claude Code's run_in_background: the model goes on, and the result comes later (#843). */
+  readonly background: boolean;
+} | null {
   try {
     const value = JSON.parse(String(prefill)) as { toolCallId?: unknown; input?: unknown };
     const input = (typeof value.input === "object" && value.input !== null ? value.input : {}) as Record<
@@ -809,8 +857,18 @@ function parseSubagentCall(
       toolCallId: value.toolCallId,
       description: typeof description === "string" && description.trim() !== "" ? description : "Subagent",
       prompt,
+      background: input["run_in_background"] === true,
     };
   } catch {
     return null;
   }
 }
+
+/** The tool's answer to a background Task call: the model goes on, and the result comes later. */
+export const backgroundStartedNote =
+  "The subagent works in the background. Eva gives you its result in a later message of this turn. " +
+  "Go on with other work, or end your answer.";
+
+/** The line before the results of background subagents, in the new round of the model. */
+export const backgroundResultsPreamble =
+  "(Eva: your background subagents ended. Their results follow. Go on with the task, and answer the person.)\n\n";

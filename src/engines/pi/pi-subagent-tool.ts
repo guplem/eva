@@ -21,6 +21,11 @@ const parameters = {
         "The whole task for the subagent. It sees none of this chat, so give it every fact it needs, " +
         "and say what its answer must hold.",
     },
+    run_in_background: {
+      type: "boolean",
+      description:
+        "True to go on while the subagent works. Eva gives you its result in a later message, in this same turn.",
+    },
   },
   required: ["description", "prompt"],
 };
@@ -62,7 +67,8 @@ export default function evaSubagents(pi: SubagentPi): void {
     description:
       "Give a task to a subagent: a new agent with its own context, the same tools and the same rules. " +
       "Use it for work that would fill this context, such as a wide search or one batch of many files. " +
-      "Call it several times in one answer to run subagents at once. It answers with the subagent's result.",
+      "Call it several times in one answer to run subagents at once. It answers with the subagent's result, " +
+      "or at once with a note when the subagent runs in the background.",
     parameters,
     async execute(toolCallId, params, signal, _onUpdate, context) {
       if (!context.hasUI) throw new Error("No client is connected to run a subagent.");

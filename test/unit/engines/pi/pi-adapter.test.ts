@@ -7,7 +7,15 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approvalExtensionSource, approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
-import { buildPiArguments, PiEngine, Slots, subagentPreamble } from "../../../../src/engines/pi/pi-adapter.ts";
+import {
+  backgroundResultsPreamble,
+  backgroundStartedNote,
+  buildPiArguments,
+  PiEngine,
+  Slots,
+  subagentPreamble,
+} from "../../../../src/engines/pi/pi-adapter.ts";
+import type { PiProcess } from "../../../../src/engines/pi/pi-process.ts";
 import evaSubagents, {
   subagentTitle as subagentToolTitle,
   type SubagentContext,
@@ -1310,5 +1318,132 @@ describe("a stop while a subagent works (#824)", () => {
     }
     expect(stuck.closeTimeouts.length).toBeGreaterThan(0);
     expect(events.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed")).toHaveLength(1);
+  });
+});
+
+describe("background subagents of a pi Assistant chat (#843)", () => {
+  /** A pi that answers each command with the records that `reply` gives, as a real pi does over RPC. */
+  function scriptedPi(reply: (record: PiRecord, push: (record: PiRecord) => void) => void): {
+    readonly process: PiProcess;
+    readonly sent: PiRecord[];
+  } {
+    const sent: PiRecord[] = [];
+    const outbox: PiRecord[] = [];
+    let wake: (() => void) | null = null;
+    let closed = false;
+    const push = (record: PiRecord): void => {
+      outbox.push(record);
+      wake?.();
+    };
+    async function* records(): AsyncIterable<PiRecord> {
+      for (;;) {
+        const next = outbox.shift();
+        if (next !== undefined) {
+          yield next;
+          continue;
+        }
+        if (closed) return;
+        await new Promise<void>((resolve) => (wake = resolve));
+        wake = null;
+      }
+    }
+    return {
+      process: {
+        send: (record) => {
+          sent.push(record);
+          reply(record, push);
+        },
+        records: records(),
+        close: () => {
+          closed = true;
+          wake?.();
+          return Promise.resolve();
+        },
+        stderrTail: () => "",
+      },
+      sent,
+    };
+  }
+
+  /** The rest of one answer of the model, after its tool calls. */
+  function answerEnd(text: string, push: (record: PiRecord) => void): void {
+    push({ type: "message_start", message: { role: "assistant" } });
+    push({
+      type: "message_end",
+      message: { role: "assistant", content: [{ type: "text", text }], stopReason: "stop" },
+    });
+    push({ type: "agent_end", messages: [{ role: "assistant", stopReason: "stop" }] });
+  }
+
+  /** The model starts one background subagent, ends its answer, and answers again with the result. */
+  function chatPi(): ReturnType<typeof scriptedPi> {
+    return scriptedPi((record, push) => {
+      if (record["type"] === "get_state") push({ type: "response", id: record["id"], success: true, data: {} });
+      else if (record["type"] === "extension_ui_response") answerEnd("I started it.", push);
+      else if (record["type"] === "prompt" && record["message"] === "Hello") {
+        push({ type: "agent_start" });
+        push({
+          type: "extension_ui_request",
+          id: "dialog-1",
+          method: "editor",
+          title: subagentTitle,
+          prefill: JSON.stringify({
+            toolCallId: "call-bg",
+            input: { description: "Read notes", prompt: "Read them.", run_in_background: true },
+          }),
+        });
+      } else if (record["type"] === "prompt") {
+        push({ type: "agent_start" });
+        answerEnd(`Got it: ${String(record["message"]).includes("plain hello") ? "yes" : "no"}`, push);
+      }
+    });
+  }
+
+  async function run(
+    chat: ReturnType<typeof scriptedPi>,
+    subagent: PiProcessStarter,
+    signal?: AbortSignal,
+  ): Promise<EngineEventPayload[]> {
+    let runs = 0;
+    const start: PiProcessStarter = (command, options) => {
+      runs += 1;
+      return runs === 1 ? chat.process : subagent(command, options);
+    };
+    return drain(engine(new FakePi([]), { start }).runTurn(request(signal === undefined ? {} : { signal })));
+  }
+
+  test("the model goes on, and gets the result in a new round of the same turn", async () => {
+    const chat = chatPi();
+    const events = await run(chat, new FakePi([{ records: loadPiFixture("plain") }]).start);
+    const reply = chat.sent.find((record) => record["type"] === "extension_ui_response");
+    expect(JSON.parse(String(reply?.["value"]))).toEqual({ result: backgroundStartedNote });
+    const followUp = chat.sent.filter((record) => record["type"] === "prompt").at(1);
+    expect(String(followUp?.["message"])).toStartWith(backgroundResultsPreamble);
+    expect(String(followUp?.["message"])).toContain('"Read notes" (done)');
+    expect(events.filter((event) => event.kind === "task_changed").map((event) => event.state)).toEqual([
+      "running",
+      "done",
+    ]);
+    const texts = events.filter((event) => event.kind === "text").map((event) => event.text);
+    expect(texts).toEqual(["I started it.", "Got it: yes"]);
+    expect(events.at(-1)).toMatchObject({ kind: "turn_finished" });
+    expect(events.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed")).toHaveLength(1);
+  });
+
+  test("a stop while pi waits for a background subagent ends the turn once", async () => {
+    const chat = chatPi();
+    const stuck = deafPi();
+    const controller = new AbortController();
+    const subagent: PiProcessStarter = (command, options) => {
+      setTimeout(() => {
+        controller.abort();
+      }, 5);
+      return stuck.start(command, options);
+    };
+    const events = await run(chat, subagent, controller.signal);
+    expect(events.at(-1)).toEqual({ kind: "turn_failed", reason: "The turn was stopped." });
+    expect(events.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed")).toHaveLength(1);
+    // No new round starts after the stop.
+    expect(chat.sent.filter((record) => record["type"] === "prompt")).toHaveLength(1);
   });
 });

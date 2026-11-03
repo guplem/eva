@@ -18,6 +18,9 @@ import {
   sameDetails,
   statusChoices,
   statusOf,
+  localDay,
+  withStatus,
+  closingDate,
 } from "./project-format.ts";
 
 const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
@@ -188,8 +191,25 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
                 label="Project status"
                 value={details.status ?? ""}
                 choices={statusChoices}
-                onChange={(value) => edit(() => setDetails({ ...details, status: statusOf(value) }))}
+                onChange={(value) => edit(() => setDetails(withStatus(details, statusOf(value), localDay(new Date()))))}
               />
+              {details.status === "closed" && (
+                <label className="field">
+                  <span className="field-label">Closed on</span>
+                  <input
+                    type="date"
+                    value={details.closed ?? ""}
+                    onChange={(event) =>
+                      edit(() => setDetails({ ...details, closed: closingDate(event.target.value) }))
+                    }
+                  />
+                  <span className="field-hint">
+                    {details.closed === null || details.closed === undefined
+                      ? "Pick the day the project closed."
+                      : "Today, unless you pick the day the project closed."}
+                  </span>
+                </label>
+              )}
               <SelectField
                 label="Project type"
                 value={details.type ?? "general"}

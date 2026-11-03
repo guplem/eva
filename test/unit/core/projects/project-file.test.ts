@@ -195,7 +195,7 @@ describe("projectFileOf", () => {
     expect(projectFileOf(file)).toEqual({
       text: file,
       version: fileVersion(file),
-      details: { ...unchanged, type: "software", created: "2026-01-31T09:15" },
+      details: { ...unchanged, type: "software", closed: null, created: "2026-01-31T09:15" },
     });
   });
 
@@ -207,6 +207,7 @@ describe("projectFileOf", () => {
       tags: [],
       repos: [],
       type: "general",
+      closed: null,
       created: null,
     });
   });
@@ -325,5 +326,54 @@ describe("the type of each repository", () => {
     // A broken map would lose the other types, so the person fixes it first.
     const broken = typed.replace(`  ${api}: standard`, `  ${api}: [a, b]`);
     expect(invalidCode(() => setRepositoryType(broken, app, "standard"))).toBe("project_invalid");
+  });
+});
+
+describe("the closing date of a project (#826)", () => {
+  const closedFile = file.replace(
+    "status: active # idea, active, paused or closed",
+    "status: closed\nclosed: 2026-10-01",
+  );
+
+  test("closing writes the date that the form sends, after the status", () => {
+    const result = applyProjectDetails(file, { ...unchanged, status: "closed", closed: "2026-11-03" });
+    expect(result).toContain("status: closed # idea, active, in-use, paused or closed\nclosed: 2026-11-03\n");
+    expect(parseFrontMatter(result).frontMatter?.closed).toBe("2026-11-03");
+  });
+
+  test("a closed project takes another date, and keeps its date when the form sends the same one", () => {
+    const same = { ...unchanged, status: "closed" as const, closed: "2026-10-01" };
+    expect(applyProjectDetails(closedFile, same)).toBe(closedFile);
+    expect(applyProjectDetails(closedFile, { ...same, closed: "2025-12-24" })).toBe(
+      closedFile.replace("closed: 2026-10-01", "closed: 2025-12-24"),
+    );
+  });
+
+  test("a project that opens again loses its closing date", () => {
+    const result = applyProjectDetails(closedFile, { ...unchanged, status: "active", closed: "2026-10-01" });
+    expect(result).not.toContain("closed: 2026");
+    expect(result).toContain("status: active\n");
+  });
+
+  test("a form that sends no date keeps the key", () => {
+    expect(applyProjectDetails(closedFile, { ...unchanged, status: "closed", title: "Other" })).toContain(
+      "closed: 2026-10-01\n",
+    );
+    // A date in a project that is not closed stays when the status does not change.
+    const handWritten = file.replace("custom: kept", "custom: kept\nclosed: 2020-01-01");
+    expect(applyProjectDetails(handWritten, { ...unchanged, closed: null })).toBe(handWritten);
+  });
+
+  test("refuses a date that is not a real day", () => {
+    for (const closed of ["2026-13-01", "2026-02-30", "03/11/2026", "2026-11-03T10:00"]) {
+      expect(invalidCode(() => applyProjectDetails(file, { ...unchanged, status: "closed", closed }))).toBe(
+        "project_invalid",
+      );
+    }
+  });
+
+  test("the form reads the date", () => {
+    expect(projectFileOf(closedFile).details?.closed).toBe("2026-10-01");
+    expect(projectFileOf(file).details?.closed).toBeNull();
   });
 });

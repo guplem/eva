@@ -229,8 +229,30 @@ export function sameDetails(first: ProjectDetails, second: ProjectDetails): bool
   return (
     first.title === second.title &&
     first.status === second.status &&
+    (first.closed ?? null) === (second.closed ?? null) &&
     (first.type ?? "general") === (second.type ?? "general") &&
     sameList(first.tags, second.tags) &&
     sameList(first.repos, second.repos)
   );
+}
+
+/** The day of a date on the person's own clock, as `YYYY-MM-DD`: the form of the `closed` key (#826). */
+export function localDay(date: Date): string {
+  const two = (value: number): string => String(value).padStart(2, "0");
+  return `${String(date.getFullYear())}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
+}
+
+/** The value of the date field as a closing date: an empty field is no date. */
+export function closingDate(value: string): string | null {
+  return value === "" ? null : value;
+}
+
+/**
+ * The details with a new status. A choice of Closed starts the closing date at today, so the
+ * person keeps it or picks another day (#826). Another status keeps the date in the form only, so
+ * a choice of Closed again brings it back: the save removes the date of a project that is not closed.
+ */
+export function withStatus(details: ProjectDetails, status: ProjectStatus | null, today: string): ProjectDetails {
+  if (status !== "closed") return { ...details, status };
+  return { ...details, status, closed: closingDate(details.closed ?? "") ?? today };
 }

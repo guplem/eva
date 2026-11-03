@@ -21,6 +21,8 @@ const currentStatuses: readonly ProjectStatus[] = ["active", "in-use"];
 export interface ProjectFrontMatter {
   readonly created: string | null;
   readonly status: ProjectStatus | null;
+  /** The day the project closed, from the `closed` key, as the person wrote it (#826). */
+  readonly closed: string | null;
   readonly repos: readonly string[];
   readonly tags: readonly string[];
   readonly legacyId: string | null;
@@ -70,6 +72,7 @@ const statusFilters: readonly string[] = projectStatusFilters;
 export const projectFrontMatterKeys = [
   "created",
   "status",
+  "closed",
   "repos",
   "tags",
   "legacy_id",
@@ -143,11 +146,13 @@ export function parseFrontMatter(text: string): FrontMatterResult {
 
   const summary = typeof fields["summary"] === "string" ? oneLineSummary(fields["summary"]) : null;
   const pinned = typeof fields["pinned"] === "string" ? fields["pinned"] : null;
+  const closed = typeof fields["closed"] === "string" ? fields["closed"] : null;
   const extra = Object.fromEntries(Object.entries(fields).filter(([key]) => !knownKeys.has(key)));
   return {
     frontMatter: {
       created,
       status,
+      closed,
       repos: repos ?? [],
       tags: tags ?? [],
       legacyId,

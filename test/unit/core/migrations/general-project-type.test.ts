@@ -146,7 +146,6 @@ describe("typeSoftwareProjects (vault, #768)", () => {
     migrate();
     expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe(map ?? "");
     expect(map).toContain(generalBullet);
-    expect(map).toContain("A project is one of three types:");
     expect(map).toContain("type: software # general, software or specialist. No type means general");
   });
 });

@@ -13,8 +13,12 @@ export const vaultFolders: readonly VaultFolder[] = [
   { path: "Methods", purpose: "Your own ways to do or decide things." },
   { path: "Toolbox", purpose: "Things to copy and use: commands, scripts, prompts and cheat sheets." },
   { path: "Library", purpose: "Explanations that you want to keep." },
-  { path: "Life", purpose: "Your personal areas, such as home or health, and the basic facts about you." },
-  { path: "Projects", purpose: "One folder for each project, with its notes and its code." },
+  {
+    path: "Life",
+    purpose:
+      "Your life: the basics about you, and your cases, objects, people, pets, periods, health, finances and diary.",
+  },
+  { path: "Projects", purpose: "Things you build, such as an app or a book, and Eva's specialists." },
   { path: ".eva", purpose: "Your rules and skills for Eva. Not notes: keep this folder." },
 ];
 

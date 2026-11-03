@@ -12,7 +12,7 @@ contact: # the person's own phone and email
 region: # ISO 3166 code, such as ES or ES-CT
 hemisphere: # north or south
 places: # home, with its address and city
-work: # a link to the open job in Life/Periods/, and the work hours: from, to and days
+work: # period: a link to the open job in Life/Periods/. Also the work hours: from, to and days
 languages: # each with a level, such as native or B2
 # Eva's code fills lastLocation from your phone. Keep it as it is.
 lastLocation:

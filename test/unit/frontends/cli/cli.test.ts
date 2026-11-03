@@ -1422,7 +1422,7 @@ describe("runSetup", () => {
     >;
     expect(settings["language"]).toBe("English");
     expect(settings["timeZone"]).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    expect(readFileSync(join(newVault, "AGENTS.md"), "utf8")).toContain("**Write all notes in Catalan**");
+    expect(readFileSync(join(newVault, "AGENTS.md"), "utf8")).toContain("**Write all notes in Catalan,**");
     // Before the questions, the person sees each folder of the new vault, and how to change them.
     const said = lines.join("\n");
     expect(said).toContain("Principles/");

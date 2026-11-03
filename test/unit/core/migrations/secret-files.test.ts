@@ -40,8 +40,9 @@ const oldSecretRule =
 /** What the template's .gitignore ignored on 2026-10-31, frozen with the migration. */
 const templateIgnoreLines = ["Projects/*/repos/", "Scratch/", "settings.local.json", "desktop.ini", ".DS_Store"];
 
-const template = (path: string): string =>
-  readFileSync(join(import.meta.dir, "../../../../templates/vault", path), "utf-8");
+/** The template's secret rule from 2026-10-31 until the v3 template (#772), frozen. */
+const templateSecretRule =
+  "- **Secrets** (keys, passwords) live only in secret files, such as `.env.local` or `server.pem`. Eva encrypts each one, so you see only her first line and encrypted text. Never copy a secret into a note. Tell the person which file holds it, and ask them to open it in Eva's Files page. One known place for each secret makes it possible to change it later.";
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "eva-secret-files-"));
@@ -82,15 +83,11 @@ describe("commitSecretFiles (vault, #707)", () => {
     expect(text).toEndWith("my-notes.tmp\n*.key\n");
   });
 
-  test("the map's secret rule becomes the template's rule", () => {
+  test("the map's secret rule becomes the template's rule of that time", () => {
     writeFileSync(join(vault, "AGENTS.md"), `# Map\n\n${oldSecretRule}\n- Another rule.\n`);
     migrate();
     const text = readFileSync(join(vault, "AGENTS.md"), "utf-8");
-    const newRule = template("AGENTS.md")
-      .split("\n")
-      .find((line) => line.startsWith("- **Secrets**"));
-    expect(newRule).toBeDefined();
-    expect(text).toBe(`# Map\n\n${newRule ?? ""}\n- Another rule.\n`);
+    expect(text).toBe(`# Map\n\n${templateSecretRule}\n- Another rule.\n`);
   });
 
   test("keeps Windows line ends, and a text that the person changed stays as it is", () => {

@@ -1607,7 +1607,7 @@ describe("the vault step on the page", () => {
         repository: "",
       });
       expect(result).toMatchObject({ folder: join(home, "notes"), repository: null });
-      expect(readFileSync(join(home, "notes", "AGENTS.md"), "utf8")).toContain("**Write all notes in Spanish**");
+      expect(readFileSync(join(home, "notes", "AGENTS.md"), "utf8")).toContain("**Write all notes in Spanish,**");
       expect(await vaultStep(instance)).toBe("done");
       expect((await instance.setupState()).vaultNeedsPush).toBe(true);
       const bare = join(sandbox.root, "empty.git");

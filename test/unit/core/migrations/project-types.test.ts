@@ -56,6 +56,15 @@ function migrate(vaultPath: string | null = vault): MigrationRun {
   });
 }
 
+/** The project types of the template's map from 2026-11-02 until the v3 template (#772), frozen. */
+const templateTypes = [
+  "A project is one of three types:",
+  "",
+  "- **General:** a folder of notes and files, such as plans, reference photos or drafts: building a house, a scale model, a book. The text under the front matter describes the project.",
+  "- **Software:** work in repositories, such as an app, a website or a widget. The text under the front matter describes the project for the person and for you. It names the repository to read first. The rules for the code live in each repository's own `AGENTS.md`. The project's notes sit beside the file.",
+  "- **Specialist:** a chat with its own rules and memory, such as a gym coach. The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. A specialist has no repository and no clone.",
+].join("\n");
+
 describe("describeProjectTypes (vault, #703)", () => {
   test("adds the type to the example, and says what the text means for each type", () => {
     writeFileSync(map, `# Map\n\n${oldSection}`);
@@ -105,7 +114,7 @@ describe("describeProjectTypes (vault, #703)", () => {
     }
   });
 
-  test("with the later type migration, the new text is the template's text, so a new vault and a migrated vault read the same", () => {
+  test("with the later type migration, the new text is the template's text of that time", () => {
     writeFileSync(map, oldSection);
     migrate();
     // The general type came later, and its own migration fixes the same lines (#768).
@@ -118,10 +127,9 @@ describe("describeProjectTypes (vault, #703)", () => {
       now: () => new Date("2026-11-02T08:00:00.000Z"),
     });
     const migrated = readFileSync(map, "utf-8");
-    const template = readFileSync(join(import.meta.dir, "../../../../templates/vault/AGENTS.md"), "utf-8");
     expect(migrated).toContain("type: software # general, software or specialist. No type means general");
     const typesOf = (text: string): string => text.slice(text.indexOf("A project is one of three types:"));
-    expect(typesOf(template).startsWith(typesOf(migrated).split("\n\n`Projects/")[0] ?? "")).toBe(true);
+    expect(typesOf(migrated).split("\n\n`Projects/")[0]).toBe(templateTypes);
   });
 
   test("a vault with no map has nothing to change", () => {

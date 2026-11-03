@@ -130,7 +130,7 @@ describe("VaultSetup", () => {
     expect(result).toEqual({ folder, repository: join(sandbox.root, "my-vault.git"), problem: null });
     expect(readFileSync(join(folder, "Life", "About me.md"), "utf8")).toContain("Sam");
     // An empty answer keeps the recommended language for notes.
-    expect(readFileSync(join(folder, "AGENTS.md"), "utf8")).toContain("**Write all notes in English**");
+    expect(readFileSync(join(folder, "AGENTS.md"), "utf8")).toContain("**Write all notes in English,**");
     expect(loadConfig(paths).vaultPath).toBe(folder);
     // The answer language and this computer's time zone go to the vault's settings, not to the note (#770).
     const settings = JSON.parse(readFileSync(join(folder, ".eva", "settings", "settings.json"), "utf8")) as Record<

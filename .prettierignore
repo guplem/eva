@@ -5,3 +5,5 @@ bun.lock
 templates/widget/package-lock.json
 templates/widget/.pskill/
 templates/widget/.agents/
+# The vault template: an agent reads it in every chat, and padded tables would add thousands of spaces (#772).
+templates/vault/**/*.md

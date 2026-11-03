@@ -9,7 +9,7 @@ The code is the source of truth for every fact. `README.md` and `docs/guide/` ar
 - `README.md`, `docs/guide/setup.md` and `docs/guide/reference.md` describe what a person sees and does. `docs/guide/how-eva-works.md` describes how Eva works inside. `docs/widgets.md` is the widget contract.
 - Update a page when a change alters a fact on it: a command, a setting, a screen, a behavior, a limit or an inner part.
 - Add a fact that a person or a contributor needs. Leave out a detail that nobody would miss.
-- The guide in Settings and Eva's prompt show these pages, so a person and Eva herself read them to learn how Eva works.
+- The guide in Settings shows these pages. Eva's prompt tells her to read them on GitHub when a person asks how she works.
 
 ## What must not change
 

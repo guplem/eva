@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type NewProjectResult, type ProjectDetails, type PublicSettings } from "./api.ts";
-import type { ProjectType } from "../../../core/projects/project-catalog.ts";
+import { worksInClones, type ProjectType } from "../../../shared/project-types.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import {
   repositoryCatalog,
@@ -14,7 +14,7 @@ import {
 import type { RepositoryVisibility } from "../../../core/vault/github-repositories.ts";
 import { repositoryNotes, stepProblems, unavailableSteps, unavailableTypes } from "./new-project-form.ts";
 import { splitWords } from "./ProjectDetailsEditor.tsx";
-import { statusChoices, statusOf } from "./project-format.ts";
+import { projectTypeChoices, projectTypeHints, projectTypeOf, statusChoices, statusOf } from "./project-format.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { dialogBackdropClass } from "./Dialog.tsx";
@@ -33,9 +33,11 @@ function firstChat(result: NewProjectResult): string | null {
 }
 
 export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps): ReactElement {
-  // A specialist is a chat with its own rules in the project folder, with no repository (#703).
-  const [projectType, setProjectType] = useState<ProjectType>("software");
+  // General, the default, is a folder of notes (#768). Only software gets a repository, and a
+  // specialist, a chat with its own rules in the project folder (#703), gets no Drive folder either.
+  const [projectType, setProjectType] = useState<ProjectType>("general");
   const specialist = projectType === "specialist";
+  const software = worksInClones(projectType);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<NonNullable<ProjectDetails["status"]>>("active");
@@ -95,7 +97,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
         status,
         tags: splitWords(tags),
         repository:
-          !specialist && github && unavailable.github === null && typeReason === null ? { type, visibility } : null,
+          software && github && unavailable.github === null && typeReason === null ? { type, visibility } : null,
         drive: !specialist && drive && unavailable.drive === null,
         type: projectType,
       });
@@ -164,16 +166,15 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
               <select
                 value={projectType}
                 disabled={busy}
-                onChange={(event) => setProjectType(event.target.value === "specialist" ? "specialist" : "software")}
+                onChange={(event) => setProjectType(projectTypeOf(event.target.value) ?? "general")}
               >
-                <option value="software">Software</option>
-                <option value="specialist">Specialist</option>
+                {projectTypeChoices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
               </select>
-              <span className="field-hint">
-                {specialist
-                  ? "A chat with its own rules and memory, such as a coach. It keeps its files in this project folder."
-                  : "Work in repositories, such as an app, a website or a widget. Each chat works in a clone."}
-              </span>
+              <span className="field-hint">{projectTypeHints[projectType]}</span>
             </label>
             <label>
               Name
@@ -224,8 +225,8 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
               <ProgressBar label="Eva reads which steps she can do." />
             ) : (
               <>
-                {step("Create a GitHub repository", github, setGithub, unavailable.github)}
-                {github && unavailable.github === null && (
+                {software && step("Create a GitHub repository", github, setGithub, unavailable.github)}
+                {software && github && unavailable.github === null && (
                   <>
                     <label>
                       Repository type

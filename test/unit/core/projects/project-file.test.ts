@@ -90,8 +90,18 @@ describe("applyProjectDetails", () => {
 
   test("an empty list, title or status removes its part", () => {
     const result = applyProjectDetails(file, { title: "", status: null, tags: [], repos: [] });
+    // With no repository left, the type key keeps the project software (#768).
     expect(result).toBe(
-      ["---", "created: 2026-01-31T09:15", "custom: kept", "---", "", "Notes about the app.", ""].join("\n"),
+      [
+        "---",
+        "created: 2026-01-31T09:15",
+        "custom: kept",
+        "type: software",
+        "---",
+        "",
+        "Notes about the app.",
+        "",
+      ].join("\n"),
     );
     expect(parseFrontMatter(result).frontMatter?.extra).toEqual({ custom: "kept" });
   });
@@ -196,20 +206,36 @@ describe("projectFileOf", () => {
       status: null,
       tags: [],
       repos: [],
-      type: "software",
+      type: "general",
       created: null,
     });
   });
 });
 
-describe("applyProjectDetails and the project type (#703)", () => {
-  test("a specialist gets the key, software removes it, and a form that sends no type keeps it", () => {
+describe("applyProjectDetails and the project type (#703, #768)", () => {
+  test("each type gets the key, and a form that sends no type keeps it", () => {
     const specialist = applyProjectDetails(file, { ...unchanged, repos: [], type: "specialist" });
     expect(specialist).toContain("type: specialist\n");
     expect(parseFrontMatter(specialist).frontMatter?.type).toBe("specialist");
     expect(applyProjectDetails(specialist, { ...unchanged, repos: [] })).toBe(specialist);
     const software = applyProjectDetails(specialist, { ...unchanged, repos: [], type: "software" });
-    expect(software).not.toContain("type:");
+    expect(software).toContain("type: software\n");
+    expect(parseFrontMatter(software).frontMatter?.type).toBe("software");
+    const general = applyProjectDetails(file, { ...unchanged, type: "general" });
+    expect(parseFrontMatter(general).frontMatter?.type).toBe("general");
+  });
+
+  test("with no key, a change of repos alone writes the type that the project reads as now", () => {
+    const software = applyProjectDetails(file, { ...unchanged, repos: [] });
+    expect(software).toContain("type: software\n");
+    expect(parseFrontMatter(software).frontMatter?.type).toBe("software");
+    const notes = "---\nstatus: idea\n---\n# House\n";
+    const general = applyProjectDetails(notes, { ...unchanged, title: "House", status: "idea", tags: [] });
+    expect(parseFrontMatter(general).frontMatter).toMatchObject({ type: "general", repos: unchanged.repos });
+  });
+
+  test("with no key, a save that changes no repository leaves the file as it is", () => {
+    expect(applyProjectDetails(file, { ...unchanged, type: "software" })).toBe(file);
   });
 });
 

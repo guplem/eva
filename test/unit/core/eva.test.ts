@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
@@ -12,6 +12,7 @@ import { turnSnapshotRef } from "../../../src/core/vault/vault-snapshots.ts";
 import type { SessionRecord } from "../../../src/core/sessions/session-store.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { isEvaError } from "../../../src/shared/errors.ts";
+import { wallRefusesPath } from "../../../src/shared/path-area.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { TurnRequest } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -1337,7 +1338,9 @@ describe("Eva", () => {
       expect(work).toMatchObject({ clone: null, startFolder: coachFolder(), reportsTo: asking.id });
       await waitFor(() => instance.sessions.get(asking.id).turns.length === 1, 20_000);
       await instance.idle();
-      expect(engine.requests[1]?.prompt).toContain(`[Project work finished: ${coachId}, specialist, chat ${work.id}]`);
+      expect(engine.requests[1]?.prompt).toContain(
+        `[Project work finished: ${coachId}, project folder, chat ${work.id}]`,
+      );
       expect(instance.sessions.get(asking.id).turns[0]?.projectReports).toMatchObject([
         { projectId: coachId, clone: null, repositories: [], result: "The week is planned." },
       ]);
@@ -1362,7 +1365,7 @@ describe("Eva", () => {
       })();
       expect(isEvaError(caught, "project_invalid")).toBe(true);
       // The whole-file editor follows the same rule.
-      const edited = back.text.replace("type: specialist\n", "");
+      const edited = back.text.replace("type: specialist\n", "type: software\n");
       expect(() => instance.saveProjectFile(coachId, back.version, edited)).toThrow("has chats");
     });
 
@@ -1370,10 +1373,13 @@ describe("Eva", () => {
       const engine = new FakeEngine();
       const instance = start(engine);
       const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
-      writeFileSync(join(coachFolder(), "AGENTS.md"), "---\ncreated: 2025-03-02T10:15\nstatus: active\n---\n# Coach\n");
+      writeFileSync(
+        join(coachFolder(), "AGENTS.md"),
+        "---\ncreated: 2025-03-02T10:15\nstatus: active\ntype: software\n---\n# Coach\n",
+      );
       await instance.sessions.send(chat.id, "hi");
       expect(engine.requests).toEqual([]);
-      expect(instance.sessions.get(chat.id).turns[0]?.failure).toContain("no specialist any more");
+      expect(instance.sessions.get(chat.id).turns[0]?.failure).toContain("works in clones now");
     });
 
     test("project work on a specialist waits for the asking turn, so two vault turns never overlap", async () => {
@@ -1424,15 +1430,150 @@ describe("Eva", () => {
       });
     });
 
-    test("a specialist chat takes no file, so it never learns a vault path", async () => {
+    test("a specialist chat gets a sent file in its project's received folder, open to it read-only (#768)", async () => {
+      const engine = new FakeEngine();
+      const instance = start(engine);
+      const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      const { path, note } = instance.receiveFile("plan.pdf", new Uint8Array([1, 2, 3]), chat.id);
+      expect(path).toMatch(new RegExp(`^\\.eva/scratch/received/${coachId}/plan-[0-9a-f]{12}\\.pdf$`));
+      // The file is outside the chat's folder, so the note gives its full path and says what to do with it.
+      expect(note).toBe(
+        `[The person sent a file, saved as ${join(vault, path)}. It is temporary and read-only: to keep it, copy it into the project folder.]`,
+      );
+      expect(readFileSync(join(vault, path))).toEqual(Buffer.from([1, 2, 3]));
+      // Nothing new lands in the project folder.
+      expect(readdirSync(coachFolder())).toEqual(["AGENTS.md"]);
+      await instance.sessions.send(chat.id, `${note}\nRead it.`);
+      const received = join(vault, ".eva", "scratch", "received", coachId);
+      expect(engine.requests[0]?.fileWall?.readOnly).toEqual([received]);
+      // The chat reads the file but never changes it, and the Assistant's files stay closed to it.
+      const wall = engine.requests[0]!.fileWall!;
+      const saved = join(vault, path);
+      expect(wallRefusesPath(wall, saved, coachFolder(), { reads: true })).toBe(false);
+      expect(wallRefusesPath(wall, saved, coachFolder())).toBe(true);
+      const assistantFile = instance.receiveFile("bank.pdf", new Uint8Array([9]), null).path;
+      expect(wallRefusesPath(wall, join(vault, assistantFile), coachFolder(), { reads: true })).toBe(true);
+    });
+
+    test("a chat whose project is gone takes no file (#768)", async () => {
       const instance = start(new FakeEngine());
       const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+      rmSync(coachFolder(), { recursive: true, force: true });
       const caught = await Promise.resolve()
         .then(() => instance.receiveFile("plan.pdf", new Uint8Array([1, 2, 3]), chat.id))
         .catch((error: unknown) => error);
-      expect(isEvaError(caught, "file_not_writable")).toBe(true);
-      expect((caught as Error).message).toBe("This chat takes no files.");
+      expect(isEvaError(caught, "project_not_found")).toBe(true);
       expect(existsSync(join(vault, ".eva", "scratch", "received"))).toBe(false);
+    });
+  });
+
+  describe("general projects (#768)", () => {
+    const houseId = "2025-03-04-1015-house";
+    const houseFolder = (): string => join(vault, "Projects", houseId);
+
+    beforeEach(() => {
+      sandbox.write(
+        vault,
+        `Projects/${houseId}/AGENTS.md`,
+        "---\ncreated: 2025-03-04T10:15\nstatus: active\n---\n# House\n\nBuilding a house.\n",
+      );
+    });
+
+    test("a project with no type and no repos reads as general, and its chat starts in the project folder", async () => {
+      const engine = new FakeEngine((request) => {
+        if (request.mode === "project") writeFileSync(join(request.startFolder, "plan.md"), "Walls first.\n");
+        return FakeEngine.answer(request, "Noted.");
+      });
+      const instance = start(engine, { sync: syncOn });
+      expect(instance.projects().find((project) => project.id === houseId)?.frontMatter.type).toBe("general");
+      const chat = await instance.createProjectSession({ projectId: houseId, source: "web" });
+      expect(chat).toMatchObject({ mode: "project", clone: null, startFolder: houseFolder(), projectId: houseId });
+      await instance.sessions.send(chat.id, "Plan the walls.");
+      expect(engine.requests[0]).toMatchObject({
+        startFolder: houseFolder(),
+        trusted: true,
+        harnessMemory: false,
+        folderHooks: false,
+      });
+      expect(sandbox.git(sandbox.remote, "show", `main:Projects/${houseId}/plan.md`)).toBe("Walls first.");
+    });
+
+    test("a general project has no clones, and its work result names the project folder", async () => {
+      const engine = new FakeEngine((request) => FakeEngine.answer(request, "Done."));
+      const instance = start(engine);
+      const clone = await Promise.resolve()
+        .then(() => instance.newClone(houseId))
+        .catch((error: unknown) => error);
+      expect(isEvaError(clone, "project_invalid")).toBe(true);
+      const asking = instance.createAssistantSession({ source: "web" });
+      const work = await instance.startProjectWork({
+        projectId: houseId,
+        request: "Plan.",
+        reportToSessionId: asking.id,
+      });
+      expect(work).toMatchObject({ clone: null, startFolder: houseFolder() });
+      await waitFor(() => instance.sessions.get(asking.id).turns.length === 1, 20_000);
+      await instance.idle();
+      expect(engine.requests[1]?.prompt).toContain(
+        `[Project work finished: ${houseId}, project folder, chat ${work.id}]`,
+      );
+    });
+
+    test("general and specialist switch while the project has chats, and a repository keeps it general", async () => {
+      const instance = start(new FakeEngine());
+      await instance.createProjectSession({ projectId: houseId, source: "web" });
+      const details = { title: "House", status: "active" as const, tags: [], repos: [] };
+      const specialist = instance.saveProjectDetails(houseId, instance.projectFile(houseId).version, {
+        ...details,
+        type: "specialist",
+      });
+      expect(specialist.details?.type).toBe("specialist");
+      const general = instance.saveProjectDetails(houseId, specialist.version, { ...details, type: "general" });
+      expect(general.details?.type).toBe("general");
+      const withRepo = instance.saveProjectDetails(houseId, general.version, {
+        ...details,
+        repos: ["https://github.com/example/example-app"],
+      });
+      expect(withRepo.details?.type).toBe("general");
+      const caught = (() => {
+        try {
+          return instance.saveProjectDetails(houseId, withRepo.version, { ...details, type: "software" });
+        } catch (error) {
+          return error;
+        }
+      })();
+      expect(isEvaError(caught, "project_invalid")).toBe(true);
+    });
+
+    test("a raw save that adds repos to a general project with no type key says how to keep it general", async () => {
+      const instance = start(new FakeEngine());
+      await instance.createProjectSession({ projectId: houseId, source: "web" });
+      const file = instance.projectFile(houseId);
+      const edited = file.text.replace(
+        "status: active\n",
+        "status: active\nrepos:\n  - https://github.com/example/example-app\n",
+      );
+      expect(() => instance.saveProjectFile(houseId, file.version, edited)).toThrow(
+        "Its repos make it a software project. To keep it general, write `type: general`.",
+      );
+    });
+
+    test("a new general project from the form opens no chat and has no specialist line", async () => {
+      const instance = start(new FakeEngine());
+      const result = await instance.createProject({
+        name: "Model",
+        description: "A scale model.",
+        status: "active",
+        tags: [],
+        repository: null,
+        drive: false,
+        type: "general",
+      });
+      expect(result.chat).toBeNull();
+      expect(instance.sessions.list()).toEqual([]);
+      const text = readFileSync(join(vault, "Projects", result.projectId, "AGENTS.md"), "utf8");
+      expect(text).toContain("type: general\n");
+      expect(text).not.toContain("This specialist is new");
     });
   });
 
@@ -2443,7 +2584,7 @@ describe("Eva alerts", () => {
     const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
     expect(result.found).toBe(false);
     expect(result.state.status).toBe("skipped");
-    expect(result.state.lastError).toContain("an Assistant or specialist chat");
+    expect(result.state.lastError).toContain("an Assistant or project chat");
     release();
     await turn;
   });

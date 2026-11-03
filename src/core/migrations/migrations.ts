@@ -27,6 +27,7 @@ import { moveSettingsToFolder } from "./settings-folder.ts";
 import { describeProjectTypes } from "./project-types.ts";
 import { commitSecretFiles } from "./secret-files.ts";
 import { ignoreEvaScratch } from "./scratch-folder.ts";
+import { typeSoftwareProjects } from "./general-project-type.ts";
 import { pinFiles } from "./pinned-files.ts";
 import { moveFormatSettings } from "./format-settings.ts";
 
@@ -46,6 +47,7 @@ export const migrations: readonly Migration[] = [
   describeProjectTypes,
   commitSecretFiles,
   ignoreEvaScratch,
+  typeSoftwareProjects,
   pinFiles,
   moveFormatSettings,
 ];

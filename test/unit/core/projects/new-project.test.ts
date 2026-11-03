@@ -65,6 +65,7 @@ describe("createProject", () => {
         "created: 2026-10-21T15:42",
         'summary: "A small app to try Eva."',
         "status: active",
+        "type: software",
         "tags:",
         "  - work",
         "  - demo",
@@ -123,6 +124,43 @@ describe("createProject", () => {
     expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.frontMatter.type).toBe("specialist");
   });
 
+  test("a general project gets its type and a Drive folder, but no first chat and no specialist line (#768)", async () => {
+    const result = await createProject(
+      { ...input, name: "House", description: "Building a house.", tags: [], drive: true, type: "general" },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { ...noSteps, createDriveFolder: () => Promise.resolve("https://drive.google.com/drive/folders/folder-1") },
+    );
+    expect(result.chat).toBeNull();
+    expect(fileOf(result.projectId)).toBe(
+      [
+        "---",
+        "created: 2026-10-21T15:42",
+        'summary: "Building a house."',
+        "status: active",
+        "type: general",
+        "---",
+        "",
+        "# House",
+        "",
+        "Building a house.",
+        "",
+        "- Google Drive folder: https://drive.google.com/drive/folders/folder-1",
+        "",
+      ].join("\n"),
+    );
+    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.frontMatter.type).toBe("general");
+  });
+
+  test("a general project with a repository is refused before any folder exists (#768)", async () => {
+    const caught = await createProject(
+      { ...input, repository: standard, type: "general" },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      noSteps,
+    ).catch((error: unknown) => error);
+    expect(isEvaError(caught, "project_invalid")).toBe(true);
+    expect(existsSync(projectsFolder())).toBe(false);
+  });
+
   test("a specialist with a repository or a Drive folder is refused before any folder exists (#703)", async () => {
     for (const extra of [{ repository: standard }, { drive: true }]) {
       const caught = await createProject(
@@ -165,7 +203,9 @@ describe("createProject", () => {
       noSteps,
     );
 
-    expect(fileOf(result.projectId)).toBe("---\ncreated: 2026-10-21T15:42\nstatus: active\n---\n\n# Example App\n");
+    expect(fileOf(result.projectId)).toBe(
+      "---\ncreated: 2026-10-21T15:42\nstatus: active\ntype: software\n---\n\n# Example App\n",
+    );
   });
 
   test("creates the repository and the Drive folder, the file names both, then the repository gets its setup", async () => {

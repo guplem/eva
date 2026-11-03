@@ -9,6 +9,7 @@ import { join } from "node:path";
 import type { EngineName, EnginePort, McpServerSpec, WallRoots } from "../shared/engine-port.ts";
 import type { EnginePermissions } from "../shared/permissions.ts";
 import { chatKind } from "../shared/chat-kind.ts";
+import { worksInClones } from "../shared/project-types.ts";
 import {
   baseEnvironmentAllowlist,
   buildChildEnvironment,
@@ -121,7 +122,7 @@ import {
 } from "./files/file-browser.ts";
 import { downloadVaultPath, type VaultDownload } from "./files/file-download.ts";
 import { searchVault, type SearchResult } from "./files/vault-search.ts";
-import { cleanScratch, receivedFileNote, saveReceivedFile } from "./files/vault-files.ts";
+import { cleanScratch, receivedFileNote, receivedFolder, saveReceivedFile } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
 import { ClaudeLogin } from "./setup/claude-login.ts";
@@ -813,9 +814,15 @@ export class Eva {
           vaultSync,
           environment: agentEnvironment,
           // A project that is gone keeps its chat's refusal to the engine: its folder no longer exists.
-          isSpecialist: (projectId) =>
-            this.projects().find((project) => project.id === projectId)?.frontMatter.type !== "software",
+          isSpecialist: (projectId) => {
+            const type = this.projects().find((project) => project.id === projectId)?.frontMatter.type;
+            return type === undefined || !worksInClones(type);
+          },
           wallRoots: () => this.wallRoots(),
+          receivedFolder: (projectId) => {
+            const vaultPath = this.options.config.vaultPath;
+            return vaultPath === null ? null : join(vaultPath, receivedFolder(projectId));
+          },
         }),
       },
       now: options.now,
@@ -1948,21 +1955,34 @@ export class Eva {
 
   /**
    * Keeps a file that the person attached, and answers the note for the agent. A chat in a clone
-   * gets it in the clone, with a path from the clone folder, so it sees no vault path (#706).
+   * gets it in the clone, with a path from the clone folder, so it sees no vault path (#706). A
+   * chat in a project folder gets it in its project's received folder, which its wall opens
+   * read-only (#768). The agent copies a file worth keeping into the project folder.
    */
   receiveFile(name: string, bytes: Uint8Array, sessionId: string | null = null): { path: string; note: string } {
     const chat = sessionId === null ? null : this.sessions.get(sessionId);
     // Eva may have given the clone of a closed chat to another chat (issue 521), so a late file must not land there.
     if (chat?.closed === true)
       throw new EvaError("session_closed", "This chat is closed, because Eva reused its clone. Start a new chat.");
-    // A saved file would give a specialist a vault path, so its chat takes none (#703).
-    if (chat !== null && chatKind(chat) === "specialist")
-      throw new EvaError("file_not_writable", "This chat takes no files.");
+    this.checkFileProject(sessionId);
+    const kind = chat === null ? "assistant" : chatKind(chat);
     const path =
-      chat !== null && chatKind(chat) === "project"
+      kind === "project" && chat !== null
         ? saveInClone(chat.startFolder, name, bytes)
-        : saveReceivedFile(this.browsedVault(), name, bytes);
+        : saveReceivedFile(this.browsedVault(), name, bytes, kind === "specialist" ? (chat?.projectId ?? null) : null);
+    if (kind === "specialist") return { path, note: receivedFileNote(join(this.browsedVault(), path), true) };
     return { path, note: receivedFileNote(path) };
+  }
+
+  /**
+   * Throws when the chat runs in a project folder whose project is gone, so a front end can refuse
+   * a file before it downloads it (#768).
+   */
+  checkFileProject(sessionId: string | null): void {
+    const chat = sessionId === null ? null : this.sessions.get(sessionId);
+    if (chat === null || chatKind(chat) !== "specialist") return;
+    if (!this.projects().some((project) => project.id === chat.projectId))
+      throw new EvaError("project_not_found", "The project of this chat is gone, so it takes no file.");
   }
 
   /**

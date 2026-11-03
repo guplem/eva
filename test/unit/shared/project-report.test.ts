@@ -43,8 +43,8 @@ describe("reportPlace", () => {
     ).toBe("clone-0 · api · web on fix-login");
   });
 
-  test("a specialist has no clone and no repository, so it names the specialist (#703)", () => {
-    expect(reportPlace({ ...report, clone: null, repositories: [] })).toBe("specialist");
+  test("work in a project folder has no clone and no repository, so it names the project folder (#768)", () => {
+    expect(reportPlace({ ...report, clone: null, repositories: [] })).toBe("project folder");
   });
 });
 

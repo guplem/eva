@@ -7,12 +7,13 @@ import { isMap, isNode, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { EvaError } from "../../shared/errors.ts";
 import {
   frontMatterPattern,
+  defaultType,
   parseFrontMatter,
   repoTypesWarning,
   statusListText,
   titleHeading,
-  type ProjectType,
 } from "./project-catalog.ts";
+import type { ProjectType } from "../../shared/project-types.ts";
 import type { ProjectStatus } from "../../shared/project-statuses.ts";
 
 /** The statuses in the comment after `status:` before `in-use` (#690). */
@@ -25,7 +26,7 @@ export interface ProjectDetails {
   readonly status: ProjectStatus | null;
   readonly tags: readonly string[];
   readonly repos: readonly string[];
-  /** Absent keeps the type, as from an older page. Software, the default, removes the key (#703). */
+  /** Absent keeps the type, as from an older page. Every type writes the key (#768). */
   readonly type?: ProjectType | undefined;
 }
 
@@ -42,14 +43,19 @@ export function applyProjectDetails(text: string, details: ProjectDetails): stri
   const title = details.title.trim();
   if (/[\r\n]/.test(title)) throw invalid("The title must be one line.");
 
-  const frontMatter = editFrontMatter((match[1] ?? "").replaceAll("\r\n", "\n"), {
+  const source = (match[1] ?? "").replaceAll("\r\n", "\n");
+  const repos = changedRepos(current.repos, current.repoTypes, details.repos);
+  const type = details.type ?? current.type;
+  // With no key, the type follows `repos`. So when a change of `repos` would change the type, the
+  // save writes the type that the project reads as now: the type never changes by itself (#768).
+  const followsRepos = repos.repos !== undefined && defaultType(repos.repos) !== type && !hasKey(source, "type");
+  const writesType = type !== current.type || followsRepos;
+  const frontMatter = editFrontMatter(source, {
     // The form shows "None" for a status it cannot read, so None there keeps the person's value.
     ...(details.status === current.status ? {} : { status: details.status }),
     ...changedList("tags", current.tags, details.tags, (tag) => tag.replace(/^#/, ""), "A tag"),
-    ...changedRepos(current.repos, current.repoTypes, details.repos),
-    ...(details.type === undefined || details.type === current.type
-      ? {}
-      : { type: details.type === "software" ? null : details.type }),
+    ...repos,
+    ...(writesType ? { type } : {}),
   });
   const body = withTitle(withoutBom.slice(match[0].length), title, eol);
   let head = frontMatter === null ? match[0] : `---${eol}${frontMatter.replaceAll("\n", eol)}${eol}---${eol}`;
@@ -100,7 +106,7 @@ interface FrontMatterChanges {
   readonly tags?: readonly string[];
   readonly repos?: readonly string[];
   readonly repo_types?: Readonly<Record<string, string>> | null;
-  readonly type?: ProjectType | null;
+  readonly type?: ProjectType;
 }
 
 /** A value of the front matter: text, a list, or a map such as `repo_types`. */
@@ -138,6 +144,18 @@ function changedList(
     throw invalid("A repository cannot start with -.");
   }
   return sameList(current, cleaned) ? {} : { [key]: cleaned };
+}
+
+/** True when the project file writes a `type` key, with any value. */
+export function hasTypeKey(text: string): boolean {
+  const match = frontMatterPattern.exec(text.replace(/^\uFEFF/, ""));
+  return match !== null && hasKey((match[1] ?? "").replaceAll("\r\n", "\n"), "type");
+}
+
+/** True when the front matter has the key, with any value. */
+function hasKey(source: string, key: string): boolean {
+  const document = parseDocument(source, { schema: "failsafe" });
+  return isMap(document.contents) && document.has(key);
 }
 
 /** The new front matter, or null when no field changes, so an untouched file keeps every byte. */

@@ -5,6 +5,7 @@
  */
 import type { Eva } from "../../core/eva.ts";
 import { extractFileMarkers } from "../../shared/file-markers.ts";
+import type { Project } from "../../core/projects/project-catalog.ts";
 import type { SessionRecord } from "../../core/sessions/session-store.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import type { SessionEvent } from "../../shared/events.ts";
@@ -92,9 +93,11 @@ export class TelegramChats {
       await this.options.sender.send(chatId, topicId, "No chats yet. Write a message to start one.");
       return;
     }
+    // Only a Project chat needs the projects, for its label: a read of every project folder.
+    const projects = chats.some((chat) => chat.mode === "project") ? this.options.eva.projects() : [];
     await this.options.sender.send(chatId, topicId, "Pick a chat to continue it here:", {
       inline_keyboard: chats.map((chat) => [
-        { text: `${chatLabel(chat)}${chat.title}`, callback_data: `o:${chat.id}` },
+        { text: `${chatLabel(chat, projects)}${chat.title}`, callback_data: `o:${chat.id}` },
       ]),
     });
   }
@@ -366,10 +369,14 @@ function topicLink(chatId: number, topicId: number): string | null {
   return id.startsWith("-100") ? `https://t.me/c/${id.slice(4)}/${String(topicId)}` : null;
 }
 
-/** "Project: " or "Specialist: " before the title. An Assistant chat, the usual one, gets none (#703). */
-function chatLabel(chat: SessionRecord): string {
+/**
+ * "Project: " or "Specialist: " before the title. An Assistant chat, the usual one, gets none
+ * (#703). A chat in a project folder is named after its project's type now (#768).
+ */
+function chatLabel(chat: SessionRecord, projects: readonly Project[]): string {
   const kind = chatKind(chat);
-  return kind === "assistant" ? "" : `${chatKindName(kind)}: `;
+  const type = projects.find((project) => project.id === chat.projectId)?.frontMatter.type;
+  return kind === "assistant" ? "" : `${chatKindName(kind, type)}: `;
 }
 
 function lastActivityOf(session: SessionRecord): string {

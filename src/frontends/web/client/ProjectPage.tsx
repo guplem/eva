@@ -26,6 +26,7 @@ import { ChatStatePill, chatListItems, type ChatAction } from "./ChatHeader.tsx"
 import { MenuButton, useContextMenu } from "./Menu.tsx";
 import { fileAddressOf } from "./file-paths.ts";
 import { BackButton } from "./MainNav.tsx";
+import { worksInClones } from "../../../shared/project-types.ts";
 
 interface ProjectPageProps {
   readonly project: Project;
@@ -94,7 +95,9 @@ export function ProjectPage({
   const now = new Date();
   const behind =
     clones?.flatMap((clone) => clone.repositories).filter((repository) => (repository.behind ?? 0) > 0).length ?? 0;
+  // A general project and a specialist have no clones: their chats work in the folder (#703, #768).
   const specialist = project.frontMatter.type === "specialist";
+  const inFolder = !worksInClones(project.frontMatter.type);
   const widgetRepositories = widgetRepositoryNames(project);
   // One object for the open preview, so the dialog loads once and not at each render.
   const [preview, setPreview] = useState<PreviewPlace | null>(null);
@@ -121,7 +124,9 @@ export function ProjectPage({
           items={[
             specialist
               ? { label: "With the specialist", icon: "briefcase", onChoose: onNewChat }
-              : { label: "In a clone", icon: "branch", onChoose: onNewChat },
+              : inFolder
+                ? { label: "In the project folder", icon: "folder", onChoose: onNewChat }
+                : { label: "In a clone", icon: "branch", onChoose: onNewChat },
             { label: "With Eva", icon: "chat", onChoose: onAskEva },
           ]}
         >
@@ -130,7 +135,7 @@ export function ProjectPage({
         <button className="outline" onClick={onDetails}>
           <Icon name="pen" /> Details
         </button>
-        {!specialist && (
+        {!inFolder && (
           <button className="soft" onClick={onSetup}>
             Repository setup
           </button>
@@ -141,7 +146,11 @@ export function ProjectPage({
         {startingChat && (
           <ProgressBar
             label={
-              specialist ? "Eva opens a chat with the specialist." : "Eva looks for a free clone, or makes a new one."
+              specialist
+                ? "Eva opens a chat with the specialist."
+                : inFolder
+                  ? "Eva opens a chat in the project folder."
+                  : "Eva looks for a free clone, or makes a new one."
             }
           />
         )}
@@ -153,15 +162,16 @@ export function ProjectPage({
           </div>
         )}
         {/* A type that changed by hand or on another machine still shows each chat and clone (#703). */}
-        {(specialist || specialistChats.length > 0) && (
+        {(inFolder || specialistChats.length > 0) && (
           <SpecialistChats
             chats={specialistChats}
+            specialist={specialist}
             now={now}
             stateOf={stateOf}
             onOpenChat={(chat, action) => onOpenChat(null, chat, action)}
           />
         )}
-        {(!specialist || (clones?.length ?? 0) > 0) && (
+        {(!inFolder || (clones?.length ?? 0) > 0) && (
           <ClonesSection
             clones={clones}
             clonesFailed={clonesFailed}
@@ -179,7 +189,7 @@ export function ProjectPage({
             onPullAll={onPullAll}
             onPull={onPull}
             onPush={onPush}
-            specialist={specialist}
+            inFolder={inFolder}
             widgetRepositories={widgetRepositories}
             onPreview={(clone, repository) =>
               setPreview({ project: project.id, clone: clone.name, repository: repository.name })
@@ -192,14 +202,16 @@ export function ProjectPage({
   );
 }
 
-/** The chats of a specialist, in one card: a specialist has no clones (#703). */
+/** The chats of a general project or a specialist, in one card: neither has clones (#703, #768). */
 function SpecialistChats({
   chats,
+  specialist,
   now,
   stateOf,
   onOpenChat,
 }: {
   readonly chats: readonly SessionRecord[];
+  readonly specialist: boolean;
   readonly now: Date;
   readonly stateOf: (chat: SessionRecord) => ChatState;
   readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
@@ -210,7 +222,9 @@ function SpecialistChats({
       <div className="card clone-card">
         {chats.length === 0 && (
           <p className="muted">
-            No chats yet. A specialist works with its own rules and memory, in the files of this project.
+            {specialist
+              ? "No chats yet. A specialist works with its own rules and memory, in the files of this project."
+              : "No chats yet. A chat works in the files of this project."}
           </p>
         )}
         {chats.map((chat) => (
@@ -245,7 +259,7 @@ function ClonesSection({
   onPullAll,
   onPull,
   onPush,
-  specialist,
+  inFolder,
   widgetRepositories,
   onPreview,
 }: Pick<
@@ -268,8 +282,8 @@ function ClonesSection({
   /** How many repositories of the clones are behind their remote. */
   readonly behind: number;
   readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
-  /** A specialist shows its old clones only so that they can go: it makes no new one. */
-  readonly specialist: boolean;
+  /** A general project or a specialist shows its old clones only so that they can go: it makes no new one. */
+  readonly inFolder: boolean;
   /** The folder names of the widget repositories: each gets a Preview button (#693). */
   readonly widgetRepositories: ReadonlySet<string>;
   readonly onPreview: (clone: CloneDetails, repository: RepositoryDetails) => void;
@@ -315,7 +329,7 @@ function ClonesSection({
               />
             ))}
 
-            {!specialist && <NewCloneCard first={clones.length === 0 && !clonesFailed} onNewClone={onNewClone} />}
+            {!inFolder && <NewCloneCard first={clones.length === 0 && !clonesFailed} onNewClone={onNewClone} />}
           </div>
         </>
       )}

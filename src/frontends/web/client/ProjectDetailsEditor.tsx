@@ -11,12 +11,14 @@ import { BackButton } from "./MainNav.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, SelectField } from "./SettingsParts.tsx";
-import { removedRepositoriesHint, statusChoices, statusOf } from "./project-format.ts";
-
-const projectTypeChoices = [
-  { value: "software", label: "Software" },
-  { value: "specialist", label: "Specialist" },
-] as const;
+import {
+  projectTypeChoices,
+  projectTypeOf,
+  removedRepositoriesHint,
+  sameDetails,
+  statusChoices,
+  statusOf,
+} from "./project-format.ts";
 
 const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
 
@@ -190,11 +192,11 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
               />
               <SelectField
                 label="Project type"
-                value={details.type ?? "software"}
+                value={details.type ?? "general"}
                 choices={projectTypeChoices}
-                hint="A specialist is a chat with its own rules in this folder. The type changes only while the project has no chats and no clones."
+                hint="General and specialist chats work in this folder, software chats in clones. A change to or from software waits until the project has no chats and no clones."
                 onChange={(value) =>
-                  edit(() => setDetails({ ...details, type: value === "specialist" ? "specialist" : "software" }))
+                  edit(() => setDetails({ ...details, type: projectTypeOf(value) ?? details.type ?? "general" }))
                 }
               />
               <ListField
@@ -317,18 +319,6 @@ function ListField({ name, heading, icon, hint, values, draft, onDraft, onChange
 /** A tag or repository has no space, so a space or a comma separates two of them. */
 export function splitWords(text: string): string[] {
   return text.split(/[\s,]+/).filter((word) => word.length > 0);
-}
-
-function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {
-  const sameList = (one: readonly string[], two: readonly string[]): boolean =>
-    one.length === two.length && one.every((value, index) => value === two[index]);
-  return (
-    first.title === second.title &&
-    first.status === second.status &&
-    (first.type ?? "software") === (second.type ?? "software") &&
-    sameList(first.tags, second.tags) &&
-    sameList(first.repos, second.repos)
-  );
 }
 
 function titleOf(file: ProjectFile, projectId: string): string {

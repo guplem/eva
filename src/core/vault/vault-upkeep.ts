@@ -1,7 +1,8 @@
 /**
  * The vault sync of a running Eva: "sync now", the idle sweep, the timed pull, and the log
  * lines and alert of a sync problem. No step runs under the turn of a chat in the vault: an
- * Assistant or specialist turn (lessons 22, 30). "Assistant turn" below covers both.
+ * Assistant turn or the turn of a chat in a project folder (lessons 22, 30). "Assistant turn" below
+ * covers both.
  */
 import { EvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
@@ -42,7 +43,7 @@ export interface VaultUpkeepOptions {
   readonly now: () => Date;
   /** The `sync.enabled` setting. Off stops the automatic steps, never a request from the person. */
   readonly syncEnabled: () => boolean;
-  /** True while a chat in the vault runs a turn: an Assistant chat or a specialist chat (#703). */
+  /** True while a chat in the vault runs a turn: an Assistant chat or a chat in a project folder (#703, #768). */
   readonly vaultTurnRunning: () => boolean;
   readonly reportProblem: (problem: AlertProblem | null) => void;
   /** Runs after each sync step, such as the check for a vault record from a newer Eva. */
@@ -107,7 +108,7 @@ export class VaultUpkeep {
       return {
         ...vaultSync.currentState,
         status: "skipped",
-        lastError: "Eva is working in an Assistant or specialist chat. Sync again when it ends.",
+        lastError: "Eva is working in an Assistant or project chat. Sync again when it ends.",
         skipReason: "assistant_busy",
       };
     this.lastPullAt = this.options.now();
@@ -133,7 +134,7 @@ export class VaultUpkeep {
         state: {
           ...vaultSync.currentState,
           status: "skipped",
-          lastError: "Eva is working in an Assistant or specialist chat. Pick again when it ends.",
+          lastError: "Eva is working in an Assistant or project chat. Pick again when it ends.",
         },
         conflicts: [],
         found: false,
@@ -271,5 +272,5 @@ export class VaultUpkeep {
 }
 
 function busyUndo(): EvaError {
-  return new EvaError("session_busy", "Eva is working in an Assistant or specialist chat. Retry again when it ends.");
+  return new EvaError("session_busy", "Eva is working in an Assistant or project chat. Retry again when it ends.");
 }

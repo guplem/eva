@@ -8,7 +8,8 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
-import { oneLineSummary, type ProjectType } from "./project-catalog.ts";
+import { oneLineSummary } from "./project-catalog.ts";
+import { projectTypeNoun, worksInClones, type ProjectType } from "../../shared/project-types.ts";
 import type { ProjectStatus } from "../../shared/project-statuses.ts";
 import type { RepositoryVisibility } from "../vault/github-repositories.ts";
 import { applyProjectDetails, setRepositoryType } from "./project-file.ts";
@@ -31,7 +32,10 @@ export interface NewProjectInput {
   readonly repository: NewRepository | null;
   /** True creates a Google Drive folder named after the title. */
   readonly drive: boolean;
-  /** A specialist gets no repository and no Drive folder, but a chat (#703). */
+  /**
+   * A general project gets no repository (#768). A specialist gets no repository and no Drive
+   * folder, but a first chat (#703).
+   */
   readonly type: ProjectType;
 }
 
@@ -95,9 +99,11 @@ export async function createProject(
   const title = input.name.trim();
   const description = input.description.replaceAll("\r\n", "\n").trim();
   const projectId = formatProjectId(options.wallClock, title);
-  // A specialist saves its work in the vault, so it gets no clone and no repository (#703).
-  if (input.type === "specialist" && (input.repository !== null || input.drive))
-    throw new EvaError("project_invalid", "A specialist has no repository and no Drive folder.");
+  // A general project and a specialist save their work in the vault, so they get no clone and no repository.
+  if (!worksInClones(input.type) && input.repository !== null)
+    throw new EvaError("project_invalid", `${projectTypeNoun(input.type, true)} has no repository.`);
+  if (input.type === "specialist" && input.drive)
+    throw new EvaError("project_invalid", "A specialist has no Drive folder.");
   const textWith = (results: { repository: string | null; driveFolder: string | null }): string =>
     projectText(options.wallClock, title, description, input, results);
   // A bad title or tag fails here, before the folder or a step exists.
@@ -198,11 +204,15 @@ function projectText(
   // The body keeps the whole description. A JSON string is a YAML string too, so `: ` stays one value.
   const summary = oneLineSummary(description.split(/\n\s*\n/)[0] ?? "");
   const summaryLine = summary === null ? "" : `summary: ${JSON.stringify(summary)}\n`;
-  return applyProjectDetails(`---\ncreated: ${wallClock}\n${summaryLine}---\n\n${body}\n`, {
-    title,
-    status: input.status,
-    tags: input.tags,
-    repos: results.repository === null ? [] : [results.repository],
-    type: input.type,
-  });
+  // Every type writes its key, so a later change of `repos` never changes the type (#768).
+  return applyProjectDetails(
+    `---\ncreated: ${wallClock}\n${summaryLine}status: ${input.status}\ntype: ${input.type}\n---\n\n${body}\n`,
+    {
+      title,
+      status: input.status,
+      tags: input.tags,
+      repos: results.repository === null ? [] : [results.repository],
+      type: input.type,
+    },
+  );
 }

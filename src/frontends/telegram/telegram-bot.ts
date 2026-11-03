@@ -482,13 +482,15 @@ export class TelegramBot {
       return;
     }
     // Before the download: a file that cannot be kept must not leave Telegram, nor start a chat.
-    // A saved file would give a specialist a vault path, so its chat takes none (#703).
-    if (chat !== null && chatKind(chat) === "specialist") {
-      await this.send(chatId, topicId, "This chat takes no files.");
-      return;
-    }
+    // Every chat takes files: a chat in a project folder gets them in the vault too (#768).
     if (!(chat !== null && chatKind(chat) === "project") && this.options.eva.status().vaultPath === null) {
       await this.send(chatId, topicId, "No vault is configured, so Eva cannot keep the file.");
+      return;
+    }
+    try {
+      this.options.eva.checkFileProject(existing);
+    } catch (error) {
+      await this.send(chatId, topicId, `Eva cannot keep the file: ${this.describeError(error)}`);
       return;
     }
     const bytes = await this.files.download(chatId, topicId, file);

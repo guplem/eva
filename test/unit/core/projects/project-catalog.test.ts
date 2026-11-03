@@ -7,9 +7,9 @@ import {
   parseFrontMatter,
   parseProjectQuery,
   searchProjects,
-  specialistClonesWarning,
-  specialistOutsideWarning,
-  specialistReposWarning,
+  noClonesWarning,
+  outsideWarning,
+  reposWarning,
   titleHeading,
 } from "../../../../src/core/projects/project-catalog.ts";
 
@@ -50,13 +50,18 @@ describe("parseFrontMatter", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  test("reads the project type: no type is software, and an unknown type warns (#703)", () => {
+  test("reads the project type: no type is general, or software with repos, and an unknown type warns (#768)", () => {
     const front = "created: 2025-03-02T10:15\nstatus: active";
+    const repos = "repos:\n  - https://github.com/owner/app";
     expect(parseFrontMatter(`---\n${front}\ntype: specialist\n---\n`).frontMatter?.type).toBe("specialist");
+    expect(parseFrontMatter(`---\n${front}\ntype: general\n${repos}\n---\n`).frontMatter?.type).toBe("general");
+    expect(parseFrontMatter(`---\n${front}\ntype: software\n---\n`).frontMatter?.type).toBe("software");
     expect(parseFrontMatter(`---\n${front}\ntype: software\n---\n`).frontMatter?.extra).toEqual({});
+    expect(parseFrontMatter(`---\n${front}\n---\n`).frontMatter?.type).toBe("general");
+    expect(parseFrontMatter(`---\n${front}\n${repos}\n---\n`).frontMatter?.type).toBe("software");
     const unknown = parseFrontMatter(`---\n${front}\ntype: robot\n---\n`);
-    expect(unknown.frontMatter?.type).toBe("software");
-    expect(unknown.warnings).toEqual(["type must be software or specialist"]);
+    expect(unknown.frontMatter?.type).toBe("general");
+    expect(unknown.warnings).toEqual(["type must be general, software or specialist"]);
   });
 
   test("accepts Windows line endings", () => {
@@ -243,11 +248,15 @@ describe("discoverProjects", () => {
     ]);
   });
 
-  test("a specialist with repositories, or outside the vault, warns (#703)", () => {
+  test("a specialist or general project with repositories, or outside the vault, warns (#703, #768)", () => {
     addProject("2025-03-02-1015-coach", "created: 2025-03-02T10:15\nstatus: active\ntype: specialist");
     addProject(
       "2025-03-03-1015-trainer",
       "created: 2025-03-03T10:15\nstatus: active\ntype: specialist\nrepos:\n  - https://github.com/owner/app",
+    );
+    addProject(
+      "2025-03-04-1015-house",
+      "created: 2025-03-04T10:15\nstatus: active\ntype: general\nrepos:\n  - https://github.com/owner/app",
     );
     const extra = join(vault, "elsewhere");
     mkdirSync(join(extra, "2026-01-01-0000-outside"), { recursive: true });
@@ -260,15 +269,18 @@ describe("discoverProjects", () => {
     );
     expect(warnings).toEqual({
       "2025-03-02-1015-coach": [],
-      "2025-03-03-1015-trainer": [specialistReposWarning],
-      "2026-01-01-0000-outside": [specialistOutsideWarning],
+      "2025-03-03-1015-trainer": [reposWarning("specialist")],
+      "2025-03-04-1015-house": [reposWarning("general")],
+      "2026-01-01-0000-outside": [outsideWarning("specialist")],
     });
   });
 
   test("a specialist with a clone on this machine warns, as another machine can change the type (#703)", () => {
     addProject("2025-03-02-1015-coach", "created: 2025-03-02T10:15\nstatus: active\ntype: specialist");
     mkdirSync(join(vault, "Projects", "2025-03-02-1015-coach", "repos", "clone-0"), { recursive: true });
-    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.warnings).toEqual([specialistClonesWarning]);
+    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.warnings).toEqual([
+      noClonesWarning("specialist"),
+    ]);
   });
 
   test("a vault with no Projects folder has no projects", () => {

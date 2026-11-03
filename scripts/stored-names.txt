@@ -327,6 +327,7 @@ migration vault 2026-10-30-project-types
 migration vault 2026-10-30-settings-folder
 migration vault 2026-10-31-secret-files
 migration vault 2026-11-02-eva-scratch
+migration vault 2026-11-02-general-project-type
 migration vault 2026-11-02-pinned-files
 migration vault 2026-11-03-format-settings
 typed cli --check
@@ -512,3 +513,6 @@ vault Projects/*/AGENTS.md status=paused
 vault Projects/*/AGENTS.md summary
 vault Projects/*/AGENTS.md tags
 vault Projects/*/AGENTS.md type
+vault Projects/*/AGENTS.md type=general
+vault Projects/*/AGENTS.md type=software
+vault Projects/*/AGENTS.md type=specialist

@@ -81,7 +81,7 @@ beforeEach(() => {
   sandbox.write(
     vault,
     "Projects/2025-03-02-1015-example-app/AGENTS.md",
-    "---\ncreated: 2025-03-02T10:15\nstatus: active\n---\n# Example app\n",
+    "---\ncreated: 2025-03-02T10:15\nstatus: active\ntype: software\n---\n# Example app\n",
   );
   sandbox.git(vault, "add", "-A");
   sandbox.git(vault, "commit", "-q", "-m", "files");
@@ -1459,7 +1459,7 @@ describe("web routes", () => {
   test("a project's AGENTS.md: read it, save its details, save it whole", async () => {
     const path = "/api/projects/2025-03-02-1015-example-app";
     const read = await json<{ text: string; version: string }>(await call(`${path}/file`));
-    expect(read.text).toBe("---\ncreated: 2025-03-02T10:15\nstatus: active\n---\n# Example app\n");
+    expect(read.text).toBe("---\ncreated: 2025-03-02T10:15\nstatus: active\ntype: software\n---\n# Example app\n");
 
     const details = await call(`${path}/details`, {
       method: "PUT",
@@ -1467,7 +1467,7 @@ describe("web routes", () => {
     });
     expect(details.status).toBe(200);
     const saved = await json<{ text: string; version: string }>(details);
-    expect(saved.text).toBe("---\ncreated: 2025-03-02T10:15\ntags:\n  - work\n---\n# Better app\n");
+    expect(saved.text).toBe("---\ncreated: 2025-03-02T10:15\ntype: software\ntags:\n  - work\n---\n# Better app\n");
 
     const whole = await call(`${path}/file`, {
       method: "PUT",

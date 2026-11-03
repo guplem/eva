@@ -13,4 +13,13 @@ describe("chatKind", () => {
     expect(chatKindName("project")).toBe("Project");
     expect(chatKindName("specialist")).toBe("Specialist");
   });
+
+  test("a chat in a project folder is named after the project type, so the label follows a type change (#768)", () => {
+    expect(chatKindName("specialist", "specialist")).toBe("Specialist");
+    expect(chatKindName("specialist", "general")).toBe("Project");
+    expect(chatKindName("project", "software")).toBe("Project");
+    // A software project's chat in its folder is left from an older type: it stays as it was.
+    expect(chatKindName("specialist", "software")).toBe("Specialist");
+    expect(chatKindName("assistant", undefined)).toBe("Assistant");
+  });
 });

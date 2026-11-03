@@ -1,7 +1,7 @@
 /** The words and colours of the project pages. */
 import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
-import type { Project } from "./api.ts";
-import type { ProjectType } from "../../../core/projects/project-catalog.ts";
+import type { Project, ProjectDetails } from "./api.ts";
+import { projectTypes, worksInClones, type ProjectType } from "../../../shared/project-types.ts";
 import { repositoryName } from "../../../core/projects/repository-name.ts";
 
 /** The colour of a status pill: `--ok`, `--warn`, the accent of `--soft`, or the muted chip. */
@@ -59,9 +59,34 @@ export function statusPill(status: Project["frontMatter"]["status"]): Pill | nul
   return status === null ? null : { text: statusLabels[status], tone: statusTones[status] };
 }
 
-/** "2 clones · 3 chats", for the project card. A specialist has no clones (#703). */
+/** The word for each project type, the same in the New project form, the details form and the card. */
+const projectTypeLabels: Readonly<Record<ProjectType, string>> = {
+  general: "General",
+  software: "Software",
+  specialist: "Specialist",
+};
+
+/** The choices of a project type field, General first: no type means general (#768). */
+export const projectTypeChoices: readonly { readonly value: ProjectType; readonly label: string }[] = projectTypes.map(
+  (type) => ({ value: type, label: projectTypeLabels[type] }),
+);
+
+/** What each type is, under the type field of the New project form. */
+export const projectTypeHints: Readonly<Record<ProjectType, string>> = {
+  general: "A folder of notes and files, such as plans or reference photos: a house, a scale model, a book.",
+  software: "Work in repositories, such as an app, a website or a widget. Each chat works in a clone.",
+  specialist: "A chat with its own rules and memory, such as a coach. It keeps its files in this project folder.",
+};
+
+/** The type of a choice of `projectTypeChoices`, or null for any other value. */
+export function projectTypeOf(value: string): ProjectType | null {
+  return projectTypes.find((type) => type === value) ?? null;
+}
+
+/** "2 clones · 3 chats", for the project card. A general project and a specialist have no clones (#703, #768). */
 export function projectSummary(cloneCount: number, chatCount: number, type: ProjectType = "software"): string {
-  if (type === "specialist") return `Specialist · ${chatCount === 0 ? "No chats yet" : countOf(chatCount, "chat")}`;
+  if (!worksInClones(type))
+    return `${projectTypeLabels[type]} · ${chatCount === 0 ? "No chats yet" : countOf(chatCount, "chat")}`;
   const clones = cloneCount === 0 ? "No clones yet" : countOf(cloneCount, "clone");
   return chatCount === 0 ? clones : `${clones} · ${countOf(chatCount, "chat")}`;
 }
@@ -195,4 +220,17 @@ export function canPush(clone: { readonly changes: number | null; readonly ahead
 export function widgetRepositoryNames(project: Pick<Project, "frontMatter">): Set<string> {
   const { repos, repoTypes } = project.frontMatter;
   return new Set(repos.filter((url) => repoTypes[url] === "widget").map(repositoryName));
+}
+
+/** True when the form holds the details as loaded. A missing type is general, as the form shows it (#768). */
+export function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {
+  const sameList = (one: readonly string[], two: readonly string[]): boolean =>
+    one.length === two.length && one.every((value, index) => value === two[index]);
+  return (
+    first.title === second.title &&
+    first.status === second.status &&
+    (first.type ?? "general") === (second.type ?? "general") &&
+    sameList(first.tags, second.tags) &&
+    sameList(first.repos, second.repos)
+  );
 }

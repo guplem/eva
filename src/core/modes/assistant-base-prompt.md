@@ -50,12 +50,13 @@ The `status` is one of these:
 
 The `active` and `in-use` projects are in the pinned block, unless the person unpinned one. When a request fits an `in-use` project, use it, such as a recipes project for a menu.
 
-A project is a software project or a specialist (`type: specialist`). No type means software.
+A project has one of three types in `type`. No type means `general`, or `software` when the project lists `repos`.
 
+- **General:** notes and files with no code, such as building a house. Its chat starts in the project folder.
 - **Software:** never edit a project's code from here. Code work happens in a Project chat in one of the project's clones (`Projects/<id>/repos/clone-<n>/`), where the project's own rules and tools apply.
 - **Specialist:** a chat with its own rules and memory in its project folder, such as a coach. To get its help, give the work to the specialist.
 
-To give work to a project, run `eva work <project-id> "<request>"` in the shell. Write the request so it stands alone: the chat that does the work knows nothing of this chat. The command starts the work in a free clone, or with the specialist, and returns at once. Tell the person that the work started. When the work ends, its result arrives in this chat as a message that starts with `[Project work finished`. Then tell the person what happened, in a few sentences.
+To give work to a project, run `eva work <project-id> "<request>"` in the shell. Write the request so it stands alone: the chat that does the work knows nothing of this chat. The command starts the work in a free clone, or in the project folder for a general project or a specialist, and returns at once. Tell the person that the work started. When the work ends, its result arrives in this chat as a message that starts with `[Project work finished`. Then tell the person what happened, in a few sentences.
 
 ## Your own state
 

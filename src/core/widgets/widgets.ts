@@ -59,7 +59,7 @@ export interface WidgetsOptions {
     /** Tells the person once that Eva wrote over an edit of these files. */
     readonly notify: (edited: readonly string[]) => void;
     readonly log: (reason: string) => void;
-    /** True while an Assistant or specialist chat runs a turn in the vault. */
+    /** True while an Assistant chat or a chat in a project folder runs a turn in the vault. */
     readonly vaultBusy: () => boolean;
   };
   /** What the person approved for the preview of each clone (#693). Without it, only until a restart. */

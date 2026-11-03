@@ -10,6 +10,7 @@ import {
   tagsByUse,
   removedRepositoriesHint,
   repositoryLabel,
+  sameDetails,
   repositoryWebUrl,
   statusPill,
   syncPills,
@@ -43,6 +44,11 @@ describe("projectSummary", () => {
     expect(projectSummary(2, 3)).toBe("2 clones · 3 chats");
     // A chat can outlive its clone folder.
     expect(projectSummary(0, 2)).toBe("No clones yet · 2 chats");
+  });
+
+  test("a general project has no clones, so it counts its chats only (#768)", () => {
+    expect(projectSummary(0, 0, "general")).toBe("General · No chats yet");
+    expect(projectSummary(0, 3, "general")).toBe("General · 3 chats");
   });
 
   test("a specialist has no clones, so it counts its chats only (#703)", () => {
@@ -216,5 +222,21 @@ describe("widgetRepositoryNames", () => {
       },
     };
     expect([...widgetRepositoryNames({ frontMatter } as unknown as Project)]).toEqual(["habits", "w"]);
+  });
+});
+
+describe("sameDetails", () => {
+  const details = { title: "House", status: "active" as const, tags: ["home"], repos: [] };
+
+  test("a missing type is general, as the form shows it (#768)", () => {
+    expect(sameDetails(details, { ...details, type: "general" })).toBe(true);
+    expect(sameDetails(details, { ...details, type: "software" })).toBe(false);
+  });
+
+  test("a changed title, status, tag or repository differs", () => {
+    expect(sameDetails(details, { ...details, title: "Home" })).toBe(false);
+    expect(sameDetails(details, { ...details, status: "paused" })).toBe(false);
+    expect(sameDetails(details, { ...details, tags: [] })).toBe(false);
+    expect(sameDetails(details, { ...details, repos: ["https://github.com/example/example-app"] })).toBe(false);
   });
 });

@@ -85,7 +85,7 @@ Each project is a folder `Projects/YYYY-MM-DD-HHmm-name/`, named after its creat
 ---
 created: 2026-01-31T09:15
 status: active # idea, active, in-use, paused or closed
-type: software # software or specialist. No type means software
+type: software # general, software or specialist. No type means general
 summary: One line that says what the project is.
 repos:
   - https://github.com/example/example-app
@@ -94,8 +94,9 @@ repos:
 
 `active` is a project that the person develops. `in-use` is a project that the person uses now, such as a project that makes the week's menus.
 
-A project is one of two types:
+A project is one of three types:
 
+- **General:** a folder of notes and files, such as plans, reference photos or drafts: building a house, a scale model, a book. The text under the front matter describes the project.
 - **Software:** work in repositories, such as an app, a website or a widget. The text under the front matter describes the project for the person and for you. It names the repository to read first. The rules for the code live in each repository's own `AGENTS.md`. The project's notes sit beside the file.
 - **Specialist:** a chat with its own rules and memory, such as a gym coach. The text under the front matter holds the rules of the specialist. Its memory and its other files sit beside the file. A specialist has no repository and no clone.
 

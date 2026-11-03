@@ -1009,25 +1009,30 @@ describe("/chats: every chat of the instance (#9)", () => {
     ]);
   });
 
-  test("names the kind of each chat: a chat in a clone and a specialist chat (#703)", () => {
-    const project = (title: string, clone?: string): string =>
+  test("names the kind of each chat: a chat in a clone, a specialist chat and a general chat (#703, #768)", () => {
+    const vault = join(sandbox.root, "vault");
+    sandbox.write(vault, "Projects/2026-01-01-0000-coach/AGENTS.md", "---\nstatus: active\ntype: specialist\n---\n");
+    sandbox.write(vault, "Projects/2026-01-02-0000-house/AGENTS.md", "---\nstatus: active\n---\n");
+    const project = (title: string, projectId: string, clone?: string): string =>
       eva.sessions.createSession({
         mode: "project",
         engine: "claude-code",
         model: "opus",
-        startFolder: "/vault/Projects/2026-01-01-0000-coach",
+        startFolder: join(vault, "Projects", projectId),
         source: "web",
-        projectId: "2026-01-01-0000-coach",
+        projectId,
         title,
         ...(clone === undefined ? {} : { clone }),
       }).id;
-    const coach = project("Plan the week");
-    const app = project("Fix the login", "clone-0");
+    const coach = project("Plan the week", "2026-01-01-0000-coach");
+    const app = project("Fix the login", "2026-01-01-0000-coach", "clone-0");
+    const house = project("Plan the walls", "2026-01-02-0000-house");
     const bot = createBot();
     telegram.sendText(owner, "/chats");
     return settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick a chat"))).then(() => {
       expect(chatButtons()).toContainEqual({ text: "Specialist: Plan the week", callback_data: `o:${coach}` });
       expect(chatButtons()).toContainEqual({ text: "Project: Fix the login", callback_data: `o:${app}` });
+      expect(chatButtons()).toContainEqual({ text: "Project: Plan the walls", callback_data: `o:${house}` });
     });
   });
 
@@ -2573,7 +2578,8 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(readdirSync(join(cloneFolder, ".mentions"))).toHaveLength(1);
   });
 
-  test("a file in the topic of a specialist chat gets an answer, and leaves Telegram not at all (#703)", async () => {
+  test("a file in the topic of a specialist chat lands in its project's received folder (#768)", async () => {
+    sandbox.write(vault(), "Projects/2026-01-01-0000-coach/AGENTS.md", "---\nstatus: active\ntype: specialist\n---\n");
     const chat = eva.sessions.createSession({
       mode: "project",
       engine: "claude-code",
@@ -2586,7 +2592,29 @@ describe("files (lessons 72, 74, 124)", () => {
     telegram.pressButton(owner, `o:${chat.id}`);
     await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
     telegram.sendFile(owner, "document", new Uint8Array([4, 5]), { fileName: "plan.pdf", topicId: 500 });
-    await settle(bot, () => telegram.sentTexts().includes("This chat takes no files."));
+    await settle(bot, () => engine.requests.length === 1);
+    expect(engine.requests[0]?.prompt).toMatch(
+      /saved as \S+[\\/]\.eva[\\/]scratch[\\/]received[\\/]2026-01-01-0000-coach[\\/]plan-[0-9a-f]{12}\.pdf\. It is temporary/,
+    );
+    expect(telegram.sentTexts()).not.toContain("This chat takes no files.");
+  });
+
+  test("a file for a chat whose project is gone is refused before the download (#768)", async () => {
+    sandbox.write(vault(), "Projects/2026-01-01-0000-coach/AGENTS.md", "---\nstatus: active\ntype: specialist\n---\n");
+    const chat = eva.sessions.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: join(vault(), "Projects", "2026-01-01-0000-coach"),
+      source: "web",
+      projectId: "2026-01-01-0000-coach",
+    });
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${chat.id}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
+    rmSync(join(vault(), "Projects", "2026-01-01-0000-coach"), { recursive: true, force: true });
+    telegram.sendFile(owner, "document", new Uint8Array([4, 5]), { fileName: "plan.pdf", topicId: 500 });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("The project of this chat is gone")));
     expect(telegram.callsTo("getFile")).toEqual([]);
     expect(engine.requests).toEqual([]);
   });

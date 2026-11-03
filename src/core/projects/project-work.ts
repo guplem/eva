@@ -10,6 +10,7 @@ import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { chatKind } from "../../shared/chat-kind.ts";
+import { projectTypeNoun, worksInClones, type ProjectType } from "../../shared/project-types.ts";
 import { cheapestModel, type ModelCalls } from "../model-calls/model-calls.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { ChatSummarizer } from "../sessions/chat-summary.ts";
@@ -51,6 +52,7 @@ import {
   applyProjectDetails,
   checkProjectFile,
   fileVersion,
+  hasTypeKey,
   matchFileStyle,
   projectFileOf,
   setRepositoryType,
@@ -194,9 +196,9 @@ export class ProjectWork {
   /** A Project chat in the named clone, or in a free clone, or in a new clone. */
   async createSession(input: NewProjectChatInput): Promise<SessionRecord> {
     const project = this.project(input.projectId);
-    if (project.frontMatter.type === "specialist") {
-      if (input.cloneName !== undefined) throw noClones();
-      return this.specialistChat(project, input);
+    if (!worksInClones(project.frontMatter.type)) {
+      if (input.cloneName !== undefined) throw noClones(project.frontMatter.type);
+      return this.folderChat(project, input);
     }
     const inClone = (clone: Clone | undefined): SessionRecord => {
       if (clone === undefined)
@@ -239,10 +241,11 @@ export class ProjectWork {
   }
 
   /**
-   * A chat in the folder of a specialist (#703). It has no clone: it saves its work in the vault.
-   * Only the vault reaches the person's other machines, so a specialist elsewhere gets no chat.
+   * A chat in the folder of a general project or a specialist (#703, #768). It has no clone: it
+   * saves its work in the vault. Only the vault reaches the person's other machines, so such a
+   * project elsewhere gets no chat.
    */
-  private specialistChat(project: Project, input: NewChatInput & { reportsTo?: string }): SessionRecord {
+  private folderChat(project: Project, input: NewChatInput & { reportsTo?: string }): SessionRecord {
     if (project.vaultFolder === null)
       throw new EvaError(
         "project_invalid",
@@ -282,7 +285,7 @@ export class ProjectWork {
   async fork(sessionId: string, atMessageId: string, files: ForkFiles = "same-clone"): Promise<BranchResult> {
     const sessions = this.options.sessions;
     const from = sessions.get(sessionId);
-    if (chatKind(from) === "specialist" && files !== "same-clone") throw noClones();
+    if (chatKind(from) === "specialist" && files !== "same-clone") throw noClones(null);
     if (from.mode !== "project" || files === "same-clone")
       return { session: sessions.fork(sessionId, atMessageId), notice: null };
     const turns = sessions.branchTurns(sessionId);
@@ -306,7 +309,7 @@ export class ProjectWork {
   async retry(sessionId: string, turnIndex: number, files: RetryChoice = "keep"): Promise<BranchResult> {
     const sessions = this.options.sessions;
     const from = sessions.get(sessionId);
-    if (chatKind(from) === "specialist" && files === "new-clone") throw noClones();
+    if (chatKind(from) === "specialist" && files === "new-clone") throw noClones(null);
     if (from.mode !== "project" || files !== "new-clone")
       return {
         session: await sessions.retry(sessionId, turnIndex, files === "new-clone" ? "keep" : files),
@@ -415,19 +418,18 @@ export class ProjectWork {
     const project = this.project(input.projectId);
     const sessions = this.options.sessions;
     const reportsTo = input.reportToSessionId === null ? {} : { reportsTo: input.reportToSessionId };
-    // A specialist does the work in its own folder, with no clone (#703).
-    const clone =
-      project.frontMatter.type === "specialist"
-        ? null
-        : // The reservation happens inside the choice, so a second work cannot pick the same clone.
-          await this.oneCloneChoiceAtATime(project, async () => {
-            const chosen = await this.freeOrNewClone(project);
-            this.reservedClones.add(chosen.path);
-            return chosen;
-          });
+    // A general project and a specialist do the work in their own folder, with no clone (#703, #768).
+    const clone = !worksInClones(project.frontMatter.type)
+      ? null
+      : // The reservation happens inside the choice, so a second work cannot pick the same clone.
+        await this.oneCloneChoiceAtATime(project, async () => {
+          const chosen = await this.freeOrNewClone(project);
+          this.reservedClones.add(chosen.path);
+          return chosen;
+        });
     const session =
       clone === null
-        ? this.specialistChat(project, { source: "cli", ...reportsTo })
+        ? this.folderChat(project, { source: "cli", ...reportsTo })
         : sessions.createSession({
             mode: "project",
             engine: this.options.defaultEngine,
@@ -472,7 +474,8 @@ export class ProjectWork {
         });
         return;
       }
-      const place = clone === null ? "specialist" : [`clone ${clone.name}`, ...details.map(repositoryPlace)].join("; ");
+      const place =
+        clone === null ? "project folder" : [`clone ${clone.name}`, ...details.map(repositoryPlace)].join("; ");
       const report = {
         projectId: project.id,
         projectTitle: project.title,
@@ -500,7 +503,7 @@ export class ProjectWork {
    */
   async repositorySetup(projectId: string): Promise<SetupReport[]> {
     const project = this.project(projectId);
-    if (project.frontMatter.type === "specialist") throw noClones();
+    if (!worksInClones(project.frontMatter.type)) throw noClones(project.frontMatter.type);
     return this.reports(project, project.frontMatter.repos);
   }
 
@@ -581,8 +584,8 @@ export class ProjectWork {
     items: readonly string[] | null,
   ): Promise<RepositoryFixResult> {
     const project = this.project(projectId);
-    // A fix can open a chat of the project, which for a specialist would run a GitHub request in the vault.
-    if (project.frontMatter.type === "specialist") throw noClones();
+    // A fix can open a chat of the project, which in a project folder would run a GitHub request in the vault.
+    if (!worksInClones(project.frontMatter.type)) throw noClones(project.frontMatter.type);
     return (await this.runFixes(project, repository, items)).result;
   }
 
@@ -641,7 +644,7 @@ export class ProjectWork {
    */
   async setUpRepository(projectId: string, url: string): Promise<NewProjectSetup> {
     const project = this.project(projectId);
-    if (project.frontMatter.type === "specialist") throw noClones();
+    if (!worksInClones(project.frontMatter.type)) throw noClones(project.frontMatter.type);
     const type = repositoryTypeOf(project.frontMatter.repoTypes[url]);
     const slug = githubSlug(url);
     if (type?.afterCreate !== undefined && slug !== null) {
@@ -933,17 +936,28 @@ export class ProjectWork {
   }
 
   /**
-   * A chat of a specialist works in the project folder, and a chat of a software project in a clone.
-   * A new type would change the kind of each chat under the person, so it waits for none (#703).
+   * A chat of a general project or a specialist works in the project folder, and a chat of a
+   * software project in a clone. A change to or from software would change the kind of each chat
+   * under the person, so it waits for none (#703). General and specialist chats both start in the
+   * project folder, so a switch between them keeps every chat (#768).
    */
   private checkTypeChange(projectId: string, before: string, after: string): void {
-    const typeOf = (text: string): string | undefined => projectFileOf(text).details?.type;
-    if (typeOf(before) === typeOf(after)) return;
+    const inClones = (text: string): boolean | undefined => {
+      const type = projectFileOf(text).details?.type;
+      return type === undefined ? undefined : worksInClones(type);
+    };
+    if (inClones(before) === inClones(after)) return;
     const project = this.project(projectId);
     if (project.clones.length > 0)
       throw new EvaError("project_invalid", `${project.title} has clones. Delete them before you change its type.`);
-    if (this.options.sessions.list().some((chat) => chat.projectId === projectId))
-      throw new EvaError("project_invalid", `${project.title} has chats. Delete them before you change its type.`);
+    if (this.options.sessions.list().some((chat) => chat.projectId === projectId)) {
+      // With no key, `repos` alone makes a project software, so the person may not see the change.
+      const hint =
+        inClones(after) === true && !hasTypeKey(after)
+          ? "Its repos make it a software project. To keep it general, write `type: general`."
+          : "Delete them before you change its type.";
+      throw new EvaError("project_invalid", `${project.title} has chats. ${hint}`);
+    }
   }
 
   /** The path comes from the project list, never from the id, so an id cannot point outside it. */
@@ -958,8 +972,8 @@ export class ProjectWork {
   }
 
   private async cloneInto(project: Project): Promise<Clone> {
-    // Every new clone comes here, so no path, such as a cached page's New clone, clones into a specialist.
-    if (project.frontMatter.type === "specialist") throw noClones();
+    // Every new clone comes here, so no path, such as a cached page's New clone, clones into a project folder.
+    if (!worksInClones(project.frontMatter.type)) throw noClones(project.frontMatter.type);
     if (project.frontMatter.repos.length === 0)
       throw new EvaError("project_not_found", `Project ${project.id} lists no repository to clone.`);
     return createClone({
@@ -1132,12 +1146,13 @@ export class ProjectWork {
   }
 }
 
-/** A specialist saves its work in the vault, so it never gets a clone (#703). */
-function noClones(): EvaError {
-  return new EvaError(
-    "project_invalid",
-    "A specialist has no clones and no repository: its chats work in its own folder.",
-  );
+/**
+ * A general project and a specialist save their work in the vault, so they never get a clone (#703,
+ * #768). Null names no type, for a chat whose project Eva did not read.
+ */
+function noClones(type: ProjectType | null): EvaError {
+  const subject = type === null ? "This project" : projectTypeNoun(type, true);
+  return new EvaError("project_invalid", `${subject} has no clones: its chats work in the project folder.`);
 }
 
 /**

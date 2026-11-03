@@ -287,13 +287,14 @@ export function Composer({
   }, [voice.state.phase]);
   const canRecord = block === null && voice.isSupported;
   const showMic = canRecord && isEmpty;
-  // A chat in a clone gets a copy of each file in its clone (#706). A Project chat with no clone,
-  // such as a specialist chat, keeps its files in the vault, so it takes none here.
-  // A new chat's draft has no clone yet.
+  // A chat in a clone gets a copy of each file in its clone (#706). A chat in a project folder, such
+  // as a general or specialist chat, gets it in its project's received folder (#768). A new chat's
+  // draft has no clone and no id yet. The mention picker of vault files stays off in a project folder.
   const kind = chatKind({ mode: session.mode, clone: session.clone ?? null });
   const inClone = kind === "project" && session.id !== undefined;
-  const canAttach = kind === "assistant" || inClone;
-  const mentions = useMentionPicker(canAttach && block === null, box, text, setText, inClone);
+  const inFolder = kind === "specialist" && session.id !== undefined;
+  const canAttach = kind === "assistant" || inClone || inFolder;
+  const mentions = useMentionPicker((kind === "assistant" || inClone) && block === null, box, text, setText, inClone);
   // A file picked during a send that fails would be lost when the box gets its files back.
   const takesFiles = canAttach && block === null && !sending;
   if (voice.state.phase !== "idle") {

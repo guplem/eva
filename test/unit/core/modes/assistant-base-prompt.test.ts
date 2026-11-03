@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assistantBasePrompt } from "../../../../src/core/modes/assistant-base-prompt.ts";
 import { projectStatuses } from "../../../../src/shared/project-statuses.ts";
+import { projectTypes } from "../../../../src/shared/project-types.ts";
 import { defaultAssistantRules } from "../../../../src/core/vault/vault-template.ts";
 import { evaRepository } from "../../../../src/shared/version.ts";
 
@@ -44,6 +45,12 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain(
       "**A case line marked `DUE`** has a `next` date that has come. **A `DEADLINE` mark** means its deadline is 14 days away or less, or has passed. Tell the person once in the chat, when it fits.",
     );
+  });
+
+  test("names each project type, and the default by repos, so the agent never writes a wrong type (#768)", () => {
+    for (const type of projectTypes)
+      expect(assistantBasePrompt).toContain(`**${type.charAt(0).toUpperCase()}${type.slice(1)}:**`);
+    expect(assistantBasePrompt).toContain("No type means `general`, or `software` when the project lists `repos`.");
   });
 
   test("sends a Google login to Settings: the login link of the Google tools opens only on Eva's computer", () => {

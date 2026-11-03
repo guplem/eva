@@ -1903,7 +1903,7 @@ describe("web routes", () => {
     }
     const read = await json<Rules>(await call("/api/assistant-rules"));
     expect(read).toMatchObject({ text: "# You are Eva\n", builtIn: "Base." });
-    expect(read.defaultText).toContain("## Learning");
+    expect(read.defaultText).toContain("## Behaviour");
 
     const saved = await json<Rules>(
       await call("/api/assistant-rules", { method: "PUT", body: { version: read.version, text: "# Mine\n" } }),

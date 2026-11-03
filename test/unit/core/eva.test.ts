@@ -3032,6 +3032,8 @@ describe("Eva alerts", () => {
 
 describe("vault structure (#773)", () => {
   const startMigrations: StartMigrations = { machine: { kind: "done", applied: [], later: [] }, vault: null };
+  const structureWarnings = (instance: Eva): unknown[] =>
+    instance.status().problemDetails.filter((problem) => problem.key === "vault_structure");
 
   test("the hub tells the person once for each version, and the first new chat gets the line once", async () => {
     const engine = new FakeEngine();
@@ -3048,9 +3050,9 @@ describe("vault structure (#773)", () => {
     instance.reportStartMigrations(startMigrations);
     instance.reportStartMigrations(startMigrations);
     const news = alerts.filter((alert) => alert.key === "vault_structure");
-    expect(news.map((alert) => alert.level)).toEqual(["news"]);
+    expect(news.map((alert) => alert.level)).toEqual(["warn"]);
     expect(news[0]?.message).toContain("Vault and sync, Vault structure");
-    // A restart reads the hub's memory, so the alert does not come again.
+    // A restart reads the hub's memory, so the alert does not come again; the warning stays (#801).
     const again = start(engine);
     const later: Alert[] = [];
     again.onAlert((alert) => {
@@ -3058,6 +3060,7 @@ describe("vault structure (#773)", () => {
     });
     again.reportStartMigrations(startMigrations);
     expect(later.filter((alert) => alert.key === "vault_structure")).toEqual([]);
+    expect(structureWarnings(again)).toHaveLength(1);
     const line = `[Vault structure: version ${String(newestStructureVersion)} is available. This vault is at version 2.`;
     const first = again.createAssistantSession({ source: "web" });
     await again.sessions.send(first.id, "Hello");
@@ -3077,6 +3080,71 @@ describe("vault structure (#773)", () => {
     instance.reportStartMigrations(startMigrations);
     expect(alerts.filter((alert) => alert.key === "vault_structure")).toEqual([]);
     expect(instance.vaultStructure()).toMatchObject({ current: newestStructureVersion, summary: "" });
+  });
+
+  test("a read warning goes, and stays gone for that version after a restart (#801)", () => {
+    const engine = new FakeEngine();
+    const instance = start(engine);
+    instance.reportStartMigrations(startMigrations);
+    expect(structureWarnings(instance)).toMatchObject([{ level: "warn", hidden: false }]);
+    expect(instance.hideProblem("vault_structure")).toBe(true);
+    expect(structureWarnings(instance)).toEqual([]);
+    expect(instance.notifications().entries.filter((entry) => entry.key === "vault_structure")).toMatchObject([
+      { level: "warn", read: true },
+    ]);
+    const again = start(engine);
+    again.reportStartMigrations(startMigrations);
+    expect(structureWarnings(again)).toEqual([]);
+  });
+
+  test("marking all as read reads the warning too (#801)", () => {
+    const instance = start(new FakeEngine());
+    instance.reportStartMigrations(startMigrations);
+    instance.markNotificationsRead({ all: true });
+    expect(structureWarnings(instance)).toEqual([]);
+    const again = start(new FakeEngine());
+    again.reportStartMigrations(startMigrations);
+    expect(structureWarnings(again)).toEqual([]);
+  });
+
+  test("the warning clears when the vault reaches the newest structure, with no resolved alert (#801)", async () => {
+    const instance = start(new FakeEngine());
+    const alerts: Alert[] = [];
+    instance.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    instance.reportStartMigrations(startMigrations);
+    // As `eva vault-upgrade finish` records it; a step that fails still looks again.
+    sandbox.write(vault, ".eva/vault-structure.json", JSON.stringify({ version: newestStructureVersion }));
+    await instance.upgradeVault("finish").catch(() => undefined);
+    expect(structureWarnings(instance)).toEqual([]);
+    expect(alerts.filter((alert) => alert.key === "vault_structure").map((alert) => alert.level)).toEqual(["warn"]);
+    // An undo takes the vault back: the warning that was never read comes back, unsent.
+    sandbox.write(vault, ".eva/vault-structure.json", JSON.stringify({ version: 2 }));
+    await instance.upgradeVault("undo").catch(() => undefined);
+    expect(structureWarnings(instance)).toHaveLength(1);
+    expect(alerts.filter((alert) => alert.key === "vault_structure")).toHaveLength(1);
+  });
+
+  test("a hub that cannot record the alert still shows the warning, unsent (#801)", () => {
+    // A folder in place of the state file makes each write fail.
+    mkdirSync(homePaths(home).vaultStructureState, { recursive: true });
+    const instance = start(new FakeEngine());
+    const alerts: Alert[] = [];
+    instance.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    instance.reportStartMigrations(startMigrations);
+    expect(alerts.filter((alert) => alert.key === "vault_structure")).toEqual([]);
+    expect(structureWarnings(instance)).toHaveLength(1);
+  });
+
+  test("a satellite shows no warning (#801)", () => {
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportStartMigrations(startMigrations);
+    expect(instance.role()).toBe("satellite");
+    expect(structureWarnings(instance)).toEqual([]);
   });
 });
 
@@ -3427,6 +3495,16 @@ describe("machine reports (#126)", () => {
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
     instance.reportProblem("vault_sync", { level: "error", message: "The sync failed.", resolvedMessage: "Ok." });
     instance.reportProblem("telegram", { level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." });
+    await instance.syncVault();
+    expect(readReport("example-pc")).toMatchObject({ problems: [{ key: "telegram" }] });
+  });
+
+  test("the report leaves out the vault structure warning, which belongs to the hub alone (#801)", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportStartMigrations({ machine: { kind: "done", applied: [], later: [] }, vault: null });
+    instance.reportProblem("telegram", { level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." });
+    expect(instance.status().problemDetails.map((problem) => problem.key)).toContain("vault_structure");
     await instance.syncVault();
     expect(readReport("example-pc")).toMatchObject({ problems: [{ key: "telegram" }] });
   });

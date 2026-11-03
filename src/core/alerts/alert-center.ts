@@ -208,6 +208,20 @@ export class AlertCenter {
     this.record(key, level, message);
   }
 
+  /**
+   * A warning that stays open with no reminder until `dismiss`, such as a new vault structure (#801).
+   * `send` sends it and adds its entry: the caller sends it once, and opens it unsent after a restart.
+   */
+  notice(key: string, problem: AlertProblem, send: boolean): void {
+    const redacted = { ...problem, message: this.redact(problem.message) };
+    const date = this.options.now();
+    // An older version's warning may still be in the history, so the newest warning dates it.
+    const newest = this.history.entries.findLast((entry) => entry.key === key && entry.level === problem.level);
+    const since = send ? date.toISOString() : (this.open.get(key)?.since ?? newest?.at);
+    this.open.set(key, { problem: redacted, lastSentAt: date.getTime(), since: since ?? date.toISOString() });
+    if (send) this.notify(key, problem.level, problem.message);
+  }
+
   /** The message of each open problem, for the status. */
   openProblems(): string[] {
     return [...this.open.values()].map((entry) => entry.problem.message);

@@ -10,7 +10,7 @@ import { Icon, type IconName } from "./icons.tsx";
 import { centerFilters, historyGroups, shownNeeds, timeLabel, type CenterFilter } from "./notification-center.ts";
 import { entryState, notificationTopic, sameProblemEntries } from "./notification-details.ts";
 import {
-  newsAction,
+  closedEntryAction,
   problemAction,
   problemActionLabels,
   shownProblems,
@@ -63,7 +63,7 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
   const unread = shownProblems(problems).length + entries.filter((entry) => !entry.read).length;
   const openKeys = new Set(problems.map((problem) => problem.key));
   const hasStructureNews = entries.some((entry) => entry.key === "vault_structure");
-  /** The vault structure news offers its action only while the upgrade is open to this computer. */
+  /** A vault structure entry offers its button only while the upgrade is open to this computer. */
   const [canUpgradeVault, setCanUpgradeVault] = useState(false);
   useEffect(() => {
     if (!hasStructureNews) return;
@@ -240,11 +240,7 @@ function EntryDetails(props: {
   const topic = notificationTopic(entry.key);
   const state = entryState(entry, props.openKeys);
   const action =
-    state === "open"
-      ? problemAction(entry.key, props.syncStatus)
-      : entry.level === "news"
-        ? newsAction(entry.key, props.canUpgradeVault)
-        : null;
+    state === "open" ? problemAction(entry.key, props.syncStatus) : closedEntryAction(entry.key, props.canUpgradeVault);
   const steps = sameProblemEntries(props.entries, entry.key);
   return (
     <div id={props.id} className="center-details">

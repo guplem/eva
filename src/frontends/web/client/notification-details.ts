@@ -70,7 +70,7 @@ const topics: Readonly<Record<string, NotificationTopic>> = {
   vault_structure: {
     title: "New vault structure",
     meaning:
-      "The vault structure is how the folders and notes of your vault are organized. An Eva update never changes it by itself. When a new structure comes, Eva tells you once. Press Update the vault, or open Settings, Vault and sync, Vault structure, and Eva moves your notes in a chat: she asks every question first, keeps your own changes, and you can go back.",
+      "The vault structure is how the folders and notes of your vault are organized. An Eva update never changes it by itself. When a new structure comes, Eva warns you until you mark it as read or update the vault. Press Open Settings to see what changes, then Update the vault, and Eva moves your notes in a chat: she asks every question first, keeps your own changes, and you can go back.",
   },
   vault_ahead: {
     title: "Vault from a newer Eva",
@@ -136,10 +136,11 @@ export function sameProblemEntries(entries: readonly HistoryEntry[], key: string
 }
 
 /**
- * Whether the problem of an entry is still open. Null for news, which is no problem, and for a
- * one-off problem: it is never open, but that does not make it solved.
+ * Whether the problem of an entry is still open. Null for news, which is no problem, for a
+ * one-off problem: it is never open, but that does not make it solved, and for the vault
+ * structure warning: a read warning is not solved (#801).
  */
 export function entryState(entry: HistoryEntry, openKeys: ReadonlySet<string>): "open" | "solved" | null {
-  if (entry.level === "news" || oneOffKinds.has(kindOf(entry.key))) return null;
+  if (entry.level === "news" || oneOffKinds.has(kindOf(entry.key)) || entry.key === "vault_structure") return null;
   return openKeys.has(entry.key) ? "open" : "solved";
 }

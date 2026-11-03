@@ -255,6 +255,7 @@ machine state/step-details/*.json version
 machine state/step-details/*.json version=1
 machine state/vault-structure.json announced
 machine state/vault-structure.json prompted
+machine state/vault-structure.json read
 machine state/widget-approvals.json approvals
 machine state/widget-approvals.json approvals[].approvedAt
 machine state/widget-approvals.json approvals[].commit

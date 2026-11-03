@@ -207,3 +207,12 @@ describe("one-off schedules (#822)", () => {
     );
   });
 });
+
+describe("quiet runs (#687)", () => {
+  test("a quiet run says that it had no news", () => {
+    expect(lastRunWords({ slot: "2026-10-21T08:00", failed: false, quiet: true }, now)).toEqual({
+      text: "No news today",
+      tone: "ok",
+    });
+  });
+});

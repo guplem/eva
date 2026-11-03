@@ -12,7 +12,14 @@ import { stateFaces } from "./visor-faces.ts";
 import { dialogBackdropClass } from "./Dialog.tsx";
 
 /** The name is in the heading, and "When" says the time, the days and the interval together. */
-const labels: Record<string, string> = { text: "Text", file: "File", prompt: "Prompt", model: "Model", id: "Id" };
+const labels: Record<string, string> = {
+  text: "Text",
+  file: "File",
+  prompt: "Prompt",
+  model: "Model",
+  id: "Id",
+  until: "Last day",
+};
 const inWhen = new Set(["name", "at", "days", "every", "from"]);
 
 export function ScheduleCardDialog(props: {

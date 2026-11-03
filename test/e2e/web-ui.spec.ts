@@ -3149,6 +3149,26 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await page.request.delete(`/api/schedules/${id}`);
 });
 
+test("Schedules page: add a schedule with a last day (#687)", async ({ page }, testInfo) => {
+  const id = `watch-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Watch ${id}`);
+  await form.getByLabel("Time (HH:MM)").fill("08:00");
+  await form.getByLabel(/^Last day/).fill("2030-01-31");
+  await form.getByLabel("Fixed text").fill("Look at the inbox.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Last day");
+  await expect(card).toContainText("2030-01-31");
+  await card.getByRole("button", { name: "Got it" }).click();
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
 test("Schedules page: add a schedule that runs once (#822)", async ({ page }, testInfo) => {
   const id = `bank-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await logIn(page);

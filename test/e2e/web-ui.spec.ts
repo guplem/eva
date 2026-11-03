@@ -45,6 +45,11 @@ async function sendFirstMessage(page: Page, text: string): Promise<void> {
  * Opens Projects and waits for its list. With no project open, the list shows with no menu tap on
  * both sizes. openList would race: the menu button of the page before can still show for a moment.
  */
+/** A card of the project list. The home page beside it names the same projects (#840). */
+function projectCard(page: Page, name: RegExp): Locator {
+  return page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name });
+}
+
 async function openProjects(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
@@ -70,7 +75,7 @@ async function answerInNewClone(page: Page, text: string): Promise<void> {
 async function openExampleApp(page: Page): Promise<void> {
   await openProjects(page);
   await page.getByLabel("Search projects").fill("example");
-  await page.getByRole("button", { name: /Example app/ }).click();
+  await projectCard(page, /Example app/).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 }
 
@@ -768,7 +773,7 @@ test("a long press on a chat in the list shows its actions, and the press opens 
 test("a right click on a project opens its pages from the menu", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  const card = page.getByRole("button", { name: /Example app/ });
+  const card = projectCard(page, /Example app/);
   const menu = page.getByRole("menu", { name: /^Actions of / });
   // On a phone, earlier tests' projects push the card down, so the project list scrolls. Likely, a
   // refresh of the list while their chats end scrolls it again, and a scroll closes the menu (#768).
@@ -1910,7 +1915,7 @@ test("the project page says that the clones load, not that there are none", asyn
   });
   await openProjects(page);
   await page.getByLabel("Search projects").fill("example");
-  await page.getByRole("button", { name: /Example app/ }).click();
+  await projectCard(page, /Example app/).click();
   await expect(page.getByText("Loading the clones…")).toBeVisible();
   await expect(page.locator("main").getByText(/^No clones yet\./)).toHaveCount(0);
   release();
@@ -2092,17 +2097,17 @@ test("the status chips hide a closed project until a tap clears the filter", asy
   await expect(current).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
   // Current shows the projects that the person develops and the ones in use (#690).
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Family recipes/ }).getByText("In use", { exact: true })).toBeVisible();
   await current.click();
   await expect(current).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Closed" }).click();
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+  await expect(projectCard(page, /Example app/)).toHaveCount(0);
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "In use" }).click();
   await expect(page.getByRole("button", { name: /Family recipes/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+  await expect(projectCard(page, /Example app/)).toHaveCount(0);
   // A status word typed in the search wins over the chip.
   await page.getByLabel("Search projects").fill("status:closed");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
@@ -2118,7 +2123,7 @@ test("the tag chips show only the projects with that tag", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
   const web = page.getByRole("group", { name: "Tag" }).getByRole("button", { name: "#web" });
   await web.click();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
   await web.click();
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
@@ -2126,7 +2131,7 @@ test("the tag chips show only the projects with that tag", async ({ page }) => {
   await web.click();
   await page.getByLabel("Search projects").fill("#legacy");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+  await expect(projectCard(page, /Example app/)).toHaveCount(0);
 });
 
 test("a project with a bad front matter field shows its warnings", async ({ page }) => {
@@ -2144,14 +2149,14 @@ test("on a phone, the project list is the page, and Back to the projects returns
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   // No tap on the menu: with no project open, the list is already on the screen.
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
   expect(Math.min(...(await tapHeights(page.locator("button:visible"))))).toBeGreaterThanOrEqual(44);
   await expectSmallPills(page.locator(".filter-chip:visible"));
-  await page.getByRole("button", { name: /Example app/ }).click();
+  await projectCard(page, /Example app/).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await page.getByRole("button", { name: "Back to the projects" }).click();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
 });
 
 test("on a computer, Back to the projects shows the home page, and its timeline opens a project (#840)", async ({
@@ -2182,7 +2187,7 @@ test("on a phone, Back goes from a clone's chat to its project, then to the proj
   await expect(page).toHaveURL(/#\/projects\/2025-03-02-1015-example-app$/);
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
 });
 
 test("on a phone, the arrow of a clone's chat opens its project, and Back does not return to the chat", async ({
@@ -2300,7 +2305,7 @@ test("on a short phone, a long project list scrolls, and no card cuts its text",
   await page.setViewportSize({ width: 375, height: 360 });
   await logIn(page);
   await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
   const cut = await page
     .locator(".project-card")
     .evaluateAll((cards) => cards.filter((card) => card.scrollHeight > card.clientHeight + 1).length);

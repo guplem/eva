@@ -14,6 +14,8 @@ import { EnginesSection } from "./EnginesSection.tsx";
 import { guideHeadingId, guideItem, guidePageOf, parseGuideItem, searchGuide, type SnippetPart } from "./guide.ts";
 import { GuideDocument, GuideHome } from "./GuideSection.tsx";
 import { holdInView } from "./hold-in-view.ts";
+import { hasPageIndex } from "./page-index.ts";
+import { PageIndexList, usePageIndex } from "./PageIndex.tsx";
 import { Icon, type IconName } from "./icons.tsx";
 import { PersonalizeSection } from "./PersonalizeSection.tsx";
 import {
@@ -65,6 +67,10 @@ export function SettingsView({
   const [restartAsk, setRestartAsk] = useState<string | null>(null);
   /** True while a restart runs, so a second one does not stop the new Eva. */
   const [restarting, setRestarting] = useState(false);
+  // The cards come with the settings, so the index waits for them.
+  const pageIndex = usePageIndex(
+    settings !== null && hasPageIndex(route) ? settingsHash({ section: route.section, item: null }) : null,
+  );
 
   useEffect(() => {
     const onHashChange = (): void => {
@@ -244,6 +250,9 @@ export function SettingsView({
     const hash = settingsHash(next);
     goTo(hash, () => showAgain(hash));
   };
+  const openCard = (item: string): void => {
+    if (route.section !== null) navigate({ section: route.section, item });
+  };
   const navigateUp = (): void => {
     const hash = settingsHash(parentRoute(route));
     goUp(hash, () => showAgain(hash));
@@ -289,16 +298,20 @@ export function SettingsView({
             Overview
           </button>
           {settingsSections.map((each) => (
-            <button
-              key={each.id}
-              className="nav-item"
-              aria-current={each.id === route.section ? "page" : undefined}
-              onClick={() => navigate({ section: each.id, item: null })}
-            >
-              <Icon name={sectionIcons[each.id]} />
-              <span className="settings-nav-label">{each.title}</span>
-              <SectionMark section={each} steps={steps} />
-            </button>
+            <Fragment key={each.id}>
+              <button
+                className="nav-item"
+                aria-current={each.id === route.section ? "page" : undefined}
+                onClick={() => navigate({ section: each.id, item: null })}
+              >
+                <Icon name={sectionIcons[each.id]} />
+                <span className="settings-nav-label">{each.title}</span>
+                <SectionMark section={each} steps={steps} />
+              </button>
+              {each.id === route.section && (
+                <PageIndexList state={pageIndex} className="page-index-side" onOpen={openCard} />
+              )}
+            </Fragment>
           ))}
         </nav>
         <div className="settings-content">
@@ -328,6 +341,7 @@ export function SettingsView({
             {query.trim() !== "" && <SearchResults query={query} navigate={navigate} />}
             {/* Hidden, not closed, during a search: a form keeps its typed values. */}
             <div className="kept-open" hidden={query.trim() !== ""}>
+              <PageIndexList state={pageIndex} className="page-index-row" onOpen={openCard} />
               {section === null ? (
                 <SettingsHome context={context} />
               ) : (

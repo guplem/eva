@@ -509,6 +509,7 @@ vault Life/Cases/*/Case.md status=open
 vault Life/Cases/*/Case.md status=waiting
 vault Life/Periods/*/Period.md status
 vault Life/Periods/*/Period.md status=open
+vault Projects/*/AGENTS.md closed
 vault Projects/*/AGENTS.md created
 vault Projects/*/AGENTS.md legacy_id
 vault Projects/*/AGENTS.md pinned

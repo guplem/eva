@@ -221,6 +221,7 @@ import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format
 import { Widgets } from "./widgets/widgets.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
 import { PreviewGrants } from "./widgets/widget-previews.ts";
+import type { ShellWallGap } from "./shell-wall.ts";
 
 /** The Vault structure card (#773). */
 export interface VaultStructureView {
@@ -278,7 +279,7 @@ export interface EvaOptions {
   readonly secrets: EvaSecrets;
   readonly engines: readonly EnginePort[];
   /** Why the shell of a Project chat has no wall on this computer, or null when it has one (#711). */
-  readonly shellWallGap?: () => Promise<string | null>;
+  readonly shellWallGap?: () => Promise<ShellWallGap | null>;
   /**
    * Whether a sandbox can start inside the sandbox on this computer, as Claude Code's Unix socket
    * filter needs (#760). Without it, the filter stays off.
@@ -1519,7 +1520,10 @@ export class Eva {
     // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
     if (this.options.engines.some((engine) => engine.name === "claude-code")) {
       void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
-        this.alerts.report("shell_wall", shellWallProblem(gap));
+        const problem = shellWallProblem(gap?.reason ?? null);
+        // A gap that no step of the person closes would wait in "Needs you" forever (#825).
+        if (problem !== null && gap?.fixable === false) this.alerts.notifyOnce("shell_wall", "news", problem.message);
+        else this.alerts.report("shell_wall", problem);
       });
       void (this.options.nestedSandbox?.() ?? Promise.resolve(false)).then((works) => {
         this.socketFilter = works;
@@ -2870,7 +2874,12 @@ export class Eva {
       relayed.set(file, keys);
     }
     for (const [file, keys] of this.relayed)
-      for (const key of keys) if (relayed.get(file)?.has(key) !== true) this.alerts.report(key, null);
+      for (const key of keys) {
+        if (relayed.get(file)?.has(key) === true) continue;
+        // Windows sends its gap as news now, so "The shell stays out of the vault" would be false (#825).
+        if (key.endsWith(":shell_wall")) this.alerts.dismiss(key);
+        else this.alerts.report(key, null);
+      }
     this.relayed = relayed;
     this.forgetStaleRelayedMarks();
   }

@@ -47,6 +47,10 @@ describe("problemAction", () => {
     expect(isOtherMachineProblem("update")).toBe(false);
   });
 
+  test("the shell sandbox gap has no button: no part of Settings fixes it (#825)", () => {
+    expect(problemAction("shell_wall", "ok")).toBeNull();
+  });
+
   test("a widget update that waits opens the widget list, where the person answers it", () => {
     expect(problemAction("widget_update:example-owner/habits:0123456789ab", "ok")).toBe("review_widget_update");
   });
@@ -72,7 +76,6 @@ describe("problemSettingsRoute", () => {
       ["vault_secret_files", { section: "vault", item: "encrypted-files" }],
       ["template_alignment", { section: "vault", item: "template-alignment" }],
       ["vault_structure", { section: "vault", item: "vault-structure" }],
-      ["shell_wall", { section: "engines", item: "permissions" }],
       ["engine_login:claude-code", { section: "engines", item: "claude-code" }],
       ["engine_login:pi", { section: "engines", item: "pi" }],
       ["default_engine", { section: "updates", item: "versions" }],

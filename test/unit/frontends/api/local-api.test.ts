@@ -1518,6 +1518,14 @@ describe("web routes", () => {
     expect(await json<{ text: string }>(whole)).toMatchObject({ text: "---\nstatus: idea\n---\n# Whole\n" });
   });
 
+  test("a project's details save the closing date with the closed status (#826)", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    const { version } = await json<{ version: string }>(await call(`${path}/file`));
+    const body = { version, title: "Example app", status: "closed", tags: [], repos: [], closed: "2026-10-01" };
+    const saved = await json<{ text: string }>(await call(`${path}/details`, { method: "PUT", body }));
+    expect(saved.text).toContain("status: closed\nclosed: 2026-10-01\n");
+  });
+
   test("the form creates a project, and the list shows it", async () => {
     const form = { name: "New app", description: "Made from the form.", status: "idea", tags: ["web"] };
     const created = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });

@@ -3214,7 +3214,9 @@ describe("migrations (#119)", () => {
     const instance = start(
       new FakeEngine(),
       {},
-      { shellWallGap: () => Promise.resolve("Claude Code's shell sandbox needs bubblewrap.") },
+      {
+        shellWallGap: () => Promise.resolve({ reason: "Claude Code's shell sandbox needs bubblewrap.", fixable: true }),
+      },
     );
     const alerts = collectAlerts(instance);
     instance.reportStartMigrations({
@@ -3222,7 +3224,26 @@ describe("migrations (#119)", () => {
       vault: { kind: "done", applied: [], later: [] },
     });
     await Promise.resolve();
+    expect(alerts.find((alert) => alert.key === "shell_wall")).toMatchObject({ level: "warn" });
     expect(alerts.find((alert) => alert.key === "shell_wall")?.message).toContain("bubblewrap");
+  });
+
+  test("a gap that the person cannot fix, as on Windows, is news and not a problem that stays open (#825)", async () => {
+    const instance = start(
+      new FakeEngine(),
+      {},
+      {
+        shellWallGap: () => Promise.resolve({ reason: "Claude Code has no shell sandbox on Windows.", fixable: false }),
+      },
+    );
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await Promise.resolve();
+    expect(alerts.filter((alert) => alert.key === "shell_wall").map((alert) => alert.level)).toEqual(["news"]);
+    expect(instance.status().problemDetails.some((problem) => problem.key === "shell_wall")).toBe(false);
   });
 
   test("a failed migration at start sends an alert with its id and the error", () => {
@@ -3556,6 +3577,19 @@ describe("machine reports (#126)", () => {
       ["machine:laptop:vault_ahead", "resolved"],
     ]);
     expect(alerts[1]?.message).toBe("On laptop: Fixed.");
+  });
+
+  test("the shell sandbox gap of another machine ends with no resolved alert: it may have become news (#825)", async () => {
+    const wall = { key: "shell_wall", level: "warn", message: "No sandbox.", resolvedMessage: "Walled." };
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([wall]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([]));
+    await instance.syncVault();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["machine:laptop:shell_wall", "warn"]]);
+    expect(instance.status().problems).toEqual([]);
   });
 
   test("a satellite's report marks a problem that the person hid there, and only that one (#541)", async () => {

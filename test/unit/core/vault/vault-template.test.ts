@@ -201,6 +201,8 @@ describe("the vault template", () => {
     expect(files["Life/Finances/AGENTS.md"]).toContain("An online-banking login goes in the password manager.");
     expect(files[".eva/AGENTS.md"]).toContain("`settings/chat-names.md`");
     expect(files[".eva/AGENTS.md"]).toContain("`eva settings set`");
+    expect(files["Life/Finances/AGENTS.md"]).toContain("**Closing:** When a contract or account ends");
+    expect(files["AGENTS.md"]).toContain("any service, except the person's password manager.");
   });
 
   test("every vault migration leaves each file of a new vault as the template wrote it (#772)", () => {

@@ -35,14 +35,15 @@ The owner is away. Each decision follows his intentions (decisions.md, ROUND2.md
 
 Where two approved texts disagreed, the smallest change makes them agree. Each one:
 
-- **Root map, Where things go:** "Before deleting anything, confirm, and offer status `gone` instead" becomes "offer to close it instead (its folder's `AGENTS.md` says how)": only objects have `gone`. "Nothing moves when it ends. Change its status." adds "or its summary when it has none", for people and pets.
+- **Root map, Where things go:** "Before deleting anything, confirm, and offer status `gone` instead" becomes "offer to close it instead (its folder's `AGENTS.md` says how, when it has a status)": only objects have `gone`. "Nothing moves when it ends. Change its status." adds "or its summary when it has none", for people and pets.
 - **Root map, Personal rules:** the person's rules win over "the rules above and every other `AGENTS.md` in the vault". The `eva-rules` skill says the same.
 - **`Life/Objects/AGENTS.md`:** a repair, claim or return goes to `Life/Cases/` only when it needs follow-up; a finished repair is a dated line in the object's note, as the root map says.
-- **`Life/Finances/AGENTS.md`:** a card PIN or a code goes in a `.secrets` file beside the note; an online-banking login goes in the password manager, as _Outside the vault_ says.
+- **`Life/Finances/AGENTS.md`:** a full card number, a card PIN or a code goes in a `.secrets` file beside the note; an online-banking login goes in the password manager, as _Outside the vault_ says. A Closing line says that an ended contract or account gets its end date and stays.
+- **Secrets:** the root map's rule and the base prompt allow one exception to "never copy a secret into any service": the person's password manager, where _Outside the vault_ sends logins.
 - **`.eva/AGENTS.md`:** names `settings/chat-names.md` (the person's rules for chat names), and `eva settings set` beside the Settings page.
 - **About me template:** the region comment says "such as US or US-CA".
 - **`about-me` skill:** the `work.period` example is a plain path in the folder form of `Life/Periods/AGENTS.md`, and `places` names `address`.
-- **No personal places in the public repository:** the `ES-CT` and Barcelona examples (skill, code comments, error text, tests, `docs/widgets.md`) became `US-CA` and San Francisco. The Sant Jordi region list keeps `ES-CT`: it is data of the special days, not an example.
+- **No personal places in the public repository:** the `ES-CT` and Barcelona examples (skill, code comments, error text, tests, `docs/widgets.md`) became `US-CA` and San Francisco. The Sant Jordi region list keeps `ES-CT`: it is data of the special days, not an example. The frozen migration `2026-10-22-about-me-header` keeps its `ES-CT` comment too: it is on main and writes that text into vaults, and `ES-CT` is a public ISO code.
 - **Habits widget:** the template's example folder is `Life/Health/Habits` (habit logs are health records; the v3 map has no `Life/Habits`). A widget that the person already set up keeps its folder.
 - **Prettier** skips only the agent files of the vault template (root map, `.eva/AGENTS.md`, `Life/*/AGENTS.md`); the other template files stay formatted.
 - **Stored names:** `vault .eva/vault-structure.json version`.

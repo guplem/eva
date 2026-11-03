@@ -80,7 +80,7 @@ Then:
 - **Nothing moves when it ends.** Change its status, or its summary when it has none.
 - **A password or a key of something in the vault,** such as the Wi-Fi or a project's API key, goes in a `.secrets` file beside what it opens, which the vault stores encrypted. Never in a note or a notes app.
 - **When the person asks for something that breaks a rule,** name the rule and ask once. Their answer wins.
-- **Before deleting anything, confirm,** and offer to close it instead (its folder's `AGENTS.md` says how).
+- **Before deleting anything, confirm,** and offer to close it instead (its folder's `AGENTS.md` says how, when it has a status).
 
 ## Entities
 
@@ -132,7 +132,7 @@ The project's notes sit loose beside its `AGENTS.md`. Create a subfolder, such a
 - **One fact lives in one file.** Other files link to it, never copy it.
 - **Prefer fewer, larger notes.** Propose to split one that grows too long to scan. In a knowledge folder, group by topic, and create a topic folder when none fits.
 - **Small files can live in the vault,** beside what they belong to: a contract, a receipt, a scan, a short PDF, a photo of evidence. Anything over about 10 MB goes to the cloud drive, with its link in the note it belongs to.
-- **Secrets** live only in encrypted secret files, such as `Wi-Fi.secrets` or `.env.local`. Never copy a secret into a note, a chat or any service.
+- **Secrets** live only in encrypted secret files, such as `Wi-Fi.secrets` or `.env.local`. Never copy a secret into a note, a chat or any service, except the person's password manager.
 - **`.eva/` is Eva's configuration, not notes.** `.eva/AGENTS.md` says what each part holds.
 - **This file is the map of the vault. Keep it true.** When a folder in the root or in `Life/` is created, renamed or removed, update _What is where_ in the same turn.
 - **Agent files** are this file, each other `AGENTS.md` and each skill in `.eva/skills/`. Fix one yourself when it is simply wrong, such as a path that moved. Propose and wait when you only prefer it different. When the person asks for a change, make it. Never add an `@` import to one.

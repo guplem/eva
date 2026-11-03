@@ -15,6 +15,7 @@ const morning: Schedule = {
   days: [1, 5],
   every: null,
   from: null,
+  until: null,
   text: "Good morning.",
   file: null,
   prompt: null,
@@ -130,5 +131,15 @@ describe("one-off schedules (#822)", () => {
   test("send only from, with no every, at or days", () => {
     const form = { ...formOf(morning), repeat: "once" as const, from: "2026-11-24T10:00" };
     expect(fieldsOf(form)).toEqual({ name: "Morning", from: "2026-11-24T10:00", text: "Good morning." });
+  });
+});
+
+describe("until (#687)", () => {
+  test("fills the form with the last day, and sends it only when set", () => {
+    const form = formOf({ ...morning, until: "2026-11-30" });
+    expect(form.until).toBe("2026-11-30");
+    expect(fieldsOf(form)["until"]).toBe("2026-11-30");
+    expect("until" in fieldsOf({ ...form, until: " " })).toBe(false);
+    expect(emptyScheduleForm(null).until).toBe("");
   });
 });

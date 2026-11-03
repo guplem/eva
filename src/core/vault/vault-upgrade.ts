@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { basename, dirname, join, posix } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
-import { containsSecretPattern } from "../../shared/redaction.ts";
+import { bytesContainSecretPattern } from "../../shared/redaction.ts";
 import { withNewerLocation } from "../location/last-location.ts";
 import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
@@ -389,13 +389,15 @@ export class VaultUpgrade {
 
   /**
    * Refuses a merge that would send a secret or a file that is too big: the skill commits with plain
-   * git, which skips Eva's secret scan. An encrypted file passes.
+   * git, which skips Eva's secret scan. An encrypted file passes. A file that the merge base already
+   * holds, at any path, is a move and no new risk, so its text is not scanned again.
    */
   private async refuseUnsafeFiles(main: string, branch: string): Promise<void> {
     const changed = await this.must(
       ["diff", "--name-only", "-z", "--no-renames", "--diff-filter=AM", `${main}...${branch}`],
       "list the files of the upgrade",
     );
+    const known = await this.mergeBaseBlobs(main, branch);
     const unsafe: string[] = [];
     for (const path of changed.stdout.split("\0").filter((entry) => entry !== "")) {
       const size = Number((await this.git(["cat-file", "-s", `${branch}:${path}`])).stdout.trim());
@@ -404,14 +406,30 @@ export class VaultUpgrade {
         continue;
       }
       if (size > maxScannedBytes) continue;
-      const text = (await this.git(["show", `${branch}:${path}`])).stdout;
-      if (this.options.sync.isPlainSecret(path, new TextEncoder().encode(text)) || containsSecretPattern(text))
+      const bytes = new TextEncoder().encode((await this.git(["show", `${branch}:${path}`])).stdout);
+      if (this.options.sync.isPlainSecret(path, bytes)) unsafe.push(path);
+      else if (
+        !known.has((await this.git(["rev-parse", `${branch}:${path}`])).stdout.trim()) &&
+        bytesContainSecretPattern(bytes)
+      )
         unsafe.push(path);
     }
     if (unsafe.length > 0)
       refuse(
         `These files of the upgrade hold a secret in plain text, or are too big: ${unsafe.join(", ")}. Nothing changed. Take each one out of the branch, or put the secret in an encrypted file, then run eva vault-upgrade finish again.`,
       );
+  }
+
+  /** The hash of each file in the tree of the merge base of the two branches. */
+  private async mergeBaseBlobs(main: string, branch: string): Promise<Set<string>> {
+    const base = await this.must(["merge-base", main, branch], "find where the upgrade started");
+    const tree = await this.must(["ls-tree", "-r", "-z", base.stdout.trim()], "list the files before the upgrade");
+    const blobs = new Set<string>();
+    for (const entry of tree.stdout.split("\0")) {
+      const [mode = "", type, hash] = entry.split("\t")[0]?.split(" ") ?? [];
+      if (mode !== "" && type === "blob" && hash !== undefined) blobs.add(hash);
+    }
+    return blobs;
   }
 
   /**

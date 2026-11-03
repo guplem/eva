@@ -1196,6 +1196,9 @@ describe("routes", () => {
 
   test("an unknown session is a 404, and a bad body is a 400", async () => {
     expect((await call("/api/sessions/missing/messages", { method: "POST", body: { text: "x" } })).status).toBe(404);
+    // The page's id comes back in every event, so it takes only plain letters, digits and dashes (#804).
+    const badId = { text: "x", id: "<script>" };
+    expect((await call("/api/sessions/missing/messages", { method: "POST", body: badId })).status).toBe(400);
     expect((await call("/api/sessions", { method: "POST", body: { mode: "dreaming" } })).status).toBe(400);
     expect((await call("/api/nothing-here")).status).toBe(404);
   });

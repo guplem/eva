@@ -89,7 +89,13 @@ const newSessionSchema = z.object({
   clone: z.string().min(1).optional(),
 });
 /** `id`: the page names its own message, so it shows the message once when the turn starts (#804). */
-const messageSchema = z.object({ text: z.string().min(1), id: z.string().min(1).max(100).optional() });
+const messageSchema = z.object({
+  text: z.string().min(1),
+  id: z
+    .string()
+    .regex(/^[\w-]{1,100}$/)
+    .optional(),
+});
 /** About 20 minutes of the page's Opus recording: more than any voice note needs. */
 const maxVoiceNoteBytes = 25 * 1024 * 1024;
 /** Above the 20 MB that Telegram lets Eva download, so the web chat takes at least what Telegram takes. */

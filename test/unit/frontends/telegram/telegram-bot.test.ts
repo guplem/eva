@@ -2584,7 +2584,7 @@ describe("files (lessons 72, 74, 124)", () => {
     telegram.sendFile(owner, "document", new Uint8Array([4, 5]), { fileName: "plan.pdf", topicId: 500 });
     await settle(bot, () => engine.requests.length === 1);
     expect(engine.requests[0]?.prompt).toMatch(
-      /saved as \.eva\/scratch\/received\/2026-01-01-0000-coach\/plan-[0-9a-f]{12}\.pdf/,
+      /saved as \S+[\\/]\.eva[\\/]scratch[\\/]received[\\/]2026-01-01-0000-coach[\\/]plan-[0-9a-f]{12}\.pdf\. It is temporary/,
     );
     expect(telegram.sentTexts()).not.toContain("This chat takes no files.");
   });

@@ -474,3 +474,18 @@ describe("knownChoice", () => {
     expect(knownChoice({ kind: "all" }, projects, now)).toEqual({ kind: "all" });
   });
 });
+
+describe("rangeOf at the end of a month", () => {
+  test("goes back to the last day of a shorter month, not into the next month", () => {
+    expect(rangeOf({ kind: "last", months: 1 }, [], new Date(2027, 2, 31, 9)).from).toEqual(new Date(2027, 1, 28));
+    expect(rangeOf({ kind: "last", months: 12 }, [], new Date(2028, 1, 29, 9)).from).toEqual(new Date(2027, 1, 28));
+  });
+
+  test("starts a new custom range on the last day of a shorter month", () => {
+    expect(rangeChoiceOf("custom", new Date(2027, 2, 31, 9))).toEqual({
+      kind: "custom",
+      from: "2027-02-28",
+      to: "2027-03-31",
+    });
+  });
+});

@@ -520,6 +520,8 @@
 .month-chart-hits {
   position: absolute;
   inset: 0;
+  /* The first and the last month own half a width past the edge: the clip keeps the page from scrolling sideways. */
+  overflow: hidden;
 }
 
 .month-chart-hit {

@@ -91,12 +91,18 @@ function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+/** The same day some months before, or the last day of a shorter month: 31 Mar goes back to 28 Feb. */
+function monthsBefore(date: Date, count: number): Date {
+  const lastDay = new Date(date.getFullYear(), date.getMonth() - count + 1, 0).getDate();
+  return new Date(date.getFullYear(), date.getMonth() - count, Math.min(date.getDate(), lastDay));
+}
+
 /** The span of a range choice. A custom range with a bad day reads as the default range. */
 export function rangeOf(choice: RangeChoice, projects: readonly Pick<Project, "parsedId">[], now: Date): DateRange {
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   switch (choice.kind) {
     case "last":
-      return { from: new Date(now.getFullYear(), now.getMonth() - choice.months, now.getDate()), to: tomorrow };
+      return { from: monthsBefore(now, choice.months), to: tomorrow };
     case "year":
       return { from: new Date(choice.year, 0, 1), to: new Date(choice.year + 1, 0, 1) };
     case "all": {
@@ -163,8 +169,7 @@ export function rangeChoiceOf(value: string, now: Date): RangeChoice {
   if (kind === "year" && number !== undefined) return { kind: "year", year: Number(number) };
   if (kind === "all") return { kind: "all" };
   if (kind === "custom") {
-    const from = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-    return { kind: "custom", from: dayText(from), to: dayText(now) };
+    return { kind: "custom", from: dayText(monthsBefore(now, 1)), to: dayText(now) };
   }
   return defaultRange;
 }

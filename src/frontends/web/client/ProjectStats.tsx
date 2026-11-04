@@ -3,7 +3,7 @@
  * and the counts by status. The Projects home page shows them, and so does their own page, which a
  * phone opens from the list.
  */
-import { useState, type CSSProperties, type ReactElement } from "react";
+import { useState, type CSSProperties, type PointerEvent, type ReactElement } from "react";
 import type { Project } from "./api.ts";
 import { StatusPill } from "./ProjectPage.tsx";
 import { BackButton } from "./MainNav.tsx";
@@ -124,8 +124,8 @@ function pointWords(point: MonthPoint): string {
 
 /**
  * The active and the paused projects on day 1 of each month, and the projects that closed in the
- * month before (#878). A press on a month shows its numbers in the legend. With no press, the
- * legend shows the newest month.
+ * month before (#878). A tap, a pointer or the focus on a month shows its numbers in the legend.
+ * At first, the legend shows the newest month.
  */
 function MonthlyChart({ points }: { readonly points: readonly MonthPoint[] }): ReactElement {
   const [picked, setPicked] = useState<number | null>(null);
@@ -137,6 +137,11 @@ function MonthlyChart({ points }: { readonly points: readonly MonthPoint[] }): R
   const labels = chartLabels(points);
   // Each month owns the width around its point, so a tap anywhere near a point picks it.
   const hitWidth = points.length === 1 ? 100 : 100 / (points.length - 1);
+  const nearest = (event: PointerEvent<HTMLDivElement>): number => {
+    const box = event.currentTarget.getBoundingClientRect();
+    const share = box.width === 0 ? 1 : (event.clientX - box.left) / box.width;
+    return Math.min(points.length - 1, Math.max(0, Math.round(share * (points.length - 1))));
+  };
   return (
     <div className="month-chart">
       <div className="month-chart-body">
@@ -147,7 +152,12 @@ function MonthlyChart({ points }: { readonly points: readonly MonthPoint[] }): R
             </span>
           ))}
         </div>
-        <div className="month-chart-plot">
+        {/* A tap or a pointer anywhere on the plot picks the nearest month, so a narrow month on a phone is easy to hit. */}
+        <div
+          className="month-chart-plot"
+          onPointerDown={(event) => setPicked(nearest(event))}
+          onPointerMove={(event) => setPicked(nearest(event))}
+        >
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
             {[0, 50, 100].map((y) => (
               <line key={y} className="month-chart-grid" x1="0" x2="100" y1={y} y2={y} />
@@ -178,8 +188,17 @@ function MonthlyChart({ points }: { readonly points: readonly MonthPoint[] }): R
                 className="month-chart-hit"
                 aria-label={pointWords(point)}
                 aria-pressed={at === index}
+                // One tab stop for all the months: the arrow keys move between them.
+                tabIndex={at === index ? 0 : -1}
+                onKeyDown={(event) => {
+                  const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+                  const next = event.currentTarget.parentElement?.children[at + step];
+                  if (step === 0 || !(next instanceof HTMLElement)) return;
+                  event.preventDefault();
+                  next.focus();
+                }}
                 onClick={() => setPicked(at)}
-                onMouseEnter={() => setPicked(at)}
+                onFocus={() => setPicked(at)}
                 style={{ left: `${String(xOf(at))}%`, width: `${String(hitWidth)}%` }}
               />
             ))}
@@ -195,8 +214,9 @@ function MonthlyChart({ points }: { readonly points: readonly MonthPoint[] }): R
           )}
         </div>
       </div>
+      {/* No live region: a pointer that crosses the chart would make a screen reader read each month. The buttons name their numbers. */}
       {shown !== undefined && (
-        <div className="month-chart-legend" aria-live="polite">
+        <div className="month-chart-legend">
           <span className="month-chart-day">{pointLabel(shown.at)}</span>
           {series.map(({ key, label }) => (
             <span key={key} className="timeline-key">
@@ -234,7 +254,8 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
   const choice = knownChoice(range, projects, now);
   const span = rangeOf(choice, projects, now);
   const shown = timeline(projects, span, now, showPaused);
-  const points = monthlyStatus(projects, span, now);
+  // A range after today has no point yet: day 1 of the month of a later first day is not in it.
+  const points = span.from > now ? [] : monthlyStatus(projects, span, now);
   const counts = statusCounts(projects, span);
   const words = rangeWords(choice);
   return (
@@ -260,7 +281,9 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
             <LegendKey pattern="in-use" text={inUseLabel} />
           </div>
         </div>
-        {shown.rows.length === 0 ? (
+        {span.from > now ? (
+          <span className="muted">This range starts after today.</span>
+        ) : shown.rows.length === 0 ? (
           <span className="muted">No active project or project in use in this range.</span>
         ) : (
           <div className="timeline">
@@ -316,7 +339,8 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
         {points.length === 0 ? (
           <span className="muted">This range starts after today.</span>
         ) : (
-          <MonthlyChart points={points} />
+          // A new range starts again at its newest month.
+          <MonthlyChart key={`${String(points[0]?.at.getTime())}-${String(points.length)}`} points={points} />
         )}
         {/* Eva keeps no history of the status, so the person must know how a past month counts. */}
         <span className="field-hint">

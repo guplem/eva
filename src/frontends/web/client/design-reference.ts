@@ -313,6 +313,7 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   stop: "Stop a turn",
   user: "The person, an account",
   home: "Home page",
+  chart: "Statistics",
   mic: "Record a voice note",
   panel: "Hide or show the chat details",
   expand: "Make the file preview large",

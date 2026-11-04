@@ -32,9 +32,11 @@ import { startChatAbout } from "./NewChatDraft.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, ProjectPills } from "./ProjectPage.tsx";
 import { NeedsYouCard, ProjectsHome } from "./ProjectsHome.tsx";
+import { ProjectStatsPage } from "./ProjectStats.tsx";
+import { defaultRange, type RangeChoice } from "./projects-home.ts";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 import { countOf, projectSummary, shownTags, statusChips, tagsByUse } from "./project-format.ts";
-import { projectStatusFilters } from "../../../shared/project-statuses.ts";
+import { projectStatusFilters, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
@@ -112,6 +114,8 @@ export function ProjectView({
   const [page, setPage] = useState<Page | null>(null);
   // The address names the page, so Back goes from a chat to its project, and from there to the list.
   const [route, setRoute] = useState<ProjectRoute>(() => projectRouteOf(window.location.hash));
+  // The home page and the statistics page share the range, so it stays when the person moves between them.
+  const [range, setRange] = useState<RangeChoice>(defaultRange);
   useEffect(() => {
     // A Telegram link names no page of Projects: the link effect opens its chat, with no flash of the list.
     const onHashChange = (): void => {
@@ -290,7 +294,7 @@ export function ProjectView({
     const wanted = projectRouteOf(routeAddress);
     const tapped = opening.current;
     opening.current = null;
-    if (wanted.kind === "list") {
+    if (wanted.kind === "list" || wanted.kind === "stats") {
       show(null);
       return undefined;
     }
@@ -555,14 +559,41 @@ export function ProjectView({
     ),
   };
 
+  // The statistics page has no project: on a phone it covers the list, as a project page does.
+  const statsShown = route.kind === "stats" && page === null;
+  const openStats = (): void => {
+    goTo(projectAddressOf({ kind: "stats" }));
+    onNavigate();
+  };
+  const filterList = (chosen: ProjectStatusFilter): void => {
+    setSearch("");
+    setStatus(chosen);
+  };
+
   return (
-    <div className={`layout${page === null ? " list-home" : ""}`}>
+    <div className={`layout${page === null && !statsShown ? " list-home" : ""}`}>
       <nav className={`sidebar${sidebarOpen ? " open" : ""}`} aria-label="Projects">
         <div className="list-title-row">
           <h2 className="list-title">Projects</h2>
-          <button className="primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" /> New project
-          </button>
+          <div className="list-title-actions">
+            <button
+              className="icon-button"
+              aria-label="Statistics"
+              data-tooltip="Statistics"
+              aria-current={statsShown ? "page" : undefined}
+              onClick={openStats}
+            >
+              <Icon name="chart" />
+            </button>
+            <button
+              className="primary"
+              aria-label="New project"
+              data-tooltip="New project"
+              onClick={() => setCreating(true)}
+            >
+              <Icon name="plus" />
+            </button>
+          </div>
         </div>
         {page === null && allProjects !== null && (
           <NeedsYouCard
@@ -652,17 +683,28 @@ export function ProjectView({
         <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />
       )}
       <main className="main">
-        {page === null ? (
+        {statsShown ? (
+          <ProjectStatsPage
+            projects={allProjects}
+            range={range}
+            onRangeChange={setRange}
+            onBack={() => goUp(projectAddressOf({ kind: "list" }))}
+            onOpenProject={(project) => open({ kind: "project", project })}
+            onFilterStatus={(chosen) => {
+              filterList(chosen);
+              goUp(projectAddressOf({ kind: "list" }));
+            }}
+          />
+        ) : page === null ? (
           <ProjectsHome
+            range={range}
+            onRangeChange={setRange}
             projects={allProjects}
             chats={roots}
             stateOf={stateOf}
             onOpenChat={openHomeChat}
             onOpenProject={(project) => open({ kind: "project", project })}
-            onFilterStatus={(chosen) => {
-              setSearch("");
-              setStatus(chosen);
-            }}
+            onFilterStatus={filterList}
           />
         ) : page.kind === "details" ? (
           <ProjectDetailsEditor

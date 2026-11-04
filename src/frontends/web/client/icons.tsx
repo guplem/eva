@@ -205,6 +205,7 @@ const drawings = {
     </>
   ),
   home: <path d="M4 10.5L12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z" />,
+  chart: <path d="M4 4v16h16M8 15l3.5-4 3 2.5L20 7" />,
   /** The corners of a frame point out: make the file preview fill the page. */
   expand: <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
   /** The corners point in: give the page back to the folders. */

@@ -44,13 +44,147 @@ export function createdAt(project: Pick<Project, "parsedId">): Date {
   return new Date(year, month - 1, day, hour, minute);
 }
 
-/** A year, or every year. */
-export type YearChoice = number | "all";
-
-/** Each year with a project, and this year, the newest first: the choices of the year selector. */
+/** Each year with a project, and this year, the newest first: the year choices of the range picker. */
 export function projectYears(projects: readonly Pick<Project, "parsedId">[], now: Date): number[] {
   const years = new Set([now.getFullYear(), ...projects.map((project) => project.parsedId.created.year)]);
   return [...years].sort((first, second) => second - first);
+}
+
+/**
+ * The time range of the statistics (#878): the last months up to today, a whole year, all the
+ * years, or two days that the person picks, as `YYYY-MM-DD`.
+ */
+export type RangeChoice =
+  | { readonly kind: "last"; readonly months: number }
+  | { readonly kind: "year"; readonly year: number }
+  | { readonly kind: "all" }
+  | { readonly kind: "custom"; readonly from: string; readonly to: string };
+
+/** The last 12 months: about the last 365 days. */
+export const defaultRange: RangeChoice = { kind: "last", months: 12 };
+
+/** The quick ranges, from one month to three years back. */
+const lastMonths = [1, 3, 6, 12, 36] as const;
+
+/** A span of local time. `to` is the first moment after the range. */
+export interface DateRange {
+  readonly from: Date;
+  readonly to: Date;
+}
+
+/** The local start of a day such as `2026-11-03`, or null for a text that is not a real day. */
+export function dayOf(text: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text.trim());
+  if (match === null) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]) - 1, Number(match[3])];
+  const date = new Date(year, month, day);
+  return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day ? date : null;
+}
+
+/** `2026-11-03`: the form of a date input. */
+export function dayText(date: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/** The same day some months before, or the last day of a shorter month: 31 Mar goes back to 28 Feb. */
+function monthsBefore(date: Date, count: number): Date {
+  const lastDay = new Date(date.getFullYear(), date.getMonth() - count + 1, 0).getDate();
+  return new Date(date.getFullYear(), date.getMonth() - count, Math.min(date.getDate(), lastDay));
+}
+
+/** The span of a range choice. A custom range with a bad day reads as the default range. */
+export function rangeOf(choice: RangeChoice, projects: readonly Pick<Project, "parsedId">[], now: Date): DateRange {
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  switch (choice.kind) {
+    case "last":
+      return { from: monthsBefore(now, choice.months), to: tomorrow };
+    case "year":
+      return { from: new Date(choice.year, 0, 1), to: new Date(choice.year + 1, 0, 1) };
+    case "all": {
+      // Every status counts here: the chart shows the closed projects too.
+      const first = Math.min(now.getFullYear(), ...projects.map((project) => project.parsedId.created.year));
+      return { from: new Date(first, 0, 1), to: new Date(now.getFullYear() + 1, 0, 1) };
+    }
+    case "custom": {
+      const [from, to] = [dayOf(choice.from), dayOf(choice.to)];
+      if (from === null || to === null) return rangeOf(defaultRange, projects, now);
+      const [first, last] = from <= to ? [from, to] : [to, from];
+      return { from: first, to: new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1) };
+    }
+  }
+}
+
+/** "3 Nov 2026". */
+function dayWords(date: Date): string {
+  return `${String(date.getDate())} ${months[date.getMonth()] ?? ""} ${String(date.getFullYear())}`;
+}
+
+/** The words before the started count, such as "In the last 12 months". */
+export function rangeWords(choice: RangeChoice): string {
+  switch (choice.kind) {
+    case "last":
+      if (choice.months === 1) return "In the last month";
+      return choice.months % 12 === 0 && choice.months > 12
+        ? `In the last ${String(choice.months / 12)} years`
+        : `In the last ${String(choice.months)} months`;
+    case "year":
+      return `In ${String(choice.year)}`;
+    case "all":
+      return "In all";
+    case "custom": {
+      const [from, to] = [dayOf(choice.from), dayOf(choice.to)];
+      if (from === null || to === null) return rangeWords(defaultRange);
+      const [first, last] = from <= to ? [from, to] : [to, from];
+      return `From ${dayWords(first)} to ${dayWords(last)}`;
+    }
+  }
+}
+
+/** The value of a choice in the range picker, such as `last-12` or `year-2025`. */
+export function rangeChoiceValue(choice: RangeChoice): string {
+  switch (choice.kind) {
+    case "last":
+      return `last-${String(choice.months)}`;
+    case "year":
+      return `year-${String(choice.year)}`;
+    case "all":
+      return "all";
+    case "custom":
+      return "custom";
+  }
+}
+
+/**
+ * The choice of a picker value. A new custom range starts as the last month, so the person
+ * moves one of its two days.
+ */
+export function rangeChoiceOf(value: string, now: Date): RangeChoice {
+  const [kind, number] = value.split("-");
+  if (kind === "last" && number !== undefined) return { kind: "last", months: Number(number) };
+  if (kind === "year" && number !== undefined) return { kind: "year", year: Number(number) };
+  if (kind === "all") return { kind: "all" };
+  if (kind === "custom") {
+    return { kind: "custom", from: dayText(monthsBefore(now, 1)), to: dayText(now) };
+  }
+  return defaultRange;
+}
+
+/** The choices of the range picker: the quick ranges, each year, all, and a custom range. */
+export function rangeChoices(
+  projects: readonly Pick<Project, "parsedId">[],
+  now: Date,
+): { readonly value: string; readonly label: string }[] {
+  const last = lastMonths.map((count) => ({
+    value: rangeChoiceValue({ kind: "last", months: count }),
+    label: rangeWords({ kind: "last", months: count }).replace("In the last", "Last"),
+  }));
+  const years = projectYears(projects, now).map((year) => ({ value: `year-${String(year)}`, label: String(year) }));
+  return [...last, ...years, { value: "all", label: "All" }, { value: "custom", label: "Custom range" }];
 }
 
 /**
@@ -64,12 +198,15 @@ export interface StatusCounts {
   readonly started: number;
 }
 
-/** How many projects of each status started in the year, and how many of them the person uses. */
+/** How many projects of each status started in the range, and how many of them the person uses. */
 export function statusCounts(
   projects: readonly Pick<Project, "parsedId" | "frontMatter">[],
-  year: YearChoice,
+  range: DateRange,
 ): StatusCounts {
-  const started = projects.filter((project) => year === "all" || project.parsedId.created.year === year);
+  const started = projects.filter((project) => {
+    const created = createdAt(project);
+    return created >= range.from && created < range.to;
+  });
   const count = (matches: (frontMatter: Project["frontMatter"]) => boolean): number =>
     started.filter((project) => matches(project.frontMatter)).length;
   return {
@@ -94,12 +231,74 @@ export interface TimelineRow {
   readonly startsBefore: boolean;
 }
 
+/** A mark on the time axis, as a share of the width. */
+export interface RangeMark {
+  readonly label: string;
+  readonly at: number;
+}
+
 export interface Timeline {
   readonly rows: readonly TimelineRow[];
-  /** A month in a year, or a year in all the years, as a share of the width. */
-  readonly marks: readonly { readonly label: string; readonly at: number }[];
+  readonly marks: readonly RangeMark[];
   /** Where today is, or null when today is outside the timeline. */
   readonly today: number | null;
+}
+
+const dayLength = 24 * 60 * 60 * 1000;
+
+/** At most this many month marks: a longer range marks every second month, or each year. */
+const monthMarks = 12;
+
+/**
+ * The marks of the time axis: each week of a range up to two months, the months of a range up to
+ * two years, and else each year. In a range of more than one year, January shows its year.
+ */
+/** A mark closer to the right edge has no room for its label. */
+const lastMarkAt = 0.95;
+
+export function rangeMarks(range: DateRange): RangeMark[] {
+  return allMarks(range).filter((mark) => mark.at <= lastMarkAt);
+}
+
+function allMarks(range: DateRange): RangeMark[] {
+  const from = range.from.getTime();
+  const to = range.to.getTime();
+  const shareOf = (date: Date): number => (date.getTime() - from) / (to - from);
+  if (to - from <= 62 * dayLength) {
+    const weeks: RangeMark[] = [];
+    const start = range.from;
+    // The calendar adds the days, so a clock change does not move a mark off midnight.
+    for (
+      let day = startOfDay(start);
+      day.getTime() < to;
+      day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 7)
+    ) {
+      weeks.push({ label: `${String(day.getDate())} ${months[day.getMonth()] ?? ""}`, at: shareOf(day) });
+    }
+    return weeks;
+  }
+  const firstMonth = new Date(
+    range.from.getFullYear(),
+    range.from.getMonth() + (range.from.getDate() === 1 ? 0 : 1),
+    1,
+  );
+  const monthStarts: Date[] = [];
+  for (let date = firstMonth; date.getTime() < to; date = new Date(date.getFullYear(), date.getMonth() + 1, 1)) {
+    monthStarts.push(date);
+  }
+  if (monthStarts.length > monthMarks * 2) {
+    return monthStarts
+      .filter((date) => date.getMonth() === 0)
+      .map((date) => ({ label: String(date.getFullYear()), at: shareOf(date) }));
+  }
+  const manyYears = range.from.getFullYear() !== new Date(to - 1).getFullYear();
+  const step = Math.ceil(monthStarts.length / monthMarks);
+  return monthStarts
+    .filter((_, index) => index % step === 0)
+    .map((date) => ({
+      label: manyYears && date.getMonth() === 0 ? String(date.getFullYear()) : (months[date.getMonth()] ?? ""),
+      at: shareOf(date),
+    }));
 }
 
 /** True when the timeline shows the project: each active project and each project in use, and a paused one on request. */
@@ -112,19 +311,15 @@ function isShown(frontMatter: Project["frontMatter"], showPaused: boolean): bool
  * hide the paused projects, but never a project in use. The bars show no stretches of activity
  * from the chats: a deleted chat would take its activity away.
  */
-export function timeline(projects: readonly Project[], year: YearChoice, now: Date, showPaused = true): Timeline {
-  const shown = projects
-    .filter((project) => isShown(project.frontMatter, showPaused))
-    .map((project) => ({ project, created: createdAt(project) }))
-    .sort((first, second) => first.created.getTime() - second.created.getTime());
-  const firstYear =
-    year === "all" ? Math.min(now.getFullYear(), ...shown.map((item) => item.created.getFullYear())) : year;
-  const lastYear = year === "all" ? now.getFullYear() : year;
-  const from = new Date(firstYear, 0, 1).getTime();
-  const to = new Date(lastYear + 1, 0, 1).getTime();
+export function timeline(projects: readonly Project[], range: DateRange, now: Date, showPaused = true): Timeline {
+  const from = range.from.getTime();
+  const to = range.to.getTime();
   const shareOf = (time: number): number => Math.min(1, Math.max(0, (time - from) / (to - from)));
   const end = shareOf(now.getTime());
-  const rows = shown
+  const rows = projects
+    .filter((project) => isShown(project.frontMatter, showPaused))
+    .map((project) => ({ project, created: createdAt(project) }))
+    .sort((first, second) => first.created.getTime() - second.created.getTime())
     .filter((item) => item.created.getTime() < to)
     .map((item) => ({
       project: item.project,
@@ -136,14 +331,63 @@ export function timeline(projects: readonly Project[], year: YearChoice, now: Da
       end,
       startsBefore: item.created.getTime() < from,
     }));
-  const marks =
-    year === "all"
-      ? Array.from({ length: lastYear - firstYear + 1 }, (_, index) => ({
-          label: String(firstYear + index),
-          at: shareOf(new Date(firstYear + index, 0, 1).getTime()),
-        }))
-      : months.map((label, index) => ({ label, at: shareOf(new Date(year, index, 1).getTime()) }));
-  return { rows, marks, today: now.getTime() >= from && now.getTime() < to ? end : null };
+  return { rows, marks: rangeMarks(range), today: now.getTime() >= from && now.getTime() < to ? end : null };
+}
+
+/** The projects on day 1 of a month (#878). */
+export interface MonthPoint {
+  readonly at: Date;
+  readonly active: number;
+  readonly paused: number;
+  /** The projects that closed in the month before `at`. */
+  readonly closed: number;
+}
+
+/**
+ * One point for day 1 of each month, from the month of the range start to today or the range end
+ * (#878). Eva keeps only the status of today and the `closed` day. So an open project counts with
+ * its status of today since its creation, and a closed project counts as active until its closing
+ * day. A closed project with no `closed` day is in no point.
+ */
+export function monthlyStatus(
+  projects: readonly Pick<Project, "parsedId" | "frontMatter">[],
+  range: DateRange,
+  now: Date,
+): MonthPoint[] {
+  const last = Math.min(range.to.getTime() - 1, now.getTime());
+  const known = projects.flatMap((project) => {
+    const { status, closed } = project.frontMatter;
+    if (status === null) return [];
+    const closedOn = status === "closed" ? (closed === null ? null : dayOf(closed)) : null;
+    if (status === "closed" && closedOn === null) return [];
+    return [{ created: createdAt(project).getTime(), status, closedOn: closedOn?.getTime() ?? null }];
+  });
+  const points: MonthPoint[] = [];
+  for (
+    let at = new Date(range.from.getFullYear(), range.from.getMonth(), 1);
+    at.getTime() <= last;
+    at = new Date(at.getFullYear(), at.getMonth() + 1, 1)
+  ) {
+    const time = at.getTime();
+    const before = new Date(at.getFullYear(), at.getMonth() - 1, 1).getTime();
+    const open = known.filter(
+      (project) => project.created <= time && (project.closedOn === null || time < project.closedOn),
+    );
+    points.push({
+      at,
+      active: open.filter((project) => project.status !== "paused").length,
+      paused: open.filter((project) => project.status === "paused").length,
+      closed: known.filter(
+        (project) => project.closedOn !== null && project.closedOn >= before && project.closedOn < time,
+      ).length,
+    });
+  }
+  return points;
+}
+
+/** "1 Nov 2026": the day of a point of the chart. */
+export function pointLabel(at: Date): string {
+  return dayWords(at);
 }
 
 /** "4 Nov": the label under the today line of the timeline (#857). */
@@ -177,4 +421,30 @@ export function homeChats<C extends HomeChat>(
     .slice(0, recentLength)
     .map((item) => item.chat);
   return { needsYou, recent };
+}
+
+/** At most this many labels under the chart, so a phone has room for each. */
+const chartLabelCount = 6;
+
+/**
+ * The labels under the points of the chart: the month, or the year at January when the points
+ * cross a year. A long range names every few points, and leaves the others empty.
+ */
+export function chartLabels(points: readonly MonthPoint[]): string[] {
+  const first = points[0]?.at.getFullYear();
+  const manyYears = points.some((point) => point.at.getFullYear() !== first);
+  const step = Math.ceil(points.length / chartLabelCount);
+  return points.map(({ at }, index) => {
+    if (index % step !== 0) return "";
+    return manyYears && at.getMonth() === 0 ? String(at.getFullYear()) : (months[at.getMonth()] ?? "");
+  });
+}
+
+/** The choice, or the default range when it names a year that lost its last project, such as after a rename. */
+export function knownChoice(
+  choice: RangeChoice,
+  projects: readonly Pick<Project, "parsedId">[],
+  now: Date,
+): RangeChoice {
+  return choice.kind === "year" && !projectYears(projects, now).includes(choice.year) ? defaultRange : choice;
 }

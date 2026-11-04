@@ -114,11 +114,15 @@ export function currentNavButton(
 /** A page of Projects. Each page has an address, so Back goes from a chat to its project, then to the list. */
 export type ProjectRoute =
   | { readonly kind: "list" }
+  /** The statistics of the projects, on their own page, so a phone shows them too (#878). */
+  | { readonly kind: "stats" }
   | { readonly kind: "project" | "details" | "setup"; readonly projectId: string }
   | { readonly kind: "chat"; readonly projectId: string; readonly chatId: string };
 
 /** Any address that names no page of Projects opens the list. */
 export function projectRouteOf(hash: string): ProjectRoute {
+  // A project id starts with its year, so no project has the id "stats".
+  if (hash === `${addressOf("projects")}/stats`) return { kind: "stats" };
   const match = /^#\/projects\/([^/]+)(?:\/(details|setup|chat\/([^/]+)))?$/.exec(hash);
   const projectId = match?.[1];
   if (match === null || projectId === undefined) return { kind: "list" };
@@ -130,6 +134,7 @@ export function projectRouteOf(hash: string): ProjectRoute {
 
 export function projectAddressOf(route: ProjectRoute): string {
   if (route.kind === "list") return addressOf("projects");
+  if (route.kind === "stats") return `${addressOf("projects")}/stats`;
   const project = `${addressOf("projects")}/${encodeURIComponent(route.projectId)}`;
   if (route.kind === "project") return project;
   if (route.kind === "chat") return `${project}/chat/${encodeURIComponent(route.chatId)}`;

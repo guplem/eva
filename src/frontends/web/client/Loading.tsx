@@ -406,15 +406,20 @@ function ChatListSkeleton(): ReactElement {
   );
 }
 
-/** The project list: its title, the New project button, the search and the status filters. */
+/** The project list: its title, the Statistics and New project buttons, the search and the status filters. */
 function ProjectListSkeleton(): ReactElement {
   return (
     <div className="sidebar">
       <div className="list-title-row" {...copies(".list-title-row", "left top right")}>
         <h2 className="list-title">Projects</h2>
-        <button className="primary skeleton-ghost" disabled {...copies(".list-title-row .primary")}>
-          <Icon name="plus" /> New project
-        </button>
+        <div className="list-title-actions">
+          <button className="icon-button skeleton-ghost" disabled {...copies(".list-title-actions .icon-button")}>
+            <Icon name="chart" />
+          </button>
+          <button className="primary skeleton-ghost" disabled {...copies(".list-title-actions .primary")}>
+            <Icon name="plus" />
+          </button>
+        </div>
       </div>
       <input
         className="project-search skeleton-ghost"

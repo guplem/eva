@@ -216,7 +216,7 @@ describe("timeline", () => {
   ];
   const year = (value: number): DateRange => ({ from: new Date(value, 0, 1), to: new Date(value + 1, 0, 1) });
 
-  test("shows the projects of each shown status and the projects in use, once each, the oldest first (#859)", () => {
+  test("shows the projects of each shown status, once each, the oldest first, and marks the ones in use (#859)", () => {
     const rows = timeline(projects, year(2026), now, ["active", "paused", "closed"]).rows;
     expect(rows.map((row) => [row.title, row.status, row.inUse])).toEqual([
       ["old", "paused", false],
@@ -228,16 +228,16 @@ describe("timeline", () => {
     ]);
   });
 
-  test("shows only the active projects and the projects in use by default (#881)", () => {
+  test("shows only the active projects by default, in use or not", () => {
     const rows = timeline(projects, year(2026), now).rows;
-    expect(rows.map((row) => row.title)).toEqual(["early", "used", "built", "late"]);
+    expect(rows.map((row) => row.title)).toEqual(["early", "built", "late"]);
   });
 
-  test("hides each status that the person turns off, Active too, but never a project in use (#859, #881)", () => {
+  test("hides each status that the person turns off, Active too, also for a project in use", () => {
     const pausedTool = project("2026-05-01-0000-paused-tool", "paused", { inUse: true });
     const unsorted = project("2026-06-01-0000-unsorted", null);
     const rows = timeline([...projects, pausedTool, unsorted], year(2026), now, ["closed"]).rows;
-    expect(rows.map((row) => row.title)).toEqual(["used", "built", "done", "paused-tool"]);
+    expect(rows.map((row) => row.title)).toEqual(["used", "done"]);
   });
 
   test("runs each bar from the creation of the project to today", () => {

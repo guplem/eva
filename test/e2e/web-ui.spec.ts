@@ -2302,9 +2302,7 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   const timeline = page.getByRole("region", { name: "Timeline" });
   await expect(timeline).toBeVisible();
   await expect(page.getByRole("region", { name: "Recent" })).toBeVisible();
-  // A project in use always shows, whatever its status (#859).
-  await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
-  // Each status is a chip of the legend, only Active is on at first, and no chip hides a project in use (#881).
+  // Each status is a chip of the legend, and only Active is on at first (#881).
   const legend = timeline.getByRole("group", { name: "Legend" });
   await expect(legend.getByRole("button")).toHaveCount(3);
   await expect(legend.getByRole("button", { name: "Show the active projects" })).toHaveAttribute(
@@ -2315,13 +2313,17 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   await expect(garden).toHaveCount(0);
   await legend.getByRole("button", { name: "Show the paused projects" }).click();
   await expect(garden).toBeVisible();
+  // A project in use shows only when its status is on, and its bar says In use (#859).
   const oldTool = timeline.getByRole("button", { name: "Old tool, Closed" });
+  const recipes = timeline.getByRole("button", { name: "Family recipes, Closed, In use" });
   await expect(oldTool).toHaveCount(0);
+  await expect(recipes).toHaveCount(0);
   await legend.getByRole("button", { name: "Show the closed projects" }).click();
   await expect(oldTool).toBeVisible();
+  await expect(recipes).toBeVisible();
   await legend.getByRole("button", { name: "Show the closed projects" }).click();
   await expect(oldTool).toHaveCount(0);
-  await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
+  await expect(recipes).toHaveCount(0);
   // The range starts at the last 12 months, and the picker changes it (#878).
   const startedLine = page.getByText(/^In [^:]+: \d+ projects? started\.$/);
   await expect(startedLine).toHaveText(/^In the last 12 months: /);

@@ -3237,8 +3237,8 @@ test("Schedules page: open it from the main navigation, add a schedule, see its 
   const id = `walk-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await logIn(page);
   await page.getByRole("button", { name: "Schedules" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Schedules");
-  await expect(page.getByRole("button", { name: "Schedules" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "Schedules" }).getByRole("heading")).toHaveText("Schedules");
+  await expect(page.getByRole("button", { name: "Schedules", exact: true })).toHaveAttribute("aria-current", "page");
   // No sidebar shows here, so the list button would do nothing.
   await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
   // The form opens in a dialog, so it does not fill the page.
@@ -3255,26 +3255,61 @@ test("Schedules page: open it from the main navigation, add a schedule, see its 
   await form.getByLabel("Time (HH:MM)").fill("07:30");
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Today" })).toBeVisible();
-  const row = page.getByRole("listitem", { name: `Walk ${id}` });
-  await expect(row).toContainText("Fridays at 07:30 · next");
-  await expect(row).toContainText("Not run yet");
-  // The row says that a schedule is off.
-  const toggle = row.getByRole("switch", { name: `Run Walk ${id}` });
+  // The new schedule opens its own page, as a new project does.
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`Walk ${id}`);
+  const facts = page.getByRole("region", { name: "When it runs" });
+  await expect(facts).toContainText("Fridays at 07:30");
+  await expect(page.getByRole("region", { name: "Past runs" })).toContainText("No run yet.");
+  const header = page.locator(".main-header");
+  await expect(header.locator(".status-pill")).toHaveText("Not run yet");
+  // The switch in the header turns the schedule off and on.
+  const toggle = header.getByRole("switch", { name: `Run Walk ${id}` });
   await expect(toggle).toHaveAttribute("aria-checked", "true");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
-  await expect(row).toContainText("Fridays at 07:30 · off");
-  await expect(row.locator(".status-pill")).toHaveText("Off");
+  await expect(header.locator(".status-pill")).toHaveText("Off");
+  await expect(facts).toContainText("None while it is off");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
+  // Back shows the list. Each card says when its schedule repeats, its next run and its last result.
+  await page.getByRole("button", { name: "Back to the schedules" }).click();
+  await expect(page).toHaveURL(/#\/schedules$/);
+  const row = page.getByRole("listitem", { name: `Walk ${id}` });
   await expect(row).toContainText("Fridays at 07:30 · next");
+  await expect(row).toContainText("Not run yet");
+  await row.getByRole("button").click();
   // Remove asks in the page first.
-  await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
-  await row.getByRole("button", { name: "Keep" }).click();
-  await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
-  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  await page.getByRole("button", { name: `Remove Walk ${id}` }).click();
+  await page.getByRole("button", { name: "Keep" }).click();
+  await page.getByRole("button", { name: `Remove Walk ${id}` }).click();
+  await page
+    .getByRole("group", { name: `Remove Walk ${id}?` })
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await expect(page).toHaveURL(/#\/schedules$/);
   await expect(row).toHaveCount(0);
+});
+
+test("Schedules page: a past run opens its chat", async ({ page }, testInfo) => {
+  // A one-off runs at its minute, so the test waits up to a minute for the run.
+  test.setTimeout(120_000);
+  const id = `plan-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  // A one-off a minute ahead runs at the next check of the demo, with a prompt, so it has a chat.
+  const listed = (await (await page.request.get("/api/schedules")).json()) as { now: string };
+  const soon = new Date(Date.parse(`${listed.now}:00Z`) + 60_000).toISOString().slice(0, 16);
+  const created = await page.request.post("/api/schedules", {
+    data: { id, name: `Plan ${id}`, from: soon, prompt: "Plan my day." },
+  });
+  expect(created.status()).toBe(201);
+  await page.goto(`/#/schedules/${id}`);
+  const runs = page.getByRole("region", { name: "Past runs" });
+  await expect(runs.getByRole("button", { name: /^Open the chat of/ })).toBeVisible({ timeout: 90_000 });
+  await runs.getByRole("button", { name: /^Open the chat of/ }).click();
+  await expect(page).toHaveURL(/#\/chats\//);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`Plan ${id}`);
+  await page.request.delete(`/api/schedules/${id}`);
 });
 
 test("Schedules page: add a schedule that repeats every few days", async ({ page }, testInfo) => {
@@ -3293,8 +3328,10 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await form.getByLabel("Fixed text").fill("Water the plants.");
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
-  const row = page.getByRole("listitem", { name: `Water ${id}` });
-  await expect(row).toContainText("Every 3 days at 07:30 · next 2 Jan 07:30");
+  // The new schedule opens its page. A phone hides the list there.
+  const facts = page.getByRole("region", { name: "When it runs" });
+  await expect(facts).toContainText("Every 3 days at 07:30");
+  await expect(facts).toContainText("2 Jan 07:30");
   await page.request.delete(`/api/schedules/${id}`);
 });
 
@@ -3332,8 +3369,9 @@ test("Schedules page: add a schedule that runs once (#822)", async ({ page }, te
   await form.getByLabel("Fixed text").fill("Phone the bank.");
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
-  const row = page.getByRole("listitem", { name: `Bank ${id}` });
-  await expect(row).toContainText("Once on 2 Jan at 07:30 · next 2 Jan 07:30");
+  const facts = page.getByRole("region", { name: "When it runs" });
+  await expect(facts).toContainText("Once on 2 Jan at 07:30");
+  await expect(facts).toContainText("2 Jan 07:30");
   await page.request.delete(`/api/schedules/${id}`);
 });
 
@@ -3356,7 +3394,8 @@ test("Schedules page: edit a schedule in the same form, and keep the keys that t
   });
   await page.getByRole("button", { name: "Schedules" }).click();
   const row = page.getByRole("listitem", { name });
-  await row.getByRole("button", { name: `Edit ${name}` }).click();
+  await row.getByRole("button").click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const form = page.getByRole("dialog", { name: "Edit schedule" });
   await expect(form.getByLabel(/^Id/)).toHaveValue(id);
   await expect(form.getByLabel(/^Id/)).not.toBeEditable();
@@ -3367,7 +3406,9 @@ test("Schedules page: edit a schedule in the same form, and keep the keys that t
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText(`${name} stays off`);
-  await expect(row).toContainText("Mondays at 22:15 · off");
+  const facts = page.getByRole("region", { name: "When it runs" });
+  await expect(facts).toContainText("Mondays at 22:15");
+  await expect(facts).toContainText("None while it is off");
   const listed = (await (await page.request.get("/api/schedules")).json()) as {
     schedules: { schedule: { id: string; text: string | null; model: string | null; enabled: boolean } }[];
   };
@@ -3405,7 +3446,10 @@ test("the main navigation opens each destination at its own address, and the bac
   await page.goBack();
   await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   await page.goBack();
-  await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
+  // Like Projects, the Schedules page names its list, not the page.
+  await expect(
+    page.getByRole("navigation", { name: "Schedules" }).getByRole("heading", { name: "Schedules" }),
+  ).toBeVisible();
   // A reload keeps the destination.
   await page.reload();
   await expect(nav.getByRole("button", { name: "Schedules" })).toHaveAttribute("aria-current", "page");
@@ -6171,7 +6215,10 @@ test("each page shows line icons, never an emoji or a symbol mark", async ({ pag
   await expect(page.getByRole("button", { name: "Schedules" }).locator("svg.icon")).toBeVisible();
   await expectNoSymbolMarks(page);
   await page.getByRole("button", { name: "Schedules" }).click();
-  await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
+  // Like Projects, the Schedules page names its list, not the page.
+  await expect(
+    page.getByRole("navigation", { name: "Schedules" }).getByRole("heading", { name: "Schedules" }),
+  ).toBeVisible();
   await expectNoSymbolMarks(page);
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveAttribute("aria-current", "page");

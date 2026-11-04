@@ -100,11 +100,38 @@ export function lastRunWords(
   now: string,
 ): { text: string; tone: ResultTone } {
   if (lastRun === null) return { text: "Not run yet", tone: "idle" };
-  // A quiet run worked, and had nothing to tell (#687).
-  const verb = lastRun.failed ? "Failed" : lastRun.quiet === true ? "No news" : "Ran";
+  const verb = resultVerb(lastRun);
   const days = daysBetween(lastRun.slot, now);
   const when = days === 0 ? " today" : days === 1 ? " yesterday" : ` · ${dateWords(lastRun.slot)}`;
   return { text: verb + when, tone: lastRun.failed ? "bad" : "ok" };
+}
+
+/** One past run for the list of a schedule: its result, its colour and when it ran, such as "Yesterday 18:30". */
+export function pastRunWords(
+  run: { readonly slot: string; readonly failed: boolean; readonly quiet?: boolean | undefined },
+  now: string,
+  clock = displayFormat().clock,
+): { result: string; tone: ResultTone; when: string } {
+  const days = daysBetween(run.slot, now);
+  const time = slotTime(run.slot.slice(11, 16), clock);
+  const day = days === 0 ? "Today" : days === 1 ? "Yesterday" : dateWords(run.slot);
+  return {
+    result: resultVerb(run),
+    tone: run.failed ? "bad" : "ok",
+    when: `${day} ${time}`,
+  };
+}
+
+/** The pill of a schedule: its last run, or "Off". An ended schedule shows its last run, also when it is off. */
+export function resultWords(
+  view: {
+    readonly schedule: { readonly enabled: boolean };
+    readonly ended: string | null;
+    readonly lastRun: Parameters<typeof lastRunWords>[0];
+  },
+  now: string,
+): { text: string; tone: ResultTone } {
+  return view.schedule.enabled || view.ended !== null ? lastRunWords(view.lastRun, now) : { text: "Off", tone: "idle" };
 }
 
 export interface DayLineRun {
@@ -161,6 +188,11 @@ export function dayLine(
       };
     }),
   };
+}
+
+/** A quiet run worked, and had nothing to tell (#687). */
+function resultVerb(run: { readonly failed: boolean; readonly quiet?: boolean | undefined }): string {
+  return run.failed ? "Failed" : run.quiet === true ? "No news" : "Ran";
 }
 
 function joinWords(words: readonly string[]): string {

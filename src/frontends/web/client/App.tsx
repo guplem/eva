@@ -440,6 +440,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   // On a phone, the open list covers the chat: the person reads no answer, as useMarkSeen knows.
   const readChats = useMemo(() => (sidebarOpen ? [] : shownSessionIds), [sidebarOpen, shownSessionIds]);
+  // The page of a schedule opens the chat of a past run only while that chat exists.
+  const chatIds = useMemo(() => new Set(sessions.map((session) => session.id)), [sessions]);
   // The claims read the chat on screen at each send, so they start once and hear each change.
   const shownChats = useRef(readChats);
   useEffect(() => {
@@ -759,7 +761,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
             onOpenSettings={() => openDestination("settings")}
           />
         )}
-        {screen === "schedules" && <SchedulesView />}
+        {screen === "schedules" && <SchedulesView chatIds={chatIds} />}
         {screen === "files" && <FilesView />}
       </div>
       {/* Before the other dialogs: a device request that comes meanwhile shows on top. */}

@@ -62,6 +62,7 @@ export function StepFold({
   sessionId,
   endedWork,
   vaultLinks = false,
+  bubble,
 }: {
   /** Each message holds its whole text. */
   readonly steps: readonly TurnStep[];
@@ -76,6 +77,8 @@ export function StepFold({
   readonly endedWork?: ReadonlyMap<string, boolean>;
   /** True in an Assistant chat, so a path in a message opens the Files page, as in the answer. */
   readonly vaultLinks?: boolean;
+  /** The message that the answer shows below in full. A step after it keeps it in the list, as one line. */
+  readonly bubble?: TurnStep;
 }): ReactElement | null {
   const [open, setOpen] = useState(live);
   const [onlyMessages, setOnlyMessages] = useState(false);
@@ -85,7 +88,7 @@ export function StepFold({
   if (total === 0) return null;
   const last = steps.at(-1);
   const failed = steps.some((step) => step.isError);
-  const messages = steps.filter((step) => step.kind === "message").length;
+  const messages = steps.filter((step) => step.kind === "message" && step !== bubble).length;
   // With no other step, the link would hide nothing.
   const canFilter = messages > 0 && messages < total;
   const shownSteps = canFilter && onlyMessages ? steps.filter((step) => step.kind === "message") : steps;
@@ -120,7 +123,7 @@ export function StepFold({
             <li className="muted">{counted(omitted, "step")} not kept.</li>
           )}
           {shownSteps.map((step, index) =>
-            step.kind === "message" ? (
+            step.kind === "message" && step !== bubble ? (
               <WholeMessage
                 key={`${step.id ?? ""}-${String(index)}`}
                 text={step.text}
@@ -170,7 +173,11 @@ function WholeMessage({
   readonly live: boolean;
   readonly vaultLinks: boolean;
 }): ReactElement {
-  const html = useMemo(() => toWebHtml(shownAnswerText(text, live), { vaultLinks }), [text, live, vaultLinks]);
+  // A text that stays cut can end inside a file marker, so the cut line is hidden as while it streams.
+  const html = useMemo(
+    () => toWebHtml(shownAnswerText(text, live || text.endsWith("…")), { vaultLinks }),
+    [text, live, vaultLinks],
+  );
   return (
     <li className="step-whole-message">
       <span className="step-message-head">

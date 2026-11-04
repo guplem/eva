@@ -68,35 +68,38 @@ const cutMessageLength = 200;
 /**
  * The steps, with each message whole. A stored step keeps 200 characters of a message, but the
  * step list shows each message in full. The whole answer joins every message with a blank line,
- * and a message can hold a blank line too, so each message is found by the start of its text.
- * When one is not found, the steps stay as they are. Give every step of the turn: a message ends
- * where the next one starts, so a missing last message would make the one before it run on.
+ * and a message can hold a blank line too. So the search runs back from the end: the last
+ * message is always whole, and a cut message starts with its 199 kept characters. When one is
+ * not found, the steps stay as they are. Give every step of the turn, the last message too.
  */
 export function wholeMessages(steps: readonly TurnStep[], wholeAnswer: string): readonly TurnStep[] {
   const isCut = (text: string): boolean => text.endsWith("…") && Array.from(text).length === cutMessageLength;
   const messages = steps.filter((step) => step.kind === "message");
-  const starts: number[] = [];
-  let from = 0;
-  for (const message of messages) {
-    const start = isCut(message.text) ? message.text.slice(0, -1) : message.text;
-    // The first kept message can follow messages that the steps no longer keep.
-    const found = starts.length === 0 ? wholeAnswer.indexOf(start, from) : wholeAnswer.indexOf(`\n\n${start}`, from);
-    if (found === -1) return steps;
-    const at = starts.length === 0 ? found : found + 2;
-    starts.push(at);
-    from = at + start.length;
+  const whole = new Map<TurnStep, string>();
+  let end = wholeAnswer.length;
+  for (const message of messages.toReversed()) {
+    const known = isCut(message.text) ? message.text.slice(0, -1) : message.text;
+    const start = isCut(message.text) ? lastStart(wholeAnswer, known, end - known.length) : end - known.length;
+    if (start < 0 || !startsMessage(wholeAnswer, start) || !wholeAnswer.startsWith(known, start)) return steps;
+    whole.set(message, wholeAnswer.slice(start, end));
+    end = start - 2;
   }
-  const whole = new Map(
-    messages.map((message, index) => {
-      if (!isCut(message.text)) return [message, message.text];
-      const next = starts[index + 1];
-      return [message, wholeAnswer.slice(starts[index], next === undefined ? undefined : next - 2)];
-    }),
-  );
   return steps.map((step) => {
     const text = whole.get(step);
     return text === undefined || text === step.text ? step : { ...step, text };
   });
+}
+
+/** Each message starts the answer or follows a blank line, as the core joins them. */
+function startsMessage(wholeAnswer: string, at: number): boolean {
+  return at === 0 || wholeAnswer.slice(at - 2, at) === "\n\n";
+}
+
+/** The last place, at or before `from`, where a message starts with `known`, or -1. */
+function lastStart(wholeAnswer: string, known: string, from: number): number {
+  let at = from < 0 ? -1 : wholeAnswer.lastIndexOf(known, from);
+  while (at > 0 && !startsMessage(wholeAnswer, at)) at = wholeAnswer.lastIndexOf(known, at - 1);
+  return at;
 }
 
 /**

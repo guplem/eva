@@ -741,6 +741,7 @@ function AnswerBody({
         {...(sessionId === undefined ? {} : { sessionId })}
         {...(endedWork === undefined ? {} : { endedWork })}
         vaultLinks={vaultLinks}
+        {...(lastMessage === undefined ? {} : { bubble: lastMessage })}
       />
       {body !== "" && <MarkdownBody html={html} className="answer-body" copy={!live} />}
       {files.length > 0 && (

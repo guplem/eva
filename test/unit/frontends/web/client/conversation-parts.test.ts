@@ -138,6 +138,13 @@ describe("wholeMessages", () => {
     expect(shown.map((each) => each.text)).toEqual([long, "short one", "Done."]);
   });
 
+  test("does not cut a long message where a later short message repeats its words", () => {
+    const withDone = `${"a".repeat(250)}\n\nDone.\n\nMore after that.`;
+    const steps = [step("message", cut(withDone)), step("message", "Done.")];
+    const shown = wholeMessages(steps, `${withDone}\n\nDone.`);
+    expect(shown.map((each) => each.text)).toEqual([withDone, "Done."]);
+  });
+
   test("keeps the steps as they are when the answer does not hold them", () => {
     const steps = [step("message", cut(long)), step("message", "Done.")];
     expect(wholeMessages(steps, "Something else.")).toBe(steps);

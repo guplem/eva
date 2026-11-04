@@ -393,7 +393,7 @@
   background: var(--chip);
 }
 
-.step-list li {
+.step-list > li {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -424,7 +424,7 @@
   }
 }
 
-.step-list li .icon {
+.step-list .step-row .icon {
   width: 14px;
   height: 14px;
   color: var(--accent-ink);
@@ -443,7 +443,7 @@
 }
 
 /* An earlier message shows whole, so the person reads it where it came in the turn. */
-.step-list li.step-whole-message {
+.step-list > li.step-whole-message {
   display: block;
   margin: 2px 0;
   padding: 6px 10px;
@@ -470,7 +470,7 @@
 }
 
 /* The link reads as the interface, not as one more command. */
-.step-list li.step-filter {
+.step-list > li.step-filter {
   justify-content: flex-end;
   font: 600 var(--text-sm) var(--font);
 }
@@ -480,12 +480,12 @@
   text-decoration: none;
 }
 
-.step-list li.failed,
-.step-list li.failed .icon {
+.step-list > li.failed,
+.step-list > li.failed .icon {
   color: var(--bad);
 }
 
-.step-list li.muted {
+.step-list > li.muted {
   color: var(--muted);
 }
 

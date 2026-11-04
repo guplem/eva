@@ -46,6 +46,7 @@ import {
   liveFace,
   runningUntil,
   isWorking,
+  heldSteps,
   senderName,
   sentTurnCount,
   turnEndNotice,
@@ -288,6 +289,13 @@ function Branch({
   const liveSteps = live.steps[session.id];
   const turnRuns = useTurnRuns(liveSteps !== undefined, turnCount);
   const working = isWorking({ live: liveSteps !== undefined, turnRuns, pending, turnCount });
+  const draft = live.drafts[session.id];
+  const ended = live.endedSteps[session.id] ?? null;
+  // Each tick of the clock renders the branch again, so join the draft only when a step or a piece arrives.
+  const answerSteps = useMemo(
+    () => heldSteps(ended, liveSteps === undefined ? undefined : stepsWithDraft(liveSteps, draft), turnRuns),
+    [ended, liveSteps, draft, turnRuns],
+  );
   // The core says what the running turn shows, so a message that another sender sent shows too (#804).
   const turnMessages = runningMessages(live.messages[session.id], turnCount, {
     live: liveSteps !== undefined,
@@ -466,8 +474,9 @@ function Branch({
       <span className="visually-hidden" role="status">
         {turnEnd}
       </span>
-      {working && (
-        <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
+      {/* After the turn ends, its answer stays without the clock until the stored turn takes its place. */}
+      {(working || answerSteps !== null) && (
+        <LiveAnswer steps={answerSteps ?? []} mode={session.mode} startedAt={working ? startedAt : null} />
       )}
       {/* A message sent during a turn waits for that turn to end, so it shows below the running answer. */}
       {ownPending
@@ -574,7 +583,7 @@ function TurnWordsView({
 }
 
 /** The person's message. A voice note is text too: the person read and fixed it in the box. */
-function UserMessage({
+export function UserMessage({
   text,
   fromEva = false,
   turnKey,
@@ -761,18 +770,16 @@ function AnswerBody({
 
 /** A running turn keeps the same window of steps as a stored one, so both show the same lines. */
 function LiveAnswer({
-  steps: liveSteps,
-  draft,
+  steps,
   mode,
   startedAt,
 }: {
+  /** The steps so far, with the block that the engine writes now as the last message. */
   readonly steps: readonly TurnStep[];
-  /** The block that the engine writes now. It shows as the last message until its final text comes. */
-  readonly draft: string | undefined;
   readonly mode: SessionRecord["mode"];
-  readonly startedAt: number;
+  /** When the turn started, or null after its end, while the stored turn has not come yet. */
+  readonly startedAt: number | null;
 }): ReactElement {
-  const steps = useMemo(() => stepsWithDraft(liveSteps, draft), [liveSteps, draft]);
   // A tick of the clock renders the branch again, so compute this only when a step arrives.
   const shown = useMemo(() => storedSteps(steps), [steps]);
   const wholeAnswer = useMemo(
@@ -793,14 +800,16 @@ function LiveAnswer({
         live
         vaultLinks={mode === "assistant"}
       />
-      <div className="working">
-        <span className="dots" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </span>
-        Working · {elapsedText(Date.now() - startedAt)}
-      </div>
+      {startedAt !== null && (
+        <div className="working">
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          Working · {elapsedText(Date.now() - startedAt)}
+        </div>
+      )}
     </EvaMessage>
   );
 }

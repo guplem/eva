@@ -604,6 +604,49 @@ test("with no chat yet, the first message shows while Eva works on it", async ({
   await expect(page.locator(".message.answer").first()).toContainText("The person answered");
 });
 
+test("the first message shows at once, while Eva still makes its chat", async ({ page }) => {
+  await logIn(page);
+  let release = (): void => undefined;
+  const made = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() === "POST") await made;
+    await route.fallback();
+  });
+  const text = `A first message that waits (${test.info().project.name})`;
+  await sendFirstMessage(page, text);
+  // The chat does not exist yet, so the page is still the New chat page.
+  await expect(page.getByRole("region", { name: "New chat", exact: true }).locator(".message.user")).toContainText(
+    text,
+  );
+  release();
+  await expect(page.locator(".message.answer").first()).toContainText(text);
+  await expect(page.locator(".message.user")).toHaveCount(1);
+});
+
+test("the answer stays after the turn ends, until the stored turn takes its place", async ({ page }) => {
+  await logIn(page);
+  const first = await newAnsweredChat(page, "An answer that stays");
+  const chatId = await chatIdNamed(page, first);
+  await waitUntilIdle(page, chatId);
+  // The list brings the stored turn. Holding it keeps the moment between the turn end and the stored turn.
+  let release = (): void => undefined;
+  const listed = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() === "GET") await listed;
+    await route.fallback();
+  });
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("A second message");
+  await composer.press("Enter");
+  await waitUntilIdle(page, chatId);
+  await expect(page.locator(".working")).toHaveCount(0);
+  await expect(page.locator(".message.answer")).toHaveCount(2);
+  await expect(page.locator(".message.answer").last()).toContainText("A second message");
+  release();
+  await expect(page.locator(".message.answer").last().getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(page.locator(".message.answer")).toHaveCount(2);
+});
+
 test("with no chat yet and a missing setup step, the page says what is missing", async ({ page }) => {
   await hideOldChats(page);
   await page.route("**/api/status", async (route) => {

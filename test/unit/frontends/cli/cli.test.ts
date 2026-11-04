@@ -1799,8 +1799,15 @@ repos:
     );
     expect(await describeProjects(options, "#MONEY")).toStartWith("2025-02-01-0900-tax-report");
     expect(await describeProjects(options, "sorter")).toBe(
-      "2024-01-01-0900-photo-sorter  ?  photo-sorter\n  ⚠ status must be idea, active, in-use, paused or closed",
+      "2024-01-01-0900-photo-sorter  ?  photo-sorter\n  ⚠ status must be active, paused or closed",
     );
+    // A project in use says so after its status (#859).
+    sandbox.write(
+      vault,
+      "Projects/2025-03-01-0900-recipes/AGENTS.md",
+      "---\ncreated: 2025-03-01T09:00\nstatus: closed\nin-use: true\n---\n# Recipes\n",
+    );
+    expect(await describeProjects(options, "status:in-use")).toBe("2025-03-01-0900-recipes  closed, in use  Recipes");
   });
 
   test("status and projects print short text", async () => {

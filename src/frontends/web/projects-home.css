@@ -154,6 +154,13 @@
   white-space: nowrap;
 }
 
+/* The In use mark sits at the left of the name. The title gives way first. */
+.timeline-name .timeline-in-use {
+  flex: none;
+  padding: 0 var(--space-2);
+  overflow: visible;
+}
+
 .timeline-name::before {
   content: "";
   flex: none;
@@ -185,8 +192,8 @@
 }
 
 /*
- * Each status has a pattern, so a bar reads without its word. A pattern keeps the colour of the project.
- * The swatches of the status chips reuse the patterns.
+ * Each status has a pattern, so a bar reads without a word. A pattern keeps the colour of the project.
+ * The swatches of the legend reuse the patterns.
  */
 .timeline-row.active .timeline-bar,
 .timeline-swatch.active {
@@ -203,19 +210,38 @@
   );
 }
 
-/* An outline: the project is done, and the person uses it. */
-.timeline-row.in-use .timeline-bar,
+/* A faint fill: the work ended, or the project has no status. Only a project in use shows so. */
+.timeline-row.closed .timeline-bar,
+.timeline-row.none .timeline-bar,
+.timeline-swatch.closed,
 .timeline-swatch.in-use {
   background: color-mix(in oklch, var(--project-color) 14%, transparent);
-  box-shadow: inset 0 0 0 2px var(--project-color);
 }
 
-/* A bar from an earlier year has no left border: it runs in from the edge. */
-.timeline-row.in-use .timeline-bar.before {
+/*
+ * A ring around the bar: the person uses the project, whatever its work (#859). It goes over any
+ * pattern. A gap in the colour of the card keeps the ring apart from a solid bar of the same colour.
+ */
+.timeline-row.in-use .timeline-bar,
+.timeline-swatch.in-use {
   box-shadow:
-    inset 0 2px var(--project-color),
-    inset -2px 0 var(--project-color),
-    inset 0 -2px var(--project-color);
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--project-color);
+}
+
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.timeline-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--muted);
 }
 
 .home-card-head {
@@ -241,14 +267,11 @@
   border-radius: var(--radius-pill);
 }
 
-.timeline-word {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  padding-left: var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  color: var(--ink);
+/* A smaller ring fits the small swatch of the legend. */
+.timeline-swatch.in-use {
+  box-shadow:
+    0 0 0 1px var(--panel),
+    0 0 0 3px var(--project-color);
 }
 
 /* The layer covers the lanes, from below the month marks to the date label. */
@@ -292,9 +315,10 @@
   gap: var(--space-2);
 }
 
+/* Three counts: Active, In use and Paused (#859). They fit in one row on each size. */
 .home-count-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
@@ -316,8 +340,9 @@
     --timeline-name: 110px;
   }
 
-  .home-count-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* A narrow name column keeps the dot of the In use mark only, so the title stays readable. The row label says it in words. */
+  .timeline-name .timeline-in-use-word {
+    display: none;
   }
 }
 

@@ -178,7 +178,7 @@ describe("Eva", () => {
     await instance.sessions.send(session.id, "What should I cook?");
     const prompt = engine.requests[0]?.appendSystemPrompt ?? "";
     expect(prompt).toContain(
-      "- Recipes, `Projects/2025-03-02-1015-recipes/AGENTS.md` (project, in-use): The menus of each week.",
+      "- Recipes, `Projects/2025-03-02-1015-recipes/AGENTS.md` (project, closed, in use): The menus of each week.",
     );
     expect(prompt).toContain(
       `- Website, \`${join(extraRoot, "2025-04-01-0900-website", "AGENTS.md")}\` (project, active)`,
@@ -700,7 +700,7 @@ describe("Eva", () => {
       const result = await instance.createProject({
         name: "Example App",
         description: "A small app.",
-        status: "idea",
+        status: "paused",
         tags: [],
         repository: { type: "standard", visibility: "public" },
         drive: true,
@@ -716,7 +716,7 @@ describe("Eva", () => {
         id: "2026-10-14-1230-example-app",
         frontMatter: {
           created: "2026-10-14T12:30",
-          status: "idea",
+          status: "paused",
           repos: ["https://github.com/you/example-app"],
           repoTypes: { "https://github.com/you/example-app": "standard" },
         },

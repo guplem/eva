@@ -1513,9 +1513,23 @@ describe("web routes", () => {
 
     const whole = await call(`${path}/file`, {
       method: "PUT",
-      body: { version: saved.version, text: "---\nstatus: idea\n---\n# Whole\n" },
+      body: { version: saved.version, text: "---\nstatus: paused\n---\n# Whole\n" },
     });
-    expect(await json<{ text: string }>(whole)).toMatchObject({ text: "---\nstatus: idea\n---\n# Whole\n" });
+    expect(await json<{ text: string }>(whole)).toMatchObject({ text: "---\nstatus: paused\n---\n# Whole\n" });
+  });
+
+  test("a project's details save the in-use flag, and read a status of an older page (#859)", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    const { version } = await json<{ version: string }>(await call(`${path}/file`));
+    const body = { version, title: "Example app", status: "active", inUse: true, tags: [], repos: [] };
+    const saved = await json<{ text: string; version: string }>(await call(`${path}/details`, { method: "PUT", body }));
+    expect(saved.text).toContain("status: active\nin-use: true\n");
+
+    // An older open page sends in-use as a status: it means closed and in use. It also sends back the
+    // flag that this Eva gave it, which it cannot change, so the old status wins.
+    const old = { version: saved.version, title: "Example app", status: "in-use", inUse: false, tags: [], repos: [] };
+    const oldSaved = await json<{ text: string }>(await call(`${path}/details`, { method: "PUT", body: old }));
+    expect(oldSaved.text).toContain("status: closed\nin-use: true\n");
   });
 
   test("a project's details save the closing date with the closed status (#826)", async () => {
@@ -1527,15 +1541,20 @@ describe("web routes", () => {
   });
 
   test("the form creates a project, and the list shows it", async () => {
-    const form = { name: "New app", description: "Made from the form.", status: "idea", tags: ["web"] };
+    const form = { name: "New app", description: "Made from the form.", status: "paused", tags: ["web"] };
     const created = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });
     expect(created.status).toBe(201);
     const result = await json<{ projectId: string; github: unknown; drive: unknown }>(created);
     expect(result).toMatchObject({ github: null, drive: null });
     expect(result.projectId).toEndWith("-new-app");
 
-    const listed = await json<{ id: string; description: string }[]>(await call("/api/projects?text=new&status=idea"));
+    const listed = await json<{ id: string; description: string }[]>(
+      await call("/api/projects?text=new&status=paused"),
+    );
     expect(listed).toMatchObject([{ id: result.projectId, description: "Made from the form." }]);
+    // An older open page filters by idea, which reads as paused (#859).
+    const old = await json<{ id: string }[]>(await call("/api/projects?text=new&status=idea"));
+    expect(old).toMatchObject([{ id: result.projectId }]);
 
     const again = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });
     expect(again.status).toBe(400);
@@ -1543,7 +1562,7 @@ describe("web routes", () => {
   });
 
   test("a new project reads the old github: true as a repository, and refuses an unknown type", async () => {
-    const form = { description: "", status: "idea", tags: [], drive: false };
+    const form = { description: "", status: "paused", tags: [], drive: false };
     const old = await call("/api/projects", { method: "POST", body: { ...form, name: "Old page app", github: true } });
     // This Eva has no GitHub login, so the repository step says so: the page asked for one.
     expect(await json<{ github: unknown; setup: unknown }>(old)).toMatchObject({

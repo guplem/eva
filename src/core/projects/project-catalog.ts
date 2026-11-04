@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { listClones } from "./clones.ts";
 import {
+  oldProjectStatuses,
   projectStatuses,
   projectStatusFilters,
   type ProjectStatus,
@@ -15,12 +16,11 @@ import {
 import { projectTypeNoun, projectTypes, worksInClones, type ProjectType } from "../../shared/project-types.ts";
 import { parseProjectId, type ParsedProjectId } from "./project-id.ts";
 
-/** The statuses of the "Current" filter: the projects that the person develops or uses now. */
-const currentStatuses: readonly ProjectStatus[] = ["active", "in-use"];
-
 export interface ProjectFrontMatter {
   readonly created: string | null;
   readonly status: ProjectStatus | null;
+  /** True when the `in-use` key is `true`: the person uses the project now, whatever its status (#859). */
+  readonly inUse: boolean;
   /** The day the project closed, from the `closed` key, as the person wrote it (#826). */
   readonly closed: string | null;
   readonly repos: readonly string[];
@@ -65,13 +65,14 @@ export interface Project {
 }
 
 const statuses: readonly string[] = projectStatuses;
-/** "idea, active, in-use, paused or closed", for a warning and for the comment after `status:`. */
+/** "active, paused or closed", for a warning and for the comment after `status:`. */
 export const statusListText = `${projectStatuses.slice(0, -1).join(", ")} or ${projectStatuses.at(-1) ?? ""}`;
 const statusFilters: readonly string[] = projectStatusFilters;
 /** The front matter keys that Eva reads. Every other key stays in `extra`. */
 export const projectFrontMatterKeys = [
   "created",
   "status",
+  "in-use",
   "closed",
   "repos",
   "tags",
@@ -127,8 +128,12 @@ export function parseFrontMatter(text: string): FrontMatterResult {
   if (created === null) warnings.push("created is missing");
 
   let status: ProjectStatus | null = null;
+  const old = oldStatusOf(fields["status"]);
   if (statuses.includes(fields["status"] as string)) status = fields["status"] as ProjectStatus;
-  else warnings.push(`status must be ${statusListText}`);
+  else if (old === null) warnings.push(`status must be ${statusListText}`);
+  else status = old.status;
+  const inUse = readInUse(fields["in-use"]);
+  if (inUse === null) warnings.push("in-use must be true or false");
 
   const repos = readTextList(fields["repos"]);
   if (repos === null) warnings.push("repos must be a list of URLs");
@@ -152,6 +157,7 @@ export function parseFrontMatter(text: string): FrontMatterResult {
     frontMatter: {
       created,
       status,
+      inUse: (inUse ?? false) || (old?.inUse ?? false),
       closed,
       repos: repos ?? [],
       tags: tags ?? [],
@@ -164,6 +170,22 @@ export function parseFrontMatter(text: string): FrontMatterResult {
     },
     warnings,
   };
+}
+
+/** How Eva reads a status of an older vault, or null for any other value (#859). */
+export function oldStatusOf(value: unknown): { readonly status: ProjectStatus; readonly inUse: boolean } | null {
+  return typeof value === "string" && Object.hasOwn(oldProjectStatuses, value)
+    ? (oldProjectStatuses[value] ?? null)
+    : null;
+}
+
+/** The `in-use` flag: no key is false, and a value other than true or false is null. */
+function readInUse(value: unknown): boolean | null {
+  if (value === undefined) return false;
+  const text = typeof value === "string" ? value.trim().toLowerCase() : null;
+  if (text === "true") return true;
+  if (text === "false" || text === "") return false;
+  return null;
 }
 
 export interface DiscoveryOptions {
@@ -241,16 +263,21 @@ export function searchProjects(projects: readonly Project[], query: ProjectQuery
       const tags = project.frontMatter.tags.map((candidate) => candidate.toLowerCase());
       const haystack = `${project.id} ${project.title} ${tags.join(" ")}`.toLowerCase();
       if (!words.every((word) => haystack.includes(word))) return false;
-      if (query.status !== undefined && !matchesStatus(project.frontMatter.status, query.status)) return false;
+      if (query.status !== undefined && !matchesStatus(project.frontMatter, query.status)) return false;
       if (tag !== undefined && !tags.includes(tag)) return false;
       return true;
     })
     .sort((first, second) => second.id.localeCompare(first.id));
 }
 
-function matchesStatus(status: ProjectStatus | null, filter: ProjectStatusFilter): boolean {
-  if (filter === "current") return status !== null && currentStatuses.includes(status);
-  return status === filter;
+/** "Current" is the projects that the person works on or uses now (#690, #859). */
+function matchesStatus(
+  frontMatter: Pick<ProjectFrontMatter, "status" | "inUse">,
+  filter: ProjectStatusFilter,
+): boolean {
+  if (filter === "current") return frontMatter.status === "active" || frontMatter.inUse;
+  if (filter === "in-use") return frontMatter.inUse;
+  return frontMatter.status === filter;
 }
 
 function readProject(path: string, name: string, vaultFolder: string | null): Project | null {

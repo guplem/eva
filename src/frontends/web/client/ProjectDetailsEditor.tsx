@@ -21,6 +21,7 @@ import {
   localDay,
   withStatus,
   closingDate,
+  inUseLabel,
 } from "./project-format.ts";
 
 const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
@@ -193,6 +194,19 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
                 choices={statusChoices}
                 onChange={(value) => edit(() => setDetails(withStatus(details, statusOf(value), localDay(new Date()))))}
               />
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={details.inUse ?? false}
+                  onChange={(event) => edit(() => setDetails({ ...details, inUse: event.target.checked }))}
+                />
+                <span>
+                  {inUseLabel}
+                  <span className="field-hint">
+                    You use this project now, whatever its status. Eva keeps it in mind in each new chat.
+                  </span>
+                </span>
+              </label>
               {details.status === "closed" && (
                 <label className="field">
                   <span className="field-label">Closed on</span>

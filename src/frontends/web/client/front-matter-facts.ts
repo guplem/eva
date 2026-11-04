@@ -271,8 +271,9 @@ function factsOf(entries: readonly (readonly [string, unknown])[], format: FactF
 const leadingKeys = ["started"];
 
 /**
- * Each fact of the front matter, for the project card. The status pill, the description and the
- * repository chips show `status`, `summary`, `repos` and `repo_types`, so the facts leave them out.
+ * Each fact of the front matter, for the project card. The status and In use pills, the description
+ * and the repository chips show `status`, `in-use`, `summary`, `repos` and `repo_types`, so the facts
+ * leave them out (#859).
  */
 export function frontMatterFacts(frontMatter: Project["frontMatter"], format: FactFormat): Fact[] {
   const extra = Object.entries(frontMatter.extra);

@@ -104,16 +104,29 @@ describe("pinnedBlock", () => {
   });
 
   test("a project in an extra root shows with its folder, and a project falls back to its first paragraph", () => {
+    // No migration reaches an extra root, so its old `in-use` status reads as closed and in use (#859).
     addProject("2025-03-01-0900-tool", "status: in-use", "# Tool\n\nA small tool.\n", join(root, "extra"));
     expect(text()).toContain(
-      `- Tool, \`${join(root, "extra", "2025-03-01-0900-tool", "AGENTS.md")}\` (project, in-use): A small tool.\n`,
+      `- Tool, \`${join(root, "extra", "2025-03-01-0900-tool", "AGENTS.md")}\` (project, closed, in use): A small tool.\n`,
     );
+  });
+
+  test("pins each active project and each project in use, whatever its status (#859)", () => {
+    addProject("2025-01-01-0900-app", "status: active\nin-use: true", "# App\n");
+    addProject("2025-02-01-0900-menus", "status: closed\nin-use: true", "# Menus\n");
+    addProject("2025-03-01-0900-break", "status: paused", "# Break\n");
+    addProject("2025-04-01-0900-done", "status: closed", "# Done\n");
+    const shown = text();
+    expect(shown).toContain("- App, `Projects/2025-01-01-0900-app/AGENTS.md` (project, active, in use)\n");
+    expect(shown).toContain("- Menus, `Projects/2025-02-01-0900-menus/AGENTS.md` (project, closed, in use)\n");
+    expect(shown).not.toContain("Break");
+    expect(shown).not.toContain("Done");
   });
 
   test("orders the manual pins, the flagged cases, the open cases by next date, the period, then the projects", () => {
     addProject("2025-01-01-0900-old", "status: active", "# Old\n");
     addProject("2025-02-01-0900-new", "status: active", "# New\n");
-    addProject("2025-01-01-0900-menus", "status: in-use", "# Menus\n");
+    addProject("2025-01-01-0900-menus", "status: closed\nin-use: true", "# Menus\n");
     write("Life/Periods/2024-01-01-job/Period.md", "---\nstatus: open\n---\n");
     write("Life/Cases/a-late/Case.md", "---\nstatus: waiting\nnext:\n  date: 2026-12-20\n---\n");
     write("Life/Cases/b-none/Case.md", "---\nstatus: open\n---\n");

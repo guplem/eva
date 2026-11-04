@@ -304,8 +304,8 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 ![Computer](screenshots/projects-computer-light.webp) ![Phone](screenshots/projects-phone-light.webp)
 
 - The status and tag filters are one-tap chips, not drop-down menus.
-- The status has a colour and a shape. "In use" takes the `.live` pill, so it differs from the green "Active". Its dot has no glow, as on "Unread": nothing runs.
-- The list opens with the "Current" filter: the active and in-use projects.
+- The status has a colour and a shape. A project in use shows an "In use" pill beside its status pill. "In use" takes the `.live` pill, so it differs from the green "Active". Its dot has no glow, as on "Unread": nothing runs.
+- The list opens with the "Current" filter: the active projects and the projects in use.
 - Each clone is a card with its branch, its state and its chats.
 - A project card shows the "Unread" pill while one of its chats has an answer that the person did not see.
 - A project page has a "Projects" back button beside its title, on both sizes.
@@ -315,8 +315,9 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 ![Computer](screenshots/projects-home-computer-light.webp) ![Phone](screenshots/projects-home-phone-light.webp)
 
 - With no project open, a computer shows a home page: Needs you, Recent, a timeline of the projects, and the counts of a year. A phone shows only Needs you, above the list.
-- Each project of the timeline has one file type colour, by a hash of its folder name. An active bar is solid. A paused bar has faint stripes. An in-use bar has an outline.
-- Status chips above the timeline add or remove a status. They show Active and Paused at first. Each chip shows the pattern of its bars.
+- Each project of the timeline has one file type colour, by a hash of its folder name. An active bar is solid. A paused bar has faint stripes. A closed bar has a faint fill.
+- A project in use shows once, with a ring around its bar over any pattern, and an "In use" pill at the left of its name. A narrow timeline keeps the dot of the pill only. A gap in the colour of the card keeps the ring apart from a solid bar.
+- The legend above the timeline shows the pattern of each bar. Only Paused is a chip: it shows or hides the paused projects. An active project and a project in use always show.
 - The today line takes the accent. It runs across all the rows, with the date under it.
 
 ### A chat in a clone

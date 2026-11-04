@@ -8,6 +8,7 @@ import { EvaError } from "../../shared/errors.ts";
 import {
   frontMatterPattern,
   defaultType,
+  oldStatusOf,
   parseFrontMatter,
   repoTypesWarning,
   statusListText,
@@ -16,14 +17,16 @@ import {
 import type { ProjectType } from "../../shared/project-types.ts";
 import type { ProjectStatus } from "../../shared/project-statuses.ts";
 
-/** The statuses in the comment after `status:` before `in-use` (#690). */
-const oldStatusList = "idea, active, paused or closed";
+/** The lists of statuses that Eva wrote in the comment after `status:`: before #690, and before #859. */
+const oldStatusLists: readonly string[] = ["idea, active, paused or closed", "idea, active, in-use, paused or closed"];
 
 export interface ProjectDetails {
   /** An empty title removes the heading, so the list shows the folder name. */
   readonly title: string;
   /** Null removes the key. */
   readonly status: ProjectStatus | null;
+  /** True writes `in-use: true`, and false removes the key. Absent keeps it, as from an older page (#859). */
+  readonly inUse?: boolean | undefined;
   readonly tags: readonly string[];
   readonly repos: readonly string[];
   /** Absent keeps the type, as from an older page. Every type writes the key (#768). */
@@ -33,11 +36,6 @@ export interface ProjectDetails {
    * keeps the key, as from an older page. A change to another status removes it.
    */
   readonly closed?: string | null | undefined;
-  /**
-   * The day the project became active for the first time, as `YYYY-MM-DD` (#848). Eva writes it
-   * only when an `idea` becomes `active` and the file has no `started` key.
-   */
-  readonly started?: string | null | undefined;
 }
 
 /** A day such as `2026-11-03`, the form of the `closed` key. */
@@ -67,19 +65,29 @@ function changedClosed(
 }
 
 /**
- * The change of the `started` key, if any. Only an `idea` that becomes `active` starts: another
- * status was active before, and a project with no `started` started at `created`.
+ * The change of the `in-use` key, if any (#859). A status of an older vault, such as `in-use`,
+ * holds the flag too, so a save that rewrites that status writes the flag as a key.
  */
-function changedStarted(
-  current: { readonly status: ProjectStatus | null },
-  details: ProjectDetails,
+function changedInUse(
   source: string,
+  details: ProjectDetails,
+  current: { readonly inUse: boolean },
+  rewritesStatus: boolean,
 ): FrontMatterChanges {
-  if (details.status !== "active" || current.status !== "idea" || hasKey(source, "started")) return {};
-  const started = details.started?.trim() ?? "";
-  if (started === "") return {};
-  if (!isDay(started)) throw invalid(`The start date must be a day such as 2026-11-03, not "${started}".`);
-  return { started };
+  // An older page sends no flag. It keeps the flag that the file means now, also through an old status.
+  const inUse = details.inUse ?? (rewritesStatus ? current.inUse : undefined);
+  if (inUse === undefined) return {};
+  const written = textValue(source, "in-use")?.trim().toLowerCase() === "true";
+  if (inUse === written && !(rewritesStatus && inUse)) return {};
+  return { "in-use": inUse ? "true" : null };
+}
+
+/** The text of a key, or null for no key or a value that is not text. */
+function textValue(source: string, key: string): string | null {
+  const document = parseDocument(source, { schema: "failsafe" });
+  if (!isMap(document.contents)) return null;
+  const value: unknown = document.get(key);
+  return typeof value === "string" ? value : null;
 }
 
 /** The text of a project file with these details. Throws `project_invalid` for a bad value or file. */
@@ -102,11 +110,13 @@ export function applyProjectDetails(text: string, details: ProjectDetails): stri
   // save writes the type that the project reads as now: the type never changes by itself (#768).
   const followsRepos = repos.repos !== undefined && defaultType(repos.repos) !== type && !hasKey(source, "type");
   const writesType = type !== current.type || followsRepos;
+  // A status of an older vault reads as a new one, so the save writes the new one (#859).
+  const rewritesStatus = details.status !== current.status || oldStatusOf(textValue(source, "status")) !== null;
   const frontMatter = editFrontMatter(source, {
     // The form shows "None" for a status it cannot read, so None there keeps the person's value.
-    ...(details.status === current.status ? {} : { status: details.status }),
+    ...(rewritesStatus ? { status: details.status } : {}),
+    ...changedInUse(source, details, current, rewritesStatus),
     ...changedClosed(current, details, source),
-    ...changedStarted(current, details, source),
     ...changedList("tags", current.tags, details.tags, (tag) => tag.replace(/^#/, ""), "A tag"),
     ...repos,
     ...(writesType ? { type } : {}),
@@ -157,8 +167,8 @@ export function fileVersion(text: string): string {
 /** Only the fields that changed. A list that the person left alone is neither checked nor cleaned. */
 interface FrontMatterChanges {
   readonly status?: ProjectStatus | null;
+  readonly "in-use"?: "true" | null;
   readonly closed?: string | null;
-  readonly started?: string;
   readonly tags?: readonly string[];
   readonly repos?: readonly string[];
   readonly repo_types?: Readonly<Record<string, string>> | null;
@@ -215,7 +225,7 @@ function hasKey(source: string, key: string): boolean {
 }
 
 /** The key that a new key follows, so related keys stay together. */
-const placedAfter: Readonly<Record<string, string>> = { closed: "status", started: "status" };
+const placedAfter: Readonly<Record<string, string>> = { closed: "status", "in-use": "status" };
 
 /** The new front matter, or null when no field changes, so an untouched file keeps every byte. */
 function editFrontMatter(source: string, changes: FrontMatterChanges): string | null {
@@ -236,7 +246,7 @@ function editFrontMatter(source: string, changes: FrontMatterChanges): string | 
     if (typeof value === "string" && isScalar(old)) {
       old.value = value;
       // The vault template wrote the old list of statuses. A comment that the person wrote stays.
-      if (key === "status" && old.comment?.trim() === oldStatusList) old.comment = ` ${statusListText}`;
+      if (key === "status" && oldStatusLists.includes(old.comment?.trim() ?? "")) old.comment = ` ${statusListText}`;
       continue;
     }
     const node = document.createNode(value);
@@ -329,11 +339,11 @@ export function projectFileOf(text: string): ProjectFile {
       : {
           title: titleHeading(withoutBom.replace(frontMatterPattern, ""))?.title ?? "",
           status: frontMatter.status,
+          inUse: frontMatter.inUse,
           tags: frontMatter.tags,
           repos: frontMatter.repos,
           type: frontMatter.type,
           closed: frontMatter.closed,
-          started: typeof frontMatter.extra["started"] === "string" ? frontMatter.extra["started"] : null,
           created: frontMatter.created,
         };
   return { text, version: fileVersion(text), details };

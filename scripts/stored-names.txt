@@ -333,6 +333,7 @@ migration vault 2026-11-02-eva-scratch
 migration vault 2026-11-02-general-project-type
 migration vault 2026-11-02-pinned-files
 migration vault 2026-11-03-format-settings
+migration vault 2026-11-04-project-in-use
 typed cli --check
 typed cli --clone
 typed cli --engine
@@ -511,6 +512,7 @@ vault Life/Periods/*/Period.md status
 vault Life/Periods/*/Period.md status=open
 vault Projects/*/AGENTS.md closed
 vault Projects/*/AGENTS.md created
+vault Projects/*/AGENTS.md in-use
 vault Projects/*/AGENTS.md legacy_id
 vault Projects/*/AGENTS.md pinned
 vault Projects/*/AGENTS.md repo_types
@@ -518,8 +520,6 @@ vault Projects/*/AGENTS.md repos
 vault Projects/*/AGENTS.md status
 vault Projects/*/AGENTS.md status=active
 vault Projects/*/AGENTS.md status=closed
-vault Projects/*/AGENTS.md status=idea
-vault Projects/*/AGENTS.md status=in-use
 vault Projects/*/AGENTS.md status=paused
 vault Projects/*/AGENTS.md summary
 vault Projects/*/AGENTS.md tags

@@ -19,17 +19,16 @@ export function countOf(count: number, word: string): string {
 
 /** The word for each status, the same on the pill, the filter chip and the details form. */
 export const statusLabels: Readonly<Record<ProjectStatus, string>> = {
-  idea: "Idea",
   active: "Active",
-  "in-use": "In use",
   paused: "Paused",
   closed: "Closed",
 };
 
+/** The word of the in-use flag, the same on the pill, the filter chip, the timeline and the details form (#859). */
+export const inUseLabel = "In use";
+
 const statusTones: Readonly<Record<ProjectStatus, PillTone>> = {
-  idea: "idle",
   active: "ok",
-  "in-use": "live",
   paused: "warn",
   closed: "idle",
 };
@@ -45,18 +44,26 @@ export function statusOf(value: string): ProjectStatus | null {
   return projectStatuses.find((status) => status === value) ?? null;
 }
 
-/** The status filter chips of the Projects page. "Current" is the projects that the person develops or uses now (#690). */
+/**
+ * The status filter chips of the Projects page. "Current" is the projects that the person works on
+ * or uses now (#690). "In use" shows the projects with the flag, whatever their status (#859).
+ */
 export const statusChips: readonly { readonly value: ProjectStatusFilter; readonly text: string }[] = [
   { value: "current", text: "Current" },
-  ...(["active", "in-use", "idea", "paused", "closed"] as const).map((status) => ({
-    value: status,
-    text: statusLabels[status],
-  })),
+  { value: "active", text: statusLabels.active },
+  { value: "in-use", text: inUseLabel },
+  { value: "paused", text: statusLabels.paused },
+  { value: "closed", text: statusLabels.closed },
 ];
 
-/** Active is green, in use has the accent colour, paused is amber, and an idea or a closed project is grey. */
+/** Active is green, paused is amber, and a closed project is grey. */
 export function statusPill(status: Project["frontMatter"]["status"]): Pill | null {
   return status === null ? null : { text: statusLabels[status], tone: statusTones[status] };
+}
+
+/** "In use" has the accent colour, so it differs from the green of Active. It shows beside the status pill (#859). */
+export function inUsePill(inUse: boolean): Pill | null {
+  return inUse ? { text: inUseLabel, tone: "live" } : null;
 }
 
 /** The word for each project type, the same in the New project form, the details form and the card. */
@@ -233,6 +240,7 @@ export function sameDetails(first: ProjectDetails, second: ProjectDetails): bool
   return (
     first.title === second.title &&
     first.status === second.status &&
+    (first.inUse ?? false) === (second.inUse ?? false) &&
     (first.closed ?? null) === (second.closed ?? null) &&
     (first.type ?? "general") === (second.type ?? "general") &&
     sameList(first.tags, second.tags) &&
@@ -255,10 +263,8 @@ export function closingDate(value: string): string | null {
  * The details with a new status. A choice of Closed starts the closing date at today, so the
  * person keeps it or picks another day (#826). Another status keeps the date in the form only, so
  * a choice of Closed again brings it back: the save removes the date of a project that is not closed.
- * A choice of Active sends today as the start date. The save writes it only for an idea (#848).
  */
 export function withStatus(details: ProjectDetails, status: ProjectStatus | null, today: string): ProjectDetails {
-  if (status === "active") return { ...details, status, started: details.started ?? today };
   if (status !== "closed") return { ...details, status };
   return { ...details, status, closed: closingDate(details.closed ?? "") ?? today };
 }

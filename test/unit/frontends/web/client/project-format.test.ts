@@ -16,6 +16,8 @@ import {
   closingDate,
   repositoryWebUrl,
   statusPill,
+  inUsePill,
+  statusChips,
   syncPills,
   widgetRepositoryNames,
 } from "../../../../../src/frontends/web/client/project-format.ts";
@@ -31,11 +33,22 @@ describe("countOf", () => {
 describe("statusPill", () => {
   test("gives each status its word and its colour", () => {
     expect(statusPill("active")).toEqual({ text: "Active", tone: "ok" });
-    expect(statusPill("in-use")).toEqual({ text: "In use", tone: "live" });
-    expect(statusPill("idea")).toEqual({ text: "Idea", tone: "idle" });
     expect(statusPill("paused")).toEqual({ text: "Paused", tone: "warn" });
     expect(statusPill("closed")).toEqual({ text: "Closed", tone: "idle" });
     expect(statusPill(null)).toBeNull();
+  });
+});
+
+describe("inUsePill", () => {
+  test("shows In use in the accent colour beside the status, and nothing for a project not in use (#859)", () => {
+    expect(inUsePill(true)).toEqual({ text: "In use", tone: "live" });
+    expect(inUsePill(false)).toBeNull();
+  });
+});
+
+describe("statusChips", () => {
+  test("offer Current, each status, and In use after Active (#690, #859)", () => {
+    expect(statusChips.map((chip) => chip.text)).toEqual(["Current", "Active", "In use", "Paused", "Closed"]);
   });
 });
 
@@ -236,8 +249,10 @@ describe("sameDetails", () => {
     expect(sameDetails(details, { ...details, type: "software" })).toBe(false);
   });
 
-  test("a changed title, status, tag or repository differs", () => {
+  test("a changed title, status, in-use flag, tag or repository differs", () => {
     expect(sameDetails(details, { ...details, title: "Home" })).toBe(false);
+    expect(sameDetails(details, { ...details, inUse: true })).toBe(false);
+    expect(sameDetails(details, { ...details, inUse: false })).toBe(true);
     expect(sameDetails(details, { ...details, status: "paused" })).toBe(false);
     expect(sameDetails(details, { ...details, tags: [] })).toBe(false);
     expect(sameDetails(details, { ...details, repos: ["https://github.com/example/example-app"] })).toBe(false);
@@ -277,19 +292,9 @@ describe("the closing date in the details form (#826)", () => {
   });
 });
 
-describe("the start date in the details form (#848)", () => {
-  const details = { title: "House", status: "idea" as const, tags: [], repos: [], closed: null };
-
-  test("a choice of Active sends today as the start date, and keeps a date that the project has", () => {
-    expect(withStatus(details, "active", "2026-11-03")).toEqual({
-      ...details,
-      status: "active",
-      started: "2026-11-03",
-    });
-    expect(withStatus({ ...details, started: "2025-05-05" }, "active", "2026-11-03").started).toBe("2025-05-05");
-  });
-
-  test("the start date never makes the form differ, because only the status sets it", () => {
-    expect(sameDetails(details, { ...details, started: "2026-11-03" })).toBe(true);
+describe("a status choice in the details form (#859)", () => {
+  test("a choice of Active or Paused changes only the status: no status starts the work", () => {
+    const details = { title: "House", status: "paused" as const, tags: [], repos: [], closed: null };
+    expect(withStatus(details, "active", "2026-11-03")).toEqual({ ...details, status: "active" });
   });
 });

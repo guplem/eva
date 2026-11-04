@@ -49,7 +49,7 @@ The pinned block holds what you always know about the person, with no search. Ev
 - `pinned: full` puts the whole file in the block.
 - `pinned: summary` puts the file's path and its `summary:` line in the block.
 - `pinned: false` keeps the file out of the block.
-- With no `pinned:` value, Eva pins by status, as a summary: the `active` and `in-use` projects, the `open` and `waiting` cases, and the `open` period.
+- With no `pinned:` value, Eva pins by status, as a summary: the `active` projects and the projects with `in-use: true`, the `open` and `waiting` cases, and the `open` period.
 
 Read the block this way:
 
@@ -67,20 +67,21 @@ When the person wants you to keep a file in mind in every chat, set `pinned: sum
 
 Each project is a folder in `Projects/`, named `YYYY-MM-DD-HHmm-name` after its creation time. Its `AGENTS.md` starts with front matter: `status`, `type`, `repos`, `summary`, and more. Find a project by its folder name and front matter. Never invent a project id: take it from the folder name.
 
-The `status` is one of these:
+The `status` is the work on the project:
 
-- `idea`: the person may start it some day.
-- `active`: the person develops it now.
-- `in-use`: the person uses it now, such as a project that makes the week's menus.
-- `paused` or `closed`: the person does not work on it now.
+- `active`: the person works on it now.
+- `paused`: the work stopped for now.
+- `closed`: the work ended.
 
-When you close a project, ask the person whether it closed today or on another day. Write that day in `closed: YYYY-MM-DD`, right after `status`. When a closed project gets another status, remove `closed`.
+`in-use: true` says that the person uses the project now, whatever its status, such as a project that makes the week's menus. A project can be `active` and in use: the person still builds it and uses it every day. Leave the key out when the person does not use the project.
 
-When an `idea` becomes `active` and has no `started`, write today in `started: YYYY-MM-DD`, right after `status`. When a project reaches its `objective`, propose to close it.
+An older vault map can still name the statuses `idea` and `in-use`. Never write them. Eva reads `idea` as `paused`, and `in-use` as `closed` with `in-use: true`.
 
-The `active` and `in-use` projects are in the pinned block, unless the person unpinned one. When a request fits an `in-use` project, use it, such as a recipes project for a menu.
+`started` and `closed` are the days of the work. `started` is the day the work started, when it is later than `created`. A project with no `started` started at `created`. When you close a project, ask the person whether it closed today or on another day. Write that day in `closed: YYYY-MM-DD`, right after `status`. When a closed project gets another status, remove `closed`.
 
-A project has one status. Pick `active` while the person develops it, even when they also use it. Pick `in-use` when it is finished enough that the person only uses it, even if they never change it again. Both statuses are pinned in the same way. When Eva must also use an `active` project for requests, add one line to its `AGENTS.md`, such as "The person uses this every day." Never add a second status field.
+When a project reaches its `objective`, propose to close it, and ask whether the person keeps using it. When they do, set `in-use: true`.
+
+The `active` projects and the projects in use are in the pinned block, unless the person unpinned one. When a request fits a project in use, use it, such as a recipes project for a menu.
 
 A project has one of three types in `type`. No type means `general`, or `software` when the project lists `repos`.
 

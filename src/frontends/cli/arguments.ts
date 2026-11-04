@@ -66,10 +66,11 @@ Commands:
       --model <smart|balanced|fast>     without it, the model from the settings
       --engine <claude-code|pi>
   projects [words]  Search the projects
-      status:<idea|active|in-use|paused|closed>  only projects with this status
-      status:current                             only active and in-use projects
-      status:any                                 projects with any status
-      tag:<tag>                                  only projects with this tag ("#<tag>" needs the quotes)
+      status:<active|paused|closed>  only projects with this status
+      status:in-use                  only projects in use, with any status
+      status:current                 only active projects and projects in use
+      status:any                     projects with any status
+      tag:<tag>                      only projects with this tag ("#<tag>" needs the quotes)
   work <project> <request>  Give work to a project: a Project chat runs it, in a free clone, or in the folder of a general project or a specialist
   service install   Start Eva by herself, and again after a crash (systemd on Linux, a start at logon on Windows)
   supervise         Run Eva, and start her again after a crash (the Windows start at logon runs this)

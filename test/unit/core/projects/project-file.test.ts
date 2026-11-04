@@ -59,7 +59,7 @@ describe("applyProjectDetails", () => {
       [
         "---",
         "created: 2026-01-31T09:15",
-        "status: paused # idea, active, in-use, paused or closed",
+        "status: paused # active, paused or closed",
         "repos:",
         "  - https://github.com/example/example-app",
         "  - https://github.com/example/example-api",
@@ -75,13 +75,13 @@ describe("applyProjectDetails", () => {
     );
   });
 
-  test("a saved status updates only Eva's old list of statuses in the comment (#690)", () => {
+  test("a saved status updates only Eva's old lists of statuses in the comment (#690, #859)", () => {
     const withComment = (comment: string): string => file.replace("# idea, active, paused or closed", comment);
-    const used = { ...unchanged, status: "in-use" as const };
-    expect(applyProjectDetails(withComment("#idea, active, paused or closed"), used)).toContain(
-      "status: in-use # idea, active, in-use, paused or closed\n",
-    );
-    expect(applyProjectDetails(withComment("# my own note"), used)).toContain("status: in-use # my own note\n");
+    const paused = { ...unchanged, status: "paused" as const };
+    for (const old of ["#idea, active, paused or closed", "# idea, active, in-use, paused or closed"]) {
+      expect(applyProjectDetails(withComment(old), paused)).toContain("status: paused # active, paused or closed\n");
+    }
+    expect(applyProjectDetails(withComment("# my own note"), paused)).toContain("status: paused # my own note\n");
     // A field that the person did not change keeps its comment as it is.
     expect(applyProjectDetails(file, { ...unchanged, title: "Other" })).toContain(
       "status: active # idea, active, paused or closed\n",
@@ -109,23 +109,25 @@ describe("applyProjectDetails", () => {
   test("adds the missing keys and a missing heading", () => {
     const result = applyProjectDetails("---\ncreated: 2026-01-31T09:15\n---\nSome text.\n", {
       title: "New",
-      status: "idea",
+      status: "paused",
       tags: ["work"],
       repos: [],
     });
-    expect(result).toBe("---\ncreated: 2026-01-31T09:15\nstatus: idea\ntags:\n  - work\n---\n# New\n\nSome text.\n");
+    expect(result).toBe("---\ncreated: 2026-01-31T09:15\nstatus: paused\ntags:\n  - work\n---\n# New\n\nSome text.\n");
   });
 
   test("adds a heading to an empty body", () => {
-    expect(applyProjectDetails("---\nstatus: idea\n---\n", { ...unchanged, status: "idea", tags: [], repos: [] })).toBe(
-      "---\nstatus: idea\n---\n# Example app\n",
-    );
+    expect(
+      applyProjectDetails("---\nstatus: paused\n---\n", { ...unchanged, status: "paused", tags: [], repos: [] }),
+    ).toBe("---\nstatus: paused\n---\n# Example app\n");
   });
 
   test("keeps Windows line endings and a byte order mark", () => {
     const windows = "\uFEFF" + file.replaceAll("\n", "\r\n");
     const result = applyProjectDetails(windows, { ...unchanged, status: "closed" });
-    expect(result).toBe(windows.replace("status: active # idea, active,", "status: closed # idea, active, in-use,"));
+    expect(result).toBe(
+      windows.replace("status: active # idea, active, paused or closed", "status: closed # active, paused or closed"),
+    );
   });
 
   test("cleans the lists: trims, drops empty entries, duplicates and a leading #", () => {
@@ -184,9 +186,9 @@ describe("matchFileStyle", () => {
 
 describe("applyProjectDetails and the title", () => {
   test("changes the heading that the project list shows, the first one after the front matter", () => {
-    const text = "---\nstatus: idea\n---\n# Old\n\nText.\n\n# Second\n";
-    const result = applyProjectDetails(text, { title: "New", status: "idea", tags: [], repos: [] });
-    expect(result).toBe("---\nstatus: idea\n---\n# New\n\nText.\n\n# Second\n");
+    const text = "---\nstatus: paused\n---\n# Old\n\nText.\n\n# Second\n";
+    const result = applyProjectDetails(text, { title: "New", status: "paused", tags: [], repos: [] });
+    expect(result).toBe("---\nstatus: paused\n---\n# New\n\nText.\n\n# Second\n");
   });
 });
 
@@ -195,7 +197,7 @@ describe("projectFileOf", () => {
     expect(projectFileOf(file)).toEqual({
       text: file,
       version: fileVersion(file),
-      details: { ...unchanged, type: "software", closed: null, started: null, created: "2026-01-31T09:15" },
+      details: { ...unchanged, inUse: false, type: "software", closed: null, created: "2026-01-31T09:15" },
     });
   });
 
@@ -204,11 +206,11 @@ describe("projectFileOf", () => {
     expect(projectFileOf("\uFEFF---\nstatus: wrong\n---\n").details).toEqual({
       title: "",
       status: null,
+      inUse: false,
       tags: [],
       repos: [],
       type: "general",
       closed: null,
-      started: null,
       created: null,
     });
   });
@@ -232,7 +234,7 @@ describe("applyProjectDetails and the project type (#703, #768)", () => {
     expect(software).toContain("type: software\n");
     expect(parseFrontMatter(software).frontMatter?.type).toBe("software");
     const notes = "---\nstatus: idea\n---\n# House\n";
-    const general = applyProjectDetails(notes, { ...unchanged, title: "House", status: "idea", tags: [] });
+    const general = applyProjectDetails(notes, { ...unchanged, title: "House", status: "paused", tags: [] });
     expect(parseFrontMatter(general).frontMatter).toMatchObject({ type: "general", repos: unchanged.repos });
   });
 
@@ -243,9 +245,9 @@ describe("applyProjectDetails and the project type (#703, #768)", () => {
 
 describe("applyProjectDetails keeps what the person did not change", () => {
   test("a heading inside a code fence stays", () => {
-    const text = "---\nstatus: idea\n---\n```\n# code\n```\n\n# Old\n";
-    const result = applyProjectDetails(text, { title: "New", status: "idea", tags: [], repos: [] });
-    expect(result).toBe("---\nstatus: idea\n---\n```\n# code\n```\n\n# New\n");
+    const text = "---\nstatus: paused\n---\n```\n# code\n```\n\n# Old\n";
+    const result = applyProjectDetails(text, { title: "New", status: "paused", tags: [], repos: [] });
+    expect(result).toBe("---\nstatus: paused\n---\n```\n# code\n```\n\n# New\n");
   });
 
   test("a title on a file that ends right after the front matter goes on its own line", () => {
@@ -267,8 +269,8 @@ describe("applyProjectDetails keeps what the person did not change", () => {
   });
 
   test("an unchanged list is neither checked nor cleaned", () => {
-    const text = '---\nstatus: idea\ntags: [my tag, "#a"]\n---\n# A\n';
-    const details = { title: "B", status: "idea" as const, tags: ["my tag", "#a"], repos: [] };
+    const text = '---\nstatus: paused\ntags: [my tag, "#a"]\n---\n# A\n';
+    const details = { title: "B", status: "paused" as const, tags: ["my tag", "#a"], repos: [] };
     expect(applyProjectDetails(text, details)).toBe(text.replace("# A", "# B"));
   });
 
@@ -338,7 +340,7 @@ describe("the closing date of a project (#826)", () => {
 
   test("closing writes the date that the form sends, after the status", () => {
     const result = applyProjectDetails(file, { ...unchanged, status: "closed", closed: "2026-11-03" });
-    expect(result).toContain("status: closed # idea, active, in-use, paused or closed\nclosed: 2026-11-03\n");
+    expect(result).toContain("status: closed # active, paused or closed\nclosed: 2026-11-03\n");
     expect(parseFrontMatter(result).frontMatter?.closed).toBe("2026-11-03");
   });
 
@@ -379,30 +381,38 @@ describe("the closing date of a project (#826)", () => {
   });
 });
 
-describe("the start date of a project (#848)", () => {
-  const ideaFile = file.replace("status: active # idea, active, paused or closed", "status: idea");
-
-  test("an idea that becomes active writes the day that the form sends, after the status", () => {
-    const result = applyProjectDetails(ideaFile, { ...unchanged, status: "active", started: "2026-11-03" });
-    expect(result).toContain("status: active\nstarted: 2026-11-03\n");
-    expect(parseFrontMatter(result).frontMatter?.extra["started"]).toBe("2026-11-03");
+describe("the in-use flag of a project (#859)", () => {
+  test("ticking In use writes the key after the status, and unticking removes it", () => {
+    const used = applyProjectDetails(file, { ...unchanged, inUse: true });
+    expect(used).toContain("status: active # idea, active, paused or closed\nin-use: true\n");
+    expect(parseFrontMatter(used).frontMatter?.inUse).toBe(true);
+    expect(applyProjectDetails(used, { ...unchanged, inUse: false })).toBe(file);
+    // A page that sends no flag keeps the key.
+    expect(applyProjectDetails(used, unchanged)).toBe(used);
   });
 
-  test("a project that was active before, or has a start date, keeps its front matter", () => {
-    const paused = file.replace("status: active # idea, active, paused or closed", "status: paused");
-    expect(applyProjectDetails(paused, { ...unchanged, status: "active", started: "2026-11-03" })).not.toContain(
-      "started:",
-    );
-    const started = ideaFile.replace("status: idea", "status: idea\nstarted: 2025-05-05");
-    expect(applyProjectDetails(started, { ...unchanged, status: "active", started: "2026-11-03" })).toContain(
-      "started: 2025-05-05\n",
-    );
+  test("a save rewrites a status of an older vault, and keeps what it meant", () => {
+    const old = file.replace("status: active # idea, active, paused or closed", "status: in-use");
+    const reopened = applyProjectDetails(old, { ...unchanged, status: "active", inUse: true });
+    expect(reopened).toContain("status: active\nin-use: true\n");
+    const unused = applyProjectDetails(old, { ...unchanged, status: "closed", inUse: false });
+    expect(unused).toContain("status: closed\n");
+    expect(parseFrontMatter(unused).frontMatter?.inUse).toBe(false);
+    const idea = file.replace("status: active # idea, active, paused or closed", "status: idea");
+    expect(applyProjectDetails(idea, { ...unchanged, status: "paused", title: "Other" })).toContain("status: paused\n");
   });
 
-  test("a form that sends no day writes none, and a bad day is refused", () => {
-    expect(applyProjectDetails(ideaFile, { ...unchanged, status: "active" })).not.toContain("started:");
-    expect(invalidCode(() => applyProjectDetails(ideaFile, { ...unchanged, status: "active", started: "soon" }))).toBe(
-      "project_invalid",
-    );
+  test("a save from an older page, which sends no flag, keeps the flag of an old in-use status", () => {
+    const old = file.replace("status: active # idea, active, paused or closed", "status: in-use");
+    const saved = applyProjectDetails(old, { ...unchanged, status: "closed", tags: ["home"] });
+    expect(saved).toContain("status: closed\nin-use: true\n");
+    expect(parseFrontMatter(saved).frontMatter).toMatchObject({ status: "closed", inUse: true });
+  });
+
+  test("the form reads the flag, also from a status of an older vault", () => {
+    expect(projectFileOf(file.replace("custom: kept", "custom: kept\nin-use: true")).details?.inUse).toBe(true);
+    expect(
+      projectFileOf(file.replace("status: active # idea, active, paused or closed", "status: in-use")).details,
+    ).toMatchObject({ status: "closed", inUse: true });
   });
 });

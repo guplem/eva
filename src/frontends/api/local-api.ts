@@ -15,7 +15,12 @@ import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
-import { projectStatuses, projectStatusFilters } from "../../shared/project-statuses.ts";
+import {
+  oldProjectStatuses,
+  projectStatuses,
+  projectStatusFilters,
+  type ProjectStatus,
+} from "../../shared/project-statuses.ts";
 import { projectTypes } from "../../shared/project-types.ts";
 import { repositoryCatalog, type RepositoryTypeName } from "../../core/projects/repository-catalog.ts";
 import type {
@@ -144,7 +149,11 @@ const notificationsReadSchema = z.union([
   z.object({ seqs: z.array(z.number().int()).max(1000) }),
   z.object({ all: z.literal(true) }),
 ]);
-const statusSchema = z.enum(projectStatusFilters).optional();
+/** An older open page can still filter by `idea`, which reads as paused now (#859). */
+const statusSchema = z
+  .enum([...projectStatusFilters, "idea"])
+  .transform((status) => (status === "idea" ? "paused" : status))
+  .optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const pushSchema = z.object({ note: z.string().max(10_000).optional() });
 const updateSchema = z.object({
@@ -162,18 +171,35 @@ const projectFileSchema = z.object({ version: z.string().min(1), text: z.string(
 const vaultFileSchema = projectFileSchema.extend({ path: z.string() });
 const favoriteSchema = z.object({ path: z.string(), favorite: z.boolean() });
 const vaultRenameSchema = z.object({ path: z.string(), name: z.string().max(1_000) });
+/** A status that a page sends. An older open page can send a status that #859 replaced. */
+const sentStatusSchema = z.enum([...projectStatuses, "idea", "in-use"]);
+
+/**
+ * The status and the in-use flag of a sent status. An older page has no In use box, but it sends
+ * back the flag that it read. So the old `in-use` status wins over that flag, and `idea` keeps it.
+ */
+function readSentStatus<Status extends string | null>(
+  status: Status,
+  inUse: boolean | undefined,
+): { readonly status: ProjectStatus | Exclude<Status, string>; readonly inUse: boolean | undefined } {
+  if (status === null) return { status: null as Exclude<Status, string>, inUse };
+  const old = Object.hasOwn(oldProjectStatuses, status) ? oldProjectStatuses[status] : undefined;
+  if (old === undefined) return { status: status as ProjectStatus, inUse };
+  return { status: old.status, inUse: old.inUse ? true : inUse };
+}
+
 const projectDetailsSchema = z.object({
   version: z.string().min(1),
   title: z.string().max(500),
-  status: z.enum(projectStatuses).nullable(),
+  status: sentStatusSchema.nullable(),
+  /** An older page sends none, which keeps the key (#859). */
+  inUse: z.boolean().optional(),
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
   /** An older page sends none, which keeps the type (#703). */
   type: z.enum(projectTypes).optional(),
   /** An older page sends none, which keeps the date (#826). */
   closed: z.string().max(20).nullable().optional(),
-  /** The day on the person's clock when an idea becomes active. An older page sends none (#848). */
-  started: z.string().max(20).nullable().optional(),
 });
 const repositoryTypeNames = repositoryCatalog.map((type) => type.name) as [RepositoryTypeName, ...RepositoryTypeName[]];
 const repositoryTypeSchema = z.object({ repository: z.string().min(1).max(2_000), type: z.enum(repositoryTypeNames) });
@@ -189,7 +215,8 @@ const newProjectSchema = z
   .object({
     name: z.string().min(1).max(500),
     description: z.string().max(10_000),
-    status: z.enum(projectStatuses),
+    status: sentStatusSchema,
+    inUse: z.boolean().optional(),
     tags: z.array(z.string().max(200)).max(100),
     github: z.boolean().optional(),
     repository: z.object({ type: z.enum(repositoryTypeNames), visibility: z.enum(["private", "public"]) }).nullish(),
@@ -197,8 +224,9 @@ const newProjectSchema = z
     /** An older page sends none: a software project, as before specialists (#703). */
     type: z.enum(projectTypes).default("software"),
   })
-  .transform(({ github, repository, ...rest }) => ({
+  .transform(({ github, repository, status, inUse, ...rest }) => ({
     ...rest,
+    ...readSentStatus(status, inUse),
     repository: repository ?? (github === true ? { type: "standard" as const, visibility: "private" as const } : null),
   }));
 const settingsPatchSchema = z.record(z.string(), z.unknown());
@@ -994,8 +1022,15 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     parts[2] !== undefined &&
     parts[3] === "details"
   ) {
-    const { version, ...details } = projectDetailsSchema.parse(await request.json());
-    return json(eva.saveProjectDetails(decodeURIComponent(parts[2]), version, details));
+    const { version, status, inUse, ...details } = projectDetailsSchema.parse(await request.json());
+    const sent = readSentStatus(status, inUse);
+    return json(
+      eva.saveProjectDetails(decodeURIComponent(parts[2]), version, {
+        ...details,
+        status: sent.status,
+        ...(sent.inUse === undefined ? {} : { inUse: sent.inUse }),
+      }),
+    );
   }
   if (
     method === "POST" &&

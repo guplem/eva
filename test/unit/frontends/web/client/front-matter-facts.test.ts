@@ -14,6 +14,7 @@ function frontMatter(overrides: Partial<Project["frontMatter"]> = {}): Project["
   return {
     created: null,
     status: null,
+    inUse: false,
     closed: null,
     repos: [],
     tags: [],

@@ -24,7 +24,7 @@ The vault has three parts: the person's life, what they build, and what they kno
 
 | Folder | What goes here | Not here |
 | --- | --- | --- |
-| `Projects/` | Work that leaves something built. To tell a project from a case, ask: does something built remain after the work ends? Yes → a project, even when it has a goal, steps and an end. An app, a website, a game, a book, the slides of a talk, an album, a building, such as classrooms built for a school, an app built at a job or a hackathon, and Eva's specialists, such as a tutor that helps the person prepare exams during a master's. An idea for one is a project with status `idea`. | A job → a period. |
+| `Projects/` | Work that leaves something built. To tell a project from a case, ask: does something built remain after the work ends? Yes → a project, even when it has a goal, steps and an end. An app, a website, a game, a book, the slides of a talk, an album, a building, such as classrooms built for a school, an app built at a job or a hackathon, and Eva's specialists, such as a tutor that helps the person prepare exams during a master's. An idea for one is a `paused` project until the work starts. | A job → a period. |
 
 ### What they know
 
@@ -112,7 +112,8 @@ Each project is a folder `Projects/YYYY-MM-DD-HHmm-name/`, named after the date 
 ```yaml
 ---
 created: 2026-01-31T09:15
-status: active # idea, active, in-use, paused or closed
+status: active # active, paused or closed
+in-use: true # optional: the person uses the project now
 started: 2026-02-02 # optional
 closed: # YYYY-MM-DD, when the status becomes closed
 objective: The app plans a full week with no manual step. # optional, one line
@@ -125,11 +126,11 @@ cv: Built a meal planner that writes the menus of the week. # 1 to 3 lines for a
 ---
 ```
 
-A project has one status. `active` is a project that the person develops, even when they also use it. `in-use` is a project that is finished enough that the person only uses it. When the person also uses an `active` project, add one line to its `AGENTS.md` that says so, such as "The person uses this every day." Never add a second status field.
+`status` is the work on the project: `active` while the person works on it, `paused` while the work stops, and `closed` when it ends. `in-use: true` says that the person uses the project now, whatever its status: a tool that they still build and use every day, or a finished one. Leave the key out when the person does not use the project.
 
-- **`started`** is the day the project became `active` for the first time. Set it in the same change that first sets `status: active`. A project with no `started` started at `created`.
-- **`closed`** is the day the project closed. Set it in the same change that sets `status: closed`. Remove it when the project opens again.
-- **`objective`** says in one line when the project is done. Leave it out for a project that never ends, such as a tool in use. When the objective is reached, propose to close the project.
+- **`started`** is the day the work started, when it is later than `created`. A project with no `started` started at `created`.
+- **`closed`** is the day the work ended. Set it in the same change that sets `status: closed`. Remove it when the work starts again. A closed project can still be in use.
+- **`objective`** says in one line when the project is done. Leave it out for a project that never ends, such as a tool in use. When the objective is reached, propose to close the project, and ask whether the person keeps using it.
 - **`deadline`** has the same shape and meaning as in `Life/Cases/AGENTS.md`: a date that someone else set, where missing it costs something. Leave it out when nothing is lost by waiting.
 
 The project types:

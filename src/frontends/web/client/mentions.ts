@@ -12,6 +12,7 @@ export interface MentionProject {
   readonly id: string;
   readonly title: string;
   readonly status: Project["frontMatter"]["status"];
+  readonly inUse: boolean;
   /** The folder of the project: its vault path, or the full path for a project outside the vault. */
   readonly folder: string;
 }
@@ -21,6 +22,7 @@ export function mentionProjectOf(project: Project): MentionProject {
     id: project.id,
     title: project.title,
     status: project.frontMatter.status,
+    inUse: project.frontMatter.inUse,
     folder: project.vaultFolder ?? project.path,
   };
 }
@@ -64,11 +66,19 @@ export function insertMention(
   return { text: text.slice(0, start) + spaced + after, caret: start + token.length + skip };
 }
 
-const statusOrder: readonly MentionProject["status"][] = ["active", "in-use", "idea", "paused", "closed", null];
+/** The order after the active projects and the projects in use (#859). */
+const statusOrder: readonly MentionProject["status"][] = ["paused", "closed", null];
+
+/** Active first, then in use, then the order of `statusOrder`. */
+function statusRank(project: MentionProject): number {
+  if (project.status === "active") return 0;
+  return project.inUse ? 1 : 2 + statusOrder.indexOf(project.status);
+}
 
 /**
  * The projects that match `query` in the title or the id. A project with a chat that runs now comes
- * first, then the order of `statusOrder`. Each group keeps the order of `projects`.
+ * first, then the active projects, the projects in use, and the order of `statusOrder`. Each group
+ * keeps the order of `projects`.
  */
 export function pickedProjects(
   projects: readonly MentionProject[],
@@ -77,8 +87,7 @@ export function pickedProjects(
   limit: number,
 ): MentionProject[] {
   const needle = query.toLowerCase();
-  const rank = (project: MentionProject): number =>
-    busyIds.includes(project.id) ? -1 : statusOrder.indexOf(project.status);
+  const rank = (project: MentionProject): number => (busyIds.includes(project.id) ? -1 : statusRank(project));
   return projects
     .filter((project) => project.title.toLowerCase().includes(needle) || project.id.toLowerCase().includes(needle))
     .map((project, index) => ({ project, index }))

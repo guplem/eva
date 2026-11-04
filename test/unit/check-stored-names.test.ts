@@ -59,7 +59,7 @@ describe("currentNames", () => {
     "vault .eva/schedules.json schedules[].at",
     "vault .eva/schedules.json schedules[].days=thu",
     "vault .eva/hub.json machine",
-    "vault Projects/*/AGENTS.md status=in-use",
+    "vault Projects/*/AGENTS.md in-use",
     "vault Projects/*/AGENTS.md repo_types",
     "typed cli settings set",
     "typed cli --check",

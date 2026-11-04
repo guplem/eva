@@ -53,41 +53,40 @@ export function projectYears(projects: readonly Pick<Project, "parsedId">[], now
   return [...years].sort((first, second) => second - first);
 }
 
-/** The counts of the home page. A closed project and a project with no status count only in `started`. */
-export type StatusCounts = Readonly<Record<Exclude<ProjectStatus, "closed">, number>> & { readonly started: number };
+/**
+ * The counts of the home page: the active and the paused projects, and the projects in use, whatever
+ * their status (#859). A closed project and a project with no status count only in `started`.
+ */
+export interface StatusCounts {
+  readonly active: number;
+  readonly "in-use": number;
+  readonly paused: number;
+  readonly started: number;
+}
 
-/** How many projects of each status started in the year. */
+/** How many projects of each status started in the year, and how many of them the person uses. */
 export function statusCounts(
   projects: readonly Pick<Project, "parsedId" | "frontMatter">[],
   year: YearChoice,
 ): StatusCounts {
   const started = projects.filter((project) => year === "all" || project.parsedId.created.year === year);
-  const count = (status: ProjectStatus): number =>
-    started.filter((project) => project.frontMatter.status === status).length;
+  const count = (matches: (frontMatter: Project["frontMatter"]) => boolean): number =>
+    started.filter((project) => matches(project.frontMatter)).length;
   return {
-    active: count("active"),
-    "in-use": count("in-use"),
-    idea: count("idea"),
-    paused: count("paused"),
+    active: count((frontMatter) => frontMatter.status === "active"),
+    "in-use": count((frontMatter) => frontMatter.inUse),
+    paused: count((frontMatter) => frontMatter.status === "paused"),
     started: started.length,
   };
-}
-
-/** The statuses that the timeline can show. An idea and a closed project have no run to draw. */
-export const timelineStatuses = ["active", "paused", "in-use"] as const;
-export type TimelineStatus = (typeof timelineStatuses)[number];
-
-/** What the timeline shows until the person picks other statuses (#857). */
-export const defaultTimelineStatuses: ReadonlySet<TimelineStatus> = new Set(["active", "paused"]);
-
-function isTimelineStatus(status: ProjectStatus | null | undefined): status is TimelineStatus {
-  return timelineStatuses.some((shown) => shown === status);
 }
 
 export interface TimelineRow {
   readonly project: Project;
   readonly title: string;
-  readonly status: TimelineStatus;
+  /** The work on the project: the pattern of its bar. */
+  readonly status: ProjectStatus | null;
+  /** True when the person uses the project: its bar has a ring, and its name a mark (#859). */
+  readonly inUse: boolean;
   /** Where the bar starts and ends, as a share of the timeline width, from 0 to 1. */
   readonly start: number;
   readonly end: number;
@@ -103,21 +102,20 @@ export interface Timeline {
   readonly today: number | null;
 }
 
+/** True when the timeline shows the project: each active project and each project in use, and a paused one on request. */
+function isShown(frontMatter: Project["frontMatter"], showPaused: boolean): boolean {
+  return frontMatter.status === "active" || frontMatter.inUse || (showPaused && frontMatter.status === "paused");
+}
+
 /**
- * The projects of the picked statuses, each from its creation to today. The bars show no stretches
- * of activity from the chats: a deleted chat would take its activity away.
+ * The shown projects, each once, from its creation to today (#857, #859). The person can
+ * hide the paused projects, but never a project in use. The bars show no stretches of activity
+ * from the chats: a deleted chat would take its activity away.
  */
-export function timeline(
-  projects: readonly Project[],
-  year: YearChoice,
-  now: Date,
-  statuses: ReadonlySet<TimelineStatus> = defaultTimelineStatuses,
-): Timeline {
+export function timeline(projects: readonly Project[], year: YearChoice, now: Date, showPaused = true): Timeline {
   const shown = projects
-    .flatMap((project) => {
-      const status = project.frontMatter.status;
-      return isTimelineStatus(status) && statuses.has(status) ? [{ project, status, created: createdAt(project) }] : [];
-    })
+    .filter((project) => isShown(project.frontMatter, showPaused))
+    .map((project) => ({ project, created: createdAt(project) }))
     .sort((first, second) => first.created.getTime() - second.created.getTime());
   const firstYear =
     year === "all" ? Math.min(now.getFullYear(), ...shown.map((item) => item.created.getFullYear())) : year;
@@ -131,7 +129,8 @@ export function timeline(
     .map((item) => ({
       project: item.project,
       title: item.project.title,
-      status: item.status,
+      status: item.project.frontMatter.status,
+      inUse: item.project.frontMatter.inUse,
       // A clock of another machine can put a creation after now: the bar then has no length.
       start: Math.min(shareOf(item.created.getTime()), end),
       end,

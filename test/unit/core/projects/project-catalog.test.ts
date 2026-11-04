@@ -37,6 +37,7 @@ describe("parseFrontMatter", () => {
     expect(result.frontMatter).toEqual({
       created: "2025-03-02T10:15",
       status: "active",
+      inUse: false,
       closed: null,
       repos: ["https://github.com/owner/app"],
       tags: ["work", "tool"],
@@ -66,8 +67,8 @@ describe("parseFrontMatter", () => {
   });
 
   test("accepts Windows line endings", () => {
-    expect(parseFrontMatter("---\r\ncreated: 2025-03-02T10:15\r\nstatus: idea\r\n---\r\n").frontMatter?.status).toBe(
-      "idea",
+    expect(parseFrontMatter("---\r\ncreated: 2025-03-02T10:15\r\nstatus: paused\r\n---\r\n").frontMatter?.status).toBe(
+      "paused",
     );
   });
 
@@ -75,16 +76,32 @@ describe("parseFrontMatter", () => {
     const result = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: dreaming\nrepos: nope\n---\n");
     expect(result.frontMatter?.status).toBeNull();
     expect(result.frontMatter?.repos).toEqual([]);
-    expect(result.warnings).toEqual([
-      "status must be idea, active, in-use, paused or closed",
-      "repos must be a list of URLs",
-    ]);
+    expect(result.warnings).toEqual(["status must be active, paused or closed", "repos must be a list of URLs"]);
   });
 
-  test("reads in-use: a project that the person uses now (#690)", () => {
-    const result = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: in-use\n---\n");
-    expect(result.frontMatter?.status).toBe("in-use");
+  test("reads in-use: true, a project that the person uses now, apart from its status (#859)", () => {
+    const result = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: active\nin-use: true\n---\n");
+    expect(result.frontMatter?.status).toBe("active");
+    expect(result.frontMatter?.inUse).toBe(true);
+    expect(result.frontMatter?.extra).toEqual({});
     expect(result.warnings).toEqual([]);
+    expect(
+      parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: closed\nin-use: false\n---\n").frontMatter?.inUse,
+    ).toBe(false);
+    const bad = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: closed\nin-use: often\n---\n");
+    expect(bad.frontMatter?.inUse).toBe(false);
+    expect(bad.warnings).toEqual(["in-use must be true or false"]);
+  });
+
+  test("reads the statuses of an older vault: idea as paused, in-use as closed and in use (#859)", () => {
+    const idea = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: idea\n---\n");
+    expect(idea.frontMatter?.status).toBe("paused");
+    expect(idea.frontMatter?.inUse).toBe(false);
+    expect(idea.warnings).toEqual([]);
+    const used = parseFrontMatter("---\ncreated: 2025-03-02T10:15\nstatus: in-use\n---\n");
+    expect(used.frontMatter?.status).toBe("closed");
+    expect(used.frontMatter?.inUse).toBe(true);
+    expect(used.warnings).toEqual([]);
   });
 
   test("reports a file with no front matter, or broken YAML", () => {
@@ -318,19 +335,28 @@ describe("searchProjects", () => {
     ]);
   });
 
-  test("the current filter shows the projects that the person develops or uses (#690)", () => {
+  test("the current filter shows the projects that the person develops or uses (#690, #859)", () => {
     addProject("2024-01-01-0900-photo-sorter", "created: 2024-01-01T09:00\nstatus: closed");
-    addProject("2025-02-01-0900-recipes", "created: 2025-02-01T09:00\nstatus: in-use");
+    addProject("2025-02-01-0900-recipes", "created: 2025-02-01T09:00\nstatus: closed\nin-use: true");
     addProject("2026-05-01-0900-website", "created: 2026-05-01T09:00\nstatus: active");
-    addProject("2026-06-01-0900-someday", "created: 2026-06-01T09:00\nstatus: idea");
+    addProject("2026-06-01-0900-someday", "created: 2026-06-01T09:00\nstatus: paused");
+    addProject("2026-07-01-0900-old-menus", "created: 2026-07-01T09:00\nstatus: in-use");
     const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
 
     expect(searchProjects(projects, { status: "current" }).map((project) => project.id)).toEqual([
+      "2026-07-01-0900-old-menus",
       "2026-05-01-0900-website",
       "2025-02-01-0900-recipes",
     ]);
+    // In use is a flag, so the in-use filter shows a project of any status that has it.
     expect(searchProjects(projects, { status: "in-use" }).map((project) => project.id)).toEqual([
+      "2026-07-01-0900-old-menus",
       "2025-02-01-0900-recipes",
+    ]);
+    expect(searchProjects(projects, { status: "closed" }).map((project) => project.id)).toEqual([
+      "2026-07-01-0900-old-menus",
+      "2025-02-01-0900-recipes",
+      "2024-01-01-0900-photo-sorter",
     ]);
   });
 

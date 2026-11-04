@@ -178,12 +178,12 @@ describe("the vault template", () => {
     expect(map).not.toContain("pinned:");
   });
 
-  test("the agent map says which status a project gets when the person both develops it and uses it (#831)", () => {
+  test("the agent map says apart whether the person works on a project and whether they use it (#859)", () => {
     const map = vaultTemplateFiles(answers)["AGENTS.md"] ?? "";
-    expect(map).toContain("A project has one status.");
-    expect(map).toContain("`active` is a project that the person develops, even when they also use it.");
-    expect(map).toContain('such as "The person uses this every day."');
-    expect(map).toContain("Never add a second status field.");
+    expect(map).toContain("status: active # active, paused or closed\nin-use: true # optional");
+    expect(map).toContain("`in-use: true` says that the person uses the project now, whatever its status");
+    expect(map).not.toContain("Never add a second status field.");
+    expect(map).not.toContain("status `idea`");
   });
 
   test("the agent map tells the agent to list Principles/ and Methods/ before it acts, never to grep them (#851)", () => {

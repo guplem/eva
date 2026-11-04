@@ -27,6 +27,8 @@ export interface NewProjectInput {
   readonly name: string;
   readonly description: string;
   readonly status: ProjectStatus;
+  /** True writes `in-use: true`: the person uses the project from the start (#859). */
+  readonly inUse?: boolean | undefined;
   readonly tags: readonly string[];
   /** A GitHub repository named after the slug, or null for none. */
   readonly repository: NewRepository | null;
@@ -212,6 +214,7 @@ function projectText(
     {
       title,
       status: input.status,
+      ...(input.inUse === true ? { inUse: true } : {}),
       tags: input.tags,
       repos: results.repository === null ? [] : [results.repository],
       type: input.type,

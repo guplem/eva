@@ -51,17 +51,6 @@ const topics: Readonly<Record<string, NotificationTopic>> = {
     title: "Schedule run",
     meaning: `${scheduleWords} This entry says that a run failed, or that the runs work again.`,
   },
-  schedule_card: {
-    title: "Schedule check",
-    meaning: [
-      scheduleWords,
-      "When a schedule is new, turned on or changed, Eva first shows you a setup card with all its fields.",
-      "In the web app, you confirm the card. In Telegram, the card counts when it reaches you.",
-      "Anyone who can change your vault could add a schedule, so this check makes sure that you see each schedule before it runs.",
-      "Until the card reaches you, the schedule does not run.",
-      "After that, Eva says that the schedule no longer waits.",
-    ].join(" "),
-  },
   template_alignment: {
     title: "Vault template",
     meaning:

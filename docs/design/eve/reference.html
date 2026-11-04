@@ -2587,17 +2587,15 @@
         id: "schedules",
         kicker: "Schedules",
         title: "Schedules",
-        desc: "Eva does work by herself at a set time. A new schedule waits for the person to confirm it before its first run.",
+        desc: "Eva does work by herself at a set time. A new schedule runs at its next time.",
         imp: [
           "A day line shows what runs today and where you are now.",
           "Each schedule says when it repeats in words, not in cron.",
           "The last result has a colour: the failed backup check stands out.",
-          "The confirmation card says that nothing runs without a yes.",
         ],
         desk: desk({
           on: "schedules",
           main: `<div class="hd"><div class="grow"><h1>Schedules</h1><div class="sub">4 schedules · 1 needs a look</div></div><span class="btn pri">${I("plus")} Add schedule</span></div><div class="sc"><div class="col">${timeline}${schedRows()}</div></div>`,
-          overlay: `<div class="scrim"><div class="dlg">${mk("s")}<h2>New schedule: Thursday demo</h2><dl class="kv"><dt>When</dt><dd>Thu 23 Oct, 09:00</dd><dt>Engine</dt><dd>Claude Code</dd><dt>Prompt</dt><dd class="ell" style="max-width:260px">Remind me to prepare the demo</dd><dt>Time zone</dt><dd>Europe/Madrid</dd></dl><p class="small muted">It runs only after you confirm. Remove it if you did not make it.</p><div class="row"><span class="btn pri">${I("check")} Got it</span><span class="grow"></span><span class="btn danger">Remove schedule</span></div></div></div>`,
         }),
         phone: phone({
           on: "schedules",
@@ -2845,7 +2843,7 @@
         ["e-listen", "Listening", "Waits for a message, or for the answer to a question."],
         ["e-focus", "Focused", "Project mode: edits code or runs the tests."],
         ["e-firm", "Firm", "Asks permission for something important, such as git push."],
-        ["e-skeptic", "Skeptical", "A note conflict, or a schedule that nobody confirmed."],
+        ["e-skeptic", "Skeptical", "A note conflict."],
         ["e-worry", "Worried", "No connection to the hub. Messages wait."],
         ["e-sad", "Sad", "A schedule failed, or the person denied a permission."],
         ["e-error", "Error", "Something broke and needs the person, such as an expired login."],

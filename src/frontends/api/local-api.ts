@@ -24,7 +24,6 @@ import type {
   DeviceLoginRequest,
 } from "../../core/remote-access/device-logins.ts";
 import type { TailnetSnapshot } from "../../core/remote-access/remote-access.ts";
-import { changedFields } from "../../core/schedules/schedule-definitions.ts";
 import { maxWriteBytes } from "../../core/widgets/widget-data.ts";
 import { widgetInputValueSchema } from "../../core/widgets/widget-list.ts";
 import { widgetPolicy, widgetTheme } from "../../core/widgets/widget-policy.ts";
@@ -310,7 +309,6 @@ const pushInViewSchema = pushEndpointSchema.extend({
     .optional()
     .transform((chats) => chats ?? null),
 });
-const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 /** A PATCH turns a schedule off or on, or edits the fields that the schedule form shows. */
 const scheduleChangeSchema = z.union([
   z.strictObject({ enabled: z.boolean() }),
@@ -474,26 +472,6 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         );
         // Each page shows the unsent text that another page typed (issue 652).
         socket.data.unsubscribe.push(options.eva.unsentTexts.subscribe((event) => socket.send(JSON.stringify(event))));
-        const schedules = options.eva.schedules;
-        if (schedules !== null) {
-          socket.data.unsubscribe.push(
-            schedules.subscribe((event) => {
-              if (event.kind !== "schedule_card") return false;
-              // Only a card that already waits, with these fields: a card that Telegram shows at once
-              // never opens the dialog, and a tap never meets an older card. The page drops repeats.
-              const waits = schedules
-                .waitingCards()
-                .some(
-                  (card) =>
-                    card.scheduleId === event.scheduleId && changedFields(card.fields, event.fields).length === 0,
-                );
-              if (waits) socket.send(JSON.stringify(event));
-              // A socket is no proof that anyone saw the card: a sleeping phone keeps a dead
-              // socket open. The card counts when the person confirms it over HTTP.
-              return false;
-            }),
-          );
-        }
       },
       message() {
         // Commands go over HTTP; the socket only carries events to the client.
@@ -1266,7 +1244,6 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   }
   if (url.pathname === "/api/template-parts") return templatePartsRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
-  if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer, answers } = approvalAnswerSchema.parse(await request.json());
     // zod gives an absent text as undefined, and the core type has no undefined value.
@@ -1422,24 +1399,6 @@ async function schedulesRoute(
     return schedules.remove(decodeURIComponent(scheduleId))
       ? new Response(null, { status: 204 })
       : json({ error: "No such schedule." }, 404);
-  }
-  return json({ error: "Not found." }, 404);
-}
-
-/** The setup cards that wait for the person (lesson 66): list them, or confirm one that the person saw. */
-async function scheduleCardsRoute(
-  request: Request,
-  method: string,
-  scheduleId: string | undefined,
-  eva: Eva,
-): Promise<Response> {
-  const schedules = eva.schedules;
-  if (method === "GET" && scheduleId === undefined) return json(schedules?.waitingCards() ?? []);
-  if (method === "POST" && scheduleId !== undefined) {
-    const { fields } = cardSeenSchema.parse(await request.json());
-    return schedules?.confirmCard(decodeURIComponent(scheduleId), fields) === true
-      ? new Response(null, { status: 204 })
-      : json({ error: "This card changed or no longer waits. Look at the current card." }, 409);
   }
   return json({ error: "Not found." }, 404);
 }

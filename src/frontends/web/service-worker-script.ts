@@ -52,7 +52,7 @@ async function remember(seq) {
 
 /** The page that fixes the problem of an alert, as the problem notices of the app pick it. */
 function pageOf(key) {
-  if (key.startsWith("schedule:") || key.startsWith("schedule_card:")) return "/#/schedules";
+  if (key.startsWith("schedule:")) return "/#/schedules";
   if (key === "template_alignment") return "/#/settings/vault/template-alignment";
   return key === "push_test" ? "/" : "/#/settings";
 }

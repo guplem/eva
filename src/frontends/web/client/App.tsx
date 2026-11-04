@@ -1,6 +1,6 @@
 /**
- * The web UI: the main navigation, the destinations, approvals, and the setup cards of
- * schedules. The address names the destination, so the back button and a reload work.
+ * The web UI: the main navigation, the destinations and approvals. The address names the
+ * destination, so the back button and a reload work.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
@@ -14,7 +14,6 @@ import {
   type EventSubscription,
   type PendingApproval,
   type QuestionAnswers,
-  type ScheduleCard,
   type SessionEvent,
   type VaultSyncState,
   type ListedSession,
@@ -62,8 +61,6 @@ import { noticeReconnect } from "./widget-frames.ts";
 import { isLongHide } from "./event-stream.ts";
 import { problemSettingsRoute, shownProblems, withPendingHides, type ProblemAction } from "./problem-actions.ts";
 import { ProjectView } from "./ProjectView.tsx";
-import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
-import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 import { TooltipLayer } from "./Tooltip.tsx";
@@ -160,7 +157,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   /** Changes when the clock or the week start changes, so every time on the page renders again (#770). */
   const [, setFormatChanges] = useState(0);
   useEffect(() => onDisplayFormatChange(() => setFormatChanges((count) => count + 1)), []);
-  const [cards, setCards] = useState<ScheduleCard[]>([]);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
   const showError = useShowError();
   const linkedChat = sessions.find((session) => session.id === linkedChatId) ?? null;
@@ -233,7 +229,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     goTo(homeAddress, () => setScreen("chats"));
   };
 
-  // A waiting card is also a problem, so both come back together.
   const refreshProblems = useCallback(async (): Promise<void> => {
     try {
       const answersAtStart = hideAnswers.current;
@@ -249,11 +244,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       setVoiceNotes((status as Partial<EvaStatus>).voiceNotes ?? false);
       // An older Eva does not say: the page keeps the old forms.
       setDisplayFormat((status as Partial<EvaStatus>).format);
-    } catch {
-      // The next poll or the next reconnect tries again.
-    }
-    try {
-      setCards(await api.scheduleCards());
     } catch {
       // The next poll or the next reconnect tries again.
     }
@@ -474,64 +464,51 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       // so ask over HTTP: a 401 there shows the login page and ends the retries.
       else void refreshSessions();
     };
-    const subscription = subscribeToEvents(
-      (event: SessionEvent | ScheduleCard | DeviceLoginEvent | UnsentTextEvent) => {
-        if (event.kind === "unsent_text") {
-          unsentTexts.receive(event);
-          return;
-        }
-        if (event.kind === "device_login_request") {
-          setDeviceRequests((current) => [...current.filter((entry) => entry.id !== event.request.id), event.request]);
-          return;
-        }
-        if (event.kind === "device_login_settled") {
-          setDeviceRequests((current) => current.filter((entry) => entry.id !== event.id));
-          return;
-        }
-        if (event.kind === "schedule_card") {
-          // The core sends a waiting card again at each check. It replaces the old one in place, so
-          // the dialog never jumps to another card while the person reads.
-          setCards((current) =>
-            current.some((card) => card.scheduleId === event.scheduleId)
-              ? current.map((card) => (card.scheduleId === event.scheduleId ? event : card))
-              : [...current, event],
-          );
-          return;
-        }
-        setLive((state) => applyEvent(state, event));
-        const cue = cueOfEvent(event);
-        if (cue !== null) playCue(cue);
-        if (event.kind === "approval_resolved") {
-          setApprovals((current) => current.filter((approval) => approval.requestId !== event.requestId));
-        } else if (event.kind === "approval_needed") {
-          setApprovals((current) => [
-            ...current.filter((approval) => approval.requestId !== event.requestId),
-            pendingOf(event),
-          ]);
-        } else if (event.kind === "session_deleted") {
-          // Another front end deleted a chat: the list drops it.
-          void refreshSessions();
-        } else if (event.kind === "session_renamed" || event.kind === "fork_named") {
-          // A rename can come from Telegram, the terminal or another device.
-          void refreshSessions();
-        } else if (event.kind === "session_seen") {
-          // The person read the chat here or on another device: the list drops its unread mark.
-          void refreshSessions();
-        } else if (event.kind === "session_archived") {
-          // An archive on another device, or a new message that brought the chat back.
-          void refreshSessions();
-        } else if (event.kind === "session_closed") {
-          // Eva reused the chat's clone: its page swaps the message box for a note.
-          void refreshSessions();
-        } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
-          void refreshSessions();
-        } else if (event.kind === "message_received") {
-          // A turn starts. Its first step can come much later, and the list already says that the chat works.
-          void refreshSessions();
-        }
-      },
-      onConnectionChange,
-    );
+    const subscription = subscribeToEvents((event: SessionEvent | DeviceLoginEvent | UnsentTextEvent) => {
+      if (event.kind === "unsent_text") {
+        unsentTexts.receive(event);
+        return;
+      }
+      if (event.kind === "device_login_request") {
+        setDeviceRequests((current) => [...current.filter((entry) => entry.id !== event.request.id), event.request]);
+        return;
+      }
+      if (event.kind === "device_login_settled") {
+        setDeviceRequests((current) => current.filter((entry) => entry.id !== event.id));
+        return;
+      }
+      setLive((state) => applyEvent(state, event));
+      const cue = cueOfEvent(event);
+      if (cue !== null) playCue(cue);
+      if (event.kind === "approval_resolved") {
+        setApprovals((current) => current.filter((approval) => approval.requestId !== event.requestId));
+      } else if (event.kind === "approval_needed") {
+        setApprovals((current) => [
+          ...current.filter((approval) => approval.requestId !== event.requestId),
+          pendingOf(event),
+        ]);
+      } else if (event.kind === "session_deleted") {
+        // Another front end deleted a chat: the list drops it.
+        void refreshSessions();
+      } else if (event.kind === "session_renamed" || event.kind === "fork_named") {
+        // A rename can come from Telegram, the terminal or another device.
+        void refreshSessions();
+      } else if (event.kind === "session_seen") {
+        // The person read the chat here or on another device: the list drops its unread mark.
+        void refreshSessions();
+      } else if (event.kind === "session_archived") {
+        // An archive on another device, or a new message that brought the chat back.
+        void refreshSessions();
+      } else if (event.kind === "session_closed") {
+        // Eva reused the chat's clone: its page swaps the message box for a note.
+        void refreshSessions();
+      } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
+        void refreshSessions();
+      } else if (event.kind === "message_received") {
+        // A turn starts. Its first step can come much later, and the list already says that the chat works.
+        void refreshSessions();
+      }
+    }, onConnectionChange);
     events.current = subscription;
     return () => {
       subscription.close();
@@ -602,20 +579,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   };
   const deviceRequest = allowedDevice ?? answeringDevice ?? deviceRequests[0];
 
-  const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
-    try {
-      // The card itself asks "Remove?" before it calls this.
-      if (answer === "confirm") await api.confirmScheduleCard(card);
-      else await api.removeSchedule(card.scheduleId);
-      setCards((current) => current.filter((entry) => entry.scheduleId !== card.scheduleId));
-      window.dispatchEvent(new Event(schedulesChangedEvent));
-    } catch (caught) {
-      showError(caught);
-    }
-    // A card that changed meanwhile comes back with its new fields; the problem banner follows.
-    await refreshProblems();
-  };
-  const card = cards[0];
   // A key of `live.steps` means that a turn runs. A session that the list does not know yet counts as Assistant mode.
   const runningTurns = { assistant: 0, project: 0 };
   for (const sessionId of Object.keys(live.steps)) {
@@ -817,13 +780,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
           allowed={deviceRequest === allowedDevice}
           busy={answeringDevice !== null}
           onAnswer={(answer) => void answerDevice(deviceRequest, answer)}
-        />
-      )}
-      {deviceRequest === undefined && card !== undefined && (
-        <ScheduleCardDialog
-          card={card}
-          onConfirm={() => void answerCard(card, "confirm")}
-          onRemove={() => void answerCard(card, "remove")}
         />
       )}
     </div>

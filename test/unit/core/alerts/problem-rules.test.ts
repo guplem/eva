@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  scheduleCardProblem,
   scheduleFiringProblem,
   engineLoginProblem,
   engineMissingProblem,
@@ -150,16 +149,6 @@ describe("scheduleFiringProblem", () => {
     expect(scheduleFiringProblem("Lunch", "No engine.").message).toStartWith(
       "The schedule Lunch failed to fire: No engine. Check",
     );
-  });
-});
-
-describe("scheduleCardProblem", () => {
-  test("names the schedule and a fix from a phone", () => {
-    const problem = scheduleCardProblem("Lunch");
-    expect(problem.message).toContain("Lunch");
-    expect(problem.message).toContain("web app");
-    expect(problem.message).toContain("Telegram");
-    expect(problem.resolvedMessage).toContain("Lunch");
   });
 });
 

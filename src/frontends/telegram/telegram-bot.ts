@@ -991,7 +991,7 @@ export class TelegramBot {
         // Its turn starts now, so Telegram shows that Eva works.
         this.startTyping(target.chatId, target.topicId, event.sessionId);
         // The web chat shows every message, so the topic shows the ones that Telegram did not send.
-        // A schedule's setup card showed its prompt already.
+        // A scheduled prompt stays out: the topic shows only its answer.
         if (event.origin === "telegram" || event.origin === "schedule") return;
         // In the chat's order: a long message goes in parts, and the answer must not come between them.
         await this.inOrder(event.sessionId, async () => {

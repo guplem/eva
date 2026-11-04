@@ -154,8 +154,8 @@ describe("parseScheduleEntry", () => {
   });
 });
 
-describe("announced fields and changes (lesson 66)", () => {
-  test("a card lists every field that is set, in a fixed order", () => {
+describe("announced fields and changes (#855)", () => {
+  test("the compared fields list every field that is set, in a fixed order", () => {
     const schedule = parseScheduleEntry({ ...morning, days: ["mon", "tue"] }, 1) as Schedule;
     const fields = announcedFields(schedule);
     expect(Object.keys(fields)).toEqual(["id", "name", "at", "days", "prompt"]);
@@ -168,7 +168,7 @@ describe("announced fields and changes (lesson 66)", () => {
     expect([fields.every, fields.from]).toEqual(["2h", "2026-10-22T08:00"]);
   });
 
-  test("the on/off state is no announced field, so a pause never changes a card", () => {
+  test("the on/off state is no announced field, so a pause is no change", () => {
     const on = announcedFields(parseScheduleEntry(morning, 1) as Schedule);
     const off = announcedFields(parseScheduleEntry({ ...morning, enabled: false }, 1) as Schedule);
     expect(changedFields(on, off)).toEqual([]);
@@ -291,7 +291,7 @@ describe("saving and removing", () => {
 });
 
 describe("until (#687)", () => {
-  test("an end date reads as a day, and shows on the card only when set", () => {
+  test("an end date reads as a day, and is a compared field only when set", () => {
     const parsed = parseScheduleEntry({ ...interval, until: "2026-11-30" }, 1) as Schedule;
     expect(parsed.until).toBe("2026-11-30");
     expect(announcedFields(parsed).until).toBe("2026-11-30");

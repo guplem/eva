@@ -1588,39 +1588,17 @@ test("a new chat starts with the settings' model and effort, and names the model
   await expect(picker).toContainText("Smart · Opus 5.5");
 });
 
-test("a new schedule's setup card waits in a dialog, and Got it lets it run (lesson 66)", async ({ page }, info) => {
+test("a new schedule opens no setup card: it shows on the Schedules page at once (#855)", async ({ page }, info) => {
   await logIn(page);
   const id = `card-${info.project.name}`;
   const created = await page.request.post("/api/schedules", {
     data: { id, name: `Card ${info.project.name}`, at: "07:30", text: "Drink water." },
   });
   expect(created.status()).toBe(201);
-  const dialog = page.getByRole("dialog", { name: "Setup card" });
-  await expect(dialog).toContainText(`New schedule: Card ${info.project.name}`);
-  await expect(dialog).toContainText("Drink water.");
-  await dialog.getByRole("button", { name: "Got it" }).click();
-  await expect(dialog).toHaveCount(0);
-  const waiting = (await (await page.request.get("/api/schedule-cards")).json()) as { scheduleId: string }[];
-  expect(waiting.map((card) => card.scheduleId)).not.toContain(id);
+  await page.goto("/#/schedules");
+  await expect(page.getByRole("listitem", { name: `Card ${info.project.name}` })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.request.delete(`/api/schedules/${id}`);
-});
-
-test("a setup card's Remove button removes the schedule", async ({ page }, info) => {
-  await logIn(page);
-  const id = `unknown-${info.project.name}`;
-  await page.request.post("/api/schedules", { data: { id, name: "Pushed by someone", at: "07:30", text: "Hi." } });
-  const dialog = page.getByRole("dialog", { name: "Setup card" });
-  await expect(dialog).toContainText("New schedule: Pushed by someone");
-  // The card asks in the page, not with a browser question.
-  await dialog.getByRole("button", { name: "Remove schedule" }).click();
-  await dialog.getByRole("button", { name: "Keep" }).click();
-  await dialog.getByRole("button", { name: "Remove schedule" }).click();
-  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  const listed = (await (await page.request.get("/api/schedules")).json()) as {
-    schedules: { schedule: { id: string } }[];
-  };
-  expect(listed.schedules.map((view) => view.schedule.id)).not.toContain(id);
 });
 
 test("the day line shows the time of a run and of now on hover", async ({ page }, info) => {
@@ -1637,7 +1615,6 @@ test("the day line shows the time of a run and of now on hover", async ({ page }
   await page.request.post("/api/schedules", {
     data: { id, name: `Hover ${info.project.name}`, at: "00:00", text: "Hi." },
   });
-  await page.getByRole("dialog", { name: "Setup card" }).getByRole("button", { name: "Got it" }).click();
   await page.goto("/#/schedules");
   const line = page.locator(".day-line");
   await expect(line.locator(".day-line-mark")).toHaveCount(0);
@@ -3168,27 +3145,20 @@ test("Schedules page: open it from the main navigation, add a schedule, see its 
   await form.getByLabel("Time (HH:MM)").fill("07:30");
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
-  // No front end shows cards in the demo, so the new schedule's card waits in a dialog.
-  const card = page.getByRole("dialog", { name: "Setup card" });
-  await expect(card).toContainText("Fridays at 07:30");
-  await card.getByRole("button", { name: "Got it" }).click();
   await expect(page.getByRole("region", { name: "Today" })).toBeVisible();
   const row = page.getByRole("listitem", { name: `Walk ${id}` });
   await expect(row).toContainText("Fridays at 07:30 · next");
   await expect(row).toContainText("Not run yet");
-  // Off needs no setup card, and the row says that it is off.
+  // The row says that a schedule is off.
   const toggle = row.getByRole("switch", { name: `Run Walk ${id}` });
   await expect(toggle).toHaveAttribute("aria-checked", "true");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await expect(row).toContainText("Fridays at 07:30 · off");
   await expect(row.locator(".status-pill")).toHaveText("Off");
-  await expect(page.getByRole("dialog", { name: "Setup card" })).toHaveCount(0);
-  // On again needs a new setup card (lesson 67).
   await toggle.click();
-  await expect(card).toContainText(`Schedule turned on: Walk ${id}`);
-  await card.getByRole("button", { name: "Got it" }).click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expect(row).toContainText("Fridays at 07:30 · next");
   // Remove asks in the page first.
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
   await row.getByRole("button", { name: "Keep" }).click();
@@ -3213,9 +3183,6 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await form.getByLabel("Fixed text").fill("Water the plants.");
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
-  const card = page.getByRole("dialog", { name: "Setup card" });
-  await expect(card).toContainText("Every 3 days at 07:30, from Wed 2 Jan, 07:30");
-  await card.getByRole("button", { name: "Got it" }).click();
   const row = page.getByRole("listitem", { name: `Water ${id}` });
   await expect(row).toContainText("Every 3 days at 07:30 · next 2 Jan 07:30");
   await page.request.delete(`/api/schedules/${id}`);
@@ -3234,10 +3201,10 @@ test("Schedules page: add a schedule with a last day (#687)", async ({ page }, t
   await form.getByLabel("Fixed text").fill("Look at the inbox.");
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
-  const card = page.getByRole("dialog", { name: "Setup card" });
-  await expect(card).toContainText("Last day");
-  await expect(card).toContainText("2030-01-31");
-  await card.getByRole("button", { name: "Got it" }).click();
+  const listed = (await (await page.request.get("/api/schedules")).json()) as {
+    schedules: { schedule: { id: string; until: string | null } }[];
+  };
+  expect(listed.schedules.find((view) => view.schedule.id === id)?.schedule.until).toBe("2030-01-31");
   await page.request.delete(`/api/schedules/${id}`);
 });
 
@@ -3255,9 +3222,6 @@ test("Schedules page: add a schedule that runs once (#822)", async ({ page }, te
   await form.getByLabel("Fixed text").fill("Phone the bank.");
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
-  const card = page.getByRole("dialog", { name: "Setup card" });
-  await expect(card).toContainText("Once on 2 Jan at 07:30");
-  await card.getByRole("button", { name: "Got it" }).click();
   const row = page.getByRole("listitem", { name: `Bank ${id}` });
   await expect(row).toContainText("Once on 2 Jan at 07:30 · next 2 Jan 07:30");
   await page.request.delete(`/api/schedules/${id}`);
@@ -4390,8 +4354,8 @@ test("a tap on a history entry explains it, and holds the fix of a problem that 
 }) => {
   const at = new Date().toISOString();
   const entries = [
-    { seq: 1, key: "schedule_card:morning", level: "warn", message: "The schedule Morning waits.", at, read: true },
-    { seq: 2, key: "schedule_card:morning", level: "resolved", message: "Morning no longer waits.", at, read: false },
+    { seq: 1, key: "template_alignment", level: "warn", message: "A vault file has a new version.", at, read: true },
+    { seq: 2, key: "template_alignment", level: "resolved", message: "The vault files match again.", at, read: false },
     { seq: 3, key: "schedule:lunch", level: "error", message: "The schedule Lunch failed.", at, read: true },
   ];
   await routeProblems(page, [{ key: "schedule:lunch", level: "error", message: "The schedule Lunch failed." }]);
@@ -4404,7 +4368,7 @@ test("a tap on a history entry explains it, and holds the fix of a problem that 
   await logIn(page);
   await openCenter(page);
   const earlier = page.getByRole("region", { name: "Earlier" });
-  const solved = earlier.getByRole("button", { name: /Morning no longer waits/ });
+  const solved = earlier.getByRole("button", { name: /The vault files match again/ });
   await expect(solved).toHaveAttribute("aria-expanded", "false");
   await solved.click();
   await expect(solved).toHaveAttribute("aria-expanded", "true");
@@ -4412,8 +4376,8 @@ test("a tap on a history entry explains it, and holds the fix of a problem that 
   await expect(solved.locator(".unread-mark")).toHaveCount(0);
   expect(reads).toEqual([{ seqs: [2] }]);
   const details = earlier.locator(".center-details");
-  await expect(details).toContainText("Schedule check");
-  await expect(details).toContainText("you confirm the card");
+  await expect(details).toContainText("Vault template");
+  await expect(details).toContainText("standard files");
   await expect(details).toContainText("This problem is solved.");
   await expect(details.getByRole("listitem")).toHaveCount(2);
   // A second tap closes the details.

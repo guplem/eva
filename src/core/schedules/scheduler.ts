@@ -1,8 +1,8 @@
 /**
  * Fires the schedules of `.eva/schedules.json`. Only the hub fires them,
- * because every machine runs an instance (lesson 118). A new or changed schedule fires
- * only after a front end showed its setup card (lesson 66). Each firing with a prompt starts a fresh
- * chat named after the schedule (lesson 126).
+ * because every machine runs an instance (lesson 118). A new or changed schedule fires at its
+ * next time, with no setup card (#855). Each firing with a prompt starts a fresh chat named after
+ * the schedule (lesson 126).
  */
 import { join } from "node:path";
 import { modelAliases, type ModelAlias } from "../../shared/engine-port.ts";
@@ -17,8 +17,6 @@ import {
   saveScheduleDefinition,
   setScheduleEnabled,
   type Schedule,
-  type ScheduleChange,
-  type ScheduleFieldName,
 } from "./schedule-definitions.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
 import { ScheduleStateStore, type ScheduleState } from "./schedule-state.ts";
@@ -27,16 +25,6 @@ import { EvaError } from "../../shared/errors.ts";
 import { extractFileMarkers } from "../../shared/file-markers.ts";
 
 export type ScheduleEvent =
-  | {
-      readonly kind: "schedule_card";
-      readonly scheduleId: string;
-      readonly name: string;
-      readonly fields: Partial<Record<ScheduleFieldName, string>>;
-      /** Empty for a new schedule. `enabled`: the schedule was off, and someone turned it on. */
-      readonly changed: readonly ScheduleChange[];
-      readonly nextRun: string | null;
-      readonly timeZone: string;
-    }
   | {
       readonly kind: "schedule_fired";
       readonly scheduleId: string;
@@ -63,13 +51,8 @@ export type ScheduleEvent =
     }
   | { readonly kind: "schedule_problems"; readonly problems: readonly string[] };
 
-export type ScheduleCard = Extract<ScheduleEvent, { kind: "schedule_card" }>;
-
-/**
- * A listener returns true when it showed the event to the person; only then does a setup card
- * count. It may return a promise: the scheduler waits for it, so a front end can open a topic first.
- */
-type ScheduleListener = (event: ScheduleEvent) => Promise<boolean | undefined> | boolean | undefined;
+/** A listener may return a promise: the scheduler waits for it, so a front end can open a topic first. */
+type ScheduleListener = (event: ScheduleEvent) => unknown;
 
 export interface ScheduledChatStarter {
   /** Without a model, the settings' model for new chats. */
@@ -99,8 +82,6 @@ export interface SchedulerOptions {
   readonly logger?: Logger;
   /** Hears the result of each firing: the reason of a failure, or null when it fired. */
   readonly reportFiring?: (schedule: Schedule, failure: string | null) => void;
-  /** Hears when a setup card starts to wait for a front end, and when it stops waiting. */
-  readonly reportCard?: (scheduleId: string, name: string, waiting: boolean) => void;
 }
 
 export interface ScheduleView {
@@ -128,10 +109,6 @@ export class Scheduler {
   private readonly options: SchedulerOptions;
   private readonly state: ScheduleStateStore;
   private readonly listeners: Set<ScheduleListener>;
-  /** The cards that no front end showed yet, by schedule id. */
-  private readonly waiting: Map<string, ScheduleCard>;
-  /** How many pauses each schedule had since Eva started: a pause during a card shows here. */
-  private readonly pauses: Map<string, number>;
   private lastProblems: string;
   private ticking: boolean;
 
@@ -139,8 +116,6 @@ export class Scheduler {
     this.options = options;
     this.state = new ScheduleStateStore(options.statePath);
     this.listeners = new Set();
-    this.waiting = new Map();
-    this.pauses = new Map();
     this.lastProblems = "";
     this.ticking = false;
   }
@@ -181,7 +156,7 @@ export class Scheduler {
     return saveScheduleDefinition(this.definitionsPath, entry);
   }
 
-  /** Changes the form's fields of one schedule. The next check shows a card for each changed field. */
+  /** Changes the form's fields of one schedule. A slot that is due at the next check does not fire. */
   edit(scheduleId: string, fields: Readonly<Record<string, unknown>>): Schedule | null {
     assertVaultWritable(this.options.vaultPath);
     const before = readScheduleDefinitions(this.definitionsPath).schedules.find((entry) => entry.id === scheduleId);
@@ -218,7 +193,7 @@ export class Scheduler {
     return null;
   }
 
-  /** The next run. A one-off whose time passed while it waited for its card runs right after the card. */
+  /** The next run. A one-off whose time passed while Eva was off runs at the next check. */
   private nextRunOf(schedule: Schedule, now: string): string | null {
     if (runsOnce(schedule) && this.endedAt(schedule, now) === null && (schedule.from ?? now) <= now) return now;
     return nextSlot(schedule, now);
@@ -227,46 +202,20 @@ export class Scheduler {
   remove(scheduleId: string): boolean {
     assertVaultWritable(this.options.vaultPath);
     const removed = removeScheduleDefinition(this.definitionsPath, scheduleId);
-    if (removed) {
-      this.state.forget(scheduleId);
-      this.stopWaiting(scheduleId);
-    }
+    if (removed) this.state.forget(scheduleId);
     return removed;
   }
 
-  /** Turns a schedule off or on. Turning it on brings a new setup card at the next check (lesson 67). */
+  /** Turns a schedule off or on. Turning it on skips a slot that is due then. */
   setEnabled(scheduleId: string, enabled: boolean): boolean {
     assertVaultWritable(this.options.vaultPath);
     const changed = setScheduleEnabled(this.definitionsPath, scheduleId, enabled);
-    // A check may not run between off and on, so the pause counts now, or on would need no card.
+    // A check may not run between off and on, so the pause counts now, or on would fire a due slot.
     if (changed && !enabled) this.pause(scheduleId);
     // On again starts a new watch, so the end of the last one goes (#687).
     if (changed && enabled && (this.state.peek(scheduleId)?.done ?? null) !== null)
       this.state.update(scheduleId, { done: null });
     return changed;
-  }
-
-  /** The setup cards that wait for a front end to show them. */
-  waitingCards(): ScheduleCard[] {
-    return [...this.waiting.values()];
-  }
-
-  /**
-   * A front end says that the person saw the card with these fields. It counts only when the
-   * fields still match the waiting card and the file, so a change pushed meanwhile gets its own card.
-   */
-  confirmCard(scheduleId: string, fields: Readonly<Record<string, string>>): boolean {
-    if (!this.options.isHub()) return false;
-    const schedule = readScheduleDefinitions(this.definitionsPath).schedules.find((entry) => entry.id === scheduleId);
-    if (schedule === undefined || !schedule.enabled || changedFields(announcedFields(schedule), fields).length > 0)
-      return false;
-    const now = wallClockOf(this.options.now(), this.options.timeZone);
-    // Another front end showed this card first: the tap only agrees, and must not skip a due slot again.
-    if (this.isAnnounced(schedule)) return true;
-    const card = this.waiting.get(scheduleId);
-    if (card === undefined || changedFields(card.fields, fields).length > 0) return false;
-    this.recordCard(schedule, now);
-    return true;
   }
 
   /** True while a check runs: a schedule may be between its chat and its first message. */
@@ -276,11 +225,7 @@ export class Scheduler {
 
   /** One check of every schedule. The core calls it every 30 seconds. */
   async tick(): Promise<void> {
-    if (!this.options.isHub()) {
-      // A machine that is no longer the hub shows no cards, so nothing waits on it.
-      for (const scheduleId of [...this.waiting.keys()]) this.stopWaiting(scheduleId);
-      return;
-    }
+    if (!this.options.isHub()) return;
     if (this.ticking) return;
     this.ticking = true;
     try {
@@ -311,9 +256,6 @@ export class Scheduler {
         this.options.reportFiring?.(schedule, errorText(error));
       }
     }
-    // A schedule removed by hand or by a vault pull never calls remove().
-    const ids = new Set(definitions.schedules.map((schedule) => schedule.id));
-    for (const scheduleId of [...this.waiting.keys()]) if (!ids.has(scheduleId)) this.stopWaiting(scheduleId);
   }
 
   private async check(schedule: Schedule, now: string): Promise<void> {
@@ -325,94 +267,41 @@ export class Scheduler {
     // A one-off counts from when Eva first saw its time, not its id.
     if (runsOnce(schedule) && schedule.from !== null && seen.onceSeen?.from !== schedule.from)
       this.state.update(schedule.id, { onceSeen: { from: schedule.from, at: now } });
+    if (!this.isKnown(schedule)) this.learn(schedule, now);
     const state = this.state.peek(schedule.id) ?? seen;
-    const fields = announcedFields(schedule);
-    if (!this.isAnnounced(schedule)) {
-      const changed: ScheduleChange[] = state.announced === null ? [] : changedFields(state.announced, fields);
-      if (state.announced !== null && state.paused === true) changed.push("enabled");
-      const card: ScheduleCard = {
-        kind: "schedule_card",
-        scheduleId: schedule.id,
-        name: schedule.name,
-        fields,
-        changed,
-        nextRun: this.nextRunOf(schedule, now),
-        timeZone: this.options.timeZone,
-      };
-      // The card is the check against a schedule that someone pushed (lessons 66, 67). Until a
-      // front end shows it, the schedule writes no state and never fires.
-      const pausesBefore = this.pauses.get(schedule.id) ?? 0;
-      const shown = await this.emit(card);
-      // A remove, a confirm or a pause can come in while a front end still sends the card. A card
-      // recorded after a pause would clear it, and on again would then need no card (lesson 67).
-      if (
-        this.state.peek(schedule.id) === undefined ||
-        this.isAnnounced(schedule) ||
-        !this.stillOn(schedule.id, pausesBefore)
-      )
-        return;
-      if (shown) this.recordCard(schedule, now);
-      else {
-        this.waiting.set(schedule.id, card);
-        this.options.reportCard?.(schedule.id, schedule.name, true);
-      }
-      return;
-    }
-    // The change was undone before anyone saw its card, so that card no longer waits.
-    this.stopWaiting(schedule.id);
     const slot = dueSlot(schedule, { ...state, firstSeen: onceSeenAt(schedule, state, now) }, now);
     if (slot !== null) await this.fire(schedule, slot, now);
   }
 
-  /** True when the file still holds the schedule on, and no pause came since `pausesBefore`. */
-  private stillOn(scheduleId: string, pausesBefore: number): boolean {
-    if ((this.pauses.get(scheduleId) ?? 0) !== pausesBefore) return false;
-    const schedule = readScheduleDefinitions(this.definitionsPath).schedules.find((entry) => entry.id === scheduleId);
-    return schedule?.enabled === true;
-  }
-
-  /**
-   * An off schedule shows no card and never fires. Its state remembers the pause, so turning it on
-   * needs a new card: someone who can push could turn on a schedule that the person paused (lesson 67).
-   */
+  /** An off schedule never fires. Its state remembers the pause, so on again skips a due slot. */
   private pause(scheduleId: string): void {
-    this.pauses.set(scheduleId, (this.pauses.get(scheduleId) ?? 0) + 1);
-    this.stopWaiting(scheduleId);
     const state = this.state.peek(scheduleId);
     if (state !== undefined && state.paused !== true) this.state.update(scheduleId, { paused: true });
   }
 
-  /** True when a front end showed a card with the schedule's current fields, and no pause came after it. */
-  private isAnnounced(schedule: Schedule): boolean {
+  /** True when Eva saw the schedule's current fields, and no pause came after it. */
+  private isKnown(schedule: Schedule): boolean {
     const state = this.state.peek(schedule.id);
-    const announced = state?.announced ?? null;
-    return (
-      announced !== null && state?.paused !== true && changedFields(announced, announcedFields(schedule)).length === 0
-    );
+    const known = state?.announced ?? null;
+    return known !== null && state?.paused !== true && changedFields(known, announcedFields(schedule)).length === 0;
   }
 
-  /** The person saw the card: a slot that is already due is skipped, so nothing runs before the card. */
-  private recordCard(schedule: Schedule, now: string): void {
+  /**
+   * Eva sees a new, changed or resumed schedule. A slot that is already due is skipped, so a
+   * change to a time that just passed waits for the next one.
+   */
+  private learn(schedule: Schedule, now: string): void {
     const state = this.state.peek(schedule.id);
-    // A removed schedule stays removed (lesson 67): a later push of it needs a new card.
     if (state === undefined) return;
-    // A one-off has no later slot, so its run, also a late one, comes right after the card.
+    // A one-off has no later slot, so its run, also a late one, comes at once.
     const slot = runsOnce(schedule) ? null : dueSlot(schedule, state, now);
     this.state.update(schedule.id, {
       announced: announcedFields(schedule),
       paused: false,
-      // A card for a schedule that is on again: the end of its last watch goes (#687).
+      // A schedule that is on again: the end of its last watch goes (#687).
       ...((state.done ?? null) === null ? {} : { done: null }),
       ...(slot === null ? {} : { lastFired: slot }),
     });
-    this.stopWaiting(schedule.id);
-  }
-
-  private stopWaiting(scheduleId: string): void {
-    const card = this.waiting.get(scheduleId);
-    if (card === undefined) return;
-    this.waiting.delete(scheduleId);
-    this.options.reportCard?.(scheduleId, card.name, false);
   }
 
   private async fire(schedule: Schedule, slot: string, now: string): Promise<void> {
@@ -493,7 +382,7 @@ export class Scheduler {
     return !quiet;
   }
 
-  /** A [[done]] works like the person's pause, so turning the schedule on again needs a card (lesson 67). */
+  /** A [[done]] works like the person's pause, so turning the schedule on again skips a due slot. */
   private endByDone(schedule: Schedule, slot: string): void {
     try {
       this.setEnabled(schedule.id, false);
@@ -522,7 +411,7 @@ export class Scheduler {
   private promptFailed(schedule: Schedule, slot: string, failure: string): void {
     this.options.logger?.log("error", "A scheduled prompt failed.", { scheduleId: schedule.id, reason: failure });
     // A turn can end after the next slot fired. That newer run owns the result and the alert now.
-    // Not lastFired: a new setup card moves it to a skipped slot, which is no run.
+    // Not lastFired: a change moves it to a skipped slot, which is no run.
     if (this.state.peek(schedule.id)?.lastResult?.slot !== slot) return;
     // The alert first: a state file that cannot be written must not hide the failure from the phone.
     try {
@@ -550,10 +439,9 @@ export class Scheduler {
     this.state.update(scheduleId, { lastResult: { slot, failed } });
   }
 
-  /** True when a listener showed the event to the person. A listener that throws showed nothing. */
-  private async emit(event: ScheduleEvent): Promise<boolean> {
-    const results = await Promise.allSettled([...this.listeners].map(async (listener) => listener(event)));
-    return results.some((result) => result.status === "fulfilled" && result.value === true);
+  /** Tells every listener. A listener that throws stops no other. */
+  private async emit(event: ScheduleEvent): Promise<void> {
+    await Promise.allSettled([...this.listeners].map(async (listener) => await listener(event)));
   }
 }
 
@@ -566,7 +454,7 @@ function errorText(error: unknown): string {
  * With a prompt, the answer says it; without one, a line before the text says it.
  */
 function lateNotes(slot: string): { text: string; prompt: string } {
-  // No cause: Eva was off, a setup card came late, or a chat could not start.
+  // No cause: Eva was off, or a chat could not start.
   const due = `it was due at ${slot.replace("T", " ")}`;
   return {
     text: `This message comes late: ${due}.`,

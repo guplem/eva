@@ -2747,7 +2747,7 @@ describe("voice notes (lesson 123)", () => {
   });
 });
 
-describe("schedules (lessons 66, 70, 126)", () => {
+describe("schedules (lessons 70, 126)", () => {
   const vault = (): string => join(sandbox.root, "vault");
   const morning = { id: "morning", name: "Morning", at: "10:45", text: "Drink water.", prompt: "Plan my day." };
 
@@ -2755,24 +2755,22 @@ describe("schedules (lessons 66, 70, 126)", () => {
     sandbox.write(vault(), ".eva/schedules.json", JSON.stringify({ version: 1, schedules }));
   }
 
-  test("a new schedule opens its topic with a setup card, then fires there in a fresh chat", async () => {
+  test("a new schedule sends no setup card, then opens its topic and fires there in a fresh chat (#855)", async () => {
     writeSchedules([morning]);
     createEva((request) => FakeEngine.answer(request, "Your day: rest."));
     const bot = createBot();
     await eva.schedules?.tick();
-    expect(telegram.callsTo("createForumTopic")[0]?.params).toMatchObject({ name: "Morning" });
-    const card = telegram.callsTo("sendMessage").at(-1)?.params;
-    expect(card).toMatchObject({ message_thread_id: 500 });
-    expect(String(card?.["text"])).toContain("New schedule: Morning");
-    expect(String(card?.["text"])).toContain("Next run: 2026-10-14 10:45 (UTC)");
+    expect(telegram.callsTo("createForumTopic")).toEqual([]);
+    expect(telegram.sentTexts()).toEqual([]);
 
     clock = new Date("2026-10-14T10:45:00Z");
     await eva.schedules?.tick();
+    expect(telegram.callsTo("createForumTopic")[0]?.params).toMatchObject({ name: "Morning" });
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Your day")));
     const answer = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("Your day"));
     expect(answer?.params["message_thread_id"]).toBe(500);
     expect(telegram.sentTexts()).toContain("Drink water.");
-    // The setup card showed the prompt already, so a firing does not repeat it.
+    // The topic shows the answer of a scheduled prompt, not the prompt.
     expect(telegram.sentTexts()).not.toContain("Message: Plan my day.");
     expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
     expect(eva.sessions.list()[0]).toMatchObject({ title: "Morning", source: "schedule" });
@@ -2852,86 +2850,43 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
   });
 
-  test("a schedule turned back on gets a card that says so (#188)", async () => {
-    writeSchedules([morning]);
-    createBot();
-    await eva.schedules?.tick();
-    writeSchedules([{ ...morning, enabled: false }]);
-    await eva.schedules?.tick();
-    writeSchedules([morning]);
-    await eva.schedules?.tick();
-    expect(telegram.sentTexts().at(-1)).toStartWith("Schedule turned on: Morning");
-  });
-
-  test("a schedule file sends its file; a changed schedule names the change", async () => {
+  test("a schedule file sends its file at its new time after a change", async () => {
     sandbox.write(vault(), "Methods/List.md", "- milk\n");
     writeSchedules([{ id: "list", name: "List", at: "10:45", file: "Methods/List.md" }]);
     createBot();
     await eva.schedules?.tick();
     writeSchedules([{ id: "list", name: "List", at: "10:50", file: "Methods/List.md" }]);
     await eva.schedules?.tick();
-    expect(telegram.sentTexts().at(-1)).toContain("Schedule changed (at): List");
     clock = new Date("2026-10-14T10:50:00Z");
     await eva.schedules?.tick();
     expect(telegram.callsTo("sendDocument")).toHaveLength(1);
   });
 
   test("a topic deleted in the app is opened again (lesson 70)", async () => {
-    writeSchedules([morning]);
+    const water = { id: "water", name: "Water", at: "10:45", text: "Drink water." };
+    writeSchedules([water]);
     createBot();
+    // Eva first sees it at 10:30, so 10:45 is a later slot.
     await eva.schedules?.tick();
-    writeSchedules([{ ...morning, at: "11:00" }]);
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
     telegram.failNext("sendChatAction", 400, "Bad Request: message thread not found");
+    clock = new Date("2026-10-15T10:45:00Z");
     await eva.schedules?.tick();
     expect(telegram.callsTo("createForumTopic")).toHaveLength(2);
   });
 
-  test("when Telegram refuses a topic, the card goes to the main chat", async () => {
-    writeSchedules([morning]);
+  test("when Telegram refuses a topic, the firing goes to the main chat", async () => {
+    writeSchedules([{ id: "water", name: "Water", at: "10:45", text: "Drink water." }]);
     createBot();
+    // Eva first sees it at 10:30, so 10:45 is a later slot.
+    await eva.schedules?.tick();
     telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    clock = new Date("2026-10-14T10:45:00Z");
     await eva.schedules?.tick();
+    expect(telegram.callsTo("sendMessage").at(-1)?.params).toMatchObject({ text: "Drink water." });
     expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBeUndefined();
-  });
-
-  test("a card that Telegram fails to send waits, and goes out again at the next check (lesson 66)", async () => {
-    writeSchedules([morning]);
-    createBot();
-    telegram.failNext("sendMessage", 400, "Bad Request: chat not found");
-    await eva.schedules?.tick();
-    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
-    await eva.schedules?.tick();
-    expect(telegram.sentTexts().at(-1)).toContain("New schedule: Morning");
-    expect(eva.schedules?.waitingCards()).toEqual([]);
-  });
-
-  test("a card too long for one message waits for the web app: a cut card would hide the prompt (lesson 67)", async () => {
-    writeSchedules([{ ...morning, text: "filler ".repeat(700) }]);
-    createBot();
-    await eva.schedules?.tick();
-    expect(telegram.sentTexts().at(-1)).toContain("too long for Telegram");
-    await eva.schedules?.tick();
-    expect(telegram.sentTexts().filter((text) => text.includes("too long"))).toHaveLength(1);
-    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
-  });
-
-  test("a too-long notice that fails to go out goes out at the next check", async () => {
-    writeSchedules([{ ...morning, text: "filler ".repeat(700) }]);
-    createBot();
-    telegram.failNext("sendMessage", 400, "Bad Request: chat not found");
-    const notices = (): number => telegram.sentTexts().filter((text) => text.includes("too long")).length;
-    await eva.schedules?.tick();
-    await eva.schedules?.tick();
-    await eva.schedules?.tick();
-    // The fake records the failed call too: one failed try, then one notice that went out.
-    expect(notices()).toBe(2);
-  });
-
-  test("before pairing, a card waits instead of counting as shown", async () => {
-    writeSchedules([morning]);
-    createBot(null);
-    await eva.schedules?.tick();
-    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
   });
 
   test("file problems go to the main chat; nothing goes out before pairing", async () => {

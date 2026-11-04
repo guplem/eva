@@ -5,7 +5,6 @@
 import { slotTime, weekOrder, type DisplayFormat } from "../../../shared/time-format.ts";
 import { displayFormat } from "./display-format.ts";
 
-const dayCodes = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const shortDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pluralDays = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -93,12 +92,6 @@ export function nextRunWords(nextRun: string | null, now: string, clock = displa
   return `${dateWords(nextRun)} ${time}`;
 }
 
-/** A slot with its weekday and date, such as "Thu 23 Oct, 09:00", for a setup card. */
-export function slotWords(slot: string | null, clock = displayFormat().clock): string {
-  if (slot === null) return "Never";
-  return `${shortDays[weekdayOf(slot)] ?? ""} ${dateWords(slot)}, ${slotTime(slot.slice(11, 16), clock)}`;
-}
-
 export type ResultTone = "ok" | "bad" | "idle";
 
 /** The last result as a pill text and its colour. */
@@ -112,14 +105,6 @@ export function lastRunWords(
   const days = daysBetween(lastRun.slot, now);
   const when = days === 0 ? " today" : days === 1 ? " yesterday" : ` · ${dateWords(lastRun.slot)}`;
   return { text: verb + when, tone: lastRun.failed ? "bad" : "ok" };
-}
-
-/** The day numbers of a setup card's `days` field, such as "sun, mon". */
-export function dayNumbersOf(text: string): number[] {
-  return text
-    .split(",")
-    .map((code) => dayCodes.indexOf(code.trim()))
-    .filter((day) => day !== -1);
 }
 
 export interface DayLineRun {

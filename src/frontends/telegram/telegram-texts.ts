@@ -1,24 +1,10 @@
-/** The longer texts that the bot builds: a schedule card, the project list and an approval answer. */
-import type { ScheduleCard } from "../../core/schedules/scheduler.ts";
+/** The longer texts that the bot builds: the project list and an approval answer. */
 import type { SessionEvent } from "../../shared/events.ts";
 import { describeProjectLines } from "../cli/client.ts";
 import { messageLimit } from "./telegram-sender.ts";
 
 /** At most this many projects in one /projects answer: a longer list is hard to read on a phone. */
 const projectListLimit = 20;
-
-export function cardText(event: ScheduleCard): string {
-  const heading =
-    event.changed.length === 0
-      ? `New schedule: ${event.name}`
-      : event.changed.join() === "enabled"
-        ? `Schedule turned on: ${event.name}`
-        : `Schedule changed (${event.changed.join(", ")}): ${event.name}`;
-  const fields = Object.entries(event.fields).map(([name, value]) => `${name}: ${value}`);
-  const next = `Next run: ${event.nextRun?.replace("T", " ") ?? "never"} (${event.timeZone})`;
-  // The card is the check against a schedule that someone else pushed to the vault (lesson 67).
-  return [heading, "", ...fields, "", next].join("\n");
-}
 
 /** The /projects answer: whole projects only, within one message, and a note on what was left out. */
 export function fitProjects(projects: Parameters<typeof describeProjectLines>[0]): string {

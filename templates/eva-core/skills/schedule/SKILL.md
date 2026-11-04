@@ -7,7 +7,7 @@ description: Create, change, pause or remove a scheduled message by editing .eva
 
 A schedule makes Eva post on her own, at a set time, in a chat of its own (a Telegram topic). The schedules live in `.eva/schedules.json`. Eva reads the file every 30 seconds, so a change takes effect within a minute. Eva's autosave commits the file like a note, so never commit it yourself.
 
-After a new schedule, a change, or a start after a pause, Eva opens the schedule's chat within a minute and posts a setup card there. A card for a new schedule shows every field and the next run. A card for a change names what changed. Without Telegram, the web app shows the card in a dialog. The schedule runs only after a card reaches the person: in the web app, after they tap "Got it".
+A new or changed schedule runs at its next time. A change to a time that just passed waits for the next one. So does a start after a pause.
 
 ## 1. Pick the place
 
@@ -49,7 +49,7 @@ Each schedule is one object in `schedules`:
 }
 ```
 
-- **`id`**: 1 to 32 lowercase letters, digits or dashes. It must be unique. Never change the id of an existing schedule, because Eva finds its chat by the id. Never reuse the id of a removed schedule either, because Eva can still hold that schedule's old chat under it. It can also hold that schedule's last setup card, so the next card reads as a change to the old schedule.
+- **`id`**: 1 to 32 lowercase letters, digits or dashes. It must be unique. Never change the id of an existing schedule, because Eva finds its chat by the id. Never reuse the id of a removed schedule either, because Eva can still hold that schedule's old chat under it. It can also hold that schedule's state, such as its last run.
 - **`name`**: required. It names the schedule's topic in Telegram. Eva names the topic when she opens it. A later change to `name` does not rename the topic, so tell the person to rename it in Telegram.
 - **`at`**: `HH:MM`, 24 hours, in the time zone that the `[Local time: ...]` line at the start of each message names.
 - **`days`**: leave it out for every day. Otherwise list some of `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`.
@@ -59,7 +59,6 @@ Each schedule is one object in `schedules`:
   - Example: `"every": "3d", "from": "2026-10-22T07:30"` runs at 07:30 every third day from 22 October.
 - **Once instead of a repeat.** To run one time only, write `from` alone, and leave out `at`, `days` and `every`. Example: `"from": "2026-11-24T10:00"` runs once, at 10:00 on 24 November.
   - Pick a time later than the `[Local time: ...]` line. A time in the past never runs.
-  - The run also waits for its setup card. When the card reaches the person after the time, the run comes right after the card. So for a time in the next few minutes, tell the person to check the card soon.
   - When Eva is off at that time, the run comes when she is back. When it comes an hour or more late, a line says so.
   - After the run, the schedule stays in the file, and the Schedules page shows it as "Ended". Do not remove it, and do not tell the person to remove it.
   - Never fake a one-off with a long interval, such as `"every": "999w"`.
@@ -122,9 +121,9 @@ Eva skips an entry that fails a check. It says so once in the main chat, in a me
 
 ## 5. Change, pause or remove one
 
-To change a schedule, edit its entry and keep its `id`. Eva then posts a setup card that names what changed. To run an ended one-off again, give it a new `from` in the future.
+To change a schedule, edit its entry and keep its `id`. To run an ended one-off again, give it a new `from` in the future.
 
-To pause one (turn it off), set `"enabled": false`. Within a minute it stops, and Eva posts no card. To start it again, delete the `enabled` key. Eva then posts a new setup card.
+To pause one (turn it off), set `"enabled": false`. Within a minute it stops. To start it again, delete the `enabled` key.
 
 A watch that a `[[done]]` ended is off. To watch again, delete the `enabled` key. If its `until` day has passed, also write a later `until`.
 
@@ -132,4 +131,4 @@ To remove one, delete its entry. The topic stays in Telegram, and the person can
 
 ## 6. Reply
 
-Say in one sentence what Eva sends, when, and in which topic. When you followed the vault's rules and wrote no schedule, say where the reminder went. A repeated schedule created after its time today first runs on the next matching day. Tell the person to check the setup card that Eva posts within a minute. Tell them that the schedule runs only after the card reaches them. Without Telegram, the card is a dialog in the web app, and they must tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.
+Say in one sentence what Eva sends, when, and in which topic. When you followed the vault's rules and wrote no schedule, say where the reminder went. A repeated schedule created after its time today first runs on the next matching day. If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.

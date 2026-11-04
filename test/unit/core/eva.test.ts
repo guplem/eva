@@ -2484,7 +2484,10 @@ describe("Eva", () => {
     sandbox.write(
       vault,
       ".eva/schedules.json",
-      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+      JSON.stringify({
+        version: 1,
+        schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }, { id: "Bad" }],
+      }),
     );
     const instance = start(
       new FakeEngine(),
@@ -2498,7 +2501,7 @@ describe("Eva", () => {
       },
     );
     const releaseGate: { open: (() => void) | null } = { open: null };
-    // The first check sends the setup card; a slow card send keeps the check running.
+    // The first check says the file problem; a slow front end keeps the check running.
     const unsubscribe = instance.schedules?.subscribe(
       () =>
         new Promise<boolean>((resolve) => {
@@ -2857,7 +2860,7 @@ describe("Eva alerts", () => {
     expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ failed: false });
   });
 
-  test("a card that no front end showed is a problem in the status until a front end shows it (lesson 66)", async () => {
+  test("a new schedule makes no problem in the status: it needs no setup card (#855)", async () => {
     sandbox.write(
       vault,
       ".eva/schedules.json",
@@ -2866,11 +2869,8 @@ describe("Eva alerts", () => {
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);
     await instance.schedules?.tick();
-    expect(instance.status().problems).toEqual([expect.stringContaining("Lunch")]);
-    expect(alerts.map((alert) => alert.key)).toEqual(["schedule_card:lunch"]);
-    instance.schedules?.subscribe(() => true);
-    await instance.schedules?.tick();
     expect(instance.status().problems).toEqual([]);
+    expect(alerts).toEqual([]);
   });
 
   test("a front end reports its own problem, and the status carries it", () => {

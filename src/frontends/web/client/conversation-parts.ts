@@ -62,12 +62,41 @@ export function stepParts(step: TurnStep): { action: string; detail: string } {
   return { action: name.split("__").at(-1) ?? name, detail };
 }
 
+/** The length at which `storedSteps` cuts a message, with its "…". */
+const cutMessageLength = 200;
+
 /**
- * True when the whole answer shows more than its last message. An earlier message of file
- * markers only shows no words, so the toggle would change nothing.
+ * The steps, with each message whole. A stored step keeps 200 characters of a message, but the
+ * step list shows each message in full. The whole answer joins every message with a blank line,
+ * and a message can hold a blank line too, so each message is found by the start of its text.
+ * When one is not found, the steps stay as they are. Give every step of the turn: a message ends
+ * where the next one starts, so a missing last message would make the one before it run on.
  */
-export function wholeAnswerAddsText(wholeAnswer: string, lastMessage: string): boolean {
-  return shownAnswerText(wholeAnswer) !== shownAnswerText(lastMessage);
+export function wholeMessages(steps: readonly TurnStep[], wholeAnswer: string): readonly TurnStep[] {
+  const isCut = (text: string): boolean => text.endsWith("…") && Array.from(text).length === cutMessageLength;
+  const messages = steps.filter((step) => step.kind === "message");
+  const starts: number[] = [];
+  let from = 0;
+  for (const message of messages) {
+    const start = isCut(message.text) ? message.text.slice(0, -1) : message.text;
+    // The first kept message can follow messages that the steps no longer keep.
+    const found = starts.length === 0 ? wholeAnswer.indexOf(start, from) : wholeAnswer.indexOf(`\n\n${start}`, from);
+    if (found === -1) return steps;
+    const at = starts.length === 0 ? found : found + 2;
+    starts.push(at);
+    from = at + start.length;
+  }
+  const whole = new Map(
+    messages.map((message, index) => {
+      if (!isCut(message.text)) return [message, message.text];
+      const next = starts[index + 1];
+      return [message, wholeAnswer.slice(starts[index], next === undefined ? undefined : next - 2)];
+    }),
+  );
+  return steps.map((step) => {
+    const text = whole.get(step);
+    return text === undefined || text === step.text ? step : { ...step, text };
+  });
 }
 
 /**

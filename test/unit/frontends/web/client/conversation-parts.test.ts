@@ -3,7 +3,7 @@ import {
   answeredModel,
   commandFailure,
   answerFiles,
-  wholeAnswerAddsText,
+  wholeMessages,
   engineLock,
   composerPlaceholder,
   effortLabel,
@@ -122,11 +122,25 @@ describe("stepParts", () => {
   });
 });
 
-describe("wholeAnswerAddsText", () => {
-  test("is true when an earlier message has words, and false when it holds file markers only", () => {
-    expect(wholeAnswerAddsText("Let me look.\n\nHere it is.", "Here it is.")).toBe(true);
-    expect(wholeAnswerAddsText("[[attach: .eva/scratch/a.pdf]]\n\nHere it is.", "Here it is.")).toBe(false);
-    expect(wholeAnswerAddsText("Here it is.", "Here it is.")).toBe(false);
+describe("wholeMessages", () => {
+  const cut = (text: string): string => `${text.slice(0, 199)}…`;
+  const long = `${"a".repeat(150)}\n\n${"b".repeat(150)}`;
+
+  test("gives a cut message its whole text from the answer, line breaks too", () => {
+    const steps = [step("message", cut(long)), step("command", "ls"), step("message", "Done.")];
+    const shown = wholeMessages(steps, `${long}\n\nDone.`);
+    expect(shown.map((each) => each.text)).toEqual([long, "ls", "Done."]);
+  });
+
+  test("finds the messages after the earlier ones that the steps no longer keep", () => {
+    const steps = [step("message", cut(long)), step("message", "short one"), step("message", "Done.")];
+    const shown = wholeMessages(steps, `Not kept.\n\n${long}\n\nshort one\n\nDone.`);
+    expect(shown.map((each) => each.text)).toEqual([long, "short one", "Done."]);
+  });
+
+  test("keeps the steps as they are when the answer does not hold them", () => {
+    const steps = [step("message", cut(long)), step("message", "Done.")];
+    expect(wholeMessages(steps, "Something else.")).toBe(steps);
   });
 });
 

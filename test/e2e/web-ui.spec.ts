@@ -3864,20 +3864,25 @@ test("a new message of a running turn replaces the shown one, and the older one 
   const sockets = await routeEvents(page);
   await logIn(page);
   const sessionId = await newChat(page);
-  const body = page.locator(".message.answer .answer-body");
-  sockets.at(-1)?.send(textEvent(sessionId, "first thought"));
-  await expect(body).toHaveText("first thought");
+  const body = page.locator(".message.answer > .answer-body");
+  // Longer than the 200 characters that a step keeps.
+  const first = `first thought ${"and more words ".repeat(20)}until the end`;
+  sockets.at(-1)?.send(textEvent(sessionId, first));
+  await expect(body).toHaveText(first);
+  const command = { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "ls notes" };
+  sockets.at(-1)?.send(JSON.stringify({ ...command, sessionId, seq: 1, at: new Date().toISOString() }));
   sockets.at(-1)?.send(textEvent(sessionId, "second thought"));
   await expect(body).toHaveText("second thought");
-  // A running turn shows its steps open.
-  const steps = page.getByRole("list", { name: "Steps" }).getByRole("listitem");
-  // A message has no pill, but a screen reader still hears what it is.
-  await expect(steps).toHaveText(["Message: first thought"]);
-  await expect(steps.locator(".pill")).toHaveCount(0);
-  // A step keeps a short text, so the whole answer is one tap away.
-  await page.getByRole("button", { name: "Show the whole answer" }).click();
-  await expect(body).toContainText("first thought");
-  await expect(body).toContainText("second thought");
+  // A running turn shows its steps open. The earlier message shows whole, among the other steps.
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.getByRole("button", { name: "Hide 2 steps, 1 message" })).toContainText("1 message");
+  const steps = answer.getByRole("list", { name: "Steps" }).getByRole("listitem");
+  await expect(steps).toHaveText([`Message${first}`, /Command\s+ls notes/, "Show only the messages"]);
+  await answer.getByRole("button", { name: "Show only the messages" }).click();
+  await expect(steps).toHaveText([`Message${first}`, "Show the commands too"]);
+  await answer.getByRole("button", { name: "Show the commands too" }).click();
+  await expect(steps).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /Show the whole answer/ })).toHaveCount(0);
 });
 
 test("an approval and a task from while the connection was down still show after the reconnect", async ({ page }) => {

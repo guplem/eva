@@ -38,7 +38,6 @@ describe("problemAction", () => {
 
   test("a schedule problem opens the schedules", () => {
     expect(problemAction("schedule:lunch", "ok")).toBe("open_schedules");
-    expect(problemAction("schedule_card:lunch", "ok")).toBe("open_schedules");
   });
 
   test("a problem of another machine has no button here: that machine fixes it", () => {

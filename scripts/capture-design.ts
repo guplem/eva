@@ -129,8 +129,6 @@ async function addSchedule(
   for (const day of schedule.days) await form.getByRole("button", { name: day }).click();
   await form.getByLabel("Fixed text").fill(`${schedule.name}.`);
   await form.getByRole("button", { name: "Save schedule" }).click();
-  // No front end shows cards in the demo, so the new schedule's card waits in a dialog.
-  await page.getByRole("dialog", { name: "Setup card" }).getByRole("button", { name: "Got it" }).click();
   await page.getByRole("listitem", { name: schedule.name }).waitFor();
 }
 

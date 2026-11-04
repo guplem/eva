@@ -199,11 +199,6 @@ export function AddScheduleDialog(props: {
               {error}
             </div>
           )}
-          <p className="schedule-small">
-            {original === null
-              ? "Eva asks you to confirm each new schedule before its first run."
-              : "Eva asks you to confirm each change before the next run."}
-          </p>
           <div className="schedule-sheet-actions">
             <button type="submit" className="primary">
               Save schedule

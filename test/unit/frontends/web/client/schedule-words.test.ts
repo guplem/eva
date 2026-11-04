@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   dayLine,
-  dayNumbersOf,
   lastRunWords,
   nextHourSlot,
   nextRunWords,
   repeatWords,
   scheduleStateWords,
-  slotWords,
 } from "../../../../../src/frontends/web/client/schedule-words.ts";
 
 const everyDay = [0, 1, 2, 3, 4, 5, 6];
@@ -94,20 +92,6 @@ describe("lastRunWords", () => {
   });
 });
 
-describe("slotWords", () => {
-  test("says a slot with its weekday and date, and null as never", () => {
-    expect(slotWords("2026-10-22T09:00")).toBe("Thu 22 Oct, 09:00");
-    expect(slotWords(null)).toBe("Never");
-  });
-});
-
-describe("dayNumbersOf", () => {
-  test("reads the days of a setup card, and an unknown name as nothing", () => {
-    expect(dayNumbersOf("sun, mon, fri")).toEqual([0, 1, 5]);
-    expect(dayNumbersOf("mon, someday")).toEqual([1]);
-  });
-});
-
 describe("dayLine", () => {
   const schedule = (name: string, ...runsToday: string[]): { name: string; runsToday: string[] } => ({
     name,
@@ -184,7 +168,6 @@ describe("the person's clock and week start (#770)", () => {
     expect(repeatWords(onDays("18:30", [5]), twelve)).toBe("Fridays at 6:30 PM");
     expect(repeatWords(every("3d", "2026-10-21T07:30"), twelve)).toBe("Every 3 days at 7:30 AM");
     expect(nextRunWords("2026-10-22T08:00", now, "12h")).toBe("Tomorrow 8:00 AM");
-    expect(slotWords("2026-10-23T09:00", "12h")).toBe("Fri 23 Oct, 9:00 AM");
     const line = dayLine([{ name: "Plan", runsToday: ["18:00"] }], now, "12h");
     expect(line.nowLabel).toBe("Now (10:15 AM)");
     expect(line.runs[0]?.label).toBe("6:00 PM Plan");

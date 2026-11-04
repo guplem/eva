@@ -26,10 +26,6 @@ let heldSend: Promise<string | null> | null;
 let failingReports: boolean;
 /** Each firing result: the schedule name and the failure, or null for a success. */
 let firings: { name: string; failure: string | null }[];
-/** What the test listener answers: true when it showed the event to the person. */
-let shows: boolean;
-/** Each waiting-card report: the schedule id, its name, and whether its card waits. */
-let cardReports: { scheduleId: string; name: string; waiting: boolean }[];
 /** The answer of each chat at the end of its run, and whether the person wrote in it. */
 let answers: Map<string, { text: string; personWrote: boolean }>;
 /** Each ended run: the chat and whether its answer goes out. */
@@ -44,8 +40,6 @@ beforeEach(() => {
   heldSend = null;
   failingReports = false;
   firings = [];
-  shows = true;
-  cardReports = [];
   answers = new Map();
   endedRuns = [];
   folder = mkdtempSync(join(tmpdir(), "eva-scheduler-"));
@@ -97,53 +91,25 @@ function createScheduler(isHub = true): Scheduler {
       if (failure !== null && failingReports) throw new Error("The alert list is broken.");
       firings.push({ name: schedule.name, failure });
     },
-    reportCard: (scheduleId, name, waiting) => cardReports.push({ scheduleId, name, waiting }),
   });
   scheduler.subscribe((event) => {
     events.push(event);
-    return shows;
   });
   return scheduler;
 }
 
 const morning = { id: "morning", name: "Morning", at: "07:30", text: "Drink water.", prompt: "Plan my day." };
 
-/** A chat starter for a scheduler that a test builds by hand: every run answers nothing. */
-const quietChats = {
-  createChat: (): string => "session-1",
-  send: (): Promise<null> => Promise.resolve(null),
-  answerOf: () => ({ text: "", personWrote: false }),
-  endRun: (): void => undefined,
-};
-
 describe("Scheduler", () => {
-  test("a new schedule gets a setup card first, then fires at its time in a fresh chat (lessons 66, 126)", async () => {
+  test("a new schedule fires at its next time in a fresh chat, with no setup card (lesson 126, #855)", async () => {
     writeSchedules([{ ...morning, model: "haiku" }]);
     const scheduler = createScheduler();
     await scheduler.tick();
-    expect(events).toEqual([
-      {
-        kind: "schedule_card",
-        scheduleId: "morning",
-        name: "Morning",
-        fields: {
-          id: "morning",
-          name: "Morning",
-          at: "07:30",
-          days: "sun, mon, tue, wed, thu, fri, sat",
-          text: "Drink water.",
-          prompt: "Plan my day.",
-          model: "haiku",
-        },
-        changed: [],
-        nextRun: "2026-07-01T07:30",
-        timeZone: "Europe/Madrid",
-      },
-    ]);
+    expect(events).toEqual([]);
     clock = new Date("2026-07-01T05:30:00Z");
     await scheduler.tick();
     await scheduler.tick();
-    expect(events.slice(1).filter((event) => event.kind === "schedule_fired")).toEqual([
+    expect(events.filter((event) => event.kind === "schedule_fired")).toEqual([
       {
         kind: "schedule_fired",
         scheduleId: "morning",
@@ -177,47 +143,55 @@ describe("Scheduler", () => {
     expect(chats[0]?.model).toBeUndefined();
   });
 
-  test("a changed schedule gets a card that names the change, once", async () => {
+  test("a changed schedule fires at its new time, not at the old one", async () => {
     writeSchedules([morning]);
     const scheduler = createScheduler();
     await scheduler.tick();
     writeSchedules([{ ...morning, at: "08:00" }]);
     await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
     await scheduler.tick();
-    const cards = events.filter((event) => event.kind === "schedule_card");
-    expect(cards.map((card) => card.changed)).toEqual([[], ["at"]]);
+    expect(chats).toEqual([]);
+    clock = new Date("2026-07-01T06:00:00Z");
+    await scheduler.tick();
+    expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
   });
 
-  test("the state survives a restart: no second card and no second firing", async () => {
+  test("the state survives a restart: no second firing", async () => {
     writeSchedules([morning]);
     clock = new Date("2026-07-01T05:20:00Z");
     await createScheduler().tick();
     clock = new Date("2026-07-01T05:30:00Z");
     await createScheduler().tick();
     await createScheduler().tick();
-    expect(events.map((event) => event.kind)).toEqual(["schedule_card", "schedule_fired", "schedule_answered"]);
+    expect(events.map((event) => event.kind)).toEqual(["schedule_fired", "schedule_answered"]);
   });
 
-  test("a broken state file costs one new card, never a crash (lesson 54)", async () => {
+  test("a broken state file starts empty, never a crash (lesson 54)", async () => {
     writeSchedules([morning]);
     mkdirSync(join(folder, "state"), { recursive: true });
     writeFileSync(join(folder, "state", "schedules-state.json"), "{ broken");
-    await createScheduler().tick();
-    expect(events.map((event) => event.kind)).toEqual(["schedule_card"]);
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    expect(events).toEqual([]);
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
   });
 
   test("one bad state entry is skipped, the others are kept (lesson 69)", async () => {
     writeSchedules([morning, { ...morning, id: "evening" }]);
+    clock = new Date("2026-07-01T05:20:00Z");
     await createScheduler().tick();
     const statePath = join(folder, "state", "schedules-state.json");
     const state = JSON.parse(readFileSync(statePath, "utf8")) as { schedules: Record<string, unknown> };
     state.schedules["evening"] = { firstSeen: 5 };
     writeFileSync(statePath, JSON.stringify(state));
-    events = [];
+    clock = new Date("2026-07-01T05:30:00Z");
     await createScheduler().tick();
-    expect(events.map((event) => (event.kind === "schedule_card" ? event.scheduleId : event.kind))).toEqual([
-      "evening",
-    ]);
+    // The bad entry starts again now, so its slot that is due now does not fire.
+    const fired = events.filter((event) => event.kind === "schedule_fired");
+    expect(fired.map((event) => event.scheduleId)).toEqual(["morning"]);
   });
 
   test("file problems are said once, until they change", async () => {
@@ -241,21 +215,26 @@ describe("Scheduler", () => {
   test("a listener that throws does not stop the others or the firing", async () => {
     writeSchedules([morning]);
     const scheduler = createScheduler();
+    await scheduler.tick();
     scheduler.subscribe(() => {
       throw new Error("front end down");
     });
+    clock = new Date("2026-07-01T05:30:00Z");
     await scheduler.tick();
-    expect(events).toHaveLength(1);
+    expect(events.map((event) => event.kind)).toEqual(["schedule_fired", "schedule_answered"]);
+    expect(sent).toHaveLength(1);
   });
 
   test("a tick that overlaps a running tick does nothing", async () => {
     writeSchedules([morning]);
     const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
     let release = (): void => undefined;
     const unsubscribe = scheduler.subscribe(
       () =>
-        new Promise<boolean>((resolve) => {
-          release = () => resolve(true);
+        new Promise<void>((resolve) => {
+          release = resolve;
         }),
     );
     const first = scheduler.tick();
@@ -263,17 +242,20 @@ describe("Scheduler", () => {
     unsubscribe();
     release();
     await first;
-    expect(events).toHaveLength(1);
+    expect(events.filter((event) => event.kind === "schedule_fired")).toHaveLength(1);
+    expect(chats).toHaveLength(1);
   });
 
   test("isFiring holds while a check runs, so an update waits for a firing schedule (lesson 92)", async () => {
     writeSchedules([morning]);
     const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
     let release = (): void => undefined;
     const unsubscribe = scheduler.subscribe(
       () =>
-        new Promise<boolean>((resolve) => {
-          release = () => resolve(true);
+        new Promise<void>((resolve) => {
+          release = resolve;
         }),
     );
     expect(scheduler.isFiring()).toBe(false);
@@ -318,12 +300,14 @@ describe("Scheduler", () => {
     await scheduler.tick();
     expect(scheduler.remove("morning")).toBe(true);
     expect(scheduler.remove("morning")).toBe(false);
+    // Saved again, it is a new schedule from now on, so the slot that is due now does not fire.
+    clock = new Date("2026-07-01T05:30:00Z");
     scheduler.save(morning);
     await scheduler.tick();
-    expect(events.filter((event) => event.kind === "schedule_card")).toHaveLength(2);
+    expect(chats).toEqual([]);
   });
 
-  test("an edit needs a card that names the change, and an edit of a paused schedule keeps it off", async () => {
+  test("an edit changes the time it fires, and an edit of a paused schedule keeps it off", async () => {
     writeSchedules([morning, { ...morning, id: "evening", enabled: false }]);
     clock = new Date("2026-07-01T05:20:00Z");
     const scheduler = createScheduler();
@@ -332,14 +316,17 @@ describe("Scheduler", () => {
     expect(scheduler.edit("evening", { name: "Evening", at: "20:00", text: "Rest." })?.enabled).toBe(false);
     expect(scheduler.edit("nobody", { name: "Nobody", at: "20:00", text: "Rest." })).toBeNull();
     await scheduler.tick();
-    const cards = events.filter((event) => event.kind === "schedule_card");
-    expect(cards.map((card) => [card.scheduleId, card.changed])).toEqual([
-      ["morning", []],
-      ["morning", ["at", "text"]],
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    expect(chats).toEqual([]);
+    clock = new Date("2026-07-01T06:00:00Z");
+    await scheduler.tick();
+    expect(events.filter((event) => event.kind === "schedule_fired").map((event) => event.scheduleId)).toEqual([
+      "morning",
     ]);
   });
 
-  test("a schedule that is off never fires, and turning it off needs no card", async () => {
+  test("a schedule that is off never fires", async () => {
     writeSchedules([morning]);
     clock = new Date("2026-07-01T05:20:00Z");
     const scheduler = createScheduler();
@@ -349,11 +336,11 @@ describe("Scheduler", () => {
     await scheduler.tick();
     clock = new Date("2026-07-02T05:30:00Z");
     await scheduler.tick();
-    expect(events.map((event) => event.kind)).toEqual(["schedule_card"]);
+    expect(events).toEqual([]);
     expect(scheduler.list().schedules[0]?.nextRun).toBeNull();
   });
 
-  test("turning a schedule back on needs a new card that names the change (lesson 67)", async () => {
+  test("turning a schedule back on skips the slot that is due then, and fires at the next one (#855)", async () => {
     writeSchedules([morning]);
     clock = new Date("2026-07-01T05:20:00Z");
     const scheduler = createScheduler();
@@ -363,63 +350,25 @@ describe("Scheduler", () => {
     writeSchedules([morning]);
     clock = new Date("2026-07-01T05:30:00Z");
     await scheduler.tick();
-    const cards = events.filter((event) => event.kind === "schedule_card");
-    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"]]);
-    // The card skips the slot that was due when it showed, so nothing runs before the person saw it.
-    expect(events.some((event) => event.kind === "schedule_fired")).toBe(false);
+    expect(events).toEqual([]);
     clock = new Date("2026-07-02T05:30:00Z");
     await scheduler.tick();
-    expect(events.slice(-2).map((event) => event.kind)).toEqual(["schedule_fired", "schedule_answered"]);
+    expect(events.map((event) => event.kind)).toEqual(["schedule_fired", "schedule_answered"]);
   });
 
-  test("a card that waits stops waiting when its schedule turns off, and cannot be confirmed", async () => {
-    shows = false;
-    writeSchedules([morning]);
-    const scheduler = createScheduler();
-    await scheduler.tick();
-    expect(scheduler.waitingCards()).toHaveLength(1);
-    const card = scheduler.waitingCards()[0];
-    writeSchedules([{ ...morning, enabled: false }]);
-    await scheduler.tick();
-    expect(scheduler.waitingCards()).toEqual([]);
-    expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(false);
-  });
-
-  test("a pause through setEnabled counts at once, so off and on before a check still needs a card", async () => {
+  test("a pause through setEnabled counts at once, so off and on before a check still skips the due slot", async () => {
     writeSchedules([morning]);
     clock = new Date("2026-07-01T05:20:00Z");
     const scheduler = createScheduler();
     await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
     scheduler.setEnabled("morning", false);
     scheduler.setEnabled("morning", true);
     await scheduler.tick();
-    const cards = events.filter((event) => event.kind === "schedule_card");
-    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"]]);
-  });
-
-  test("a pause made while a card goes out stays, so on again needs a card", async () => {
-    writeSchedules([morning]);
-    clock = new Date("2026-07-01T05:20:00Z");
-    const scheduler = createScheduler();
+    expect(chats).toEqual([]);
+    clock = new Date("2026-07-02T05:30:00Z");
     await scheduler.tick();
-    scheduler.setEnabled("morning", false);
-    scheduler.setEnabled("morning", true);
-    let release = (): void => undefined;
-    const slow = new Promise<void>((resolve) => (release = resolve));
-    // A front end that takes long to show the card, such as Telegram opening a topic.
-    scheduler.subscribe(async () => {
-      await slow;
-      return true;
-    });
-    const sending = scheduler.tick();
-    await Bun.sleep(0);
-    scheduler.setEnabled("morning", false);
-    scheduler.setEnabled("morning", true);
-    release();
-    await sending;
-    await scheduler.tick();
-    const cards = events.filter((event) => event.kind === "schedule_card");
-    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"], ["enabled"]]);
+    expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
   });
 
   test("off changes the entry that runs, not an invalid one with the same id", () => {
@@ -429,18 +378,19 @@ describe("Scheduler", () => {
     expect(scheduler.list().schedules[0]?.schedule.enabled).toBe(false);
   });
 
-  test("a schedule that is off from the start gets a first card when it turns on", async () => {
+  test("a schedule that is off from the start fires at its next slot once it is on", async () => {
     writeSchedules([{ ...morning, enabled: false }]);
-    clock = new Date("2026-07-01T05:30:00Z");
     const scheduler = createScheduler();
     await scheduler.tick();
     expect(events).toEqual([]);
     writeSchedules([morning]);
     await scheduler.tick();
-    expect(events.map((event) => (event.kind === "schedule_card" ? event.changed : event.kind))).toEqual([[]]);
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
   });
 
-  test("a state file from before the paused field keeps firing with no new card", async () => {
+  test("a state file from before the paused field keeps firing", async () => {
     writeSchedules([morning]);
     clock = new Date("2026-07-01T05:20:00Z");
     await createScheduler().tick();
@@ -462,7 +412,7 @@ describe("Scheduler", () => {
     expect(scheduler.setEnabled("nobody", true)).toBe(false);
   });
 
-  test("a changed schedule that is already due shows its card and does not fire then (lessons 66, 67)", async () => {
+  test("a changed schedule that is already due does not fire then, but fires at its next slot (#855)", async () => {
     writeSchedules([morning]);
     clock = new Date("2026-07-01T04:00:00Z");
     const scheduler = createScheduler();
@@ -471,8 +421,11 @@ describe("Scheduler", () => {
     writeSchedules([{ ...morning, at: "06:59", prompt: "Something someone pushed." }]);
     await scheduler.tick();
     await scheduler.tick();
-    expect(events.map((event) => event.kind)).toEqual(["schedule_card", "schedule_card"]);
+    expect(events).toEqual([]);
     expect(chats).toEqual([]);
+    clock = new Date("2026-07-02T04:59:00Z");
+    await scheduler.tick();
+    expect(sent.map(({ prompt }) => prompt.split("\n\n")[0])).toEqual(["Something someone pushed."]);
   });
 
   test("a schedule that fails to fire never stops the others, and goes to the log", async () => {
@@ -583,7 +536,7 @@ describe("Scheduler", () => {
     });
     clock = new Date("2026-07-01T05:30:00Z");
     await scheduler.tick();
-    // The new card skips the slot that is due now, so the last fired slot moves.
+    // The change skips the slot that is due now, so the last fired slot moves.
     writeSchedules([{ ...morning, at: "07:40" }]);
     clock = new Date("2026-07-01T05:45:00Z");
     await scheduler.tick();
@@ -633,7 +586,7 @@ describe("Scheduler", () => {
       expect(lastRun(scheduler)).toEqual({ slot: "2026-07-01T07:30", failed: false });
     });
 
-    test("a slot that the setup card skips is not a run", async () => {
+    test("a slot that a change skips is not a run", async () => {
       writeSchedules([morning]);
       clock = new Date("2026-07-01T04:00:00Z");
       const scheduler = createScheduler();
@@ -699,224 +652,28 @@ describe("Scheduler", () => {
     expect(logged.join("\n")).toContain("error");
   });
 
-  describe("a card that no front end shows (lessons 66, 67)", () => {
-    test("the schedule never fires, the card goes out again at each check, and the wait is reported", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      clock = new Date("2026-07-01T05:30:00Z");
-      await scheduler.tick();
-      expect(events.map((event) => event.kind)).toEqual(["schedule_card", "schedule_card"]);
-      expect(chats).toEqual([]);
-      expect(cardReports.at(-1)).toEqual({ scheduleId: "morning", name: "Morning", waiting: true });
-      expect(scheduler.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
-    });
-
-    test("a card shown later skips the slot that is due then, and clears the wait", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      shows = true;
-      clock = new Date("2026-07-01T05:30:00Z");
-      await scheduler.tick();
-      await scheduler.tick();
-      expect(events.map((event) => event.kind)).toEqual(["schedule_card", "schedule_card"]);
-      expect(chats).toEqual([]);
-      expect(cardReports.at(-1)).toEqual({ scheduleId: "morning", name: "Morning", waiting: false });
-      expect(scheduler.waitingCards()).toEqual([]);
-      clock = new Date("2026-07-02T05:30:00Z");
-      await scheduler.tick();
-      expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
-    });
-
-    test("a listener that throws does not count as shown", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      const scheduler = createScheduler();
-      scheduler.subscribe(() => {
-        throw new Error("front end down");
-      });
-      await scheduler.tick();
-      expect(scheduler.waitingCards()).toHaveLength(1);
-    });
-
-    test("a waiting card follows a change to its schedule", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      writeSchedules([{ ...morning, at: "08:00" }]);
-      await scheduler.tick();
-      expect(scheduler.waitingCards().map((card) => card.fields.at)).toEqual(["08:00"]);
-    });
-
-    test("a confirmed card counts as shown, but only with the fields that wait", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      const [card] = scheduler.waitingCards();
-      expect(scheduler.confirmCard("morning", { ...card?.fields, at: "06:00" })).toBe(false);
-      expect(scheduler.confirmCard("evening", card?.fields ?? {})).toBe(false);
-      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(true);
-      expect(scheduler.waitingCards()).toEqual([]);
-      expect(cardReports.at(-1)).toEqual({ scheduleId: "morning", name: "Morning", waiting: false });
-      clock = new Date("2026-07-01T05:30:00Z");
-      await scheduler.tick();
-      expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
-    });
-
-    test("a confirmed card whose schedule changed in the file meanwhile does not count", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      const [card] = scheduler.waitingCards();
-      writeSchedules([{ ...morning, prompt: "Something someone pushed." }]);
-      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(false);
-    });
-
-    test("a confirmed card skips the slot that is due at that moment", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      clock = new Date("2026-07-01T05:30:00Z");
-      const [card] = scheduler.waitingCards();
-      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(true);
-      await scheduler.tick();
-      expect(chats).toEqual([]);
-    });
-
-    test("the wait clears when the schedule is removed, by Eva or by hand", async () => {
-      writeSchedules([morning, { ...morning, id: "evening", name: "Evening" }]);
-      shows = false;
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      scheduler.remove("morning");
-      writeSchedules([]);
-      await scheduler.tick();
-      expect(cardReports.filter((report) => !report.waiting).map((report) => report.scheduleId)).toEqual([
-        "morning",
-        "evening",
-      ]);
-      expect(scheduler.waitingCards()).toEqual([]);
-    });
-
-    test("the wait clears when the change is undone before anyone saw its card", async () => {
-      writeSchedules([morning]);
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      shows = false;
-      writeSchedules([{ ...morning, at: "09:00" }]);
-      await scheduler.tick();
-      writeSchedules([morning]);
-      await scheduler.tick();
-      expect(scheduler.waitingCards()).toEqual([]);
-      expect(cardReports.at(-1)).toEqual({ scheduleId: "morning", name: "Morning", waiting: false });
-    });
-
-    test("a confirm while a front end still sends the card leaves nothing waiting", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      const [card] = scheduler.waitingCards();
-      let release = (): void => undefined;
-      const unsubscribe = scheduler.subscribe(
-        () =>
-          new Promise<boolean>((resolve) => {
-            release = () => resolve(false);
-          }),
-      );
-      const slowTick = scheduler.tick();
-      await Bun.sleep(0);
-      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(true);
-      release();
-      await slowTick;
-      unsubscribe();
-      expect(scheduler.waitingCards()).toEqual([]);
-      expect(cardReports.at(-1)?.waiting).toBe(false);
-    });
-
-    test("a schedule removed while its card goes out stays removed, so a new push gets a new card", async () => {
-      writeSchedules([morning]);
-      const scheduler = createScheduler();
-      let release = (): void => undefined;
-      const unsubscribe = scheduler.subscribe(
-        () =>
-          new Promise<boolean>((resolve) => {
-            release = () => resolve(true);
-          }),
-      );
-      const slowTick = scheduler.tick();
-      await Bun.sleep(0);
-      scheduler.remove("morning");
-      release();
-      await slowTick;
-      unsubscribe();
-      expect(scheduler.waitingCards()).toEqual([]);
-      events = [];
-      writeSchedules([morning]);
-      clock = new Date("2026-07-01T05:30:00Z");
-      await scheduler.tick();
-      expect(events.map((event) => event.kind)).toEqual(["schedule_card"]);
-      expect(chats).toEqual([]);
-    });
-
-    test("a second confirm of a card already seen succeeds and changes nothing", async () => {
-      writeSchedules([morning]);
-      const scheduler = createScheduler();
-      await scheduler.tick();
-      const [card] = events.filter((event) => event.kind === "schedule_card");
-      clock = new Date("2026-07-01T05:30:00Z");
-      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(true);
-      await scheduler.tick();
-      expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
-    });
-
-    test("a satellite refuses a confirm", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      let isHub = true;
-      const scheduler = new Scheduler({
-        vaultPath: vault,
-        statePath: join(folder, "state", "schedules-state.json"),
-        timeZone: "Europe/Madrid",
-        isHub: () => isHub,
-        now: () => clock,
-        chats: quietChats,
-      });
-      await scheduler.tick();
-      const [card] = scheduler.waitingCards();
-      isHub = false;
-      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(false);
-    });
-
-    test("the wait clears when this machine stops being the hub", async () => {
-      writeSchedules([morning]);
-      shows = false;
-      let isHub = true;
-      const scheduler = new Scheduler({
-        vaultPath: vault,
-        statePath: join(folder, "state", "schedules-state.json"),
-        timeZone: "Europe/Madrid",
-        isHub: () => isHub,
-        now: () => clock,
-        chats: quietChats,
-        reportCard: (scheduleId, name, waiting) => cardReports.push({ scheduleId, name, waiting }),
-      });
-      await scheduler.tick();
-      isHub = false;
-      await scheduler.tick();
-      expect(cardReports).toEqual([
-        { scheduleId: "morning", name: "Morning", waiting: true },
-        { scheduleId: "morning", name: "Morning", waiting: false },
-      ]);
-      expect(scheduler.waitingCards()).toEqual([]);
-    });
+  test("a schedule removed while it fires stays removed, with no last run", async () => {
+    writeSchedules([morning]);
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    let release = (): void => undefined;
+    // A front end that takes long to show the firing, such as Telegram opening a topic.
+    const unsubscribe = scheduler.subscribe(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const slowTick = scheduler.tick();
+    await Bun.sleep(0);
+    scheduler.remove("morning");
+    release();
+    await slowTick;
+    unsubscribe();
+    await Bun.sleep(0);
+    writeSchedules([morning]);
+    expect(scheduler.list().schedules[0]?.lastRun).toBeNull();
   });
 });
 
@@ -979,16 +736,14 @@ describe("one-off schedules (#822)", () => {
     );
   });
 
-  test("a card that reaches the person after the time fires the run right after it", async () => {
+  test("a change after its time does not skip the late run, because a one-off has no next slot", async () => {
     writeSchedules([call]);
-    shows = false;
     const scheduler = createScheduler();
     await scheduler.tick();
     clock = at("2026-07-01T10:00");
+    writeSchedules([{ ...call, text: "Call the bank now." }]);
+    expect(scheduler.list().schedules[0]?.nextRun).toBe("2026-07-01T10:00");
     await scheduler.tick();
-    const card = scheduler.waitingCards()[0];
-    expect(card?.nextRun).toBe("2026-07-01T10:00");
-    expect(scheduler.confirmCard("call", card?.fields ?? {})).toBe(true);
     await scheduler.tick();
     expect(fired()).toHaveLength(1);
   });
@@ -1117,18 +872,20 @@ describe("quiet runs, [[done]] and until (#687)", () => {
     expect(sent).toHaveLength(1);
   });
 
-  test("turning a schedule on after [[done]] needs a new card and clears the end (lesson 67)", async () => {
+  test("turning a schedule on after [[done]] clears the end and skips the slot due then (#855)", async () => {
     writeSchedules([watch]);
     answers.set("session-1", { text: "[[done]]", personWrote: false });
     const scheduler = createScheduler();
     await scheduler.tick();
     await runAt(scheduler, "2026-07-01T08:00");
     expect(answered()).toEqual([]);
+    clock = at("2026-07-02T08:00");
     expect(scheduler.setEnabled("reply", true)).toBe(true);
     expect(scheduler.list().schedules[0]?.ended).toBeNull();
-    const cards = events.filter((event) => event.kind === "schedule_card").length;
-    await runAt(scheduler, "2026-07-01T09:00");
-    expect(events.filter((event) => event.kind === "schedule_card")).toHaveLength(cards + 1);
+    await runAt(scheduler, "2026-07-02T08:00");
+    expect(sent).toHaveLength(1);
+    await runAt(scheduler, "2026-07-03T08:00");
+    expect(sent).toHaveLength(2);
   });
 
   test("a failed run is never quiet and never ends the schedule", async () => {
@@ -1143,11 +900,10 @@ describe("quiet runs, [[done]] and until (#687)", () => {
     expect(scheduler.list().schedules[0]?.schedule.enabled).toBe(true);
   });
 
-  test("a schedule past its until day shows as ended, and its card names until", async () => {
+  test("a schedule past its until day shows as ended", async () => {
     writeSchedules([{ ...watch, until: "2026-07-02" }]);
     const scheduler = createScheduler();
     await scheduler.tick();
-    expect(events[0]).toMatchObject({ kind: "schedule_card", fields: { until: "2026-07-02" } });
     await runAt(scheduler, "2026-07-02T09:00");
     expect(scheduler.list().schedules[0]).toMatchObject({ nextRun: null, ended: "2026-07-02T23:59" });
   });

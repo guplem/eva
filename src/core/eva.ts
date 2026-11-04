@@ -38,7 +38,6 @@ import { readHiddenProblems, writeHiddenProblems } from "./alerts/hidden-problem
 import { readNotificationHistory, writeNotificationHistory, type HistoryEntry } from "./alerts/notification-history.ts";
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
-  scheduleCardProblem,
   engineLoginProblem,
   engineMissingProblem,
   engineRestartProblem,
@@ -1074,10 +1073,6 @@ export class Eva {
                 `schedule:${schedule.id}`,
                 failure === null ? null : scheduleFiringProblem(schedule.name, failure),
               );
-            },
-            reportCard: (scheduleId, name, waiting) => {
-              // Its own key: a good firing clears `schedule:<id>`, but must not clear this one.
-              this.alerts.report(`schedule_card:${scheduleId}`, waiting ? scheduleCardProblem(name) : null);
             },
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });

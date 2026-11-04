@@ -13,9 +13,6 @@ import { CardsSkeleton } from "./Loading.tsx";
 import { hourLabel } from "../../../shared/time-format.ts";
 import { displayFormat } from "./display-format.ts";
 
-/** Another part of the page, such as a setup card, fires this after it changes a schedule. */
-export const schedulesChangedEvent = "eva:schedules-changed";
-
 /** The day line moves on and the last results change, so the page asks again each minute. */
 const reloadMs = 60_000;
 
@@ -46,10 +43,8 @@ export function SchedulesPanel(): ReactElement {
   useEffect(() => {
     reload();
     const timer = setInterval(reload, reloadMs);
-    window.addEventListener(schedulesChangedEvent, reload);
     return () => {
       clearInterval(timer);
-      window.removeEventListener(schedulesChangedEvent, reload);
     };
   }, []);
 
@@ -63,13 +58,10 @@ export function SchedulesPanel(): ReactElement {
   };
 
   const setEnabled = async (view: ScheduleView, enabled: boolean): Promise<void> => {
-    const { id, name } = view.schedule;
+    const { id } = view.schedule;
     setPending((current) => new Set(current).add(id));
     try {
       await api.setScheduleEnabled(id, enabled);
-      // Someone who can push to the vault can turn a schedule on too, so on always asks again (lesson 67).
-      if (enabled)
-        setNotice(`Turned on ${name}. Eva shows its setup card first. It runs only after the card reaches you.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
@@ -141,7 +133,7 @@ export function SchedulesPanel(): ReactElement {
           onClose={() => setAdding(false)}
           onSaved={() => {
             setAdding(false);
-            setNotice("Saved. Eva shows its setup card. The schedule runs only after you confirm it.");
+            setNotice("Saved.");
             reload();
           }}
         />
@@ -153,12 +145,7 @@ export function SchedulesPanel(): ReactElement {
           onClose={() => setEditing(null)}
           onSaved={(saved) => {
             setEditing(null);
-            // A save with no change makes no card, so the notice promises none.
-            setNotice(
-              saved.enabled
-                ? "Saved. If a field changed, Eva shows a setup card first. It runs only after you confirm it."
-                : `Saved. ${saved.name} stays off. Turn it on to get its setup card.`,
-            );
+            setNotice(saved.enabled ? "Saved." : `Saved. ${saved.name} stays off.`);
             reload();
           }}
         />

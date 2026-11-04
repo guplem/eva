@@ -43,7 +43,7 @@ export interface ScheduleDefinitions {
   readonly problems: readonly string[];
 }
 
-/** The order of the fields in a setup card. */
+/** The fields that Eva compares to find a changed schedule, in a fixed order. */
 export const scheduleFieldOrder = [
   "id",
   "name",
@@ -58,11 +58,6 @@ export const scheduleFieldOrder = [
   "model",
 ] as const;
 export type ScheduleFieldName = (typeof scheduleFieldOrder)[number];
-/**
- * What a card names as changed. A card shows no `enabled` field, so a pause never changes
- * `announcedFields` (lesson 66). A card can still name `enabled` as the change.
- */
-export type ScheduleChange = ScheduleFieldName | "enabled";
 
 export const formatVersion = 1;
 /** The id travels in Telegram button data, which Telegram caps at 64 bytes. */
@@ -189,7 +184,7 @@ function isSlot(text: string): boolean {
   return !Number.isNaN(moment.getTime()) && moment.toISOString().slice(0, 16) === text;
 }
 
-/** Every field of a schedule as text, for a setup card and for change detection (lesson 66). */
+/** Every field of a schedule as text, to find a change. A pause changes no field. */
 export function announcedFields(schedule: Schedule): Partial<Record<ScheduleFieldName, string>> {
   const values: Record<ScheduleFieldName, string | null> = {
     id: schedule.id,

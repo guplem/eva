@@ -26,7 +26,7 @@ export function isOtherMachineProblem(key: string): boolean {
 
 /** Null: no button can fix it from here. Settings also holds the conflict list. */
 export function problemAction(key: string, syncStatus: VaultSyncState["status"]): ProblemAction | null {
-  if (key.startsWith("schedule:") || key.startsWith("schedule_card:")) return "open_schedules";
+  if (key.startsWith("schedule:")) return "open_schedules";
   if (isOtherMachineProblem(key)) return null;
   // Only a step outside Eva closes it, such as an install on Linux. Its help link says which (#825).
   if (key === "shell_wall") return null;

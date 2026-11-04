@@ -1,15 +1,14 @@
 /**
  * The schedules in Telegram: the /schedules list, and each schedule's topic, which gets its
- * setup cards, its firings and the file problems (lessons 66, 67, 70, 126).
+ * firings, their answers and the file problems (lessons 70, 126).
  */
 import type { Eva } from "../../core/eva.ts";
-import type { ScheduleCard, ScheduleEvent } from "../../core/schedules/scheduler.ts";
+import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import { TelegramError, type TelegramApi } from "./telegram-api.ts";
 import { buttonsPerMessage, type TelegramFiles } from "./telegram-files.ts";
 import { keyOf } from "./telegram-messages.ts";
-import { telegramMessageLimit, type TelegramSender } from "./telegram-sender.ts";
+import type { TelegramSender } from "./telegram-sender.ts";
 import type { BotState } from "./telegram-state.ts";
-import { cardText } from "./telegram-texts.ts";
 import { extractFileMarkers } from "../../shared/file-markers.ts";
 
 export interface TelegramSchedulesOptions {
@@ -30,12 +29,9 @@ export interface TelegramSchedulesOptions {
 
 export class TelegramSchedules {
   private readonly options: TelegramSchedulesOptions;
-  /** The card text of each schedule that was too long for Telegram, so the notice goes out once per card. */
-  private readonly tooLongCards: Map<string, string>;
 
   constructor(options: TelegramSchedulesOptions) {
     this.options = options;
-    this.tooLongCards = new Map();
   }
 
   /** /schedules: every schedule with its next run, a remove button each, and the file's problems. */
@@ -65,29 +61,25 @@ export class TelegramSchedules {
     );
   }
 
-  /**
-   * Setup cards, firings and file problems of the schedules. True when the paired chat got the
-   * event: a card that failed to go out waits for the next check.
-   */
-  async onEvent(event: ScheduleEvent): Promise<boolean> {
+  /** Firings, answers and file problems of the schedules. Nothing goes out before the pairing. */
+  async onEvent(event: ScheduleEvent): Promise<void> {
     const chatId = this.options.pairedChat();
-    if (chatId === null) return false;
+    if (chatId === null) return;
     const { sender } = this.options;
     if (event.kind === "schedule_problems") {
       const text = ["Schedules file problems:", ...event.problems.map((line) => `• ${line}`)].join("\n");
-      return (await sender.send(chatId, null, text)) !== null;
+      await sender.send(chatId, null, text);
+      return;
     }
     const topicId = await this.topic(chatId, event.scheduleId, event.name);
-    if (event.kind === "schedule_card") return this.sendCard(chatId, topicId, event);
     if (event.kind === "schedule_answered") {
       await this.sendAnswer(chatId, topicId, event);
-      return true;
+      return;
     }
     // The topic gets the run's chat only when the run ends: a quiet run must leave nothing in it (#687).
     if (event.sessionId !== null) this.options.startTyping(chatId, topicId, event.sessionId);
     if (event.text !== null) await sender.send(chatId, topicId, event.text);
     if (event.file !== null) await this.options.files.sendVaultFile(chatId, topicId, event.file);
-    return true;
   }
 
   /** The end of a run with something to tell: its whole answer, its files, and a failure. */
@@ -111,24 +103,6 @@ export class TelegramSchedules {
     for (const path of markers.attach) await files.sendVaultFile(chatId, topicId, path);
     if (markers.offer.length > 0) await files.offerFiles(chatId, topicId, markers.offer);
     if (event.failure !== null) await sender.send(chatId, topicId, `The turn failed: ${event.failure}`);
-  }
-
-  /**
-   * A cut card would hide its last fields, the prompt among them (lesson 67). So a card too long
-   * for one message never counts as shown: a short notice sends the person to the web app.
-   */
-  private async sendCard(chatId: number, topicId: number | null, card: ScheduleCard): Promise<boolean> {
-    const text = cardText(card);
-    if (text.length <= telegramMessageLimit) {
-      this.tooLongCards.delete(card.scheduleId);
-      return (await this.options.sender.send(chatId, topicId, text)) !== null;
-    }
-    if (this.tooLongCards.get(card.scheduleId) === text) return false;
-    const notice = `The setup card of ${card.name} is too long for Telegram. Open the web app to check it: the schedule runs only after that.`;
-    // A notice that failed to go out goes out again at the next check.
-    if ((await this.options.sender.send(chatId, topicId, notice)) !== null)
-      this.tooLongCards.set(card.scheduleId, text);
-    return false;
   }
 
   /** The schedule's topic. A topic deleted in the app answers a typing action with 400, so a new one opens (lesson 70). */

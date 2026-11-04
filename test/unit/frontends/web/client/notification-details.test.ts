@@ -11,13 +11,6 @@ function entry(seq: number, key: string, level: HistoryEntry["level"]): HistoryE
 }
 
 describe("notificationTopic", () => {
-  test("explains a schedule that waits for its setup card, and why Eva waits", () => {
-    const topic = notificationTopic("schedule_card:morning");
-    expect(topic.title).toBe("Schedule check");
-    expect(topic.meaning).toContain("you confirm the card");
-    expect(topic.meaning).toContain("does not run");
-  });
-
   test("explains why Eva cannot save the location (#689)", () => {
     expect(notificationTopic("last_location").title).toBe("Your location");
     expect(notificationTopic("last_location").meaning).toContain("Life/About me.md");
@@ -46,7 +39,6 @@ describe("notificationTopic", () => {
       "default_engine",
       "default_engine_restart",
       "schedule:lunch",
-      "schedule_card:lunch",
       "template_alignment",
       "vault_ahead",
       "machine_ahead",

@@ -45,7 +45,7 @@ import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../.
 import type { TemplatePart } from "../../../core/vault/template-alignment.ts";
 import type { ComposerMenuItems, SavedPrompt, TextAction } from "../../../core/composer-menu/composer-menu.ts";
 import type { SetupItem, SetupReport, SetupSection } from "../../../core/projects/repository-setup.ts";
-import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
+import type { ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { UnsentTextAnswer, UnsentTextEvent, UnsentTexts } from "../../../core/sessions/unsent-texts.ts";
@@ -126,7 +126,6 @@ export type {
   ProjectFile,
   PublicSettings,
   RemoteAccess,
-  ScheduleCard,
   ScheduleList,
   ScheduleView,
   EvaSetupState,
@@ -558,10 +557,6 @@ export const api = {
     request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { enabled }),
   removeSchedule: (scheduleId: string): Promise<void> =>
     request("DELETE", `/api/schedules/${encodeURIComponent(scheduleId)}`),
-  scheduleCards: (): Promise<ScheduleCard[]> => request("GET", "/api/schedule-cards", undefined, { limit: quickRead }),
-  /** Says that the person saw the card with these fields. A card that changed meanwhile answers 409. */
-  confirmScheduleCard: (card: ScheduleCard): Promise<void> =>
-    request("POST", `/api/schedule-cards/${encodeURIComponent(card.scheduleId)}`, { fields: card.fields }),
   /** The widgets of the settings list (#691). Fast: it reads no network. */
   widgets: (): Promise<WidgetItem[]> => request("GET", "/api/widgets", undefined, { limit: quickRead }),
   /** Reads each manifest again, so the list shows each problem. Slow: it reads GitHub. */
@@ -627,13 +622,13 @@ const browserStream: StreamPlace = {
 
 /** Opens the event stream, and opens it again after a drop. */
 export function subscribeToEvents(
-  onEvent: (event: SessionEvent | ScheduleCard | DeviceLoginEvent | UnsentTextEvent) => void,
+  onEvent: (event: SessionEvent | DeviceLoginEvent | UnsentTextEvent) => void,
   onConnectionChange: (isConnected: boolean) => void,
 ): EventSubscription {
   // Eva sends only these kinds on the event route.
   return openEventStream(
     browserStream,
-    (event) => onEvent(event as SessionEvent | ScheduleCard | DeviceLoginEvent | UnsentTextEvent),
+    (event) => onEvent(event as SessionEvent | DeviceLoginEvent | UnsentTextEvent),
     onConnectionChange,
   );
 }

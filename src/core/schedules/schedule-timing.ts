@@ -53,7 +53,7 @@ export function isLate(slot: string, now: string): boolean {
   return minutesOf(now) - minutesOf(slot) >= graceMinutes;
 }
 
-/** The first slot after now, for the setup card. */
+/** The first slot after now. */
 export function nextSlot(schedule: Schedule, now: string): string | null {
   const nowMinutes = minutesOf(now);
   const next = nextRun(schedule, nowMinutes);

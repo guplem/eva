@@ -76,7 +76,7 @@ export const stateFaces = {
   projectWork: "focused",
   /** Asks permission for something important. */
   asksPermission: "firm",
-  /** A note conflict, or a schedule that nobody confirmed. */
+  /** A note conflict. */
   conflict: "skeptical",
   /** No connection to the hub. */
   offline: "worried",

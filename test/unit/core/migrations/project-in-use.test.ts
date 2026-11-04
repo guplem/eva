@@ -74,11 +74,14 @@ describe("splitProjectInUse (vault, #859)", () => {
       '\uFEFF---\r\ncreated: 2025-03-02T10:15\r\nstatus: "in-use"\r\n---\r\n# Windows\r\n',
     );
     const flagged = project("2025-03-03-1015-flagged", "---\nin-use: true\nstatus: in-use\n---\n# Flagged\n");
+    // The old status wins over a flag that says no, as Eva reads it.
+    const unflagged = project("2025-03-04-1015-unflagged", "---\nstatus: in-use\nin-use: false\n---\n# Unflagged\n");
     migrate();
     expect(readFileSync(windows, "utf-8")).toBe(
       '\uFEFF---\r\ncreated: 2025-03-02T10:15\r\nstatus: "closed"\r\nin-use: true\r\n---\r\n# Windows\r\n',
     );
     expect(readFileSync(flagged, "utf-8")).toBe("---\nin-use: true\nstatus: closed\n---\n# Flagged\n");
+    expect(readFileSync(unflagged, "utf-8")).toBe("---\nstatus: closed\nin-use: true\n---\n# Unflagged\n");
   });
 
   test("skips a project with a new status, a broken front matter, or no front matter", () => {

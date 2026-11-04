@@ -77,7 +77,11 @@ function splitProject(context: MigrationContext, path: string): void {
   const newLine = `${key}${quote}${newStatus}${quote}${newRest}`;
   if (newLine === lines[index]) return;
   lines[index] = newLine;
-  if (status === "in-use" && !("in-use" in (fields as Record<string, unknown>)))
-    lines.splice(index + 1, 0, "in-use: true");
+  if (status === "in-use") {
+    // The old status wins over a flag that says no, as Eva reads it: the person used the project.
+    const flag = lines.findIndex((line) => /^in-use\s*:/.test(line));
+    if (flag === -1) lines.splice(index + 1, 0, "in-use: true");
+    else if (!/^in-use\s*:\s*["']?true["']?\s*(#.*)?$/i.test(lines[flag] ?? "")) lines[flag] = "in-use: true";
+  }
   context.write(path, `${match[1] ?? ""}${lines.join(newline)}${match[3] ?? ""}${text.slice(match[0].length)}`);
 }

@@ -1789,8 +1789,9 @@ textarea {
   gap: var(--space-2);
 }
 
+/* A dialog to read a file or long output in: the narrow box would wrap each line. */
 .dialog.wide {
-  max-width: 760px;
+  max-width: 960px;
   max-height: calc(100dvh - 32px);
   overflow: auto;
   overscroll-behavior-y: contain;

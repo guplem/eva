@@ -93,15 +93,20 @@
 
 .timeline {
   container-type: inline-size;
+  position: relative;
+  /* Room for the date label under the today line. */
+  padding-bottom: var(--timeline-label);
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   --timeline-name: 160px;
+  --timeline-marks: 18px;
+  --timeline-label: 22px;
 }
 
 .timeline-marks {
   position: relative;
-  height: 18px;
+  height: var(--timeline-marks);
   margin-left: calc(var(--timeline-name) + var(--space-3));
   font-family: var(--mono);
   font-size: var(--text-xs);
@@ -171,7 +176,6 @@
   bottom: 0;
   min-width: var(--space-1);
   border-radius: var(--radius-pill);
-  background: var(--project-color);
 }
 
 /* A project from an earlier year runs in from the edge. */
@@ -180,9 +184,61 @@
   border-bottom-left-radius: 0;
 }
 
-/* A faint bar keeps the colour of the project and still differs from an active bar. */
-.timeline-row.paused .timeline-bar {
-  opacity: 0.3;
+/*
+ * Each status has a pattern, so a bar reads without its word. A pattern keeps the colour of the project.
+ * The swatches of the status chips reuse the patterns.
+ */
+.timeline-row.active .timeline-bar,
+.timeline-swatch.active {
+  background: var(--project-color);
+}
+
+/* Faint stripes: the work stopped. */
+.timeline-row.paused .timeline-bar,
+.timeline-swatch.paused {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklch, var(--project-color) 42%, transparent) 0 5px,
+    color-mix(in oklch, var(--project-color) 12%, transparent) 5px 10px
+  );
+}
+
+/* An outline: the project is done, and the person uses it. */
+.timeline-row.in-use .timeline-bar,
+.timeline-swatch.in-use {
+  background: color-mix(in oklch, var(--project-color) 14%, transparent);
+  box-shadow: inset 0 0 0 2px var(--project-color);
+}
+
+/* A bar from an earlier year has no left border: it runs in from the edge. */
+.timeline-row.in-use .timeline-bar.before {
+  box-shadow:
+    inset 0 2px var(--project-color),
+    inset -2px 0 var(--project-color),
+    inset 0 -2px var(--project-color);
+}
+
+.home-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.timeline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The swatch takes the colour of the chip text, so it reads on a pressed chip too. */
+.timeline-swatch {
+  --project-color: currentColor;
+  flex: none;
+  width: 18px;
+  height: 8px;
+  border-radius: var(--radius-pill);
 }
 
 .timeline-word {
@@ -195,14 +251,39 @@
   color: var(--ink);
 }
 
+/* The layer covers the lanes, from below the month marks to the date label. */
+.timeline-today-layer {
+  position: absolute;
+  top: var(--timeline-marks);
+  bottom: 0;
+  left: calc(var(--timeline-name) + var(--space-3));
+  right: 0;
+  pointer-events: none;
+}
+
 .timeline-today {
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: 0;
+  bottom: var(--timeline-label);
   width: 2px;
+  margin-left: -1px;
   /* "Now" in the accent, as the day timeline of Schedules shows it. */
   background: var(--accent);
   box-shadow: 0 0 8px var(--glow);
+}
+
+.timeline-today-label {
+  position: absolute;
+  bottom: 0;
+  white-space: nowrap;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .home-counts {

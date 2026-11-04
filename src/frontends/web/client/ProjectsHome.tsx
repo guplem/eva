@@ -1,6 +1,6 @@
 /**
  * The Projects page with no project open (#840): the chats that need the person, the recent chats,
- * a timeline of the active and the paused projects, and the counts by status of a year.
+ * a timeline of the projects of the picked statuses, and the counts by status of a year.
  */
 import { useState, type CSSProperties, type ReactElement } from "react";
 import type { Project, SessionRecord } from "./api.ts";
@@ -10,12 +10,16 @@ import { CardsSkeleton } from "./Loading.tsx";
 import { StatusPill } from "./ProjectPage.tsx";
 import { countOf, statusLabels, statusPill } from "./project-format.ts";
 import {
+  defaultTimelineStatuses,
   homeChats,
   projectColor,
   projectInitials,
   projectYears,
   statusCounts,
   timeline,
+  timelineStatuses,
+  todayLabel,
+  type TimelineStatus,
   type YearChoice,
 } from "./projects-home.ts";
 import type { ProjectStatus } from "../../../shared/project-statuses.ts";
@@ -30,6 +34,13 @@ function wordPlace(start: number, end: number): CSSProperties {
   return start <= 0.75
     ? { left: `${String(start * 100)}%` }
     : { right: `${String((1 - end) * 100)}%`, paddingRight: "var(--space-2)" };
+}
+
+/** Where the date label goes: centred on the today line, or ending at it near the right edge, so it stays in the card. */
+function labelPlace(today: number): CSSProperties {
+  return today <= 0.9
+    ? { left: `${String(today * 100)}%`, transform: "translateX(-50%)" }
+    : { right: `${String((1 - today) * 100)}%` };
 }
 
 interface ChatRowsProps {
@@ -125,6 +136,7 @@ export function ProjectsHome({
 }: ProjectsHomeProps): ReactElement {
   const now = new Date();
   const [picked, setYear] = useState<YearChoice>(now.getFullYear());
+  const [statuses, setStatuses] = useState<ReadonlySet<TimelineStatus>>(defaultTimelineStatuses);
   const known = projects ?? [];
   const years = projectYears(known, now);
   // A picked year can lose its last project, such as after a rename: this year then shows.
@@ -133,7 +145,12 @@ export function ProjectsHome({
   const projectOf = (chat: SessionRecord): Project | undefined =>
     chat.projectId === null ? undefined : byId.get(chat.projectId);
   const { needsYou, recent } = homeChats(chats, stateOf);
-  const shown = timeline(known, year, now);
+  const shown = timeline(known, year, now, statuses);
+  const toggleStatus = (status: TimelineStatus): void => {
+    const next = new Set(statuses);
+    if (!next.delete(status)) next.add(status);
+    setStatuses(next);
+  };
   const counts = statusCounts(known, year);
   const yearWords = year === "all" ? "In all" : `In ${String(year)}`;
   return (
@@ -171,10 +188,28 @@ export function ProjectsHome({
               )}
             </section>
             <section className="card home-card" aria-label="Timeline">
-              <h2 className="home-card-title">Timeline</h2>
+              <div className="home-card-head">
+                <h2 className="home-card-title">Timeline</h2>
+                <div className="filter-chips" role="group" aria-label="Statuses to show">
+                  {timelineStatuses.map((status) => (
+                    <button
+                      key={status}
+                      className="filter-chip timeline-chip"
+                      aria-pressed={statuses.has(status)}
+                      onClick={() => toggleStatus(status)}
+                    >
+                      {/* The swatch shows the pattern of the bars, so the chips are the legend too. */}
+                      <span className={`timeline-swatch ${status}`} aria-hidden="true" />
+                      {statusLabels[status]}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {shown.rows.length === 0 ? (
                 <span className="muted">
-                  No active or paused project {year === "all" ? "yet" : `in ${String(year)}`}.
+                  {statuses.size === 0
+                    ? "Pick a status to see its projects."
+                    : `No project with these statuses ${year === "all" ? "yet" : `in ${String(year)}`}.`}
                 </span>
               ) : (
                 <div className="timeline">
@@ -205,17 +240,23 @@ export function ProjectsHome({
                           }}
                         />
                         {/* A state shows with a word too, never with colour alone. */}
-                        {row.status === "paused" && (
+                        {row.status !== "active" && (
                           <span className="timeline-word" style={wordPlace(row.start, row.end)}>
-                            Paused
+                            {statusLabels[row.status]}
                           </span>
-                        )}
-                        {shown.today !== null && (
-                          <span className="timeline-today" style={{ left: `${String(shown.today * 100)}%` }} />
                         )}
                       </span>
                     </button>
                   ))}
+                  {/* One line over all the rows: a piece in each row left gaps between them. */}
+                  {shown.today !== null && (
+                    <div className="timeline-today-layer" aria-hidden="true">
+                      <span className="timeline-today" style={{ left: `${String(shown.today * 100)}%` }} />
+                      <span className="timeline-today-label" style={labelPlace(shown.today)}>
+                        {todayLabel(now)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </section>

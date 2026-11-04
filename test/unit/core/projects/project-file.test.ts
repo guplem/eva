@@ -402,6 +402,13 @@ describe("the in-use flag of a project (#859)", () => {
     expect(applyProjectDetails(idea, { ...unchanged, status: "paused", title: "Other" })).toContain("status: paused\n");
   });
 
+  test("a save from an older page, which sends no flag, keeps the flag of an old in-use status", () => {
+    const old = file.replace("status: active # idea, active, paused or closed", "status: in-use");
+    const saved = applyProjectDetails(old, { ...unchanged, status: "closed", tags: ["home"] });
+    expect(saved).toContain("status: closed\nin-use: true\n");
+    expect(parseFrontMatter(saved).frontMatter).toMatchObject({ status: "closed", inUse: true });
+  });
+
   test("the form reads the flag, also from a status of an older vault", () => {
     expect(projectFileOf(file.replace("custom: kept", "custom: kept\nin-use: true")).details?.inUse).toBe(true);
     expect(

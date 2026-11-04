@@ -149,7 +149,11 @@ const notificationsReadSchema = z.union([
   z.object({ seqs: z.array(z.number().int()).max(1000) }),
   z.object({ all: z.literal(true) }),
 ]);
-const statusSchema = z.enum(projectStatusFilters).optional();
+/** An older open page can still filter by `idea`, which reads as paused now (#859). */
+const statusSchema = z
+  .enum([...projectStatusFilters, "idea"])
+  .transform((status) => (status === "idea" ? "paused" : status))
+  .optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const pushSchema = z.object({ note: z.string().max(10_000).optional() });
 const updateSchema = z.object({
@@ -209,6 +213,7 @@ const newProjectSchema = z
     name: z.string().min(1).max(500),
     description: z.string().max(10_000),
     status: sentStatusSchema,
+    inUse: z.boolean().optional(),
     tags: z.array(z.string().max(200)).max(100),
     github: z.boolean().optional(),
     repository: z.object({ type: z.enum(repositoryTypeNames), visibility: z.enum(["private", "public"]) }).nullish(),
@@ -216,9 +221,9 @@ const newProjectSchema = z
     /** An older page sends none: a software project, as before specialists (#703). */
     type: z.enum(projectTypes).default("software"),
   })
-  .transform(({ github, repository, status, ...rest }) => ({
+  .transform(({ github, repository, status, inUse, ...rest }) => ({
     ...rest,
-    ...readSentStatus(status, undefined),
+    ...readSentStatus(status, inUse),
     repository: repository ?? (github === true ? { type: "standard" as const, visibility: "private" as const } : null),
   }));
 const settingsPatchSchema = z.record(z.string(), z.unknown());

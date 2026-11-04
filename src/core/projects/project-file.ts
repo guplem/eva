@@ -68,11 +68,18 @@ function changedClosed(
  * The change of the `in-use` key, if any (#859). A status of an older vault, such as `in-use`,
  * holds the flag too, so a save that rewrites that status writes the flag as a key.
  */
-function changedInUse(source: string, details: ProjectDetails, rewritesStatus: boolean): FrontMatterChanges {
-  if (details.inUse === undefined) return {};
+function changedInUse(
+  source: string,
+  details: ProjectDetails,
+  current: { readonly inUse: boolean },
+  rewritesStatus: boolean,
+): FrontMatterChanges {
+  // An older page sends no flag. It keeps the flag that the file means now, also through an old status.
+  const inUse = details.inUse ?? (rewritesStatus ? current.inUse : undefined);
+  if (inUse === undefined) return {};
   const written = textValue(source, "in-use")?.trim().toLowerCase() === "true";
-  if (details.inUse === written && !(rewritesStatus && details.inUse)) return {};
-  return { "in-use": details.inUse ? "true" : null };
+  if (inUse === written && !(rewritesStatus && inUse)) return {};
+  return { "in-use": inUse ? "true" : null };
 }
 
 /** The text of a key, or null for no key or a value that is not text. */
@@ -108,7 +115,7 @@ export function applyProjectDetails(text: string, details: ProjectDetails): stri
   const frontMatter = editFrontMatter(source, {
     // The form shows "None" for a status it cannot read, so None there keeps the person's value.
     ...(rewritesStatus ? { status: details.status } : {}),
-    ...changedInUse(source, details, rewritesStatus),
+    ...changedInUse(source, details, current, rewritesStatus),
     ...changedClosed(current, details, source),
     ...changedList("tags", current.tags, details.tags, (tag) => tag.replace(/^#/, ""), "A tag"),
     ...repos,

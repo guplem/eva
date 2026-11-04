@@ -1551,6 +1551,9 @@ describe("web routes", () => {
       await call("/api/projects?text=new&status=paused"),
     );
     expect(listed).toMatchObject([{ id: result.projectId, description: "Made from the form." }]);
+    // An older open page filters by idea, which reads as paused (#859).
+    const old = await json<{ id: string }[]>(await call("/api/projects?text=new&status=idea"));
+    expect(old).toMatchObject([{ id: result.projectId }]);
 
     const again = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });
     expect(again.status).toBe(400);

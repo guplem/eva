@@ -15,7 +15,7 @@ import { hourLabel } from "../../../shared/time-format.ts";
 import { displayFormat } from "./display-format.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Toast } from "./Toast.tsx";
-import { goTo, goUp, replaceAddress } from "./back-layers.ts";
+import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { assistantChatAddressOf, scheduleAddressOf, scheduleIdOf } from "./navigation.ts";
 import { SchedulePage } from "./SchedulePage.tsx";
 import { useIsPhone } from "./ChatHeader.tsx";
@@ -72,17 +72,21 @@ export function SchedulesView({ chatIds }: { readonly chatIds: ReadonlySet<strin
   };
 
   // The form closes its Back layer as it goes, with a step back in the history. The new address
-  // must come after that step, or the step takes it away again.
+  // must come after that step, or the step takes it away again. It must also wait for a list
+  // that holds the new schedule: an older list would show its address as a removed schedule.
+  const createdIsListed = created !== null && list?.schedules.some((view) => view.schedule.id === created) === true;
   useEffect(() => {
-    if (created === null || adding) return;
+    if (created === null || adding || !createdIsListed) return;
     setCreated(null);
     goTo(scheduleAddressOf(created), () => setOpenId(created));
-  }, [created, adding]);
+  }, [created, adding, createdIsListed]);
 
   const remove = async (scheduleId: string): Promise<void> => {
     try {
       await api.removeSchedule(scheduleId);
-      goUp(scheduleAddressOf(null), () => setOpenId(null));
+      // The page is gone: its address leaves the history, so Back never opens it again.
+      setOpenId(null);
+      leaveFor(scheduleAddressOf(null), () => setOpenId(null));
     } catch (error) {
       showError(error);
     }

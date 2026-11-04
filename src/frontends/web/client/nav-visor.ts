@@ -115,3 +115,6 @@ export function tapFace(random: () => number = Math.random, last?: Face): Face {
   const choices = tapFaces.filter((face) => face !== last);
   return choices[Math.min(Math.floor(random() * choices.length), choices.length - 1)] ?? "happy";
 }
+
+/** Why Eva most likely does not answer. The offline visor gives it in its tooltip and in a toast (#853). */
+export const offlineReason = "The hub may be off, or this device left Tailscale.";

@@ -41,8 +41,6 @@ interface AssistantViewProps {
   readonly linkedChat: SessionRecord | null;
   /** `address` names the page of the opened chat, so the used link leaves the history. */
   readonly onLinkedChatOpened: (address?: string) => void;
-  /** Offline and the open problems, shown at the top of the main area. */
-  readonly notices: ReactNode;
   readonly approvals: ChatApprovals;
   /** The missing setup step that stops every chat, or null. */
   readonly blocker: ChatBlocker | null;
@@ -64,7 +62,6 @@ export function AssistantView({
   newChatRequest,
   linkedChat,
   onLinkedChatOpened,
-  notices,
   approvals,
   blocker,
   voiceNotes,
@@ -324,7 +321,6 @@ export function AssistantView({
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
         <BusyProjects.Provider value={busy}>
-          {notices}
           {selected === undefined ? (
             <NewChatDraft
               blocker={blocker}

@@ -1777,7 +1777,7 @@ test("New project: the form creates a project and opens its page", async ({ page
   await expect(form).toContainText("Log in to GitHub");
   await form.getByLabel("Name").fill(name);
   await form.getByLabel("Description").fill("Made from the form.");
-  await form.getByLabel("Status").selectOption("idea");
+  await form.getByLabel("Status").selectOption("paused");
   await form.getByLabel(/^Tags/).fill("demo form");
   await form.getByRole("button", { name: "Create project" }).click();
   await expect(form).toHaveCount(0);
@@ -2176,11 +2176,15 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   const timeline = page.getByRole("region", { name: "Timeline" });
   await expect(timeline).toBeVisible();
   await expect(page.getByRole("region", { name: "Recent" })).toBeVisible();
-  // Only the active and the paused projects show: Family recipes is in use.
-  await expect(timeline.getByRole("button", { name: /Family recipes/ })).toHaveCount(0);
-  // The status chips add a status to the timeline (#857).
-  await timeline.getByRole("group", { name: "Statuses to show" }).getByRole("button", { name: "In use" }).click();
-  await expect(timeline.getByRole("button", { name: "Family recipes, In use" })).toBeVisible();
+  // A project in use always shows, whatever its status (#859).
+  await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
+  // Only the Paused chip of the legend hides a status, and it never hides a project in use.
+  const garden = timeline.getByRole("button", { name: "Garden plan, Paused" });
+  await expect(garden).toBeVisible();
+  await timeline.getByRole("group", { name: "Legend" }).getByRole("button", { name: "Paused" }).click();
+  await expect(garden).toHaveCount(0);
+  await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
+  await expect(timeline.getByRole("group", { name: "Legend" }).getByRole("button")).toHaveCount(1);
   const startedLine = page.getByText(/^In (\d{4}|all): \d+ projects? started\.$/);
   await expect(startedLine).toHaveText(new RegExp(`^In ${String(new Date().getFullYear())}:`));
   await page.getByRole("group", { name: "Year" }).getByRole("button", { name: "All" }).click();
@@ -5793,7 +5797,8 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(page.getByRole("region", { name: "Whole file" })).toHaveClass(/\bcard\b/);
 
   await page.getByLabel("Title").fill(`Renamed ${run}`);
-  await page.getByLabel("Project status").selectOption("in-use");
+  await page.getByLabel("Project status").selectOption("active");
+  await page.getByRole("checkbox", { name: /In use/ }).check();
   await page.getByLabel("Add a tag").fill("ideas");
   await page.getByRole("button", { name: "Add the tag" }).click();
   await page.getByLabel("Add a repository").fill("https://github.com/example-owner/draft");
@@ -5805,8 +5810,8 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(saveDetails.getByText("Saved", { exact: true })).toBeVisible();
   await expect(saveDetails).not.toHaveClass(/\bdone\b/, { timeout: 5000 });
   const file = page.getByLabel("AGENTS.md");
-  // The demo file has the old list of statuses, and a save of the status writes the new list (#690).
-  await expect(file).toHaveValue(/status: in-use # idea, active, in-use, paused or closed/);
+  // The migration wrote the new list of statuses, and the In use box writes its key after the status (#859).
+  await expect(file).toHaveValue(/status: active # active, paused or closed\nin-use: true\n/);
   await expect(file).toHaveValue(/# Renamed/);
 
   if (run === "phone") {

@@ -3491,6 +3491,19 @@ button.small {
 }
 
 /* A long project name wraps, so the person reads all of it. A word with no break point breaks too. */
+/* The status pill and the In use pill of a project stay together (#859). */
+.project-pills {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* The hint of a check box goes under its word. */
+.card-fields .check-row .field-hint {
+  display: block;
+}
+
 .header-title h1 {
   flex: 0 1 auto;
   min-width: 0;

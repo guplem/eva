@@ -15,9 +15,14 @@ import { parseProjectId } from "../../../../../src/core/projects/project-id.ts";
 import type { ProjectStatus } from "../../../../../src/shared/project-statuses.ts";
 
 /** A project with only the fields that the home page reads. */
-function project(id: string, status: ProjectStatus | null, title = id.replace(/^[\d-]+-/, "")): Project {
+function project(
+  id: string,
+  status: ProjectStatus | null,
+  { inUse = false, started }: { readonly inUse?: boolean; readonly started?: string } = {},
+): Project {
   const parsedId = parseProjectId(id);
   if (parsedId === null) throw new Error(`Bad id ${id}`);
+  const title = id.replace(/^[\d-]+-/, "");
   return {
     id,
     path: `/vault/Projects/${id}`,
@@ -25,6 +30,7 @@ function project(id: string, status: ProjectStatus | null, title = id.replace(/^
     frontMatter: {
       created: null,
       status,
+      inUse,
       closed: null,
       repos: [],
       tags: [],
@@ -33,7 +39,7 @@ function project(id: string, status: ProjectStatus | null, title = id.replace(/^
       type: "general",
       summary: null,
       pinned: null,
-      extra: {},
+      extra: started === undefined ? {} : { started },
     },
     title,
     description: null,
@@ -80,14 +86,14 @@ describe("createdAt", () => {
   });
 
   test("starts a short id at the start of its month or year", () => {
-    expect(createdAt(project("2025-07-garden", "idea"))).toEqual(new Date(2025, 6, 1));
+    expect(createdAt(project("2025-07-garden", "paused"))).toEqual(new Date(2025, 6, 1));
     expect(createdAt(project("2024-old", "closed"))).toEqual(new Date(2024, 0, 1));
   });
 });
 
 describe("projectYears", () => {
   test("lists each year with a project and this year, the newest first", () => {
-    const projects = [project("2024-05-01-0000-a", "active"), project("2025-02-01-0000-b", "idea")];
+    const projects = [project("2024-05-01-0000-a", "active"), project("2025-02-01-0000-b", "paused")];
     expect(projectYears(projects, now)).toEqual([2026, 2025, 2024]);
   });
 
@@ -99,20 +105,19 @@ describe("projectYears", () => {
 describe("statusCounts", () => {
   const projects = [
     project("2026-01-05-1000-a", "active"),
-    project("2026-02-05-1000-b", "active"),
-    project("2026-03-05-1000-c", "in-use"),
-    project("2026-04-05-1000-d", "idea"),
+    project("2026-02-05-1000-b", "active", { inUse: true }),
+    project("2026-03-05-1000-c", "closed", { inUse: true }),
     project("2026-05-05-1000-e", "closed"),
     project("2025-06-05-1000-f", "paused"),
     project("2025-07-05-1000-g", null),
   ];
 
-  test("counts the projects that started in the year, by status", () => {
-    expect(statusCounts(projects, 2026)).toEqual({ active: 2, "in-use": 1, idea: 1, paused: 0, started: 5 });
+  test("counts the projects that started in the year, by status, and the ones in use (#859)", () => {
+    expect(statusCounts(projects, 2026)).toEqual({ active: 2, "in-use": 2, paused: 0, started: 4 });
   });
 
   test("counts every project for all the years", () => {
-    expect(statusCounts(projects, "all")).toEqual({ active: 2, "in-use": 1, idea: 1, paused: 1, started: 7 });
+    expect(statusCounts(projects, "all")).toEqual({ active: 2, "in-use": 2, paused: 1, started: 6 });
   });
 });
 
@@ -121,18 +126,26 @@ describe("timeline", () => {
     project("2026-07-01-0000-late", "active"),
     project("2026-01-01-0000-early", "active"),
     project("2025-06-01-0000-old", "paused"),
-    project("2026-02-01-0000-used", "in-use"),
-    project("2026-03-01-0000-thought", "idea"),
+    project("2026-02-01-0000-used", "closed", { inUse: true }),
+    project("2026-03-01-0000-built", "active", { inUse: true }),
     project("2026-04-01-0000-done", "closed"),
   ];
 
-  test("shows only the active and the paused projects, the oldest first", () => {
+  test("shows the active, the paused and the in-use projects once each, the oldest first (#859)", () => {
     const rows = timeline(projects, 2026, now).rows;
-    expect(rows.map((row) => [row.title, row.status])).toEqual([
-      ["old", "paused"],
-      ["early", "active"],
-      ["late", "active"],
+    expect(rows.map((row) => [row.title, row.status, row.inUse])).toEqual([
+      ["old", "paused", false],
+      ["early", "active", false],
+      ["used", "closed", true],
+      ["built", "active", true],
+      ["late", "active", false],
     ]);
+  });
+
+  test("hides the paused projects when the person asks, but never a project in use (#859)", () => {
+    const pausedTool = project("2026-05-01-0000-paused-tool", "paused", { inUse: true });
+    const rows = timeline([...projects, pausedTool], 2026, now, false).rows;
+    expect(rows.map((row) => row.title)).toEqual(["early", "used", "built", "paused-tool", "late"]);
   });
 
   test("runs each bar from the creation of the project to today", () => {
@@ -143,6 +156,16 @@ describe("timeline", () => {
     const late = shown.rows.find((row) => row.title === "late");
     expect(late?.start).toBeGreaterThan(0.49);
     expect(late?.start).toBeLessThan(0.5);
+  });
+
+  test("starts a bar on the day the work started, when the project says so (#859)", () => {
+    const later = project("2026-01-01-0000-later", "active", { started: "2026-07-01" });
+    const bad = project("2026-01-01-0000-bad", "active", { started: "soon" });
+    const shown = timeline([later, bad], 2026, now);
+    expect(shown.rows.map((row) => row.title)).toEqual(["bad", "later"]);
+    expect(shown.rows[0]?.start).toBe(0);
+    expect(shown.rows[1]?.start).toBeGreaterThan(0.49);
+    expect(shown.rows[1]?.start).toBeLessThan(0.5);
   });
 
   test("starts a project of an earlier year at the edge, and says so", () => {
@@ -188,29 +211,13 @@ describe("timeline", () => {
     expect(shown.today).toBeNull();
   });
 
-  test("starts all the years at the oldest active or paused project, not at an older idea", () => {
-    const shown = timeline([project("2019-01-01-0000-dream", "idea"), ...projects], "all", now);
+  test("starts all the years at the oldest shown project, not at an older closed one", () => {
+    const shown = timeline([project("2019-01-01-0000-dream", "closed"), ...projects], "all", now);
     expect(shown.marks[0]?.label).toBe("2025");
-  });
-
-  test("shows an in-use project when the person picks In use (#857)", () => {
-    const rows = timeline(projects, 2026, now, new Set(["active", "in-use"] as const)).rows;
-    expect(rows.map((row) => [row.title, row.status])).toEqual([
-      ["early", "active"],
-      ["used", "in-use"],
-      ["late", "active"],
-    ]);
-  });
-
-  test("shows only the picked statuses, and no row when none is picked (#857)", () => {
-    expect(timeline(projects, 2026, now, new Set(["paused"] as const)).rows.map((row) => row.title)).toEqual(["old"]);
-    expect(timeline(projects, 2026, now, new Set()).rows).toEqual([]);
-  });
-
-  test("starts all the years at the oldest project of a picked status (#857)", () => {
-    const older = project("2024-05-01-0000-tool", "in-use");
-    expect(timeline([older, ...projects], "all", now).marks[0]?.label).toBe("2025");
-    expect(timeline([older, ...projects], "all", now, new Set(["in-use"] as const)).marks[0]?.label).toBe("2024");
+    const tool = project("2024-05-01-0000-tool", "closed", { inUse: true });
+    expect(timeline([tool, ...projects], "all", now).marks[0]?.label).toBe("2024");
+    // With the paused projects hidden, a paused project no longer sets the first year.
+    expect(timeline(projects, "all", now, false).marks[0]?.label).toBe("2026");
   });
 
   test("names today by its day and month, for the label of the today line (#857)", () => {

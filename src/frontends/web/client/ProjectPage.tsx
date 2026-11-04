@@ -11,6 +11,7 @@ import {
   canPush,
   changesPill,
   countOf,
+  inUsePill,
   projectFolder,
   repositoryLabel,
   repositoryWebUrl,
@@ -109,7 +110,7 @@ export function ProjectPage({
         <div className="header-text">
           <div className="header-title">
             <h1>{project.title}</h1>
-            <StatusPill pill={statusPill(project.frontMatter.status)} />
+            <ProjectPills frontMatter={project.frontMatter} />
           </div>
           <div className="sub mono">{projectFolder(project.path)}</div>
         </div>
@@ -687,4 +688,18 @@ function Warnings({ project }: { readonly project: Project }): ReactElement | nu
 export function StatusPill({ pill }: { readonly pill: Pill | null }): ReactElement | null {
   if (pill === null) return null;
   return <span className={`pill dot ${pill.tone}`}>{pill.text}</span>;
+}
+
+/** The status pill of a project, and the In use pill beside it when the person uses the project (#859). */
+export function ProjectPills({
+  frontMatter,
+}: {
+  readonly frontMatter: Pick<Project["frontMatter"], "status" | "inUse">;
+}): ReactElement {
+  return (
+    <span className="project-pills">
+      <StatusPill pill={statusPill(frontMatter.status)} />
+      <StatusPill pill={inUsePill(frontMatter.inUse)} />
+    </span>
+  );
 }

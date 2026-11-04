@@ -14,8 +14,13 @@ import {
 } from "../../../../../src/frontends/web/client/mentions.ts";
 import { mentionToken } from "../../../../../src/shared/mentions.ts";
 
-function project(id: string, title: string, status: MentionProject["status"] = "active"): MentionProject {
-  return { id, title, status, folder: `Projects/${id}` };
+function project(
+  id: string,
+  title: string,
+  status: MentionProject["status"] = "active",
+  inUse = false,
+): MentionProject {
+  return { id, title, status, inUse, folder: `Projects/${id}` };
 }
 
 describe("mentionQueryAt (issue 657)", () => {
@@ -54,20 +59,20 @@ describe("insertMention", () => {
 describe("pickedProjects", () => {
   const projects = [
     project("2026-01-01-0000-closed-one", "Closed one", "closed"),
-    project("2026-01-01-0000-idea-one", "Idea one", "idea"),
+    project("2026-01-01-0000-break-one", "Break one", "paused"),
     project("2026-01-01-0000-paused-one", "Paused one", "paused"),
     project("2026-01-01-0000-active-one", "Active one"),
-    project("2026-01-01-0000-used-one", "Used one", "in-use"),
+    project("2026-01-01-0000-used-one", "Used one", "closed", true),
     project("2026-01-01-0000-busy-one", "Busy one", "closed"),
     project("2026-01-01-0000-no-status", "No status", null),
   ];
 
-  test("a busy project comes first, then by status: active, in-use, idea, paused, closed", () => {
+  test("a busy project comes first, then active, in use, paused and closed (#859)", () => {
     expect(pickedProjects(projects, ["2026-01-01-0000-busy-one"], "", 10).map((each) => each.title)).toEqual([
       "Busy one",
       "Active one",
       "Used one",
-      "Idea one",
+      "Break one",
       "Paused one",
       "Closed one",
       "No status",
@@ -76,7 +81,7 @@ describe("pickedProjects", () => {
 
   test("the query matches a part of the title or of the id, in any case", () => {
     expect(pickedProjects(projects, [], "ACTIVE", 10).map((each) => each.title)).toEqual(["Active one"]);
-    expect(pickedProjects(projects, [], "idea-o", 10).map((each) => each.title)).toEqual(["Idea one"]);
+    expect(pickedProjects(projects, [], "break-o", 10).map((each) => each.title)).toEqual(["Break one"]);
   });
 
   test("the list keeps the first ones only", () => {
@@ -181,7 +186,7 @@ describe("mentionProjectOf", () => {
   const base = {
     id: "2026-01-02-0304-example-app",
     title: "Example app",
-    frontMatter: { status: "paused" },
+    frontMatter: { status: "paused", inUse: true },
     path: "/vaults/demo/Projects/2026-01-02-0304-example-app",
   };
 
@@ -192,6 +197,7 @@ describe("mentionProjectOf", () => {
       id: base.id,
       title: "Example app",
       status: "paused",
+      inUse: true,
       folder: "Projects/2026-01-02-0304-example-app",
     });
     expect(mentionProjectOf(outside).folder).toBe(base.path);

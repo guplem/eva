@@ -30,10 +30,10 @@ import { Icon } from "./icons.tsx";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { startChatAbout } from "./NewChatDraft.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
-import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
+import { ProjectPage, ProjectPills } from "./ProjectPage.tsx";
 import { NeedsYouCard, ProjectsHome } from "./ProjectsHome.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
-import { countOf, projectSummary, shownTags, statusChips, statusPill, tagsByUse } from "./project-format.ts";
+import { countOf, projectSummary, shownTags, statusChips, tagsByUse } from "./project-format.ts";
 import { projectStatusFilters } from "../../../shared/project-statuses.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
@@ -833,7 +833,7 @@ function ProjectCard({
       <button className="project-card" aria-current={isOpen} onClick={() => onOpen("project")} {...props}>
         <span className="card-row">
           <b>{project.title}</b>
-          <StatusPill pill={statusPill(project.frontMatter.status)} />
+          <ProjectPills frontMatter={project.frontMatter} />
         </span>
         <span className="card-row muted">
           <span>{projectSummary(project.clones.length, chatCount, project.frontMatter.type)}</span>

@@ -1,6 +1,6 @@
 /**
  * The Projects page with no project open (#840): the chats that need the person, the recent chats,
- * a timeline of the projects of the picked statuses, and the counts by status of a year.
+ * a timeline of the active, paused and in-use projects, and the counts by status of a year.
  */
 import { useState, type CSSProperties, type ReactElement } from "react";
 import type { Project, SessionRecord } from "./api.ts";
@@ -8,32 +8,42 @@ import { chatTime, type ChatState } from "./chat-list.ts";
 import { ChatStatePill } from "./ChatHeader.tsx";
 import { CardsSkeleton } from "./Loading.tsx";
 import { StatusPill } from "./ProjectPage.tsx";
-import { countOf, statusLabels, statusPill } from "./project-format.ts";
+import { countOf, inUseLabel, inUsePill, statusLabels, statusPill, type Pill } from "./project-format.ts";
 import {
-  defaultTimelineStatuses,
   homeChats,
   projectColor,
   projectInitials,
   projectYears,
   statusCounts,
   timeline,
-  timelineStatuses,
   todayLabel,
-  type TimelineStatus,
+  type TimelineRow,
   type YearChoice,
 } from "./projects-home.ts";
-import type { ProjectStatus } from "../../../shared/project-statuses.ts";
+import type { ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 
 /** The colour of a project, as a custom property, so the rules in `projects-home.css` use it. */
 function colorStyle(project: Project | undefined): CSSProperties {
   return { "--project-color": projectColor(project?.parsedId.slug ?? "") } as CSSProperties;
 }
 
-/** Where the word of a bar goes: at its start, or before its end when the bar starts near the right edge. */
-function wordPlace(start: number, end: number): CSSProperties {
-  return start <= 0.75
-    ? { left: `${String(start * 100)}%` }
-    : { right: `${String((1 - end) * 100)}%`, paddingRight: "var(--space-2)" };
+/** The words of a row for a screen reader: the title, the status and In use. The patterns show them to the eye. */
+function rowLabel(row: TimelineRow): string {
+  return [
+    row.title,
+    ...(row.status === null ? [] : [statusLabels[row.status]]),
+    ...(row.inUse ? [inUseLabel] : []),
+  ].join(", ");
+}
+
+/** One key of the timeline legend: a swatch of a bar pattern and its word. */
+function LegendKey({ pattern, text }: { readonly pattern: string; readonly text: string }): ReactElement {
+  return (
+    <span className="timeline-key">
+      <span className={`timeline-swatch ${pattern}`} aria-hidden="true" />
+      {text}
+    </span>
+  );
 }
 
 /** Where the date label goes: centred on the today line, or ending at it near the right edge, so it stays in the card. */
@@ -119,12 +129,16 @@ interface ProjectsHomeProps {
   readonly stateOf: (chat: SessionRecord) => ChatState;
   readonly onOpenChat: (chat: SessionRecord) => void;
   readonly onOpenProject: (project: Project) => void;
-  /** A press on a count filters the list by that status. */
-  readonly onFilterStatus: (status: ProjectStatus) => void;
+  /** A press on a count filters the list by that status, or by In use. */
+  readonly onFilterStatus: (status: ProjectStatusFilter) => void;
 }
 
-/** The statuses of the counts, in the order of the filter chips. */
-const countedStatuses = ["active", "in-use", "idea", "paused"] as const;
+/** The counts, in the order of the filter chips. In use counts the projects with the flag (#859). */
+const counted: readonly { readonly filter: "active" | "in-use" | "paused"; readonly pill: Pill | null }[] = [
+  { filter: "active", pill: statusPill("active") },
+  { filter: "in-use", pill: inUsePill(true) },
+  { filter: "paused", pill: statusPill("paused") },
+];
 
 export function ProjectsHome({
   projects,
@@ -136,7 +150,8 @@ export function ProjectsHome({
 }: ProjectsHomeProps): ReactElement {
   const now = new Date();
   const [picked, setYear] = useState<YearChoice>(now.getFullYear());
-  const [statuses, setStatuses] = useState<ReadonlySet<TimelineStatus>>(defaultTimelineStatuses);
+  // Only the paused projects can hide: an active project and a project in use always show (#859).
+  const [showPaused, setShowPaused] = useState(true);
   const known = projects ?? [];
   const years = projectYears(known, now);
   // A picked year can lose its last project, such as after a rename: this year then shows.
@@ -145,12 +160,7 @@ export function ProjectsHome({
   const projectOf = (chat: SessionRecord): Project | undefined =>
     chat.projectId === null ? undefined : byId.get(chat.projectId);
   const { needsYou, recent } = homeChats(chats, stateOf);
-  const shown = timeline(known, year, now, statuses);
-  const toggleStatus = (status: TimelineStatus): void => {
-    const next = new Set(statuses);
-    if (!next.delete(status)) next.add(status);
-    setStatuses(next);
-  };
+  const shown = timeline(known, year, now, showPaused);
   const counts = statusCounts(known, year);
   const yearWords = year === "all" ? "In all" : `In ${String(year)}`;
   return (
@@ -190,26 +200,26 @@ export function ProjectsHome({
             <section className="card home-card" aria-label="Timeline">
               <div className="home-card-head">
                 <h2 className="home-card-title">Timeline</h2>
-                <div className="filter-chips" role="group" aria-label="Statuses to show">
-                  {timelineStatuses.map((status) => (
-                    <button
-                      key={status}
-                      className="filter-chip timeline-chip"
-                      aria-pressed={statuses.has(status)}
-                      onClick={() => toggleStatus(status)}
-                    >
-                      {/* The swatch shows the pattern of the bars, so the chips are the legend too. */}
-                      <span className={`timeline-swatch ${status}`} aria-hidden="true" />
-                      {statusLabels[status]}
-                    </button>
-                  ))}
+                {/* The legend shows the pattern of each bar. Only Paused is a chip: it shows or hides the paused projects. */}
+                <div className="timeline-legend" role="group" aria-label="Legend">
+                  <LegendKey pattern="active" text={statusLabels.active} />
+                  <button
+                    className="filter-chip timeline-chip"
+                    aria-pressed={showPaused}
+                    onClick={() => setShowPaused(!showPaused)}
+                  >
+                    <span className="timeline-swatch paused" aria-hidden="true" />
+                    {statusLabels.paused}
+                  </button>
+                  {shown.rows.some((row) => row.status !== "active" && row.status !== "paused") && (
+                    <LegendKey pattern="closed" text={statusLabels.closed} />
+                  )}
+                  <LegendKey pattern="in-use" text={inUseLabel} />
                 </div>
               </div>
               {shown.rows.length === 0 ? (
                 <span className="muted">
-                  {statuses.size === 0
-                    ? "Pick a status to see its projects."
-                    : `No project with these statuses ${year === "all" ? "yet" : `in ${String(year)}`}.`}
+                  No active project or project in use {year === "all" ? "yet" : `in ${String(year)}`}.
                 </span>
               ) : (
                 <div className="timeline">
@@ -223,13 +233,19 @@ export function ProjectsHome({
                   {shown.rows.map((row) => (
                     <button
                       key={row.project.id}
-                      className={`timeline-row ${row.status}`}
-                      aria-label={`${row.title}, ${statusLabels[row.status]}`}
+                      className={`timeline-row ${row.status ?? "none"}${row.inUse ? " in-use" : ""}`}
+                      aria-label={rowLabel(row)}
                       style={colorStyle(row.project)}
                       onClick={() => onOpenProject(row.project)}
                     >
                       <span className="timeline-name">
                         <span>{row.title}</span>
+                        {/* The mark says In use in words, beside the ring of the bar. */}
+                        {row.inUse && (
+                          <span className="pill live timeline-in-use" aria-hidden="true">
+                            {inUseLabel}
+                          </span>
+                        )}
                       </span>
                       <span className="timeline-lane">
                         <span
@@ -239,12 +255,6 @@ export function ProjectsHome({
                             width: `${String((row.end - row.start) * 100)}%`,
                           }}
                         />
-                        {/* A state shows with a word too, never with colour alone. */}
-                        {row.status !== "active" && (
-                          <span className="timeline-word" style={wordPlace(row.start, row.end)}>
-                            {statusLabels[row.status]}
-                          </span>
-                        )}
                       </span>
                     </button>
                   ))}
@@ -262,10 +272,10 @@ export function ProjectsHome({
             </section>
             <section className="home-counts" aria-label={`Projects by status, ${yearWords.toLowerCase()}`}>
               <div className="home-count-row">
-                {countedStatuses.map((status) => (
-                  <button key={status} className="card home-count" onClick={() => onFilterStatus(status)}>
-                    <StatusPill pill={statusPill(status)} />
-                    <b>{counts[status]}</b>
+                {counted.map(({ filter, pill }) => (
+                  <button key={filter} className="card home-count" onClick={() => onFilterStatus(filter)}>
+                    <StatusPill pill={pill} />
+                    <b>{counts[filter]}</b>
                   </button>
                 ))}
               </div>

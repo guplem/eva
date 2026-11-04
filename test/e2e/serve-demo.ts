@@ -49,18 +49,25 @@ sandbox.write(
   "Projects/2019-03-old-tool/AGENTS.md",
   "---\ncreated: 2019-03\nstatus: closed\ntags: [legacy]\n---\n# Old tool\n",
 );
-// A project that the person uses, not one that they develop (#690).
+// A project that the person uses, and no longer develops (#690, #859).
 sandbox.write(
   vault,
   "Projects/2024-09-01-0900-family-recipes/AGENTS.md",
-  "---\ncreated: 2024-09-01T09:00\nstatus: in-use\ntags: [home]\n---\n# Family recipes\n\nThe recipes and the menus of each week.\n",
+  "---\ncreated: 2024-09-01T09:00\nstatus: closed\nin-use: true\ntags: [home]\n---\n# Family recipes\n\nThe recipes and the menus of each week.\n",
+);
+// A project whose work stopped: the timeline draws it with stripes (#857).
+sandbox.write(
+  vault,
+  "Projects/2025-11-01-0900-garden-plan/AGENTS.md",
+  "---\ncreated: 2025-11-01T09:00\nstatus: paused\ntags: [home]\n---\n# Garden plan\n\nThe beds and the seeds of the garden.\n",
 );
 sandbox.write(
   vault,
   "Projects/2024-06-01-0900-broken-notes/AGENTS.md",
   "---\ncreated: 2024-06-01T09:00\nstatus: active\nrepos: nope\n---\n# Broken notes\n",
 );
-// The details test changes a project, so each browser run gets its own.
+// The details test changes a project, so each browser run gets its own. Its old `idea` status and
+// comment show that the migration of #859 rewrites them when Eva starts.
 for (const run of ["desktop", "phone"]) {
   sandbox.write(
     vault,
@@ -122,12 +129,13 @@ for (const [path, text] of Object.entries(habitsWidgetFiles)) {
   if (path.startsWith("data/habits/") && path !== "data/habits/index.json")
     sandbox.write(vault, `Life/Health/Habits/${path.slice("data/habits/".length)}`, text);
 }
-// A widget project of the same widget, with one clone, so its page shows Preview (#693).
+// A widget project of the same widget, with one clone, so its page shows Preview (#693). The person
+// still builds it and uses it, so the timeline draws a ring around its solid bar (#859).
 const widgetProject = "Projects/2026-01-01-0900-habits-widget";
 sandbox.write(
   vault,
   `${widgetProject}/AGENTS.md`,
-  `---\ncreated: 2026-01-01T09:00\nstatus: active\nrepos:\n  - https://github.com/example-owner/habits-widget\nrepo_types:\n  https://github.com/example-owner/habits-widget: widget\n---\n# Habits widget\n\nThe habits of the home page.\n`,
+  `---\ncreated: 2026-01-01T09:00\nstatus: active\nin-use: true\nrepos:\n  - https://github.com/example-owner/habits-widget\nrepo_types:\n  https://github.com/example-owner/habits-widget: widget\n---\n# Habits widget\n\nThe habits of the home page.\n`,
 );
 sandbox.write(vault, ".gitignore", "Projects/*/repos/\n");
 sandbox.git(vault, "add", "-A");

@@ -3393,7 +3393,10 @@ test("the main navigation opens each destination at its own address, and the bac
   await page.goBack();
   await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   await page.goBack();
-  await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
+  // Like Projects, the Schedules page names its list, not the page.
+  await expect(
+    page.getByRole("navigation", { name: "Schedules" }).getByRole("heading", { name: "Schedules" }),
+  ).toBeVisible();
   // A reload keeps the destination.
   await page.reload();
   await expect(nav.getByRole("button", { name: "Schedules" })).toHaveAttribute("aria-current", "page");
@@ -6158,7 +6161,10 @@ test("each page shows line icons, never an emoji or a symbol mark", async ({ pag
   await expect(page.getByRole("button", { name: "Schedules" }).locator("svg.icon")).toBeVisible();
   await expectNoSymbolMarks(page);
   await page.getByRole("button", { name: "Schedules" }).click();
-  await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
+  // Like Projects, the Schedules page names its list, not the page.
+  await expect(
+    page.getByRole("navigation", { name: "Schedules" }).getByRole("heading", { name: "Schedules" }),
+  ).toBeVisible();
   await expectNoSymbolMarks(page);
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveAttribute("aria-current", "page");

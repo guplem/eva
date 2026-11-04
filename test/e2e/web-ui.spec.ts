@@ -958,6 +958,8 @@ test("the chat details list the context, and a tap shows a part's whole text (is
   await prompt.getByRole("button", { name: "Your rules for Eva" }).click();
   const part = page.getByRole("dialog", { name: "Your rules for Eva" });
   await expect(part).toContainText("# You are Eva");
+  // A part is a file to read, so a computer shows it in a wide box, not a narrow one.
+  if (test.info().project.name === "desktop") expect((await part.boundingBox())?.width ?? 0).toBeGreaterThan(700);
   await part.getByRole("button", { name: "Close" }).click();
   await expect(part).toHaveCount(0);
 });
@@ -1933,13 +1935,17 @@ test("the project page shows the facts, the quick links and a clones section", a
   await logIn(page);
   await openExampleApp(page);
   const facts = page.getByRole("region", { name: "Project facts" });
-  await expect(facts.getByText("2025-03-02T10:15")).toBeVisible();
+  // A date shows in the language of the browser, so the test finds it by the value of the file.
+  await expect(facts.locator('time[datetime="2025-03-02T10:15"]')).toBeVisible();
+  await expect(facts.getByText("Deadline", { exact: true })).toBeVisible();
   await expect(facts.getByText("#web")).toBeVisible();
-  const repository = facts.getByRole("link", { name: "github.com/example-owner/example-app" });
+  const design = facts.getByRole("link", { name: /Figma/ });
+  await expect(design).toHaveAttribute("href", "https://www.figma.com/file/example-app");
+  const repository = facts.getByRole("link", { name: /github\.com\/example-owner\/example-app/ });
   await expect(repository).toHaveAttribute("href", "https://github.com/example-owner/example-app");
   await expect(repository).toHaveAttribute("target", "_blank");
   // A local remote has no web page, so it stays plain text.
-  await expect(facts.getByRole("link")).toHaveCount(2);
+  await expect(facts.getByRole("link")).toHaveCount(3);
   await expect(page.getByRole("region", { name: "Clones" }).getByRole("button", { name: "New clone" })).toBeVisible();
 
   await facts.getByRole("link", { name: "Open in Files" }).click();
@@ -3771,6 +3777,8 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   // A stored answer keeps no details in the session list, so the dialog fetches them.
   const dialog = page.getByRole("dialog", { name: "Step: Command" });
   await expect(dialog.locator(".status-pill")).toHaveText("Done");
+  // A step shows its input and output, so a computer shows it in a wide box.
+  if (test.info().project.name === "desktop") expect((await dialog.boundingBox())?.width ?? 0).toBeGreaterThan(700);
   // A computer shows a centred box, and a phone a bottom sheet (issue 644).
   const gapBelow = (page.viewportSize()?.height ?? 0) - (await restingBottom(dialog));
   if (test.info().project.name === "phone") expect(gapBelow).toBeLessThan(1);

@@ -1789,8 +1789,9 @@ textarea {
   gap: var(--space-2);
 }
 
+/* A dialog to read a file or long output in: the narrow box would wrap each line. */
 .dialog.wide {
-  max-width: 760px;
+  max-width: 960px;
   max-height: calc(100dvh - 32px);
   overflow: auto;
   overscroll-behavior-y: contain;
@@ -3739,6 +3740,26 @@ button.small {
 .project-facts .chat-facts dd {
   justify-self: start;
   text-align: start;
+}
+
+/* A nested map of the front matter sits under its name, with its values in a lighter weight. */
+.project-facts .chat-facts .chat-facts {
+  font-weight: 500;
+}
+
+/* A long value, such as a goal, keeps the line breaks of the file. */
+.fact-text {
+  white-space: pre-line;
+}
+
+.fact-text a {
+  color: var(--accent-ink);
+}
+
+/* The path of a link chip, after the name of its site. */
+.link-chip-site {
+  font-weight: 500;
+  color: var(--muted);
 }
 
 /* A quick link looks like the chip of a plain fact, with the link colour, so the person sees it opens. */

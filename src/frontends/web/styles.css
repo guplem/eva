@@ -98,6 +98,9 @@
   --soft-ink: oklch(0.4 calc(var(--c) * 0.6) var(--h));
   --eye: oklch(0.87 min(var(--c), 0.13) var(--h));
   --glow: oklch(0.74 var(--c) var(--h));
+  /* The eyes of the offline visor take the hue of --warn. The visor stays dark, so one value serves both themes. */
+  --eye-warn: oklch(0.86 0.14 75);
+  --glow-warn: oklch(0.72 0.17 60);
   --visor: oklch(0.26 0.02 var(--h));
   --visor2: oklch(0.07 0.01 var(--h));
   --shell: oklch(1 0 0);

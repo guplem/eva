@@ -545,7 +545,13 @@
   }
 }
 
-/* Not in the reference: Eva does not answer (#853). A crossed wifi glows in place of the eyes. */
+/* Not in the reference: Eva does not answer (#853). A crossed wifi glows in place of the eyes.
+   It takes the warn hue, as every other sign of the offline state. */
+.mk.offline {
+  --eye: var(--eye-warn);
+  --glow: var(--glow-warn);
+}
+
 .mk.offline .eyes svg {
   display: block;
   width: 0.64em;

@@ -301,23 +301,31 @@ function allMarks(range: DateRange): RangeMark[] {
     }));
 }
 
-/** True when the timeline shows the project: each active project and each project in use, and a paused one on request. */
-function isShown(frontMatter: Project["frontMatter"], showPaused: boolean): boolean {
-  return frontMatter.status === "active" || frontMatter.inUse || (showPaused && frontMatter.status === "paused");
+/** The statuses that the timeline shows when the page opens: the work of now (#881). */
+export const timelineStatuses: readonly ProjectStatus[] = ["active"];
+
+/** True when the timeline shows the project: each project of a shown status, and each project in use. */
+function isShown(frontMatter: Project["frontMatter"], statuses: readonly ProjectStatus[]): boolean {
+  return frontMatter.inUse || (frontMatter.status !== null && statuses.includes(frontMatter.status));
 }
 
 /**
- * The shown projects, each once, from its creation to today (#857, #859). The person can
- * hide the paused projects, but never a project in use. The bars show no stretches of activity
+ * The shown projects, each once, from its creation to today (#857, #859). The person picks the
+ * statuses to show, but a project in use always shows (#881). The bars show no stretches of activity
  * from the chats: a deleted chat would take its activity away.
  */
-export function timeline(projects: readonly Project[], range: DateRange, now: Date, showPaused = true): Timeline {
+export function timeline(
+  projects: readonly Project[],
+  range: DateRange,
+  now: Date,
+  statuses: readonly ProjectStatus[] = timelineStatuses,
+): Timeline {
   const from = range.from.getTime();
   const to = range.to.getTime();
   const shareOf = (time: number): number => Math.min(1, Math.max(0, (time - from) / (to - from)));
   const end = shareOf(now.getTime());
   const rows = projects
-    .filter((project) => isShown(project.frontMatter, showPaused))
+    .filter((project) => isShown(project.frontMatter, statuses))
     .map((project) => ({ project, created: createdAt(project) }))
     .sort((first, second) => first.created.getTime() - second.created.getTime())
     .filter((item) => item.created.getTime() < to)

@@ -22,12 +22,14 @@ import {
   rangeWords,
   statusCounts,
   timeline,
+  timelineStatuses,
   todayLabel,
   type MonthPoint,
   type RangeChoice,
   type TimelineRow,
 } from "./projects-home.ts";
-import type { ProjectStatusFilter } from "../../../shared/project-statuses.ts";
+import { Icon } from "./icons.tsx";
+import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
 
 /** The colour of a project, as a custom property, so the rules in `projects-home.css` use it. */
 export function colorStyle(project: Project | undefined): CSSProperties {
@@ -249,11 +251,13 @@ interface ProjectStatsProps {
 /** The timeline, the monthly chart and the counts of the range. */
 export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }: ProjectStatsProps): ReactElement {
   const now = new Date();
-  // Only the paused projects can hide: an active project and a project in use always show (#859).
-  const [showPaused, setShowPaused] = useState(true);
+  // Each status can hide, but a project in use always shows (#859, #881).
+  const [statuses, setStatuses] = useState<readonly ProjectStatus[]>(timelineStatuses);
+  const toggle = (status: ProjectStatus): void =>
+    setStatuses(projectStatuses.filter((each) => (each === status) !== statuses.includes(each)));
   const choice = knownChoice(range, projects, now);
   const span = rangeOf(choice, projects, now);
-  const shown = timeline(projects, span, now, showPaused);
+  const shown = timeline(projects, span, now, statuses);
   // A range after today has no point yet: day 1 of the month of a later first day is not in it.
   const points = span.from > now ? [] : monthlyStatus(projects, span, now);
   const counts = statusCounts(projects, span);
@@ -263,28 +267,30 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
       <section className="card home-card" aria-label="Timeline">
         <div className="home-card-head">
           <h2 className="home-card-title">Timeline</h2>
-          {/* The legend shows the pattern of each bar. Only Paused is a chip: it shows or hides the paused projects. */}
+          {/* The legend shows the pattern of each bar. Each status is a chip that shows or hides its projects. In use always shows. */}
           <div className="timeline-legend" role="group" aria-label="Legend">
-            <LegendKey pattern="active" text={statusLabels.active} />
-            <button
-              className="filter-chip timeline-chip"
-              aria-label="Show the paused projects"
-              aria-pressed={showPaused}
-              onClick={() => setShowPaused(!showPaused)}
-            >
-              <span className="timeline-swatch paused" aria-hidden="true" />
-              {statusLabels.paused}
-            </button>
-            {shown.rows.some((row) => row.status === "closed") && (
-              <LegendKey pattern="closed" text={statusLabels.closed} />
-            )}
+            {projectStatuses.map((status) => (
+              <button
+                key={status}
+                className="filter-chip timeline-chip"
+                aria-label={`Show the ${statusLabels[status].toLowerCase()} projects`}
+                aria-pressed={statuses.includes(status)}
+                onClick={() => toggle(status)}
+              >
+                <span className="timeline-check" aria-hidden="true">
+                  <Icon name="check" />
+                </span>
+                <span className={`timeline-swatch ${status}`} aria-hidden="true" />
+                {statusLabels[status]}
+              </button>
+            ))}
             <LegendKey pattern="in-use" text={inUseLabel} />
           </div>
         </div>
         {span.from > now ? (
           <span className="muted">This range starts after today.</span>
         ) : shown.rows.length === 0 ? (
-          <span className="muted">No active project or project in use in this range.</span>
+          <span className="muted">No project in use or of a shown status in this range.</span>
         ) : (
           <div className="timeline">
             <div className={`timeline-marks${shown.marks.length > 6 ? " dense" : ""}`} aria-hidden="true">
@@ -303,12 +309,6 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
                 onClick={() => onOpenProject(row.project)}
               >
                 <span className="timeline-name">
-                  {/* The mark at the left says In use, beside the ring of the bar. A narrow timeline keeps its dot only. */}
-                  {row.inUse && (
-                    <span className="pill dot live timeline-in-use" aria-hidden="true">
-                      <span className="timeline-in-use-word">{inUseLabel}</span>
-                    </span>
-                  )}
                   <span>{row.title}</span>
                 </span>
                 <span className="timeline-lane">
@@ -318,7 +318,14 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
                       left: `${String(row.start * 100)}%`,
                       width: `${String((row.end - row.start) * 100)}%`,
                     }}
-                  />
+                  >
+                    {/* The words sit inside the ring. A bar too short for them keeps the ring only. */}
+                    {row.inUse && (
+                      <span className="timeline-bar-label" aria-hidden="true">
+                        {inUseLabel}
+                      </span>
+                    )}
+                  </span>
                 </span>
               </button>
             ))}

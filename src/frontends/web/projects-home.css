@@ -154,13 +154,6 @@
   white-space: nowrap;
 }
 
-/* The In use mark sits at the left of the name. The title gives way first. */
-.timeline-name .timeline-in-use {
-  flex: none;
-  padding: 0 var(--space-2);
-  overflow: visible;
-}
-
 .timeline-name::before {
   content: "";
   flex: none;
@@ -177,18 +170,54 @@
   background: var(--chip);
 }
 
+/* The bar is a container, so a bar too short for the In use words hides them. */
 .timeline-bar {
+  container: timeline-bar / inline-size;
   position: absolute;
   top: 0;
   bottom: 0;
   min-width: var(--space-1);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
   border-radius: var(--radius-pill);
 }
 
-/* A project from an earlier year runs in from the edge. */
+/*
+ * A project from an earlier year fades in from the edge: a hard line would say that it started there.
+ * The mask reads only the alpha, so any opaque token works.
+ */
 .timeline-bar.before {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
+  mask-image: linear-gradient(to right, transparent, var(--ink) var(--space-8));
+}
+
+.timeline-bar-label {
+  padding-left: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+/* The words start after the fade. */
+.timeline-bar.before .timeline-bar-label {
+  padding-left: var(--space-8);
+}
+
+@container timeline-bar (max-width: 56px) {
+  .timeline-bar-label {
+    display: none;
+  }
+}
+
+/* The words of a faded bar start later, so they need a longer bar. */
+@container timeline-bar (max-width: 76px) {
+  .timeline-bar.before .timeline-bar-label {
+    display: none;
+  }
 }
 
 /*
@@ -210,23 +239,41 @@
   );
 }
 
-/* A faint fill: the work ended, or the project has no status. Only a project in use shows so. */
+/* Dots on a faint fill: the work ended. The dots keep it apart from the stripes of Paused (#881). */
 .timeline-row.closed .timeline-bar,
-.timeline-row.none .timeline-bar,
-.timeline-swatch.closed,
-.timeline-swatch.in-use {
+.timeline-swatch.closed {
+  background:
+    radial-gradient(
+        circle at 3px 3px,
+        color-mix(in oklch, var(--project-color) 70%, transparent) 1.4px,
+        transparent 1.9px
+      )
+      0 0 / 7px 7px,
+    color-mix(in oklch, var(--project-color) 12%, transparent);
+}
+
+/* A faint fill: the project has no status. Only a project in use shows so. */
+.timeline-row.none .timeline-bar {
   background: color-mix(in oklch, var(--project-color) 14%, transparent);
 }
 
 /*
- * A ring around the bar: the person uses the project, whatever its work (#859). It goes over any
- * pattern. A gap in the colour of the card keeps the ring apart from a solid bar of the same colour.
+ * A ring on the edge of the bar: the person uses the project, whatever its work (#859). It goes over
+ * any pattern and touches the bar, with no gap (#881).
  */
 .timeline-row.in-use .timeline-bar,
 .timeline-swatch.in-use {
-  box-shadow:
-    0 0 0 2px var(--panel),
-    0 0 0 4px var(--project-color);
+  box-shadow: inset 0 0 0 2px var(--project-color);
+}
+
+/* The key of the legend has a faint fill inside its ring, as most bars in use do. */
+.timeline-swatch.in-use {
+  background: color-mix(in oklch, var(--project-color) 14%, transparent);
+}
+
+/* A solid bar softens its fill, so the ring in the same colour shows. */
+.timeline-row.active.in-use .timeline-bar {
+  background: color-mix(in oklch, var(--project-color) 26%, var(--panel));
 }
 
 .timeline-legend {
@@ -267,11 +314,26 @@
   border-radius: var(--radius-pill);
 }
 
-/* A smaller ring fits the small swatch of the legend. */
-.timeline-swatch.in-use {
-  box-shadow:
-    0 0 0 1px var(--panel),
-    0 0 0 3px var(--project-color);
+/* The checkbox of a status chip: empty while the status hides, ticked while it shows. */
+.timeline-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: var(--space-1);
+}
+
+.timeline-check .icon {
+  width: 11px;
+  height: 11px;
+  stroke-width: 3;
+  visibility: hidden;
+}
+
+.timeline-chip[aria-pressed="true"] .timeline-check .icon {
+  visibility: visible;
 }
 
 /* The layer covers the lanes, from below the month marks to the date label. */
@@ -338,11 +400,6 @@
 @media (max-width: 760px) {
   .timeline {
     --timeline-name: 110px;
-  }
-
-  /* A narrow name column keeps the dot of the In use mark only, so the title stays readable. The row label says it in words. */
-  .timeline-name .timeline-in-use-word {
-    display: none;
   }
 }
 

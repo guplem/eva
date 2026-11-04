@@ -2304,13 +2304,24 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   await expect(page.getByRole("region", { name: "Recent" })).toBeVisible();
   // A project in use always shows, whatever its status (#859).
   await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
-  // Only the Paused chip of the legend hides a status, and it never hides a project in use.
+  // Each status is a chip of the legend, only Active is on at first, and no chip hides a project in use (#881).
+  const legend = timeline.getByRole("group", { name: "Legend" });
+  await expect(legend.getByRole("button")).toHaveCount(3);
+  await expect(legend.getByRole("button", { name: "Show the active projects" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   const garden = timeline.getByRole("button", { name: "Garden plan, Paused" });
-  await expect(garden).toBeVisible();
-  await timeline.getByRole("group", { name: "Legend" }).getByRole("button", { name: "Paused" }).click();
   await expect(garden).toHaveCount(0);
+  await legend.getByRole("button", { name: "Show the paused projects" }).click();
+  await expect(garden).toBeVisible();
+  const oldTool = timeline.getByRole("button", { name: "Old tool, Closed" });
+  await expect(oldTool).toHaveCount(0);
+  await legend.getByRole("button", { name: "Show the closed projects" }).click();
+  await expect(oldTool).toBeVisible();
+  await legend.getByRole("button", { name: "Show the closed projects" }).click();
+  await expect(oldTool).toHaveCount(0);
   await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
-  await expect(timeline.getByRole("group", { name: "Legend" }).getByRole("button")).toHaveCount(1);
   // The range starts at the last 12 months, and the picker changes it (#878).
   const startedLine = page.getByText(/^In [^:]+: \d+ projects? started\.$/);
   await expect(startedLine).toHaveText(/^In the last 12 months: /);

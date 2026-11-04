@@ -216,21 +216,28 @@ describe("timeline", () => {
   ];
   const year = (value: number): DateRange => ({ from: new Date(value, 0, 1), to: new Date(value + 1, 0, 1) });
 
-  test("shows the active, the paused and the in-use projects once each, the oldest first (#859)", () => {
-    const rows = timeline(projects, year(2026), now).rows;
+  test("shows the projects of each shown status and the projects in use, once each, the oldest first (#859)", () => {
+    const rows = timeline(projects, year(2026), now, ["active", "paused", "closed"]).rows;
     expect(rows.map((row) => [row.title, row.status, row.inUse])).toEqual([
       ["old", "paused", false],
       ["early", "active", false],
       ["used", "closed", true],
       ["built", "active", true],
+      ["done", "closed", false],
       ["late", "active", false],
     ]);
   });
 
-  test("hides the paused projects when the person asks, but never a project in use (#859)", () => {
+  test("shows only the active projects and the projects in use by default (#881)", () => {
+    const rows = timeline(projects, year(2026), now).rows;
+    expect(rows.map((row) => row.title)).toEqual(["early", "used", "built", "late"]);
+  });
+
+  test("hides each status that the person turns off, Active too, but never a project in use (#859, #881)", () => {
     const pausedTool = project("2026-05-01-0000-paused-tool", "paused", { inUse: true });
-    const rows = timeline([...projects, pausedTool], year(2026), now, false).rows;
-    expect(rows.map((row) => row.title)).toEqual(["early", "used", "built", "paused-tool", "late"]);
+    const unsorted = project("2026-06-01-0000-unsorted", null);
+    const rows = timeline([...projects, pausedTool, unsorted], year(2026), now, ["closed"]).rows;
+    expect(rows.map((row) => row.title)).toEqual(["used", "built", "done", "paused-tool"]);
   });
 
   test("runs each bar from the creation of the project to today", () => {
@@ -244,13 +251,13 @@ describe("timeline", () => {
   });
 
   test("starts a project of an earlier year at the edge, and says so", () => {
-    const old = timeline(projects, year(2026), now).rows.find((row) => row.title === "old");
+    const old = timeline(projects, year(2026), now, ["paused"]).rows.find((row) => row.title === "old");
     expect(old?.start).toBe(0);
     expect(old?.startsBefore).toBe(true);
   });
 
   test("fills a past year to its end, and leaves out a project that started after it", () => {
-    const shown = timeline(projects, year(2025), now);
+    const shown = timeline(projects, year(2025), now, ["paused"]);
     expect(shown.today).toBeNull();
     expect(shown.rows.map((row) => row.title)).toEqual(["old"]);
     expect(shown.rows[0]?.end).toBe(1);

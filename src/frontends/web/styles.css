@@ -98,6 +98,9 @@
   --soft-ink: oklch(0.4 calc(var(--c) * 0.6) var(--h));
   --eye: oklch(0.87 min(var(--c), 0.13) var(--h));
   --glow: oklch(0.74 var(--c) var(--h));
+  /* The eyes of the offline visor take the hue of --warn. The visor stays dark, so one value serves both themes. */
+  --eye-warn: oklch(0.86 0.14 75);
+  --glow-warn: oklch(0.72 0.17 60);
   --visor: oklch(0.26 0.02 var(--h));
   --visor2: oklch(0.07 0.01 var(--h));
   --shell: oklch(1 0 0);
@@ -763,27 +766,6 @@ textarea {
   flex: 1;
 }
 
-/* Offline and the open problems, at the top of the main area. Each says what happened and has the fix. */
-/* The notices come under the page title, which each view renders in its own branch. */
-.main > * {
-  order: 2;
-}
-
-.main > .main-header {
-  order: 0;
-}
-
-.main > .notices {
-  order: 1;
-}
-
-.notices {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4) 0;
-}
-
 .notice {
   display: flex;
   gap: var(--space-3);
@@ -830,19 +812,10 @@ textarea {
   gap: var(--space-3);
 }
 
-.offline-note,
 .conflict-head {
   display: flex;
   gap: var(--space-4);
   align-items: center;
-}
-
-.offline-note {
-  padding: var(--space-1) var(--space-1) 0 var(--space-2);
-}
-
-.narrow-only {
-  display: none;
 }
 
 /* The list (300 px), the main area, and the inspector, as in the EVE layout. */
@@ -1830,7 +1803,7 @@ textarea {
 }
 
 @media (max-width: 760px) {
-  /* On a phone the two versions of a note stack, and the offline face is small. */
+  /* On a phone the two versions of a note stack. */
   .conflict-versions {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1839,10 +1812,6 @@ textarea {
   .wide-only,
   .chat-list-header .wide-only {
     display: none;
-  }
-
-  .narrow-only {
-    display: contents;
   }
 
   .app {

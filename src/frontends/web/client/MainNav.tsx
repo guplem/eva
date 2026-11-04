@@ -41,6 +41,7 @@ export function MainNav(props: MainNavProps): ReactElement {
   const { current, onOpen, approvals, setupMissing, signal } = props;
   const visor = navVisorState(props);
   const shownButton = currentNavButton(current, props.homeShown);
+  const offline = !props.isConnected;
   // Only the crossed face pulses: an approval or an offline face would only borrow the red.
   const alarm = signal.alarm && visor.face === stateFaces.broken;
   // The visible label "Eva" starts the name, so a voice command that says it finds the button.
@@ -98,7 +99,8 @@ export function MainNav(props: MainNavProps): ReactElement {
         data-tooltip={visor.words}
         data-tooltip-side="right"
         onClick={() => {
-          setTapped((last) => ({ face: tapFace(Math.random, last?.face) }));
+          // A playful face would hide that Eva does not answer.
+          if (!offline) setTapped((last) => ({ face: tapFace(Math.random, last?.face) }));
           props.onHome();
         }}
       >
@@ -109,6 +111,7 @@ export function MainNav(props: MainNavProps): ReactElement {
             festive={tapped === null ? festive : null}
             alarm={tapped === null && alarm}
             projectEyes={projectEyes}
+            offline={offline && tapped === null}
           />
           {signal.count > 0 && (
             <span className={`nav-badge${props.unreadError ? " bad" : ""}`} aria-hidden="true">

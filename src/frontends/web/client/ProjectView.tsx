@@ -3,7 +3,7 @@
  * clone, the chat of a clone with a header that says where it runs, the project details, and the
  * repository setup.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   api,
   type ChatBlocker,
@@ -51,8 +51,6 @@ interface ProjectViewProps {
   readonly linkedChat: SessionRecord | null;
   /** `address` names the page of the opened chat, so the used link leaves the history. */
   readonly onLinkedChatOpened: (address?: string) => void;
-  /** Offline and the open problems, shown at the top of the main area. */
-  readonly notices: ReactNode;
   readonly approvals: ChatApprovals;
   /** The missing setup step that stops every chat, or null. */
   readonly blocker: ChatBlocker | null;
@@ -96,7 +94,6 @@ export function ProjectView({
   onNavigate,
   linkedChat,
   onLinkedChatOpened,
-  notices,
   approvals,
   blocker,
   voiceNotes,
@@ -655,7 +652,6 @@ export function ProjectView({
         <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />
       )}
       <main className="main">
-        {notices}
         {page === null ? (
           <ProjectsHome
             projects={allProjects}

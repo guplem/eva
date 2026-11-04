@@ -22,6 +22,10 @@ import { HelpLink } from "./HelpLink.tsx";
 import { helpOfProblem } from "./help-links.ts";
 
 interface NotificationCenterProps {
+  /** Eva answers. The center lives in the page, so it still shows why when she does not (#853). */
+  readonly isConnected: boolean;
+  /** Tries to reach Eva at once, before the next timed try. */
+  readonly onRetryNow: () => void;
   readonly problems: EvaStatus["problemDetails"];
   readonly entries: readonly HistoryEntry[];
   /** The setup steps that are left. */
@@ -108,9 +112,21 @@ export function NotificationCenter(props: NotificationCenterProps): ReactElement
             </button>
           </div>
 
-          {(needs.length > 0 || shownSteps.length > 0) && (
+          {(!props.isConnected || needs.length > 0 || shownSteps.length > 0) && (
             <section className="center-section" aria-label="Problems">
               <h2>Needs you</h2>
+              {!props.isConnected && (
+                // The page tries again every 2 seconds, so a countdown would only flicker.
+                <div className="notice warn" role="status">
+                  <Icon name="wifi-off" />
+                  <span className="notice-text">
+                    <strong>Eva does not answer.</strong> The hub may be off, or this device left Tailscale.
+                  </span>
+                  <button className="primary" onClick={props.onRetryNow}>
+                    Try now
+                  </button>
+                </div>
+              )}
               {needs.map((problem) => {
                 const action = problemAction(problem.key, syncStatus);
                 const help = helpOfProblem(problem.key);

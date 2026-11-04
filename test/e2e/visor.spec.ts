@@ -114,7 +114,7 @@ test("with reduced motion, the rotate mode stays on one face", async ({ page }) 
   await expect(page.getByRole("figure", { name: "rotate" }).locator(".mk")).toHaveClass(/e-scan/);
 });
 
-test("the nav visor shows EVE, worried while the page reconnects", async ({ page }) => {
+test("the nav visor shows EVE, worried and offline while the page reconnects", async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
   await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
     socket.connectToServer();
@@ -129,7 +129,8 @@ test("the nav visor shows EVE, worried while the page reconnects", async ({ page
   await expect(visor).toHaveClass("mk");
 
   await sockets.at(-1)?.close();
-  await expect(visor).toHaveClass("mk e-worry");
+  // The crossed wifi takes the place of the eyes while she does not answer (#853).
+  await expect(visor).toHaveClass("mk e-worry offline");
   await expect(visor).toHaveClass("mk");
 });
 

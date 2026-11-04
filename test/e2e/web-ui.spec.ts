@@ -3695,9 +3695,13 @@ test("a dropped connection says Eva does not answer, and the reconnect clears a 
   await expect(page.getByText("half an answer")).toBeVisible();
 
   await sockets.at(-1)?.close();
-  await expect(page.getByText("Eva does not answer.")).toBeVisible();
-  await expect(page.getByText("Your message stays in the box")).toBeVisible();
-  await expect(page.getByText("Eva does not answer.")).toBeHidden();
+  // The visor shows the no-connection sign and a dot, not a banner that pushes the page down (#853).
+  const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
+  await expect(visor.locator(".mk.offline")).toBeVisible();
+  await expect(visor.locator(".nav-dot")).toBeVisible();
+  await expect(visor).toHaveAccessibleName(/Eva does not answer/);
+  await expect(page.locator(".notice")).toHaveCount(0);
+  await expect(visor.locator(".mk.offline")).toBeHidden();
   await expect(page.getByText("half an answer")).toHaveCount(0);
 });
 
@@ -3712,14 +3716,22 @@ test("Try now connects at once, before the next timed try", async ({ page }) => 
   await logIn(page);
   refuse = true;
   await sockets.at(-1)?.close();
-  const banner = page.getByRole("status").filter({ hasText: "Eva does not answer." });
-  await expect(banner).toBeVisible();
+  const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
+  await expect(visor.locator(".mk.offline")).toBeVisible();
+  // The notification center gives the reason, with the button that tries again (#853).
+  await openCenter(page);
+  const notice = page
+    .getByRole("region", { name: "Problems" })
+    .locator(".notice")
+    .filter({ hasText: "Eva does not answer." });
+  await expect(notice).toContainText("Tailscale");
   // A timed try just failed, so the next one is 2 seconds away: only Try now can connect sooner.
   const dropped = sockets.length;
   await expect.poll(() => sockets.length).toBeGreaterThan(dropped);
   refuse = false;
-  await banner.getByRole("button", { name: "Try now" }).click();
-  await expect(banner).toBeHidden({ timeout: 1_000 });
+  await notice.getByRole("button", { name: "Try now" }).click();
+  await expect(visor.locator(".mk.offline")).toBeHidden({ timeout: 1_000 });
+  await expect(notice).toBeHidden();
 });
 
 test("back on the page, a stale answer from before the sleep is cleared", async ({ page }) => {

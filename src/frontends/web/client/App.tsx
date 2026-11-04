@@ -61,7 +61,6 @@ import { browserPage, reloadIfStale } from "./page-freshness.ts";
 import { noticeReconnect } from "./widget-frames.ts";
 import { isLongHide } from "./event-stream.ts";
 import { problemSettingsRoute, shownProblems, withPendingHides, type ProblemAction } from "./problem-actions.ts";
-import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
@@ -697,7 +696,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       },
     );
   };
-  const notices = <ProblemNotices isConnected={isConnected} onRetryNow={() => events.current?.retryNow()} />;
   const unreadProblems = shownProblems(problems);
   const unread = unreadChats(sessions, readChats);
   const unreadError = unreadProblems.some((problem) => problem.level === "error");
@@ -706,6 +704,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     unreadProblems: unreadProblems.length,
     unreadError,
     news: setupMissing > 0 || notifications.some((entry) => !entry.read),
+    offline: !isConnected,
     centerOpen: screen === notificationCenter,
   });
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
@@ -737,9 +736,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         projectTurns={runningTurns.project}
       />
       <div className="app-body">
-        {/* The chat views put the notices in their main area, beside the list. */}
-        {(screen === "settings" || screen === "schedules" || screen === "files" || screen === notificationCenter) &&
-          notices}
         <ApprovalNotice entries={elsewhere} />
         {screen === "chats" && (
           <AssistantView
@@ -752,7 +748,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
             newChatRequest={newChatRequest}
             linkedChat={linkedChat}
             onLinkedChatOpened={onLinkedChatOpened}
-            notices={notices}
             approvals={chatApprovals}
             blocker={chatBlocker}
             voiceNotes={voiceNotes}
@@ -777,7 +772,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
             onLinkedChatOpened={onLinkedChatOpened}
             onChanged={refreshSessions}
             onNavigate={() => setSidebarOpen(false)}
-            notices={notices}
             approvals={chatApprovals}
             blocker={chatBlocker}
             voiceNotes={voiceNotes}
@@ -788,6 +782,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         )}
         {screen === notificationCenter && (
           <NotificationCenter
+            isConnected={isConnected}
+            onRetryNow={() => events.current?.retryNow()}
             problems={problems}
             entries={notifications}
             steps={steps}

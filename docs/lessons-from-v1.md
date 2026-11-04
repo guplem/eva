@@ -96,8 +96,8 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 
 64. `[adapt]` **Schedule definitions live in the vault. Learned state, such as a topic id, lives on the machine.** → Definitions in `.eva/schedules.json`. State in the instance home. Source: `server/adr/0013`.
 65. `[keep]` **Never reuse or change a schedule id.** State is keyed by it. Source: `schedule` skill.
-66. `[keep]` **A new or changed schedule shows a setup card before it first fires.** It is the check against an injected schedule. Source: `7a9d581`, `d9f2c8b`.
-67. `[keep]` **Anyone who can push to the vault can make the machine run a prompt.** Accepted, with the setup card as the check. Source: `server/adr/0005`.
+66. `[obsolete]` **A new or changed schedule shows a setup card before it first fires.** It is the check against an injected schedule. Source: `7a9d581`, `d9f2c8b`. The owner removed the setup card (#855).
+67. `[adapt]` **Anyone who can push to the vault can make the machine run a prompt.** Accepted, with the setup card as the check. Source: `server/adr/0005`. → Accepted with no check since #855. A change or a start after a pause skips a slot that is due then.
 68. `[keep]` **Catch up a missed firing within 1 hour. Fire once when the clocks go back. Use a configured time zone, because a server clock is often UTC.** Source: `613418f`, `d991e63`.
 69. `[keep]` **Read the schedules file tolerantly.** Deep JSON raised `RecursionError`. Skip a bad entry, not the whole file. Source: `613418f`.
 70. `[keep]` **A topic deleted in the Telegram app shows as a 400 error on a typing action.** Source: `7367e0a`.

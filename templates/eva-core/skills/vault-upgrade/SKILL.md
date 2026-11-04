@@ -82,7 +82,7 @@ Check the result against the inventory:
 - Each secret file still matches a pattern of `.eva/secret-files` or the defaults. A moved secret file still names its old path inside, and opens as before. List each one.
 - Each test of "How to detect a vault that has it" passes on the branch. Name each one that fails in the summary, with its paths and a fix to propose. The person decides.
 
-Write the report to the path that `start` printed: each file and what happened to it, each own line that you left out, each link that you fixed, and what the person must do. That is: each widget that needs a new approval, each changed schedule that shows its setup card again, and each fact for an app that you cannot reach, such as a birthday for the contacts app.
+Write the report to the path that `start` printed: each file and what happened to it, each own line that you left out, each link that you fixed, and what the person must do. That is: each widget that needs a new approval, and each fact for an app that you cannot reach, such as a birthday for the contacts app.
 
 ## 6. The final review
 

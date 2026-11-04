@@ -228,7 +228,6 @@ From a phone: `/status` shows the problems and the version of Eva and each tool,
 | The update check or install failed   | The checks failed for 2 hours or more, or an install failed. A failed install keeps the old version.                         |
 | The Claude Code update failed        | The alert names the reason. Chats keep the old version of Claude Code.                                                       |
 | A reminder failed to run             | The alert names the reminder.                                                                                                |
-| A reminder waits for its card        | No card reached you, so it does not run: see [Optional features](#optional-features).                                        |
 | Eva started after an unclean exit    | A crash or a power cut stopped her. Send `/logs`.                                                                            |
 | Eva cannot read Telegram             | Another program uses the bot, or Telegram failed for over 15 minutes.                                                        |
 | The vault sync is paused             | The vault is on another branch. Fix it, then send `/sync`.                                                                   |
@@ -466,12 +465,11 @@ Some commands work differently in the sandbox:
 Each feature stays off until you set it up. `eva doctor` shows which tools are missing.
 
 - **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app. A schedule runs at a time on some days of the week, every few hours, days or weeks from a first run, or once at a date and time. Eva keeps them in `.eva/schedules.json` in the vault, and only the hub runs them. When a chat adds or changes a schedule, Eva asks you first.
-  - Before a new or changed schedule runs, Eva shows a card with every detail, in Telegram or in the web app. Check it, and tap **Got it**. If you did not make it, tap **Remove schedule**.
-  - A schedule waits until a card reaches you, and Eva sends an alert meanwhile.
+  - A new or changed schedule runs at its next time. A change to a time that just passed waits for the next one.
   - A schedule sends a text, sends a vault file, or runs a prompt. A prompt starts a new chat, named after the schedule, and can pick a model.
   - The Schedules page shows what runs today, when each schedule repeats, and how its last run went. Use the switch of a schedule to pause it. Tap the pen to change it: its history stays. `/schedules` in Telegram lists them.
   - A one-off that Eva misses because she is off runs when she is back. When it comes an hour or more late, a line says so. After its run, it shows as "Ended". To run it again, give it a new date.
-  - Ask "tell me when the bank replies" to get a watch. A watch is a schedule that checks, for example once a day, until a last day. A run with nothing new stays quiet. It sends no message and no notification, and Eva deletes its chat. The Schedules page shows "No news" for it. The run that finds the reply sends it, and then the watch ends. The page shows it as "Ended". Turn it on again to watch again: Eva shows a new setup card first.
+  - Ask "tell me when the bank replies" to get a watch. A watch is a schedule that checks, for example once a day, until a last day. A run with nothing new stays quiet. It sends no message and no notification, and Eva deletes its chat. The Schedules page shows "No news" for it. The run that finds the reply sends it, and then the watch ends. The page shows it as "Ended". Turn it on again to watch again.
   - A watch works with two marker lines that the agent writes in a scheduled run. `[[quiet]]` means "nothing to tell", and `[[done]]` means "the watch is over". Each schedule that repeats can also have a last day (`until`, "Last day" in the form). The last day still runs. After it, the schedule does not run, and the page shows it as "Ended".
 - **Eva's rules.** Your rules for Eva set her tone, how she answers and how proactive she is. Read and change them in **Settings > Personalize > Eva's rules**, or ask Eva to change them. They live in `.eva/assistant.md` in the vault.
   - They apply to each chat with Eva, in Telegram, on the web page and from a schedule, from the next new chat. A project chat never uses them. It uses the harness's own prompt and the instruction files of the project and its repositories, such as `AGENTS.md`. It never loads the vault's instruction files.

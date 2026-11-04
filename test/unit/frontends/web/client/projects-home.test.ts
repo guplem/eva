@@ -3,13 +3,26 @@ import type { Project } from "../../../../../src/frontends/web/client/api.ts";
 import type { ChatState } from "../../../../../src/frontends/web/client/chat-list.ts";
 import {
   createdAt,
+  defaultRange,
+  chartLabels,
   homeChats,
+  knownChoice,
+  monthlyStatus,
+  pointLabel,
   projectColor,
   projectInitials,
   projectYears,
+  rangeChoiceOf,
+  rangeChoices,
+  rangeChoiceValue,
+  rangeMarks,
+  rangeOf,
+  rangeWords,
   statusCounts,
   timeline,
   todayLabel,
+  type DateRange,
+  type MonthPoint,
 } from "../../../../../src/frontends/web/client/projects-home.ts";
 import { parseProjectId } from "../../../../../src/core/projects/project-id.ts";
 import type { ProjectStatus } from "../../../../../src/shared/project-statuses.ts";
@@ -18,7 +31,7 @@ import type { ProjectStatus } from "../../../../../src/shared/project-statuses.t
 function project(
   id: string,
   status: ProjectStatus | null,
-  { inUse = false }: { readonly inUse?: boolean } = {},
+  { inUse = false, closed = null }: { readonly inUse?: boolean; readonly closed?: string | null } = {},
 ): Project {
   const parsedId = parseProjectId(id);
   if (parsedId === null) throw new Error(`Bad id ${id}`);
@@ -31,7 +44,7 @@ function project(
       created: null,
       status,
       inUse,
-      closed: null,
+      closed,
       repos: [],
       tags: [],
       legacyId: null,
@@ -102,6 +115,75 @@ describe("projectYears", () => {
   });
 });
 
+describe("rangeOf", () => {
+  test("starts the default range 12 months before today, and ends it after today (#878)", () => {
+    expect(defaultRange).toEqual({ kind: "last", months: 12 });
+    expect(rangeOf(defaultRange, [], now)).toEqual({ from: new Date(2025, 10, 3), to: new Date(2026, 10, 4) });
+  });
+
+  test("goes one month or three years back", () => {
+    expect(rangeOf({ kind: "last", months: 1 }, [], now).from).toEqual(new Date(2026, 9, 3));
+    expect(rangeOf({ kind: "last", months: 36 }, [], now).from).toEqual(new Date(2023, 10, 3));
+  });
+
+  test("covers a whole year", () => {
+    expect(rangeOf({ kind: "year", year: 2025 }, [], now)).toEqual({
+      from: new Date(2025, 0, 1),
+      to: new Date(2026, 0, 1),
+    });
+  });
+
+  test("covers all the years from the oldest project, of any status, to the end of this year", () => {
+    const projects = [project("2026-01-01-0000-a", "active"), project("2023-05-01-0000-b", "closed")];
+    expect(rangeOf({ kind: "all" }, projects, now)).toEqual({ from: new Date(2023, 0, 1), to: new Date(2027, 0, 1) });
+    expect(rangeOf({ kind: "all" }, [], now).from).toEqual(new Date(2026, 0, 1));
+  });
+
+  test("covers both days of a custom range, in either order", () => {
+    const range = { from: new Date(2025, 6, 1), to: new Date(2026, 3, 1) };
+    expect(rangeOf({ kind: "custom", from: "2025-07-01", to: "2026-03-31" }, [], now)).toEqual(range);
+    expect(rangeOf({ kind: "custom", from: "2026-03-31", to: "2025-07-01" }, [], now)).toEqual(range);
+  });
+
+  test("reads a custom range with a bad day as the default range", () => {
+    expect(rangeOf({ kind: "custom", from: "2026-02-30", to: "" }, [], now)).toEqual(rangeOf(defaultRange, [], now));
+  });
+});
+
+describe("rangeWords", () => {
+  test("names each kind of range for the counts", () => {
+    expect(rangeWords({ kind: "last", months: 1 })).toBe("In the last month");
+    expect(rangeWords({ kind: "last", months: 12 })).toBe("In the last 12 months");
+    expect(rangeWords({ kind: "last", months: 36 })).toBe("In the last 3 years");
+    expect(rangeWords({ kind: "year", year: 2025 })).toBe("In 2025");
+    expect(rangeWords({ kind: "all" })).toBe("In all");
+    expect(rangeWords({ kind: "custom", from: "2025-07-01", to: "2026-03-31" })).toBe("From 1 Jul 2025 to 31 Mar 2026");
+  });
+});
+
+describe("rangeChoices", () => {
+  test("offers the quick ranges, each year with a project, all and a custom range (#878)", () => {
+    const projects = [project("2024-05-01-0000-a", "active")];
+    expect(rangeChoices(projects, now).map((choice) => choice.label)).toEqual([
+      "Last month",
+      "Last 3 months",
+      "Last 6 months",
+      "Last 12 months",
+      "Last 3 years",
+      "2026",
+      "2024",
+      "All",
+      "Custom range",
+    ]);
+  });
+
+  test("gives each choice a value that reads back", () => {
+    for (const choice of rangeChoices([], now)) {
+      expect(rangeChoiceValue(rangeChoiceOf(choice.value, now))).toBe(choice.value);
+    }
+  });
+});
+
 describe("statusCounts", () => {
   const projects = [
     project("2026-01-05-1000-a", "active"),
@@ -111,13 +193,15 @@ describe("statusCounts", () => {
     project("2025-06-05-1000-f", "paused"),
     project("2025-07-05-1000-g", null),
   ];
+  const year2026 = { from: new Date(2026, 0, 1), to: new Date(2027, 0, 1) };
 
-  test("counts the projects that started in the year, by status, and the ones in use (#859)", () => {
-    expect(statusCounts(projects, 2026)).toEqual({ active: 2, "in-use": 2, paused: 0, started: 4 });
+  test("counts the projects that started in the range, by status, and the ones in use (#859)", () => {
+    expect(statusCounts(projects, year2026)).toEqual({ active: 2, "in-use": 2, paused: 0, started: 4 });
   });
 
-  test("counts every project for all the years", () => {
-    expect(statusCounts(projects, "all")).toEqual({ active: 2, "in-use": 2, paused: 1, started: 6 });
+  test("counts every project of a range that holds them all", () => {
+    const all = { from: new Date(2025, 0, 1), to: new Date(2027, 0, 1) };
+    expect(statusCounts(projects, all)).toEqual({ active: 2, "in-use": 2, paused: 1, started: 6 });
   });
 });
 
@@ -130,9 +214,10 @@ describe("timeline", () => {
     project("2026-03-01-0000-built", "active", { inUse: true }),
     project("2026-04-01-0000-done", "closed"),
   ];
+  const year = (value: number): DateRange => ({ from: new Date(value, 0, 1), to: new Date(value + 1, 0, 1) });
 
   test("shows the active, the paused and the in-use projects once each, the oldest first (#859)", () => {
-    const rows = timeline(projects, 2026, now).rows;
+    const rows = timeline(projects, year(2026), now).rows;
     expect(rows.map((row) => [row.title, row.status, row.inUse])).toEqual([
       ["old", "paused", false],
       ["early", "active", false],
@@ -144,12 +229,12 @@ describe("timeline", () => {
 
   test("hides the paused projects when the person asks, but never a project in use (#859)", () => {
     const pausedTool = project("2026-05-01-0000-paused-tool", "paused", { inUse: true });
-    const rows = timeline([...projects, pausedTool], 2026, now, false).rows;
+    const rows = timeline([...projects, pausedTool], year(2026), now, false).rows;
     expect(rows.map((row) => row.title)).toEqual(["early", "used", "built", "paused-tool", "late"]);
   });
 
   test("runs each bar from the creation of the project to today", () => {
-    const shown = timeline(projects, 2026, now);
+    const shown = timeline(projects, year(2026), now);
     const early = shown.rows.find((row) => row.title === "early");
     expect(early?.start).toBe(0);
     expect(early?.end).toBeCloseTo(shown.today ?? -1, 5);
@@ -159,20 +244,20 @@ describe("timeline", () => {
   });
 
   test("starts a project of an earlier year at the edge, and says so", () => {
-    const old = timeline(projects, 2026, now).rows.find((row) => row.title === "old");
+    const old = timeline(projects, year(2026), now).rows.find((row) => row.title === "old");
     expect(old?.start).toBe(0);
     expect(old?.startsBefore).toBe(true);
   });
 
   test("fills a past year to its end, and leaves out a project that started after it", () => {
-    const shown = timeline(projects, 2025, now);
+    const shown = timeline(projects, year(2025), now);
     expect(shown.today).toBeNull();
     expect(shown.rows.map((row) => row.title)).toEqual(["old"]);
     expect(shown.rows[0]?.end).toBe(1);
   });
 
   test("marks the twelve months of a year", () => {
-    const marks = timeline(projects, 2026, now).marks;
+    const marks = timeline(projects, year(2026), now).marks;
     expect(marks.map((mark) => mark.label)).toEqual([
       "Jan",
       "Feb",
@@ -190,24 +275,9 @@ describe("timeline", () => {
     expect(marks[0]?.at).toBe(0);
   });
 
-  test("spans all the years from the oldest shown project, with a mark for each year", () => {
-    const shown = timeline(projects, "all", now);
-    expect(shown.marks.map((mark) => mark.label)).toEqual(["2025", "2026"]);
-    expect(shown.rows.find((row) => row.title === "old")?.startsBefore).toBe(false);
-  });
-
-  test("shows no today line in a year after today", () => {
-    const shown = timeline([project("2027-02-01-0000-ahead", "active")], 2027, now);
+  test("shows no today line in a range after today", () => {
+    const shown = timeline([project("2027-02-01-0000-ahead", "active")], year(2027), now);
     expect(shown.today).toBeNull();
-  });
-
-  test("starts all the years at the oldest shown project, not at an older closed one", () => {
-    const shown = timeline([project("2019-01-01-0000-dream", "closed"), ...projects], "all", now);
-    expect(shown.marks[0]?.label).toBe("2025");
-    const tool = project("2024-05-01-0000-tool", "closed", { inUse: true });
-    expect(timeline([tool, ...projects], "all", now).marks[0]?.label).toBe("2024");
-    // With the paused projects hidden, a paused project no longer sets the first year.
-    expect(timeline(projects, "all", now, false).marks[0]?.label).toBe("2026");
   });
 
   test("names today by its day and month, for the label of the today line (#857)", () => {
@@ -215,9 +285,116 @@ describe("timeline", () => {
   });
 
   test("shows no row and still has marks with no project", () => {
-    const shown = timeline([], "all", now);
+    const shown = timeline([], year(2026), now);
     expect(shown.rows).toEqual([]);
-    expect(shown.marks.map((mark) => mark.label)).toEqual(["2026"]);
+    expect(shown.marks).toHaveLength(12);
+  });
+});
+
+describe("rangeMarks", () => {
+  test("marks each week of a short range", () => {
+    const marks = rangeMarks({ from: new Date(2026, 9, 3), to: new Date(2026, 10, 4) });
+    expect(marks.map((mark) => mark.label)).toEqual(["3 Oct", "10 Oct", "17 Oct", "24 Oct", "31 Oct"]);
+    expect(marks[0]?.at).toBe(0);
+  });
+
+  test("names the year at January in a range of more than one year, and leaves out a mark at the right edge", () => {
+    const marks = rangeMarks({ from: new Date(2025, 10, 3), to: new Date(2026, 10, 4) });
+    expect(marks.map((mark) => mark.label)).toEqual([
+      "Dec",
+      "2026",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+    ]);
+  });
+
+  test("keeps twelve marks at most in two years", () => {
+    const marks = rangeMarks({ from: new Date(2025, 0, 1), to: new Date(2027, 0, 1) });
+    expect(marks.map((mark) => mark.label)).toEqual([
+      "2025",
+      "Mar",
+      "May",
+      "Jul",
+      "Sep",
+      "Nov",
+      "2026",
+      "Mar",
+      "May",
+      "Jul",
+      "Sep",
+      "Nov",
+    ]);
+  });
+
+  test("marks each year of a longer range", () => {
+    const marks = rangeMarks({ from: new Date(2023, 10, 3), to: new Date(2026, 10, 4) });
+    expect(marks.map((mark) => mark.label)).toEqual(["2024", "2025", "2026"]);
+  });
+});
+
+describe("monthlyStatus", () => {
+  const range = { from: new Date(2026, 6, 15), to: new Date(2026, 10, 4) };
+
+  test("has one point on day 1 of each month, from the month of the range start to today (#878)", () => {
+    const points = monthlyStatus([], range, now);
+    expect(points.map((point) => point.at)).toEqual([
+      new Date(2026, 6, 1),
+      new Date(2026, 7, 1),
+      new Date(2026, 8, 1),
+      new Date(2026, 9, 1),
+      new Date(2026, 10, 1),
+    ]);
+  });
+
+  test("stops at the end of a past range", () => {
+    const points = monthlyStatus([], { from: new Date(2025, 0, 1), to: new Date(2026, 0, 1) }, now);
+    expect(points).toHaveLength(12);
+    expect(points.at(-1)?.at).toEqual(new Date(2025, 11, 1));
+  });
+
+  test("counts each open project with its status of today, from its creation", () => {
+    const projects = [
+      project("2026-07-20-1000-a", "active"),
+      project("2026-08-01-0000-b", "paused"),
+      project("2026-09-10-1000-c", "active", { inUse: true }),
+      project("2026-08-05-1000-d", null),
+    ];
+    const points = monthlyStatus(projects, range, now);
+    expect(points.map((point) => [point.active, point.paused])).toEqual([
+      [0, 0],
+      [1, 1],
+      [1, 1],
+      [2, 1],
+      [2, 1],
+    ]);
+  });
+
+  test("counts a closed project as active until its closing day, then as closed in the month after", () => {
+    const projects = [project("2026-06-01-0000-a", "closed", { closed: "2026-09-12" })];
+    const points = monthlyStatus(projects, range, now);
+    expect(points.map((point) => [point.active, point.closed])).toEqual([
+      [1, 0],
+      [1, 0],
+      [1, 0],
+      [0, 1],
+      [0, 0],
+    ]);
+  });
+
+  test("leaves out a closed project with no closing day", () => {
+    const projects = [project("2026-06-01-0000-a", "closed")];
+    expect(monthlyStatus(projects, range, now).every((point) => point.active + point.closed === 0)).toBe(true);
+  });
+
+  test("names each point by its day", () => {
+    expect(pointLabel(new Date(2026, 10, 1))).toBe("1 Nov 2026");
   });
 });
 
@@ -267,5 +444,33 @@ describe("homeChats", () => {
 
   test("keeps a new chat that runs its first turn in Needs you", () => {
     expect(homeChats([chat("d", { lastTurnAt: null })], stateOf).needsYou.map((item) => item.chat.id)).toEqual(["d"]);
+  });
+});
+
+describe("chartLabels", () => {
+  const point = (year: number, month: number): MonthPoint => ({
+    at: new Date(year, month, 1),
+    active: 0,
+    paused: 0,
+    closed: 0,
+  });
+
+  test("names each month, and the year at January when the points cross a year", () => {
+    expect(chartLabels([point(2025, 11), point(2026, 0), point(2026, 1)])).toEqual(["Dec", "2026", "Feb"]);
+    expect(chartLabels([point(2026, 0), point(2026, 1)])).toEqual(["Jan", "Feb"]);
+  });
+
+  test("names six points at most, and leaves the others empty", () => {
+    const points = Array.from({ length: 13 }, (_, index) => point(2025, 10 + index));
+    expect(chartLabels(points)).toEqual(["Nov", "", "", "Feb", "", "", "May", "", "", "Aug", "", "", "Nov"]);
+  });
+});
+
+describe("knownChoice", () => {
+  test("keeps a year with a project, and turns a year with none into the default range", () => {
+    const projects = [project("2024-05-01-0000-a", "active")];
+    expect(knownChoice({ kind: "year", year: 2024 }, projects, now)).toEqual({ kind: "year", year: 2024 });
+    expect(knownChoice({ kind: "year", year: 2020 }, projects, now)).toEqual(defaultRange);
+    expect(knownChoice({ kind: "all" }, projects, now)).toEqual({ kind: "all" });
   });
 });

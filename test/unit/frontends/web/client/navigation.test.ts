@@ -106,6 +106,7 @@ describe("assistantChatIdOf and assistantChatAddressOf", () => {
 describe("projectRouteOf and projectAddressOf", () => {
   const routes: ProjectRoute[] = [
     { kind: "list" },
+    { kind: "stats" },
     { kind: "project", projectId: "2025-03-02-1015-example-app" },
     { kind: "details", projectId: "2025-03-02-1015-example-app" },
     { kind: "setup", projectId: "2025-03-02-1015-example-app" },
@@ -119,6 +120,7 @@ describe("projectRouteOf and projectAddressOf", () => {
   test("the addresses nest, so a chat's address starts with its project's", () => {
     expect(routes.map(projectAddressOf)).toEqual([
       "#/projects",
+      "#/projects/stats",
       "#/projects/2025-03-02-1015-example-app",
       "#/projects/2025-03-02-1015-example-app/details",
       "#/projects/2025-03-02-1015-example-app/setup",

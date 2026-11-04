@@ -121,9 +121,9 @@
   white-space: nowrap;
 }
 
-/* A narrow timeline has no room for twelve months: it names every third one. */
+/* A narrow timeline has no room for many marks: it names every third one. */
 @container (max-width: 560px) {
-  .timeline-marks.months span:not(:nth-child(3n + 1)) {
+  .timeline-marks.dense span:not(:nth-child(3n + 1)) {
     display: none;
   }
 }
@@ -355,4 +355,221 @@
   .home-card.phone-only {
     display: flex;
   }
+}
+
+/* The Statistics and New project buttons of the list (#878): an icon each, so the title keeps its room. */
+.list-title-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.list-title-actions button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+}
+
+.list-title-actions .icon-button[aria-current="page"] {
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+@media (max-width: 760px) {
+  .list-title-actions button {
+    width: var(--touch-target);
+    height: var(--touch-target);
+  }
+}
+
+/* The range picker of the statistics (#878). Two days show only for a custom range. */
+.range-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.range-days {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The monthly chart (#878): the values at the left, the lines, and the months below. */
+.month-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  --chart-values: 28px;
+  --chart-height: 160px;
+}
+
+.month-chart-body {
+  display: grid;
+  grid-template-columns: var(--chart-values) minmax(0, 1fr);
+  grid-template-rows: var(--chart-height) auto;
+  column-gap: var(--space-2);
+}
+
+.month-chart-values {
+  position: relative;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-align: right;
+}
+
+.month-chart-values span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+/* The dots sit on the edges of the plot: the margin keeps them inside the card. */
+.month-chart-plot {
+  position: relative;
+  margin: 0 var(--space-2);
+}
+
+.month-chart-plot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.month-chart-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Each line has its own dash, so it reads without colour. */
+.month-chart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.month-chart-line.active {
+  stroke: var(--ok);
+}
+
+.month-chart-line.paused {
+  stroke: var(--warn);
+  stroke-dasharray: 6 4;
+}
+
+.month-chart-line.closed {
+  stroke: var(--muted);
+  stroke-dasharray: 1 4;
+}
+
+/* Each dot has its own shape: a disc for Active, a square for Paused and a ring for Closed. */
+.month-chart-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  pointer-events: none;
+}
+
+.month-chart-dot.active,
+.month-chart-swatch.active {
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.month-chart-dot.paused,
+.month-chart-swatch.paused {
+  border-radius: 1px;
+  background: var(--warn);
+}
+
+.month-chart-dot.closed,
+.month-chart-swatch.closed {
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  background: var(--panel);
+}
+
+.month-chart-swatch {
+  flex: none;
+  width: 9px;
+  height: 9px;
+}
+
+.month-chart-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+  pointer-events: none;
+}
+
+/* One tall button per month: a tap or a hover shows its numbers in the legend. */
+.month-chart-hits {
+  position: absolute;
+  inset: 0;
+}
+
+.month-chart-hit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-input);
+  background: transparent;
+}
+
+.month-chart-hit:focus-visible {
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.month-chart-marks {
+  grid-column: 2;
+  position: relative;
+  height: 18px;
+  margin: var(--space-1) var(--space-2) 0;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.month-chart-marks span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.month-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.month-chart-day {
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+.month-chart-legend b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }

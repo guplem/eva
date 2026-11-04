@@ -2220,6 +2220,29 @@ test("on a phone, the project list is the page, and Back to the projects returns
   await expect(projectCard(page, /Example app/)).toBeVisible();
 });
 
+test("on a phone, the Statistics button of the list opens the statistics, and Back returns to the list (#878)", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "Statistics" }).click();
+  await expect(page).toHaveURL(/#\/projects\/stats$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Statistics" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Timeline" })).toBeVisible();
+  const chart = page.getByRole("region", { name: "By month" });
+  await expect(chart).toBeVisible();
+  // A tap on a month shows its numbers in the legend.
+  await chart.getByRole("button", { name: /^1 / }).first().click();
+  await expect(chart.locator(".month-chart-day")).toHaveText(/^1 [A-Z][a-z]{2} \d{4}$/);
+  await page.getByRole("combobox", { name: "Time range" }).selectOption("custom");
+  await expect(page.getByLabel("First day")).toBeVisible();
+  await expect(page.getByLabel("Last day")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await page.getByRole("button", { name: "Back to the projects" }).click();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
+});
+
 test("on a computer, Back to the projects shows the home page, and its timeline opens a project (#840)", async ({
   page,
 }) => {
@@ -2239,9 +2262,13 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   await expect(garden).toHaveCount(0);
   await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
   await expect(timeline.getByRole("group", { name: "Legend" }).getByRole("button")).toHaveCount(1);
-  const startedLine = page.getByText(/^In (\d{4}|all): \d+ projects? started\.$/);
-  await expect(startedLine).toHaveText(new RegExp(`^In ${String(new Date().getFullYear())}:`));
-  await page.getByRole("group", { name: "Year" }).getByRole("button", { name: "All" }).click();
+  // The range starts at the last 12 months, and the picker changes it (#878).
+  const startedLine = page.getByText(/^In [^:]+: \d+ projects? started\.$/);
+  await expect(startedLine).toHaveText(/^In the last 12 months: /);
+  await expect(
+    page.getByRole("region", { name: "By month" }).getByRole("button", { name: /^1 [A-Z][a-z]{2} \d{4}: / }),
+  ).toHaveCount(13);
+  await page.getByRole("combobox", { name: "Time range" }).selectOption("all");
   await expect(startedLine).toHaveText(/^In all: /);
   await timeline.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();

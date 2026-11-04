@@ -105,12 +105,12 @@ The root `AGENTS.md` says "Before you act on a request, list `Principles/` and `
 - **Version:** 6
 - **Date:** 2026-11-04
 - **Pull request:** https://github.com/guplem/eva/pull/860
-- **Summary:** Each project says apart whether you work on it and whether you use it. The status is the work: active, paused or closed. A new `in-use` key says that you use the project.
+- **Summary:** Each project records the work and the use apart. The status is the work: active, paused or closed. A new `in-use` key says that you use the project.
 - **Migrations first:** 2026-11-04-project-in-use
 
 ### What changes, and why
 
-1. **The _Projects_ section of the root `AGENTS.md` names the new status list and the `in-use` key.** The front matter example says `status: active # active, paused or closed` and shows `in-use: true`. The text under it says what the status and the key mean, and the lines of `started`, `closed` and `objective` change. Replace the _Projects_ section with the exact text of `template/`. Why: the old text told an agent to write `in-use` or `idea` as a status, and to never add a second field. So a tool that the person still builds and uses every day fitted two statuses, and a closed tool that they still use left the pinned block.
+1. **The _Projects_ section of the root `AGENTS.md` names the new status list and the `in-use` key.** The front matter example says `status: active # active, paused or closed` and shows `in-use: true`. The text under it says what the status and the key mean, and the lines of `started`, `closed` and `objective` change. Replace the _Projects_ section with the exact text of `template/`. Why: the old text had one status for both. A tool that the person builds and uses could not be both. A closed tool that they still use left the pinned block.
 2. **The `Projects/` row of the table at the top of the root `AGENTS.md` says that an idea is a `paused` project.** Replace the old sentence "An idea for one is a project with status `idea`." with the sentence of `template/`. Leave the rest of the table as it is.
 3. **The project files changed already.** The migration of the "Migrations first" line turned each `status: in-use` into `status: closed` with `in-use: true`, and each `status: idea` into `status: paused`. Search `Projects/*/AGENTS.md` for a status `in-use` or `idea` that is still there, such as one that an older Eva wrote after the migration, and fix it the same way.
 4. **Nothing else changes.** No note moves. `README.md`, `.eva/assistant.md`, `Life/About me.md` and each `Life/*/AGENTS.md` stay as they are.
@@ -121,5 +121,5 @@ The front matter example in the _Projects_ section of the root `AGENTS.md` says 
 
 ### What to ask, all in the one message up front
 
-1. Each line of _Personal rules_ that names the status `in-use` or `idea`, or says that a project has one status. The default is "rewrite it with `in-use: true` and the new statuses". This is the one change to _Personal rules_ that the person can approve, because the old words no longer exist.
+1. Each line of _Personal rules_ that names the status `in-use` or `idea`, or says that a project has one status. The default is "leave it out": the new _Projects_ text says the rule now. This is the one change to _Personal rules_ that the person can approve, as in v4.
 2. Each project file with a status `in-use` or `idea` that the migration did not reach, with the fix of step 3. The default is "fix it".

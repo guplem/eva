@@ -219,16 +219,16 @@ describe("Assistant mode", () => {
     });
   });
 
-  test("the prompt gives the pinned files after the rules, with the active and in-use projects (#769)", async () => {
+  test("the prompt gives the pinned files after the rules, with the active projects and the ones in use (#769, #859)", async () => {
     addProject("2025-01-01-0900-website", "active", "# Website\n\nThe person's site.\n");
-    addProject("2025-02-01-0900-recipes", "in-use", "# Recipes\n");
+    addProject("2025-02-01-0900-recipes", "closed\nin-use: true", "# Recipes\n");
     addProject("2025-03-01-0900-old", "closed", "# Old\n");
     const prompt = (await assistant(silentRunner).prepare(session())).appendSystemPrompt ?? "";
     expect(prompt).toStartWith("Base rules.\n\n# You are Eva\n\n# Pinned files\n\n");
     expect(prompt).toContain(
       "- Website, `Projects/2025-01-01-0900-website/AGENTS.md` (project, active): The person's site.\n",
     );
-    expect(prompt).toContain("- Recipes, `Projects/2025-02-01-0900-recipes/AGENTS.md` (project, in-use)\n");
+    expect(prompt).toContain("- Recipes, `Projects/2025-02-01-0900-recipes/AGENTS.md` (project, closed, in use)\n");
     expect(prompt).not.toContain("2025-03-01-0900-old");
   });
 

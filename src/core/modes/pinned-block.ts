@@ -131,9 +131,9 @@ function orderedEntries(input: PinnedBlockInput): Entry[] {
     )
     .sort(byPath);
   const shownProjects = projects.filter((project) => projectByStatus(project, manualPaths));
-  const projectLines = (["active", "in-use"] as const).flatMap((group) =>
+  const projectLines = ([false, true] as const).flatMap((inUse) =>
     shownProjects
-      .filter((project) => (project.frontMatter.status === "in-use" ? "in-use" : "active") === group)
+      .filter((project) => project.frontMatter.inUse === inUse)
       .sort((first, second) => second.id.localeCompare(first.id))
       .map((project) => projectLine(project, today)),
   );
@@ -145,13 +145,13 @@ function orderedEntries(input: PinnedBlockInput): Entry[] {
 }
 
 /**
- * True when the projects part lists this project: an active or in-use one, unless `pinned: false`.
+ * True when the projects part lists this project: an active one or one in use (#859), unless `pinned: false`.
  * A pin of its own also lists it when the walk did not, such as for a project in an extra root.
  */
 function projectByStatus(project: Project, manualPaths: ReadonlySet<string>): boolean {
-  const { pinned, status } = project.frontMatter;
+  const { pinned, status, inUse } = project.frontMatter;
   if (pinned === "false" || manualPaths.has(projectPath(project))) return false;
-  return status === "active" || status === "in-use" || pinned === "full" || pinned === "summary";
+  return status === "active" || inUse || pinned === "full" || pinned === "summary";
 }
 
 function projectPath(project: Project): string {
@@ -166,7 +166,8 @@ function projectLine(project: Project, today: string, oldImportant: string | nul
   const status = project.frontMatter.status;
   const flags = status === "closed" ? [] : deadlineFlags(project.frontMatter.extra, today);
   const marks = flags.map((flag) => ` [${flag}]`).join("");
-  const head = `- ${project.title}, \`${projectPath(project)}\` (project${status === null ? "" : `, ${status}`})${marks}`;
+  const about = ["project", ...(status === null ? [] : [status]), ...(project.frontMatter.inUse ? ["in use"] : [])];
+  const head = `- ${project.title}, \`${projectPath(project)}\` (${about.join(", ")})${marks}`;
   // A `> Important:` line is a quote, never a first paragraph, so its reason is the only summary.
   const summary = project.description ?? (oldImportant === null ? null : oneLineSummary(oldImportant));
   if (summary !== null) return `${head}: ${summary}`;

@@ -38,16 +38,19 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("the person's rules win");
   });
 
-  test("names each project status, so the agent of an older vault learns in-use (#690)", () => {
+  test("names each project status and the in-use flag, so the agent of an older vault learns them (#690, #859)", () => {
     for (const status of projectStatuses) expect(assistantBasePrompt).toContain(`\`${status}\``);
-    expect(assistantBasePrompt).toContain("The `active` and `in-use` projects are in the pinned block");
+    expect(assistantBasePrompt).toContain(
+      "`in-use: true` says that the person uses the project now, whatever its status",
+    );
+    expect(assistantBasePrompt).toContain("The `active` projects and the projects in use are in the pinned block");
   });
 
-  test("says which status a project gets when the person both develops it and uses it (#831)", () => {
-    expect(assistantBasePrompt).toContain("A project has one status.");
-    expect(assistantBasePrompt).toContain("Pick `active` while the person develops it, even when they also use it.");
-    expect(assistantBasePrompt).toContain('such as "The person uses this every day."');
-    expect(assistantBasePrompt).toContain("Never add a second status field.");
+  test("tells the agent of an older vault map never to write the old statuses (#859)", () => {
+    expect(assistantBasePrompt).toContain(
+      "An older vault map can still name the statuses `idea` and `in-use`. Never write them.",
+    );
+    expect(assistantBasePrompt).not.toContain("Never add a second status field.");
   });
 
   test("names the words that the pinned block prints, so the block and the prompt stay aligned (#769)", () => {

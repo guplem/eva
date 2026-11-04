@@ -19,7 +19,8 @@ export interface ClientOptions {
 interface ProjectBody {
   readonly id: string;
   readonly title: string;
-  readonly frontMatter: { readonly status: string | null; readonly tags: readonly string[] };
+  /** An older Eva sends no `inUse`. */
+  readonly frontMatter: { readonly status: string | null; readonly inUse?: boolean; readonly tags: readonly string[] };
   readonly warnings: readonly string[];
 }
 
@@ -396,9 +397,15 @@ export async function describeProjects(options: ClientOptions, query: string): P
 export function describeProjectLines(projects: readonly ProjectBody[]): string[] {
   if (projects.length === 0) return ["No project matches."];
   return projects.flatMap((project) => [
-    [project.id, project.frontMatter.status ?? "?", project.title, ...hashTags(project.frontMatter.tags)].join("  "),
+    [project.id, statusWords(project.frontMatter), project.title, ...hashTags(project.frontMatter.tags)].join("  "),
     ...project.warnings.map((warning) => `  ⚠ ${warning}`),
   ]);
+}
+
+/** "closed, in use": the status, and the in-use flag after it (#859). */
+function statusWords(frontMatter: ProjectBody["frontMatter"]): string {
+  const status = frontMatter.status ?? "?";
+  return frontMatter.inUse === true ? `${status}, in use` : status;
 }
 
 function hashTags(tags: readonly string[]): string[] {

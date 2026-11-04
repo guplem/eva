@@ -73,7 +73,7 @@ test("no page scrolls sideways on a narrow phone, also with long names", async (
     ["#/chats/new", page.locator(".home-buttons")],
     ["#/projects", longProject],
     ["#/files/Notes", longNote],
-    ["#/schedules", page.locator(".schedule-panel").first()],
+    ["#/schedules", page.locator(".schedule-panel:visible").first()],
     ["#/notifications", page.getByRole("heading", { level: 1 })],
     ["#/settings", page.locator(".section-card").first()],
   ];

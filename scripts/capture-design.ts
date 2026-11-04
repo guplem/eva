@@ -129,7 +129,8 @@ async function addSchedule(
   for (const day of schedule.days) await form.getByRole("button", { name: day }).click();
   await form.getByLabel("Fixed text").fill(`${schedule.name}.`);
   await form.getByRole("button", { name: "Save schedule" }).click();
-  await page.getByRole("listitem", { name: schedule.name }).waitFor();
+  // A new schedule opens its own page.
+  await page.getByRole("heading", { level: 1, name: schedule.name }).waitFor();
 }
 
 /** Starts a chat with one message, waits for its answer, and gives the chat a title and gives its id. */
@@ -153,7 +154,10 @@ async function setUp(browser: Browser): Promise<Demo> {
   await answeredChat(page, "Give me three ideas for the home page of example-app.", "Ideas for example-app");
   const weekChat = await answeredChat(page, "What do I have to do this week? Make a list.", "Plan for the week");
 
-  await openAddress(page, "#/schedules", "Schedules");
+  await page.evaluate(() => {
+    window.location.hash = "#/schedules";
+  });
+  await page.getByRole("navigation", { name: "Schedules" }).waitFor();
   await addSchedule(page, { id: "daily-summary", name: "Daily summary", time: "08:00", days: [] });
   await addSchedule(page, { id: "water-plants", name: "Water the plants", time: "18:30", days: ["Fri"] });
 
@@ -278,8 +282,8 @@ const scenes: readonly Scene[] = [
   {
     name: "schedules",
     show: async (page) => {
-      await openAddress(page, "#/schedules", "Schedules");
-      await page.getByRole("listitem", { name: "Daily summary" }).waitFor();
+      // The page of one schedule, beside the list on a computer.
+      await openAddress(page, "#/schedules/daily-summary", "Daily summary");
     },
   },
   { name: "settings", show: (page) => openAddress(page, "#/settings", "Settings") },

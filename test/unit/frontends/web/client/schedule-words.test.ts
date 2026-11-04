@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   dayLine,
   lastRunWords,
+  pastRunWords,
+  resultWords,
   nextHourSlot,
   nextRunWords,
   repeatWords,
@@ -197,5 +199,46 @@ describe("quiet runs (#687)", () => {
       text: "No news today",
       tone: "ok",
     });
+  });
+});
+
+describe("pastRunWords", () => {
+  test("the result with its colour, and when the run was in the person's clock", () => {
+    expect(pastRunWords({ slot: "2026-10-21T08:00", failed: false }, now, "24h")).toEqual({
+      result: "Ran",
+      tone: "ok",
+      when: "Today 08:00",
+    });
+    expect(pastRunWords({ slot: "2026-10-20T18:30", failed: true }, now, "12h")).toEqual({
+      result: "Failed",
+      tone: "bad",
+      when: "Yesterday 6:30 PM",
+    });
+    expect(pastRunWords({ slot: "2026-10-02T07:05", failed: false, quiet: true }, now, "24h")).toEqual({
+      result: "No news",
+      tone: "ok",
+      when: "2 Oct 07:05",
+    });
+  });
+});
+
+describe("resultWords", () => {
+  const ran = { slot: "2026-10-21T08:00", failed: false };
+
+  test("a schedule that is on shows its last run, and one that is off says so", () => {
+    expect(resultWords({ schedule: { enabled: true }, ended: null, lastRun: ran }, now)).toEqual({
+      text: "Ran today",
+      tone: "ok",
+    });
+    expect(resultWords({ schedule: { enabled: false }, ended: null, lastRun: ran }, now)).toEqual({
+      text: "Off",
+      tone: "idle",
+    });
+  });
+
+  test("an ended schedule shows its last run, also when it is off (#687)", () => {
+    expect(resultWords({ schedule: { enabled: false }, ended: "2026-10-21T08:00", lastRun: ran }, now).text).toBe(
+      "Ran today",
+    );
   });
 });

@@ -330,9 +330,11 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 ![Computer](screenshots/schedules-computer-light.webp) ![Phone](screenshots/schedules-phone-light.webp)
 
-- A day line shows what runs today and the current time.
+- The page has the layout of Projects: the list at the left, and the page of the open schedule at the right. A phone shows the list as the page.
+- With no schedule open, a day line shows what runs today and the current time. A computer shows it beside the list. A phone shows it above the list.
 - Each schedule says when it repeats in words.
-- The last result has a colour.
+- The last result has a colour and a word.
+- The page of a schedule has the switch, Edit and Remove in its header. Its cards show when it runs, what it does and its past runs. A run with a chat opens it.
 - The confirmation card says that nothing runs without a yes.
 
 ### Setup and appearance

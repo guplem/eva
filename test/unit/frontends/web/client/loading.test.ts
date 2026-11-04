@@ -81,7 +81,7 @@ describe("skeletons", () => {
       chats: "composer-box",
       projects: "list-title-row",
       files: "files-search",
-      schedules: "schedules-header",
+      schedules: "Add schedule",
       settings: "settings-nav",
       notifications: "cards-skeleton",
     } as const;

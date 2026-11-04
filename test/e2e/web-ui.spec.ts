@@ -2315,9 +2315,12 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   await expect(garden).toHaveCount(0);
   await legend.getByRole("button", { name: "Show the paused projects" }).click();
   await expect(garden).toBeVisible();
+  const oldTool = timeline.getByRole("button", { name: "Old tool, Closed" });
+  await expect(oldTool).toHaveCount(0);
   await legend.getByRole("button", { name: "Show the closed projects" }).click();
-  await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
+  await expect(oldTool).toBeVisible();
   await legend.getByRole("button", { name: "Show the closed projects" }).click();
+  await expect(oldTool).toHaveCount(0);
   await expect(timeline.getByRole("button", { name: "Family recipes, Closed, In use" })).toBeVisible();
   // The range starts at the last 12 months, and the picker changes it (#878).
   const startedLine = page.getByText(/^In [^:]+: \d+ projects? started\.$/);

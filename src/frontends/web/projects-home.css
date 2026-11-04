@@ -213,6 +213,13 @@
   }
 }
 
+/* The words of a faded bar start later, so they need a longer bar. */
+@container timeline-bar (max-width: 76px) {
+  .timeline-bar.before .timeline-bar-label {
+    display: none;
+  }
+}
+
 /*
  * Each status has a pattern, so a bar reads without a word. A pattern keeps the colour of the project.
  * The swatches of the legend reuse the patterns.
@@ -257,6 +264,11 @@
 .timeline-row.in-use .timeline-bar,
 .timeline-swatch.in-use {
   box-shadow: inset 0 0 0 2px var(--project-color);
+}
+
+/* The key of the legend has a faint fill inside its ring, as most bars in use do. */
+.timeline-swatch.in-use {
+  background: color-mix(in oklch, var(--project-color) 14%, transparent);
 }
 
 /* A solid bar softens its fill, so the ring in the same colour shows. */

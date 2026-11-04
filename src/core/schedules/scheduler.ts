@@ -388,9 +388,10 @@ export class Scheduler {
     // Someone who wrote during the run waits for its answer.
     const quiet = !answer.personWrote && silent;
     if (!quiet) void this.emit({ ...answered, text: answer.text, failure: null });
+    // Eva deletes the chat of a quiet run, so the run keeps no chat.
     else if (this.state.peek(schedule.id)?.lastResult?.slot === slot)
-      // Eva deletes the chat of a quiet run, so the run keeps no chat.
       this.state.update(schedule.id, this.resultChange(schedule.id, { slot, failed: false, quiet: true }, null));
+    else this.changeOlderRun(schedule.id, slot, { quiet: true, sessionId: null });
     if (markers.done) this.endByDone(schedule, slot);
     return !quiet;
   }
@@ -425,7 +426,10 @@ export class Scheduler {
     this.options.logger?.log("error", "A scheduled prompt failed.", { scheduleId: schedule.id, reason: failure });
     // A turn can end after the next slot fired. That newer run owns the result and the alert now.
     // Not lastFired: a change moves it to a skipped slot, which is no run.
-    if (this.state.peek(schedule.id)?.lastResult?.slot !== slot) return;
+    if (this.state.peek(schedule.id)?.lastResult?.slot !== slot) {
+      this.changeOlderRun(schedule.id, slot, { failed: true });
+      return;
+    }
     // The alert first: a state file that cannot be written must not hide the failure from the phone.
     try {
       this.options.reportFiring?.(schedule, failure);
@@ -450,6 +454,13 @@ export class Scheduler {
     // A chat that cannot start fails at every check, so the file is written only on a change.
     if (current?.slot === slot && current.failed === failed) return;
     this.state.update(scheduleId, this.resultChange(scheduleId, { slot, failed }));
+  }
+
+  /** An older run ended after a newer one fired: only its own entry in the past runs changes. */
+  private changeOlderRun(scheduleId: string, slot: string, change: Partial<ScheduleRun>): void {
+    const runs = runsOf(this.state.peek(scheduleId));
+    if (!runs.some((run) => run.slot === slot)) return;
+    this.state.update(scheduleId, { runs: runs.map((run) => (run.slot === slot ? { ...run, ...change } : run)) });
   }
 
   /**

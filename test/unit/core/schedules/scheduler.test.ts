@@ -676,6 +676,29 @@ describe("Scheduler", () => {
       ]);
     });
 
+    test("an older run that fails after a newer run fired shows its own failure", async () => {
+      writeSchedules([morning]);
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      let endFirstTurn = (_failure: string | null): void => undefined;
+      heldSend = new Promise((resolve) => {
+        endFirstTurn = resolve;
+      });
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      clock = new Date("2026-07-02T05:30:00Z");
+      await scheduler.tick();
+      await Bun.sleep(0);
+      endFirstTurn("You hit the usage limit.");
+      await Bun.sleep(0);
+      expect(runs(scheduler)).toEqual([
+        { slot: "2026-07-02T07:30", failed: false, sessionId: "session-2" },
+        { slot: "2026-07-01T07:30", failed: true, sessionId: "session-1" },
+      ]);
+      // The newer run still owns the last result.
+      expect(scheduler.list().schedules[0]?.lastRun).toEqual({ slot: "2026-07-02T07:30", failed: false });
+    });
+
     test("keeps the newest 20 runs", async () => {
       writeSchedules([{ id: "hourly", name: "Hourly", every: "1h", from: "2026-07-01T08:00", text: "Stretch." }]);
       const scheduler = createScheduler();

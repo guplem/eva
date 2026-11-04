@@ -221,7 +221,12 @@ async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
     await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("No background task runs now.");
   }
-  await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
+  const chip = page.getByRole("button", { name: "1 background task", exact: true }).first();
+  // The tasks ended, so the chip shows a check, at the right of the actions (#864).
+  await expect(chip.locator("path")).toHaveAttribute("d", "M5 12.5l4.5 4.5L19 7.5");
+  const copy = chip.locator("xpath=..").getByRole("button", { name: "Copy" });
+  expect((await chip.boundingBox())?.x ?? 0).toBeGreaterThan((await copy.boundingBox())?.x ?? Infinity);
+  await chip.click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   await expect(dialog).toContainText("This answer started these tasks");
   await expect(dialog).toContainText("Search the notes");

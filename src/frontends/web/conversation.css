@@ -524,6 +524,12 @@
   margin-left: -12px;
 }
 
+/* The tasks of an answer are information, so they sit at the right end, apart from the actions. */
+.answer-actions .answer-tasks {
+  margin-left: auto;
+  font-weight: 500;
+}
+
 button.ghost {
   display: inline-flex;
   align-items: center;

@@ -13,6 +13,7 @@ import {
   modelNames,
   taskStatus,
   tasksOfTurn,
+  tasksStillRun,
   endedProjectWork,
   titleCase,
 } from "../../../../../src/frontends/web/client/chat-details.ts";
@@ -170,6 +171,26 @@ describe("branchForkPoint", () => {
   test("an unknown branch forks the first chat", () => {
     expect(branchForkPoint([root, fork], "gone")).toEqual({ sessionId: "s1", messageId: "m1" });
     expect(branchForkPoint([], null)).toBeNull();
+  });
+});
+
+describe("tasksStillRun", () => {
+  test("a stored answer whose tasks all ended shows them as ended, so its chip shows a check (#864)", () => {
+    const ended: Turn["steps"] = [
+      { kind: "task", text: "look around", isError: false, id: "k1" },
+      { kind: "task", text: "npm test", isError: true, id: "k2" },
+    ];
+    expect(tasksStillRun(tasksOfTurn(ended, "s1"))).toBe(false);
+    // An older answer keeps no steps, and its tasks ended with its turn.
+    expect(tasksStillRun(tasksOfTurn([], "s1"))).toBe(false);
+  });
+
+  test("project work whose result has not come back still runs", () => {
+    const steps: Turn["steps"] = [
+      { kind: "task", text: "example-app: Fix it", isError: false, id: "p1", chatId: "p1" },
+    ];
+    expect(tasksStillRun(tasksOfTurn(steps, "s1"))).toBe(true);
+    expect(tasksStillRun(tasksOfTurn(steps, "s1", new Map([["p1", false]])))).toBe(false);
   });
 });
 

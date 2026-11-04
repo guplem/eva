@@ -163,6 +163,11 @@ export function tasksOfTurn(
   return tasks;
 }
 
+/** Whether a task of an answer still runs: only project work whose result has not come back. */
+export function tasksStillRun(tasks: LiveState["tasks"]): boolean {
+  return Object.values(tasks).some((task) => task.state === "started");
+}
+
 /** Each Project chat that sent its result back, and whether its work failed. */
 export function endedProjectWork(
   turns: readonly Pick<SessionRecord["turns"][number], "projectReports">[],

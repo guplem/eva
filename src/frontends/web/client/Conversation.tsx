@@ -29,7 +29,7 @@ import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./Branc
 import { forkedFromText, historyNotice } from "./branch-choices.ts";
 import { chatKind } from "../../../shared/chat-kind.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
-import { endedProjectWork, tasksOfTurn } from "./chat-details.ts";
+import { endedProjectWork, tasksOfTurn, tasksStillRun } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
 import {
   answerFiles,
@@ -400,12 +400,6 @@ function Branch({
                 vaultLinks={owner.mode === "assistant"}
                 actions={(shown) => (
                   <div className="answer-actions">
-                    {turn.taskCount > 0 && (
-                      <button className="ghost" onClick={() => setShownTasks(step)}>
-                        <Icon name="sync" />
-                        {counted(turn.taskCount, "background task")}
-                      </button>
-                    )}
                     {/* A closed chat takes no new turn, so it offers no way to start one. */}
                     {/* A Project chat asks where the branch runs and from which files (issue 523). */}
                     {!owner.closed && (
@@ -434,6 +428,13 @@ function Branch({
                       </button>
                     )}
                     {shown !== "" && <CopyButton text={shown} />}
+                    {/* Information, not an action on the message, so it stands apart at the right (#864). */}
+                    {turn.taskCount > 0 && (
+                      <button className="ghost answer-tasks" onClick={() => setShownTasks(step)}>
+                        <Icon name={tasksStillRun(tasksOfTurn(turn.steps, owner.id, endedWork)) ? "sync" : "check"} />
+                        {counted(turn.taskCount, "background task")}
+                      </button>
+                    )}
                   </div>
                 )}
                 failure={turn.failure}

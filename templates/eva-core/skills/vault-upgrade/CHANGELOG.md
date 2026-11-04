@@ -79,3 +79,23 @@ The front matter example in the _Projects_ section of the root `AGENTS.md` names
 ### What to ask, all in the one message up front
 
 1. Each line of _Personal rules_ that now says the same as the new _Projects_ text, such as a rule about `closed`. The default is "leave it out". This is the one change to _Personal rules_ that the person can approve, because the line is now a template rule.
+
+## v5
+
+- **Version:** 5
+- **Date:** 2026-11-03
+- **Pull request:** https://github.com/guplem/eva/pull/852
+- **Summary:** Eva reads your principles and your methods before she acts, and follows the steps that you keep, such as how to start a project. The rule now lives in your vault's map, so you can change it.
+
+### What changes, and why
+
+1. **The root `AGENTS.md` gets the folder rule for `Principles/` and `Methods/`,** in the exact text of the template, at the end of _What they know_. Before the agent acts on a request, it lists both folders, reads the notes that fit, and follows each method that fits. It never greps them. Why: Eva's base prompt held the rule for `Principles/` only, and the person could not change it. A method, such as the steps for a new project, was read only when a search found it.
+2. **Nothing else changes.** The rest of the root `AGENTS.md` stays as it is, with each of the person's own lines. A line of the person that already says the new rule is proposed to leave out. No note moves. `README.md`, `.eva/assistant.md`, `Life/About me.md` and each `Life/*/AGENTS.md` stay as they are.
+
+### How to detect a vault that has it
+
+The root `AGENTS.md` says "Before you act on a request, list `Principles/` and `Methods/`." Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. The person's own lines in the root `AGENTS.md` that the new rule already says, and whether to leave each one out.

@@ -22,6 +22,7 @@ An Eva update never changes the structure of a vault. This skill does, with the 
 - Never edit `.eva/vault-structure.json`. `finish` records the version.
 - Never delete a folder before you list its git-ignored files: `git status --ignored -- <folder>`.
 - Ask nothing after the up-front message, except the final review. Write what you cannot decide in the report instead.
+- Do only the work that the pending entries list. Skip each step below that no pending entry needs. For example, when no entry moves a note, do not plan moves, and when an entry replaces only part of a file, leave the rest of the file as it is.
 
 ## 1. Read and plan, with no change
 
@@ -34,14 +35,14 @@ An Eva update never changes the structure of a vault. This skill does, with the 
    - Compare the file with each shipped version: `git diff --no-index --stat <shipped file> <vault file>`. Take the version with the fewest changed lines. The vault's first commit, "Start the vault from Eva's template", is a second source.
    - A placeholder of a shipped text, such as `{{name}}`, `{{nameInQuotes}}`, `{{notesLanguage}}` or `{{topics}}`, matches any value.
    - A line that no shipped version has is the person's own. A file that matches no version at all is all the person's own: sort each of its lines.
-   - An own line that the v3 template, Eva's base prompt or a `Life/*/AGENTS.md` already says: propose to leave it out. An own line that contradicts a v3 rule: name the rule, and propose to keep it as an exception. A rule about the old `Scratch/` is kept only pointed to `.eva/scratch/`. Never for an existing `## Personal rules` section: it stays as it is.
+   - An own line that the newest template in `template/`, Eva's base prompt or a `Life/*/AGENTS.md` already says: propose to leave it out. An own line that contradicts a rule of the newest template: name the rule, and propose to keep it as an exception. A rule about the old `Scratch/` is kept only pointed to `.eva/scratch/`. Never for an existing `## Personal rules` section: it stays as it is.
 7. Find each other matter that the entry's "What to ask" list names, such as the facts of About me that leave it, a changed copy of one of Eva's skills in `.eva/skills/`, a person's own file at a path that the new template writes, and each stored path that a move breaks in `.eva/widgets.json`, `.eva/schedules.json` or `.eva/secret-files`.
 
 ## 2. Ask everything in one message
 
 The person already asked for the upgrade, through the button, the notification or their own words. So this message is the only question round: no "shall I start?" before it. Say in two or three sentences what changes and why. Then ask each question of the entry's "What to ask" list, numbered, each with a default, so the person can answer "yes to all":
 
-- Show each of the person's own lines in a replaced file as a diff against Eva's shipped text, with the default "keep it in <place>". For a line that v3 already says, the default is "leave it out", with the rule that says it. For a line that contradicts a v3 rule, the default is "keep it as an exception to <rule>".
+- Show each of the person's own lines in a replaced file as a diff against Eva's shipped text, with the default "keep it in <place>". For a line that the newest template already says, the default is "leave it out", with the rule that says it. For a line that contradicts a rule of the newest template, the default is "keep it as an exception to <rule>".
 - Yolo mode "yes": you decide where each file goes, alone. "No": the whole move plan follows in this message, grouped by target folder, with each split note and each knowledge note or folder that moves, for the person's approval.
 - For About me's facts, say which ones you cannot write, such as for a contacts app that you cannot reach: they stay in About me until the person adds them there.
 - Show the diff of a changed copy of one of Eva's skills.

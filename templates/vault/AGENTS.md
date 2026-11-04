@@ -37,6 +37,12 @@ The vault has three parts: the person's life, what they build, and what they kno
 
 A note that still matters after its project or case ends goes here. "How we priced the shop" stays in the project. "How I decide prices" goes to `Methods/`.
 
+Before you act on a request, list `Principles/` and `Methods/`. Their file names say what each note is, so the list shows which ones fit. Never grep these two folders to decide: a principle or a method rarely holds the words of the request.
+
+- **Read each note that fits,** and name it in your answer.
+- **Follow each method that fits,** such as the steps for a new project when the person creates a project.
+- **When the person is about to act against a principle,** name it, then let them decide.
+
 ## Outside the vault
 
 Each role has its own service. _Personal rules_ names the person's app for each role.

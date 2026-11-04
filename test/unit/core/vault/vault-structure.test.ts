@@ -40,6 +40,13 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBe(structureChanges.at(-1)?.version ?? 0);
   });
 
+  test("v5 adds the folder rule for Principles/ and Methods/, with no migration of its own (#851)", () => {
+    const v5 = structureChanges.find((change) => change.version === 5);
+    expect(v5?.summary).toStartWith("Eva reads your principles and your methods before she acts");
+    expect(v5?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(5);
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

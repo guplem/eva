@@ -12,6 +12,7 @@ import { runMigrations } from "../../../../src/core/migrations/migration-runner.
 import { homePaths } from "../../../../src/core/settings/home.ts";
 import { createVaultKey, type VaultKeyFile } from "../../../../src/core/vault/vault-crypto.ts";
 import { defaultSecretPatterns } from "../../../../src/core/vault/secret-files.ts";
+import { newestStructureVersion } from "../../../../src/core/vault/vault-structure.ts";
 import { vaultFolders } from "../../../../src/core/vault/vault-folders.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -185,6 +186,13 @@ describe("the vault template", () => {
     expect(map).toContain("Never add a second status field.");
   });
 
+  test("the agent map tells the agent to list Principles/ and Methods/ before it acts, never to grep them (#851)", () => {
+    const map = vaultTemplateFiles(answers)["AGENTS.md"] ?? "";
+    expect(map).toContain("Before you act on a request, list `Principles/` and `Methods/`.");
+    expect(map).toContain("Never grep these two folders to decide:");
+    expect(map).toContain("Follow each method that fits");
+  });
+
   test("each folder of Life/ has its own rules, and Eva's folder has its guide (#772)", () => {
     const files = vaultTemplateFiles(answers);
     expect(files["Life/Cases/AGENTS.md"]).toContain("Case.md");
@@ -236,8 +244,10 @@ describe("the vault template", () => {
     }
   });
 
-  test("a new vault records structure version 4 (#848)", () => {
-    expect(JSON.parse(vaultTemplateFiles(answers)[".eva/vault-structure.json"] ?? "")).toEqual({ version: 4 });
+  test("a new vault records the newest structure version (#772)", () => {
+    expect(JSON.parse(vaultTemplateFiles(answers)[".eva/vault-structure.json"] ?? "")).toEqual({
+      version: newestStructureVersion,
+    });
   });
 
   test("the agent map names the language that the person chose for notes", () => {

@@ -205,6 +205,7 @@ export function ProjectsHome({
                   <LegendKey pattern="active" text={statusLabels.active} />
                   <button
                     className="filter-chip timeline-chip"
+                    aria-label="Show the paused projects"
                     aria-pressed={showPaused}
                     onClick={() => setShowPaused(!showPaused)}
                   >

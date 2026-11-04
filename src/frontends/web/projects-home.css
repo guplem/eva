@@ -315,9 +315,10 @@
   gap: var(--space-2);
 }
 
+/* Three counts: Active, In use and Paused (#859). They fit in one row on each size. */
 .home-count-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
@@ -342,10 +343,6 @@
   /* A narrow name column keeps the dot of the In use mark only, so the title stays readable. The row label says it in words. */
   .timeline-name .timeline-in-use-word {
     display: none;
-  }
-
-  .home-count-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

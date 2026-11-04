@@ -2178,6 +2178,9 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   await expect(page.getByRole("region", { name: "Recent" })).toBeVisible();
   // Only the active and the paused projects show: Family recipes is in use.
   await expect(timeline.getByRole("button", { name: /Family recipes/ })).toHaveCount(0);
+  // The status chips add a status to the timeline (#857).
+  await timeline.getByRole("group", { name: "Statuses to show" }).getByRole("button", { name: "In use" }).click();
+  await expect(timeline.getByRole("button", { name: "Family recipes, In use" })).toBeVisible();
   const startedLine = page.getByText(/^In (\d{4}|all): \d+ projects? started\.$/);
   await expect(startedLine).toHaveText(new RegExp(`^In ${String(new Date().getFullYear())}:`));
   await page.getByRole("group", { name: "Year" }).getByRole("button", { name: "All" }).click();

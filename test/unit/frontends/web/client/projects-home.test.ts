@@ -9,6 +9,7 @@ import {
   projectYears,
   statusCounts,
   timeline,
+  todayLabel,
 } from "../../../../../src/frontends/web/client/projects-home.ts";
 import { parseProjectId } from "../../../../../src/core/projects/project-id.ts";
 import type { ProjectStatus } from "../../../../../src/shared/project-statuses.ts";
@@ -190,6 +191,30 @@ describe("timeline", () => {
   test("starts all the years at the oldest active or paused project, not at an older idea", () => {
     const shown = timeline([project("2019-01-01-0000-dream", "idea"), ...projects], "all", now);
     expect(shown.marks[0]?.label).toBe("2025");
+  });
+
+  test("shows an in-use project when the person picks In use (#857)", () => {
+    const rows = timeline(projects, 2026, now, new Set(["active", "in-use"] as const)).rows;
+    expect(rows.map((row) => [row.title, row.status])).toEqual([
+      ["early", "active"],
+      ["used", "in-use"],
+      ["late", "active"],
+    ]);
+  });
+
+  test("shows only the picked statuses, and no row when none is picked (#857)", () => {
+    expect(timeline(projects, 2026, now, new Set(["paused"] as const)).rows.map((row) => row.title)).toEqual(["old"]);
+    expect(timeline(projects, 2026, now, new Set()).rows).toEqual([]);
+  });
+
+  test("starts all the years at the oldest project of a picked status (#857)", () => {
+    const older = project("2024-05-01-0000-tool", "in-use");
+    expect(timeline([older, ...projects], "all", now).marks[0]?.label).toBe("2025");
+    expect(timeline([older, ...projects], "all", now, new Set(["in-use"] as const)).marks[0]?.label).toBe("2024");
+  });
+
+  test("names today by its day and month, for the label of the today line (#857)", () => {
+    expect(todayLabel(now)).toBe("3 Nov");
   });
 
   test("shows no row and still has marks with no project", () => {

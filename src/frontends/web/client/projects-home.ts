@@ -73,10 +73,21 @@ export function statusCounts(
   };
 }
 
+/** The statuses that the timeline can show. An idea and a closed project have no run to draw. */
+export const timelineStatuses = ["active", "paused", "in-use"] as const;
+export type TimelineStatus = (typeof timelineStatuses)[number];
+
+/** What the timeline shows until the person picks other statuses (#857). */
+export const defaultTimelineStatuses: ReadonlySet<TimelineStatus> = new Set(["active", "paused"]);
+
+function isTimelineStatus(status: ProjectStatus | null | undefined): status is TimelineStatus {
+  return timelineStatuses.some((shown) => shown === status);
+}
+
 export interface TimelineRow {
   readonly project: Project;
   readonly title: string;
-  readonly status: "active" | "paused";
+  readonly status: TimelineStatus;
   /** Where the bar starts and ends, as a share of the timeline width, from 0 to 1. */
   readonly start: number;
   readonly end: number;
@@ -93,14 +104,19 @@ export interface Timeline {
 }
 
 /**
- * The active and the paused projects, each from its creation to today. The bars show no stretches
+ * The projects of the picked statuses, each from its creation to today. The bars show no stretches
  * of activity from the chats: a deleted chat would take its activity away.
  */
-export function timeline(projects: readonly Project[], year: YearChoice, now: Date): Timeline {
+export function timeline(
+  projects: readonly Project[],
+  year: YearChoice,
+  now: Date,
+  statuses: ReadonlySet<TimelineStatus> = defaultTimelineStatuses,
+): Timeline {
   const shown = projects
     .flatMap((project) => {
       const status = project.frontMatter.status;
-      return status === "active" || status === "paused" ? [{ project, status, created: createdAt(project) }] : [];
+      return isTimelineStatus(status) && statuses.has(status) ? [{ project, status, created: createdAt(project) }] : [];
     })
     .sort((first, second) => first.created.getTime() - second.created.getTime());
   const firstYear =
@@ -129,6 +145,11 @@ export function timeline(projects: readonly Project[], year: YearChoice, now: Da
         }))
       : months.map((label, index) => ({ label, at: shareOf(new Date(year, index, 1).getTime()) }));
   return { rows, marks, today: now.getTime() >= from && now.getTime() < to ? end : null };
+}
+
+/** "4 Nov": the label under the today line of the timeline (#857). */
+export function todayLabel(now: Date): string {
+  return `${String(now.getDate())} ${months[now.getMonth()] ?? ""}`;
 }
 
 /** The fields of a chat that the home page reads. */

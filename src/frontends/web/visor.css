@@ -545,6 +545,19 @@
   }
 }
 
+/* Not in the reference: Eva does not answer (#853). A crossed wifi glows in place of the eyes. */
+.mk.offline .eyes svg {
+  display: block;
+  width: 0.64em;
+  height: 0.64em;
+  fill: none;
+  stroke: var(--eye);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+
 /*
  * Festive eyes: the eyes of a special day (client/festive-art.ts). They replace the face only in
  * welcome places. Each day sets its own hue, so the glow follows the day, not the theme.

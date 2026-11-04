@@ -668,21 +668,6 @@ textarea {
   color: var(--bad-bg);
 }
 
-/* Eva does not answer: a symbol, not a number, so it reads apart from a count (#853). */
-.nav-badge.offline {
-  width: 20px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0;
-  box-shadow: 0 0 0 2px var(--side);
-}
-
-.nav-badge.offline .icon {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2.6;
-}
-
 .nav-dot {
   position: absolute;
   top: -1px;

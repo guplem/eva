@@ -17,6 +17,8 @@ interface VisorProps {
   readonly alarm?: boolean;
   /** The eyes take the Project colour of Settings > Appearance, as beside an answer in a Project chat. */
   readonly projectEyes?: boolean;
+  /** Eva does not answer: a no-connection sign takes the place of the eyes (#853). */
+  readonly offline?: boolean;
 }
 
 /**
@@ -31,6 +33,7 @@ export function Visor({
   followPointer = false,
   alarm = false,
   projectEyes = false,
+  offline = false,
 }: VisorProps): ReactElement {
   const [rotatingFace, setRotatingFace] = useState<Face>("searching");
   const visor = useRef<HTMLSpanElement>(null);
@@ -50,12 +53,20 @@ export function Visor({
   return (
     <span
       ref={visor}
-      className={`${visorClassName(rotate ? rotatingFace : face, size)}${alarm ? " alarm" : ""}${projectEyes ? " project-eyes" : ""}`}
+      className={`${visorClassName(rotate ? rotatingFace : face, size)}${alarm ? " alarm" : ""}${projectEyes ? " project-eyes" : ""}${offline ? " offline" : ""}`}
       aria-hidden="true"
     >
       <span className="eyes">
-        <i />
-        <i />
+        {offline ? (
+          <svg viewBox="0 0 24 24">
+            <path d={offlineSign} />
+          </svg>
+        ) : (
+          <>
+            <i />
+            <i />
+          </>
+        )}
       </span>
     </span>
   );
@@ -145,3 +156,7 @@ function FestiveVisor({
     </span>
   );
 }
+
+/** The crossed wifi of the icon set, drawn with the glow of the eyes. */
+const offlineSign =
+  "M3 3l18 18M8.5 16a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 5-2.6M14.5 10a10 10 0 0 1 4.5 2.5M2 9a15 15 0 0 1 4-2.6M11 5.6A15 15 0 0 1 22 9M12 20h.01";

@@ -75,7 +75,7 @@ describe("navVisorState", () => {
 });
 
 describe("visorSignal (#566)", () => {
-  const quiet = { unreadProblems: 0, unreadError: false, news: false, centerOpen: false };
+  const quiet = { unreadProblems: 0, unreadError: false, news: false, offline: false, centerOpen: false };
 
   test("counts the unread problems, and an unread error pulses", () => {
     expect(visorSignal({ ...quiet, unreadProblems: 2 })).toEqual({ count: 2, dot: false, alarm: false });
@@ -94,6 +94,11 @@ describe("visorSignal (#566)", () => {
     expect(visorSignal({ ...quiet, news: true })).toEqual({ count: 0, dot: true, alarm: false });
     expect(visorSignal({ ...quiet, news: true, unreadProblems: 1 }).dot).toBe(false);
     expect(visorSignal(quiet)).toEqual({ count: 0, dot: false, alarm: false });
+  });
+
+  test("offline shows the dot, so the person looks in the center for the reason (#853)", () => {
+    expect(visorSignal({ ...quiet, offline: true })).toEqual({ count: 0, dot: true, alarm: false });
+    expect(visorSignal({ ...quiet, offline: true, unreadProblems: 1 }).dot).toBe(false);
   });
 });
 

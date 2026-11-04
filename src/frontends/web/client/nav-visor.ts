@@ -65,6 +65,8 @@ export interface VisorSignalInput {
   readonly unreadError: boolean;
   /** An unread entry of the history, or a setup step that is left. */
   readonly news: boolean;
+  /** Eva does not answer. The center says why, so the dot calls the person there (#853). */
+  readonly offline: boolean;
   /** The notification center is the open page, so the person already looks. */
   readonly centerOpen: boolean;
 }
@@ -91,7 +93,7 @@ export function bellName(signal: VisorSignal): string {
 export function visorSignal(input: VisorSignalInput): VisorSignal {
   return {
     count: input.unreadProblems,
-    dot: input.unreadProblems === 0 && input.news,
+    dot: input.unreadProblems === 0 && (input.news || input.offline),
     alarm: input.unreadError && !input.centerOpen,
   };
 }
@@ -115,6 +117,3 @@ export function tapFace(random: () => number = Math.random, last?: Face): Face {
   const choices = tapFaces.filter((face) => face !== last);
   return choices[Math.min(Math.floor(random() * choices.length), choices.length - 1)] ?? "happy";
 }
-
-/** Why Eva most likely does not answer. The offline visor gives it in its tooltip and in a toast (#853). */
-export const offlineReason = "The hub may be off, or this device left Tailscale.";

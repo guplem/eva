@@ -6,7 +6,6 @@ import { useEffect, useState, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
 import {
   bellName,
-  offlineReason,
   navVisorProjectEyes,
   navVisorState,
   tapFace,
@@ -17,7 +16,6 @@ import {
 import { currentNavButton, destinations, navBadges, type Destination } from "./navigation.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
-import { Toast } from "./Toast.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 
 interface MainNavProps extends NavVisorInput {
@@ -28,8 +26,6 @@ interface MainNavProps extends NavVisorInput {
   readonly onOpen: (destination: Destination) => void;
   /** A tap on the visor opens the home page (#761). */
   readonly onHome: () => void;
-  /** Tries to reach Eva at once, before the next timed try. */
-  readonly onRetryNow: () => void;
   readonly setupMissing: number;
   /** An unread problem is an error, so the count is red. */
   readonly unreadError: boolean;
@@ -49,8 +45,8 @@ export function MainNav(props: MainNavProps): ReactElement {
   // Only the crossed face pulses: an approval or an offline face would only borrow the red.
   const alarm = signal.alarm && visor.face === stateFaces.broken;
   // The visible label "Eva" starts the name, so a voice command that says it finds the button.
-  // The count is in the words. The dot, which has no words, adds its own. Offline hides both, and gives the reason.
-  const name = `Eva: ${visor.words}${offline ? `. ${offlineReason}` : signal.dot ? ". Something new waits" : ""}`;
+  // The count is in the words. The dot, which has no words, adds its own.
+  const name = `Eva: ${visor.words}${signal.dot ? ". Something new waits" : ""}`;
   const projectEyes = navVisorProjectEyes(current, props.isPhone);
   // At rest, on a special day, the visor wears that day's eyes. Any state that informs comes first,
   // and so do the Project eyes: they are the phone's only sign of the mode.
@@ -63,11 +59,6 @@ export function MainNav(props: MainNavProps): ReactElement {
     const timer = setTimeout(() => setTapped(null), tapFaceMs);
     return () => clearTimeout(timer);
   }, [tapped]);
-  // A phone shows no tooltip, so a tap on the offline visor gives the reason in a toast (#853).
-  const [reasonShown, setReasonShown] = useState(false);
-  useEffect(() => {
-    if (!offline) setReasonShown(false);
-  }, [offline]);
   const badges = navBadges({
     approvals,
     setupMissing,
@@ -105,12 +96,11 @@ export function MainNav(props: MainNavProps): ReactElement {
         className="main-nav-visor"
         aria-label={name}
         aria-current={shownButton === "visor" ? "page" : undefined}
-        data-tooltip={offline ? `${visor.words}. ${offlineReason}` : visor.words}
+        data-tooltip={visor.words}
         data-tooltip-side="right"
         onClick={() => {
           // A playful face would hide that Eva does not answer.
-          if (offline) setReasonShown(true);
-          else setTapped((last) => ({ face: tapFace(Math.random, last?.face) }));
+          if (!offline) setTapped((last) => ({ face: tapFace(Math.random, last?.face) }));
           props.onHome();
         }}
       >
@@ -121,31 +111,20 @@ export function MainNav(props: MainNavProps): ReactElement {
             festive={tapped === null ? festive : null}
             alarm={tapped === null && alarm}
             projectEyes={projectEyes}
+            offline={offline && tapped === null}
           />
-          {offline ? (
-            <span className="nav-badge offline" aria-hidden="true">
-              <Icon name="wifi-off" />
-            </span>
-          ) : signal.count > 0 ? (
+          {signal.count > 0 && (
             <span className={`nav-badge${props.unreadError ? " bad" : ""}`} aria-hidden="true">
               {signal.count}
             </span>
-          ) : (
-            signal.dot && <span className="nav-dot" aria-hidden="true" />
           )}
+          {signal.dot && <span className="nav-dot" aria-hidden="true" />}
         </span>
         <span className="nav-label" aria-hidden="true">
           Eva
         </span>
       </button>
       {destinations.filter((destination) => destination.id !== "settings").map(button)}
-      {offline && reasonShown && (
-        <Toast
-          message={`${visor.words}. ${offlineReason}`}
-          actions={<button onClick={props.onRetryNow}>Try now</button>}
-          onClose={() => setReasonShown(false)}
-        />
-      )}
       <span className="nav-spacer" />
       {destinations.filter((destination) => destination.id === "settings").map(button)}
     </nav>

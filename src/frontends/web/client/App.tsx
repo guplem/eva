@@ -704,6 +704,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     unreadProblems: unreadProblems.length,
     unreadError,
     news: setupMissing > 0 || notifications.some((entry) => !entry.read),
+    offline: !isConnected,
     centerOpen: screen === notificationCenter,
   });
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
@@ -724,7 +725,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         approvals={approvals.length}
         setupMissing={setupMissing}
         isConnected={isConnected}
-        onRetryNow={() => events.current?.retryNow()}
         problems={problems.length}
         unreadProblems={unreadProblems.length}
         unreadError={unreadError}
@@ -782,6 +782,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         )}
         {screen === notificationCenter && (
           <NotificationCenter
+            isConnected={isConnected}
+            onRetryNow={() => events.current?.retryNow()}
             problems={problems}
             entries={notifications}
             steps={steps}

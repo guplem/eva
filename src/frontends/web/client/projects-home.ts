@@ -80,22 +80,6 @@ export function statusCounts(
   };
 }
 
-/** A day such as `2026-07-01`, the form of the `started` key. */
-const dayPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-/**
- * The local time when the work started: the `started` day, or else the creation (#859). A day that
- * the calendar does not have reads as no day.
- */
-export function startedAt(project: Pick<Project, "parsedId" | "frontMatter">): Date {
-  const started = project.frontMatter.extra["started"];
-  const match = typeof started === "string" ? dayPattern.exec(started.trim()) : null;
-  if (match === null) return createdAt(project);
-  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  const date = new Date(year, month - 1, day);
-  return date.getMonth() === month - 1 && date.getDate() === day ? date : createdAt(project);
-}
-
 export interface TimelineRow {
   readonly project: Project;
   readonly title: string;
@@ -124,14 +108,14 @@ function isShown(frontMatter: Project["frontMatter"], showPaused: boolean): bool
 }
 
 /**
- * The shown projects, each once, from the start of its work to today (#857, #859). The person can
+ * The shown projects, each once, from its creation to today (#857, #859). The person can
  * hide the paused projects, but never a project in use. The bars show no stretches of activity
  * from the chats: a deleted chat would take its activity away.
  */
 export function timeline(projects: readonly Project[], year: YearChoice, now: Date, showPaused = true): Timeline {
   const shown = projects
     .filter((project) => isShown(project.frontMatter, showPaused))
-    .map((project) => ({ project, created: startedAt(project) }))
+    .map((project) => ({ project, created: createdAt(project) }))
     .sort((first, second) => first.created.getTime() - second.created.getTime());
   const firstYear =
     year === "all" ? Math.min(now.getFullYear(), ...shown.map((item) => item.created.getFullYear())) : year;

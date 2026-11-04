@@ -18,7 +18,7 @@ import type { ProjectStatus } from "../../../../../src/shared/project-statuses.t
 function project(
   id: string,
   status: ProjectStatus | null,
-  { inUse = false, started }: { readonly inUse?: boolean; readonly started?: string } = {},
+  { inUse = false }: { readonly inUse?: boolean } = {},
 ): Project {
   const parsedId = parseProjectId(id);
   if (parsedId === null) throw new Error(`Bad id ${id}`);
@@ -39,7 +39,7 @@ function project(
       type: "general",
       summary: null,
       pinned: null,
-      extra: started === undefined ? {} : { started },
+      extra: {},
     },
     title,
     description: null,
@@ -156,16 +156,6 @@ describe("timeline", () => {
     const late = shown.rows.find((row) => row.title === "late");
     expect(late?.start).toBeGreaterThan(0.49);
     expect(late?.start).toBeLessThan(0.5);
-  });
-
-  test("starts a bar on the day the work started, when the project says so (#859)", () => {
-    const later = project("2026-01-01-0000-later", "active", { started: "2026-07-01" });
-    const bad = project("2026-01-01-0000-bad", "active", { started: "soon" });
-    const shown = timeline([later, bad], 2026, now);
-    expect(shown.rows.map((row) => row.title)).toEqual(["bad", "later"]);
-    expect(shown.rows[0]?.start).toBe(0);
-    expect(shown.rows[1]?.start).toBeGreaterThan(0.49);
-    expect(shown.rows[1]?.start).toBeLessThan(0.5);
   });
 
   test("starts a project of an earlier year at the edge, and says so", () => {

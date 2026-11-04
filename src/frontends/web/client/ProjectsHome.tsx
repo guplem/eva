@@ -211,7 +211,7 @@ export function ProjectsHome({
                     <span className="timeline-swatch paused" aria-hidden="true" />
                     {statusLabels.paused}
                   </button>
-                  {shown.rows.some((row) => row.status !== "active" && row.status !== "paused") && (
+                  {shown.rows.some((row) => row.status === "closed") && (
                     <LegendKey pattern="closed" text={statusLabels.closed} />
                   )}
                   <LegendKey pattern="in-use" text={inUseLabel} />
@@ -239,13 +239,13 @@ export function ProjectsHome({
                       onClick={() => onOpenProject(row.project)}
                     >
                       <span className="timeline-name">
-                        <span>{row.title}</span>
-                        {/* The mark says In use in words, beside the ring of the bar. */}
+                        {/* The mark at the left says In use, beside the ring of the bar. A narrow timeline keeps its dot only. */}
                         {row.inUse && (
-                          <span className="pill live timeline-in-use" aria-hidden="true">
-                            {inUseLabel}
+                          <span className="pill dot live timeline-in-use" aria-hidden="true">
+                            <span className="timeline-in-use-word">{inUseLabel}</span>
                           </span>
                         )}
+                        <span>{row.title}</span>
                       </span>
                       <span className="timeline-lane">
                         <span

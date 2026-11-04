@@ -154,10 +154,9 @@
   white-space: nowrap;
 }
 
-/* The In use mark sits at the end of the name, right before the bar. The title gives way first. */
+/* The In use mark sits at the left of the name. The title gives way first. */
 .timeline-name .timeline-in-use {
   flex: none;
-  margin-left: auto;
   padding: 0 var(--space-2);
   overflow: visible;
 }
@@ -338,6 +337,11 @@
 @media (max-width: 760px) {
   .timeline {
     --timeline-name: 110px;
+  }
+
+  /* A narrow name column keeps the dot of the In use mark only, so the title stays readable. The row label says it in words. */
+  .timeline-name .timeline-in-use-word {
+    display: none;
   }
 
   .home-count-row {

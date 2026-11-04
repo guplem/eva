@@ -3490,7 +3490,6 @@ button.small {
   gap: 10px;
 }
 
-/* A long project name wraps, so the person reads all of it. A word with no break point breaks too. */
 /* The status pill and the In use pill of a project stay together (#859). */
 .project-pills {
   display: inline-flex;
@@ -3504,6 +3503,7 @@ button.small {
   display: block;
 }
 
+/* A long project name wraps, so the person reads all of it. A word with no break point breaks too. */
 .header-title h1 {
   flex: 0 1 auto;
   min-width: 0;

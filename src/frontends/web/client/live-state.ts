@@ -205,9 +205,17 @@ function draftsAfter(drafts: LiveState["drafts"], event: SessionEvent): LiveStat
 function endedStepsAfter(state: LiveState, event: SessionEvent): LiveState["endedSteps"] {
   const id = event.sessionId;
   const running = state.steps[id];
-  if ((event.kind === "turn_finished" || event.kind === "turn_failed") && running !== undefined)
-    return { ...state.endedSteps, [id]: stepsWithDraft(running, state.drafts[id]) };
-  if (event.kind !== "session_deleted" || !(id in state.endedSteps)) return state.endedSteps;
+  const ended = running === undefined ? [] : stepsWithDraft(running, state.drafts[id]);
+  // An empty answer would show only a face that seems to think.
+  if ((event.kind === "turn_finished" || event.kind === "turn_failed") && ended.length > 0)
+    return { ...state.endedSteps, [id]: ended };
+  // A new turn drops them: after a missed end, the old answer must not show under the new message.
+  const drops =
+    event.kind === "session_deleted" ||
+    event.kind === "turn_finished" ||
+    event.kind === "turn_failed" ||
+    (running === undefined && stepsAfter(state.steps, event) !== state.steps);
+  if (!drops || !(id in state.endedSteps)) return state.endedSteps;
   const rest = { ...state.endedSteps };
   Reflect.deleteProperty(rest, id);
   return rest;

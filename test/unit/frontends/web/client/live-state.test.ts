@@ -536,3 +536,21 @@ describe("the steps of an ended turn", () => {
     expect(applyEvent(ended, { ...stamp, kind: "session_deleted" }).endedSteps).toEqual({});
   });
 });
+
+describe("the steps of an ended turn, at the next turn", () => {
+  test("a new turn drops them, so a missed end never shows the answer before it", () => {
+    const ended = run([
+      { kind: "text", text: "Old.", messageId: "m1" },
+      { kind: "turn_finished", ...finished },
+    ]);
+    const stamp = { sessionId: "s1", seq: 99, at: "2026-10-18T10:00:00.000Z" };
+    const next = applyEvent(ended, { ...stamp, kind: "message_received", text: "Again", origin: "api" });
+    expect(next.endedSteps).toEqual({});
+  });
+
+  test("a turn that ends with no step keeps nothing, so no empty answer shows", () => {
+    const stamp = { sessionId: "s1", seq: 99, at: "2026-10-18T10:00:00.000Z" };
+    const started = applyEvent(emptyLiveState, { ...stamp, kind: "message_received", text: "Hi", origin: "api" });
+    expect(applyEvent(started, event({ kind: "turn_failed", reason: "stopped" })).endedSteps).toEqual({});
+  });
+});

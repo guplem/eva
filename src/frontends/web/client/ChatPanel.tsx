@@ -161,7 +161,7 @@ function ContextPartDialog({
   readonly onClose: () => void;
 }): ReactElement {
   return (
-    <Dialog label={part.title} onClose={onClose} scrimCloses>
+    <Dialog label={part.title} onClose={onClose} scrimCloses wide>
       <strong>{part.title}</strong>
       {part.source !== null && <p className="context-source">{part.source}</p>}
       {part.note !== null && <p className="task-note">{part.note}</p>}

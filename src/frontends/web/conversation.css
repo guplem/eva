@@ -393,7 +393,7 @@
   background: var(--chip);
 }
 
-.step-list li {
+.step-list > li {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -424,7 +424,7 @@
   }
 }
 
-.step-list li .icon {
+.step-list .step-row .icon {
   width: 14px;
   height: 14px;
   color: var(--accent-ink);
@@ -442,12 +442,50 @@
   font-family: var(--font);
 }
 
-.step-list li.failed,
-.step-list li.failed .icon {
+/* An earlier message shows whole, so the person reads it where it came in the turn. */
+.step-list > li.step-whole-message {
+  display: block;
+  margin: 2px 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-input);
+  background: var(--panel);
+  font: 500 var(--text-sm) / 1.5 var(--font);
+}
+
+.step-message-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 11px var(--mono);
+  color: var(--accent-ink);
+}
+
+.step-list .step-message-head .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.step-message-body {
+  overflow-wrap: anywhere;
+}
+
+/* The link reads as the interface, not as one more command. */
+.step-list > li.step-filter {
+  justify-content: flex-end;
+  font: 600 var(--text-sm) var(--font);
+}
+
+.step-filter .link-button {
+  padding: 2px 0;
+  text-decoration: none;
+}
+
+.step-list > li.failed,
+.step-list > li.failed .icon {
   color: var(--bad);
 }
 
-.step-list li.muted {
+.step-list > li.muted {
   color: var(--muted);
 }
 
@@ -524,6 +562,12 @@
   margin-left: -12px;
 }
 
+/* The tasks of an answer are information, so they sit at the right end, apart from the actions. */
+.answer-actions .answer-tasks {
+  margin-left: auto;
+  font-weight: 500;
+}
+
 button.ghost {
   display: inline-flex;
   align-items: center;
@@ -546,11 +590,6 @@ button.ghost {
 button.ghost .icon {
   width: 16px;
   height: 16px;
-}
-
-.whole-answer {
-  margin-top: 4px;
-  margin-left: -12px;
 }
 
 /* A project work result: the Project side reports to the Assistant chat that gave the work. */

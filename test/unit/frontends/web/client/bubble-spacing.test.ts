@@ -38,6 +38,10 @@ describe("the space inside a chat bubble (issue 477)", () => {
     expect(rules(conversation, ".answer-actions")[0]).toContain("margin-left: -12px;");
   });
 
+  test("the background tasks of an answer sit at the right end of the row, apart from its actions (#864)", () => {
+    expect(rules(conversation, ".answer-actions .answer-tasks")[0]).toContain("margin-left: auto;");
+  });
+
   test("on a phone, the tall action buttons fill the bottom padding but stay inside the bubble", () => {
     expect(rules(phoneRules(conversation), ".answer-actions")[0]).toContain(
       "margin-bottom: calc(-1 * var(--bubble-padding-block));",

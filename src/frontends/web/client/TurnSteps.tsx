@@ -1,12 +1,13 @@
 /**
- * The steps of an answer, folded into one line: the last step and an arrow. A tap
- * opens the list, one line for each message, command, tool and task. A message shows its text
- * beside the face of Eva. For every other step, a pill says what the step
+ * The steps of an answer, folded into one line: the last step, a count of the messages and an
+ * arrow. A tap opens the list. A message shows its whole text, under the face of Eva, and a
+ * link can hide every other step. Each other step is one line, where a pill says what the step
  * did, and plain text says what it did it to, such as the file that it read. A tap on a step
  * opens a dialog with all of it: where the tool comes from, its description, and its whole input
  * and output, each in a fold.
  */
-import { useEffect, useId, useState, type ReactElement } from "react";
+import { useEffect, useId, useMemo, useState, type ReactElement } from "react";
+import { shownAnswerText } from "../../../shared/file-markers.ts";
 import type { StepDetail, TurnStep } from "../../../shared/turn-steps.ts";
 import { api } from "./api.ts";
 import { Dialog } from "./Dialog.tsx";
@@ -23,7 +24,9 @@ import {
 } from "./conversation-parts.ts";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
+import { MarkdownBody } from "./MarkdownBody.tsx";
 import { errorText } from "./SettingsParts.tsx";
+import { toWebHtml } from "./web-format.ts";
 
 function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
@@ -58,7 +61,10 @@ export function StepFold({
   summary,
   sessionId,
   endedWork,
+  vaultLinks = false,
+  bubble,
 }: {
+  /** Each message holds its whole text. */
   readonly steps: readonly TurnStep[];
   readonly omitted?: number;
   /** A running turn shows its list open, so the person sees each step arrive. */
@@ -69,14 +75,23 @@ export function StepFold({
   readonly sessionId?: string;
   /** Each Project chat whose result came back, and whether its work failed. */
   readonly endedWork?: ReadonlyMap<string, boolean>;
+  /** True in an Assistant chat, so a path in a message opens the Files page, as in the answer. */
+  readonly vaultLinks?: boolean;
+  /** The message that the answer shows below in full. A step after it keeps it in the list, as one line. */
+  readonly bubble?: TurnStep;
 }): ReactElement | null {
   const [open, setOpen] = useState(live);
+  const [onlyMessages, setOnlyMessages] = useState(false);
   const [shown, setShown] = useState<TurnStep | null>(null);
   const listId = useId();
   const total = steps.length + omitted;
   if (total === 0) return null;
   const last = steps.at(-1);
   const failed = steps.some((step) => step.isError);
+  const messages = steps.filter((step) => step.kind === "message" && step !== bubble).length;
+  // With no other step, the link would hide nothing.
+  const canFilter = messages > 0 && messages < total;
+  const shownSteps = canFilter && onlyMessages ? steps.filter((step) => step.kind === "message") : steps;
   // A live step changes as its output arrives, so the dialog follows the newest copy of the shown step.
   const current = shown === null ? null : (steps.find((step) => step.id !== null && step.id === shown.id) ?? shown);
   return (
@@ -85,7 +100,7 @@ export function StepFold({
         className="steps-line"
         aria-expanded={open}
         aria-controls={listId}
-        aria-label={`${open ? "Hide" : "Show"} ${counted(total, "step")}`}
+        aria-label={`${open ? "Hide" : "Show"} ${counted(total, "step")}${messages > 0 ? `, ${counted(messages, "message")}` : ""}`}
         data-tooltip={summary}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
@@ -97,21 +112,40 @@ export function StepFold({
             <StepParts step={last} />
           </span>
         )}
+        {messages > 0 && <span className="pill step-pill steps-messages">{counted(messages, "message")}</span>}
         <span className={`steps-arrow${open ? " open" : ""}`}>
           <Icon name="down" />
         </span>
       </button>
       {open && (
         <ol className="step-list" id={listId} aria-label="Steps">
-          {omitted > 0 && <li className="muted">{counted(omitted, "step")} not kept.</li>}
-          {steps.map((step, index) => (
-            <li key={`${step.id ?? ""}-${String(index)}`} className={step.isError ? "failed" : undefined}>
-              <button className="step-row" aria-haspopup="dialog" onClick={() => setShown(step)}>
-                <Icon name={stepIcon(step)} />
-                <StepParts step={step} />
+          {omitted > 0 && !(canFilter && onlyMessages) && (
+            <li className="muted">{counted(omitted, "step")} not kept.</li>
+          )}
+          {shownSteps.map((step, index) =>
+            step.kind === "message" && step !== bubble ? (
+              <WholeMessage
+                key={`${step.id ?? ""}-${String(index)}`}
+                text={step.text}
+                live={live}
+                vaultLinks={vaultLinks}
+              />
+            ) : (
+              <li key={`${step.id ?? ""}-${String(index)}`} className={step.isError ? "failed" : undefined}>
+                <button className="step-row" aria-haspopup="dialog" onClick={() => setShown(step)}>
+                  <Icon name={stepIcon(step)} />
+                  <StepParts step={step} />
+                </button>
+              </li>
+            ),
+          )}
+          {canFilter && (
+            <li className="step-filter">
+              <button className="link-button" onClick={() => setOnlyMessages((only) => !only)}>
+                {onlyMessages ? "Show the commands too" : "Show only the messages"}
               </button>
             </li>
-          ))}
+          )}
         </ol>
       )}
       {current !== null && (
@@ -126,6 +160,32 @@ export function StepFold({
         />
       )}
     </div>
+  );
+}
+
+/** A message of the step list. It already shows all of its text, so it opens no dialog. */
+function WholeMessage({
+  text,
+  live,
+  vaultLinks,
+}: {
+  readonly text: string;
+  readonly live: boolean;
+  readonly vaultLinks: boolean;
+}): ReactElement {
+  // A text that stays cut can end inside a file marker, so the cut line is hidden as while it streams.
+  const html = useMemo(
+    () => toWebHtml(shownAnswerText(text, live || text.endsWith("…")), { vaultLinks }),
+    [text, live, vaultLinks],
+  );
+  return (
+    <li className="step-whole-message">
+      <span className="step-message-head">
+        <Icon name="eve" />
+        Message
+      </span>
+      <MarkdownBody html={html} className="answer-body step-message-body" copy={!live} />
+    </li>
   );
 }
 
@@ -177,7 +237,7 @@ function StepDialog({
   const tool = origin?.tool ?? null;
   const description = fields?.description ?? null;
   return (
-    <Dialog label={`Step: ${action}`} onClose={onClose} scrimCloses>
+    <Dialog label={`Step: ${action}`} onClose={onClose} scrimCloses wide>
       <div className="step-dialog-title">
         <span className={`pill step-pill${step.isError ? " failed" : ""}`}>{action}</span>
         <span

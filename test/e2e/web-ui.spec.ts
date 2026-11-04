@@ -221,7 +221,12 @@ async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
     await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("No background task runs now.");
   }
-  await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
+  const chip = page.getByRole("button", { name: "1 background task", exact: true }).first();
+  // The tasks ended, so the chip shows a check, at the right of the actions (#864).
+  await expect(chip.locator("path")).toHaveAttribute("d", "M5 12.5l4.5 4.5L19 7.5");
+  const copy = chip.locator("xpath=..").getByRole("button", { name: "Copy" });
+  expect((await chip.boundingBox())?.x ?? 0).toBeGreaterThan((await copy.boundingBox())?.x ?? Infinity);
+  await chip.click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   await expect(dialog).toContainText("This answer started these tasks");
   await expect(dialog).toContainText("Search the notes");
@@ -604,6 +609,49 @@ test("with no chat yet, the first message shows while Eva works on it", async ({
   await expect(page.locator(".message.answer").first()).toContainText("The person answered");
 });
 
+test("the first message shows at once, while Eva still makes its chat", async ({ page }) => {
+  await logIn(page);
+  let release = (): void => undefined;
+  const made = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() === "POST") await made;
+    await route.fallback();
+  });
+  const text = `A first message that waits (${test.info().project.name})`;
+  await sendFirstMessage(page, text);
+  // The chat does not exist yet, so the page is still the New chat page.
+  await expect(page.getByRole("region", { name: "New chat", exact: true }).locator(".message.user")).toContainText(
+    text,
+  );
+  release();
+  await expect(page.locator(".message.answer").first()).toContainText(text);
+  await expect(page.locator(".message.user")).toHaveCount(1);
+});
+
+test("the answer stays after the turn ends, until the stored turn takes its place", async ({ page }) => {
+  await logIn(page);
+  const first = await newAnsweredChat(page, "An answer that stays");
+  const chatId = await chatIdNamed(page, first);
+  await waitUntilIdle(page, chatId);
+  // The list brings the stored turn. Holding it keeps the moment between the turn end and the stored turn.
+  let release = (): void => undefined;
+  const listed = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() === "GET") await listed;
+    await route.fallback();
+  });
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("A second message");
+  await composer.press("Enter");
+  await waitUntilIdle(page, chatId);
+  await expect(page.locator(".working")).toHaveCount(0);
+  await expect(page.locator(".message.answer")).toHaveCount(2);
+  await expect(page.locator(".message.answer").last()).toContainText("A second message");
+  release();
+  await expect(page.locator(".message.answer").last().getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(page.locator(".message.answer")).toHaveCount(2);
+});
+
 test("with no chat yet and a missing setup step, the page says what is missing", async ({ page }) => {
   await hideOldChats(page);
   await page.route("**/api/status", async (route) => {
@@ -958,6 +1006,8 @@ test("the chat details list the context, and a tap shows a part's whole text (is
   await prompt.getByRole("button", { name: "Your rules for Eva" }).click();
   const part = page.getByRole("dialog", { name: "Your rules for Eva" });
   await expect(part).toContainText("# You are Eva");
+  // A part is a file to read, so a computer shows it in a wide box, not a narrow one.
+  if (test.info().project.name === "desktop") expect((await part.boundingBox())?.width ?? 0).toBeGreaterThan(700);
   await part.getByRole("button", { name: "Close" }).click();
   await expect(part).toHaveCount(0);
 });
@@ -1933,13 +1983,17 @@ test("the project page shows the facts, the quick links and a clones section", a
   await logIn(page);
   await openExampleApp(page);
   const facts = page.getByRole("region", { name: "Project facts" });
-  await expect(facts.getByText("2025-03-02T10:15")).toBeVisible();
+  // A date shows in the language of the browser, so the test finds it by the value of the file.
+  await expect(facts.locator('time[datetime="2025-03-02T10:15"]')).toBeVisible();
+  await expect(facts.getByText("Deadline", { exact: true })).toBeVisible();
   await expect(facts.getByText("#web")).toBeVisible();
-  const repository = facts.getByRole("link", { name: "github.com/example-owner/example-app" });
+  const design = facts.getByRole("link", { name: /Figma/ });
+  await expect(design).toHaveAttribute("href", "https://www.figma.com/file/example-app");
+  const repository = facts.getByRole("link", { name: /github\.com\/example-owner\/example-app/ });
   await expect(repository).toHaveAttribute("href", "https://github.com/example-owner/example-app");
   await expect(repository).toHaveAttribute("target", "_blank");
   // A local remote has no web page, so it stays plain text.
-  await expect(facts.getByRole("link")).toHaveCount(2);
+  await expect(facts.getByRole("link")).toHaveCount(3);
   await expect(page.getByRole("region", { name: "Clones" }).getByRole("button", { name: "New clone" })).toBeVisible();
 
   await facts.getByRole("link", { name: "Open in Files" }).click();
@@ -3808,6 +3862,8 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   // A stored answer keeps no details in the session list, so the dialog fetches them.
   const dialog = page.getByRole("dialog", { name: "Step: Command" });
   await expect(dialog.locator(".status-pill")).toHaveText("Done");
+  // A step shows its input and output, so a computer shows it in a wide box.
+  if (test.info().project.name === "desktop") expect((await dialog.boundingBox())?.width ?? 0).toBeGreaterThan(700);
   // A computer shows a centred box, and a phone a bottom sheet (issue 644).
   const gapBelow = (page.viewportSize()?.height ?? 0) - (await restingBottom(dialog));
   if (test.info().project.name === "phone") expect(gapBelow).toBeLessThan(1);
@@ -3905,20 +3961,25 @@ test("a new message of a running turn replaces the shown one, and the older one 
   const sockets = await routeEvents(page);
   await logIn(page);
   const sessionId = await newChat(page);
-  const body = page.locator(".message.answer .answer-body");
-  sockets.at(-1)?.send(textEvent(sessionId, "first thought"));
-  await expect(body).toHaveText("first thought");
+  const body = page.locator(".message.answer > .answer-body");
+  // Longer than the 200 characters that a step keeps.
+  const first = `first thought ${"and more words ".repeat(20)}until the end`;
+  sockets.at(-1)?.send(textEvent(sessionId, first));
+  await expect(body).toHaveText(first);
+  const command = { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "ls notes" };
+  sockets.at(-1)?.send(JSON.stringify({ ...command, sessionId, seq: 1, at: new Date().toISOString() }));
   sockets.at(-1)?.send(textEvent(sessionId, "second thought"));
   await expect(body).toHaveText("second thought");
-  // A running turn shows its steps open.
-  const steps = page.getByRole("list", { name: "Steps" }).getByRole("listitem");
-  // A message has no pill, but a screen reader still hears what it is.
-  await expect(steps).toHaveText(["Message: first thought"]);
-  await expect(steps.locator(".pill")).toHaveCount(0);
-  // A step keeps a short text, so the whole answer is one tap away.
-  await page.getByRole("button", { name: "Show the whole answer" }).click();
-  await expect(body).toContainText("first thought");
-  await expect(body).toContainText("second thought");
+  // A running turn shows its steps open. The earlier message shows whole, among the other steps.
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.getByRole("button", { name: "Hide 2 steps, 1 message" })).toContainText("1 message");
+  const steps = answer.getByRole("list", { name: "Steps" }).getByRole("listitem");
+  await expect(steps).toHaveText([`Message${first}`, /Command\s+ls notes/, "Show only the messages"]);
+  await answer.getByRole("button", { name: "Show only the messages" }).click();
+  await expect(steps).toHaveText([`Message${first}`, "Show the commands too"]);
+  await answer.getByRole("button", { name: "Show the commands too" }).click();
+  await expect(steps).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /Show the whole answer/ })).toHaveCount(0);
 });
 
 test("an approval and a task from while the connection was down still show after the reconnect", async ({ page }) => {

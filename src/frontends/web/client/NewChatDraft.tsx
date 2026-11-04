@@ -7,7 +7,7 @@ import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { Composer, unsentTexts, type ChatChoices } from "./Composer.tsx";
-import type { SentMessage } from "./Conversation.tsx";
+import { UserMessage, type SentMessage } from "./Conversation.tsx";
 import { newMessageId } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { ShowListButton } from "./MainNav.tsx";
@@ -72,6 +72,8 @@ export function NewChatDraft({
   const [model, setModel] = useState<ModelAlias | null>(null);
   const [effort, setEffort] = useState<EffortLevel | null>(null);
   const [sending, setSending] = useState(false);
+  // The first message shows at once, while Eva makes its chat. The chat then shows it in the same place.
+  const [sentText, setSentText] = useState<string | null>(null);
   // A suggestion tap and the message box must not both make a chat.
   const busy = useRef(false);
   // The chat of a first message that failed to send. A retry sends into it, so no empty chat stays behind.
@@ -114,6 +116,7 @@ export function NewChatDraft({
     if (busy.current) return false;
     busy.current = true;
     setSending(true);
+    setSentText(message);
     try {
       // The chat runs with the choices that the chip shows, even when the settings changed since the read.
       made.current ??= await api.newAssistantChat(shown?.model, shown?.engine, shown?.effort);
@@ -124,6 +127,8 @@ export function NewChatDraft({
       return true;
     } catch (caught) {
       onSending(null);
+      // The message box gets the text back, so the message must not show twice.
+      setSentText(null);
       showError(caught);
       return false;
     } finally {
@@ -168,6 +173,7 @@ export function NewChatDraft({
           ) : (
             !sending && <NewChatGreeting onPick={(text) => void send(text)} />
           )}
+          {sentText !== null && <UserMessage text={sentText} />}
           {draft !== null && (
             <Composer
               session={{ ...draft, parentId: null, turns: [] }}

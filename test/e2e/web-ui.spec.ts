@@ -1465,6 +1465,55 @@ test("Copy copies the text of an answer", async ({ page, context }) => {
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(title);
 });
 
+test("a right click on a message shows its actions: Copy on mine, Copy, Retry and Fork on Eva's (#863)", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await logIn(page);
+  const title = await newAnsweredChat(page, "Quick actions");
+  const chatId = await chatIdNamed(page, title);
+  await waitUntilIdle(page, chatId);
+
+  await page.locator(".message.user").first().click({ button: "right" });
+  const mine = page.getByRole("menu", { name: "Actions of your message" });
+  await expect(mine.getByRole("menuitem")).toHaveText(["Copy"]);
+  await mine.getByRole("menuitem", { name: "Copy" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Copied." })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(title);
+  // A keyboard opens the menu of a message too, and Escape gives the focus back to it.
+  const message = page.locator(".message.user").first();
+  await message.focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(mine.getByRole("menuitem", { name: "Copy" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(message).toBeFocused();
+
+  const answer = page.locator(".message.answer").first();
+  await answer.click({ button: "right" });
+  const evas = page.getByRole("menu", { name: "Actions of Eva's answer" });
+  await expect(evas.getByRole("menuitem")).toHaveText(["Copy", "Retry", "Fork"]);
+  await evas.getByRole("menuitem", { name: "Copy" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(title);
+
+  // A selected text keeps the browser's menu, so the person can copy a part of it.
+  const kept = await answer.locator(".answer-body").evaluate((body) => {
+    const range = document.createRange();
+    range.selectNodeContents(body);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 20 });
+    body.dispatchEvent(event);
+    window.getSelection()?.removeAllRanges();
+    return !event.defaultPrevented;
+  });
+  expect(kept).toBe(true);
+
+  await answer.click({ button: "right" });
+  await evas.getByRole("menuitem", { name: "Fork" }).click();
+  await expect(page.getByRole("group", { name: "Branches after answer 1" })).toContainText("Fork 1 · 2 of 2");
+});
+
 test("a code block of an answer gets its Copy button when the turn ends, and copies the exact code (#587)", async ({
   page,
   context,

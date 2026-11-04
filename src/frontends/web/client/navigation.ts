@@ -140,3 +140,13 @@ export function projectAddressOf(route: ProjectRoute): string {
   if (route.kind === "chat") return `${project}/chat/${encodeURIComponent(route.chatId)}`;
   return `${project}/${route.kind}`;
 }
+
+/** The open schedule of Schedules, as `#/schedules/<id>`. Null for `#/schedules`: the list and today show. */
+export function scheduleIdOf(hash: string): string | null {
+  const match = /^#\/schedules\/([^/]+)$/.exec(hash);
+  return match?.[1] === undefined ? null : decodeURIComponent(match[1]);
+}
+
+export function scheduleAddressOf(scheduleId: string | null): string {
+  return scheduleId === null ? addressOf("schedules") : `${addressOf("schedules")}/${encodeURIComponent(scheduleId)}`;
+}

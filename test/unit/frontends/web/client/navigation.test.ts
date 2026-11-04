@@ -14,6 +14,8 @@ import {
   notificationCenter,
   projectAddressOf,
   projectRouteOf,
+  scheduleAddressOf,
+  scheduleIdOf,
   type ProjectRoute,
 } from "../../../../../src/frontends/web/client/navigation.ts";
 
@@ -177,5 +179,20 @@ describe("homeAddress and currentNavButton (#761)", () => {
 
   test("the notification center has no button: the bell of the home page opens it", () => {
     expect(currentNavButton(notificationCenter, false)).toBeNull();
+  });
+});
+
+describe("scheduleIdOf and scheduleAddressOf", () => {
+  test("a schedule has its own address under Schedules, so Back goes to the list", () => {
+    expect(scheduleAddressOf("morning walk")).toBe("#/schedules/morning%20walk");
+    expect(scheduleIdOf("#/schedules/morning%20walk")).toBe("morning walk");
+    expect(scheduleAddressOf(null)).toBe("#/schedules");
+    expect(destinationOf(scheduleAddressOf("morning"))).toBe("schedules");
+  });
+
+  test("any other address names no schedule", () => {
+    expect(scheduleIdOf("#/schedules")).toBeNull();
+    expect(scheduleIdOf("#/projects/morning")).toBeNull();
+    expect(scheduleIdOf("#/schedules/morning/more")).toBeNull();
   });
 });

@@ -319,6 +319,11 @@ export function useContextMenu(
   const props: ContextMenuProps = {
     "data-context-menu": true,
     onContextMenu: (event) => {
+      if (keepsBrowserMenu(event)) {
+        // The browser shows its own menu, so the timer of a long press must not open Eva's over it.
+        stopPress();
+        return;
+      }
       event.preventDefault();
       // A long press on Android sends this event before the timer ends, and the lift still ends in a click.
       if (press.current !== null) longPressed.current = true;
@@ -334,7 +339,7 @@ export function useContextMenu(
     onPointerDown: (event) => {
       longPressed.current = false;
       // Android sends a contextmenu event on a long press. Safari on an iPhone sends none, so a timer opens it.
-      if (event.pointerType !== "touch") return;
+      if (event.pointerType !== "touch" || inInnerDialog(event)) return;
       stopPress();
       const opener = event.currentTarget;
       const at = { x: event.clientX, y: event.clientY };
@@ -382,6 +387,29 @@ export function useContextMenu(
       />
     );
   return { props, menu };
+}
+
+/**
+ * A dialog drawn inside the element, such as the dialog of a step of an answer, has its own text. A
+ * press in it is not a press on the element.
+ */
+function inInnerDialog(event: ReactMouseEvent<HTMLElement> | ReactPointerEvent<HTMLElement>): boolean {
+  const dialog = event.target instanceof Element ? event.target.closest('[role="dialog"]') : null;
+  return dialog !== null && event.currentTarget.contains(dialog);
+}
+
+/**
+ * A link or a selected text inside the element keeps the browser's menu, so the person can open the
+ * link or copy a part of a chat message (#863).
+ */
+function keepsBrowserMenu(event: ReactMouseEvent<HTMLElement>): boolean {
+  const opener = event.currentTarget;
+  if (inInnerDialog(event)) return true;
+  const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+  if (link !== null && link !== opener && opener.contains(link)) return true;
+  const selection = window.getSelection();
+  if (selection === null || selection.isCollapsed) return false;
+  return opener.contains(selection.anchorNode) || opener.contains(selection.focusNode);
 }
 
 /** The list at a point of the screen. It closes on a press outside it, Escape, a scroll or a resize. */

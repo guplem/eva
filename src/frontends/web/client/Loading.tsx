@@ -518,27 +518,21 @@ function FilesSkeleton(): ReactElement {
   );
 }
 
-/** The Schedules page: its title, the add button and the cards. */
+/** The Schedules page, laid out as Projects: the list with its title and the add button, beside the page. */
 function SchedulesSkeleton(): ReactElement {
   return (
-    <div className="main">
-      <div className="schedules-page">
-        <div className="schedules-header" {...copies(".schedules-header", "left top right")}>
-          <div className="schedules-title">
-            <h1>Schedules</h1>
-            <div className="schedules-subtitle">
-              <Text width="160px" />
-            </div>
-          </div>
-          <button className="primary schedules-add skeleton-ghost" disabled {...copies(".schedules-add")}>
-            <Icon name="plus" />
-            <span className="schedules-add-text">Add schedule</span>
+    <div className="layout list-home">
+      <div className="sidebar">
+        <div className="list-title-row" {...copies(".list-title-row", "left top right")}>
+          <h2 className="list-title">Schedules</h2>
+          <button className="primary skeleton-ghost" disabled {...copies(".list-title-row .primary")}>
+            <Icon name="plus" /> Add schedule
           </button>
         </div>
-        <div className="schedules-column">
-          <CardsSkeleton cards={2} />
-        </div>
+        {/* A vault can have no schedule, so the skeleton promises no card. */}
+        <ListSkeleton rows={3} />
       </div>
+      <div className="main" />
     </div>
   );
 }

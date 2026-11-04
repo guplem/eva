@@ -16,6 +16,20 @@ const stateSchema = z.object({
    */
   lastResult: z.object({ slot: z.string(), failed: z.boolean(), quiet: z.boolean().optional() }).nullable().optional(),
   /**
+   * The newest runs, newest first, with the chat of each one, or null when it has none. The
+   * Schedules page lists them. Optional: a state file from before this field reads as its last result.
+   */
+  runs: z
+    .array(
+      z.object({
+        slot: z.string(),
+        failed: z.boolean(),
+        quiet: z.boolean().optional(),
+        sessionId: z.string().nullable(),
+      }),
+    )
+    .optional(),
+  /**
    * The fields that Eva last saw. Null: not seen yet. The name is from the setup card that Eva
    * showed before #855, and a stored name stays.
    */

@@ -3679,6 +3679,21 @@ button.small {
   user-select: none;
 }
 
+/* A mouse still selects the text of a chat message, so the browser's menu copies a part of it. */
+@media (pointer: fine) {
+  .message[data-context-menu] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+/* A dialog inside a message, such as the dialog of a step, keeps its own text menu on a phone too. */
+[data-context-menu] .dialog {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* A row, so the 44 px crumb of a phone keeps the clone and the branch on its centre line. */
 .crumbs {
   display: flex;

@@ -66,6 +66,10 @@ const projectTypeLabels: Readonly<Record<ProjectType, string>> = {
   specialist: "Specialist",
 };
 
+export function projectTypeLabel(type: ProjectType): string {
+  return projectTypeLabels[type];
+}
+
 /** The choices of a project type field, General first: no type means general (#768). */
 export const projectTypeChoices: readonly { readonly value: ProjectType; readonly label: string }[] = projectTypes.map(
   (type) => ({ value: type, label: projectTypeLabels[type] }),

@@ -26,6 +26,11 @@ export interface LiveState {
    * the turn end, the stored turn shows them.
    */
   readonly notes: Readonly<Record<string, readonly string[]>>;
+  /**
+   * The last steps of each chat's newest ended turn, with its draft, by session id. The list brings
+   * the stored turn a moment after the end, so the answer shows these until then and does not blink.
+   */
+  readonly endedSteps: Readonly<Record<string, readonly TurnStep[]>>;
   /** The text of the block that the engine writes now, by session id. It is live only: the core never stores it. */
   readonly drafts: Readonly<Record<string, string>>;
   /**
@@ -52,6 +57,7 @@ export const emptyLiveState: LiveState = {
   taskSeqs: {},
   usageLimits: {},
   notes: {},
+  endedSteps: {},
   drafts: {},
   messages: {},
   recovery: null,
@@ -161,10 +167,12 @@ export function afterFailedTurnsRead(state: LiveState, id: number, failure: Turn
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
   const drafts = draftsAfter(state.drafts, event);
+  const endedSteps = endedStepsAfter(state, event);
+  const withEnded = endedSteps === state.endedSteps ? state : { ...state, endedSteps };
   const withHeir =
     event.kind === "session_deleted" && event.heirId !== undefined
-      ? { ...state, heirs: { ...state.heirs, [event.sessionId]: event.heirId } }
-      : state;
+      ? { ...withEnded, heirs: { ...withEnded.heirs, [event.sessionId]: event.heirId } }
+      : withEnded;
   const withDraft = drafts === state.drafts ? withHeir : { ...withHeir, drafts };
   const messages = messagesAfter(state.messages, event);
   const withMessage = messages === state.messages ? withDraft : { ...withDraft, messages };
@@ -189,6 +197,26 @@ function draftsAfter(drafts: LiveState["drafts"], event: SessionEvent): LiveStat
     event.kind === "session_deleted";
   if (!ends || !(id in drafts)) return drafts;
   const rest = { ...drafts };
+  Reflect.deleteProperty(rest, id);
+  return rest;
+}
+
+/** The ended steps after one event. It reads the state before the event, which still has the steps and the draft. */
+function endedStepsAfter(state: LiveState, event: SessionEvent): LiveState["endedSteps"] {
+  const id = event.sessionId;
+  const running = state.steps[id];
+  const ended = running === undefined ? [] : stepsWithDraft(running, state.drafts[id]);
+  // An empty answer would show only a face that seems to think.
+  if ((event.kind === "turn_finished" || event.kind === "turn_failed") && ended.length > 0)
+    return { ...state.endedSteps, [id]: ended };
+  // A new turn drops them: after a missed end, the old answer must not show under the new message.
+  const drops =
+    event.kind === "session_deleted" ||
+    event.kind === "turn_finished" ||
+    event.kind === "turn_failed" ||
+    (running === undefined && stepsAfter(state.steps, event) !== state.steps);
+  if (!drops || !(id in state.endedSteps)) return state.endedSteps;
+  const rest = { ...state.endedSteps };
   Reflect.deleteProperty(rest, id);
   return rest;
 }

@@ -29,11 +29,11 @@ import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./Branc
 import { forkedFromText, historyNotice } from "./branch-choices.ts";
 import { chatKind } from "../../../shared/chat-kind.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
-import { endedProjectWork, tasksOfTurn } from "./chat-details.ts";
+import { endedProjectWork, tasksOfTurn, tasksStillRun } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
 import {
   answerFiles,
-  wholeAnswerAddsText,
+  wholeMessages,
   composerPlaceholder,
   elapsedText,
   foldSteps,
@@ -46,6 +46,7 @@ import {
   liveFace,
   runningUntil,
   isWorking,
+  heldSteps,
   senderName,
   sentTurnCount,
   turnEndNotice,
@@ -290,6 +291,13 @@ function Branch({
   const liveSteps = live.steps[session.id];
   const turnRuns = useTurnRuns(liveSteps !== undefined, turnCount);
   const working = isWorking({ live: liveSteps !== undefined, turnRuns, pending, turnCount });
+  const draft = live.drafts[session.id];
+  const ended = live.endedSteps[session.id] ?? null;
+  // Each tick of the clock renders the branch again, so join the draft only when a step or a piece arrives.
+  const answerSteps = useMemo(
+    () => heldSteps(ended, liveSteps === undefined ? undefined : stepsWithDraft(liveSteps, draft), turnRuns),
+    [ended, liveSteps, draft, turnRuns],
+  );
   // The core says what the running turn shows, so a message that another sender sent shows too (#804).
   const turnMessages = runningMessages(live.messages[session.id], turnCount, {
     live: liveSteps !== undefined,
@@ -432,8 +440,9 @@ function Branch({
       <span className="visually-hidden" role="status">
         {turnEnd}
       </span>
-      {working && (
-        <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
+      {/* After the turn ends, its answer stays without the clock until the stored turn takes its place. */}
+      {(working || answerSteps !== null) && (
+        <LiveAnswer steps={answerSteps ?? []} mode={session.mode} startedAt={working ? startedAt : null} />
       )}
       {/* A message sent during a turn waits for that turn to end, so it shows below the running answer. */}
       {ownPending
@@ -540,7 +549,7 @@ function TurnWordsView({
 }
 
 /** The person's message. A voice note is text too: the person read and fixed it in the box. */
-function UserMessage({
+export function UserMessage({
   text,
   fromEva = false,
   turnKey,
@@ -699,12 +708,6 @@ function StoredAnswer({
           vaultLinks={owner.mode === "assistant"}
           actions={
             <div className="answer-actions">
-              {turn.taskCount > 0 && (
-                <button className="ghost" onClick={onShowTasks}>
-                  <Icon name="sync" />
-                  {counted(turn.taskCount, "background task")}
-                </button>
-              )}
               {canRetry && (
                 <button className="ghost" onClick={onRetry}>
                   <Icon name="restart" />
@@ -718,6 +721,13 @@ function StoredAnswer({
                 </button>
               )}
               {shown.body !== "" && <CopyButton text={shown.body} />}
+              {/* Information, not an action on the message, so it stands apart at the right (#864). */}
+              {turn.taskCount > 0 && (
+                <button className="ghost answer-tasks" onClick={onShowTasks}>
+                  <Icon name={tasksStillRun(tasksOfTurn(turn.steps, owner.id, endedWork)) ? "sync" : "check"} />
+                  {counted(turn.taskCount, "background task")}
+                </button>
+              )}
             </div>
           }
           failure={turn.failure}
@@ -730,22 +740,21 @@ function StoredAnswer({
 /** What an answer card shows: its folded steps, and the last message or, on request, the whole answer. */
 interface ShownAnswer {
   readonly listed: readonly TurnStep[];
-  readonly canShowWhole: boolean;
-  readonly showWhole: boolean;
-  readonly setShowWhole: (update: (shown: boolean) => boolean) => void;
+  readonly lastMessage: TurnStep | undefined;
   /** The text of the card, which Copy copies. */
   readonly body: string;
 }
 
 /** The card's owner keeps this, so its context menu copies the same text as its Copy button (#863). */
 function useShownAnswer(steps: readonly TurnStep[], wholeAnswer: string, live: boolean): ShownAnswer {
-  const [showWhole, setShowWhole] = useState(false);
-  const { listed, lastMessage } = foldSteps(steps);
-  const canShowWhole = lastMessage !== undefined && wholeAnswerAddsText(wholeAnswer, lastMessage.text);
-  const fullBody = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  // The step list shows each earlier message whole, so it is the way to read one. The last message
+  // marks where the one before it ends, so the steps keep it until the fold.
+  const whole = useMemo(() => wholeMessages(steps, wholeAnswer), [steps, wholeAnswer]);
+  const { listed, lastMessage } = foldSteps(whole);
+  const fullBody = lastMessage === undefined ? wholeAnswer : lastMessage.text;
   // Each streamed token and each clock tick render every answer, so parse only a changed text.
   const body = useMemo(() => shownAnswerText(fullBody, live), [fullBody, live]);
-  return { listed, canShowWhole, showWhole, setShowWhole, body };
+  return { listed, lastMessage, body };
 }
 
 /**
@@ -769,7 +778,7 @@ function AnswerBody({
   readonly omitted: number;
   /** The chat of a stored answer, so a step's dialog can fetch its details. */
   readonly sessionId?: string;
-  /** Every message in full. A step keeps only 200 characters, so this is the way to read an earlier message. */
+  /** Every message in full. A step keeps only 200 characters, so the step list takes each earlier message from here. */
   readonly wholeAnswer: string;
   readonly summary?: string;
   readonly live?: boolean;
@@ -782,7 +791,7 @@ function AnswerBody({
   /** True in an Assistant chat: its agent works in the vault root, so a path in a code span opens the Files page. */
   readonly vaultLinks?: boolean;
 }): ReactElement {
-  const { listed, canShowWhole, showWhole, setShowWhole, body } = shown;
+  const { listed, lastMessage, body } = shown;
   const html = useMemo(() => toWebHtml(body, { vaultLinks }), [body, vaultLinks]);
   // A running turn can still change its files, so the buttons come with the stored turn, as in Telegram.
   const files = useMemo(() => (live ? [] : answerFiles(wholeAnswer)), [live, wholeAnswer]);
@@ -795,6 +804,8 @@ function AnswerBody({
         {...(summary === undefined ? {} : { summary })}
         {...(sessionId === undefined ? {} : { sessionId })}
         {...(endedWork === undefined ? {} : { endedWork })}
+        vaultLinks={vaultLinks}
+        {...(lastMessage === undefined ? {} : { bubble: lastMessage })}
       />
       {body !== "" && <MarkdownBody html={html} className="answer-body" copy={!live} />}
       {files.length > 0 && (
@@ -804,11 +815,6 @@ function AnswerBody({
           ))}
         </div>
       )}
-      {canShowWhole && (
-        <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
-          {showWhole ? "Show the last message only" : "Show the whole answer"}
-        </button>
-      )}
       {failure !== null && <div className="turn-failure">The turn failed: {failure}</div>}
       {actions}
     </>
@@ -817,18 +823,16 @@ function AnswerBody({
 
 /** A running turn keeps the same window of steps as a stored one, so both show the same lines. */
 function LiveAnswer({
-  steps: liveSteps,
-  draft,
+  steps,
   mode,
   startedAt,
 }: {
+  /** The steps so far, with the block that the engine writes now as the last message. */
   readonly steps: readonly TurnStep[];
-  /** The block that the engine writes now. It shows as the last message until its final text comes. */
-  readonly draft: string | undefined;
   readonly mode: SessionRecord["mode"];
-  readonly startedAt: number;
+  /** When the turn started, or null after its end, while the stored turn has not come yet. */
+  readonly startedAt: number | null;
 }): ReactElement {
-  const steps = useMemo(() => stepsWithDraft(liveSteps, draft), [liveSteps, draft]);
   // A tick of the clock renders the branch again, so compute this only when a step arrives.
   const shown = useMemo(() => storedSteps(steps), [steps]);
   const wholeAnswer = useMemo(
@@ -850,14 +854,16 @@ function LiveAnswer({
         live
         vaultLinks={mode === "assistant"}
       />
-      <div className="working">
-        <span className="dots" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </span>
-        Working · {elapsedText(Date.now() - startedAt)}
-      </div>
+      {startedAt !== null && (
+        <div className="working">
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          Working · {elapsedText(Date.now() - startedAt)}
+        </div>
+      )}
     </EvaMessage>
   );
 }

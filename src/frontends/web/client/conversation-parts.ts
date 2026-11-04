@@ -62,12 +62,44 @@ export function stepParts(step: TurnStep): { action: string; detail: string } {
   return { action: name.split("__").at(-1) ?? name, detail };
 }
 
+/** The length at which `storedSteps` cuts a message, with its "…". */
+const cutMessageLength = 200;
+
 /**
- * True when the whole answer shows more than its last message. An earlier message of file
- * markers only shows no words, so the toggle would change nothing.
+ * The steps, with each message whole. A stored step keeps 200 characters of a message, but the
+ * step list shows each message in full. The whole answer joins every message with a blank line,
+ * and a message can hold a blank line too. So the search runs back from the end: the last
+ * message is always whole, and a cut message starts with its 199 kept characters. When one is
+ * not found, the steps stay as they are. Give every step of the turn, the last message too.
  */
-export function wholeAnswerAddsText(wholeAnswer: string, lastMessage: string): boolean {
-  return shownAnswerText(wholeAnswer) !== shownAnswerText(lastMessage);
+export function wholeMessages(steps: readonly TurnStep[], wholeAnswer: string): readonly TurnStep[] {
+  const isCut = (text: string): boolean => text.endsWith("…") && Array.from(text).length === cutMessageLength;
+  const messages = steps.filter((step) => step.kind === "message");
+  const whole = new Map<TurnStep, string>();
+  let end = wholeAnswer.length;
+  for (const message of messages.toReversed()) {
+    const known = isCut(message.text) ? message.text.slice(0, -1) : message.text;
+    const start = isCut(message.text) ? lastStart(wholeAnswer, known, end - known.length) : end - known.length;
+    if (start < 0 || !startsMessage(wholeAnswer, start) || !wholeAnswer.startsWith(known, start)) return steps;
+    whole.set(message, wholeAnswer.slice(start, end));
+    end = start - 2;
+  }
+  return steps.map((step) => {
+    const text = whole.get(step);
+    return text === undefined || text === step.text ? step : { ...step, text };
+  });
+}
+
+/** Each message starts the answer or follows a blank line, as the core joins them. */
+function startsMessage(wholeAnswer: string, at: number): boolean {
+  return at === 0 || wholeAnswer.slice(at - 2, at) === "\n\n";
+}
+
+/** The last place, at or before `from`, where a message starts with `known`, or -1. */
+function lastStart(wholeAnswer: string, known: string, from: number): number {
+  let at = from < 0 ? -1 : wholeAnswer.lastIndexOf(known, from);
+  while (at > 0 && !startsMessage(wholeAnswer, at)) at = wholeAnswer.lastIndexOf(known, at - 1);
+  return at;
 }
 
 /**
@@ -308,6 +340,20 @@ export function isWorking(chat: {
 }): boolean {
   if (chat.live) return true;
   return !chat.turnRuns && chat.pending.some((message) => message.turnCount === chat.turnCount);
+}
+
+/**
+ * The steps of the running answer to show, or null. The live steps end a moment before the list
+ * brings the stored turn. So the steps of the ended turn stay until it comes: otherwise the answer
+ * disappears for that moment, and then comes back as the stored turn.
+ */
+export function heldSteps(
+  ended: readonly TurnStep[] | null,
+  live: readonly TurnStep[] | undefined,
+  turnRuns: boolean,
+): readonly TurnStep[] | null {
+  if (live !== undefined) return live;
+  return turnRuns ? ended : null;
 }
 
 /**

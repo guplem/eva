@@ -512,3 +512,45 @@ describe("the messages of the running turns (#804)", () => {
     expect(withRunningTurns(known, 1, null).messages).toMatchObject({ s1: [message] });
   });
 });
+
+describe("the steps of an ended turn", () => {
+  test("a turn end keeps its last steps, with its draft, until the stored turn takes their place", () => {
+    // The last text and the turn end can come in one batch, so the page never renders the steps before the end.
+    const state = run([
+      { kind: "text", text: "First.", messageId: "m1" },
+      { kind: "text_delta", text: "Half " },
+      { kind: "turn_failed", reason: "stopped" },
+    ]);
+    expect(state.steps["s1"]).toBeUndefined();
+    expect(state.endedSteps["s1"]?.map((step) => step.text)).toEqual(["First.", "Half "]);
+  });
+
+  test("an event of another chat keeps them, and a delete drops them", () => {
+    const ended = run([
+      { kind: "text", text: "Done.", messageId: "m1" },
+      { kind: "turn_finished", ...finished },
+    ]);
+    const other = applyEvent(ended, event({ kind: "turn_finished", ...finished }, "s2"));
+    expect(other.endedSteps["s1"]?.map((step) => step.text)).toEqual(["Done."]);
+    const stamp = { sessionId: "s1", seq: 99, at: "2026-10-18T10:00:00.000Z" };
+    expect(applyEvent(ended, { ...stamp, kind: "session_deleted" }).endedSteps).toEqual({});
+  });
+});
+
+describe("the steps of an ended turn, at the next turn", () => {
+  test("a new turn drops them, so a missed end never shows the answer before it", () => {
+    const ended = run([
+      { kind: "text", text: "Old.", messageId: "m1" },
+      { kind: "turn_finished", ...finished },
+    ]);
+    const stamp = { sessionId: "s1", seq: 99, at: "2026-10-18T10:00:00.000Z" };
+    const next = applyEvent(ended, { ...stamp, kind: "message_received", text: "Again", origin: "api" });
+    expect(next.endedSteps).toEqual({});
+  });
+
+  test("a turn that ends with no step keeps nothing, so no empty answer shows", () => {
+    const stamp = { sessionId: "s1", seq: 99, at: "2026-10-18T10:00:00.000Z" };
+    const started = applyEvent(emptyLiveState, { ...stamp, kind: "message_received", text: "Hi", origin: "api" });
+    expect(applyEvent(started, event({ kind: "turn_failed", reason: "stopped" })).endedSteps).toEqual({});
+  });
+});

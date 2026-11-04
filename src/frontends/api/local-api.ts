@@ -174,7 +174,10 @@ const vaultRenameSchema = z.object({ path: z.string(), name: z.string().max(1_00
 /** A status that a page sends. An older open page can send a status that #859 replaced. */
 const sentStatusSchema = z.enum([...projectStatuses, "idea", "in-use"]);
 
-/** The status and the in-use flag of a sent status. The flag of the page wins over an old status. */
+/**
+ * The status and the in-use flag of a sent status. An older page has no In use box, but it sends
+ * back the flag that it read. So the old `in-use` status wins over that flag, and `idea` keeps it.
+ */
 function readSentStatus<Status extends string | null>(
   status: Status,
   inUse: boolean | undefined,
@@ -182,7 +185,7 @@ function readSentStatus<Status extends string | null>(
   if (status === null) return { status: null as Exclude<Status, string>, inUse };
   const old = Object.hasOwn(oldProjectStatuses, status) ? oldProjectStatuses[status] : undefined;
   if (old === undefined) return { status: status as ProjectStatus, inUse };
-  return { status: old.status, inUse: inUse ?? (old.inUse ? true : undefined) };
+  return { status: old.status, inUse: old.inUse ? true : inUse };
 }
 
 const projectDetailsSchema = z.object({

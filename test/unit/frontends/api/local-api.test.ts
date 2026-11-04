@@ -1525,8 +1525,9 @@ describe("web routes", () => {
     const saved = await json<{ text: string; version: string }>(await call(`${path}/details`, { method: "PUT", body }));
     expect(saved.text).toContain("status: active\nin-use: true\n");
 
-    // An older open page sends in-use as a status: it means closed and in use.
-    const old = { version: saved.version, title: "Example app", status: "in-use", tags: [], repos: [] };
+    // An older open page sends in-use as a status: it means closed and in use. It also sends back the
+    // flag that this Eva gave it, which it cannot change, so the old status wins.
+    const old = { version: saved.version, title: "Example app", status: "in-use", inUse: false, tags: [], repos: [] };
     const oldSaved = await json<{ text: string }>(await call(`${path}/details`, { method: "PUT", body: old }));
     expect(oldSaved.text).toContain("status: closed\nin-use: true\n");
   });

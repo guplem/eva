@@ -129,8 +129,15 @@ describe("factValue", () => {
   });
 
   test("shows a time with a zone in the zone of the browser", () => {
+    const moment = new Date("2026-09-28T17:38:00Z");
+    const clock = `${String(moment.getHours()).padStart(2, "0")}:${String(moment.getMinutes()).padStart(2, "0")}`;
     const value = factValue("2026-09-28T17:38:00Z", format);
-    expect(value?.kind).toBe("date");
+    expect(value).toMatchObject({ kind: "date", raw: "2026-09-28T17:38:00Z" });
+    expect(value?.kind === "date" ? value.text.endsWith(`, ${clock}`) : false).toBe(true);
+  });
+
+  test("keeps a zone with no colon as text, since not every browser reads it", () => {
+    expect(factValue("2026-09-28T17:38+0200", format)?.kind).toBe("text");
   });
 
   test("keeps a day that is not on the calendar as text", () => {

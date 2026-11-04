@@ -199,7 +199,7 @@ function dayText(year: number, month: number, day: number, locale: string | unde
 
 const dayPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
 const monthPattern = /^(\d{4})-(\d{2})$/;
-const timePattern = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
+const timePattern = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/i;
 
 /** A day, a month or a moment in a readable form, or null for any other text. */
 function dateValue(text: string, format: FactFormat): FactValue | null {

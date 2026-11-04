@@ -27,7 +27,7 @@ import { MenuButton, useContextMenu } from "./Menu.tsx";
 import { fileAddressOf } from "./file-paths.ts";
 import { BackButton } from "./MainNav.tsx";
 import { displayFormat } from "./display-format.ts";
-import { frontMatterFacts, type Fact, type FactLink, type FactValue } from "./front-matter-facts.ts";
+import { frontMatterFacts, keyLabel, type Fact, type FactLink, type FactValue } from "./front-matter-facts.ts";
 import { worksInClones } from "../../../shared/project-types.ts";
 
 interface ProjectPageProps {
@@ -360,7 +360,7 @@ function ProjectFacts({ project }: { readonly project: Project }): ReactElement 
             const label = (
               <>
                 {repositoryLabel(repo)}
-                {type !== undefined && <span className="link-chip-site">· {type}</span>}
+                {type !== undefined && <span className="link-chip-site">· {keyLabel(type)}</span>}
               </>
             );
             return url === null ? (
@@ -428,7 +428,7 @@ function FactValueView({ value }: { readonly value: FactValue }): ReactElement {
       return <FactLinkChip link={value.link} />;
     case "list":
       return (
-        <span className="tags">
+        <div className="tags">
           {value.items.map((item, index) =>
             item.kind === "text" || item.kind === "date" ? (
               <span key={index} className="tag">
@@ -438,7 +438,7 @@ function FactValueView({ value }: { readonly value: FactValue }): ReactElement {
               <FactValueView key={index} value={item} />
             ),
           )}
-        </span>
+        </div>
       );
     case "map":
       return <FactList facts={value.facts} />;

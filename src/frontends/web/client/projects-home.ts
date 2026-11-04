@@ -304,14 +304,14 @@ function allMarks(range: DateRange): RangeMark[] {
 /** The statuses that the timeline shows when the page opens: the work of now (#881). */
 export const timelineStatuses: readonly ProjectStatus[] = ["active"];
 
-/** True when the timeline shows the project: each project of a shown status, and each project in use. */
+/** True when the timeline shows the project: each project of a shown status. In use only marks a bar. */
 function isShown(frontMatter: Project["frontMatter"], statuses: readonly ProjectStatus[]): boolean {
-  return frontMatter.inUse || (frontMatter.status !== null && statuses.includes(frontMatter.status));
+  return frontMatter.status !== null && statuses.includes(frontMatter.status);
 }
 
 /**
  * The shown projects, each once, from its creation to today (#857, #859). The person picks the
- * statuses to show, but a project in use always shows (#881). The bars show no stretches of activity
+ * statuses to show, and a project in use shows only when its status shows. The bars show no stretches of activity
  * from the chats: a deleted chat would take its activity away.
  */
 export function timeline(

@@ -21,6 +21,7 @@ import {
   restoredText,
   runningUntil,
   isWorking,
+  heldSteps,
   sendsOnEnter,
   enterKeyHint,
   sentTurnCount,
@@ -624,5 +625,26 @@ describe("the messages of the running turns (#804)", () => {
 describe("newMessageId", () => {
   test("gives a new id at each call", () => {
     expect(newMessageId()).not.toBe(newMessageId());
+  });
+});
+
+describe("heldSteps", () => {
+  test("shows the live steps while the turn runs", () => {
+    const live = [step("message", "Working on it")];
+    expect(heldSteps(null, live, true)).toBe(live);
+  });
+
+  test("shows the steps of the ended turn until the stored turn arrives", () => {
+    // The answer must not blink out in the moment between the turn end and the stored turn.
+    const last = [step("message", "Done")];
+    expect(heldSteps(last, undefined, true)).toBe(last);
+  });
+
+  test("drops the kept steps once the stored turn shows the answer", () => {
+    expect(heldSteps([step("message", "Done")], undefined, false)).toBeNull();
+  });
+
+  test("keeps nothing while no turn ran", () => {
+    expect(heldSteps(null, undefined, false)).toBeNull();
   });
 });

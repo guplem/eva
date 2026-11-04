@@ -311,6 +311,20 @@ export function isWorking(chat: {
 }
 
 /**
+ * The steps of the running answer to show, or null. The live steps end a moment before the list
+ * brings the stored turn. So the steps of the ended turn stay until it comes: otherwise the answer
+ * disappears for that moment, and then comes back as the stored turn.
+ */
+export function heldSteps(
+  ended: readonly TurnStep[] | null,
+  live: readonly TurnStep[] | undefined,
+  turnRuns: boolean,
+): readonly TurnStep[] | null {
+  if (live !== undefined) return live;
+  return turnRuns ? ended : null;
+}
+
+/**
  * The sent messages whose stored turn has not come yet, so the view shows them. The stored turn
  * arrives one render before an effect can clear its message, so the turn count hides it in that render.
  */

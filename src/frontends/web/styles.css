@@ -3729,6 +3729,26 @@ button.small {
   text-align: start;
 }
 
+/* A nested map of the front matter sits under its name, with its values in a lighter weight. */
+.project-facts .chat-facts .chat-facts {
+  font-weight: 500;
+}
+
+/* A long value, such as a goal, keeps the line breaks of the file. */
+.fact-text {
+  white-space: pre-line;
+}
+
+.fact-text a {
+  color: var(--accent-ink);
+}
+
+/* The path of a link chip, after the name of its site. */
+.link-chip-site {
+  font-weight: 500;
+  color: var(--muted);
+}
+
 /* A quick link looks like the chip of a plain fact, with the link colour, so the person sees it opens. */
 a.link-chip {
   color: var(--accent-ink);

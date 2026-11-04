@@ -1935,13 +1935,17 @@ test("the project page shows the facts, the quick links and a clones section", a
   await logIn(page);
   await openExampleApp(page);
   const facts = page.getByRole("region", { name: "Project facts" });
-  await expect(facts.getByText("2025-03-02T10:15")).toBeVisible();
+  // A date shows in the language of the browser, so the test finds it by the value of the file.
+  await expect(facts.locator('time[datetime="2025-03-02T10:15"]')).toBeVisible();
+  await expect(facts.getByText("Deadline", { exact: true })).toBeVisible();
   await expect(facts.getByText("#web")).toBeVisible();
-  const repository = facts.getByRole("link", { name: "github.com/example-owner/example-app" });
+  const design = facts.getByRole("link", { name: /Figma/ });
+  await expect(design).toHaveAttribute("href", "https://www.figma.com/file/example-app");
+  const repository = facts.getByRole("link", { name: /github\.com\/example-owner\/example-app/ });
   await expect(repository).toHaveAttribute("href", "https://github.com/example-owner/example-app");
   await expect(repository).toHaveAttribute("target", "_blank");
   // A local remote has no web page, so it stays plain text.
-  await expect(facts.getByRole("link")).toHaveCount(2);
+  await expect(facts.getByRole("link")).toHaveCount(3);
   await expect(page.getByRole("region", { name: "Clones" }).getByRole("button", { name: "New clone" })).toBeVisible();
 
   await facts.getByRole("link", { name: "Open in Files" }).click();

@@ -104,7 +104,7 @@ The root `AGENTS.md` says "Before you act on a request, list `Principles/` and `
 
 - **Version:** 6
 - **Date:** 2026-11-04
-- **Pull request:** https://github.com/guplem/eva/issues/859
+- **Pull request:** https://github.com/guplem/eva/pull/860
 - **Summary:** Each project says apart whether you work on it and whether you use it. The status is the work: active, paused or closed. A new `in-use` key says that you use the project.
 - **Migrations first:** 2026-11-04-project-in-use
 

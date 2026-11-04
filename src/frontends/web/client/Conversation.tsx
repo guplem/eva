@@ -33,7 +33,7 @@ import { endedProjectWork, tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
 import {
   answerFiles,
-  wholeAnswerAddsText,
+  wholeMessages,
   composerPlaceholder,
   elapsedText,
   foldSteps,
@@ -717,7 +717,7 @@ function AnswerBody({
   readonly omitted: number;
   /** The chat of a stored answer, so a step's dialog can fetch its details. */
   readonly sessionId?: string;
-  /** Every message in full. A step keeps only 200 characters, so this is the way to read an earlier message. */
+  /** Every message in full. A step keeps only 200 characters, so the step list takes each earlier message from here. */
   readonly wholeAnswer: string;
   readonly summary?: string;
   readonly live?: boolean;
@@ -730,10 +730,11 @@ function AnswerBody({
   /** True in an Assistant chat: its agent works in the vault root, so a path in a code span opens the Files page. */
   readonly vaultLinks?: boolean;
 }): ReactElement {
-  const [showWhole, setShowWhole] = useState(false);
-  const { listed, lastMessage } = foldSteps(steps);
-  const canShowWhole = lastMessage !== undefined && wholeAnswerAddsText(wholeAnswer, lastMessage.text);
-  const fullBody = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  // The step list shows each earlier message whole, so it is the way to read one. The last message
+  // marks where the one before it ends, so the steps keep it until the fold.
+  const whole = useMemo(() => wholeMessages(steps, wholeAnswer), [steps, wholeAnswer]);
+  const { listed, lastMessage } = foldSteps(whole);
+  const fullBody = lastMessage === undefined ? wholeAnswer : lastMessage.text;
   // Each streamed token and each clock tick render every answer, so parse only a changed text.
   const body = useMemo(() => shownAnswerText(fullBody, live), [fullBody, live]);
   const html = useMemo(() => toWebHtml(body, { vaultLinks }), [body, vaultLinks]);
@@ -748,6 +749,8 @@ function AnswerBody({
         {...(summary === undefined ? {} : { summary })}
         {...(sessionId === undefined ? {} : { sessionId })}
         {...(endedWork === undefined ? {} : { endedWork })}
+        vaultLinks={vaultLinks}
+        {...(lastMessage === undefined ? {} : { bubble: lastMessage })}
       />
       {body !== "" && <MarkdownBody html={html} className="answer-body" copy={!live} />}
       {files.length > 0 && (
@@ -756,11 +759,6 @@ function AnswerBody({
             <DownloadButton key={file.path} path={file.path} folder={false} label={file.name} />
           ))}
         </div>
-      )}
-      {canShowWhole && (
-        <button className="whole-answer ghost" onClick={() => setShowWhole((shown) => !shown)}>
-          {showWhole ? "Show the last message only" : "Show the whole answer"}
-        </button>
       )}
       {failure !== null && <div className="turn-failure">The turn failed: {failure}</div>}
       {actions?.(body)}

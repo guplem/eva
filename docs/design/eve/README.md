@@ -287,6 +287,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - While Eva works, the send button becomes Stop, at the same place.
 - The context is a ring.
 - Retry, Fork and Copy show under each answer, with no menu.
+- The background tasks of an answer show at the right end of that row. They are information, not an action. A check shows when they all ended.
 
 ### Eva asks for permission
 

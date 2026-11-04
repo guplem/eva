@@ -290,6 +290,7 @@ describe("Scheduler", () => {
           nextRun: "2026-07-01T07:30",
           runsToday: ["07:30"],
           lastRun: null,
+          runs: [],
           ended: null,
         },
       ],
@@ -640,6 +641,75 @@ describe("Scheduler", () => {
     });
   });
 
+  describe("the past runs in the list", () => {
+    const runs = (scheduler: Scheduler): unknown => scheduler.list().schedules[0]?.runs;
+
+    test("lists each run, newest first, with its chat, and it survives a restart", async () => {
+      writeSchedules([morning]);
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      expect(runs(scheduler)).toEqual([]);
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      failingSends = true;
+      clock = new Date("2026-07-02T05:30:00Z");
+      await scheduler.tick();
+      await Bun.sleep(0);
+      const expected = [
+        { slot: "2026-07-02T07:30", failed: true, sessionId: "session-2" },
+        { slot: "2026-07-01T07:30", failed: false, sessionId: "session-1" },
+      ];
+      expect(runs(scheduler)).toEqual(expected);
+      expect(runs(createScheduler())).toEqual(expected);
+    });
+
+    test("a run with no prompt and a chat that does not start have no chat", async () => {
+      writeSchedules([{ id: "water", name: "Water", at: "07:30", text: "Drink water." }, morning]);
+      failingChats.add("Morning");
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      expect(scheduler.list().schedules.map((view) => view.runs)).toEqual([
+        [{ slot: "2026-07-01T07:30", failed: false, sessionId: null }],
+        [{ slot: "2026-07-01T07:30", failed: true, sessionId: null }],
+      ]);
+    });
+
+    test("keeps the newest 20 runs", async () => {
+      writeSchedules([{ id: "hourly", name: "Hourly", every: "1h", from: "2026-07-01T08:00", text: "Stretch." }]);
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      for (let hour = 0; hour < 25; hour += 1) {
+        clock = new Date(Date.parse("2026-07-01T06:00:00Z") + hour * 3_600_000);
+        await scheduler.tick();
+      }
+      const listed = scheduler.list().schedules[0]?.runs ?? [];
+      expect(listed).toHaveLength(20);
+      expect(listed[0]?.slot).toBe("2026-07-02T08:00");
+    });
+
+    test("a state file from before the past runs shows its last run", () => {
+      writeSchedules([morning]);
+      mkdirSync(join(folder, "state"), { recursive: true });
+      writeFileSync(
+        join(folder, "state", "schedules-state.json"),
+        JSON.stringify({
+          version: 1,
+          schedules: {
+            morning: {
+              firstSeen: "2026-06-01T00:00",
+              lastFired: "2026-06-30T07:30",
+              lastResult: { slot: "2026-06-30T07:30", failed: false },
+              announced: null,
+            },
+          },
+        }),
+      );
+      expect(runs(createScheduler())).toEqual([{ slot: "2026-06-30T07:30", failed: false, sessionId: null }]);
+    });
+  });
+
   test("a prompt that fails after the chat started goes to the log, and the slot counts as fired", async () => {
     writeSchedules([morning]);
     failingSends = true;
@@ -836,6 +906,10 @@ describe("quiet runs, [[done]] and until (#687)", () => {
     expect(answered()).toEqual([]);
     expect(endedRuns).toEqual([{ sessionId: "session-1", deliver: false }]);
     expect(scheduler.list().schedules[0]?.lastRun).toEqual({ slot: "2026-07-01T08:00", failed: false, quiet: true });
+    // Eva deletes the chat of a quiet run, so the run links to no chat.
+    expect(scheduler.list().schedules[0]?.runs).toEqual([
+      { slot: "2026-07-01T08:00", failed: false, quiet: true, sessionId: null },
+    ]);
   });
 
   test("a quiet answer is not quiet when the person wrote in the chat during the run", async () => {

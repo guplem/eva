@@ -92,9 +92,17 @@ export interface ScheduleView {
   /** The slot of the last firing and whether it failed, or null before the first firing. */
   /** `quiet`: the run had nothing to tell (#687). */
   readonly lastRun: { readonly slot: string; readonly failed: boolean; readonly quiet?: boolean | undefined } | null;
+  /** The newest runs, newest first. */
+  readonly runs: readonly ScheduleRun[];
   /** The slot when the schedule ended, as "Ended" shows it, or null while it can still run. */
   readonly ended: string | null;
 }
+
+/** One run of a schedule. `sessionId` is its chat, or null: no prompt, no chat, or a quiet run whose chat Eva deleted. */
+export type ScheduleRun = NonNullable<ScheduleState["runs"]>[number];
+
+/** The page shows the newest runs. An hourly schedule must not grow the state file for good. */
+const keptRuns = 20;
 
 export interface ScheduleList {
   readonly schedules: ScheduleView[];
@@ -141,6 +149,7 @@ export class Scheduler {
           nextRun: schedule.enabled && ended === null ? this.nextRunOf(schedule, now) : null,
           runsToday: runsOnDay(schedule, now),
           lastRun: this.state.peek(schedule.id)?.lastResult ?? null,
+          runs: runsOf(this.state.peek(schedule.id)),
           ended,
         };
       }),
@@ -315,7 +324,10 @@ export class Scheduler {
       this.recordResult(schedule.id, slot, true);
       throw error;
     }
-    this.state.update(schedule.id, { lastFired: slot, lastResult: { slot, failed: false } });
+    this.state.update(schedule.id, {
+      lastFired: slot,
+      ...this.resultChange(schedule.id, { slot, failed: false }, sessionId),
+    });
     await this.emit({
       kind: "schedule_fired",
       scheduleId: schedule.id,
@@ -377,7 +389,8 @@ export class Scheduler {
     const quiet = !answer.personWrote && silent;
     if (!quiet) void this.emit({ ...answered, text: answer.text, failure: null });
     else if (this.state.peek(schedule.id)?.lastResult?.slot === slot)
-      this.state.update(schedule.id, { lastResult: { slot, failed: false, quiet: true } });
+      // Eva deletes the chat of a quiet run, so the run keeps no chat.
+      this.state.update(schedule.id, this.resultChange(schedule.id, { slot, failed: false, quiet: true }, null));
     if (markers.done) this.endByDone(schedule, slot);
     return !quiet;
   }
@@ -436,13 +449,38 @@ export class Scheduler {
     const current = this.state.peek(scheduleId)?.lastResult;
     // A chat that cannot start fails at every check, so the file is written only on a change.
     if (current?.slot === slot && current.failed === failed) return;
-    this.state.update(scheduleId, { lastResult: { slot, failed } });
+    this.state.update(scheduleId, this.resultChange(scheduleId, { slot, failed }));
+  }
+
+  /**
+   * The last result and the past runs after a result. A result for a slot that is already in the
+   * list replaces it, and keeps its chat unless `sessionId` gives one.
+   */
+  private resultChange(
+    scheduleId: string,
+    result: { readonly slot: string; readonly failed: boolean; readonly quiet?: boolean },
+    sessionId?: string | null,
+  ): Pick<ScheduleState, "lastResult" | "runs"> {
+    const runs = runsOf(this.state.peek(scheduleId));
+    const same = runs.find((run) => run.slot === result.slot);
+    const run: ScheduleRun = { ...result, sessionId: sessionId === undefined ? (same?.sessionId ?? null) : sessionId };
+    return {
+      lastResult: result,
+      runs: [run, ...runs.filter((other) => other.slot !== result.slot)].slice(0, keptRuns),
+    };
   }
 
   /** Tells every listener. A listener that throws stops no other. */
   private async emit(event: ScheduleEvent): Promise<void> {
     await Promise.allSettled([...this.listeners].map(async (listener) => await listener(event)));
   }
+}
+
+/** A state file from before the past runs knows only the last result. */
+function runsOf(state: ScheduleState | undefined): ScheduleRun[] {
+  if (state?.runs !== undefined) return state.runs;
+  const last = state?.lastResult ?? null;
+  return last === null ? [] : [{ ...last, sessionId: null }];
 }
 
 function errorText(error: unknown): string {

@@ -57,6 +57,8 @@ import { DownloadButton } from "./DownloadButton.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
+import type { ContextMenuProps } from "./Menu.tsx";
+import { useMessageMenu } from "./MessageMenu.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
@@ -389,56 +391,20 @@ function Branch({
         return (
           <div key={stepKey(owner.id, index)} style={{ display: "contents" }}>
             <TurnWordsView turn={turn} turnKey={stepKey(owner.id, index)} />
-            <EvaMessage face={stateFaces.idle} mode={owner.mode}>
-              <AnswerBody
-                steps={turn.steps}
-                sessionId={owner.id}
-                omitted={turn.omittedSteps}
-                wholeAnswer={turn.answerText}
-                summary={activityOf(turn)}
-                endedWork={endedWork}
-                vaultLinks={owner.mode === "assistant"}
-                actions={(shown) => (
-                  <div className="answer-actions">
-                    {turn.taskCount > 0 && (
-                      <button className="ghost" onClick={() => setShownTasks(step)}>
-                        <Icon name="sync" />
-                        {counted(turn.taskCount, "background task")}
-                      </button>
-                    )}
-                    {/* A closed chat takes no new turn, so it offers no way to start one. */}
-                    {/* A Project chat asks where the branch runs and from which files (issue 523). */}
-                    {!owner.closed && (
-                      <button className="ghost" onClick={() => retryAnswer(owner, index)}>
-                        <Icon name="restart" />
-                        Retry
-                      </button>
-                    )}
-                    {!owner.closed && turn.lastMessageId !== null && turn.failure === null && (
-                      <button
-                        className="ghost"
-                        onClick={() =>
-                          // A specialist has no clone, so its fork is a branch of the chat (#703).
-                          chatKind(owner) === "project"
-                            ? setBranching({
-                                kind: "fork",
-                                sessionId: owner.id,
-                                atMessageId: turn.lastMessageId ?? "",
-                                turn,
-                              })
-                            : runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))
-                        }
-                      >
-                        <Icon name="fork" />
-                        Fork
-                      </button>
-                    )}
-                    {shown !== "" && <CopyButton text={shown} />}
-                  </div>
-                )}
-                failure={turn.failure}
-              />
-            </EvaMessage>
+            <StoredAnswer
+              owner={owner}
+              turn={turn}
+              endedWork={endedWork}
+              onShowTasks={() => setShownTasks(step)}
+              // A Project chat asks where the branch runs and from which files (issue 523).
+              onRetry={() => retryAnswer(owner, index)}
+              onFork={() =>
+                // A specialist has no clone, so its fork is a branch of the chat (#703).
+                chatKind(owner) === "project"
+                  ? setBranching({ kind: "fork", sessionId: owner.id, atMessageId: turn.lastMessageId ?? "", turn })
+                  : runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))
+              }
+            />
             <TurnNotes notes={turn.notes} />
             {point !== null && (
               <BranchSwitcher
@@ -585,9 +551,12 @@ function UserMessage({
   /** The key of its turn, so a pick in the branch map can scroll to it. */
   readonly turnKey?: string | undefined;
 }): ReactElement {
+  const { props, parts } = useMessageMenu(text, fromEva ? "Actions of Eva's message" : "Actions of your message");
   return (
     <div className="msg me" data-turn={turnKey}>
-      <div className="message user">
+      {parts}
+      {/* The menu key and Shift+F10 open the menu, so a keyboard reaches Copy too. */}
+      <div className="message user" tabIndex={0} {...props}>
         <div className="who">{senderName(fromEva)}</div>
         {text}
       </div>
@@ -671,20 +640,112 @@ function EvaMessage({
   face,
   mode,
   turnKey,
+  menu,
   children,
 }: {
   readonly face: Face;
   readonly mode: SessionRecord["mode"];
   /** The key of its turn, so a pick in the branch map can scroll to it. */
   readonly turnKey?: string | undefined;
+  /** The context menu of a stored answer. A running answer has none. */
+  readonly menu?: ContextMenuProps;
   readonly children: ReactNode;
 }): ReactElement {
   return (
     <div className="msg" data-turn={turnKey}>
       <Visor size={28} face={face} projectEyes={mode === "project"} />
-      <div className="message answer">{children}</div>
+      <div className="message answer" {...menu}>
+        {children}
+      </div>
     </div>
   );
+}
+
+/** A stored answer of Eva, with its actions under it and in its context menu (#863). */
+function StoredAnswer({
+  owner,
+  turn,
+  endedWork,
+  onShowTasks,
+  onRetry,
+  onFork,
+}: {
+  readonly owner: SessionRecord;
+  readonly turn: SessionRecord["turns"][number];
+  readonly endedWork: ReadonlyMap<string, boolean>;
+  readonly onShowTasks: () => void;
+  readonly onRetry: () => void;
+  readonly onFork: () => void;
+}): ReactElement {
+  const shown = useShownAnswer(turn.steps, turn.answerText, false);
+  // A closed chat takes no new turn, so it offers no way to start one.
+  const canRetry = !owner.closed;
+  const canFork = !owner.closed && turn.lastMessageId !== null && turn.failure === null;
+  const { props, parts } = useMessageMenu(shown.body, "Actions of Eva's answer", [
+    ...(canRetry ? [{ label: "Retry", icon: "restart" as const, onChoose: onRetry }] : []),
+    ...(canFork ? [{ label: "Fork", icon: "fork" as const, onChoose: onFork }] : []),
+  ]);
+  return (
+    <>
+      {parts}
+      <EvaMessage face={stateFaces.idle} mode={owner.mode} menu={props}>
+        <AnswerBody
+          shown={shown}
+          sessionId={owner.id}
+          omitted={turn.omittedSteps}
+          wholeAnswer={turn.answerText}
+          summary={activityOf(turn)}
+          endedWork={endedWork}
+          vaultLinks={owner.mode === "assistant"}
+          actions={
+            <div className="answer-actions">
+              {turn.taskCount > 0 && (
+                <button className="ghost" onClick={onShowTasks}>
+                  <Icon name="sync" />
+                  {counted(turn.taskCount, "background task")}
+                </button>
+              )}
+              {canRetry && (
+                <button className="ghost" onClick={onRetry}>
+                  <Icon name="restart" />
+                  Retry
+                </button>
+              )}
+              {canFork && (
+                <button className="ghost" onClick={onFork}>
+                  <Icon name="fork" />
+                  Fork
+                </button>
+              )}
+              {shown.body !== "" && <CopyButton text={shown.body} />}
+            </div>
+          }
+          failure={turn.failure}
+        />
+      </EvaMessage>
+    </>
+  );
+}
+
+/** What an answer card shows: its folded steps, and the last message or, on request, the whole answer. */
+interface ShownAnswer {
+  readonly listed: readonly TurnStep[];
+  readonly canShowWhole: boolean;
+  readonly showWhole: boolean;
+  readonly setShowWhole: (update: (shown: boolean) => boolean) => void;
+  /** The text of the card, which Copy copies. */
+  readonly body: string;
+}
+
+/** The card's owner keeps this, so its context menu copies the same text as its Copy button (#863). */
+function useShownAnswer(steps: readonly TurnStep[], wholeAnswer: string, live: boolean): ShownAnswer {
+  const [showWhole, setShowWhole] = useState(false);
+  const { listed, lastMessage } = foldSteps(steps);
+  const canShowWhole = lastMessage !== undefined && wholeAnswerAddsText(wholeAnswer, lastMessage.text);
+  const fullBody = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  // Each streamed token and each clock tick render every answer, so parse only a changed text.
+  const body = useMemo(() => shownAnswerText(fullBody, live), [fullBody, live]);
+  return { listed, canShowWhole, showWhole, setShowWhole, body };
 }
 
 /**
@@ -693,7 +754,7 @@ function EvaMessage({
  * steps existed has none, so it shows its whole answer text.
  */
 function AnswerBody({
-  steps,
+  shown,
   sessionId,
   omitted,
   wholeAnswer,
@@ -704,7 +765,7 @@ function AnswerBody({
   endedWork,
   vaultLinks = false,
 }: {
-  readonly steps: readonly TurnStep[];
+  readonly shown: ShownAnswer;
   readonly omitted: number;
   /** The chat of a stored answer, so a step's dialog can fetch its details. */
   readonly sessionId?: string;
@@ -712,8 +773,8 @@ function AnswerBody({
   readonly wholeAnswer: string;
   readonly summary?: string;
   readonly live?: boolean;
-  /** The buttons under the answer, given the text that the card shows. */
-  readonly actions?: (shownText: string) => ReactElement;
+  /** The buttons under the answer. */
+  readonly actions?: ReactElement;
   /** Why the turn failed, or null. */
   readonly failure?: string | null;
   /** Each Project chat whose result came back, and whether its work failed, for the step dialog. */
@@ -721,12 +782,7 @@ function AnswerBody({
   /** True in an Assistant chat: its agent works in the vault root, so a path in a code span opens the Files page. */
   readonly vaultLinks?: boolean;
 }): ReactElement {
-  const [showWhole, setShowWhole] = useState(false);
-  const { listed, lastMessage } = foldSteps(steps);
-  const canShowWhole = lastMessage !== undefined && wholeAnswerAddsText(wholeAnswer, lastMessage.text);
-  const fullBody = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
-  // Each streamed token and each clock tick render every answer, so parse only a changed text.
-  const body = useMemo(() => shownAnswerText(fullBody, live), [fullBody, live]);
+  const { listed, canShowWhole, showWhole, setShowWhole, body } = shown;
   const html = useMemo(() => toWebHtml(body, { vaultLinks }), [body, vaultLinks]);
   // A running turn can still change its files, so the buttons come with the stored turn, as in Telegram.
   const files = useMemo(() => (live ? [] : answerFiles(wholeAnswer)), [live, wholeAnswer]);
@@ -754,7 +810,7 @@ function AnswerBody({
         </button>
       )}
       {failure !== null && <div className="turn-failure">The turn failed: {failure}</div>}
-      {actions?.(body)}
+      {actions}
     </>
   );
 }
@@ -784,10 +840,11 @@ function LiveAnswer({
     [steps],
   );
   const hasText = steps.some((step) => step.kind === "message");
+  const answer = useShownAnswer(shown.steps, wholeAnswer, true);
   return (
     <EvaMessage face={liveFace(hasText, mode)} mode={mode}>
       <AnswerBody
-        steps={shown.steps}
+        shown={answer}
         omitted={shown.omittedSteps}
         wholeAnswer={wholeAnswer}
         live

@@ -25,6 +25,7 @@ export function Dialog({
   closeLabel = "Close",
   closeDisabled = false,
   back = true,
+  wide = false,
   children,
 }: {
   readonly label: string;
@@ -37,6 +38,8 @@ export function Dialog({
   readonly scrimCloses?: boolean;
   /** False for a dialog that the Back button itself opens, such as the unsaved changes question. */
   readonly back?: boolean;
+  /** True for a dialog that shows a file or long output to read, so a computer gives it more width. */
+  readonly wide?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   const close = useRef<HTMLButtonElement>(null);
@@ -66,7 +69,7 @@ export function Dialog({
       // A tap on the scrim closes the dialog; a tap inside it does not.
       onClick={scrimCloses ? (event) => event.target === event.currentTarget && onClose() : undefined}
     >
-      <div ref={box} className="dialog" role="dialog" aria-modal="true" aria-label={label}>
+      <div ref={box} className={wide ? "dialog wide" : "dialog"} role="dialog" aria-modal="true" aria-label={label}>
         {children}
         <div className="message-actions">
           <button ref={close} onClick={onClose} disabled={closeDisabled}>

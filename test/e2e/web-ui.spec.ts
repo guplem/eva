@@ -958,6 +958,8 @@ test("the chat details list the context, and a tap shows a part's whole text (is
   await prompt.getByRole("button", { name: "Your rules for Eva" }).click();
   const part = page.getByRole("dialog", { name: "Your rules for Eva" });
   await expect(part).toContainText("# You are Eva");
+  // A part is a file to read, so a computer shows it in a wide box, not a narrow one.
+  if (test.info().project.name === "desktop") expect((await part.boundingBox())?.width ?? 0).toBeGreaterThan(700);
   await part.getByRole("button", { name: "Close" }).click();
   await expect(part).toHaveCount(0);
 });
@@ -3816,6 +3818,8 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   // A stored answer keeps no details in the session list, so the dialog fetches them.
   const dialog = page.getByRole("dialog", { name: "Step: Command" });
   await expect(dialog.locator(".status-pill")).toHaveText("Done");
+  // A step shows its input and output, so a computer shows it in a wide box.
+  if (test.info().project.name === "desktop") expect((await dialog.boundingBox())?.width ?? 0).toBeGreaterThan(700);
   // A computer shows a centred box, and a phone a bottom sheet (issue 644).
   const gapBelow = (page.viewportSize()?.height ?? 0) - (await restingBottom(dialog));
   if (test.info().project.name === "phone") expect(gapBelow).toBeLessThan(1);

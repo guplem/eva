@@ -2332,8 +2332,9 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   await expect(oldTool).toHaveCount(0);
   await expect(recipes).toHaveCount(0);
   await legend.getByRole("button", { name: "Show the closed projects" }).click();
-  await expect(oldTool).toBeVisible();
   await expect(recipes).toBeVisible();
+  // A project that closed before the range has no bar in it.
+  await expect(oldTool).toHaveCount(0);
   await legend.getByRole("button", { name: "Show the closed projects" }).click();
   await expect(oldTool).toHaveCount(0);
   await expect(recipes).toHaveCount(0);

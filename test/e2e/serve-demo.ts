@@ -47,13 +47,15 @@ sandbox.write(
 sandbox.write(
   vault,
   "Projects/2019-03-old-tool/AGENTS.md",
-  "---\ncreated: 2019-03\nstatus: closed\ntags: [legacy]\n---\n# Old tool\n",
+  "---\ncreated: 2019-03\nstatus: closed\nclosed: 2020-06-30\ntags: [legacy]\n---\n# Old tool\n",
 );
-// A project that the person uses, and no longer develops (#690, #859).
+// A project that the person uses, and no longer develops (#690, #859). It closed a week ago, so the
+// timeline of the last 12 months draws it up to that day.
+const recipesClosed = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 sandbox.write(
   vault,
   "Projects/2024-09-01-0900-family-recipes/AGENTS.md",
-  "---\ncreated: 2024-09-01T09:00\nstatus: closed\nin-use: true\ntags: [home]\n---\n# Family recipes\n\nThe recipes and the menus of each week.\n",
+  `---\ncreated: 2024-09-01T09:00\nstatus: closed\nclosed: ${recipesClosed}\nin-use: true\ntags: [home]\n---\n# Family recipes\n\nThe recipes and the menus of each week.\n`,
 );
 // A project whose work stopped: the timeline draws it with stripes (#857).
 sandbox.write(

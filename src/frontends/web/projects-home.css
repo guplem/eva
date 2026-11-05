@@ -53,6 +53,15 @@
   .timeline-row:hover .timeline-name {
     color: var(--accent-ink);
   }
+
+  /* The row under the pointer stands out, so its tooltip reads with the right bar (#893). */
+  .timeline-row:hover .timeline-lane::before {
+    background: var(--line);
+  }
+
+  .timeline:has(.timeline-row:hover) .timeline-row:not(:hover) .timeline-bar {
+    opacity: 0.4;
+  }
 }
 
 /* The pill keeps its own width: `.status-pill` places itself in the grid of the chat list. */
@@ -102,6 +111,25 @@
   --timeline-name: 160px;
   --timeline-marks: 18px;
   --timeline-label: 22px;
+  --timeline-lane: 20px;
+  --timeline-pill: 14px;
+  /*
+   * The range cuts the time at its left edge, so each lane fades in there (#893). The curve eases in
+   * and out: a straight ramp shows a line where it ends. The mask reads only the alpha of --ink.
+   */
+  --timeline-fade-width: 56px;
+  --timeline-fade: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in srgb, var(--ink) 4%, transparent) calc(var(--timeline-fade-width) * 0.125),
+    color-mix(in srgb, var(--ink) 14%, transparent) calc(var(--timeline-fade-width) * 0.25),
+    color-mix(in srgb, var(--ink) 30%, transparent) calc(var(--timeline-fade-width) * 0.375),
+    color-mix(in srgb, var(--ink) 50%, transparent) calc(var(--timeline-fade-width) * 0.5),
+    color-mix(in srgb, var(--ink) 70%, transparent) calc(var(--timeline-fade-width) * 0.625),
+    color-mix(in srgb, var(--ink) 86%, transparent) calc(var(--timeline-fade-width) * 0.75),
+    color-mix(in srgb, var(--ink) 96%, transparent) calc(var(--timeline-fade-width) * 0.875),
+    var(--ink) var(--timeline-fade-width)
+  );
 }
 
 .timeline-marks {
@@ -165,9 +193,21 @@
 
 .timeline-lane {
   position: relative;
-  height: 20px;
-  border-radius: var(--radius-pill);
+  height: var(--timeline-lane);
+}
+
+/*
+ * The grey of the lane. It fades in at the left edge, as a bar from before the range does, so the two
+ * fade as one (#893). It is a layer of its own: a mask on the lane would also fade a bar that starts
+ * inside the range.
+ */
+.timeline-lane::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   background: var(--chip);
+  mask-image: var(--timeline-fade);
 }
 
 /* The bar is a container, so a bar too short for the In use words hides them. */
@@ -181,40 +221,51 @@
   align-items: center;
   overflow: hidden;
   border-radius: var(--radius-pill);
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
-/*
- * A project from an earlier year fades in from the edge: a hard line would say that it started there.
- * The mask reads only the alpha, so any opaque token works.
- */
+/* A project from before the range fades in with its lane: a hard line would say that it started there. */
 .timeline-bar.before {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  mask-image: linear-gradient(to right, transparent, var(--ink) var(--space-8));
+  mask-image: var(--timeline-fade);
 }
 
+/*
+ * In use, in a pill on the bar (#893). On the pattern itself, the words were hard to read. The space
+ * between the pill and the ring of the bar is the same above, below and to the left.
+ */
 .timeline-bar-label {
-  padding-left: var(--space-2);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: var(--timeline-pill);
+  margin-left: calc((var(--timeline-lane) - var(--timeline-pill)) / 2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  /* Mixed in oklab, so the words keep the hue of the project. Mixed in oklch, an orange turns violet. */
+  color: color-mix(in oklab, var(--project-color) 65%, var(--ink));
   font-size: var(--text-xs);
   font-weight: 700;
   line-height: 1;
+  letter-spacing: 0.02em;
   white-space: nowrap;
-  color: var(--ink);
 }
 
-/* The words start after the fade. */
+/* The pill starts where the fade is almost done. */
 .timeline-bar.before .timeline-bar-label {
-  padding-left: var(--space-8);
+  margin-left: calc(var(--timeline-fade-width) - var(--space-3));
 }
 
-@container timeline-bar (max-width: 56px) {
+@container timeline-bar (max-width: 64px) {
   .timeline-bar-label {
     display: none;
   }
 }
 
-/* The words of a faded bar start later, so they need a longer bar. */
-@container timeline-bar (max-width: 76px) {
+/* The pill of a faded bar starts later, so it needs a longer bar. */
+@container timeline-bar (max-width: 108px) {
   .timeline-bar.before .timeline-bar-label {
     display: none;
   }
@@ -239,17 +290,20 @@
   );
 }
 
-/* Dots on a faint fill: the work ended. The dots keep it apart from the stripes of Paused (#881). */
+/*
+ * Soft dots on a faint fill: the work ended. The dots keep it apart from the stripes of Paused (#881).
+ * The tiles start at the centre, so the dots sit in the middle of a bar of any size (#893).
+ */
 .timeline-row.closed .timeline-bar,
 .timeline-swatch.closed {
   background:
     radial-gradient(
         circle at 3px 3px,
-        color-mix(in oklch, var(--project-color) 70%, transparent) 1.4px,
-        transparent 1.9px
+        color-mix(in oklch, var(--project-color) 40%, transparent) 1.1px,
+        transparent 1.6px
       )
-      0 0 / 7px 7px,
-    color-mix(in oklch, var(--project-color) 12%, transparent);
+      center / 6px 6px,
+    color-mix(in oklch, var(--project-color) 15%, transparent);
 }
 
 /* A faint fill: the project has no status. Only a project in use shows so. */

@@ -317,10 +317,11 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - With no project open, a computer shows a home page: Needs you, Recent, and the statistics of a time range. A phone shows only Needs you, above the list.
 - The statistics are a timeline of the projects, a chart by month and the counts. A picker in the header sets their range: the last 12 months at first, a quick range, a year, all, or two days.
 - The list title has two round icon buttons: Statistics and New project. Statistics opens a page with the statistics alone, so a phone shows them too. The page has a "Projects" back button.
-- Each project of the timeline has one file type colour, by a hash of its folder name. An active bar is solid. A paused bar has faint stripes. A closed bar has faint dots. A bar from before the range fades in at its left edge.
-- A project in use shows once, with a ring on the edge of its bar over any pattern, and the words "In use" inside the bar. A solid bar in use softens its fill, so the ring shows. A bar too short for the words keeps the ring only.
-- The legend above the timeline shows the pattern of each bar. Active, Paused and Closed are chips with a checkbox: each shows or hides the projects of its status. Only Active is on at first. A project in use always shows.
+- Each project of the timeline has one file type colour, by a hash of its folder name. An active bar is solid. A paused bar has faint stripes. A closed bar has soft dots, centred in the bar. Each lane fades in at its left edge, with any bar from before the range. The fade eases in and out, so its end shows no line.
+- A project in use shows once, with a ring on the edge of its bar over any pattern, and "In use" in a pill inside the bar, so it reads on any pattern. The pill keeps the same space to the ring above, below and to the left. A solid bar in use softens its fill, so the ring shows. A bar too short for the pill keeps the ring only.
+- The legend above the timeline shows the pattern of each bar. Active, Paused and Closed are chips with a checkbox: each shows or hides the projects of its status. Only Active is on at first. A project in use shows only when its status is on.
 - The today line takes the accent. It runs across all the rows, with the date under it.
+- The whole row has a tooltip that points at its bar: the title, the status and In use, the dates and the duration. While the pointer rests on a row, its lane darkens and the other bars dim.
 - The chart has one point for day 1 of each month. Active is a solid green line with discs. Paused is a dashed amber line with squares. Closed is a dotted grey line with rings: it counts the projects that closed in the month before. A tap or a hover on a month shows its numbers in the legend.
 
 ### A chat in a clone

@@ -28,6 +28,7 @@ import {
   rangeChoiceValue,
   rangeOf,
   rangeWords,
+  rowTooltip,
   statusCounts,
   timeline,
   timelineStatuses,
@@ -313,6 +314,8 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
                 key={row.project.id}
                 className={`timeline-row ${row.status ?? "none"}${row.inUse ? " in-use" : ""}`}
                 aria-label={rowLabel(row)}
+                // The whole row asks for the tooltip, so a bar of one day is easy to reach (#893).
+                data-tooltip={rowTooltip(row, now)}
                 style={colorStyle(row.project)}
                 onClick={() => onOpenProject(row.project)}
               >
@@ -322,6 +325,7 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
                 <span className="timeline-lane">
                   <span
                     className={`timeline-bar${row.startsBefore ? " before" : ""}`}
+                    data-tooltip-target=""
                     style={{
                       left: `${String(row.start * 100)}%`,
                       width: `${String((row.end - row.start) * 100)}%`,

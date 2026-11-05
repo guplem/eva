@@ -48,6 +48,8 @@ export class LongPress<T> {
   down(target: T, at: Point): void {
     this.stop();
     this.held = null;
+    // A browser can send no click after a long press. The click of this new touch is its own.
+    this.dropClickUntil = 0;
     const stop = this.schedule(() => this.hold(), longPressMs);
     this.press = { target, at, stop };
   }

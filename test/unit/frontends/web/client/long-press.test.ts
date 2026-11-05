@@ -97,6 +97,17 @@ describe("LongPress", () => {
     expect(press.dropsClick()).toBe(false);
   });
 
+  test("a new touch keeps its click, also right after a long press with no click of its own", () => {
+    const { press, time } = setUp();
+    press.down("row", { x: 10, y: 10 });
+    time.advance(longPressMs);
+    press.up();
+    time.advance(100);
+    press.down("row", { x: 10, y: 10 });
+    press.up();
+    expect(press.dropsClick()).toBe(false);
+  });
+
   test("a cancelled touch drops no click", () => {
     const { press, time } = setUp();
     press.down("row", { x: 10, y: 10 });

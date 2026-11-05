@@ -18,6 +18,12 @@ import {
   statusPill,
   inUsePill,
   statusChips,
+  inUseChips,
+  defaultListFilter,
+  toggledStatus,
+  toggledInUse,
+  matchesListFilter,
+  listFilterOf,
   syncPills,
   widgetRepositoryNames,
 } from "../../../../../src/frontends/web/client/project-format.ts";
@@ -46,9 +52,49 @@ describe("inUsePill", () => {
   });
 });
 
-describe("statusChips", () => {
-  test("offer Current, each status, and In use after Active (#690, #859)", () => {
-    expect(statusChips.map((chip) => chip.text)).toEqual(["Current", "Active", "In use", "Paused", "Closed"]);
+describe("the list filters (#885)", () => {
+  test("offer All and each status, and All, In use and Not in use", () => {
+    expect(statusChips.map((chip) => chip.text)).toEqual(["All", "Active", "Paused", "Closed"]);
+    expect(inUseChips.map((chip) => chip.text)).toEqual(["All", "In use", "Not in use"]);
+  });
+
+  test("open on the active projects, in use or not", () => {
+    expect(defaultListFilter).toEqual({ statuses: ["active"], inUse: "all" });
+  });
+
+  test("a tap on a status adds it or takes it away, and every status reads as All", () => {
+    expect(toggledStatus(["active"], "closed")).toEqual(["active", "closed"]);
+    expect(toggledStatus(["closed", "active"], "active")).toEqual(["closed"]);
+    expect(toggledStatus([], "paused")).toEqual(["paused"]);
+    expect(toggledStatus(["active", "paused"], "closed")).toEqual([]);
+  });
+
+  test("a tap on In use or Not in use picks it, and picking both reads as All", () => {
+    expect(toggledInUse("all", "in-use")).toBe("in-use");
+    expect(toggledInUse("in-use", "not-in-use")).toBe("all");
+    expect(toggledInUse("not-in-use", "not-in-use")).toBe("all");
+  });
+
+  test("a project shows when it matches both filters", () => {
+    const project = (
+      status: "active" | "paused" | "closed" | null,
+      inUse: boolean,
+    ): { status: "active" | "paused" | "closed" | null; inUse: boolean } => ({ status, inUse });
+    const both = { statuses: ["active", "closed"] as const, inUse: "all" as const };
+    expect(matchesListFilter(project("closed", false), both)).toBe(true);
+    expect(matchesListFilter(project("paused", false), both)).toBe(false);
+    expect(matchesListFilter(project(null, false), both)).toBe(false);
+    expect(matchesListFilter(project(null, false), { statuses: [], inUse: "all" })).toBe(true);
+    expect(matchesListFilter(project("closed", true), { statuses: [], inUse: "in-use" })).toBe(true);
+    expect(matchesListFilter(project("closed", false), { statuses: [], inUse: "in-use" })).toBe(false);
+    expect(matchesListFilter(project("active", true), { statuses: ["active"], inUse: "not-in-use" })).toBe(false);
+    expect(matchesListFilter(project("active", false), { statuses: ["active"], inUse: "not-in-use" })).toBe(true);
+  });
+
+  test("a count of the statistics sets the filters", () => {
+    expect(listFilterOf("active")).toEqual({ statuses: ["active"], inUse: "all" });
+    expect(listFilterOf("paused")).toEqual({ statuses: ["paused"], inUse: "all" });
+    expect(listFilterOf("in-use")).toEqual({ statuses: [], inUse: "in-use" });
   });
 });
 

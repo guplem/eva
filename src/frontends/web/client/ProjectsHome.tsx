@@ -9,7 +9,7 @@ import { ChatStatePill } from "./ChatHeader.tsx";
 import { CardsSkeleton } from "./Loading.tsx";
 import { colorStyle, ProjectStats, RangePicker } from "./ProjectStats.tsx";
 import { homeChats, projectInitials, type RangeChoice } from "./projects-home.ts";
-import type { ProjectStatusFilter } from "../../../shared/project-statuses.ts";
+import type { StatusCount } from "./project-format.ts";
 
 interface ChatRowsProps {
   readonly chats: readonly { readonly chat: SessionRecord; readonly state: ChatState }[];
@@ -88,7 +88,7 @@ interface ProjectsHomeProps {
   readonly onOpenChat: (chat: SessionRecord) => void;
   readonly onOpenProject: (project: Project) => void;
   /** A press on a count filters the list by that status, or by In use. */
-  readonly onFilterStatus: (status: ProjectStatusFilter) => void;
+  readonly onFilterStatus: (count: StatusCount) => void;
   /** The time range of the statistics. The page of the statistics shares it. */
   readonly range: RangeChoice;
   readonly onRangeChange: (choice: RangeChoice) => void;

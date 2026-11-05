@@ -2200,24 +2200,37 @@ test("Project mode: the repository setup shows each item's light; Fix runs a dir
   await box.fill("");
 });
 
-test("the status chips hide a closed project until a tap clears the filter", async ({ page }) => {
+test("the Status and In use chips filter the list together (#885)", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  const current = page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "Current" });
-  await expect(current).toHaveAttribute("aria-pressed", "true");
-  await expect(projectCard(page, /Old tool/)).toHaveCount(0);
-  // Current shows the projects that the person develops and the ones in use (#690).
+  const status = page.getByRole("group", { name: "Status", exact: true });
+  const inUse = page.getByRole("group", { name: "In use", exact: true });
+  await expect(status.getByRole("button", { name: "Active" })).toHaveAttribute("aria-pressed", "true");
+  await expect(inUse.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
   await expect(projectCard(page, /Example app/)).toBeVisible();
-  await expect(projectCard(page, /Family recipes/).getByText("In use", { exact: true })).toBeVisible();
-  await current.click();
-  await expect(current).toHaveAttribute("aria-pressed", "false");
+  await expect(projectCard(page, /Old tool/)).toHaveCount(0);
+  // The person can pick more than one status.
+  await status.getByRole("button", { name: "Closed" }).click();
   await expect(projectCard(page, /Old tool/)).toBeVisible();
-  await page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "Closed" }).click();
-  await expect(projectCard(page, /Old tool/)).toBeVisible();
+  await expect(projectCard(page, /Example app/)).toBeVisible();
+  await status.getByRole("button", { name: "Active" }).click();
   await expect(projectCard(page, /Example app/)).toHaveCount(0);
-  await page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "In use" }).click();
+  await status.getByRole("button", { name: "All" }).click();
+  await expect(status.getByRole("button", { name: "Closed" })).toHaveAttribute("aria-pressed", "false");
+  await expect(projectCard(page, /Old tool/)).toBeVisible();
+  await inUse.getByRole("button", { name: "In use", exact: true }).click();
   await expect(projectCard(page, /Family recipes/)).toBeVisible();
   await expect(projectCard(page, /Example app/)).toHaveCount(0);
+  // Every option picked means every value fits: the row turns back to All.
+  await inUse.getByRole("button", { name: "Not in use" }).click();
+  await expect(inUse.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+  await expect(projectCard(page, /Family recipes/)).toBeVisible();
+  await inUse.getByRole("button", { name: "Not in use" }).click();
+  await expect(projectCard(page, /Family recipes/)).toHaveCount(0);
+  await expect(projectCard(page, /Example app/)).toBeVisible();
+  for (const name of ["Paused", "Closed"]) await status.getByRole("button", { name }).click();
+  await status.getByRole("button", { name: "Active" }).click();
+  await expect(status.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
   // A status word typed in the search wins over the chip.
   await page.getByLabel("Search projects").fill("status:closed");
   await expect(projectCard(page, /Old tool/)).toBeVisible();
@@ -2229,7 +2242,7 @@ test("the status chips hide a closed project until a tap clears the filter", asy
 test("the tag chips show only the projects with that tag", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  await page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "Current" }).click();
+  await page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "All" }).click();
   await expect(projectCard(page, /Old tool/)).toBeVisible();
   const web = page.getByRole("group", { name: "Tag" }).getByRole("button", { name: "#web" });
   await web.click();
@@ -5981,7 +5994,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   const run = test.info().project.name;
   await logIn(page);
   await openProjects(page);
-  await page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "Current" }).click();
+  await page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "All" }).click();
   await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();

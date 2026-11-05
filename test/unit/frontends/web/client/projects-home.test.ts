@@ -350,14 +350,10 @@ describe("rowTooltip", () => {
     expect(tooltipOf(fresh, "active").split("\n")[2]).toBe("10 Aug – today · 2 months");
   });
 
-  test("gives only what a short id knows of the start: the year, or the month", () => {
-    expect(tooltipOf(project("2025-old-work", "active"), "active").split("\n")[2]).toBe(
-      "2025 – today · 1 year 10 months",
-    );
-    expect(tooltipOf(project("2026-03-spring", "active"), "active").split("\n")[2]).toBe("Mar – today · 8 months");
-    expect(tooltipOf(project("2025-03-spring", "active"), "active").split("\n")[2]).toBe(
-      "Mar 2025 – today · 1 year 8 months",
-    );
+  test("gives only what a short id knows of the start, and no duration, which the id does not know", () => {
+    expect(tooltipOf(project("2025-old-work", "active"), "active").split("\n")[2]).toBe("2025 – today");
+    expect(tooltipOf(project("2026-03-spring", "active"), "active").split("\n")[2]).toBe("Mar – today");
+    expect(tooltipOf(project("2025-03-spring", "active"), "active").split("\n")[2]).toBe("Mar 2025 – today");
   });
 
   test("gives only the start day when the end comes before it, as a wrong closed day does", () => {

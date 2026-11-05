@@ -386,7 +386,7 @@ function durationWords(from: Date, to: Date): string {
  * The tooltip of a timeline row (#893), one fact per line: the title, the status and In use, then
  * the dates and the duration, such as "31 Aug – 4 Oct 2026 · 35 days". The start day gives its year
  * only when the year differs from the end. An open project ends today. An end before the start, from
- * a wrong `closed` day or the clock of another machine, gives the start day alone.
+ * a wrong `closed` day or the clock of another machine, gives the start day alone. A short id gives no duration.
  */
 export function rowTooltip(row: TimelineRow, now: Date): string {
   const end = row.closedOn ?? now;
@@ -396,8 +396,10 @@ export function rowTooltip(row: TimelineRow, now: Date): string {
   const state = [...(row.status === null ? [] : [statusLabels[row.status]]), ...(row.inUse ? [inUseLabel] : [])].join(
     " · ",
   );
-  const duration = flipped ? countOf(1, "day") : durationWords(row.created, end);
-  return [row.title, ...(state === "" ? [] : [state]), `${dates} · ${duration}`].join("\n");
+  // A short id, such as 2025-old-work, gives no start day, so how long the project ran is not known.
+  const knowsDay = row.project.parsedId.created.day !== undefined;
+  const duration = flipped ? countOf(1, "day") : knowsDay ? durationWords(row.created, end) : null;
+  return [row.title, ...(state === "" ? [] : [state]), duration === null ? dates : `${dates} · ${duration}`].join("\n");
 }
 
 /** The start of a project, as far as its id knows it: "2025", "Mar 2026" or "4 Oct 2026". */

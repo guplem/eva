@@ -3486,7 +3486,7 @@ test("Schedules page: add a schedule that runs once (#822)", async ({ page }, te
   await page.request.delete(`/api/schedules/${id}`);
 });
 
-test("Schedules page: edit a schedule in the same form, and keep the keys that the form does not show (#467)", async ({
+test("Schedules page: edit a schedule on its own page, and keep the keys that the form does not show (#467)", async ({
   page,
 }, testInfo) => {
   const id = `read-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
@@ -3507,14 +3507,26 @@ test("Schedules page: edit a schedule in the same form, and keep the keys that t
   const row = page.getByRole("listitem", { name });
   await row.getByRole("button").click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
-  const form = page.getByRole("dialog", { name: "Edit schedule" });
+  // The edit has its own page, with room for a long prompt (#891).
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}/edit$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${name} · Edit`);
+  const form = page.locator("form.schedule-edit");
   await expect(form.getByLabel(/^Id/)).toHaveValue(id);
   await expect(form.getByLabel(/^Id/)).not.toBeEditable();
   await expect(form.getByLabel("Time (HH:MM)")).toHaveValue("21:00");
   await expect(form.getByRole("button", { name: "Mon" })).toHaveAttribute("aria-pressed", "true");
   await expect(form.getByLabel("Fixed text")).toHaveValue("Read a chapter.\nThen sleep.");
+  const prompt = await form.getByLabel("Prompt for Eva").boundingBox();
+  expect(prompt?.height ?? 0).toBeGreaterThan(200);
+  // Back with a change asks first.
   await form.getByLabel("Time (HH:MM)").fill("22:15");
+  await page.getByRole("button", { name: `Back to ${name}` }).click();
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}/edit$`));
   await form.getByRole("button", { name: "Save schedule" }).click();
+  // A save goes back to the page of the schedule.
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}$`));
   await expect(form).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText(`${name} stays off`);
   const facts = page.getByRole("region", { name: "When it runs" });
@@ -3525,6 +3537,41 @@ test("Schedules page: edit a schedule in the same form, and keep the keys that t
   };
   const saved = listed.schedules.find((view) => view.schedule.id === id)?.schedule;
   expect(saved).toMatchObject({ text: "Read a chapter.\nThen sleep.", model: "sonnet", enabled: false });
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
+test("Schedules page: Save and leave on the edit page makes only the move that the person chose (#891)", async ({
+  page,
+}, testInfo) => {
+  const id = `stretch-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  const name = `Stretch ${id}`;
+  await logIn(page);
+  await page.request.post("/api/schedules", { data: { id, name, at: "08:00", text: "Stretch." } });
+  await page.goto(`/#/schedules/${id}`);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const form = page.locator("form.schedule-edit");
+  await form.getByLabel("Time (HH:MM)").fill("08:30");
+  // The main navigation leaves for Projects. The save must not bring the person back.
+  await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Projects" }).click();
+  await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Save and leave" }).click();
+  await expect(page).toHaveURL(/#\/projects$/);
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(/#\/projects$/);
+  const listed = (await (await page.request.get("/api/schedules")).json()) as {
+    schedules: { schedule: { id: string; at: string | null } }[];
+  };
+  expect(listed.schedules.find((view) => view.schedule.id === id)?.schedule.at).toBe("08:30");
+  // The Back of the browser steps back once: to the page of the schedule, not past it.
+  await page.goto(`/#/schedules/${id}`);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}/edit$`));
+  await form.getByLabel("Time (HH:MM)").fill("08:45");
+  await page.goBack();
+  await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Save and leave" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}$`));
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}$`));
+  await expect(page.getByRole("region", { name: "When it runs" })).toContainText("08:45");
   await page.request.delete(`/api/schedules/${id}`);
 });
 

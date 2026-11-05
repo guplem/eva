@@ -1,6 +1,6 @@
 /*
  * The Schedules page of the EVE design: the list of schedules, the page of one schedule, the day
- * line, and the add dialog. The list and the page reuse the classes of Projects.
+ * line, the add dialog and the edit page. The list and the page reuse the classes of Projects.
  */
 
 /* The buttons of the EVE design: a pill with no border. */
@@ -357,12 +357,17 @@
   gap: 6px;
 }
 
-.schedule-sheet .schedule-days button {
+/* The same pill in the add dialog and on the edit page. */
+.schedule-days button {
+  border: 0;
+  background: var(--chip);
+  color: var(--ink);
+  font-weight: 600;
   padding: 6px 12px;
   font-size: 12px;
 }
 
-.schedule-sheet .schedule-days button[aria-pressed="true"] {
+.schedule-days button[aria-pressed="true"] {
   background: var(--soft);
   color: var(--soft-ink);
   box-shadow: inset 0 0 0 1.5px var(--accent);
@@ -403,7 +408,7 @@
     gap: 4px;
   }
 
-  .schedule-sheet .schedule-days button {
+  .schedule-days button {
     min-width: var(--touch-target);
     padding: 0 4px;
   }
@@ -417,4 +422,10 @@
 
 .schedule-every label {
   flex: 1;
+}
+
+/* A prompt can be long, so the edit page gives it most of the screen. */
+.schedule-prompt {
+  min-height: 40vh;
+  resize: vertical;
 }

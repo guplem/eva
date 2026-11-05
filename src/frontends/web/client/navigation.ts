@@ -141,12 +141,22 @@ export function projectAddressOf(route: ProjectRoute): string {
   return `${project}/${route.kind}`;
 }
 
-/** The open schedule of Schedules, as `#/schedules/<id>`. Null for `#/schedules`: the list and today show. */
-export function scheduleIdOf(hash: string): string | null {
-  const match = /^#\/schedules\/([^/]+)$/.exec(hash);
-  return match?.[1] === undefined ? null : decodeURIComponent(match[1]);
+/**
+ * The open schedule of Schedules, as `#/schedules/<id>`, and its edit page, as `#/schedules/<id>/edit`.
+ * A null id, as for `#/schedules`, shows the list and today.
+ */
+export interface ScheduleRoute {
+  readonly scheduleId: string | null;
+  readonly edit: boolean;
 }
 
-export function scheduleAddressOf(scheduleId: string | null): string {
-  return scheduleId === null ? addressOf("schedules") : `${addressOf("schedules")}/${encodeURIComponent(scheduleId)}`;
+export function scheduleRouteOf(hash: string): ScheduleRoute {
+  const match = /^#\/schedules\/([^/]+)(\/edit)?$/.exec(hash);
+  if (match?.[1] === undefined) return { scheduleId: null, edit: false };
+  return { scheduleId: decodeURIComponent(match[1]), edit: match[2] !== undefined };
+}
+
+export function scheduleAddressOf(scheduleId: string | null, edit = false): string {
+  if (scheduleId === null) return addressOf("schedules");
+  return `${addressOf("schedules")}/${encodeURIComponent(scheduleId)}${edit ? "/edit" : ""}`;
 }

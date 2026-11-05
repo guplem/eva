@@ -1,48 +1,38 @@
 /**
- * The "Add schedule" form, in a dialog on a computer and a bottom sheet on a phone. With a
- * `schedule`, the same form edits that schedule.
+ * The "Add schedule" form, in a dialog on a computer and a bottom sheet on a phone. An edit has
+ * its own page, `ScheduleEditPage`, with room for a long prompt.
  */
 import { useEffect, useState, type ReactElement } from "react";
 import type { Schedule } from "../../../core/schedules/schedule-definitions.ts";
 import { api } from "./api.ts";
-import { emptyScheduleForm, entryOf, fieldsOf, formOf, weekDaysFrom, type Unit } from "./schedule-form.ts";
-import { displayFormat } from "./display-format.ts";
-import { intervalUnits } from "./schedule-words.ts";
-import { ChoiceChips } from "./SettingsParts.tsx";
+import { emptyScheduleForm, entryOf } from "./schedule-form.ts";
+import { ScheduleWhatFields, ScheduleWhenFields } from "./ScheduleFields.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { dialogBackdropClass } from "./Dialog.tsx";
 
+const title = "Add schedule";
+
 /** `now` is the instance's wall clock, so the first run that the form offers is in the instance's time zone. */
 export function AddScheduleDialog(props: {
   now: string | null;
-  schedule?: Schedule;
   onClose: () => void;
-  /** Gets the saved schedule: the file may have changed while the form was open. */
   onSaved: (saved: Schedule) => void;
 }): ReactElement {
-  const original = props.schedule ?? null;
-  const [opened] = useState(() => (original === null ? emptyScheduleForm(props.now) : formOf(original, props.now)));
+  const [opened] = useState(() => emptyScheduleForm(props.now));
   const [form, setForm] = useState(opened);
   const [error, setError] = useState<string | null>(null);
   const { onClose } = props;
-  const title = original === null ? "Add schedule" : "Edit schedule";
-  const picked = form.days;
-  const repeat = form.repeat;
 
-  const save = async (): Promise<boolean> => {
+  const save = async (): Promise<void> => {
     try {
-      props.onSaved(
-        original === null ? await api.saveSchedule(entryOf(form)) : await api.editSchedule(original.id, fieldsOf(form)),
-      );
-      return true;
+      props.onSaved(await api.saveSchedule(entryOf(form)));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
-      return false;
     }
   };
-  // A new schedule starts to run, so only an edit offers a save.
-  const askFirst = useLeaveGuard(JSON.stringify(form) !== JSON.stringify(opened), original === null ? null : save);
+  // A new schedule starts to run, so the question offers no save.
+  const askFirst = useLeaveGuard(JSON.stringify(form) !== JSON.stringify(opened), null);
 
   useBackLayer(true, () => askFirst(onClose));
   useEffect(() => {
@@ -52,18 +42,6 @@ export function AddScheduleDialog(props: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, askFirst]);
-
-  const field = (name: "id" | "name" | "at", label: string, placeholder: string, readOnly = false): ReactElement => (
-    <label>
-      {label}
-      <input
-        value={form[name]}
-        placeholder={placeholder}
-        readOnly={readOnly}
-        onChange={(event) => setForm({ ...form, [name]: event.target.value })}
-      />
-    </label>
-  );
 
   return (
     // A tap beside the sheet does not close it, so a slip never loses a half-written schedule.
@@ -77,123 +55,8 @@ export function AddScheduleDialog(props: {
             void save();
           }}
         >
-          {/* The state of a schedule is keyed by its id (lesson 65), so an edit keeps it. */}
-          {original === null
-            ? field("id", "Id (never change it later)", "morning")
-            : field("id", "Id (it cannot change)", "", true)}
-          {field("name", "Name", "Morning")}
-          <ChoiceChips
-            label="Repeat"
-            value={repeat}
-            choices={[
-              { value: "days", label: "On days" },
-              { value: "every", label: "At an interval" },
-              { value: "once", label: "Once" },
-            ]}
-            onChange={(value) => setForm({ ...form, repeat: value })}
-          />
-          {repeat === "days" && (
-            <>
-              {field("at", "Time (HH:MM)", "07:30")}
-              <fieldset>
-                <legend>Days (none for every day)</legend>
-                <div className="schedule-days">
-                  {weekDaysFrom(displayFormat().weekStart).map(([code, name]) => (
-                    <button
-                      key={code}
-                      type="button"
-                      aria-pressed={picked.includes(code)}
-                      onClick={() =>
-                        setForm({
-                          ...form,
-                          days: picked.includes(code) ? picked.filter((day) => day !== code) : [...picked, code],
-                        })
-                      }
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-            </>
-          )}
-          {repeat === "every" && (
-            <>
-              <div className="schedule-every">
-                <label>
-                  Every
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    max={999}
-                    value={form.count}
-                    onChange={(event) => setForm({ ...form, count: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Unit
-                  <select
-                    value={form.unit}
-                    onChange={(event) => setForm({ ...form, unit: event.target.value as Unit })}
-                  >
-                    {intervalUnits.map(([code, , plural]) => (
-                      <option key={code} value={code}>
-                        {plural}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <label>
-                First run
-                <input
-                  type="datetime-local"
-                  value={form.from}
-                  onChange={(event) => setForm({ ...form, from: event.target.value.slice(0, 16) })}
-                />
-              </label>
-            </>
-          )}
-          {repeat === "once" && (
-            <label>
-              Date and time
-              <input
-                type="datetime-local"
-                value={form.from}
-                onChange={(event) => setForm({ ...form, from: event.target.value.slice(0, 16) })}
-              />
-            </label>
-          )}
-          {repeat !== "once" && (
-            <label>
-              Last day (empty for no end)
-              <input
-                type="date"
-                value={form.until}
-                onChange={(event) => setForm({ ...form, until: event.target.value })}
-              />
-            </label>
-          )}
-          {/* A text in the file may hold line breaks, and a one-line input would drop them. */}
-          <label>
-            Fixed text
-            <textarea
-              rows={2}
-              value={form.text}
-              placeholder="Drink water."
-              onChange={(event) => setForm({ ...form, text: event.target.value })}
-            />
-          </label>
-          <label>
-            Prompt for Eva
-            <textarea
-              rows={3}
-              value={form.prompt}
-              placeholder="Summarise my calendar for today."
-              onChange={(event) => setForm({ ...form, prompt: event.target.value })}
-            />
-          </label>
+          <ScheduleWhenFields form={form} onChange={setForm} isNew />
+          <ScheduleWhatFields form={form} onChange={setForm} large={false} />
           {error !== null && (
             <div role="status" className="schedule-form-error">
               {error}

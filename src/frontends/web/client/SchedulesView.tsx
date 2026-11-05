@@ -16,7 +16,8 @@ import { displayFormat } from "./display-format.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Toast } from "./Toast.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
-import { assistantChatAddressOf, scheduleAddressOf, scheduleIdOf } from "./navigation.ts";
+import { assistantChatAddressOf, scheduleAddressOf, scheduleRouteOf } from "./navigation.ts";
+import { ScheduleEditPage } from "./ScheduleEditPage.tsx";
 import { SchedulePage } from "./SchedulePage.tsx";
 import { useIsPhone } from "./ChatHeader.tsx";
 
@@ -26,20 +27,21 @@ const reloadMs = 60_000;
 export function SchedulesView({ chatIds }: { readonly chatIds: ReadonlySet<string> }): ReactElement {
   const [list, setList] = useState<ScheduleList | null>(null);
   const [adding, setAdding] = useState(false);
-  /** The schedule that the form edits, or null. */
-  const [editing, setEditing] = useState<ScheduleView["schedule"] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /** The schedules whose switch waits for its change and the new list. */
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
-  // The address names the open schedule, so Back goes from a schedule to the list.
-  const [openId, setOpenId] = useState(() => scheduleIdOf(window.location.hash));
+  // The address names the open schedule and its edit page, so Back goes from the edit page to the
+  // schedule, then to the list.
+  const [route, setRoute] = useState(() => scheduleRouteOf(window.location.hash));
+  const openId = route.scheduleId;
+  const setOpenId = (scheduleId: string | null): void => setRoute({ scheduleId, edit: false });
   const showError = useShowError();
   const isPhone = useIsPhone();
   /** The schedule that the add form saved: its page opens once the form is gone. */
   const [created, setCreated] = useState<string | null>(null);
 
   useEffect(() => {
-    const onHashChange = (): void => setOpenId(scheduleIdOf(window.location.hash));
+    const onHashChange = (): void => setRoute(scheduleRouteOf(window.location.hash));
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -159,6 +161,18 @@ export function SchedulesView({ chatIds }: { readonly chatIds: ReadonlySet<strin
       <main className="main">
         {shown === null || list === null ? (
           list !== null && !isPhone && <SchedulesHome list={list} />
+        ) : route.edit ? (
+          <ScheduleEditPage
+            key={shown.schedule.id}
+            schedule={shown.schedule}
+            now={list.now}
+            onBack={() => goUp(scheduleAddressOf(shown.schedule.id), () => setOpenId(shown.schedule.id))}
+            onSaved={(saved, leave) => {
+              setNotice(saved.enabled ? "Saved." : `Saved. ${saved.name} stays off.`);
+              reload();
+              if (leave) goUp(scheduleAddressOf(saved.id), () => setOpenId(saved.id));
+            }}
+          />
         ) : (
           <SchedulePage
             // A new schedule starts with no question open.
@@ -169,7 +183,11 @@ export function SchedulesView({ chatIds }: { readonly chatIds: ReadonlySet<strin
             busy={pending.has(shown.schedule.id)}
             onBack={() => goUp(scheduleAddressOf(null), () => setOpenId(null))}
             onToggle={() => void setEnabled(shown, !shown.schedule.enabled)}
-            onEdit={() => setEditing(shown.schedule)}
+            onEdit={() =>
+              goTo(scheduleAddressOf(shown.schedule.id, true), () =>
+                setRoute({ scheduleId: shown.schedule.id, edit: true }),
+              )
+            }
             onRemove={() => void remove(shown.schedule.id)}
             onOpenChat={(chatId) => goTo(assistantChatAddressOf(chatId))}
           />
@@ -184,18 +202,6 @@ export function SchedulesView({ chatIds }: { readonly chatIds: ReadonlySet<strin
             setNotice("Saved.");
             reload();
             setCreated(saved.id);
-          }}
-        />
-      )}
-      {editing !== null && (
-        <AddScheduleDialog
-          now={list?.now ?? null}
-          schedule={editing}
-          onClose={() => setEditing(null)}
-          onSaved={(saved) => {
-            setEditing(null);
-            setNotice(saved.enabled ? "Saved." : `Saved. ${saved.name} stays off.`);
-            reload();
           }}
         />
       )}

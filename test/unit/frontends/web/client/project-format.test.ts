@@ -17,11 +17,10 @@ import {
   repositoryWebUrl,
   statusPill,
   inUsePill,
-  statusChips,
-  inUseChips,
+  statusRow,
+  inUseRow,
   defaultListFilter,
-  toggledStatus,
-  toggledInUse,
+  toggledChip,
   matchesListFilter,
   listFilterOf,
   syncPills,
@@ -52,49 +51,52 @@ describe("inUsePill", () => {
   });
 });
 
-describe("the list filters (#885)", () => {
-  test("offer All and each status, and All, In use and Not in use", () => {
-    expect(statusChips.map((chip) => chip.text)).toEqual(["All", "Active", "Paused", "Closed"]);
-    expect(inUseChips.map((chip) => chip.text)).toEqual(["All", "In use", "Not in use"]);
+describe("the list filters (#885, #889)", () => {
+  test("name each row and offer each value, with no All chip", () => {
+    expect(statusRow.name).toBe("Status");
+    expect(statusRow.chips.map((chip) => chip.text)).toEqual(["Active", "Paused", "Closed"]);
+    expect(inUseRow.name).toBe("Use");
+    expect(inUseRow.chips.map((chip) => chip.text)).toEqual(["In use", "Not in use"]);
   });
 
   test("open on the active projects, in use or not", () => {
-    expect(defaultListFilter).toEqual({ statuses: ["active"], inUse: "all" });
+    expect(defaultListFilter).toEqual({ statuses: ["active"], inUse: ["in-use", "not-in-use"] });
   });
 
-  test("a tap on a status adds it or takes it away, and every status reads as All", () => {
-    expect(toggledStatus(["active"], "closed")).toEqual(["active", "closed"]);
-    expect(toggledStatus(["closed", "active"], "active")).toEqual(["closed"]);
-    expect(toggledStatus([], "paused")).toEqual(["paused"]);
-    expect(toggledStatus(["active", "paused"], "closed")).toEqual([]);
+  test("a tap turns a chip on or off, in the order of the chips, down to none and up to all", () => {
+    expect(toggledChip(["active"], "closed", statusRow)).toEqual(["active", "closed"]);
+    expect(toggledChip(["closed", "active"], "active", statusRow)).toEqual(["closed"]);
+    expect(toggledChip(["paused"], "paused", statusRow)).toEqual([]);
+    expect(toggledChip(["active", "paused"], "closed", statusRow)).toEqual(["active", "paused", "closed"]);
   });
 
-  test("a tap on In use or Not in use picks it, and picking both reads as All", () => {
-    expect(toggledInUse("all", "in-use")).toBe("in-use");
-    expect(toggledInUse("in-use", "not-in-use")).toBe("all");
-    expect(toggledInUse("not-in-use", "not-in-use")).toBe("all");
-  });
-
-  test("a project shows when it matches both filters", () => {
+  test("every chip of a row on filters nothing, and none on shows the projects with no value", () => {
     const project = (
       status: "active" | "paused" | "closed" | null,
       inUse: boolean,
     ): { status: "active" | "paused" | "closed" | null; inUse: boolean } => ({ status, inUse });
-    const both = { statuses: ["active", "closed"] as const, inUse: "all" as const };
-    expect(matchesListFilter(project("closed", false), both)).toBe(true);
-    expect(matchesListFilter(project("paused", false), both)).toBe(false);
-    expect(matchesListFilter(project(null, false), both)).toBe(false);
-    expect(matchesListFilter(project(null, false), { statuses: [], inUse: "all" })).toBe(true);
-    expect(matchesListFilter(project("closed", true), { statuses: [], inUse: "in-use" })).toBe(true);
-    expect(matchesListFilter(project("closed", false), { statuses: [], inUse: "in-use" })).toBe(false);
-    expect(matchesListFilter(project("active", true), { statuses: ["active"], inUse: "not-in-use" })).toBe(false);
-    expect(matchesListFilter(project("active", false), { statuses: ["active"], inUse: "not-in-use" })).toBe(true);
+    const anyUse = ["in-use", "not-in-use"] as const;
+    const everyStatus = ["active", "paused", "closed"] as const;
+    const some = { statuses: ["active", "closed"] as const, inUse: anyUse };
+    expect(matchesListFilter(project("closed", false), some)).toBe(true);
+    expect(matchesListFilter(project("paused", false), some)).toBe(false);
+    expect(matchesListFilter(project(null, false), some)).toBe(false);
+    expect(matchesListFilter(project(null, false), { statuses: everyStatus, inUse: anyUse })).toBe(true);
+    expect(matchesListFilter(project(null, true), { statuses: [], inUse: anyUse })).toBe(true);
+    expect(matchesListFilter(project("active", false), { statuses: [], inUse: anyUse })).toBe(false);
+    expect(matchesListFilter(project("closed", true), { statuses: everyStatus, inUse: ["in-use"] })).toBe(true);
+    expect(matchesListFilter(project("closed", false), { statuses: everyStatus, inUse: ["in-use"] })).toBe(false);
+    expect(matchesListFilter(project("active", true), { statuses: ["active"], inUse: ["not-in-use"] })).toBe(false);
+    expect(matchesListFilter(project("active", false), { statuses: ["active"], inUse: ["not-in-use"] })).toBe(true);
+    // Eva writes no in-use key for a project that is not in use: it has no value.
+    expect(matchesListFilter(project("active", false), { statuses: ["active"], inUse: [] })).toBe(true);
+    expect(matchesListFilter(project("active", true), { statuses: ["active"], inUse: [] })).toBe(false);
   });
 
   test("a count of the statistics sets the filters", () => {
-    expect(listFilterOf("active")).toEqual({ statuses: ["active"], inUse: "all" });
-    expect(listFilterOf("paused")).toEqual({ statuses: ["paused"], inUse: "all" });
-    expect(listFilterOf("in-use")).toEqual({ statuses: [], inUse: "in-use" });
+    expect(listFilterOf("active")).toEqual({ statuses: ["active"], inUse: ["in-use", "not-in-use"] });
+    expect(listFilterOf("paused")).toEqual({ statuses: ["paused"], inUse: ["in-use", "not-in-use"] });
+    expect(listFilterOf("in-use")).toEqual({ statuses: ["active", "paused", "closed"], inUse: ["in-use"] });
   });
 });
 

@@ -1,5 +1,5 @@
 /** The words and colours of the project pages. */
-import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
+import { projectStatuses, type ProjectStatus } from "../../../shared/project-statuses.ts";
 import type { Project, ProjectDetails } from "./api.ts";
 import { projectTypes, worksInClones, type ProjectType } from "../../../shared/project-types.ts";
 import { repositoryName } from "../../../core/projects/repository-name.ts";
@@ -44,17 +44,66 @@ export function statusOf(value: string): ProjectStatus | null {
   return projectStatuses.find((status) => status === value) ?? null;
 }
 
+/** The In use filter of the Projects page: every project, the projects in use, or the others (#885). */
+export type InUseFilter = "all" | "in-use" | "not-in-use";
+
 /**
- * The status filter chips of the Projects page. "Current" is the projects that the person works on
- * or uses now (#690). "In use" shows the projects with the flag, whatever their status (#859).
+ * The two filters of the Projects page (#885). No status means every status. The in-use flag is
+ * apart from the status (#859), so it has its own filter.
  */
-export const statusChips: readonly { readonly value: ProjectStatusFilter; readonly text: string }[] = [
-  { value: "current", text: "Current" },
-  { value: "active", text: statusLabels.active },
-  { value: "in-use", text: inUseLabel },
-  { value: "paused", text: statusLabels.paused },
-  { value: "closed", text: statusLabels.closed },
+export interface ListFilter {
+  readonly statuses: readonly ProjectStatus[];
+  readonly inUse: InUseFilter;
+}
+
+/** The list opens on the work of now: the active projects, in use or not. */
+export const defaultListFilter: ListFilter = { statuses: ["active"], inUse: "all" };
+
+/** The Status chips: All, then each status. The person can pick more than one status. */
+export const statusChips: readonly { readonly value: ProjectStatus | "all"; readonly text: string }[] = [
+  { value: "all", text: "All" },
+  ...projectStatuses.map((status) => ({ value: status, text: statusLabels[status] })),
 ];
+
+/** The In use chips. Both In use and Not in use on read as All. */
+export const inUseChips: readonly { readonly value: InUseFilter; readonly text: string }[] = [
+  { value: "all", text: "All" },
+  { value: "in-use", text: inUseLabel },
+  { value: "not-in-use", text: "Not in use" },
+];
+
+/** The statuses after a tap on one, in the order of the chips. Every status picked reads as All. */
+export function toggledStatus(statuses: readonly ProjectStatus[], tapped: ProjectStatus): ProjectStatus[] {
+  const picked = projectStatuses.filter((status) => (status === tapped) !== statuses.includes(status));
+  return picked.length === projectStatuses.length ? [] : picked;
+}
+
+/**
+ * The In use filter after a tap on In use or Not in use. A tap from All picks that chip. Any other
+ * tap leaves one chip or both on, and both on reads as All.
+ */
+export function toggledInUse(current: InUseFilter, tapped: Exclude<InUseFilter, "all">): InUseFilter {
+  return current === "all" ? tapped : "all";
+}
+
+/** True when a project matches both filters. A project with no status shows only under All. */
+export function matchesListFilter(
+  frontMatter: Pick<Project["frontMatter"], "status" | "inUse">,
+  filter: ListFilter,
+): boolean {
+  const statusMatches =
+    filter.statuses.length === 0 || (frontMatter.status !== null && filter.statuses.includes(frontMatter.status));
+  const inUseMatches = filter.inUse === "all" || frontMatter.inUse === (filter.inUse === "in-use");
+  return statusMatches && inUseMatches;
+}
+
+/** A count of the statistics, which filters the list when the person taps it. */
+export type StatusCount = "active" | "in-use" | "paused";
+
+/** The filters after a tap on a count of the statistics: that status, or the projects in use. */
+export function listFilterOf(count: StatusCount): ListFilter {
+  return count === "in-use" ? { statuses: [], inUse: "in-use" } : { statuses: [count], inUse: "all" };
+}
 
 /** Active is green, paused is amber, and a closed project is grey. */
 export function statusPill(status: Project["frontMatter"]["status"]): Pill | null {

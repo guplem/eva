@@ -35,8 +35,22 @@ import { NeedsYouCard, ProjectsHome } from "./ProjectsHome.tsx";
 import { ProjectStatsPage } from "./ProjectStats.tsx";
 import { defaultRange, type RangeChoice } from "./projects-home.ts";
 import { RepositorySetup } from "./RepositorySetup.tsx";
-import { countOf, projectSummary, shownTags, statusChips, tagsByUse } from "./project-format.ts";
-import { projectStatusFilters, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
+import {
+  countOf,
+  defaultListFilter,
+  inUseChips,
+  listFilterOf,
+  matchesListFilter,
+  projectSummary,
+  shownTags,
+  statusChips,
+  tagsByUse,
+  toggledInUse,
+  toggledStatus,
+  type ListFilter,
+  type StatusCount,
+} from "./project-format.ts";
+import { projectStatusFilters } from "../../../shared/project-statuses.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
@@ -101,7 +115,7 @@ export function ProjectView({
   voiceNotes,
 }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("current");
+  const [filter, setFilter] = useState<ListFilter>(defaultListFilter);
   const [tag, setTag] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagsOpen, setTagsOpen] = useState(false);
@@ -141,7 +155,8 @@ export function ProjectView({
     // A slow answer to an older search must not replace the answer to a newer one.
     let isCurrent = true;
     const timer = setTimeout(() => {
-      api.projects(search, statusWordPattern.test(search) ? "" : status, tagWordPattern.test(search) ? "" : tag).then(
+      // The page filters the statuses itself: the API takes one status, and the person can pick more.
+      api.projects(search, "", tagWordPattern.test(search) ? "" : tag).then(
         (found) => {
           if (isCurrent) setProjects(found);
         },
@@ -156,7 +171,16 @@ export function ProjectView({
       isCurrent = false;
       clearTimeout(timer);
     };
-  }, [search, status, tag, listVersion, showError]);
+  }, [search, tag, listVersion, showError]);
+  // A status word typed in the search wins over both filters.
+  const typedStatus = statusWordPattern.test(search);
+  const shownProjects = useMemo(
+    () =>
+      Array.isArray(projects) && !typedStatus
+        ? projects.filter((project) => matchesListFilter(project.frontMatter, filter))
+        : projects,
+    [projects, typedStatus, filter],
+  );
 
   // The tags come from every project, so a tag of a closed project is offered too. The home page counts every project.
   const [allProjects, setAllProjects] = useState<Project[] | null>(null);
@@ -565,9 +589,9 @@ export function ProjectView({
     goTo(projectAddressOf({ kind: "stats" }));
     onNavigate();
   };
-  const filterList = (chosen: ProjectStatusFilter): void => {
+  const filterList = (count: StatusCount): void => {
     setSearch("");
-    setStatus(chosen);
+    setFilter(listFilterOf(count));
   };
 
   return (
@@ -616,8 +640,27 @@ export function ProjectView({
             <button
               key={chip.value}
               className="filter-chip"
-              aria-pressed={status === chip.value}
-              onClick={() => setStatus(status === chip.value ? "" : chip.value)}
+              aria-pressed={chip.value === "all" ? filter.statuses.length === 0 : filter.statuses.includes(chip.value)}
+              onClick={() =>
+                setFilter({
+                  ...filter,
+                  statuses: chip.value === "all" ? [] : toggledStatus(filter.statuses, chip.value),
+                })
+              }
+            >
+              {chip.text}
+            </button>
+          ))}
+        </div>
+        <div className="filter-chips" role="group" aria-label="In use">
+          {inUseChips.map((chip) => (
+            <button
+              key={chip.value}
+              className="filter-chip"
+              aria-pressed={filter.inUse === chip.value}
+              onClick={() =>
+                setFilter({ ...filter, inUse: chip.value === "all" ? "all" : toggledInUse(filter.inUse, chip.value) })
+              }
             >
               {chip.text}
             </button>
@@ -656,9 +699,11 @@ export function ProjectView({
             </button>
           </div>
         )}
-        {Array.isArray(projects) && projects.length === 0 && <span className="muted">No project matches.</span>}
-        {Array.isArray(projects) &&
-          projects.map((project) => (
+        {Array.isArray(shownProjects) && shownProjects.length === 0 && (
+          <span className="muted">No project matches.</span>
+        )}
+        {Array.isArray(shownProjects) &&
+          shownProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}

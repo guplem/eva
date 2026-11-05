@@ -8,7 +8,15 @@ import type { Project } from "./api.ts";
 import { StatusPill } from "./ProjectPage.tsx";
 import { BackButton } from "./MainNav.tsx";
 import { CardsSkeleton } from "./Loading.tsx";
-import { countOf, inUseLabel, inUsePill, statusLabels, statusPill, type Pill } from "./project-format.ts";
+import {
+  countOf,
+  inUseLabel,
+  inUsePill,
+  statusLabels,
+  statusPill,
+  type Pill,
+  type StatusCount,
+} from "./project-format.ts";
 import {
   chartLabels,
   knownChoice,
@@ -29,7 +37,7 @@ import {
   type TimelineRow,
 } from "./projects-home.ts";
 import { Icon } from "./icons.tsx";
-import { projectStatuses, type ProjectStatus, type ProjectStatusFilter } from "../../../shared/project-statuses.ts";
+import { projectStatuses, type ProjectStatus } from "../../../shared/project-statuses.ts";
 
 /** The colour of a project, as a custom property, so the rules in `projects-home.css` use it. */
 export function colorStyle(project: Project | undefined): CSSProperties {
@@ -234,7 +242,7 @@ function MonthlyChart({ points }: { readonly points: readonly MonthPoint[] }): R
 }
 
 /** The counts, in the order of the filter chips. In use counts the projects with the flag (#859). */
-const counted: readonly { readonly filter: "active" | "in-use" | "paused"; readonly pill: Pill | null }[] = [
+const counted: readonly { readonly filter: StatusCount; readonly pill: Pill | null }[] = [
   { filter: "active", pill: statusPill("active") },
   { filter: "in-use", pill: inUsePill(true) },
   { filter: "paused", pill: statusPill("paused") },
@@ -245,7 +253,7 @@ interface ProjectStatsProps {
   readonly range: RangeChoice;
   readonly onOpenProject: (project: Project) => void;
   /** A press on a count filters the list by that status, or by In use. */
-  readonly onFilterStatus: (status: ProjectStatusFilter) => void;
+  readonly onFilterStatus: (count: StatusCount) => void;
 }
 
 /** The timeline, the monthly chart and the counts of the range. */

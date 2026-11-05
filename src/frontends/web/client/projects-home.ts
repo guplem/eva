@@ -385,16 +385,29 @@ function durationWords(from: Date, to: Date): string {
 /**
  * The tooltip of a timeline row (#893), one fact per line: the title, the status and In use, then
  * the dates and the duration, such as "31 Aug – 4 Oct 2026 · 35 days". The start day gives its year
- * only when the year differs from the end. An open project ends today.
+ * only when the year differs from the end. An open project ends today. An end before the start, from
+ * a wrong `closed` day or the clock of another machine, gives the start day alone.
  */
 export function rowTooltip(row: TimelineRow, now: Date): string {
   const end = row.closedOn ?? now;
-  const start = row.created.getFullYear() === end.getFullYear() ? todayLabel(row.created) : dayWords(row.created);
-  const dates = `${start} – ${row.closedOn === null ? "today" : dayWords(row.closedOn)}`;
+  const flipped = startOfDay(end) < startOfDay(row.created);
+  const start = startWords(row.project, flipped || row.created.getFullYear() !== end.getFullYear());
+  const dates = flipped ? start : `${start} – ${row.closedOn === null ? "today" : dayWords(row.closedOn)}`;
   const state = [...(row.status === null ? [] : [statusLabels[row.status]]), ...(row.inUse ? [inUseLabel] : [])].join(
     " · ",
   );
-  return [row.title, ...(state === "" ? [] : [state]), `${dates} · ${durationWords(row.created, end)}`].join("\n");
+  const duration = flipped ? countOf(1, "day") : durationWords(row.created, end);
+  return [row.title, ...(state === "" ? [] : [state]), `${dates} · ${duration}`].join("\n");
+}
+
+/** The start of a project, as far as its id knows it: "2025", "Mar 2026" or "4 Oct 2026". */
+function startWords(project: Pick<Project, "parsedId">, withYear: boolean): string {
+  const { year, month, day } = project.parsedId.created;
+  const date = createdAt(project);
+  if (month === undefined) return String(year);
+  if (day === undefined)
+    return withYear ? `${months[date.getMonth()] ?? ""} ${String(year)}` : (months[date.getMonth()] ?? "");
+  return withYear ? dayWords(date) : todayLabel(date);
 }
 
 /**

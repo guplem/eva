@@ -350,6 +350,21 @@ describe("rowTooltip", () => {
     expect(tooltipOf(fresh, "active").split("\n")[2]).toBe("10 Aug – today · 2 months");
   });
 
+  test("gives only what a short id knows of the start: the year, or the month", () => {
+    expect(tooltipOf(project("2025-old-work", "active"), "active").split("\n")[2]).toBe(
+      "2025 – today · 1 year 10 months",
+    );
+    expect(tooltipOf(project("2026-03-spring", "active"), "active").split("\n")[2]).toBe("Mar – today · 8 months");
+    expect(tooltipOf(project("2025-03-spring", "active"), "active").split("\n")[2]).toBe(
+      "Mar 2025 – today · 1 year 8 months",
+    );
+  });
+
+  test("gives only the start day when the end comes before it, as a wrong closed day does", () => {
+    const flipped = project("2026-10-04-0900-flipped", "closed", { closed: "2026-08-31" });
+    expect(tooltipOf(flipped).split("\n")[2]).toBe("4 Oct 2026 · 1 day");
+  });
+
   test("counts days up to two whole months, then whole months, then years", () => {
     expect(tooltipOf(project("2026-09-05-0900-weeks", "active"), "active").split("\n")[2]).toBe(
       "5 Sep – today · 60 days",

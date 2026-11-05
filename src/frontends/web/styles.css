@@ -3422,6 +3422,15 @@ button.small {
   font-weight: 600;
 }
 
+/* The name at the start of a chip row says what the row filters (#889). It is text, not a chip. */
+.filter-name {
+  align-self: center;
+  min-width: 44px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 /* The toggle that opens a long tag list: an action, so it has no fill like a tag. */
 .filter-chip.more {
   background: transparent;

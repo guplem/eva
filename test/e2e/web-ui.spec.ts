@@ -58,6 +58,12 @@ async function openProjects(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
 }
 
+/** Turns on the Paused and Closed chips: with Active, every status shows (#889). */
+async function showEveryStatus(page: Page): Promise<void> {
+  const status = page.getByRole("group", { name: "Status", exact: true });
+  for (const name of ["Paused", "Closed"]) await status.getByRole("button", { name }).click();
+}
+
 /**
  * Waits for the answer to a first message in a new clone, and denies the trust question if it comes.
  * Only the first chat in a clone asks; both screen sizes share one demo server. The live answer card
@@ -2200,13 +2206,21 @@ test("Project mode: the repository setup shows each item's light; Fix runs a dir
   await box.fill("");
 });
 
-test("the Status and In use chips filter the list together (#885)", async ({ page }) => {
+test("the Status and Use chips filter the list together (#885, #889)", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
   const status = page.getByRole("group", { name: "Status", exact: true });
-  const inUse = page.getByRole("group", { name: "In use", exact: true });
+  const use = page.getByRole("group", { name: "Use", exact: true });
+  // Each row starts with its name, and has no All chip.
+  await expect(status).toContainText(/^Status/);
+  await expect(use).toContainText(/^Use/);
+  await expect(
+    page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: "All", exact: true }),
+  ).toHaveCount(0);
   await expect(status.getByRole("button", { name: "Active" })).toHaveAttribute("aria-pressed", "true");
-  await expect(inUse.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+  for (const name of ["In use", "Not in use"]) {
+    await expect(use.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
+  }
   await expect(projectCard(page, /Example app/)).toBeVisible();
   await expect(projectCard(page, /Old tool/)).toHaveCount(0);
   // The person can pick more than one status.
@@ -2215,25 +2229,26 @@ test("the Status and In use chips filter the list together (#885)", async ({ pag
   await expect(projectCard(page, /Example app/)).toBeVisible();
   await status.getByRole("button", { name: "Active" }).click();
   await expect(projectCard(page, /Example app/)).toHaveCount(0);
-  await status.getByRole("button", { name: "All" }).click();
+  // No status on shows the projects with no status. Every demo project has one.
+  await status.getByRole("button", { name: "Closed" }).click();
   await expect(status.getByRole("button", { name: "Closed" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("No project matches.")).toBeVisible();
+  // Every status on filters nothing.
+  for (const name of ["Active", "Paused", "Closed"]) await status.getByRole("button", { name }).click();
   await expect(projectCard(page, /Old tool/)).toBeVisible();
-  await inUse.getByRole("button", { name: "In use", exact: true }).click();
+  await expect(projectCard(page, /Garden plan/)).toBeVisible();
+  await use.getByRole("button", { name: "Not in use" }).click();
   await expect(projectCard(page, /Family recipes/)).toBeVisible();
   await expect(projectCard(page, /Example app/)).toHaveCount(0);
-  // Every option picked means every value fits: the row turns back to All.
-  await inUse.getByRole("button", { name: "Not in use" }).click();
-  await expect(inUse.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
-  await expect(projectCard(page, /Family recipes/)).toBeVisible();
-  await inUse.getByRole("button", { name: "Not in use" }).click();
+  await use.getByRole("button", { name: "Not in use" }).click();
+  await use.getByRole("button", { name: "In use", exact: true }).click();
   await expect(projectCard(page, /Family recipes/)).toHaveCount(0);
   await expect(projectCard(page, /Example app/)).toBeVisible();
-  for (const name of ["Paused", "Closed"]) await status.getByRole("button", { name }).click();
-  await status.getByRole("button", { name: "Active" }).click();
-  await expect(status.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
-  // A status word typed in the search wins over the chip.
-  await page.getByLabel("Search projects").fill("status:closed");
-  await expect(projectCard(page, /Old tool/)).toBeVisible();
+  // No Use chip on shows the projects with no in-use value: the ones not in use.
+  await use.getByRole("button", { name: "Not in use" }).click();
+  await expect(projectCard(page, /Family recipes/)).toHaveCount(0);
+  await expect(projectCard(page, /Example app/)).toBeVisible();
+  // A status word typed in the search wins over the chips.
   await page.getByLabel("Search projects").fill("status:in-use");
   await expect(projectCard(page, /Family recipes/)).toBeVisible();
   await expect(projectCard(page, /Old tool/)).toHaveCount(0);
@@ -2242,7 +2257,7 @@ test("the Status and In use chips filter the list together (#885)", async ({ pag
 test("the tag chips show only the projects with that tag", async ({ page }) => {
   await logIn(page);
   await openProjects(page);
-  await page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "All" }).click();
+  await showEveryStatus(page);
   await expect(projectCard(page, /Old tool/)).toBeVisible();
   const web = page.getByRole("group", { name: "Tag" }).getByRole("button", { name: "#web" });
   await web.click();
@@ -6042,7 +6057,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   const run = test.info().project.name;
   await logIn(page);
   await openProjects(page);
-  await page.getByRole("group", { name: "Status", exact: true }).getByRole("button", { name: "All" }).click();
+  await showEveryStatus(page);
   await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();

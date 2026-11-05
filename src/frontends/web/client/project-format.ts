@@ -44,56 +44,65 @@ export function statusOf(value: string): ProjectStatus | null {
   return projectStatuses.find((status) => status === value) ?? null;
 }
 
-/** The In use filter of the Projects page: every project, the projects in use, or the others (#885). */
-export type InUseFilter = "all" | "in-use" | "not-in-use";
+/** A chip of the In use filter of the Projects page (#885). */
+export type InUseChoice = "in-use" | "not-in-use";
+
+const inUseChoices: readonly InUseChoice[] = ["in-use", "not-in-use"];
 
 /**
- * The two filters of the Projects page (#885). No status means every status. The in-use flag is
+ * The two filters of the Projects page (#885): the chips that are on in each row. The in-use flag is
  * apart from the status (#859), so it has its own filter.
  */
 export interface ListFilter {
   readonly statuses: readonly ProjectStatus[];
-  readonly inUse: InUseFilter;
+  readonly inUse: readonly InUseChoice[];
 }
 
 /** The list opens on the work of now: the active projects, in use or not. */
-export const defaultListFilter: ListFilter = { statuses: ["active"], inUse: "all" };
+export const defaultListFilter: ListFilter = { statuses: ["active"], inUse: inUseChoices };
 
-/** The Status chips: All, then each status. The person can pick more than one status. */
-export const statusChips: readonly { readonly value: ProjectStatus | "all"; readonly text: string }[] = [
-  { value: "all", text: "All" },
-  ...projectStatuses.map((status) => ({ value: status, text: statusLabels[status] })),
-];
+/** A row of filter chips. Its name starts the row, so each row says what it filters (#889). */
+export interface FilterRow<V extends string> {
+  readonly name: string;
+  readonly chips: readonly { readonly value: V; readonly text: string }[];
+}
 
-/** The In use chips. Both In use and Not in use on read as All. */
-export const inUseChips: readonly { readonly value: InUseFilter; readonly text: string }[] = [
-  { value: "all", text: "All" },
-  { value: "in-use", text: inUseLabel },
-  { value: "not-in-use", text: "Not in use" },
-];
+export const statusRow: FilterRow<ProjectStatus> = {
+  name: "Status",
+  chips: projectStatuses.map((status) => ({ value: status, text: statusLabels[status] })),
+};
 
-/** The statuses after a tap on one, in the order of the chips. Every status picked reads as All. */
-export function toggledStatus(statuses: readonly ProjectStatus[], tapped: ProjectStatus): ProjectStatus[] {
-  const picked = projectStatuses.filter((status) => (status === tapped) !== statuses.includes(status));
-  return picked.length === projectStatuses.length ? [] : picked;
+/** "Use", not "In use": the row name differs from its first chip. */
+export const inUseRow: FilterRow<InUseChoice> = {
+  name: "Use",
+  chips: [
+    { value: "in-use", text: inUseLabel },
+    { value: "not-in-use", text: "Not in use" },
+  ],
+};
+
+/** The chips that are on after a tap on one, in the order of the chips. Each chip turns on and off by itself. */
+export function toggledChip<V extends string>(picked: readonly V[], tapped: V, row: FilterRow<V>): V[] {
+  return row.chips.map((chip) => chip.value).filter((value) => (value === tapped) !== picked.includes(value));
 }
 
 /**
- * The In use filter after a tap on In use or Not in use. A tap from All picks that chip. Any other
- * tap leaves one chip or both on, and both on reads as All.
+ * True when a project matches both filters (#889). A row with every chip on filters nothing. A row
+ * with no chip on shows the projects with no value in that field: no status that Eva knows, or not
+ * in use. Eva writes no `in-use` key for a project that is not in use.
  */
-export function toggledInUse(current: InUseFilter, tapped: Exclude<InUseFilter, "all">): InUseFilter {
-  return current === "all" ? tapped : "all";
-}
-
-/** True when a project matches both filters. A project with no status shows only under All. */
 export function matchesListFilter(
   frontMatter: Pick<Project["frontMatter"], "status" | "inUse">,
   filter: ListFilter,
 ): boolean {
+  const { status, inUse } = frontMatter;
   const statusMatches =
-    filter.statuses.length === 0 || (frontMatter.status !== null && filter.statuses.includes(frontMatter.status));
-  const inUseMatches = filter.inUse === "all" || frontMatter.inUse === (filter.inUse === "in-use");
+    filter.statuses.length === projectStatuses.length ||
+    (status === null ? filter.statuses.length === 0 : filter.statuses.includes(status));
+  const inUseMatches =
+    filter.inUse.length === inUseChoices.length ||
+    filter.inUse.includes(inUse ? "in-use" : "not-in-use") ||
+    (filter.inUse.length === 0 && !inUse);
   return statusMatches && inUseMatches;
 }
 
@@ -102,7 +111,9 @@ export type StatusCount = "active" | "in-use" | "paused";
 
 /** The filters after a tap on a count of the statistics: that status, or the projects in use. */
 export function listFilterOf(count: StatusCount): ListFilter {
-  return count === "in-use" ? { statuses: [], inUse: "in-use" } : { statuses: [count], inUse: "all" };
+  return count === "in-use"
+    ? { statuses: projectStatuses, inUse: ["in-use"] }
+    : { statuses: [count], inUse: inUseChoices };
 }
 
 /** Active is green, paused is amber, and a closed project is grey. */

@@ -7,7 +7,7 @@ import { Fragment, type CSSProperties, type ReactElement, type ReactNode } from 
 import { Icon } from "./icons.tsx";
 import { destinations, notificationCenter, type Destination } from "./navigation.ts";
 import { settingsSections } from "./settings-routes.ts";
-import { inUseChips, statusChips } from "./project-format.ts";
+import { inUseRow, statusRow } from "./project-format.ts";
 
 /**
  * A pill bar with the sentence of the wait. A known share (0 to 1) fills the bar and shows the
@@ -427,14 +427,17 @@ function ProjectListSkeleton(): ReactElement {
         placeholder="Search projects"
         {...copies(".project-search")}
       />
-      {[statusChips, inUseChips].map((chips, row) => (
-        <div key={row} className="filter-chips">
-          {chips.map((chip, index) => (
+      {[statusRow, inUseRow].map((row, rowIndex) => (
+        <div key={row.name} className="filter-chips">
+          <span className="filter-name" aria-hidden="true">
+            {row.name}
+          </span>
+          {row.chips.map((chip, index) => (
             <button
               key={chip.value}
               className="filter-chip skeleton-ghost"
               disabled
-              {...(row === 0 && index === 0 ? copies(".filter-chip") : {})}
+              {...(rowIndex === 0 && index === 0 ? copies(".filter-chip") : {})}
             >
               {chip.text}
             </button>

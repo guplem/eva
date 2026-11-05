@@ -38,15 +38,15 @@ import { RepositorySetup } from "./RepositorySetup.tsx";
 import {
   countOf,
   defaultListFilter,
-  inUseChips,
+  inUseRow,
   listFilterOf,
   matchesListFilter,
   projectSummary,
   shownTags,
-  statusChips,
+  statusRow,
   tagsByUse,
-  toggledInUse,
-  toggledStatus,
+  toggledChip,
+  type FilterRow,
   type ListFilter,
   type StatusCount,
 } from "./project-format.ts";
@@ -635,37 +635,16 @@ export function ProjectView({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <div className="filter-chips" role="group" aria-label="Status">
-          {statusChips.map((chip) => (
-            <button
-              key={chip.value}
-              className="filter-chip"
-              aria-pressed={chip.value === "all" ? filter.statuses.length === 0 : filter.statuses.includes(chip.value)}
-              onClick={() =>
-                setFilter({
-                  ...filter,
-                  statuses: chip.value === "all" ? [] : toggledStatus(filter.statuses, chip.value),
-                })
-              }
-            >
-              {chip.text}
-            </button>
-          ))}
-        </div>
-        <div className="filter-chips" role="group" aria-label="In use">
-          {inUseChips.map((chip) => (
-            <button
-              key={chip.value}
-              className="filter-chip"
-              aria-pressed={filter.inUse === chip.value}
-              onClick={() =>
-                setFilter({ ...filter, inUse: chip.value === "all" ? "all" : toggledInUse(filter.inUse, chip.value) })
-              }
-            >
-              {chip.text}
-            </button>
-          ))}
-        </div>
+        <FilterRowChips
+          row={statusRow}
+          picked={filter.statuses}
+          onTap={(status) => setFilter({ ...filter, statuses: toggledChip(filter.statuses, status, statusRow) })}
+        />
+        <FilterRowChips
+          row={inUseRow}
+          picked={filter.inUse}
+          onTap={(choice) => setFilter({ ...filter, inUse: toggledChip(filter.inUse, choice, inUseRow) })}
+        />
         {allTags.length > 0 && (
           <div className="filter-chips" role="group" aria-label="Tag">
             {tagChips.shown.map((candidate) => (
@@ -881,6 +860,38 @@ export function ProjectView({
       </main>
       {/* The inspector is about one chat, so a project page has none. */}
       {chat !== undefined && <ChatPanel shown={panelShown} {...chatDetails} />}
+    </div>
+  );
+}
+
+/**
+ * A row of filter chips that starts with its name (#889). Each chip turns on and off by itself. The
+ * group has the name as its label, so a screen reader says it once.
+ */
+function FilterRowChips<V extends string>({
+  row,
+  picked,
+  onTap,
+}: {
+  readonly row: FilterRow<V>;
+  readonly picked: readonly V[];
+  readonly onTap: (value: V) => void;
+}): ReactElement {
+  return (
+    <div className="filter-chips" role="group" aria-label={row.name}>
+      <span className="filter-name" aria-hidden="true">
+        {row.name}
+      </span>
+      {row.chips.map((chip) => (
+        <button
+          key={chip.value}
+          className="filter-chip"
+          aria-pressed={picked.includes(chip.value)}
+          onClick={() => onTap(chip.value)}
+        >
+          {chip.text}
+        </button>
+      ))}
     </div>
   );
 }

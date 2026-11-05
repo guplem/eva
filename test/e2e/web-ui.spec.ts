@@ -3483,6 +3483,41 @@ test("Schedules page: edit a schedule on its own page, and keep the keys that th
   await page.request.delete(`/api/schedules/${id}`);
 });
 
+test("Schedules page: Save and leave on the edit page makes only the move that the person chose (#891)", async ({
+  page,
+}, testInfo) => {
+  const id = `stretch-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  const name = `Stretch ${id}`;
+  await logIn(page);
+  await page.request.post("/api/schedules", { data: { id, name, at: "08:00", text: "Stretch." } });
+  await page.goto(`/#/schedules/${id}`);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const form = page.locator("form.schedule-edit");
+  await form.getByLabel("Time (HH:MM)").fill("08:30");
+  // The main navigation leaves for Projects. The save must not bring the person back.
+  await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Projects" }).click();
+  await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Save and leave" }).click();
+  await expect(page).toHaveURL(/#\/projects$/);
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(/#\/projects$/);
+  const listed = (await (await page.request.get("/api/schedules")).json()) as {
+    schedules: { schedule: { id: string; at: string | null } }[];
+  };
+  expect(listed.schedules.find((view) => view.schedule.id === id)?.schedule.at).toBe("08:30");
+  // The Back of the browser steps back once: to the page of the schedule, not past it.
+  await page.goto(`/#/schedules/${id}`);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}/edit$`));
+  await form.getByLabel("Time (HH:MM)").fill("08:45");
+  await page.goBack();
+  await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Save and leave" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}$`));
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}$`));
+  await expect(page.getByRole("region", { name: "When it runs" })).toContainText("08:45");
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
 test("the main navigation opens each destination at its own address, and the back button returns", async ({ page }) => {
   await logIn(page);
   const nav = page.getByRole("navigation", { name: "Main" });

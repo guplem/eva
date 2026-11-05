@@ -167,10 +167,10 @@ export function SchedulesView({ chatIds }: { readonly chatIds: ReadonlySet<strin
             schedule={shown.schedule}
             now={list.now}
             onBack={() => goUp(scheduleAddressOf(shown.schedule.id), () => setOpenId(shown.schedule.id))}
-            onSaved={(saved) => {
+            onSaved={(saved, leave) => {
               setNotice(saved.enabled ? "Saved." : `Saved. ${saved.name} stays off.`);
               reload();
-              goUp(scheduleAddressOf(saved.id), () => setOpenId(saved.id));
+              if (leave) goUp(scheduleAddressOf(saved.id), () => setOpenId(saved.id));
             }}
           />
         ) : (

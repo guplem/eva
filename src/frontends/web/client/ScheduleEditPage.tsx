@@ -19,33 +19,39 @@ export function ScheduleEditPage(props: {
   /** The instance's wall clock, so a new first run is in the instance's time zone. */
   readonly now: string;
   readonly onBack: () => void;
-  /** Gets the saved schedule: the file may have changed while the page was open. */
-  readonly onSaved: (saved: Schedule) => void;
+  /**
+   * Gets the saved schedule: the file may have changed while the page was open. `leave` is true
+   * after the Save button. A save from the unsaved changes question makes the person's own move.
+   */
+  readonly onSaved: (saved: Schedule, leave: boolean) => void;
 }): ReactElement {
   const { schedule, onSaved } = props;
   const [opened] = useState(() => formOf(schedule, props.now));
   const [form, setForm] = useState(opened);
   const [error, setError] = useState<string | null>(null);
-  /** The saved schedule. The page leaves only after the guard lets go, or the guard would ask. */
+  /** The schedule that the Save button saved. The page leaves only after the guard lets go, or the guard would ask. */
   const [saved, setSaved] = useState<Schedule | null>(null);
+  // The parent passes a new function at each render: each save must be reported once.
+  const report = useRef(onSaved);
+  report.current = onSaved;
 
-  const save = async (): Promise<boolean> => {
+  const save = async (leave: boolean): Promise<boolean> => {
     setError(null);
     try {
-      setSaved(await api.editSchedule(schedule.id, fieldsOf(form)));
+      const result = await api.editSchedule(schedule.id, fieldsOf(form));
+      // The unsaved changes question makes the person's own move, and the page may go before an effect runs.
+      if (leave) setSaved(result);
+      else report.current(result, false);
       return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       return false;
     }
   };
-  useLeaveGuard(saved === null && JSON.stringify(form) !== JSON.stringify(opened), save);
+  useLeaveGuard(saved === null && JSON.stringify(form) !== JSON.stringify(opened), () => save(false));
 
-  // The parent passes a new function at each render: the save must be reported once.
-  const report = useRef(onSaved);
-  report.current = onSaved;
   useEffect(() => {
-    if (saved !== null) report.current(saved);
+    if (saved !== null) report.current(saved, true);
   }, [saved]);
 
   return (
@@ -54,7 +60,7 @@ export function ScheduleEditPage(props: {
         <BackButton label={`Back to ${schedule.name}`} onClick={props.onBack} />
         <h1>{schedule.name} · Edit</h1>
       </div>
-      {/* A save button sends the form, so Enter in a field does nothing by itself. */}
+      {/* Enter in a field must not send the form: only the Save button saves. */}
       <form className="settings-page schedule-edit" onSubmit={(event) => event.preventDefault()}>
         {error !== null && (
           <div className="callout danger" role="alert">
@@ -72,7 +78,7 @@ export function ScheduleEditPage(props: {
           </div>
         </Card>
         <div className="button-row">
-          <SaveButton type="button" className="primary" onSave={save}>
+          <SaveButton type="button" className="primary" onSave={() => save(true)}>
             Save schedule
           </SaveButton>
           <button type="button" onClick={props.onBack}>

@@ -3942,6 +3942,11 @@ a.link-chip {
   animation-name: tooltip-in-below;
 }
 
+/* A tooltip of several lines: each line on its own. The first is the title, in bold. */
+.tooltip-line {
+  display: block;
+}
+
 /* A long press shows the tooltip on a phone, so the phone shows no callout and selects no text there. */
 @media (pointer: coarse) {
   [data-tooltip] {

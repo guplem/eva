@@ -3,6 +3,8 @@
  * `title`: the browser draws a `title` in its own grey box that ignores the EVE theme.
  * One layer listens on the document, so a component adds no wrapper and no state of its own.
  * A phone has no hover, so a long press shows the tooltip there.
+ * Text with several lines shows its first line in bold, as a title. An element can point its
+ * tooltip at one of its parts with `data-tooltip-target`, as a row of the Projects timeline does.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { LongPress } from "./long-press.ts";
@@ -152,10 +154,12 @@ export function TooltipLayer(): ReactElement | null {
     const size = tip.current.getBoundingClientRect();
     const viewport = { width: document.documentElement.clientWidth, height: window.innerHeight };
     const prefer = shown.anchor.getAttribute("data-tooltip-side") === "right" ? "right" : "above";
-    setPlace(placeTooltip(shown.anchor.getBoundingClientRect(), size, viewport, prefer));
+    const target = shown.anchor.querySelector("[data-tooltip-target]") ?? shown.anchor;
+    setPlace(placeTooltip(target.getBoundingClientRect(), size, viewport, prefer));
   }, [shown]);
 
   if (shown === null) return null;
+  const [title, ...lines] = shown.text.split("\n");
   return (
     <div
       ref={tip}
@@ -164,7 +168,19 @@ export function TooltipLayer(): ReactElement | null {
       className={`tooltip${place === null ? "" : ` ${place.side}`}`}
       style={place === null ? { visibility: "hidden" } : { left: place.left, top: place.top }}
     >
-      {shown.text}
+      {lines.length === 0 ? (
+        shown.text
+      ) : (
+        <>
+          <b className="tooltip-line">{title}</b>
+          {lines.map((line, index) => (
+            // The lines never move, so the place of each is its key.
+            <span key={index} className="tooltip-line">
+              {line}
+            </span>
+          ))}
+        </>
+      )}
     </div>
   );
 }

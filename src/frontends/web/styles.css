@@ -3942,6 +3942,28 @@ a.link-chip {
   animation-name: tooltip-in-below;
 }
 
+/* A tooltip of several lines: each line on its own. The first is the title, in bold. */
+.tooltip-line {
+  display: block;
+}
+
+/* The tooltip text is already semibold, so the other lines get lighter, and the title stands out. */
+.tooltip-line:not(:first-child) {
+  font-weight: 500;
+}
+
+/*
+ * A long press shows the tooltip on a phone, so the phone shows no callout and selects no text there.
+ * A link keeps the phone's own menu, which opens or copies it.
+ */
+@media (pointer: coarse) {
+  [data-tooltip]:not(a[href], a[href] *) {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 .tooltip.right {
   animation-name: tooltip-in-right;
 }

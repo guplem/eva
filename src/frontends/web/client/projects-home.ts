@@ -5,6 +5,7 @@
 import type { ProjectStatus } from "../../../shared/project-statuses.ts";
 import type { Project, SessionRecord } from "./api.ts";
 import { months, type ChatState } from "./chat-list.ts";
+import { countOf, inUseLabel, statusLabels } from "./project-format.ts";
 
 /** The EVE file type colours. Each has a light and a dark value, so a project colour reads in both themes. */
 const projectColors = ["red", "orange", "yellow", "green", "teal", "blue", "violet", "pink"] as const;
@@ -229,6 +230,10 @@ export interface TimelineRow {
   readonly end: number;
   /** True when the project started before the timeline: its bar starts at the edge. */
   readonly startsBefore: boolean;
+  /** When the project started, also before the timeline: its tooltip gives the dates (#893). */
+  readonly created: Date;
+  /** The closing day of a closed project, or null for an open one. */
+  readonly closedOn: Date | null;
 }
 
 /** A mark on the time axis, as a share of the width. */
@@ -343,9 +348,68 @@ export function timeline(
         start: Math.min(shareOf(item.created.getTime()), end),
         end,
         startsBefore: item.created.getTime() < from,
+        created: item.created,
+        closedOn: closedDay(item.project.frontMatter),
       };
     });
   return { rows, marks: rangeMarks(range), today: now.getTime() >= from && now.getTime() < to ? today : null };
+}
+
+/** The closing day of a closed project. An open project, or one with no `closed` day, has none. */
+function closedDay(frontMatter: Project["frontMatter"]): Date | null {
+  return frontMatter.status === "closed" && frontMatter.closed !== null ? dayOf(frontMatter.closed) : null;
+}
+
+/** The whole calendar months from one day to a later one. */
+function wholeMonths(from: Date, to: Date): number {
+  const count = (to.getFullYear() - from.getFullYear()) * 12 + to.getMonth() - from.getMonth();
+  return to.getDate() < from.getDate() ? count - 1 : count;
+}
+
+/** "1 day", "35 days", "4 months", "1 year 8 months": the days up to two whole months, then the months. */
+function durationWords(from: Date, to: Date): string {
+  const count = wholeMonths(from, to);
+  if (count < 2) {
+    // The calendar counts the days, so a clock change does not drop one. The first and the last day both count.
+    const days =
+      (Date.UTC(to.getFullYear(), to.getMonth(), to.getDate()) -
+        Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())) /
+      dayLength;
+    return countOf(Math.max(1, Math.round(days) + 1), "day");
+  }
+  if (count < 12) return countOf(count, "month");
+  const years = countOf(Math.floor(count / 12), "year");
+  return count % 12 === 0 ? years : `${years} ${countOf(count % 12, "month")}`;
+}
+
+/**
+ * The tooltip of a timeline row (#893), one fact per line: the title, the status and In use, then
+ * the dates and the duration, such as "31 Aug – 4 Oct 2026 · 35 days". The start day gives its year
+ * only when the year differs from the end. An open project ends today. An end before the start, from
+ * a wrong `closed` day or the clock of another machine, gives the start day alone. A short id gives no duration.
+ */
+export function rowTooltip(row: TimelineRow, now: Date): string {
+  const end = row.closedOn ?? now;
+  const flipped = startOfDay(end) < startOfDay(row.created);
+  const start = startWords(row.project, flipped || row.created.getFullYear() !== end.getFullYear());
+  const dates = flipped ? start : `${start} – ${row.closedOn === null ? "today" : dayWords(row.closedOn)}`;
+  const state = [...(row.status === null ? [] : [statusLabels[row.status]]), ...(row.inUse ? [inUseLabel] : [])].join(
+    " · ",
+  );
+  // A short id, such as 2025-old-work, gives no start day, so how long the project ran is not known.
+  const knowsDay = row.project.parsedId.created.day !== undefined;
+  const duration = flipped ? countOf(1, "day") : knowsDay ? durationWords(row.created, end) : null;
+  return [row.title, ...(state === "" ? [] : [state]), duration === null ? dates : `${dates} · ${duration}`].join("\n");
+}
+
+/** The start of a project, as far as its id knows it: "2025", "Mar 2026" or "4 Oct 2026". */
+function startWords(project: Pick<Project, "parsedId">, withYear: boolean): string {
+  const { year, month, day } = project.parsedId.created;
+  const date = createdAt(project);
+  if (month === undefined) return String(year);
+  if (day === undefined)
+    return withYear ? `${months[date.getMonth()] ?? ""} ${String(year)}` : (months[date.getMonth()] ?? "");
+  return withYear ? dayWords(date) : todayLabel(date);
 }
 
 /**

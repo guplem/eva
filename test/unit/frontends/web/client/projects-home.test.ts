@@ -18,6 +18,7 @@ import {
   rangeMarks,
   rangeOf,
   rangeWords,
+  rowTooltip,
   statusCounts,
   timeline,
   todayLabel,
@@ -313,6 +314,63 @@ describe("timeline", () => {
     const shown = timeline([], year(2026), now);
     expect(shown.rows).toEqual([]);
     expect(shown.marks).toHaveLength(12);
+  });
+});
+
+describe("rowTooltip", () => {
+  const range: DateRange = { from: new Date(2026, 4, 3), to: new Date(2026, 10, 4) };
+  const tooltipOf = (shownProject: Project, status: ProjectStatus = "closed"): string => {
+    const row = timeline([shownProject], range, now, [status]).rows[0];
+    if (row === undefined) throw new Error("No row");
+    return rowTooltip(row, now);
+  };
+
+  test("gives the title, the status and the dates with the duration, one per line (#893)", () => {
+    const done = project("2026-08-31-1000-news-map", "closed", { closed: "2026-10-04" });
+    expect(tooltipOf(done)).toBe("news-map\nClosed\n31 Aug – 4 Oct 2026 · 35 days");
+  });
+
+  test("names In use after the status", () => {
+    const used = project("2026-08-31-1000-news-map", "closed", { inUse: true, closed: "2026-10-04" });
+    expect(tooltipOf(used).split("\n")[1]).toBe("Closed · In use");
+  });
+
+  test("counts a project that closed on the day it started as one day", () => {
+    const quick = project("2026-08-30-1000-converter", "closed", { closed: "2026-08-30" });
+    expect(tooltipOf(quick).split("\n")[2]).toBe("30 Aug – 30 Aug 2026 · 1 day");
+  });
+
+  test("ends an open project today, and gives the year of a start in another year", () => {
+    const old = project("2025-02-10-0900-old-work", "active");
+    expect(tooltipOf(old, "active").split("\n")[2]).toBe("10 Feb 2025 – today · 1 year 8 months");
+  });
+
+  test("gives no year to an open project of this year", () => {
+    const fresh = project("2026-08-10-0900-fresh", "active");
+    expect(tooltipOf(fresh, "active").split("\n")[2]).toBe("10 Aug – today · 2 months");
+  });
+
+  test("gives only what a short id knows of the start, and no duration, which the id does not know", () => {
+    expect(tooltipOf(project("2025-old-work", "active"), "active").split("\n")[2]).toBe("2025 – today");
+    expect(tooltipOf(project("2026-03-spring", "active"), "active").split("\n")[2]).toBe("Mar – today");
+    expect(tooltipOf(project("2025-03-spring", "active"), "active").split("\n")[2]).toBe("Mar 2025 – today");
+  });
+
+  test("gives only the start day when the end comes before it, as a wrong closed day does", () => {
+    const flipped = project("2026-10-04-0900-flipped", "closed", { closed: "2026-08-31" });
+    expect(tooltipOf(flipped).split("\n")[2]).toBe("4 Oct 2026 · 1 day");
+  });
+
+  test("counts days up to two whole months, then whole months, then years", () => {
+    expect(tooltipOf(project("2026-09-05-0900-weeks", "active"), "active").split("\n")[2]).toBe(
+      "5 Sep – today · 60 days",
+    );
+    expect(tooltipOf(project("2025-11-03-0900-year", "active"), "active").split("\n")[2]).toBe(
+      "3 Nov 2025 – today · 1 year",
+    );
+    expect(tooltipOf(project("2023-10-01-0900-years", "active"), "active").split("\n")[2]).toBe(
+      "1 Oct 2023 – today · 3 years 1 month",
+    );
   });
 });
 

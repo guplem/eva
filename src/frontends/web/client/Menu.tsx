@@ -21,6 +21,7 @@ import {
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "./icons.tsx";
 import { placeMenu, type MenuPlace, type Point } from "./menu-place.ts";
+import { clickAfterLiftMs, longPressMs, longPressSlop } from "./long-press.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
 export interface MenuItem {
@@ -36,13 +37,6 @@ export interface MenuItem {
   readonly disabled?: boolean;
   readonly onChoose: () => void;
 }
-
-/** A touch that rests this long opens the menu, as a long press does in a phone's own apps. */
-const longPressMs = 500;
-/** A click this soon after the finger of a long press lifts is that press. */
-const clickAfterLiftMs = 400;
-/** A finger that moves further than this scrolls, so the long press stops. */
-const longPressSlop = 10;
 
 interface MenuListProps {
   readonly items: readonly MenuItem[];

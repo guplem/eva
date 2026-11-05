@@ -2365,6 +2365,48 @@ test("on a computer, Back to the projects shows the home page, and its timeline 
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });
 
+test("a timeline row shows its dates in a tooltip, on a hover and on a long press (#893)", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop", "A long press is checked once, with dispatched touch events.");
+  await logIn(page);
+  await page.goto("/#/projects/stats");
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  await timeline
+    .getByRole("group", { name: "Legend" })
+    .getByRole("button", { name: "Show the closed projects" })
+    .click();
+  const recipes = timeline.getByRole("button", { name: "Family recipes, Closed, In use" });
+  const tooltip = page.getByRole("tooltip");
+  const words = /^Family recipesClosed · In use\d{1,2} [A-Z][a-z]{2} 2024 – \d{1,2} [A-Z][a-z]{2} \d{4} · \d+ /;
+  await recipes.hover();
+  await expect(tooltip).toHaveText(words);
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toHaveCount(0);
+
+  // A phone has no hover: a long press shows the tooltip, and its lift does not open the project.
+  const longPress = (holdMs: number): Promise<void> =>
+    recipes.evaluate(async (row, wait) => {
+      const box = row.getBoundingClientRect();
+      const init = {
+        bubbles: true,
+        cancelable: true,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: box.x + 10,
+        clientY: box.y + 5,
+      };
+      row.dispatchEvent(new PointerEvent("pointerdown", init));
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      row.dispatchEvent(new PointerEvent("pointerup", init));
+      row.dispatchEvent(new MouseEvent("click", init));
+    }, holdMs);
+  await longPress(700);
+  await expect(tooltip).toHaveText(words);
+  await expect(page).toHaveURL(/#\/projects\/stats$/);
+  // A short tap still opens the project.
+  await longPress(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Family recipes" })).toBeVisible();
+});
+
 test("on a phone, Back goes from a clone's chat to its project, then to the project list", async ({ page }) => {
   test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
   await logIn(page);

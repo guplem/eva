@@ -124,6 +124,16 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
     expect(await cutShadows(page), address).toEqual([]);
   }
 
+  // The edit page of a schedule has cards too (#891). Its schedule would add a day line to the list above.
+  const scheduleId = `shadow-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await page.request.post("/api/schedules", { data: { id: scheduleId, name: "Shadow", at: "07:30", text: "Hi." } });
+  await page.goto(`/#/schedules/${scheduleId}/edit`);
+  await expect(page.getByRole("region", { name: "What it does" })).toBeVisible();
+  // The open card of the list has its own problem (#892).
+  const cut = (await cutShadows(page)).filter((found) => !found.startsWith("button.project-card.schedule-card"));
+  expect(cut, "schedule edit").toEqual([]);
+  await page.request.delete(`/api/schedules/${scheduleId}`);
+
   await page.goto("/#/files");
   await page.getByRole("searchbox", { name: "Search the vault" }).fill("list");
   await expect(page.getByRole("list", { name: "Search results" })).toBeVisible();

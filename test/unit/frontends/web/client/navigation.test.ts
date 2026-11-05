@@ -15,7 +15,7 @@ import {
   projectAddressOf,
   projectRouteOf,
   scheduleAddressOf,
-  scheduleIdOf,
+  scheduleRouteOf,
   type ProjectRoute,
 } from "../../../../../src/frontends/web/client/navigation.ts";
 
@@ -182,17 +182,24 @@ describe("homeAddress and currentNavButton (#761)", () => {
   });
 });
 
-describe("scheduleIdOf and scheduleAddressOf", () => {
+describe("scheduleRouteOf and scheduleAddressOf", () => {
   test("a schedule has its own address under Schedules, so Back goes to the list", () => {
     expect(scheduleAddressOf("morning walk")).toBe("#/schedules/morning%20walk");
-    expect(scheduleIdOf("#/schedules/morning%20walk")).toBe("morning walk");
+    expect(scheduleRouteOf("#/schedules/morning%20walk")).toEqual({ scheduleId: "morning walk", edit: false });
     expect(scheduleAddressOf(null)).toBe("#/schedules");
     expect(destinationOf(scheduleAddressOf("morning"))).toBe("schedules");
   });
 
+  test("the edit page of a schedule has its own address, so Back goes to the schedule (#891)", () => {
+    expect(scheduleAddressOf("morning walk", true)).toBe("#/schedules/morning%20walk/edit");
+    expect(scheduleRouteOf("#/schedules/morning%20walk/edit")).toEqual({ scheduleId: "morning walk", edit: true });
+    expect(destinationOf(scheduleAddressOf("morning", true))).toBe("schedules");
+  });
+
   test("any other address names no schedule", () => {
-    expect(scheduleIdOf("#/schedules")).toBeNull();
-    expect(scheduleIdOf("#/projects/morning")).toBeNull();
-    expect(scheduleIdOf("#/schedules/morning/more")).toBeNull();
+    const none = { scheduleId: null, edit: false };
+    expect(scheduleRouteOf("#/schedules")).toEqual(none);
+    expect(scheduleRouteOf("#/projects/morning")).toEqual(none);
+    expect(scheduleRouteOf("#/schedules/morning/more")).toEqual(none);
   });
 });

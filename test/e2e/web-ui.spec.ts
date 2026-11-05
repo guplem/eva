@@ -3429,7 +3429,7 @@ test("Schedules page: add a schedule that runs once (#822)", async ({ page }, te
   await page.request.delete(`/api/schedules/${id}`);
 });
 
-test("Schedules page: edit a schedule in the same form, and keep the keys that the form does not show (#467)", async ({
+test("Schedules page: edit a schedule on its own page, and keep the keys that the form does not show (#467)", async ({
   page,
 }, testInfo) => {
   const id = `read-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
@@ -3450,14 +3450,26 @@ test("Schedules page: edit a schedule in the same form, and keep the keys that t
   const row = page.getByRole("listitem", { name });
   await row.getByRole("button").click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
-  const form = page.getByRole("dialog", { name: "Edit schedule" });
+  // The edit has its own page, with room for a long prompt (#891).
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}/edit$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${name} · Edit`);
+  const form = page.locator("form.schedule-edit");
   await expect(form.getByLabel(/^Id/)).toHaveValue(id);
   await expect(form.getByLabel(/^Id/)).not.toBeEditable();
   await expect(form.getByLabel("Time (HH:MM)")).toHaveValue("21:00");
   await expect(form.getByRole("button", { name: "Mon" })).toHaveAttribute("aria-pressed", "true");
   await expect(form.getByLabel("Fixed text")).toHaveValue("Read a chapter.\nThen sleep.");
+  const prompt = await form.getByLabel("Prompt for Eva").boundingBox();
+  expect(prompt?.height ?? 0).toBeGreaterThan(200);
+  // Back with a change asks first.
   await form.getByLabel("Time (HH:MM)").fill("22:15");
+  await page.getByRole("button", { name: `Back to ${name}` }).click();
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}/edit$`));
   await form.getByRole("button", { name: "Save schedule" }).click();
+  // A save goes back to the page of the schedule.
+  await expect(page).toHaveURL(new RegExp(`#/schedules/${id}$`));
   await expect(form).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText(`${name} stays off`);
   const facts = page.getByRole("region", { name: "When it runs" });

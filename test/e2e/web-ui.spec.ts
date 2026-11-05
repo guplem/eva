@@ -2214,7 +2214,9 @@ test("the Status and Use chips filter the list together (#885, #889)", async ({ 
   // Each row starts with its name, and has no All chip.
   await expect(status).toContainText(/^Status/);
   await expect(use).toContainText(/^Use/);
-  await expect(page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: "All" })).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: "All", exact: true }),
+  ).toHaveCount(0);
   await expect(status.getByRole("button", { name: "Active" })).toHaveAttribute("aria-pressed", "true");
   for (const name of ["In use", "Not in use"]) {
     await expect(use.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -2242,7 +2244,7 @@ test("the Status and Use chips filter the list together (#885, #889)", async ({ 
   await use.getByRole("button", { name: "In use", exact: true }).click();
   await expect(projectCard(page, /Family recipes/)).toHaveCount(0);
   await expect(projectCard(page, /Example app/)).toBeVisible();
-  // No Use chip on shows the projects with no in-use key: the ones not in use.
+  // No Use chip on shows the projects with no in-use value: the ones not in use.
   await use.getByRole("button", { name: "Not in use" }).click();
   await expect(projectCard(page, /Family recipes/)).toHaveCount(0);
   await expect(projectCard(page, /Example app/)).toBeVisible();

@@ -88,8 +88,8 @@ export function toggledChip<V extends string>(picked: readonly V[], tapped: V, r
 
 /**
  * True when a project matches both filters (#889). A row with every chip on filters nothing. A row
- * with no chip on shows the projects with no value in that field. Eva writes no `in-use` key for a
- * project that is not in use, so such a project has no value there.
+ * with no chip on shows the projects with no value in that field: no status that Eva knows, or not
+ * in use. Eva writes no `in-use` key for a project that is not in use.
  */
 export function matchesListFilter(
   frontMatter: Pick<Project["frontMatter"], "status" | "inUse">,

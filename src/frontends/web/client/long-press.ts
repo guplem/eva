@@ -23,53 +23,65 @@ export class LongPress<T> {
   private readonly schedule: Schedule;
   private readonly now: () => number;
   private readonly onHold: (target: T) => void;
+  private readonly onMoveAway: (target: T) => void;
   private press: { readonly target: T; readonly at: Point; readonly stop: () => void } | null;
-  private held: boolean;
+  /** The press that held, while its finger is still down. */
+  private held: { readonly target: T; readonly at: Point } | null;
   private dropClickUntil: number;
 
-  constructor(schedule: Schedule, now: () => number, onHold: (target: T) => void) {
+  /** `onMoveAway` runs when the finger of a press that held moves away, as in a drag. */
+  constructor(
+    schedule: Schedule,
+    now: () => number,
+    onHold: (target: T) => void,
+    onMoveAway: (target: T) => void = () => undefined,
+  ) {
     this.schedule = schedule;
     this.now = now;
     this.onHold = onHold;
+    this.onMoveAway = onMoveAway;
     this.press = null;
-    this.held = false;
+    this.held = null;
     this.dropClickUntil = 0;
   }
 
   down(target: T, at: Point): void {
     this.stop();
-    this.held = false;
+    this.held = null;
     const stop = this.schedule(() => this.hold(), longPressMs);
     this.press = { target, at, stop };
   }
 
   move(at: Point): void {
-    const start = this.press?.at;
-    if (start === undefined) return;
-    if (Math.hypot(at.x - start.x, at.y - start.y) > longPressSlop) this.stop();
+    const start = this.press?.at ?? this.held?.at;
+    if (start === undefined || Math.hypot(at.x - start.x, at.y - start.y) <= longPressSlop) return;
+    this.stop();
+    const held = this.held;
+    this.held = null;
+    if (held !== null) this.onMoveAway(held.target);
   }
 
   /** The finger lifts. That lift ends in a click, which a long press must not pass on. */
   up(): void {
     this.stop();
-    if (this.held) this.dropClickUntil = this.now() + clickAfterLiftMs;
-    this.held = false;
+    if (this.held !== null) this.dropClickUntil = this.now() + clickAfterLiftMs;
+    this.held = null;
   }
 
   /** The browser took the touch, for example to scroll: no click follows. */
   cancel(): void {
     this.stop();
-    this.held = false;
+    this.held = null;
   }
 
   /**
-   * Android sends a contextmenu event on a long press, before the timer ends. The press then holds
-   * at once. False when no press waits, so the event is not this press.
+   * Android sends a contextmenu event on a long press. It can come before the timer ends: the press
+   * then holds at once. It can also come later, while the finger is still down. False when no press
+   * waits or holds, so the event is not this press.
    */
   holdNow(): boolean {
-    if (this.press === null) return false;
-    this.hold();
-    return true;
+    if (this.press !== null) this.hold();
+    return this.held !== null;
   }
 
   /** True once for the click that ends a long press. Only a click right after the lift counts. */
@@ -83,7 +95,7 @@ export class LongPress<T> {
     const press = this.press;
     if (press === null) return;
     this.stop();
-    this.held = true;
+    this.held = { target: press.target, at: press.at };
     this.onHold(press.target);
   }
 

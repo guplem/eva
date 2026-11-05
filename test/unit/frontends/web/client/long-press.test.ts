@@ -119,6 +119,35 @@ describe("LongPress", () => {
     expect(press.dropsClick()).toBe(true);
   });
 
+  test("after a hold, holdNow still claims the press until the finger lifts", () => {
+    // Android can send its contextmenu event after the hold, when its own delay is longer.
+    const { press, held, time } = setUp();
+    press.down("row", { x: 10, y: 10 });
+    time.advance(longPressMs);
+    expect(press.holdNow()).toBe(true);
+    expect(held).toEqual(["row"]);
+    press.up();
+    expect(press.holdNow()).toBe(false);
+  });
+
+  test("a finger that moves away after a hold, as in a drag, tells the page once", () => {
+    const time = fakeTime();
+    const movedAway: string[] = [];
+    const press = new LongPress<string>(
+      time.schedule,
+      time.now,
+      () => undefined,
+      (target) => movedAway.push(target),
+    );
+    press.down("divider", { x: 10, y: 10 });
+    time.advance(longPressMs);
+    press.move({ x: 12, y: 12 });
+    expect(movedAway).toEqual([]);
+    press.move({ x: 10, y: 10 + longPressSlop + 1 });
+    press.move({ x: 10, y: 60 });
+    expect(movedAway).toEqual(["divider"]);
+  });
+
   test("a new touch stops the press of the one before", () => {
     const { press, held, time } = setUp();
     press.down("first", { x: 10, y: 10 });

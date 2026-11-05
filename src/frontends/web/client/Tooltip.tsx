@@ -23,11 +23,13 @@ function tooltipAnchor(target: EventTarget | null): Element | null {
   return target instanceof Element ? target.closest("[data-tooltip]") : null;
 }
 
-/** The element that a long press shows. An element with a context menu keeps its long press for the menu. */
+/**
+ * The element that a long press shows. An element with a context menu keeps its long press for the
+ * menu. A link keeps the phone's own menu, which opens or copies it, as `keepsBrowserMenu` in `Menu.tsx` does.
+ */
 function holdAnchor(target: EventTarget | null): Element | null {
-  const anchor = tooltipAnchor(target);
-  // With no anchor, the chain gives undefined, so this returns null too.
-  return anchor?.closest("[data-context-menu]") !== null ? null : anchor;
+  if (!(target instanceof Element) || target.closest("[data-context-menu], a[href]") !== null) return null;
+  return tooltipAnchor(target);
 }
 
 export function TooltipLayer(): ReactElement | null {
@@ -73,6 +75,10 @@ export function TooltipLayer(): ReactElement | null {
       },
       () => performance.now(),
       show,
+      // A drag after the press, as on a column divider: the tooltip would hide what it moves.
+      (anchor) => {
+        if (anchor === current) hide();
+      },
     );
     const onPointerDown = (event: PointerEvent): void => {
       hide();

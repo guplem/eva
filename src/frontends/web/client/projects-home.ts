@@ -310,8 +310,8 @@ function isShown(frontMatter: Project["frontMatter"], statuses: readonly Project
 }
 
 /**
- * The shown projects, each once, from its creation to today (#857, #859). The person picks the
- * statuses to show, and a project in use shows only when its status shows. The bars show no stretches of activity
+ * The shown projects, each once, from its creation to today, or to its `closed` day (#857, #859).
+ * The person picks the statuses to show, and a project in use shows only when its status shows. The bars show no stretches of activity
  * from the chats: a deleted chat would take its activity away.
  */
 export function timeline(
@@ -323,23 +323,40 @@ export function timeline(
   const from = range.from.getTime();
   const to = range.to.getTime();
   const shareOf = (time: number): number => Math.min(1, Math.max(0, (time - from) / (to - from)));
-  const end = shareOf(now.getTime());
+  const today = shareOf(now.getTime());
   const rows = projects
     .filter((project) => isShown(project.frontMatter, statuses))
-    .map((project) => ({ project, created: createdAt(project) }))
+    .flatMap((project) => {
+      const ended = endOf(project.frontMatter, now);
+      return ended === null ? [] : [{ project, created: createdAt(project), ended }];
+    })
     .sort((first, second) => first.created.getTime() - second.created.getTime())
-    .filter((item) => item.created.getTime() < to)
-    .map((item) => ({
-      project: item.project,
-      title: item.project.title,
-      status: item.project.frontMatter.status,
-      inUse: item.project.frontMatter.inUse,
-      // A clock of another machine can put a creation after now: the bar then has no length.
-      start: Math.min(shareOf(item.created.getTime()), end),
-      end,
-      startsBefore: item.created.getTime() < from,
-    }));
-  return { rows, marks: rangeMarks(range), today: now.getTime() >= from && now.getTime() < to ? end : null };
+    .filter((item) => item.created.getTime() < to && item.ended > from)
+    .map((item) => {
+      const end = Math.min(shareOf(item.ended), today);
+      return {
+        project: item.project,
+        title: item.project.title,
+        status: item.project.frontMatter.status,
+        inUse: item.project.frontMatter.inUse,
+        // A clock of another machine can put a creation after now: the bar then has no length.
+        start: Math.min(shareOf(item.created.getTime()), end),
+        end,
+        startsBefore: item.created.getTime() < from,
+      };
+    });
+  return { rows, marks: rangeMarks(range), today: now.getTime() >= from && now.getTime() < to ? today : null };
+}
+
+/**
+ * The moment the bar of a project ends: the end of its closing day, or now for an open project.
+ * A closed project with no `closed` day has no known end, so it has no bar, as in the chart.
+ */
+function endOf(frontMatter: Project["frontMatter"], now: Date): number | null {
+  if (frontMatter.status !== "closed") return now.getTime();
+  const day = frontMatter.closed === null ? null : dayOf(frontMatter.closed);
+  if (day === null) return null;
+  return Math.min(new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime(), now.getTime());
 }
 
 /** The projects on day 1 of a month (#878). */

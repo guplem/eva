@@ -210,9 +210,9 @@ describe("timeline", () => {
     project("2026-07-01-0000-late", "active"),
     project("2026-01-01-0000-early", "active"),
     project("2025-06-01-0000-old", "paused"),
-    project("2026-02-01-0000-used", "closed", { inUse: true }),
+    project("2026-02-01-0000-used", "closed", { inUse: true, closed: "2026-08-01" }),
     project("2026-03-01-0000-built", "active", { inUse: true }),
-    project("2026-04-01-0000-done", "closed"),
+    project("2026-04-01-0000-done", "closed", { closed: "2026-09-01" }),
   ];
   const year = (value: number): DateRange => ({ from: new Date(value, 0, 1), to: new Date(value + 1, 0, 1) });
 
@@ -248,6 +248,24 @@ describe("timeline", () => {
     const late = shown.rows.find((row) => row.title === "late");
     expect(late?.start).toBeGreaterThan(0.49);
     expect(late?.start).toBeLessThan(0.5);
+  });
+
+  test("ends the bar of a closed project at the end of its closing day", () => {
+    const closed = project("2026-02-01-0000-gone", "closed", { closed: "2026-05-31" });
+    const shown = timeline([closed], year(2026), now, ["closed"]);
+    expect(shown.rows[0]?.end).toBeCloseTo(
+      (new Date(2026, 5, 1).getTime() - new Date(2026, 0, 1).getTime()) /
+        (new Date(2027, 0, 1).getTime() - new Date(2026, 0, 1).getTime()),
+      5,
+    );
+  });
+
+  test("hides a closed project that closed before the range, or that has no closing day", () => {
+    const before = project("2024-02-01-0000-before", "closed", { closed: "2025-12-31" });
+    const unknown = project("2026-02-01-0000-unknown", "closed");
+    const inside = project("2025-02-01-0000-inside", "closed", { closed: "2026-01-01" });
+    const rows = timeline([before, unknown, inside], year(2026), now, ["closed"]).rows;
+    expect(rows.map((row) => row.title)).toEqual(["inside"]);
   });
 
   test("starts a project of an earlier year at the edge, and says so", () => {

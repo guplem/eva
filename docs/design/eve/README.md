@@ -305,7 +305,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 - The status and tag filters are one-tap chips, not drop-down menus.
 - The status has a colour and a shape. A project in use shows an "In use" pill beside its status pill. "In use" takes the `.live` pill, so it differs from the green "Active". Its dot has no glow, as on "Unread": nothing runs.
-- The list has two chip rows: Status, where the person can pick more than one status, and In use. Each row has "All". Every choice picked in a row reads as "All". The list opens with Active and All.
+- The list has two chip rows, Status and Use. Each row starts with its name in muted text, not with an "All" chip (#889). Each chip turns on and off by itself. Every chip on filters nothing. No chip on shows the projects with no value for that field. The list opens with Active, In use and Not in use on.
 - Each clone is a card with its branch, its state and its chats.
 - A project card shows the "Unread" pill while one of its chats has an answer that the person did not see.
 - A project page has a "Projects" back button beside its title, on both sizes.

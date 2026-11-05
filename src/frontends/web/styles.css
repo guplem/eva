@@ -3942,6 +3942,15 @@ a.link-chip {
   animation-name: tooltip-in-below;
 }
 
+/* A long press shows the tooltip on a phone, so the phone shows no callout and selects no text there. */
+@media (pointer: coarse) {
+  [data-tooltip] {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 .tooltip.right {
   animation-name: tooltip-in-right;
 }

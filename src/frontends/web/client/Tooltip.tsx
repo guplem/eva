@@ -2,8 +2,10 @@
  * The one tooltip of the page. An element asks for one with `data-tooltip="Text"`, never with
  * `title`: the browser draws a `title` in its own grey box that ignores the EVE theme.
  * One layer listens on the document, so a component adds no wrapper and no state of its own.
+ * A phone has no hover, so a long press shows the tooltip there.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { LongPress } from "./long-press.ts";
 import { placeTooltip, type TooltipPlace } from "./tooltip-place.ts";
 
 /** A pointer that rests this long on an element shows its tooltip, so a pass over the rail shows none. */
@@ -17,6 +19,13 @@ interface Shown {
 
 function tooltipAnchor(target: EventTarget | null): Element | null {
   return target instanceof Element ? target.closest("[data-tooltip]") : null;
+}
+
+/** The element that a long press shows. An element with a context menu keeps its long press for the menu. */
+function holdAnchor(target: EventTarget | null): Element | null {
+  const anchor = tooltipAnchor(target);
+  // With no anchor, the chain gives undefined, so this returns null too.
+  return anchor?.closest("[data-context-menu]") !== null ? null : anchor;
 }
 
 export function TooltipLayer(): ReactElement | null {
@@ -55,6 +64,35 @@ export function TooltipLayer(): ReactElement | null {
         timer = setTimeout(() => show(anchor), hoverDelayMs);
       }
     };
+    const press = new LongPress<Element>(
+      (run, ms) => {
+        const id = setTimeout(run, ms);
+        return () => clearTimeout(id);
+      },
+      () => performance.now(),
+      show,
+    );
+    const onPointerDown = (event: PointerEvent): void => {
+      hide();
+      if (event.pointerType !== "touch") return;
+      const anchor = holdAnchor(event.target);
+      if (anchor !== null) press.down(anchor, { x: event.clientX, y: event.clientY });
+    };
+    const onPointerMove = (event: PointerEvent): void => {
+      if (event.pointerType === "touch") press.move({ x: event.clientX, y: event.clientY });
+    };
+    const onPointerUp = (): void => press.up();
+    const onPointerCancel = (): void => press.cancel();
+    // Android sends this event on a long press. Its own menu or a text selection would cover the tooltip.
+    const onContextMenu = (event: MouseEvent): void => {
+      if (press.holdNow()) event.preventDefault();
+    };
+    // The lift of a long press ends in a click. That click must not open what the tooltip explains.
+    const onClick = (event: MouseEvent): void => {
+      if (!press.dropsClick()) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
     const onFocusIn = (event: FocusEvent): void => {
       const anchor = tooltipAnchor(event.target);
       // A click also moves the focus. Only a focus from the keyboard shows the tooltip.
@@ -64,7 +102,13 @@ export function TooltipLayer(): ReactElement | null {
       if (event.key === "Escape") hide();
     };
     document.addEventListener("pointerover", onPointerOver);
-    document.addEventListener("pointerdown", hide);
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
+    document.addEventListener("pointercancel", onPointerCancel);
+    document.addEventListener("contextmenu", onContextMenu);
+    // In the capture phase, so the click stops before it reaches the element.
+    document.addEventListener("click", onClick, true);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", hide);
     document.addEventListener("keydown", onKeyDown);
@@ -73,8 +117,14 @@ export function TooltipLayer(): ReactElement | null {
     window.addEventListener("resize", hide);
     return () => {
       clearTimeout(timer);
+      press.cancel();
       document.removeEventListener("pointerover", onPointerOver);
-      document.removeEventListener("pointerdown", hide);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
+      document.removeEventListener("pointercancel", onPointerCancel);
+      document.removeEventListener("contextmenu", onContextMenu);
+      document.removeEventListener("click", onClick, true);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", hide);
       document.removeEventListener("keydown", onKeyDown);

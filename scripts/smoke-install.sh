@@ -68,7 +68,7 @@ output="$(curl -fsSL file:///release/install.sh | sh 2>&1)"
 sudo kill "$holder"
 wait "$holder" || true
 printf '%s\n' "$output"
-grep -q "Another apt process holds a lock of apt" <<<"$output"
+test "$(grep -c "Another apt process holds a lock of apt" <<<"$output")" = 1
 grep -qF "To install later, run: sudo apt-get update && sudo apt-get install bubblewrap socat" <<<"$output"
 curl -fsSL file:///release/install.sh | sh
 command -v bwrap >/dev/null

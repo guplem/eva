@@ -12,6 +12,7 @@ base_url="${EVA_INSTALL_BASE_URL:-https://github.com/guplem/eva/releases/latest/
 bin_folder="$HOME/.local/bin"
 path_added=""
 lists_updated=""
+lock_explained=""
 
 say() {
   printf '%s\n' "$*"
@@ -62,15 +63,17 @@ package_manager() {
   return 1
 }
 
-# Runs apt-get. On a failure, it shows the errors of apt and explains a held lock. A stuck apt
-# process, such as a hung daily update, can hold a lock for months (#898). NEEDRESTART_SUSPEND
-# keeps Ubuntu's service check (needrestart) from taking over the screen.
+# Runs apt-get. On a failure, it shows the errors of apt and explains a held lock once. A stuck apt
+# process, such as a hung daily update, can hold a lock for months (#898). LC_ALL=C keeps the
+# errors in English, so the lock check finds them. NEEDRESTART_SUSPEND keeps Ubuntu's service check
+# (needrestart) from taking over the screen.
 run_apt() {
-  if errors="$(as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get "$@" 2>&1)"; then
+  if errors="$(as_root env LC_ALL=C DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get "$@" 2>&1)"; then
     return 0
   fi
   printf '%s\n' "$errors" >&2
-  if printf '%s\n' "$errors" | grep -qE 'Could not get lock|Unable to lock'; then
+  if [ -z "$lock_explained" ] && printf '%s\n' "$errors" | grep -qE 'Could not get lock|Unable to lock'; then
+    lock_explained="yes"
     say "  Another apt process holds a lock of apt. It can be a stuck daily update. Wait for it to end, or end it with \`sudo kill <its process number>\`."
   fi
   return 1
@@ -121,12 +124,15 @@ install_packages() {
 # installs the OpenMP library when $2 is not empty, and the shell sandbox when $3 is not empty.
 say_install_later() {
   packages="$(package_names "" "$2" "$3")"
+  # root has no need for sudo, and a container often has no sudo.
+  sudo="sudo "
+  [ "$(id -u)" -ne 0 ] || sudo=""
   case "$(package_manager)" in
-    apt-get) later="sudo apt-get update && sudo apt-get install$packages" ;;
-    dnf) later="sudo dnf install$packages" ;;
-    pacman) later="sudo pacman -S$packages" ;;
-    zypper) later="sudo zypper install$packages" ;;
-    apk) later="sudo apk add$packages" ;;
+    apt-get) later="${sudo}apt-get update && ${sudo}apt-get install$packages" ;;
+    dnf) later="${sudo}dnf install$packages" ;;
+    pacman) later="${sudo}pacman -S$packages" ;;
+    zypper) later="${sudo}zypper install$packages" ;;
+    apk) later="${sudo}apk add$packages" ;;
     *) later="" ;;
   esac
   if [ -n "$later" ]; then

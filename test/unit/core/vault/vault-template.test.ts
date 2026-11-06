@@ -201,7 +201,7 @@ describe("the vault template", () => {
     expect(files["Life/Pets/AGENTS.md"]).toContain("Pet.md");
     expect(files["Life/Periods/AGENTS.md"]).toContain("Period.md");
     // About me's `work` and the periods rules name the same key, the one that the reader checks.
-    expect(files["Life/About me.md"]).toContain("\nwork: # period: a link to the open job in Life/Periods/.");
+    expect(files["Life/About me.md"]).toContain("\nwork: # a list of the open jobs and studies. Each has period (");
     expect(files["Life/Periods/AGENTS.md"]).toContain("in its `period` key");
     expect(files[".eva/AGENTS.md"]).toStartWith("# .eva\n");
     expect(files[".eva/AGENTS.md"]).toContain("`schedules.json`");

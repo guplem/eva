@@ -19,7 +19,7 @@ summary: Claim for a broken bumper. The insurer has the photos.
 ```
 
 - **A case is open until `closed` has a date.** There is no status key.
-- **`steps` lists the steps of the case, in order.** Each step says what to do in `step`. Put the text in double quotes when it holds a comma, a colon or a `#`, or YAML breaks it. A step can have three more keys:
+- **`steps` lists the steps of the case, in order.** Each step says what to do in `step`. Put a text of a step, such as `step` or `waiting-for`, in double quotes when it holds a comma, a colon or a `#`, or YAML breaks it. A step can have three more keys:
   - `done-on` is the day when the step was done. A step without it is still to do.
   - `waiting-for` names who or what the person waits for, such as the insurer. A step without it is for the person to do.
   - `due-by` is the day to do the step. When the step waits for someone, it is the day to chase them: the day after their answer is due, or two weeks away if nobody gave a date. A blocked step gets a check one to three months away.

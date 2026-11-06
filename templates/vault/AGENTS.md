@@ -116,7 +116,7 @@ These rules hold for the front matter of every note, and each `AGENTS.md` in `Li
 - **Reuse a tag.** Before you add a tag, list the tags that the vault already uses. Pick one that fits. Create a new tag only when none fits.
 - **A reference to another note is its path from the vault root,** such as `relation: cousin of Life/People/Marta Example`. In the text, link a note by its path too, so a search for the path finds every note that names it. A thing with no note, such as a company, stays as plain text.
 - **A day is `YYYY-MM-DD`,** with no time zone.
-- **A moment is `YYYY-MM-DDTHH:mm` plus its offset from UTC,** such as `2026-01-31T09:15+01:00`. So any reader in any time zone knows the exact moment. The offset changes in summer: take it from a command, such as `date +%Y-%m-%dT%H:%M%:z`, never from your own sum.
+- **A moment is `YYYY-MM-DDTHH:mm` plus its offset from UTC,** such as `2026-01-31T09:15+01:00`. So any reader in any time zone knows the exact moment. The offset changes in summer: take it from a command in the person's time zone, such as `TZ=Europe/Paris date +%Y-%m-%dT%H:%M%:z`, never from your own sum.
 - **When only part of a date is known, write that part,** such as `2013-07-31` or `2013`.
 
 ## Projects

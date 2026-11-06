@@ -1,6 +1,6 @@
 ---
 name: about-me
-description: Save or fix a basic fact about the person in the header of Life/About me.md, or say where a fact about them goes instead. Use when the person says their birthday, name, nickname, pronouns, their own phone or email, where they live, their home, their job or work hours, a language they speak, when they sleep, a person close to them, an important date, their diet or an allergy, in any wording, or when a message says that Life/About me.md has problems.
+description: Save or fix a basic fact about the person in the header of Life/About me.md, or say where a fact about them goes instead. Use when the person says their birthday, name, a nickname or other name, pronouns, their own phone or email, where they live, their home, their job, their studies or work hours, a language they speak, when they sleep, a person close to them, an important date, their diet or an allergy, in any wording, or when a message says that Life/About me.md has problems.
 ---
 
 # Save a fact about the person
@@ -19,7 +19,7 @@ description: Save or fix a basic fact about the person in the header of Life/Abo
   - Sleep goes to a note in `Life/Health/`.
   - A person close to them goes to `Life/People/<Full Name>/Person.md`. A birthday lives in the contacts app, linked from that note.
   - A long story goes in a note under `Life/`, where `AGENTS.md` says.
-- **When that note does not exist yet,** create it. A new `Life/Health/Allergies and Diet.md` starts with a header that holds `pinned: full` and a `summary:` line of the allergies and the diet, so Eva sees them in every chat.
+- **When that note does not exist yet,** create it. A new `Life/Health/Allergies and Diet.md` starts with a header that holds `pinned: full` and a `summary:` line of the allergies and the diet, so Eva sees them in every Assistant chat.
 
 ## 2. Write the field
 
@@ -38,7 +38,7 @@ Read the note first. Change only the field that the person gave. Keep every othe
 | `work`                    | A list of the open jobs and studies. Each has `period`: the path of its folder in `Life/Periods/`. Add its hours: `from` and `to` as `HH:mm`, and `days` from `mon` to `sun`                 | see the example         |
 | `languages`               | A list. Each has `name` and `level`, such as `native` or `B2`                                                                                                                                | see the example         |
 
-When the person says where they live, fill `places.home` with its `region` and `city`. Add `lat` and `lon` when you know them, such as the center of the city. Eva finds the hemisphere from `lat`.
+When the person says where they live, fill `places.home` with its `region`, `city`, `lat` and `lon`. The center of the city is enough for `lat` and `lon`. Eva finds the hemisphere from `lat`.
 
 When a job or a study ends, remove its item from `work`.
 
@@ -87,7 +87,7 @@ An older header can still hold `sleep`, `people`, `dates`, `diet` and `allergies
 An older header can also hold `nickname`, a top-level `region` and `hemisphere`, and `work` as one map with no list. Eva's code still reads them until the vault upgrade. When the person changes one of these facts, write it in its new form, and remove the old field:
 
 - Write a new name in `aliases`, and move the `nickname` into that list.
-- Write a new home in `places.home` with its `region`. Remove `region` and `hemisphere`: an old `hemisphere` wins over the one that Eva finds from `lat`.
+- Write a new home in `places.home` with its `region`. Remove the top-level `region`. Remove `hemisphere` once `places.home` has `lat`: an old `hemisphere` wins over the one that Eva finds from `lat`.
 - Write a change of job as a `work` list, with the old map as its first item when that job is still open.
 
 ## 5. Tell the person

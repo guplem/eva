@@ -128,7 +128,7 @@ The front matter example in the _Projects_ section of the root `AGENTS.md` says 
 
 - **Version:** 7
 - **Date:** 2026-11-06
-- **Pull request:** https://github.com/guplem/eva/issues/901
+- **Pull request:** https://github.com/guplem/eva/pull/902
 - **Summary:** Each kind of note gets a smaller header that reads more clearly. A case lists its steps, a moment has its time zone, a project can link its result, and any note can have aliases and tags.
 - **Migrations first:** 2026-11-06-project-created-offset
 
@@ -136,32 +136,34 @@ The front matter example in the _Projects_ section of the root `AGENTS.md` says 
 
 The examples are generic: a vault can have any notes.
 
-1. **The root `AGENTS.md` gets a _Front matter_ section and a new _Projects_ section.** _Front matter_ says which keys any note can have (`summary`, `aliases`, `tags`), how to reuse a tag, that a reference to a note is its path, and how to write a day and a moment. _Projects_ drops `started` and `cv`, and adds `result`, the rule for `repos` and two optional body sections. Replace the _Entities_ and _Projects_ sections with the exact text of `template/`, and the date sentence of _Writing_. Leave the rest of the file as it is. Why: each key now has one meaning, and a moment is exact in any time zone.
-2. **`Life/Cases/`, `Life/Periods/`, `Life/People/`, `Life/Pets/` and `Life/Objects/` get the new `AGENTS.md`,** in the exact text of `template/`.
+1. **The root `AGENTS.md` gets a _Front matter_ section and a new _Projects_ section.** _Front matter_ says which keys any note can have (`summary`, `aliases`, `tags`), how to reuse a tag, that a reference to a note is its path, and how to write a day and a moment. _Projects_ drops `started` and `cv`, and adds `result`, the rule for `repos` and two optional body sections. Replace these parts with the exact text of `template/`: the _Entities_ and _Projects_ sections, the rules "Nothing moves when it ends" and "Before deleting anything" of _Where things go_, the `Life/About me.md` row of the table, and the date sentence of _Writing_. Leave the rest of the file as it is. Why: each key now has one meaning, and a moment is exact in any time zone.
+2. **`Life/Cases/`, `Life/Periods/`, `Life/People/`, `Life/Pets/` and `Life/Objects/` get the new `AGENTS.md`,** in the exact text of `template/`. In `Life/Health/Allergies and Diet.md`, the comment of `pinned` says "every Assistant chat", as in `template/`.
 3. **Each project file changes,** in `Projects/*/AGENTS.md`:
    - `created` with a time already has its offset from UTC, such as `2026-01-31T09:15+01:00`: the migration of the "Migrations first" line added it, with the `timeZone` setting. Never compute an offset by hand.
-   - `started` goes. When it is a different day than `created`, first write one line in the text, such as "The work started on 2026-03-02."
+   - `started` goes. When the work started much later than `created`, such as weeks later, first write one line in the text, such as "The work started on 2026-03-02."
    - `cv` becomes a `## Work and achievements` section, after the first paragraph of the text, with the same words.
-   - Each `repos` entry that `git clone` cannot use, such as a link to a folder (`.../tree/main/web`), leaves `repos`. Name the folder in the text. When the link is the repository itself, such as `.../tree/main`, delete it.
+   - Each `repos` entry that `git clone` cannot use leaves `repos`. For a link to a folder, such as `.../tree/main/web`, name the folder in the text. For a link to the repository's own page, such as `.../tree/main`, write the repository address instead, such as `https://github.com/example/example-app`, unless `repos` lists it already.
+   - Each line under `## Links` gets a short label, such as `- Video: https://...`.
    - A link where the person uses the result, such as a website or a store page, can become `result`, after the person approves.
-4. **Each period changes,** in `Life/Periods/*/Period.md`: `kind` becomes `type`, with the same value. `status` goes: an open period has an empty `to`. `cv` becomes a `## Work and achievements` section after the first paragraph. When a closed period has no `to`, ask the person for its last day.
+4. **Each period changes,** in `Life/Periods/*/Period.md`: `kind` becomes `type`, with the same value. `status` goes: a period is open while `to` is empty or a day that has not passed. Keep a future `to`, such as the end of a contract. `cv` becomes a `## Work and achievements` section after the first paragraph. When a closed period has no `to`, ask the person for its last day.
 5. **Each case changes,** in `Life/Cases/*/Case.md`:
-   - `status` and `next` become `steps`. For an open or waiting case, `next` becomes the current step: `step` and `due-by` from `next`. When the status was `waiting`, add `waiting-for` with who the case waits for, from `next.step` or the text. Add the steps that the dated lines of the text show as done before it, each with its `done-on`.
+   - `status` and `next` become `steps`. For an open or waiting case, `next` becomes the current step: `step` and `due-by` from `next`. When `next` has no date, propose a `due-by` one to three months away, and list the case in the report. When the status was `waiting`, add `waiting-for` with who the case waits for, from `next.step` or the text. Add the steps that the dated lines of the text show as done before it, each with its `done-on`. Put a step text in double quotes when it holds a comma, a colon or a `#`.
    - A closed case keeps its `closed` date and its done steps, if any. When it has no `closed` date, take the day of its last dated line, and list it in the report.
    - `about` goes. Before that, write each of its paths at the start of the text, as a link.
 6. **Each person, pet and About me change:**
    - In `Life/People/*/Person.md`, a `relation` through someone gets that person's folder path, such as `cousin of Life/People/Marta Example`, when the folder exists.
    - In `Life/Pets/*/Pet.md`, `vet` moves to the text. A death date in `summary` becomes `death`.
-   - In `Life/About me.md`, `nickname` becomes `aliases`, as a list. `region` moves into `places.home`. `hemisphere` goes: Eva finds it from the latitude. `work` becomes a list of the open jobs, each with its `period` and its hours. The comment of `pinned` says "every Assistant chat". Keep each value of the person.
+   - In `Life/About me.md`, edit the header in place, and keep each value of the person. `nickname` becomes `aliases`, as a list. `region` moves into `places.home`. When `places` is not a map, keep its text as `places.home.address`. Add `lat` and `lon` to `places.home` when they are known, such as the center of its city. `hemisphere` goes once `places.home` has `lat`: Eva finds it from the latitude. `work` becomes a list of the open jobs and studies, each with its `period` and its hours. The comments of `pinned`, `aliases`, `places` and `work` take the text of `template/`.
 7. **Eva reads the old keys too,** until the upgrade ends. Nothing breaks in the meantime.
 
 ### How to detect a vault that has it
 
-The root `AGENTS.md` has a _Front matter_ section, `Life/Cases/AGENTS.md` names `steps`, and no `Case.md` has a `status` key. Then the upgrade only records the version.
+The root `AGENTS.md` has a _Front matter_ section, and `Life/Cases/AGENTS.md` names `steps`. No `Case.md` has `status`, `next` or `about`. No `Period.md` has `kind` or `status`. No project `AGENTS.md` has `started` or `cv`. `Life/About me.md` has no `nickname` and no top-level `region`. Then the upgrade only records the version.
 
 ### What to ask, all in the one message up front
 
 1. Each line of _Personal rules_ that names `started`, `cv`, a case `status` or `next`, a period `status` or `kind`, or `about`. The default is "leave it out": the new texts say the rule now. This is the one change to _Personal rules_ that the person can approve, as in v4.
-2. Each case whose `waiting-for` is not clear from its text, with your best guess as the default.
-3. Each closed period with no `to`, and each closed case with no `closed` date, with the day of its last dated line as the default.
-4. Each project link that could become `result`, as one list, with "yes to all" as the default.
+2. Each other note that tells an agent to write a removed key, such as a method in `Methods/` that sets `started`. The default is "update it to the new key".
+3. Each case whose `waiting-for` is not clear from its text, with your best guess as the default.
+4. Each closed period with no `to`, and each closed case with no `closed` date, with the day of its last dated line as the default.
+5. Each project link that could become `result`, as one list, with "yes to all" as the default.

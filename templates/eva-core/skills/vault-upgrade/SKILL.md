@@ -66,17 +66,18 @@ Compare the inventory that `start` printed with your plan. Place each file that 
 
 1. Make every schedule edit in one write to `.eva/schedules.json`, first, while the person is still here: each write asks them. Make the edits of `.eva/secret-files` and `.eva/widgets.json` too. Commit these three files in their own group.
 2. File the facts of About me where the person said, in their own commit: merge diet and allergies into `Life/Health/Allergies and Diet.md`, or create it from `template/` when it is missing; write sleep, each person and each date in their places. A fact that you cannot place stays in About me.
-3. Write the new skeleton with the exact texts of `template/`: each `Life/<folder>/AGENTS.md`, the root `AGENTS.md`, `README.md`, `.eva/assistant.md` and `Life/About me.md`. Fill each placeholder with the vault's own value. In About me, keep the vault's value of every identity field (such as `name`, `givenName`, `pronouns`, `birthDate`, `contact`, `region`, `places`, `languages`) and its `lastLocation` exactly as they are: never empty one. Put back the lines that the person chose to keep, where they said. Keep the existing `## Personal rules` section as it is.
+3. Write the new skeleton with the exact texts of `template/`: each `Life/<folder>/AGENTS.md`, the root `AGENTS.md`, `README.md`, `.eva/assistant.md` and `Life/About me.md`. Fill each placeholder with the vault's own value. In About me, keep the vault's value of every identity field (such as `name`, `givenName`, `aliases`, `pronouns`, `birthDate`, `contact`, `places`, `languages`) and its `lastLocation` exactly as they are: never empty one. When a pending entry renames or moves a field, such as `nickname` or `region` in v7, write the value at its new place, as the entry says. Put back the lines that the person chose to keep, where they said. Keep the existing `## Personal rules` section as it is.
 4. Move the notes, one commit for each group, such as "Move the car to Life/Objects". Fix each link that a move breaks. When a job's or study's record leaves its project, say where it is in the project's `AGENTS.md`. Point each instruction in `.eva/skills/` that reads or writes `Scratch/`, and each note that the person said yes to, to `.eva/scratch/`. Keep a link to a file that still sits in the old `Scratch/`.
-5. Move each git-ignored file where the person said. Write each move as one `<from><TAB><to>` line in the list that `start` named, so `drop` and `undo` can move it back.
-6. Delete only what the person approved.
-7. Run `git status`. Commit your own work that is left: nothing that you staged or deleted may stay uncommitted, or `finish` and `drop` stop and name it. A file that you did not write stays as it is: Eva commits it apart as a note written meanwhile.
+5. Make the edits of the notes that a pending entry lists, such as a renamed key in each project or a new list in each case. Commit each kind of note in its own group, such as "Give each case its steps".
+6. Move each git-ignored file where the person said. Write each move as one `<from><TAB><to>` line in the list that `start` named, so `drop` and `undo` can move it back.
+7. Delete only what the person approved.
+8. Run `git status`. Commit your own work that is left: nothing that you staged or deleted may stay uncommitted, or `finish` and `drop` stop and name it. A file that you did not write stays as it is: Eva commits it apart as a note written meanwhile.
 
 ## 5. Check and report
 
 Check the result against the inventory:
 
-- Each line of the inventory is kept, moved, merged, or deleted with the person's yes. No file is lost or orphaned.
+- Each line of the inventory is kept, moved, merged, edited as an entry says, or deleted with the person's yes. No file is lost or orphaned.
 - Each link that worked before still works.
 - Each git-ignored file is where the person said.
 - Each secret file still matches a pattern of `.eva/secret-files` or the defaults. A moved secret file still names its old path inside, and opens as before. List each one.

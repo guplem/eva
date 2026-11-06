@@ -49,7 +49,7 @@ The pinned block holds what you always know about the person, with no search. Ev
 - `pinned: full` puts the whole file in the block.
 - `pinned: summary` puts the file's path and its `summary:` line in the block.
 - `pinned: false` keeps the file out of the block.
-- With no `pinned:` value, Eva pins by status, as a summary: the `active` projects and the projects with `in-use: true`, the open cases, and the open period. A case is open until its `closed` has a date. A period is open while its `to` is empty or not passed yet. An older case or period with a `status` key still counts by that status.
+- With no `pinned:` value, Eva pins by status, as a summary: the `active` projects and the projects with `in-use: true`, the open cases, and the open period. A case is open until its `closed` has a date. A period is open while its `to` is empty or not passed yet. An older case with a `status` key and no `steps` still counts by that status, and so does an older period with no `to` day.
 
 Read the block this way:
 
@@ -78,7 +78,7 @@ The `status` is the work on the project:
 
 An older vault map can still name the statuses `idea` and `in-use`. Never write them. Eva reads `idea` as `paused`, and `in-use` as `closed` with `in-use: true`.
 
-`created` is the moment when the project was created, with its offset from UTC, such as `2026-01-31T09:15+01:00`. Eva's code writes it: never compute an offset by hand. The work started at `created`. When the work started much later, say so in the text. `closed` is the day the work ended. When you close a project, ask the person whether it closed today or on another day. Write that day in `closed: YYYY-MM-DD`, right after `status`. When a closed project gets another status, remove `closed`.
+`created` is the moment when the project was created, with its offset from UTC, such as `2026-01-31T09:15+01:00`. Eva's code writes it for a new project. When you write a moment, take it with its offset from a command, such as `date +%Y-%m-%dT%H:%M%:z` in the person's time zone, never from your own sum. The work started at `created`. When the work started much later, say so in the text. `closed` is the day the work ended. When you close a project, ask the person whether it closed today or on another day. Write that day in `closed: YYYY-MM-DD`, right after `status`. When a closed project gets another status, remove `closed`.
 
 `result` is the one address where the person uses the result, such as a website, a download or a store page. Other addresses go in the `## Links` section of the text.
 

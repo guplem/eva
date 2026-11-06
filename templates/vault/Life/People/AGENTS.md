@@ -6,9 +6,9 @@ One folder for each person who matters to the person.
 
 ```yaml
 ---
-contact: https://contacts.google.com/person/c1234567890 # their entry in the contacts app
+contact: https://contacts.google.com/person/c1234567890 # optional: their entry in the contacts app
 relation: cousin of Life/People/Marta Example # see the rules below
-aliases: [Sam, Sammy]
+aliases: [Sam, Sammy] # optional
 summary: Lives in Berlin. Vegetarian.
 ---
 ```

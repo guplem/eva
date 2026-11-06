@@ -7,11 +7,11 @@ One folder for each pet of the person.
 ```yaml
 ---
 species: dog
-breed: Border collie
-birth: 2020-08-01 # YYYY-MM-DD, or YYYY when only the year is known
-death: # YYYY-MM-DD, or YYYY when only the year is known. Leave it out while the pet lives
-chip: "941000012345678" # the microchip number, in quotes
-aliases: [Luna, Lunita]
+breed: Border collie # optional
+birth: 2020-08-01 # optional: YYYY-MM-DD, or YYYY when only the year is known
+death: # YYYY-MM-DD, or YYYY when only the year is known. Empty while the pet lives
+chip: "941000012345678" # optional: the microchip number, in quotes
+aliases: [Luna, Lunita] # optional
 summary: Border collie. Allergic to chicken.
 ---
 ```

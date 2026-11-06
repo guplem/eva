@@ -174,7 +174,7 @@ describe("the vault template", () => {
     expect(map).toContain("## Personal rules\n");
     expect(map).toContain("| The calendar | not set |");
     // How pinning works is Eva's logic, in her docs, not in the vault.
-    expect(map).toContain("Keep any key you do not know, such as `summary` or `pinned`.");
+    expect(map).toContain("Keep any key you do not know, such as `pinned`.");
     expect(map).not.toContain("pinned:");
   });
 

@@ -30,4 +30,4 @@ summary: Software engineer at Example Corp, a company that makes example apps.
 - A job application → `Life/Cases/`. When it succeeds, create the period.
 - A language that the person speaks → `Life/About me.md`.
 
-**Closing:** set `to`, and check that _Work and achievements_ is true and complete. When a job ends, change `work` in `Life/About me.md`. Never move or rename the folder.
+**Closing:** set `to`, and check that _Work and achievements_ is true and complete. When a job or a study ends, remove its item from `work` in `Life/About me.md`. Never move or rename the folder.

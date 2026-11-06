@@ -376,7 +376,7 @@ Eva knows some files in every Assistant chat with no search. At the start of eac
 - `pinned: full` puts the whole file in the block. Keep such a file short.
 - `pinned: summary` puts the file's path and its summary in the block.
 - `pinned: false` keeps the file out of the block.
-- With no `pinned:` value, the status decides. Your active projects and your projects in use, your open cases (`Life/Cases/<folder>/Case.md`) and your open period (`Life/Periods/<folder>/Period.md`) each get a summary line. A case is open until its `closed` has a date. A period is open while its `to` is empty or not passed yet.
+- With no `pinned:` value, the status decides. Your active projects and your projects in use, your open cases (`Life/Cases/<folder>/Case.md`) and your open period (`Life/Periods/<folder>/Period.md`) each get a summary line. A case is open until its `closed` has a date. A period is open while its `to` is empty or not passed yet. An older case or period with a `status` key and no new key still counts by that status.
 
 How the block works:
 

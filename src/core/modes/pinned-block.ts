@@ -226,9 +226,18 @@ function aboutWords(file: PinnedFile, today: string): string[] {
  * keeps the period open. Without it, an old `status` decides, and a period with neither is open.
  */
 function periodStatus(file: PinnedFile, today: string): string | null {
-  const to = validDate(textField(file.fields, "to"));
-  if (to !== null) return to >= today ? "open" : "closed";
+  const to = validPartialDate(textField(file.fields, "to"));
+  // An old period may know only the year or the month of its end: it stays open until that one passes.
+  if (to !== null) return to >= today.slice(0, to.length) ? "open" : "closed";
   return textField(file.fields, "status") === null ? "open" : statusOf(file);
+}
+
+/** A real day, month (`YYYY-MM`) or year (`YYYY`), or null. */
+function validPartialDate(text: string | null): string | null {
+  if (text === null) return null;
+  if (/^\d{4}$/.test(text)) return text;
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(text)) return text;
+  return validDate(text);
 }
 
 /** One item of the `steps` list of a case. Every text is one line or null. */
@@ -277,15 +286,19 @@ function currentStep(steps: readonly CaseStep[]): CaseStep | null {
  * dates. A date that a flag shows stays out, so each fact shows once.
  */
 function stepsWords(fields: Readonly<Record<string, unknown>>, steps: readonly CaseStep[], today: string): string[] {
-  if (textField(fields, "closed") !== null) return ["closed"];
+  if (stepsCaseClosed(fields)) return ["closed"];
   const current = currentStep(steps);
   const waitingFor = current?.waitingFor ?? null;
   const words = [waitingFor === null ? "open" : `waiting for ${waitingFor}`];
   if (current !== null) {
-    const done = steps.filter((step) => step.done).length;
-    const step = `step ${String(done + 1)} of ${String(steps.length)}`;
+    const step = `step ${String(steps.indexOf(current) + 1)} of ${String(steps.length)}`;
     words.push(current.step === null ? step : `${step}: ${current.step}`);
-    if (current.dueBy !== null && current.dueBy > today) words.push(`due by ${current.dueBy}`);
+    // The current step must have a date. Saying so makes Eva add one when she opens the case.
+    if (current.dueBy === null) words.push("no due-by");
+    else if (current.dueBy > today) words.push(`due by ${current.dueBy}`);
+  } else if (steps.length > 0) {
+    // An open case with nothing left to do needs a next step or a `closed` date.
+    words.push("all steps done");
   }
   const deadline = validDate(nestedText(fields, "deadline", "date"));
   if (deadline !== null && deadlineFlags(fields, today).length === 0) words.push(`deadline ${deadline}`);
@@ -331,8 +344,16 @@ function deadlineFlags(fields: Readonly<Record<string, unknown>>, today: string)
  * `closed` holds a value. An old case is open while its `status` is open or waiting.
  */
 function isOpenCase(fields: Readonly<Record<string, unknown>>): boolean {
-  if (caseSteps(fields) !== null) return textField(fields, "closed") === null;
+  if (caseSteps(fields) !== null) return !stepsCaseClosed(fields);
   return (caseStatuses as readonly string[]).includes(textField(fields, "status") ?? "");
+}
+
+/**
+ * True when a case with steps holds a `closed` date. A case that was upgraded by hand can still
+ * hold its old `status: closed` with no date: it stays closed.
+ */
+function stepsCaseClosed(fields: Readonly<Record<string, unknown>>): boolean {
+  return textField(fields, "closed") !== null || textField(fields, "status") === "closed";
 }
 
 function withText(flag: string, text: string | null): string {

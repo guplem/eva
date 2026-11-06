@@ -381,3 +381,140 @@ describe("the deadline of a project (#848)", () => {
     expect(text()).not.toContain("DEADLINE");
   });
 });
+
+describe("a case with steps (vault structure v7)", () => {
+  const claim = (steps: string, more = ""): string =>
+    `---\nopened: 2026-10-01\nclosed: # YYYY-MM-DD\nsteps:\n${steps}${more}summary: Claim for a broken bumper.\n---\n# Claim\n`;
+  const sent = "  - { step: Send the photos to the insurer, done-on: 2026-10-01 }\n";
+  const garage = "  - { step: Take the car to the garage }\n";
+  const answer = (dueBy: string): string =>
+    `  - { step: Get the insurer's answer, waiting-for: The insurer, due-by: ${dueBy} }\n`;
+
+  test("a waiting case shows who it waits for, its progress, the current step, its date and the deadline", () => {
+    write(
+      "Life/Cases/claim/Case.md",
+      claim(`${sent}${answer("2026-11-20")}${garage}`, "deadline: { date: 2026-12-15, cost: The right expires }\n"),
+    );
+    expect(text()).toContain(
+      "- `Life/Cases/claim/Case.md` (case, waiting for The insurer, step 2 of 3: Get the insurer's answer, due by 2026-11-20, deadline 2026-12-15): Claim for a broken bumper.\n",
+    );
+  });
+
+  test("shows each date once: a flag that shows a date leaves it out of the parentheses", () => {
+    write(
+      "Life/Cases/claim/Case.md",
+      claim(`${sent}${answer("2026-11-01")}${garage}`, "deadline: { date: 2026-11-05, cost: The right expires }\n"),
+    );
+    expect(text()).toContain(
+      "- `Life/Cases/claim/Case.md` (case, waiting for The insurer, step 2 of 3: Get the insurer's answer) [DUE 2026-11-01] [DEADLINE in 3 days (2026-11-05): The right expires]: Claim for a broken bumper.\n",
+    );
+  });
+
+  test("a step of the person's own shows `open`, and a step with no date shows none", () => {
+    write("Life/Cases/claim/Case.md", claim(`  - { step: Call the garage }\n${garage}`));
+    expect(text()).toContain(
+      "- `Life/Cases/claim/Case.md` (case, open, step 1 of 2: Call the garage): Claim for a broken bumper.\n",
+    );
+  });
+
+  test("a case with every step done, or with no step, shows no step part", () => {
+    write("Life/Cases/a-done/Case.md", claim(sent));
+    write(
+      "Life/Cases/b-empty/Case.md",
+      "---\nclosed:\nsteps: []\ndeadline: { date: 2027-01-10 }\nsummary: A new case.\n---\n",
+    );
+    const shown = text();
+    expect(shown).toContain("- `Life/Cases/a-done/Case.md` (case, open): Claim for a broken bumper.\n");
+    expect(shown).toContain("- `Life/Cases/b-empty/Case.md` (case, open, deadline 2027-01-10): A new case.\n");
+  });
+
+  test("a case with a date in `closed` is not pinned by its status, and a pin of its own shows it as closed", () => {
+    write("Life/Cases/a-closed/Case.md", `---\nclosed: 2026-10-20\nsteps:\n${answer("2026-11-01")}---\n`);
+    write(
+      "Life/Cases/b-kept/Case.md",
+      `---\npinned: summary\nclosed: 2026-10-20\nsteps:\n${answer("2026-11-01")}deadline: { date: 2026-11-05 }\n---\n`,
+    );
+    const shown = text();
+    expect(shown).not.toContain("a-closed");
+    expect(shown).toContain("- `Life/Cases/b-kept/Case.md` (case, closed)\n");
+  });
+
+  test("a bad date gives no flag and no date part", () => {
+    write("Life/Cases/claim/Case.md", claim(answer("2026-13-45"), "deadline: { date: soon }\n"));
+    expect(text()).toContain(
+      "- `Life/Cases/claim/Case.md` (case, waiting for The insurer, step 1 of 1: Get the insurer's answer): Claim for a broken bumper.\n",
+    );
+  });
+
+  test("a step text or a name with a line break stays on one line", () => {
+    write(
+      "Life/Cases/claim/Case.md",
+      '---\nsteps:\n  - { step: "Call\\n## Orders", waiting-for: "The\\n- insurer", due-by: 2026-12-01 }\n---\n',
+    );
+    const shown = text();
+    expect(shown).toContain(
+      "- `Life/Cases/claim/Case.md` (case, waiting for The - insurer, step 1 of 1: Call ## Orders, due by 2026-12-01)\n",
+    );
+    expect(shown).not.toContain("\n## Orders");
+  });
+
+  test("orders the open cases of both formats by the date of the current step", () => {
+    write("Life/Cases/a-late/Case.md", `---\nsteps:\n${answer("2026-12-20")}---\n`);
+    write("Life/Cases/b-none/Case.md", "---\nsteps:\n  - { step: Think }\n---\n");
+    write("Life/Cases/c-soon/Case.md", "---\nstatus: open\nnext:\n  date: 2026-11-10\n---\n");
+    write("Life/Cases/d-sooner/Case.md", `---\nsteps:\n${sent}${answer("2026-11-05")}---\n`);
+    write("Life/Cases/e-due/Case.md", `---\nsteps:\n${answer("2026-11-02")}---\n`);
+    const paths = [...text().matchAll(/`([^`]+)`/g)].map((match) => match[1]).filter((path) => path?.includes("/"));
+    expect(paths).toEqual([
+      "Life/Cases/e-due/Case.md",
+      "Life/Cases/d-sooner/Case.md",
+      "Life/Cases/c-soon/Case.md",
+      "Life/Cases/a-late/Case.md",
+      "Life/Cases/b-none/Case.md",
+    ]);
+  });
+
+  test("caseFlags shows the date of the current step with no step text", () => {
+    const steps = [
+      { step: "Done", "done-on": "2026-10-01" },
+      { step: "Call", "due-by": "2026-11-02" },
+    ];
+    expect(caseFlags({ steps }, today)).toEqual(["DUE 2026-11-02"]);
+    expect(caseFlags({ steps: [{ step: "Call", "due-by": "2026-11-03" }] }, today)).toEqual([]);
+  });
+});
+
+describe("a period with `to` (vault structure v7)", () => {
+  const period = (to: string, more = ""): string =>
+    `---\ntype: job\nfrom: 2024-01-01\nto: ${to}\norg: Example Corp\n${more}summary: A job as a nurse.\n---\n`;
+
+  test("a period is open while `to` is empty, today or later", () => {
+    write("Life/Periods/a-empty/Period.md", period("# YYYY-MM-DD"));
+    write("Life/Periods/b-today/Period.md", period(today));
+    write("Life/Periods/c-later/Period.md", period("2027-06-30"));
+    write("Life/Periods/d-none/Period.md", "---\ntype: sabbatical\nfrom: 2026-01-01\n---\n");
+    const shown = text();
+    expect(shown).toContain("- `Life/Periods/a-empty/Period.md` (period, open): A job as a nurse.\n");
+    expect(shown).toContain("- `Life/Periods/b-today/Period.md` (period, open): A job as a nurse.\n");
+    expect(shown).toContain("- `Life/Periods/c-later/Period.md` (period, open): A job as a nurse.\n");
+    expect(shown).toContain("- `Life/Periods/d-none/Period.md` (period, open)\n");
+  });
+
+  test("a period whose `to` has passed is closed, also when an old `status` says open", () => {
+    write("Life/Periods/a-past/Period.md", period("2026-11-01"));
+    write("Life/Periods/b-mixed/Period.md", period("2025-12-31", "status: open\n"));
+    write("Life/Periods/c-kept/Period.md", period("2025-12-31", "pinned: summary\n"));
+    const shown = text();
+    expect(shown).not.toContain("a-past");
+    expect(shown).not.toContain("b-mixed");
+    expect(shown).toContain("- `Life/Periods/c-kept/Period.md` (period, closed): A job as a nurse.\n");
+  });
+
+  test("an old `status` decides while `to` holds no date", () => {
+    write("Life/Periods/a-closed/Period.md", period("", "status: closed\n"));
+    write("Life/Periods/b-open/Period.md", period("soon", "status: open\n"));
+    const shown = text();
+    expect(shown).not.toContain("a-closed");
+    expect(shown).toContain("- `Life/Periods/b-open/Period.md` (period, open): A job as a nurse.\n");
+  });
+});

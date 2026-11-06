@@ -91,7 +91,7 @@ export function pinnedBlock(input: PinnedBlockInput): PinnedBlock {
 
 /**
  * The manual pins first (`full`, then `summary`, each by path), then the flagged cases, the other
- * open cases by their next date, the open period, and the active and in-use projects.
+ * open cases by the date of their current step, the open periods, and the active and in-use projects.
  */
 function orderedEntries(input: PinnedBlockInput): Entry[] {
   const { files, projects, today } = input;
@@ -117,18 +117,13 @@ function orderedEntries(input: PinnedBlockInput): Entry[] {
   const otherCases = cases
     .filter((file) => caseFlags(file.fields, today).length === 0)
     .sort((first, second) => {
-      const a = validDate(nestedText(first.fields, "next", "date"));
-      const b = validDate(nestedText(second.fields, "next", "date"));
+      const a = caseDueDate(first.fields);
+      const b = caseDueDate(second.fields);
       if (a !== b) return a === null ? 1 : b === null ? -1 : a.localeCompare(b);
       return byPath(first, second);
     });
   const periods = files.entities
-    .filter(
-      (file) =>
-        file.kind === "period" &&
-        byStatus(file) &&
-        (periodStatuses as readonly string[]).includes(textField(file.fields, "status") ?? ""),
-    )
+    .filter((file) => file.kind === "period" && byStatus(file) && periodStatus(file, today) === "open")
     .sort(byPath);
   const shownProjects = projects.filter((project) => projectByStatus(project, manualPaths));
   const projectLines = ([false, true] as const).flatMap((inUse) =>
@@ -181,8 +176,8 @@ const knownStatuses: Readonly<Record<EntityKind, readonly string[]>> = {
 };
 
 /**
- * The status as one line, or null. A YAML text can hold line breaks, which would add lines to the
- * block outside the markers. A case or a period shows only the words of its format.
+ * The old `status` as one line, or null. A YAML text can hold line breaks, which would add lines to
+ * the block outside the markers. A case or a period shows only the words of its format.
  */
 function statusOf(file: PinnedFile): string | null {
   const status = oneLineSummary(textField(file.fields, "status") ?? "");
@@ -193,13 +188,13 @@ function statusOf(file: PinnedFile): string | null {
 /** One summary line: the path, the kind and status when it has them, the flags, then the summary. */
 function fileLine(file: PinnedFile, today: string, project: Project | null): string {
   if (project !== null) return projectLine(project, today, file.oldImportant);
-  const status = statusOf(file);
+  const words = aboutWords(file, today);
   const about =
     file.kind === null
-      ? status === null
+      ? words.length === 0
         ? ""
-        : ` (${status})`
-      : ` (${file.kind}${status === null ? "" : `, ${status}`})`;
+        : ` (${words.join(", ")})`
+      : ` (${[file.kind, ...words].join(", ")})`;
   const flags =
     file.kind === "case" && isOpenCase(file.fields)
       ? caseFlags(file.fields, today)
@@ -214,11 +209,105 @@ function fileLine(file: PinnedFile, today: string, project: Project | null): str
   return `- \`${file.path}\`${about}${flags}${end}`;
 }
 
-/** The marks of an open or waiting case: `DUE` when its next date has come, `DEADLINE` when its deadline is near or passed. */
+/** The words after the kind in the parentheses of a summary line. */
+function aboutWords(file: PinnedFile, today: string): string[] {
+  if (file.kind === "period") {
+    const status = periodStatus(file, today);
+    return status === null ? [] : [status];
+  }
+  const steps = file.kind === "case" ? caseSteps(file.fields) : null;
+  if (steps !== null) return stepsWords(file.fields, steps, today);
+  const status = statusOf(file);
+  return status === null ? [] : [status];
+}
+
+/**
+ * `open` or `closed`. A valid `to` decides: a known future end, such as a fixed-term contract,
+ * keeps the period open. Without it, an old `status` decides, and a period with neither is open.
+ */
+function periodStatus(file: PinnedFile, today: string): string | null {
+  const to = validDate(textField(file.fields, "to"));
+  if (to !== null) return to >= today ? "open" : "closed";
+  return textField(file.fields, "status") === null ? "open" : statusOf(file);
+}
+
+/** One item of the `steps` list of a case. Every text is one line or null. */
+interface CaseStep {
+  readonly step: string | null;
+  readonly done: boolean;
+  readonly waitingFor: string | null;
+  readonly dueBy: string | null;
+}
+
+/**
+ * The steps of a case, or null for a case in the old format of `status` and `next`, which the
+ * vault upgrade replaces. A case with none of these keys is in the new format, with no step yet.
+ */
+function caseSteps(fields: Readonly<Record<string, unknown>>): CaseStep[] | null {
+  const steps = fields["steps"];
+  if (!Array.isArray(steps)) return "status" in fields || "next" in fields ? null : [];
+  return steps.flatMap((item: unknown) => {
+    // A plain text item is a step written by hand without its keys.
+    const map: Readonly<Record<string, unknown>> | null =
+      typeof item === "string"
+        ? { step: item }
+        : item !== null && typeof item === "object" && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : null;
+    if (map === null) return [];
+    const line = (key: string): string | null => oneLineSummary(textField(map, key) ?? "");
+    return [
+      {
+        step: line("step"),
+        done: textField(map, "done-on") !== null,
+        waitingFor: line("waiting-for"),
+        dueBy: validDate(textField(map, "due-by")),
+      },
+    ];
+  });
+}
+
+/** The first step that is not done, or null when every step is done. */
+function currentStep(steps: readonly CaseStep[]): CaseStep | null {
+  return steps.find((step) => !step.done) ?? null;
+}
+
+/**
+ * The words of an open case with steps: who it waits for, its progress, the current step and the
+ * dates. A date that a flag shows stays out, so each fact shows once.
+ */
+function stepsWords(fields: Readonly<Record<string, unknown>>, steps: readonly CaseStep[], today: string): string[] {
+  if (textField(fields, "closed") !== null) return ["closed"];
+  const current = currentStep(steps);
+  const waitingFor = current?.waitingFor ?? null;
+  const words = [waitingFor === null ? "open" : `waiting for ${waitingFor}`];
+  if (current !== null) {
+    const done = steps.filter((step) => step.done).length;
+    const step = `step ${String(done + 1)} of ${String(steps.length)}`;
+    words.push(current.step === null ? step : `${step}: ${current.step}`);
+    if (current.dueBy !== null && current.dueBy > today) words.push(`due by ${current.dueBy}`);
+  }
+  const deadline = validDate(nestedText(fields, "deadline", "date"));
+  if (deadline !== null && deadlineFlags(fields, today).length === 0) words.push(`deadline ${deadline}`);
+  return words;
+}
+
+/** The date to act on a case: its current step's `due-by`, or the old `next.date`. */
+function caseDueDate(fields: Readonly<Record<string, unknown>>): string | null {
+  const steps = caseSteps(fields);
+  if (steps === null) return validDate(nestedText(fields, "next", "date"));
+  return currentStep(steps)?.dueBy ?? null;
+}
+
+/** The marks of an open case: `DUE` when the date to act has come, `DEADLINE` when its deadline is near or passed. */
 export function caseFlags(fields: Readonly<Record<string, unknown>>, today: string): string[] {
   const flags: string[] = [];
-  const next = validDate(nestedText(fields, "next", "date"));
-  if (next !== null && next <= today) flags.push(withText(`DUE ${next}`, nestedText(fields, "next", "step")));
+  const due = caseDueDate(fields);
+  if (due !== null && due <= today) {
+    // A case with steps names its current step in the parentheses of its line already.
+    const step = caseSteps(fields) === null ? nestedText(fields, "next", "step") : null;
+    flags.push(withText(`DUE ${due}`, step));
+  }
   return [...flags, ...deadlineFlags(fields, today)];
 }
 
@@ -237,8 +326,12 @@ function deadlineFlags(fields: Readonly<Record<string, unknown>>, today: string)
   return flags;
 }
 
-/** Only an open or waiting case is pinned by its status, or shows a flag. */
+/**
+ * Only an open case is pinned by its status, or shows a flag. A case with steps is open until
+ * `closed` holds a value. An old case is open while its `status` is open or waiting.
+ */
 function isOpenCase(fields: Readonly<Record<string, unknown>>): boolean {
+  if (caseSteps(fields) !== null) return textField(fields, "closed") === null;
   return (caseStatuses as readonly string[]).includes(textField(fields, "status") ?? "");
 }
 

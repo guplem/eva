@@ -1,6 +1,6 @@
 ---
 summary: "Allergies: none recorded. Diet: none recorded." # Eva keeps this line true
-pinned: full # Eva reads this note in every chat. Change it to summary or false if you prefer
+pinned: full # Eva reads this note in every Assistant chat. Change it to summary or false if you prefer
 ---
 
 # Allergies and Diet

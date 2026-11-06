@@ -9,7 +9,9 @@ import {
   searchProjects,
   noClonesWarning,
   outsideWarning,
+  repoLinkWarning,
   reposWarning,
+  cloneUrls,
   titleHeading,
 } from "../../../../src/core/projects/project-catalog.ts";
 
@@ -47,6 +49,7 @@ describe("parseFrontMatter", () => {
       // The summary reads in one line; the pinned value stays text (#769).
       summary: "Plan: phase 1",
       pinned: "false",
+      result: null,
       extra: { custom: "kept" },
     });
     expect(result.warnings).toEqual([]);
@@ -123,6 +126,34 @@ describe("parseFrontMatter", () => {
 
   test("reads a YAML date value as text", () => {
     expect(parseFrontMatter("---\ncreated: 2025-03-02\nstatus: closed\n---\n").frontMatter?.created).toBe("2025-03-02");
+  });
+
+  test("reads result as one http or https URL, and warns about any other value", () => {
+    const front = "created: 2025-03-02T10:15\nstatus: active";
+    const read = (result: string): ReturnType<typeof parseFrontMatter> =>
+      parseFrontMatter(`---\n${front}\nresult: ${result}\n---\n`);
+    expect(read("https://example.com/app").frontMatter?.result).toBe("https://example.com/app");
+    expect(read("http://example.com").frontMatter?.result).toBe("http://example.com");
+    expect(read("https://example.com/app").warnings).toEqual([]);
+    for (const bad of ["the website", "ftp://example.com/app", "[a, b]", "javascript:alert(1)"]) {
+      expect(read(bad).frontMatter?.result).toBeNull();
+      expect(read(bad).frontMatter?.extra).toEqual({});
+      expect(read(bad).warnings).toEqual(["result must be one http or https URL"]);
+    }
+    expect(parseFrontMatter(`---\n${front}\n---\n`).frontMatter?.result).toBeNull();
+    expect(parseFrontMatter(`---\n${front}\nresult:\n---\n`).warnings).toEqual([]);
+  });
+
+  test("warns about a repos entry that is a web link into a branch, a folder or a file", () => {
+    const tree = "https://github.com/owner/site/tree/main/apps/example-app";
+    const blob = "https://gitlab.com/owner/site/-/blob/main/README.md";
+    const result = parseFrontMatter(
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - https://github.com/owner/app\n  - ${tree}\n  - ${blob}\n---\n`,
+    );
+    // The entry stays, so a save of the details form never drops what the person wrote.
+    expect(result.frontMatter?.repos).toEqual(["https://github.com/owner/app", tree, blob]);
+    expect(result.warnings).toEqual([repoLinkWarning(tree), repoLinkWarning(blob)]);
+    expect(repoLinkWarning(tree)).toBe(`repos has ${tree}, a link into a folder or a file, so Eva does not clone it`);
   });
 });
 
@@ -239,6 +270,34 @@ describe("discoverProjects", () => {
     ]);
   });
 
+  test("a created time with its UTC offset matches the folder name, which holds only the wall clock", () => {
+    addProject("2026-01-31-0915-winter", "created: 2026-01-31T09:15+01:00\nstatus: active");
+    addProject("2026-07-31-0915-summer", "created: 2026-07-31T09:15-05:00\nstatus: active");
+    addProject("2026-02-01-0915-utc", "created: 2026-02-01T09:15+00:00\nstatus: active");
+    addProject("2026-02-02-0915-wrong", "created: 2026-02-02T10:15+01:00\nstatus: active");
+    const warnings = Object.fromEntries(
+      discoverProjects({ vaultPath: vault, extraRoots: [] }).map((project) => [project.id, project.warnings]),
+    );
+    expect(warnings).toEqual({
+      "2026-01-31-0915-winter": [],
+      "2026-07-31-0915-summer": [],
+      "2026-02-01-0915-utc": [],
+      "2026-02-02-0915-wrong": ["created 2026-02-02T10:15+01:00 does not match the folder name"],
+    });
+  });
+
+  test("a created day matches a folder named to the day", () => {
+    addProject("2013-07-31-old-site", "created: 2013-07-31\nstatus: closed");
+    addProject("2013-08-01-other-site", "created: 2013-08-02\nstatus: closed");
+    const warnings = Object.fromEntries(
+      discoverProjects({ vaultPath: vault, extraRoots: [] }).map((project) => [project.id, project.warnings]),
+    );
+    expect(warnings).toEqual({
+      "2013-07-31-old-site": [],
+      "2013-08-01-other-site": ["created 2013-08-02 does not match the folder name"],
+    });
+  });
+
   test("also reads extra project roots", () => {
     const extra = join(vault, "elsewhere");
     mkdirSync(join(extra, "2026-01-01-0000-outside"), { recursive: true });
@@ -303,6 +362,27 @@ describe("discoverProjects", () => {
 
   test("a vault with no Projects folder has no projects", () => {
     expect(discoverProjects({ vaultPath: vault, extraRoots: [join(vault, "missing")] })).toEqual([]);
+  });
+});
+
+describe("cloneUrls", () => {
+  test("keeps each repos entry that git can clone, and drops a link into a folder or a file", () => {
+    expect(
+      cloneUrls([
+        "https://github.com/owner/app",
+        "https://github.com/owner/site/tree/main/apps/example-app",
+        "https://github.com/owner/site/blob/main/README.md",
+        "https://gitlab.com/group/site/-/tree/main/docs",
+        "git@github.com:owner/other.git",
+        "/srv/git/example-app.git",
+        "https://example.com/git/tree.git",
+      ]),
+    ).toEqual([
+      "https://github.com/owner/app",
+      "git@github.com:owner/other.git",
+      "/srv/git/example-app.git",
+      "https://example.com/git/tree.git",
+    ]);
   });
 });
 

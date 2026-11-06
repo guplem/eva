@@ -23,6 +23,7 @@ function frontMatter(overrides: Partial<Project["frontMatter"]> = {}): Project["
     type: "software",
     summary: null,
     pinned: null,
+    result: null,
     extra: {},
     ...overrides,
   };
@@ -205,27 +206,36 @@ describe("frontMatterFacts", () => {
         legacyId: "old-1",
         pinned: "false",
         type: "general",
-        extra: { started: "2026-09-29", objective: "Ship it", deadline: "2026-12-01" },
+        // An old `started` key has no place of its own: it shows where the file has it.
+        extra: { objective: "Ship it", started: "2026-09-29", deadline: "2026-12-01" },
       }),
       format,
     );
     expect(facts.map((fact) => fact.label)).toEqual([
       "Type",
       "Created",
-      "Started",
       "Closed",
       "Tags",
       "Objective",
+      "Started",
       "Deadline",
       "Legacy ID",
       "Pinned",
     ]);
     expect(facts[0]?.value).toEqual({ kind: "text", parts: [{ text: "General" }] });
-    expect(facts[4]?.value).toEqual({ kind: "list", items: [{ kind: "text", parts: [{ text: "#tool" }] }] });
+    expect(facts[3]?.value).toEqual({ kind: "list", items: [{ kind: "text", parts: [{ text: "#tool" }] }] });
+  });
+
+  test("shows a created time with its UTC offset as a date", () => {
+    const facts = frontMatterFacts(frontMatter({ created: "2026-01-31T09:15+01:00" }), format);
+    expect(facts[1]).toMatchObject({ key: "created", value: { kind: "date", raw: "2026-01-31T09:15+01:00" } });
   });
 
   test("leaves out the keys that the page shows elsewhere and the empty keys", () => {
-    const facts = frontMatterFacts(frontMatter({ summary: "A line", extra: { note: "" } }), format);
+    const facts = frontMatterFacts(
+      frontMatter({ summary: "A line", result: "https://example.com/app", extra: { note: "" } }),
+      format,
+    );
     expect(facts.map((fact) => fact.key)).toEqual(["type"]);
   });
 });

@@ -47,7 +47,7 @@ import {
   switchToBranch,
 } from "./clone-sync.ts";
 import type { NewProjectSetup } from "./new-project.ts";
-import type { Project } from "./project-catalog.ts";
+import { cloneUrls, type Project } from "./project-catalog.ts";
 import {
   applyProjectDetails,
   checkProjectFile,
@@ -974,11 +974,13 @@ export class ProjectWork {
   private async cloneInto(project: Project): Promise<Clone> {
     // Every new clone comes here, so no path, such as a cached page's New clone, clones into a project folder.
     if (!worksInClones(project.frontMatter.type)) throw noClones(project.frontMatter.type);
-    if (project.frontMatter.repos.length === 0)
+    // The catalog warns about a link into a folder: git cannot clone it, so it would fail the whole clone.
+    const repositoryUrls = cloneUrls(project.frontMatter.repos);
+    if (repositoryUrls.length === 0)
       throw new EvaError("project_not_found", `Project ${project.id} lists no repository to clone.`);
     return createClone({
       projectPath: project.path,
-      repositoryUrls: project.frontMatter.repos,
+      repositoryUrls,
       runner: this.options.runner,
       environment: this.options.gitEnvironment,
       origins: this.options.cloneOrigins,
@@ -1053,7 +1055,7 @@ export class ProjectWork {
     for (const repository of clone.repositories)
       branches.set(repository.path, await fetchDefaultBranch(repository, runner, gitEnvironment));
     const present = new Set(clone.repositories.map((repository) => folderKey(repository.name)));
-    for (const url of project.frontMatter.repos) {
+    for (const url of cloneUrls(project.frontMatter.repos)) {
       if (present.has(folderKey(repositoryName(url)))) continue;
       await cloneRepository(clone.path, url, { runner, environment: gitEnvironment, origins: cloneOrigins });
     }

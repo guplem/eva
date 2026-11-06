@@ -2047,8 +2047,12 @@ test("the project page shows the facts, the quick links and a clones section", a
   const repository = facts.getByRole("link", { name: /github\.com\/example-owner\/example-app/ });
   await expect(repository).toHaveAttribute("href", "https://github.com/example-owner/example-app");
   await expect(repository).toHaveAttribute("target", "_blank");
+  // The result has its own chip, and no second place in the facts.
+  const result = facts.getByRole("link", { name: /^Result/ });
+  await expect(result).toHaveAttribute("href", "https://example-owner.github.io/example-app");
+  await expect(facts.getByText("Result", { exact: true })).toHaveCount(0);
   // A local remote has no web page, so it stays plain text.
-  await expect(facts.getByRole("link")).toHaveCount(3);
+  await expect(facts.getByRole("link")).toHaveCount(4);
   await expect(page.getByRole("region", { name: "Clones" }).getByRole("button", { name: "New clone" })).toBeVisible();
 
   await facts.getByRole("link", { name: "Open in Files" }).click();

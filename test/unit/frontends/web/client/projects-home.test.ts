@@ -53,6 +53,7 @@ function project(
       type: "general",
       summary: null,
       pinned: null,
+      result: null,
       extra: {},
     },
     title,

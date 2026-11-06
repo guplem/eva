@@ -31,6 +31,7 @@ import { typeSoftwareProjects } from "./general-project-type.ts";
 import { pinFiles } from "./pinned-files.ts";
 import { moveFormatSettings } from "./format-settings.ts";
 import { splitProjectInUse } from "./project-in-use.ts";
+import { addCreatedOffsets } from "./project-created-offset.ts";
 import { upgradeIsOpen } from "../vault/vault-structure.ts";
 
 /** Add each new migration here. The runner sorts them by id. */
@@ -53,6 +54,7 @@ export const migrations: readonly Migration[] = [
   pinFiles,
   moveFormatSettings,
   splitProjectInUse,
+  addCreatedOffsets,
 ];
 
 export interface VaultAhead {

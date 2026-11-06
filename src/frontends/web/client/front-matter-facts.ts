@@ -236,6 +236,12 @@ function dateValue(text: string, format: FactFormat): FactValue | null {
   return { kind: "date", text: `${days}, ${zonedClockTime(moment, undefined, format.clock)}`, raw: text };
 }
 
+/** A day, a month or a moment as the project card shows it, or the text as written when it is no date. */
+export function dateText(text: string, format: FactFormat): string {
+  const date = dateValue(text, format);
+  return date?.kind === "date" ? date.text : text;
+}
+
 /** A value of the front matter in a readable form, or null for an empty value. */
 export function factValue(value: unknown, format: FactFormat): FactValue | null {
   if (value === null || value === undefined) return null;
@@ -279,6 +285,7 @@ export function frontMatterFacts(frontMatter: Project["frontMatter"], format: Fa
       ["created", frontMatter.created],
       ["closed", frontMatter.closed],
       ["tags", frontMatter.tags.map((tag) => `#${tag}`)],
+      ["aliases", frontMatter.aliases],
       ...Object.entries(frontMatter.extra),
       ["legacy_id", frontMatter.legacyId],
       ["pinned", frontMatter.pinned],

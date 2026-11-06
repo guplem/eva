@@ -48,6 +48,7 @@ function project(
       closed,
       repos: [],
       tags: [],
+      aliases: [],
       legacyId: null,
       repoTypes: {},
       type: "general",

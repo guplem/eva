@@ -519,6 +519,7 @@ vault Life/Cases/*/Case.md steps[].waiting-for
 vault Life/Periods/*/Period.md status
 vault Life/Periods/*/Period.md status=open
 vault Life/Periods/*/Period.md to
+vault Projects/*/AGENTS.md aliases
 vault Projects/*/AGENTS.md closed
 vault Projects/*/AGENTS.md created
 vault Projects/*/AGENTS.md in-use

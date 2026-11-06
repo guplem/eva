@@ -34,7 +34,7 @@ afterEach(() => {
 describe("parseFrontMatter", () => {
   test("reads the known fields and keeps unknown keys", () => {
     const result = parseFrontMatter(
-      '---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - https://github.com/owner/app\ntags: [work, tool]\nlegacy_id: P93\ncustom: kept\nsummary: "Plan:  phase 1"\npinned: false\n---\n# Body\n',
+      '---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - https://github.com/owner/app\ntags: [work, tool]\naliases: [the planner]\nlegacy_id: P93\ncustom: kept\nsummary: "Plan:  phase 1"\npinned: false\n---\n# Body\n',
     );
     expect(result.frontMatter).toEqual({
       created: "2025-03-02T10:15",
@@ -43,6 +43,7 @@ describe("parseFrontMatter", () => {
       closed: null,
       repos: ["https://github.com/owner/app"],
       tags: ["work", "tool"],
+      aliases: ["the planner"],
       legacyId: "P93",
       repoTypes: {},
       type: "software",
@@ -449,6 +450,20 @@ describe("searchProjects", () => {
       "2025-02-01-0900-tax-report",
     ]);
     expect(searchProjects(projects, { tag: "LIFE" }).map((project) => project.id)).toEqual([
+      "2025-02-01-0900-tax-report",
+    ]);
+  });
+
+  test("the words also match the other names of a project", () => {
+    addProject(
+      "2025-02-01-0900-tax-report",
+      "created: 2025-02-01T09:00\nstatus: active\naliases: [The Paperwork]",
+      "\n# Taxes\n",
+    );
+    addProject("2026-05-01-0900-photo-booth", "created: 2026-05-01T09:00\nstatus: active");
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+
+    expect(searchProjects(projects, { text: "paperwork" }).map((project) => project.id)).toEqual([
       "2025-02-01-0900-tax-report",
     ]);
   });

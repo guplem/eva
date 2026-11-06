@@ -25,6 +25,8 @@ export interface ProjectFrontMatter {
   readonly closed: string | null;
   readonly repos: readonly string[];
   readonly tags: readonly string[];
+  /** The other names that the person uses for the project, from the `aliases` key. */
+  readonly aliases: readonly string[];
   readonly legacyId: string | null;
   /** The type name of each repository address of `repos`, from the `repo_types` key (#681). */
   readonly repoTypes: Readonly<Record<string, string>>;
@@ -78,6 +80,7 @@ export const projectFrontMatterKeys = [
   "closed",
   "repos",
   "tags",
+  "aliases",
   "legacy_id",
   "repo_types",
   "type",
@@ -158,6 +161,8 @@ export function parseFrontMatter(text: string): FrontMatterResult {
   for (const url of repos ?? []) if (repoLinkPattern.test(url)) warnings.push(repoLinkWarning(url));
   const tags = readTextList(fields["tags"]);
   if (tags === null) warnings.push("tags must be a list");
+  const aliases = readTextList(fields["aliases"]);
+  if (aliases === null) warnings.push("aliases must be a list");
   const legacyId = typeof fields["legacy_id"] === "string" ? fields["legacy_id"] : null;
   const repoTypes = readTextMap(fields["repo_types"]);
   if (repoTypes === null) warnings.push(repoTypesWarning);
@@ -182,6 +187,7 @@ export function parseFrontMatter(text: string): FrontMatterResult {
       closed,
       repos: repos ?? [],
       tags: tags ?? [],
+      aliases: aliases ?? [],
       legacyId,
       repoTypes: repoTypes ?? {},
       type,
@@ -300,7 +306,9 @@ export function searchProjects(projects: readonly Project[], query: ProjectQuery
   return projects
     .filter((project) => {
       const tags = project.frontMatter.tags.map((candidate) => candidate.toLowerCase());
-      const haystack = `${project.id} ${project.title} ${tags.join(" ")}`.toLowerCase();
+      // A person may know a project by another name, as a case or a person in the vault.
+      const haystack =
+        `${project.id} ${project.title} ${tags.join(" ")} ${project.frontMatter.aliases.join(" ")}`.toLowerCase();
       if (!words.every((word) => haystack.includes(word))) return false;
       if (query.status !== undefined && !matchesStatus(project.frontMatter, query.status)) return false;
       if (tag !== undefined && !tags.includes(tag)) return false;

@@ -41,7 +41,8 @@ describe("shellWallGap (#711)", () => {
     const linux = machine("linux", ["socat"]);
     const gap = (await shellWallGap(linux))?.reason ?? "";
     expect(gap).toContain("bubblewrap");
-    expect(gap).toContain("apt install bubblewrap socat");
+    // Old package lists name files that the mirror no longer has, so the command updates them first (#898).
+    expect(gap).toContain("sudo apt-get update && sudo apt-get install bubblewrap socat");
     // The install command adds them, also for an Eva from before (#757).
     expect(gap).toContain("Run the install command of Eva again");
     expect(linux.runs).toEqual([]);

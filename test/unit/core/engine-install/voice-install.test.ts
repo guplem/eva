@@ -218,7 +218,7 @@ describe("the voice installs", () => {
     };
     const failure = String(await caught(installWhisper(inputs(runner, serve()))));
     expect(failure).toContain("whisper-cli cannot start: this computer lacks the library libgomp.so.1.");
-    expect(failure).toContain("sudo apt install libgomp1");
+    expect(failure).toContain("sudo apt-get update && sudo apt-get install libgomp1");
   });
 
   test("a new install replaces an old copy", async () => {

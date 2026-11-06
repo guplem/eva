@@ -447,7 +447,7 @@ Without the filter, the wall is weaker: Eva's list can miss a socket in another 
 
 ### Set up the sandbox
 
-- **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The one-command install adds them. For an Eva from before, run the install command again, or run `sudo apt-get update && sudo apt-get install bubblewrap socat`. Then restart Eva. When apt says that another process holds its lock, a stuck apt process can be the cause, such as a daily update that hangs for months. Wait for it to end, or end it with `sudo kill` and its process number. Then run the command again.
+- **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The one-command install adds them. For an Eva from before, run the install command again, or run `sudo apt-get update && sudo apt-get install bubblewrap socat`. Then restart Eva. When apt says that another process holds its lock, a stuck apt process can be the cause, such as a daily update that hangs for months. Wait for it to end, or end it with `sudo kill <its process number>`. Then run the command again.
 - **macOS:** the sandbox needs nothing.
 - **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders. Eva tells you this once, in the notification center. The file tools stay walled.
 
@@ -518,7 +518,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - On a widget project, **Preview** on a clone shows the widget as the clone holds it, with no push. **Example data** shows its mock files. **My data** shows your vault, and asks first for anything that the installed widget does not have.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `.eva/scratch/` and sends it.
 - **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. A voice note that you send in Telegram works too: Eva turns it into text on her computer. The audio never leaves the computer.
-  On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt install libgomp1` on Ubuntu.
+  On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt-get update && sudo apt-get install libgomp1` on Ubuntu.
   To install them by hand, install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Then download a model and put it at `voice/ggml-base.bin` in Eva's home folder.
 - **Google (Calendar, Drive, Contacts, Tasks).** See [Set up Google](#set-up-google).
 

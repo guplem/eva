@@ -114,7 +114,7 @@ export function missingLibraryHelp(program: string, stderr: string): string | nu
   const library = /error while loading shared libraries: ([^:\s]+)/.exec(stderr)?.[1];
   if (library === undefined) return null;
   const add = library.startsWith("libgomp.")
-    ? "On Ubuntu, run `sudo apt install libgomp1`."
+    ? "On Ubuntu, run `sudo apt-get update && sudo apt-get install libgomp1`."
     : "Install it with the package manager of the system.";
   return `${program} cannot start: this computer lacks the library ${library}. ${add} Then try again.`;
 }

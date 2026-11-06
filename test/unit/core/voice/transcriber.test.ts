@@ -180,7 +180,7 @@ describe("createTranscriber (lessons 71, 123)", () => {
     );
     expect(isEvaError(failure, "process_failed")).toBe(true);
     expect(String(failure)).toContain("whisper-cli cannot start: this computer lacks the library libgomp.so.1.");
-    expect(String(failure)).toContain("sudo apt install libgomp1");
+    expect(String(failure)).toContain("sudo apt-get update && sudo apt-get install libgomp1");
   });
 
   test("one note at a time, and a failed note does not block the next", async () => {

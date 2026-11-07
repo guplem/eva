@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  bwrapProfileProblem,
   scheduleFiringProblem,
   engineLoginProblem,
   engineMissingProblem,
@@ -305,6 +306,19 @@ describe("shellWallProblem (#711)", () => {
     // The guide says what the sandbox is and how to set it up (#760).
     expect(problem?.message).toContain("docs/guide/reference.md#set-up-the-sandbox");
     expect(shellWallProblem(null)).toBeNull();
+  });
+});
+
+describe("bwrapProfileProblem (#903)", () => {
+  test("asks for the install command and a restart, and does not say that the shell is open", () => {
+    const problem = bwrapProfileProblem(true);
+    expect(problem?.message).toContain("AppArmor profile for bubblewrap");
+    expect(problem?.message).toContain("Run the install command of Eva again");
+    expect(problem?.message).toContain("Then restart Eva.");
+    expect(problem?.message).toContain("docs/guide/reference.md#set-up-the-sandbox");
+    // The wall works with either profile, so the vault is not open.
+    expect(problem?.message).not.toContain("can read the vault");
+    expect(bwrapProfileProblem(false)).toBeNull();
   });
 });
 

@@ -3228,6 +3228,22 @@ describe("migrations (#119)", () => {
     expect(alerts.find((alert) => alert.key === "shell_wall")?.message).toContain("bubblewrap");
   });
 
+  test("Eva's AppArmor profile, left over next to the system's own, is a problem of its own (#903)", async () => {
+    const instance = start(
+      new FakeEngine(),
+      {},
+      { shellWallGap: () => Promise.resolve(null), bwrapProfileLeft: () => true },
+    );
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await Promise.resolve();
+    expect(alerts.find((alert) => alert.key === "bwrap_profile_left")).toMatchObject({ level: "warn" });
+    expect(instance.status().problemDetails.some((problem) => problem.key === "shell_wall")).toBe(false);
+  });
+
   test("a gap that the person cannot fix, as on Windows, is news and not a problem that stays open (#825)", async () => {
     const instance = start(
       new FakeEngine(),

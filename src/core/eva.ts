@@ -50,6 +50,7 @@ import {
   updateProblem,
   relayedProblem,
   shellWallProblem,
+  bwrapProfileProblem,
   vaultAheadProblem,
   newSecretDefaultsNews,
   vaultSecretsProblems,
@@ -279,6 +280,8 @@ export interface EvaOptions {
   readonly engines: readonly EnginePort[];
   /** Why the shell of a Project chat has no wall on this computer, or null when it has one (#711). */
   readonly shellWallGap?: () => Promise<ShellWallGap | null>;
+  /** True when Eva's AppArmor profile for bubblewrap is left over next to the system's own (#903). */
+  readonly bwrapProfileLeft?: () => boolean;
   /**
    * Whether a sandbox can start inside the sandbox on this computer, as Claude Code's Unix socket
    * filter needs (#760). Without it, the filter stays off.
@@ -1520,6 +1523,7 @@ export class Eva {
         if (problem !== null && gap?.fixable === false) this.alerts.notifyOnce("shell_wall", "news", problem.message);
         else this.alerts.report("shell_wall", problem);
       });
+      this.alerts.report("bwrap_profile_left", bwrapProfileProblem(this.options.bwrapProfileLeft?.() ?? false));
       void (this.options.nestedSandbox?.() ?? Promise.resolve(false)).then((works) => {
         this.socketFilter = works;
       });

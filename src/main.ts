@@ -6,14 +6,14 @@
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { locateEngineProgram, pathWithOwnGh, pathWithUvFolder } from "./core/engine-install/engine-install.ts";
 import { locateVoiceProgram, ownVoicePrograms } from "./core/engine-install/voice-install.ts";
 import { Eva } from "./core/eva.ts";
-import { nestedSandboxWorks, shellWallGap } from "./core/shell-wall.ts";
+import { leftoverBwrapProfile, nestedSandboxWorks, shellWallGap, type ShellWallMachine } from "./core/shell-wall.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
 import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
@@ -47,6 +47,7 @@ import { baseEnvironmentAllowlist, buildChildEnvironment } from "./shared/enviro
 import { Redactor } from "./shared/redaction.ts";
 import { exitCodes } from "./shared/exit-codes.ts";
 import { evaVersion } from "./shared/version.ts";
+import { readTextTolerant } from "./shared/files.ts";
 
 /** Within the minute that the person waits for the address; `tailscale status` is a cheap read. */
 const tailscaleReadMs = 30_000;
@@ -94,6 +95,25 @@ const host: CliHost = {
     process.once("SIGTERM", handler);
   },
 };
+
+/** This computer, as the checks of Claude Code's shell sandbox see it. */
+function shellWallMachine(): ShellWallMachine {
+  return {
+    platform: process.platform,
+    which: (name) => Bun.which(name),
+    runner: systemProcessRunner,
+    environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist, {}),
+    root: process.getuid?.() === 0,
+    readText: readTextTolerant,
+    listFiles: (folder) => {
+      try {
+        return readdirSync(folder);
+      } catch {
+        return [];
+      }
+    },
+  };
+}
 
 /** The engine's program: the one that the settings name, or one found on the disk now. */
 function locateEngine(config: EvaConfig, engine: EngineName): string | null {
@@ -217,22 +237,9 @@ async function serve(paths: HomePaths): Promise<number> {
     config: withVoicePrograms(config),
     secrets,
     engines,
-    shellWallGap: () =>
-      shellWallGap({
-        platform: process.platform,
-        which: (name) => Bun.which(name),
-        runner: systemProcessRunner,
-        environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist, {}),
-        root: process.getuid?.() === 0,
-      }),
-    nestedSandbox: () =>
-      nestedSandboxWorks({
-        platform: process.platform,
-        which: (name) => Bun.which(name),
-        runner: systemProcessRunner,
-        environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist, {}),
-        root: process.getuid?.() === 0,
-      }),
+    shellWallGap: () => shellWallGap(shellWallMachine()),
+    bwrapProfileLeft: () => leftoverBwrapProfile(shellWallMachine()),
+    nestedSandbox: () => nestedSandboxWorks(shellWallMachine()),
     runner: systemProcessRunner,
     processEnvironment: process.env,
     now: () => new Date(),

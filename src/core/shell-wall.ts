@@ -13,6 +13,69 @@ export interface ShellWallMachine {
   readonly environment: Readonly<Record<string, string>>;
   /** True when Eva runs as root, where Claude Code keeps one right in its box. */
   readonly root: boolean;
+  /** The text of a file, or null when Eva cannot read it, such as an AppArmor file (#903). */
+  readonly readText: (path: string) => string | null;
+  /** The names of the files in a folder, or none when Eva cannot read it. */
+  readonly listFiles: (folder: string) => readonly string[];
+}
+
+/** The bubblewrap that Claude Code's AppArmor profile names, and that Eva's install command covers. */
+const bwrapPath = "/usr/bin/bwrap";
+const appArmorFolder = "/etc/apparmor.d";
+/** "1" where AppArmor lets a program make a user namespace only when a profile allows it. */
+const restrictionFile = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
+/** The mark of the profile that Eva's install command adds. `install/install.sh` uses the same text. */
+const evaProfileMark = "Added by the Eva installer";
+
+/**
+ * True when an AppArmor profile in `text` attaches to bubblewrap: a profile line, not a rule, whose
+ * program path ends in `bin/bwrap`, such as `/usr/bin/bwrap` or `@{bin}/bwrap`. A rule inside a
+ * profile ends with a comma, a profile line with `{`. `install/install.sh` uses the same rule.
+ */
+export function coversBwrap(text: string): boolean {
+  return /^[ \t]*(?:profile[ \t]+\S+[ \t]+)?\S*bin\S*\/bwrap(?:[ \t]+flags=\([^)]*\))?[ \t]*\{/m.test(text);
+}
+
+interface BwrapProfiles {
+  /** Eva's install command added a profile. */
+  readonly eva: boolean;
+  /** Another profile covers bubblewrap, from the system or from the person. */
+  readonly other: boolean;
+}
+
+/** The profiles for bubblewrap directly in the AppArmor folder. */
+function bwrapProfiles(machine: ShellWallMachine): BwrapProfiles {
+  let eva = false;
+  let other = false;
+  for (const name of machine.listFiles(appArmorFolder)) {
+    if (name.startsWith(".")) continue;
+    const text = machine.readText(`${appArmorFolder}/${name}`);
+    if (text === null) continue;
+    if (text.includes(evaProfileMark)) eva = true;
+    else if (coversBwrap(text)) other = true;
+  }
+  return { eva, other };
+}
+
+/**
+ * True when Eva's AppArmor profile for bubblewrap is left over next to another one, such as after
+ * an upgrade to an Ubuntu that ships its own (#903). Both have the name `bwrap`, so the one that
+ * loads last wins. The install command removes Eva's.
+ */
+export function leftoverBwrapProfile(machine: ShellWallMachine): boolean {
+  if (machine.platform !== "linux") return false;
+  const profiles = bwrapProfiles(machine);
+  return profiles.eva && profiles.other;
+}
+
+/**
+ * True when AppArmor blocks this bubblewrap and no profile lets it run, as on Ubuntu 24.04. Eva's
+ * install command adds Claude Code's profile there. It covers only `/usr/bin/bwrap`.
+ */
+function appArmorBlocksBwrap(machine: ShellWallMachine): boolean {
+  if (machine.readText(restrictionFile)?.trim() !== "1" || machine.which("bwrap") !== bwrapPath) return false;
+  const profiles = bwrapProfiles(machine);
+  return !profiles.eva && !profiles.other;
 }
 
 /** A trial run is quick. A machine that hangs on it has no sandbox that works. */
@@ -46,7 +109,11 @@ async function linuxGap(machine: ShellWallMachine): Promise<string | null> {
     return `Claude Code's shell sandbox needs ${missing.join(" and ")}. Run the install command of Eva again, or install them, such as with \`sudo apt install bubblewrap socat\`. Then restart Eva.`;
   // An installed bubblewrap can still fail, such as where the system allows no user namespace.
   const trial = ["bwrap", "--ro-bind", "/", "/", "--unshare-user", "--unshare-net", "true"];
-  const cannot = (reason: string): string => `Claude Code's shell sandbox cannot start on this computer: ${reason}`;
+  const cannot = (reason: string): string => {
+    const why = `Claude Code's shell sandbox cannot start on this computer: ${reason}`;
+    if (!appArmorBlocksBwrap(machine)) return why;
+    return `${withFinalPeriod(why)} AppArmor blocks bubblewrap here, and no AppArmor profile lets it run. Run the install command of Eva again: it adds the profile. Then restart Eva.`;
+  };
   try {
     const result = await machine.runner.run(trial, {
       cwd: "/",
@@ -57,6 +124,10 @@ async function linuxGap(machine: ShellWallMachine): Promise<string | null> {
   } catch (error) {
     return cannot(error instanceof Error ? error.message : String(error));
   }
+}
+
+function withFinalPeriod(text: string): string {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
 /**

@@ -74,6 +74,7 @@ export function helpTitle(topic: HelpTopic): string {
 /** The help of a notice in the notification center, by the alert's key, as for a Settings card. */
 const problemHelp: Readonly<Partial<Record<string, HelpTopic>>> = {
   shell_wall: "what-a-chat-can-reach",
+  bwrap_profile_left: "what-a-chat-can-reach",
 };
 
 export function helpOfProblem(key: string): HelpTopic | null {

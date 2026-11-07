@@ -182,6 +182,32 @@ remove_uv() {
   fi
 }
 
+# The install command adds this profile where AppArmor blocks bubblewrap, as on Ubuntu 24.04 (#903).
+# Another profile for bubblewrap has the same name, so this loads the others again after the delete.
+remove_bwrap_profile() {
+  profile="/etc/apparmor.d/bwrap"
+  grep -qs "Added by the Eva installer" "$profile" || return 0
+  if ! confirm "Remove the AppArmor profile for bubblewrap that Eva added ($profile)? Without it, the shell sandbox of Claude Code cannot start on this system." n; then return 0; fi
+  parser=""
+  for candidate in "$(command -v apparmor_parser 2>/dev/null || true)" /usr/sbin/apparmor_parser /sbin/apparmor_parser; do
+    if [ -z "$parser" ] && [ -n "$candidate" ] && [ -x "$candidate" ]; then parser="$candidate"; fi
+  done
+  others="$(grep -lE '^[[:space:]]*(profile[[:space:]]+[^[:space:]]+[[:space:]]+)?[^[:space:]]*bin[^[:space:]]*/bwrap([[:space:]]+flags=\([^)]*\))?[[:space:]]*\{' /etc/apparmor.d/* 2>/dev/null | grep -Fvx "$profile" || true)"
+  root=""
+  [ "$(id -u)" -eq 0 ] || root="sudo"
+  if [ -z "$others" ] && [ -n "$parser" ]; then $root "$parser" -R "$profile" </dev/null >/dev/null 2>&1 || true; fi
+  if ! $root rm -f "$profile" </dev/null; then
+    say "  The profile stays. Remove it with: sudo rm $profile"
+    return 0
+  fi
+  if [ -n "$parser" ]; then
+    printf '%s\n' "$others" | while IFS= read -r file; do
+      [ -z "$file" ] || $root "$parser" -r "$file" </dev/null >/dev/null 2>&1 || true
+    done
+  fi
+  say "  [ok] Removed the AppArmor profile for bubblewrap."
+}
+
 remove_shared_programs() {
   say ""
   say "Eva installed some programs that every Eva on this computer uses. Other programs can use them too."
@@ -192,6 +218,7 @@ remove_shared_programs() {
   remove_tailscale
   remove_claude_code
   remove_uv
+  remove_bwrap_profile
 }
 
 after_steps() {

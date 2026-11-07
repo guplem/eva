@@ -69,25 +69,37 @@ test "$(grep -c "Added by the Eva installer" "$HOME/.bashrc")" = 1
 grep -q "Added by the Eva installer" /etc/apparmor.d/bwrap
 grep -q "profile bwrap /usr/bin/bwrap flags=(unconfined)" /etc/apparmor.d/bwrap
 grep -qx -- "-r /etc/apparmor.d/bwrap" /tmp/parser.log
-# A system that ships its own profile makes Eva's one left over: the install removes it, and loads
-# the system's one again, since both have the name bwrap.
+# A system that ships its own profile makes Eva's profile left over: the install removes it, and
+# loads the system's profile again. Both have the name bwrap, so nothing unloads.
 printf 'abi <abi/4.0>,\nprofile bwrap /usr/bin/bwrap flags=(attach_disconnected) {\n  allow userns,\n}\n' |
   sudo tee /etc/apparmor.d/bwrap-userns-restrict >/dev/null
+sudo truncate -s 0 /tmp/parser.log
 curl -fsSL file:///release/install.sh | sh | tee /tmp/install.log
 test ! -e /etc/apparmor.d/bwrap
 grep -qx -- "-r /etc/apparmor.d/bwrap-userns-restrict" /tmp/parser.log
+if grep -q -- "^-R" /tmp/parser.log; then echo "The install unloaded the name bwrap." >&2; exit 1; fi
 grep -q "Removed Eva's AppArmor profile" /tmp/install.log
 # With the system's profile, the install adds nothing.
 curl -fsSL file:///release/install.sh | sh
 test ! -e /etc/apparmor.d/bwrap
-# A profile that AppArmor cannot load does not stay for the next start.
+# Without it, the install adds the profile again. Every user can read it, also after a strict umask.
 sudo rm /etc/apparmor.d/bwrap-userns-restrict
+(umask 077 && curl -fsSL file:///release/install.sh | sh)
+test "$(stat -c %a /etc/apparmor.d/bwrap)" = 644
+# A profile that AppArmor cannot load does not stay for the next start.
+sudo rm /etc/apparmor.d/bwrap
 echo 1 >/tmp/parser-exit
 curl -fsSL file:///release/install.sh | sh | tee /tmp/install.log
 test ! -e /etc/apparmor.d/bwrap
 grep -q "needs an AppArmor profile for bubblewrap" /tmp/install.log
-# Without the restriction, the install adds nothing.
+# The person's own file, which the install does not recognize, stays as it is.
 echo 0 >/tmp/parser-exit
+echo "@{exec_path} = /usr/bin/bwrap" | sudo tee /etc/apparmor.d/bwrap >/dev/null
+curl -fsSL file:///release/install.sh | sh | tee /tmp/install.log
+test "$(cat /etc/apparmor.d/bwrap)" = "@{exec_path} = /usr/bin/bwrap"
+grep -q "needs an AppArmor profile for bubblewrap" /tmp/install.log
+sudo rm /etc/apparmor.d/bwrap
+# Without the restriction, the install adds nothing.
 echo 0 >/tmp/userns
 curl -fsSL file:///release/install.sh | sh
 test ! -e /etc/apparmor.d/bwrap
@@ -96,10 +108,14 @@ test ! -e /etc/apparmor.d/bwrap
 mkdir -p "$HOME/.config/eva-smoke" "$HOME/.config/systemd/user"
 echo "{}" >"$HOME/.config/eva-smoke/config.json"
 touch "$HOME/.config/systemd/user/eva-smoke.service"
-# The last answer removes Eva's AppArmor profile for bubblewrap (#903).
+# The last answer removes Eva's AppArmor profile for bubblewrap (#903). It reaches that question
+# only because the container has none of the shared programs, such as pi or gh. With no other
+# profile for bubblewrap, the uninstall unloads Eva's profile first.
 echo "# Added by the Eva installer (#903)." | sudo tee /etc/apparmor.d/bwrap >/dev/null
+sudo truncate -s 0 /tmp/parser.log
 printf "\ny\n\ny\n" | sh /release/uninstall.sh
 test ! -e /etc/apparmor.d/bwrap
+grep -qx -- "-R /etc/apparmor.d/bwrap" /tmp/parser.log
 test ! -e "$HOME/.local/bin/eva"
 test ! -e "$HOME/.config/eva-smoke"
 test ! -e "$HOME/.config/systemd/user/eva-smoke.service"

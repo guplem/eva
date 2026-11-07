@@ -183,26 +183,43 @@ remove_uv() {
 }
 
 # The install command adds this profile where AppArmor blocks bubblewrap, as on Ubuntu 24.04 (#903).
-# Another profile for bubblewrap has the same name, so this loads the others again after the delete.
+# The mark and the rules match install/install.sh, which explains them, and src/core/shell-wall.ts.
 remove_bwrap_profile() {
-  profile="/etc/apparmor.d/bwrap"
+  folder="/etc/apparmor.d"
+  profile="$folder/bwrap"
   grep -qs "Added by the Eva installer" "$profile" || return 0
   if ! confirm "Remove the AppArmor profile for bubblewrap that Eva added ($profile)? Without it, the shell sandbox of Claude Code cannot start on this system." n; then return 0; fi
   parser=""
   for candidate in "$(command -v apparmor_parser 2>/dev/null || true)" /usr/sbin/apparmor_parser /sbin/apparmor_parser; do
     if [ -z "$parser" ] && [ -n "$candidate" ] && [ -x "$candidate" ]; then parser="$candidate"; fi
   done
-  others="$(grep -lE '^[[:space:]]*(profile[[:space:]]+[^[:space:]]+[[:space:]]+)?[^[:space:]]*bin[^[:space:]]*/bwrap([[:space:]]+flags=\([^)]*\))?[[:space:]]*\{' /etc/apparmor.d/* 2>/dev/null | grep -Fvx "$profile" || true)"
+  # The other profiles for bubblewrap that AppArmor loads at boot. A profile with the name bwrap
+  # replaces Eva's when it loads again; another name does not, so Eva's is unloaded first then.
+  others=""
+  named=""
+  for file in "$folder"/*; do
+    [ -f "$file" ] && [ "$file" != "$profile" ] || continue
+    case "${file##*/}" in .* | *.dpkg-* | *.rpmnew | *.rpmsave | *.pacnew | *.pacsave | *.orig | *~) continue ;; esac
+    [ ! -e "$folder/disable/${file##*/}" ] || continue
+    if grep -q "Added by the Eva installer" "$file" 2>/dev/null; then continue; fi
+    if grep -Eq '^[[:space:]]*(profile[[:space:]]+bwrap([[:space:]]|\{|$)|(profile[[:space:]]+([^[:space:]{]+[[:space:]]+)?)?"?(/usr/bin|/\{,usr/\}bin|/\{usr/,\}bin|@\{bin\})/bwrap"?([[:space:]]+(flags[[:space:]]*=[[:space:]]*)?\([^)]*\))?[[:space:]]*\{)' "$file" 2>/dev/null; then
+      others="$others $file"
+      if grep -Eq '^[[:space:]]*profile[[:space:]]+bwrap([[:space:]]|\{|$)' "$file" 2>/dev/null; then named="yes"; fi
+    fi
+  done
   root=""
   [ "$(id -u)" -eq 0 ] || root="sudo"
-  if [ -z "$others" ] && [ -n "$parser" ]; then $root "$parser" -R "$profile" </dev/null >/dev/null 2>&1 || true; fi
+  unloaded=""
+  if [ -z "$named" ] && [ -n "$parser" ] && $root "$parser" -R "$profile" </dev/null >/dev/null 2>&1; then unloaded="yes"; fi
   if ! $root rm -f "$profile" </dev/null; then
+    # Without its profile in the kernel, bubblewrap stops working until the next start.
+    if [ -n "$unloaded" ]; then $root "$parser" -r "$profile" </dev/null >/dev/null 2>&1 || true; fi
     say "  The profile stays. Remove it with: sudo rm $profile"
     return 0
   fi
   if [ -n "$parser" ]; then
-    printf '%s\n' "$others" | while IFS= read -r file; do
-      [ -z "$file" ] || $root "$parser" -r "$file" </dev/null >/dev/null 2>&1 || true
+    for file in $others; do
+      $root "$parser" -r "$file" </dev/null >/dev/null 2>&1 || true
     done
   fi
   say "  [ok] Removed the AppArmor profile for bubblewrap."

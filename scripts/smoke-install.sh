@@ -86,8 +86,15 @@ test ! -e /etc/apparmor.d/bwrap
 sudo rm /etc/apparmor.d/bwrap-userns-restrict
 (umask 077 && curl -fsSL file:///release/install.sh | sh)
 test "$(stat -c %a /etc/apparmor.d/bwrap)" = 644
+# A profile with another name does not replace Eva's when it loads, so the install unloads Eva's
+# profile first.
+printf '/usr/bin/bwrap flags=(unconfined) {\n  userns,\n}\n' | sudo tee /etc/apparmor.d/usr.bin.bwrap >/dev/null
+sudo truncate -s 0 /tmp/parser.log
+curl -fsSL file:///release/install.sh | sh
+test ! -e /etc/apparmor.d/bwrap
+test "$(cat /tmp/parser.log)" = "$(printf -- '-R /etc/apparmor.d/bwrap\n-r /etc/apparmor.d/usr.bin.bwrap')"
+sudo rm /etc/apparmor.d/usr.bin.bwrap
 # A profile that AppArmor cannot load does not stay for the next start.
-sudo rm /etc/apparmor.d/bwrap
 echo 1 >/tmp/parser-exit
 curl -fsSL file:///release/install.sh | sh | tee /tmp/install.log
 test ! -e /etc/apparmor.d/bwrap

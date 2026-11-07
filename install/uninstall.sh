@@ -194,17 +194,23 @@ remove_bwrap_profile() {
     if [ -z "$parser" ] && [ -n "$candidate" ] && [ -x "$candidate" ]; then parser="$candidate"; fi
   done
   # The other profiles for bubblewrap that AppArmor loads at boot. A profile with the name bwrap
-  # replaces Eva's when it loads again; another name does not, so Eva's is unloaded first then.
+  # replaces Eva's when it loads again. A profile with another name does not, so this unloads
+  # Eva's profile first in that case.
+  named_bwrap='^[[:space:]]*profile[[:space:]]+"?bwrap"?([[:space:]]|\{|$)'
+  bwrap_profile_line='^[[:space:]]*(profile[[:space:]]+"?bwrap"?([[:space:]]|\{|$)|(profile[[:space:]]+([^[:space:]{]+[[:space:]]+)?)?"?(/usr/bin|/\{,usr/\}bin|/\{usr/,\}bin|@\{bin\})/bwrap"?([[:space:]]+(flags[[:space:]]*=[[:space:]]*)?\([^)]*\))?[[:space:]]*\{)'
+  userns_rule='^[[:space:]]*(allow[[:space:]]+)?userns[[:space:]]*,'
   others=""
   named=""
   for file in "$folder"/*; do
     [ -f "$file" ] && [ "$file" != "$profile" ] || continue
-    case "${file##*/}" in .* | *.dpkg-* | *.rpmnew | *.rpmsave | *.pacnew | *.pacsave | *.orig | *~) continue ;; esac
-    [ ! -e "$folder/disable/${file##*/}" ] || continue
+    case "${file##*/}" in
+    .* | *.dpkg-* | *.rpmnew | *.rpmsave | *.pacnew | *.pacsave | *.orig | *.rej | *~) continue ;;
+    esac
+    if [ -e "$folder/disable/${file##*/}" ] || [ -L "$folder/disable/${file##*/}" ]; then continue; fi
     if grep -q "Added by the Eva installer" "$file" 2>/dev/null; then continue; fi
-    if grep -Eq '^[[:space:]]*(profile[[:space:]]+bwrap([[:space:]]|\{|$)|(profile[[:space:]]+([^[:space:]{]+[[:space:]]+)?)?"?(/usr/bin|/\{,usr/\}bin|/\{usr/,\}bin|@\{bin\})/bwrap"?([[:space:]]+(flags[[:space:]]*=[[:space:]]*)?\([^)]*\))?[[:space:]]*\{)' "$file" 2>/dev/null; then
+    if grep -Eq "$bwrap_profile_line" "$file" 2>/dev/null && grep -Eq "$userns_rule" "$file" 2>/dev/null; then
       others="$others $file"
-      if grep -Eq '^[[:space:]]*profile[[:space:]]+bwrap([[:space:]]|\{|$)' "$file" 2>/dev/null; then named="yes"; fi
+      if grep -Eq "$named_bwrap" "$file" 2>/dev/null; then named="yes"; fi
     fi
   done
   root=""

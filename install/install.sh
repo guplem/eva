@@ -146,25 +146,30 @@ userns_file="${EVA_INSTALL_USERNS_FILE:-/proc/sys/kernel/apparmor_restrict_unpri
 sandbox_guide="https://github.com/guplem/eva/blob/main/docs/guide/reference.md#apparmor-and-bubblewrap"
 # A profile line, not a rule: a rule inside a profile ends with a comma, a profile line with "{".
 # It covers bubblewrap when it has the name bwrap, or a path that covers /usr/bin/bwrap.
-named_bwrap='^[[:space:]]*profile[[:space:]]+bwrap([[:space:]]|\{|$)'
-bwrap_profile_line='^[[:space:]]*(profile[[:space:]]+bwrap([[:space:]]|\{|$)|(profile[[:space:]]+([^[:space:]{]+[[:space:]]+)?)?"?(/usr/bin|/\{,usr/\}bin|/\{usr/,\}bin|@\{bin\})/bwrap"?([[:space:]]+(flags[[:space:]]*=[[:space:]]*)?\([^)]*\))?[[:space:]]*\{)'
+named_bwrap='^[[:space:]]*profile[[:space:]]+"?bwrap"?([[:space:]]|\{|$)'
+bwrap_profile_line='^[[:space:]]*(profile[[:space:]]+"?bwrap"?([[:space:]]|\{|$)|(profile[[:space:]]+([^[:space:]{]+[[:space:]]+)?)?"?(/usr/bin|/\{,usr/\}bin|/\{usr/,\}bin|@\{bin\})/bwrap"?([[:space:]]+(flags[[:space:]]*=[[:space:]]*)?\([^)]*\))?[[:space:]]*\{)'
+# Only a profile that allows user namespaces can replace Eva's profile.
+userns_rule='^[[:space:]]*(allow[[:space:]]+)?userns[[:space:]]*,'
 
 # AppArmor skips these files at boot: copies that a package update leaves, and disabled profiles.
 skipped_profile() {
   case "${1##*/}" in
-    .* | *.dpkg-* | *.rpmnew | *.rpmsave | *.pacnew | *.pacsave | *.orig | *~) return 0 ;;
+    .* | *.dpkg-* | *.rpmnew | *.rpmsave | *.pacnew | *.pacsave | *.orig | *.rej | *~) return 0 ;;
   esac
-  [ -e "$apparmor_folder/disable/${1##*/}" ]
+  [ -e "$apparmor_folder/disable/${1##*/}" ] || [ -L "$apparmor_folder/disable/${1##*/}" ]
 }
 
-# Prints each file that AppArmor loads at boot, other than Eva's, with a profile for bubblewrap.
+# Prints each file that AppArmor loads at boot, other than Eva's, with a profile for bubblewrap
+# that allows user namespaces.
 other_bwrap_profiles() {
   for file in "$apparmor_folder"/*; do
     [ -f "$file" ] || continue
     if skipped_profile "$file"; then continue; fi
     # A copy of Eva's profile under another name is no profile of the system or of the person.
     if grep -q "$eva_profile_mark" "$file" 2>/dev/null; then continue; fi
-    if grep -Eq "$bwrap_profile_line" "$file" 2>/dev/null; then printf '%s\n' "$file"; fi
+    if grep -Eq "$bwrap_profile_line" "$file" 2>/dev/null && grep -Eq "$userns_rule" "$file" 2>/dev/null; then
+      printf '%s\n' "$file"
+    fi
   done
   return 0
 }
@@ -189,8 +194,8 @@ apparmor_parser_path() {
 }
 
 # Ubuntu's own profile also has the name bwrap: loading it again replaces Eva's in the kernel, while
-# an unload of Eva's would remove Ubuntu's too. Another name does not replace Eva's, so Eva's profile
-# is unloaded first then. A failed delete loads it again, so bubblewrap keeps working.
+# an unload of Eva's would remove Ubuntu's too. A profile with another name does not replace Eva's,
+# so this unloads Eva's profile first in that case. A failed delete loads it again.
 remove_eva_profile() {
   parser="$1"
   others="$2"
@@ -256,8 +261,10 @@ set_up_bwrap_profile() {
   # Claude Code's profile covers only this path. Claude Code runs the first bwrap on the PATH.
   [ "$(command -v bwrap 2>/dev/null || true)" = "/usr/bin/bwrap" ] || return 0
   parser="$(apparmor_parser_path)"
-  # A file bwrap without Eva's mark belongs to the person: the install never writes over it.
-  if [ -e "$eva_profile" ] || [ -z "$parser" ] || ! can_be_root; then
+  # A file bwrap without Eva's mark belongs to the person: the install never writes over it. A
+  # disabled name bwrap would not load at the next start.
+  if [ -e "$eva_profile" ] || [ -e "$apparmor_folder/disable/bwrap" ] || [ -L "$apparmor_folder/disable/bwrap" ] ||
+    [ -z "$parser" ] || ! can_be_root; then
     say "  The shell sandbox of Project chats needs an AppArmor profile for bubblewrap on this system. See $sandbox_guide"
     return 0
   fi

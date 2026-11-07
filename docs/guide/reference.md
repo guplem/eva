@@ -435,7 +435,7 @@ pi has no sandbox. Its file tools stay walled, but its shell can read the closed
 
 A socket is a private door between two programs on the same computer. Docker, systemd and `ssh-agent` each have one. Through some of them, a command could ask a program outside the sandbox to read the closed folders.
 
-On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Newer Ubuntu releases do not allow that: the AppArmor profile that they ship for bubblewrap lets it build one sandbox, but not a second one inside it. There, the filter would break every command, even `echo`. On Ubuntu 24.04, with the profile that Eva's install command adds, the second sandbox works.
+On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Ubuntu 25.04 and later do not allow that: the AppArmor profile that they ship for bubblewrap lets it build one sandbox, but not a second one inside it. There, the filter would break every command, even `echo`. On Ubuntu 24.04, with the profile that Eva's install command adds, the second sandbox works.
 
 So at start, Eva tries a sandbox inside a sandbox:
 
@@ -456,14 +456,14 @@ At start, Eva tries the sandbox. When it cannot start, a notice says why. The ch
 
 ### AppArmor and bubblewrap
 
-AppArmor is the part of Ubuntu that gives each program its rights. To build its box, bubblewrap makes a user namespace: a private room where a program acts as the owner. Some attacks on Linux use such a room, so Ubuntu's setting `kernel.apparmor_restrict_unprivileged_userns` lets a program make one only when an AppArmor profile allows it.
+AppArmor is the part of Ubuntu that gives each program its rights. To build its box, bubblewrap makes a user namespace: a private room where a program acts as the owner. Some attacks on Linux use such a room. So Ubuntu's setting `kernel.apparmor_restrict_unprivileged_userns` lets a program make one only when an AppArmor profile allows it.
 
-- **Newer Ubuntu releases** ship a profile for bubblewrap. The sandbox needs nothing more.
+- **Ubuntu 25.04 and later** ship a profile for bubblewrap. The sandbox needs nothing more.
 - **Ubuntu 24.04** ships none, so the sandbox cannot start. The notice then says "AppArmor blocks bubblewrap here". The install command adds the profile from [Claude Code's guide](https://code.claude.com/docs/en/sandboxing), with a comment that says that Eva added it. For an Eva from before, run the install command again. Then restart Eva.
 
-The profile lets any program use bubblewrap to make a user namespace. This trade-off closes a larger gap: without the profile, the shell of a project chat can read your vault and your logins. Keep Ubuntu's setting on: it still protects every other program.
+The profile lets any program use bubblewrap to make a user namespace. Without the profile, the sandbox cannot start, and the shell of a project chat can read your vault and your logins. Keep Ubuntu's setting on: it still protects every other program.
 
-To add the profile by hand, run these commands. Then restart Eva.
+To add the profile by hand, run these commands. Then restart Eva. A profile that you add by hand stays yours: the install command never changes or removes it.
 
 ```bash
 sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
@@ -478,9 +478,16 @@ EOF
 sudo apparmor_parser -r /etc/apparmor.d/bwrap
 ```
 
-The install command adds the profile only when the `bwrap` on your `PATH` is `/usr/bin/bwrap`, and no other profile covers it.
+The install command adds the profile only when all of these are true:
 
-After an upgrade to an Ubuntu that ships its own profile, Eva's profile is left over. A notice says so. Run the install command again: it removes Eva's profile, and keeps the system's one. Then restart Eva. The uninstall command also asks to remove Eva's profile.
+- Ubuntu's setting is on.
+- The `bwrap` on your `PATH` is `/usr/bin/bwrap`.
+- The AppArmor tools are there.
+- No other profile covers bubblewrap.
+
+When `sudo` is missing or refuses, the install command shows a link to this section and goes on.
+
+After an upgrade to an Ubuntu that ships its own profile, Eva's profile is left over. A notice says so. Run the install command again: it removes Eva's profile, and keeps the system's profile. Then restart Eva. The uninstall command also asks to remove Eva's profile.
 
 ### Limits of the wall
 

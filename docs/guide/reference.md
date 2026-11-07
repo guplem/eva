@@ -435,7 +435,7 @@ pi has no sandbox. Its file tools stay walled, but its shell can read the closed
 
 A socket is a private door between two programs on the same computer. Docker, systemd and `ssh-agent` each have one. Through some of them, a command could ask a program outside the sandbox to read the closed folders.
 
-On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Ubuntu 25.04 and later do not allow that: the AppArmor profile that they ship for bubblewrap lets it build one sandbox, but not a second one inside it. There, the filter would break every command, even `echo`. On Ubuntu 24.04, with the profile that Eva's install command adds, the second sandbox works.
+On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Ubuntu 25.04 and later do not allow that. Their AppArmor profile for bubblewrap lets it build one sandbox, but not a second one inside it. There, the filter would break every command, even `echo`. On Ubuntu 24.04, with the profile that Eva's install command adds, the second sandbox works.
 
 So at start, Eva tries a sandbox inside a sandbox:
 
@@ -456,7 +456,7 @@ At start, Eva tries the sandbox. When it cannot start, a notice says why. The ch
 
 ### AppArmor and bubblewrap
 
-AppArmor is the part of Ubuntu that gives each program its rights. To build its box, bubblewrap makes a user namespace: a private room where a program acts as the owner. Some attacks on Linux use such a room. So Ubuntu's setting `kernel.apparmor_restrict_unprivileged_userns` lets a program make one only when an AppArmor profile allows it.
+AppArmor is the part of Ubuntu that gives each program its rights. To build its sandbox, bubblewrap makes a user namespace: a private room where a program acts as the owner. Some attacks on Linux use such a room. So Ubuntu's setting `kernel.apparmor_restrict_unprivileged_userns` lets a program make one only when an AppArmor profile allows it.
 
 - **Ubuntu 25.04 and later** ship a profile for bubblewrap. The sandbox needs nothing more.
 - **Ubuntu 24.04** ships none, so the sandbox cannot start. The notice then says "AppArmor blocks bubblewrap here". The install command adds the profile from [Claude Code's guide](https://code.claude.com/docs/en/sandboxing), with a comment that says that Eva added it. For an Eva from before, run the install command again. Then restart Eva.

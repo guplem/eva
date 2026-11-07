@@ -6107,7 +6107,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();
-  await expect(page.getByText("Created 2025-05-01T08:00")).toBeVisible();
+  await expect(page.getByText("Created May 1, 2025, 08:00")).toBeVisible();
   // The page uses the cards of Settings and Repository setup, so it looks like them.
   await expect(page.getByRole("region", { name: "Details" })).toHaveClass(/\bcard\b/);
   await expect(page.getByRole("region", { name: "Whole file" })).toHaveClass(/\bcard\b/);

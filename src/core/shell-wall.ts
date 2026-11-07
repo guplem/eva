@@ -35,20 +35,23 @@ const evaProfileName = "bwrap";
 const coveringPath = String.raw`"?(?:/usr/bin|/\{,usr/\}bin|/\{usr/,\}bin|@\{bin\})/bwrap"?`;
 /** A profile line, not a rule: a rule inside a profile ends with a comma, a profile line with `{`. */
 const bwrapProfileLine = new RegExp(
-  String.raw`^[ \t]*(?:profile[ \t]+bwrap(?:[ \t{]|$)|(?:profile[ \t]+(?:[^\s{]+[ \t]+)?)?${coveringPath}(?:[ \t]+(?:flags[ \t]*=[ \t]*)?\([^)]*\))?[ \t]*\{)`,
+  String.raw`^[ \t]*(?:profile[ \t]+"?bwrap"?(?:[ \t{]|$)|(?:profile[ \t]+(?:[^\s{]+[ \t]+)?)?${coveringPath}(?:[ \t]+(?:flags[ \t]*=[ \t]*)?\([^)]*\))?[ \t]*\{)`,
   "m",
 );
+/** Only a profile that allows user namespaces can replace Eva's profile. */
+const usernsRule = /^[ \t]*(?:allow[ \t]+)?userns[ \t]*,/m;
 
 /**
- * True when an AppArmor profile in `text` covers bubblewrap: it has the name `bwrap`, as Ubuntu's
- * own profile has, or its program path covers `/usr/bin/bwrap`, such as `@{bin}/bwrap`.
+ * True when an AppArmor profile in `text` covers bubblewrap and lets it run: it has the name
+ * `bwrap`, as Ubuntu's own profile has, or a program path that covers `/usr/bin/bwrap`, such as
+ * `@{bin}/bwrap`, and it allows user namespaces.
  */
 export function coversBwrap(text: string): boolean {
-  return bwrapProfileLine.test(text);
+  return bwrapProfileLine.test(text) && usernsRule.test(text);
 }
 
 /** The names that AppArmor skips at boot, such as the copies that a package update leaves. */
-const skippedName = /^\.|\.dpkg-[^/]*$|\.rpmnew$|\.rpmsave$|\.pacnew$|\.pacsave$|\.orig$|~$/;
+const skippedName = /^\.|\.dpkg-[^/]*$|\.rpmnew$|\.rpmsave$|\.pacnew$|\.pacsave$|\.orig$|\.rej$|~$/;
 
 interface BwrapProfiles {
   /** Eva's install command added a profile. */
@@ -63,12 +66,15 @@ function bwrapProfiles(machine: ShellWallMachine): BwrapProfiles {
   let eva = false;
   let other = false;
   for (const name of machine.listFiles(appArmorFolder)) {
-    if (skippedName.test(name) || disabled.has(name)) continue;
     const text = machine.readText(`${appArmorFolder}/${name}`);
     if (text === null) continue;
-    // A copy of Eva's profile under another name is no profile of the system or of the person.
-    if (text.includes(evaProfileMark)) eva ||= name === evaProfileName;
-    else if (coversBwrap(text)) other = true;
+    // The install command finds Eva's file by its path and mark only, and so does this check.
+    if (text.includes(evaProfileMark)) {
+      eva ||= name === evaProfileName;
+      // A copy of Eva's profile under another name is no profile of the system or of the person.
+      continue;
+    }
+    if (!skippedName.test(name) && !disabled.has(name) && coversBwrap(text)) other = true;
   }
   return { eva, other };
 }
@@ -99,6 +105,8 @@ function appArmorBlocksBwrap(machine: ShellWallMachine): boolean {
   if (machine.readText(restrictionFile)?.trim() !== "1" || machine.which("bwrap") !== bwrapPath) return false;
   const names = machine.listFiles(appArmorFolder);
   if (names.length === 0 || names.includes(evaProfileName) || !hasAppArmorParser(machine)) return false;
+  // A disabled name bwrap would not load at the next start, so the install command adds nothing.
+  if (machine.listFiles(`${appArmorFolder}/disable`).includes(evaProfileName)) return false;
   const profiles = bwrapProfiles(machine);
   return !profiles.eva && !profiles.other;
 }

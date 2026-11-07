@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   coversBwrap,
   evaProfileMark,
@@ -94,6 +95,14 @@ describe("shellWallGap where AppArmor blocks bubblewrap (#903)", () => {
     expect(reason).toContain("RTM_NEWADDR");
   });
 
+  test("the parser counts where the PATH finds it, or in /sbin", async () => {
+    const { ["/usr/sbin/apparmor_parser"]: _parser, ...noParser } = ubuntu2404;
+    expect(await reasonOf({ ...noParser, "/sbin/apparmor_parser": "" })).toContain("AppArmor");
+    expect(await reasonOf(noParser, blockedByAppArmor, found(["bwrap", "socat", "apparmor_parser"]))).toContain(
+      "AppArmor",
+    );
+  });
+
   test("a trial that hangs there names the profile too", async () => {
     const hangs = (): ProcessResult => {
       throw new EvaError("process_timeout", "bwrap did not end in time.");
@@ -116,6 +125,8 @@ describe("shellWallGap where AppArmor blocks bubblewrap (#903)", () => {
     const { ["/usr/sbin/apparmor_parser"]: _parser, ...noParser } = ubuntu2404;
     await plain(noParser);
     await plain({ [restrictionFile]: "1", "/usr/sbin/apparmor_parser": "" });
+    // A disabled name bwrap, which would not load at the next start.
+    await plain({ ...ubuntu2404, "/etc/apparmor.d/disable/bwrap": "" });
     // Eva's profile is there but does not work, such as one that did not load: running the install
     // again changes nothing.
     await plain({ ...ubuntu2404, "/etc/apparmor.d/bwrap": evaProfile });
@@ -160,6 +171,16 @@ describe("leftoverBwrapProfile (#903)", () => {
         "/etc/apparmor.d/disable/bwrap-userns-restrict": "",
       }),
     ).toBe(false);
+    // Eva's own file counts by its path and mark, also when it is disabled, as in the install command.
+    expect(
+      leftoverBwrapProfile(
+        machine("linux", [], undefined, {
+          "/etc/apparmor.d/bwrap": evaProfile,
+          "/etc/apparmor.d/disable/bwrap": "",
+          "/etc/apparmor.d/bwrap-userns-restrict": systemProfile,
+        }),
+      ),
+    ).toBe(true);
     // The install command removes only /etc/apparmor.d/bwrap, so the notice counts only that file.
     expect(
       leftoverBwrapProfile(
@@ -173,31 +194,49 @@ describe("leftoverBwrapProfile (#903)", () => {
 });
 
 describe("coversBwrap (#903)", () => {
+  /** A profile with `header` that allows user namespaces. */
+  const allowing = (header: string): string => `${header}\n  userns,\n}\n`;
+
   test("a profile with the name bwrap, or for a path that covers /usr/bin/bwrap, covers bubblewrap", () => {
     expect(coversBwrap(systemProfile)).toBe(true);
-    expect(coversBwrap("/usr/bin/bwrap flags=(unconfined) {\n}\n")).toBe(true);
-    expect(coversBwrap("profile /usr/bin/bwrap {\n}\n")).toBe(true);
-    expect(coversBwrap("profile other /{,usr/}bin/bwrap {\n}\n")).toBe(true);
-    expect(coversBwrap("profile other @{bin}/bwrap {\n}\n")).toBe(true);
-    expect(coversBwrap('profile other "/usr/bin/bwrap" {\n}\n')).toBe(true);
-    expect(coversBwrap("profile other /usr/bin/bwrap (unconfined) {\n}\n")).toBe(true);
-    expect(coversBwrap("profile other /usr/bin/bwrap flags = (unconfined) {\n}\n")).toBe(true);
+    expect(coversBwrap(allowing("/usr/bin/bwrap flags=(unconfined) {"))).toBe(true);
+    expect(coversBwrap(allowing("profile /usr/bin/bwrap {"))).toBe(true);
+    expect(coversBwrap(allowing("profile other /{,usr/}bin/bwrap {"))).toBe(true);
+    expect(coversBwrap(allowing("profile other /{usr/,}bin/bwrap {"))).toBe(true);
+    expect(coversBwrap(allowing("profile other @{bin}/bwrap {"))).toBe(true);
+    expect(coversBwrap(allowing('profile other "/usr/bin/bwrap" {'))).toBe(true);
+    expect(coversBwrap(allowing('profile "bwrap" /usr/local/bin/bwrap {'))).toBe(true);
+    expect(coversBwrap(allowing("profile other /usr/bin/bwrap (unconfined) {"))).toBe(true);
+    expect(coversBwrap(allowing("profile other /usr/bin/bwrap flags = (unconfined) {"))).toBe(true);
     // A profile with a path in a variable, as some profile collections write it.
-    expect(coversBwrap("@{exec_path} = @{bin}/bwrap\nprofile bwrap @{exec_path} flags=(complain) {\n}\n")).toBe(true);
+    expect(coversBwrap(allowing("@{exec_path} = @{bin}/bwrap\nprofile bwrap @{exec_path} flags=(complain) {"))).toBe(
+      true,
+    );
   });
 
-  test("a comment, another program, or a rule inside a profile does not", () => {
-    expect(coversBwrap("# profile bwrap /usr/bin/bwrap {\n")).toBe(false);
-    expect(coversBwrap("#/usr/bin/bwrap flags=(unconfined) {\n")).toBe(false);
-    expect(coversBwrap("profile mine /usr/local/bin/bwrap {\n}\n")).toBe(false);
-    expect(coversBwrap("profile unprivileged_userns {\n  allow userns,\n}\n")).toBe(false);
-    expect(coversBwrap("profile unpriv_bwrap flags=(attach_disconnected) {\n}\n")).toBe(false);
-    expect(coversBwrap("profile chrome /opt/google/chrome/chrome {\n  /usr/bin/bwrap ix,\n}\n")).toBe(false);
+  test("a comment, another program, a rule inside a profile, or no user namespaces does not", () => {
+    expect(coversBwrap(allowing("# profile bwrap /usr/bin/bwrap {"))).toBe(false);
+    expect(coversBwrap(allowing("#/usr/bin/bwrap flags=(unconfined) {"))).toBe(false);
+    expect(coversBwrap(allowing("profile mine /usr/local/bin/bwrap {"))).toBe(false);
+    expect(coversBwrap(allowing("profile unprivileged_userns {"))).toBe(false);
+    expect(coversBwrap(allowing("profile unpriv_bwrap flags=(attach_disconnected) {"))).toBe(false);
+    expect(coversBwrap(allowing("profile chrome /opt/google/chrome/chrome {\n  /usr/bin/bwrap ix,"))).toBe(false);
+    // Without user namespaces, this profile cannot replace Eva's: bubblewrap would stop.
+    expect(coversBwrap("profile bwrap /usr/bin/bwrap {\n  /usr/bin/bwrap mr,\n}\n")).toBe(false);
   });
 
-  test("the install and uninstall scripts use Eva's mark", () => {
-    for (const script of ["install/install.sh", "install/uninstall.sh"])
-      expect(readFileSync(script, "utf-8")).toContain(evaProfileMark);
+  test("the install and uninstall scripts use the same mark and rules", () => {
+    const script = (name: string): string => readFileSync(join(import.meta.dir, "../../../install", name), "utf-8");
+    const install = script("install.sh");
+    const uninstall = script("uninstall.sh");
+    for (const text of [install, uninstall]) expect(text).toContain(evaProfileMark);
+    for (const rule of ["named_bwrap", "bwrap_profile_line", "userns_rule"]) {
+      const line = new RegExp(`^${rule}='.*'$`, "m").exec(install)?.[0];
+      expect(line).toBeDefined();
+      expect(uninstall).toContain(line ?? "");
+    }
+    const skipped = ".* | *.dpkg-* | *.rpmnew | *.rpmsave | *.pacnew | *.pacsave | *.orig | *.rej | *~)";
+    for (const text of [install, uninstall]) expect(text).toContain(skipped);
   });
 });
 

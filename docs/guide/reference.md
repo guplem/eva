@@ -435,7 +435,7 @@ pi has no sandbox. Its file tools stay walled, but its shell can read the closed
 
 A socket is a private door between two programs on the same computer. Docker, systemd and `ssh-agent` each have one. Through some of them, a command could ask a program outside the sandbox to read the closed folders.
 
-On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Ubuntu 24.04 and later do not allow that: their setting `kernel.apparmor_restrict_unprivileged_userns` blocks it. There, the filter would break every command, even `echo`.
+On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Newer Ubuntu releases do not allow that: the AppArmor profile that they ship for bubblewrap lets it build one sandbox, but not a second one inside it. There, the filter would break every command, even `echo`. On Ubuntu 24.04, with the profile that Eva's install command adds, the second sandbox works.
 
 So at start, Eva tries a sandbox inside a sandbox:
 
@@ -448,10 +448,39 @@ Without the filter, the wall is weaker: Eva's list can miss a socket in another 
 ### Set up the sandbox
 
 - **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The one-command install adds them. For an Eva from before, run the install command again, or run `sudo apt install bubblewrap socat`. Then restart Eva.
+- **Ubuntu 24.04:** the sandbox also needs an AppArmor profile for bubblewrap. See [AppArmor and bubblewrap](#apparmor-and-bubblewrap).
 - **macOS:** the sandbox needs nothing.
 - **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders. Eva tells you this once, in the notification center. The file tools stay walled.
 
 At start, Eva tries the sandbox. When it cannot start, a notice says why. The chats still run, and their file tools stay walled.
+
+### AppArmor and bubblewrap
+
+AppArmor is the part of Ubuntu that gives each program its rights. To build its box, bubblewrap makes a user namespace: a private room where a program acts as the owner. Some attacks on Linux use such a room, so Ubuntu's setting `kernel.apparmor_restrict_unprivileged_userns` lets a program make one only when an AppArmor profile allows it.
+
+- **Newer Ubuntu releases** ship a profile for bubblewrap. The sandbox needs nothing more.
+- **Ubuntu 24.04** ships none, so the sandbox cannot start. The notice then says "AppArmor blocks bubblewrap here". The install command adds the profile from [Claude Code's guide](https://code.claude.com/docs/en/sandboxing), with a comment that says that Eva added it. For an Eva from before, run the install command again. Then restart Eva.
+
+The profile lets any program use bubblewrap to make a user namespace. This trade-off closes a larger gap: without the profile, the shell of a project chat can read your vault and your logins. Keep Ubuntu's setting on: it still protects every other program.
+
+To add the profile by hand, run these commands. Then restart Eva.
+
+```bash
+sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+  include if exists <local/bwrap>
+}
+EOF
+sudo apparmor_parser -r /etc/apparmor.d/bwrap
+```
+
+The install command adds the profile only when the `bwrap` on your `PATH` is `/usr/bin/bwrap`, and no other profile covers it.
+
+After an upgrade to an Ubuntu that ships its own profile, Eva's profile is left over. A notice says so. Run the install command again: it removes Eva's profile, and keeps the system's one. Then restart Eva. The uninstall command also asks to remove Eva's profile.
 
 ### Limits of the wall
 

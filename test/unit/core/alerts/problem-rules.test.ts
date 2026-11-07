@@ -315,7 +315,7 @@ describe("bwrapProfileProblem (#903)", () => {
     expect(problem?.message).toContain("AppArmor profile for bubblewrap");
     expect(problem?.message).toContain("Run the install command of Eva again");
     expect(problem?.message).toContain("Then restart Eva.");
-    expect(problem?.message).toContain("docs/guide/reference.md#set-up-the-sandbox");
+    expect(problem?.message).toContain("docs/guide/reference.md#apparmor-and-bubblewrap");
     // The wall works with either profile, so the vault is not open.
     expect(problem?.message).not.toContain("can read the vault");
     expect(bwrapProfileProblem(false)).toBeNull();

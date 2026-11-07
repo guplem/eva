@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   coversBwrap,
+  evaProfileMark,
   leftoverBwrapProfile,
   nestedSandboxWorks,
   shellWallGap,
@@ -66,13 +68,25 @@ const blockedByAppArmor = (): ProcessResult => ({
   stderr: "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted",
 });
 
+/** The files of a fresh Ubuntu 24.04, where AppArmor restricts user namespaces. */
+const ubuntu2404: Readonly<Record<string, string>> = {
+  [restrictionFile]: "1\n",
+  "/etc/apparmor.d/unprivileged_userns": "profile unprivileged_userns {\n  allow userns,\n}\n",
+  "/usr/sbin/apparmor_parser": "",
+};
+
+async function reasonOf(
+  files: Readonly<Record<string, string>>,
+  reply: () => ProcessResult = blockedByAppArmor,
+  which = found(["bwrap", "socat"]),
+): Promise<string> {
+  const gap = await shellWallGap({ ...machine("linux", [], reply, files), which });
+  return gap?.reason ?? "";
+}
+
 describe("shellWallGap where AppArmor blocks bubblewrap (#903)", () => {
   test("Ubuntu 24.04, with no profile for bubblewrap, names the profile and the install command", async () => {
-    const ubuntu = machine("linux", ["bwrap", "socat"], blockedByAppArmor, {
-      [restrictionFile]: "1\n",
-      "/etc/apparmor.d/unprivileged_userns": "profile unprivileged_userns {\n  allow userns,\n}\n",
-    });
-    const reason = (await shellWallGap(ubuntu))?.reason ?? "";
+    const reason = await reasonOf(ubuntu2404);
     expect(reason).toContain("AppArmor");
     expect(reason).toContain("Run the install command of Eva again");
     expect(reason).toContain("Then restart Eva.");
@@ -80,21 +94,33 @@ describe("shellWallGap where AppArmor blocks bubblewrap (#903)", () => {
     expect(reason).toContain("RTM_NEWADDR");
   });
 
-  test("a profile for bubblewrap, no restriction, or a bubblewrap outside /usr/bin keeps the plain reason", async () => {
-    const plain = async (
-      files: Readonly<Record<string, string>>,
-      which = found(["bwrap", "socat"]),
-    ): Promise<string> => {
-      const gap = await shellWallGap({ ...machine("linux", [], blockedByAppArmor, files), which });
-      return gap?.reason ?? "";
+  test("a trial that hangs there names the profile too", async () => {
+    const hangs = (): ProcessResult => {
+      throw new EvaError("process_timeout", "bwrap did not end in time.");
     };
-    expect(
-      await plain({ [restrictionFile]: "1", "/etc/apparmor.d/bwrap-userns-restrict": systemProfile }),
-    ).not.toContain("AppArmor");
-    expect(await plain({ [restrictionFile]: "0" })).not.toContain("AppArmor");
-    expect(await plain({})).not.toContain("AppArmor");
+    expect(await reasonOf(ubuntu2404, hangs)).toContain("Run the install command of Eva again");
+  });
+
+  test("where the install command would add nothing, the reason stays plain", async () => {
+    const plain = async (files: Readonly<Record<string, string>>, which = found(["bwrap", "socat"])): Promise<void> => {
+      expect(await reasonOf(files, blockedByAppArmor, which)).not.toContain("AppArmor");
+    };
+    // The system has its own profile, or no restriction.
+    await plain({ ...ubuntu2404, "/etc/apparmor.d/bwrap-userns-restrict": systemProfile });
+    await plain({ ...ubuntu2404, [restrictionFile]: "0" });
+    await plain({});
+    // A bubblewrap outside /usr/bin, which the profile does not cover.
     const local = (name: string): string | null => (name === "bwrap" ? "/usr/local/bin/bwrap" : `/usr/bin/${name}`);
-    expect(await plain({ [restrictionFile]: "1" }, local)).not.toContain("AppArmor");
+    await plain(ubuntu2404, local);
+    // No AppArmor parser, or no AppArmor folder.
+    const { ["/usr/sbin/apparmor_parser"]: _parser, ...noParser } = ubuntu2404;
+    await plain(noParser);
+    await plain({ [restrictionFile]: "1", "/usr/sbin/apparmor_parser": "" });
+    // Eva's profile is there but does not work, such as one that did not load: running the install
+    // again changes nothing.
+    await plain({ ...ubuntu2404, "/etc/apparmor.d/bwrap": evaProfile });
+    // The person's own file, which the install command never writes over.
+    await plain({ ...ubuntu2404, "/etc/apparmor.d/bwrap": "@{exec_path} = /usr/bin/bwrap\n" });
   });
 });
 
@@ -122,20 +148,56 @@ describe("leftoverBwrapProfile (#903)", () => {
       ),
     ).toBe(false);
   });
+
+  test("a profile that AppArmor skips at boot, or a copy of Eva's under another name, does not count", () => {
+    const left = (files: Readonly<Record<string, string>>): boolean =>
+      leftoverBwrapProfile(machine("linux", [], undefined, { "/etc/apparmor.d/bwrap": evaProfile, ...files }));
+    expect(left({ "/etc/apparmor.d/bwrap-userns-restrict.dpkg-old": systemProfile })).toBe(false);
+    expect(left({ "/etc/apparmor.d/bwrap-userns-restrict~": systemProfile })).toBe(false);
+    expect(
+      left({
+        "/etc/apparmor.d/bwrap-userns-restrict": systemProfile,
+        "/etc/apparmor.d/disable/bwrap-userns-restrict": "",
+      }),
+    ).toBe(false);
+    // The install command removes only /etc/apparmor.d/bwrap, so the notice counts only that file.
+    expect(
+      leftoverBwrapProfile(
+        machine("linux", [], undefined, {
+          "/etc/apparmor.d/bwrap.bak": evaProfile,
+          "/etc/apparmor.d/bwrap-userns-restrict": systemProfile,
+        }),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("coversBwrap (#903)", () => {
-  test("a profile line whose program path ends in bin/bwrap covers bubblewrap", () => {
+  test("a profile with the name bwrap, or for a path that covers /usr/bin/bwrap, covers bubblewrap", () => {
     expect(coversBwrap(systemProfile)).toBe(true);
     expect(coversBwrap("/usr/bin/bwrap flags=(unconfined) {\n}\n")).toBe(true);
-    expect(coversBwrap("profile bwrap /{,usr/}bin/bwrap {\n}\n")).toBe(true);
-    expect(coversBwrap("profile bwrap @{bin}/bwrap {\n}\n")).toBe(true);
+    expect(coversBwrap("profile /usr/bin/bwrap {\n}\n")).toBe(true);
+    expect(coversBwrap("profile other /{,usr/}bin/bwrap {\n}\n")).toBe(true);
+    expect(coversBwrap("profile other @{bin}/bwrap {\n}\n")).toBe(true);
+    expect(coversBwrap('profile other "/usr/bin/bwrap" {\n}\n')).toBe(true);
+    expect(coversBwrap("profile other /usr/bin/bwrap (unconfined) {\n}\n")).toBe(true);
+    expect(coversBwrap("profile other /usr/bin/bwrap flags = (unconfined) {\n}\n")).toBe(true);
+    // A profile with a path in a variable, as some profile collections write it.
+    expect(coversBwrap("@{exec_path} = @{bin}/bwrap\nprofile bwrap @{exec_path} flags=(complain) {\n}\n")).toBe(true);
   });
 
   test("a comment, another program, or a rule inside a profile does not", () => {
     expect(coversBwrap("# profile bwrap /usr/bin/bwrap {\n")).toBe(false);
+    expect(coversBwrap("#/usr/bin/bwrap flags=(unconfined) {\n")).toBe(false);
+    expect(coversBwrap("profile mine /usr/local/bin/bwrap {\n}\n")).toBe(false);
     expect(coversBwrap("profile unprivileged_userns {\n  allow userns,\n}\n")).toBe(false);
+    expect(coversBwrap("profile unpriv_bwrap flags=(attach_disconnected) {\n}\n")).toBe(false);
     expect(coversBwrap("profile chrome /opt/google/chrome/chrome {\n  /usr/bin/bwrap ix,\n}\n")).toBe(false);
+  });
+
+  test("the install and uninstall scripts use Eva's mark", () => {
+    for (const script of ["install/install.sh", "install/uninstall.sh"])
+      expect(readFileSync(script, "utf-8")).toContain(evaProfileMark);
   });
 });
 

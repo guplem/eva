@@ -24,17 +24,31 @@ const bwrapPath = "/usr/bin/bwrap";
 const appArmorFolder = "/etc/apparmor.d";
 /** "1" where AppArmor lets a program make a user namespace only when a profile allows it. */
 const restrictionFile = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
-/** The mark of the profile that Eva's install command adds. `install/install.sh` uses the same text. */
-const evaProfileMark = "Added by the Eva installer";
+/**
+ * The mark of the profile that Eva's install command adds, as `/etc/apparmor.d/bwrap`. The install
+ * and uninstall scripts in `install/` use the same text and the same rules as this file.
+ */
+export const evaProfileMark = "Added by the Eva installer";
+const evaProfileName = "bwrap";
+
+/** A program path that covers `/usr/bin/bwrap`, with or without quotes. */
+const coveringPath = String.raw`"?(?:/usr/bin|/\{,usr/\}bin|/\{usr/,\}bin|@\{bin\})/bwrap"?`;
+/** A profile line, not a rule: a rule inside a profile ends with a comma, a profile line with `{`. */
+const bwrapProfileLine = new RegExp(
+  String.raw`^[ \t]*(?:profile[ \t]+bwrap(?:[ \t{]|$)|(?:profile[ \t]+(?:[^\s{]+[ \t]+)?)?${coveringPath}(?:[ \t]+(?:flags[ \t]*=[ \t]*)?\([^)]*\))?[ \t]*\{)`,
+  "m",
+);
 
 /**
- * True when an AppArmor profile in `text` attaches to bubblewrap: a profile line, not a rule, whose
- * program path ends in `bin/bwrap`, such as `/usr/bin/bwrap` or `@{bin}/bwrap`. A rule inside a
- * profile ends with a comma, a profile line with `{`. `install/install.sh` uses the same rule.
+ * True when an AppArmor profile in `text` covers bubblewrap: it has the name `bwrap`, as Ubuntu's
+ * own profile has, or its program path covers `/usr/bin/bwrap`, such as `@{bin}/bwrap`.
  */
 export function coversBwrap(text: string): boolean {
-  return /^[ \t]*(?:profile[ \t]+\S+[ \t]+)?\S*bin\S*\/bwrap(?:[ \t]+flags=\([^)]*\))?[ \t]*\{/m.test(text);
+  return bwrapProfileLine.test(text);
 }
+
+/** The names that AppArmor skips at boot, such as the copies that a package update leaves. */
+const skippedName = /^\.|\.dpkg-[^/]*$|\.rpmnew$|\.rpmsave$|\.pacnew$|\.pacsave$|\.orig$|~$/;
 
 interface BwrapProfiles {
   /** Eva's install command added a profile. */
@@ -43,18 +57,26 @@ interface BwrapProfiles {
   readonly other: boolean;
 }
 
-/** The profiles for bubblewrap directly in the AppArmor folder. */
+/** The profiles for bubblewrap that AppArmor loads at boot from its folder. */
 function bwrapProfiles(machine: ShellWallMachine): BwrapProfiles {
+  const disabled = new Set(machine.listFiles(`${appArmorFolder}/disable`));
   let eva = false;
   let other = false;
   for (const name of machine.listFiles(appArmorFolder)) {
-    if (name.startsWith(".")) continue;
+    if (skippedName.test(name) || disabled.has(name)) continue;
     const text = machine.readText(`${appArmorFolder}/${name}`);
     if (text === null) continue;
-    if (text.includes(evaProfileMark)) eva = true;
+    // A copy of Eva's profile under another name is no profile of the system or of the person.
+    if (text.includes(evaProfileMark)) eva ||= name === evaProfileName;
     else if (coversBwrap(text)) other = true;
   }
   return { eva, other };
+}
+
+/** True when the AppArmor parser is there, so that the install command can add the profile. */
+function hasAppArmorParser(machine: ShellWallMachine): boolean {
+  if (machine.which("apparmor_parser") !== null) return true;
+  return ["/usr/sbin", "/sbin"].some((folder) => machine.listFiles(folder).includes("apparmor_parser"));
 }
 
 /**
@@ -69,11 +91,14 @@ export function leftoverBwrapProfile(machine: ShellWallMachine): boolean {
 }
 
 /**
- * True when AppArmor blocks this bubblewrap and no profile lets it run, as on Ubuntu 24.04. Eva's
- * install command adds Claude Code's profile there. It covers only `/usr/bin/bwrap`.
+ * True when AppArmor blocks this bubblewrap and the install command can add the profile that lets it
+ * run, as on Ubuntu 24.04. That profile covers only `/usr/bin/bwrap`. A file `bwrap` without Eva's
+ * mark belongs to the person, so the install command never writes over it.
  */
 function appArmorBlocksBwrap(machine: ShellWallMachine): boolean {
   if (machine.readText(restrictionFile)?.trim() !== "1" || machine.which("bwrap") !== bwrapPath) return false;
+  const names = machine.listFiles(appArmorFolder);
+  if (names.length === 0 || names.includes(evaProfileName) || !hasAppArmorParser(machine)) return false;
   const profiles = bwrapProfiles(machine);
   return !profiles.eva && !profiles.other;
 }

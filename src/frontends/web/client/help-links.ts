@@ -26,6 +26,7 @@ export const helpTargets = {
   notifications: { page: "reference", slug: "notifications-on-a-device" },
   "problems-and-alerts": { page: "reference", slug: "problems-and-alerts" },
   "what-a-chat-can-reach": { page: "reference", slug: "what-a-chat-can-reach" },
+  "apparmor-and-bubblewrap": { page: "reference", slug: "apparmor-and-bubblewrap" },
 } as const satisfies Readonly<Record<string, HelpTarget>>;
 
 export type HelpTopic = keyof typeof helpTargets;
@@ -74,7 +75,7 @@ export function helpTitle(topic: HelpTopic): string {
 /** The help of a notice in the notification center, by the alert's key, as for a Settings card. */
 const problemHelp: Readonly<Partial<Record<string, HelpTopic>>> = {
   shell_wall: "what-a-chat-can-reach",
-  bwrap_profile_left: "what-a-chat-can-reach",
+  bwrap_profile_left: "apparmor-and-bubblewrap",
 };
 
 export function helpOfProblem(key: string): HelpTopic | null {

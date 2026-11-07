@@ -92,7 +92,7 @@ export function bwrapProfileProblem(left: boolean): AlertProblem | null {
   if (!left) return null;
   return {
     level: "warn",
-    message: `This computer has its own AppArmor profile for bubblewrap now, so the one that Eva's install command added is left over. Run the install command of Eva again: it removes Eva's profile. Then restart Eva. See https://github.com/${evaRepository}/blob/main/docs/guide/reference.md#set-up-the-sandbox`,
+    message: `This computer has its own AppArmor profile for bubblewrap now, so the profile that the install command of Eva added is left over. Run the install command of Eva again: it removes Eva's profile. Then restart Eva. See https://github.com/${evaRepository}/blob/main/docs/guide/reference.md#apparmor-and-bubblewrap`,
     resolvedMessage: "Only this computer's own AppArmor profile for bubblewrap is left.",
   };
 }

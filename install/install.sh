@@ -2,7 +2,8 @@
 # Installs Eva on Linux with one command:
 #   curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
 # It installs git, the OpenMP library for voice notes, and bubblewrap and socat for the shell
-# sandbox, when they are missing. It downloads Eva from the latest release, checks the download
+# sandbox, when they are missing. Where AppArmor blocks bubblewrap, as on Ubuntu 24.04, it adds a
+# profile that lets bubblewrap run. It downloads Eva from the latest release, checks the download
 # against SHA256SUMS, puts it in ~/.local/bin, and starts `eva setup`. A second run updates Eva.
 # EVA_INSTALL_BASE_URL downloads from another place, and EVA_INSTALL_SKIP_SETUP=1 skips the setup.
 # The CI uses both (scripts/smoke-install.sh).
@@ -201,6 +202,144 @@ install_tools() {
   fi
 }
 
+# Ubuntu 24.04 lets a program make a user namespace only when an AppArmor profile allows it, and it
+# ships no profile for bubblewrap, so the shell sandbox cannot start (#903). There, this adds the
+# profile of Claude Code's docs. A newer Ubuntu ships its own profile: then this removes Eva's profile.
+# The mark and the rules that find a profile for bubblewrap match src/core/shell-wall.ts and
+# install/uninstall.sh.
+apparmor_folder="/etc/apparmor.d"
+eva_profile="$apparmor_folder/bwrap"
+eva_profile_mark="Added by the Eva installer"
+# EVA_INSTALL_USERNS_FILE replaces the setting of the kernel in the CI (scripts/smoke-install.sh).
+userns_file="${EVA_INSTALL_USERNS_FILE:-/proc/sys/kernel/apparmor_restrict_unprivileged_userns}"
+sandbox_guide="https://github.com/guplem/eva/blob/main/docs/guide/reference.md#apparmor-and-bubblewrap"
+# A profile line, not a rule: a rule inside a profile ends with a comma, a profile line with "{".
+# It covers bubblewrap when it has the name bwrap, or a path that covers /usr/bin/bwrap.
+named_bwrap='^[[:space:]]*profile[[:space:]]+"?bwrap"?([[:space:]]|\{|$)'
+bwrap_profile_line='^[[:space:]]*(profile[[:space:]]+"?bwrap"?([[:space:]]|\{|$)|(profile[[:space:]]+([^[:space:]{]+[[:space:]]+)?)?"?(/usr/bin|/\{,usr/\}bin|/\{usr/,\}bin|@\{bin\})/bwrap"?([[:space:]]+(flags[[:space:]]*=[[:space:]]*)?\([^)]*\))?[[:space:]]*\{)'
+# Only a profile that allows user namespaces can replace Eva's profile.
+userns_rule='^[[:space:]]*(allow[[:space:]]+)?userns[[:space:]]*,'
+
+# AppArmor skips these files at boot: copies that a package update leaves, and disabled profiles.
+skipped_profile() {
+  case "${1##*/}" in
+    .* | *.dpkg-* | *.rpmnew | *.rpmsave | *.pacnew | *.pacsave | *.orig | *.rej | *~) return 0 ;;
+  esac
+  [ -e "$apparmor_folder/disable/${1##*/}" ] || [ -L "$apparmor_folder/disable/${1##*/}" ]
+}
+
+# Prints each file that AppArmor loads at boot, other than Eva's, with a profile for bubblewrap
+# that allows user namespaces.
+other_bwrap_profiles() {
+  for file in "$apparmor_folder"/*; do
+    [ -f "$file" ] || continue
+    if skipped_profile "$file"; then continue; fi
+    # A copy of Eva's profile under another name is no profile of the system or of the person.
+    if grep -q "$eva_profile_mark" "$file" 2>/dev/null; then continue; fi
+    if grep -Eq "$bwrap_profile_line" "$file" 2>/dev/null && grep -Eq "$userns_rule" "$file" 2>/dev/null; then
+      printf '%s\n' "$file"
+    fi
+  done
+  return 0
+}
+
+has_eva_profile() {
+  [ -f "$eva_profile" ] && grep -q "$eva_profile_mark" "$eva_profile" 2>/dev/null
+}
+
+can_be_root() {
+  [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1
+}
+
+# The AppArmor parser is in /usr/sbin or /sbin, which the PATH of a normal user can miss.
+apparmor_parser_path() {
+  for candidate in "$(command -v apparmor_parser 2>/dev/null || true)" /usr/sbin/apparmor_parser /sbin/apparmor_parser; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 0
+}
+
+# Ubuntu's own profile also has the name bwrap: loading it again replaces Eva's in the kernel, while
+# an unload of Eva's would remove Ubuntu's too. A profile with another name does not replace Eva's,
+# so this unloads Eva's profile first in that case. A failed delete loads it again.
+remove_eva_profile() {
+  parser="$1"
+  others="$2"
+  say "  This system has its own AppArmor profile for bubblewrap, so Eva's profile is left over. Removing it needs administrator rights, so sudo can ask for your password."
+  named=""
+  for file in $others; do
+    if grep -Eq "$named_bwrap" "$file" 2>/dev/null; then named="yes"; fi
+  done
+  unloaded=""
+  if [ -n "$parser" ] && [ -z "$named" ]; then
+    if (as_root "$parser" -R "$eva_profile"); then unloaded="yes"; fi
+  fi
+  (as_root rm -f "$eva_profile") || true
+  if [ -f "$eva_profile" ]; then
+    if [ -n "$unloaded" ]; then (as_root "$parser" -r "$eva_profile") || true; fi
+    say "  Eva's AppArmor profile for bubblewrap stays. To remove it, see $sandbox_guide"
+    return 0
+  fi
+  printf '%s\n' "$others" | while IFS= read -r file; do
+    [ -z "$file" ] || [ -z "$parser" ] || (as_root "$parser" -r "$file") || true
+  done
+  say "  [ok] Removed Eva's AppArmor profile for bubblewrap. Restart Eva."
+}
+
+add_eva_profile() {
+  parser="$1"
+  say "  Adding an AppArmor profile for bubblewrap, so that the shell sandbox of Project chats can start. It needs administrator rights, so sudo can ask for your password."
+  # as_root gives the command no input, so the shell inside writes the file. Every user must read
+  # it, so that a later install, the uninstall and Eva's own check find the mark.
+  (as_root sh -c 'umask 022; printf "%s\n" "$@" >"$0"' "$eva_profile" \
+    "# $eva_profile_mark (#903). It lets bubblewrap make a user namespace, so the shell sandbox can start." \
+    "abi <abi/4.0>," \
+    "include <tunables/global>" \
+    "" \
+    "profile bwrap /usr/bin/bwrap flags=(unconfined) {" \
+    "  userns," \
+    "  include if exists <local/bwrap>" \
+    "}") || true
+  if [ -f "$eva_profile" ] && (as_root "$parser" -r "$eva_profile"); then
+    say "  [ok] Added an AppArmor profile for bubblewrap."
+    return 0
+  fi
+  # A file that AppArmor cannot load, such as in a container, must not wait for the next start.
+  [ ! -f "$eva_profile" ] || (as_root rm -f "$eva_profile") || true
+  say "  The shell sandbox of Project chats needs an AppArmor profile for bubblewrap on this system. See $sandbox_guide"
+}
+
+set_up_bwrap_profile() {
+  [ -d "$apparmor_folder" ] || return 0
+  others="$(other_bwrap_profiles)"
+  if has_eva_profile; then
+    # Eva's profile alone needs no change.
+    [ -n "$others" ] || return 0
+    if ! can_be_root; then
+      say "  Eva's AppArmor profile for bubblewrap is left over, and its removal needs an administrator. See $sandbox_guide"
+      return 0
+    fi
+    remove_eva_profile "$(apparmor_parser_path)" "$others"
+    return 0
+  fi
+  [ -z "$others" ] || return 0
+  [ "$(cat "$userns_file" 2>/dev/null || true)" = "1" ] || return 0
+  # Claude Code's profile covers only this path. Claude Code runs the first bwrap on the PATH.
+  [ "$(command -v bwrap 2>/dev/null || true)" = "/usr/bin/bwrap" ] || return 0
+  parser="$(apparmor_parser_path)"
+  # A file bwrap without Eva's mark belongs to the person: the install never writes over it. A
+  # disabled name bwrap would not load at the next start.
+  if [ -e "$eva_profile" ] || [ -e "$apparmor_folder/disable/bwrap" ] || [ -L "$apparmor_folder/disable/bwrap" ] ||
+    [ -z "$parser" ] || ! can_be_root; then
+    say "  The shell sandbox of Project chats needs an AppArmor profile for bubblewrap on this system. See $sandbox_guide"
+    return 0
+  fi
+  add_eva_profile "$parser"
+}
+
 download() {
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL -o "$2" "$1" || fail "the download of $1 failed."
@@ -275,6 +414,7 @@ main() {
   say ""
   say "Eva install"
   install_tools
+  set_up_bwrap_profile
   install_eva
   add_to_path
   say "  [ok] Installed Eva $("$bin_folder/eva" version) in $bin_folder, and checked the download."

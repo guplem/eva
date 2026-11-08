@@ -42,7 +42,7 @@ sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
 sandbox.write(
   vault,
   "Projects/2025-03-02-1015-example-app/AGENTS.md",
-  `---\ncreated: 2025-03-02T10:15\nstatus: active\nstarted: 2025-03-10\ndeadline: 2025-06-30\ndesign_url: https://www.figma.com/file/example-app\ntags: [web]\nrepos:\n  - ${appRemote.remote}\n  - ${githubAppUrl}\n---\n# Example app\n\nA web app for the client portal.\n`,
+  `---\ncreated: 2025-03-02T10:15\nstatus: active\nresult: https://example-owner.github.io/example-app\ndeadline: 2025-06-30\ndesign_url: https://www.figma.com/file/example-app\ntags: [web]\nrepos:\n  - ${appRemote.remote}\n  - ${githubAppUrl}\n---\n# Example app\n\nA web app for the client portal.\n`,
 );
 sandbox.write(
   vault,

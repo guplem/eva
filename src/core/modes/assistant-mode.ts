@@ -383,7 +383,7 @@ function skillNames(folder: string): string[] {
 /** How Eva picks the pinned files, and what the caps or the walk left out. */
 function pinnedNote(block: PinnedBlock): string {
   const notes = [
-    "Eva pins the files with `pinned: full` or `pinned: summary`, the open and waiting cases, the open period, the active projects and the projects in use, at the start of each chat. A change shows in the next chat.",
+    "Eva pins the files with `pinned: full` or `pinned: summary`, the open cases, the open period, the active projects and the projects in use, at the start of each chat. A change shows in the next chat.",
   ];
   if (block.notShown > 0)
     notes.push(

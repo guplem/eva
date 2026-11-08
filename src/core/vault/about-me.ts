@@ -24,8 +24,9 @@ export interface AboutMe {
   readonly name: string | null;
   /** `YYYY-MM-DD`. */
   readonly birthDate: string | null;
-  /** An ISO 3166 code, such as `US` or `US-CA`: it picks the local days. */
+  /** An ISO 3166 code, such as `US` or `US-CA`, of the home place: it picks the local days. */
   readonly region: string | null;
+  /** From the latitude of the home, or else of the last location. Callers read null as north. */
   readonly hemisphere: Hemisphere | null;
   /** One sentence for each field that Eva must fix. */
   readonly problems: readonly string[];
@@ -38,18 +39,21 @@ export const aboutMeHeaderKeys = [
   "name",
   "givenName",
   "familyName",
-  "nickname",
+  "aliases",
   "pronouns",
   "birthDate",
   "contact",
-  "region",
-  "hemisphere",
   "places",
   "work",
   "languages",
   "lastLocation",
   "summary",
   "pinned",
+  // Old fields of vault structure v6, still valid until the vault upgrade to v7 renames or moves them:
+  // `nickname` became `aliases`, `region` moved to `places.home.region`, and the latitude gives the hemisphere.
+  "nickname",
+  "region",
+  "hemisphere",
   // Old personal fields, still valid until the vault upgrade (#773) files them with the person.
   "sleep",
   "people",
@@ -122,8 +126,12 @@ export function readAboutMe(vaultPath: string): AboutMe {
   if (header === null) return empty;
 
   const problems: string[] = [];
-  const text1 = (key: string, valid: (value: string) => boolean, problem: string): string | null => {
-    const value = header[key];
+  const text1 = (
+    key: string,
+    valid: (value: string) => boolean,
+    problem: string,
+    value: unknown = header[key],
+  ): string | null => {
     if (isEmpty(value)) return null;
     if (typeof value === "string" && valid(value)) return value;
     problems.push(`${key} ${problem}`);
@@ -132,12 +140,23 @@ export function readAboutMe(vaultPath: string): AboutMe {
 
   const name = text1("name", (value) => value.trim() !== "", "must be a text.");
   const birthDate = text1("birthDate", isBirthday, birthdayProblem);
-  const region = text1(
-    "region",
-    (value) => regionPattern.test(value),
-    "must be a country code, such as US, or a region code, such as US-CA.",
-  );
-  const hemisphere = text1("hemisphere", (value) => value === "north" || value === "south", "must be north or south.");
+  const home = homeOf(header);
+  const isRegion = (value: string): boolean => regionPattern.test(value);
+  const regionProblem = "must be a country code, such as US, or a region code, such as US-CA.";
+  // Vault structure v7 keeps the region with the home. An older vault has it at the top level.
+  const region =
+    text1("places.home.region", isRegion, regionProblem, home?.["region"]) ?? text1("region", isRegion, regionProblem);
+  const oldHemisphere = text1(
+    "hemisphere",
+    (value) => value === "north" || value === "south",
+    "must be north or south.",
+  ) as Hemisphere | null;
+  // Vault structure v7 has no hemisphere field: the latitude says it, so the person never writes it.
+  const homeLatitude = coordinate(home?.["lat"]);
+  const latitude =
+    homeLatitude !== null && Math.abs(homeLatitude) <= 90 ? homeLatitude : (lastLocationOf(header)?.latitude ?? null);
+  // The equator counts as north, like a person with no known point.
+  const hemisphere = oldHemisphere ?? (latitude === null ? null : latitude < 0 ? "south" : "north");
   // Before the hub migrates, Eva still reads these fields, so the agent must not move them yet.
   if (migrationApplied(vaultMigrationRecordPath(vaultPath), moveFormatSettings.id))
     for (const key of movedFormatKeys)
@@ -146,14 +165,21 @@ export function readAboutMe(vaultPath: string): AboutMe {
           `${key} is an Eva setting now. When the setting is not set, set it with eva settings set ${key}; when it holds another value, ask the person which one is right first. Then remove the field from this note.`,
         );
   checkHours(header, "sleep", problems);
-  checkHours(header, "work", problems);
+  checkWork(header, problems);
   if (!isEmpty(header["places"]) && !isMap(header["places"])) problems.push("places must be a set of named places.");
   checkDatedList(header, "people", "birthDate", false, problems);
   checkDatedList(header, "dates", "date", true, problems);
   for (const key of ["diet", "allergies"]) {
     if (!isEmpty(header[key]) && !Array.isArray(header[key])) problems.push(`${key} must be a list.`);
   }
-  return { name, birthDate, region, hemisphere: hemisphere as Hemisphere | null, problems };
+  return { name, birthDate, region, hemisphere, problems };
+}
+
+/** The `home` entry of `places`, or null when the header has none. */
+function homeOf(header: Record<string, unknown>): Record<string, unknown> | null {
+  const places = header["places"];
+  const home = isMap(places) ? places["home"] : undefined;
+  return isMap(home) ? home : null;
 }
 
 /** The format fields of the header before 2026-11-03 (#770). Null for a bad, empty or missing one. */
@@ -192,10 +218,36 @@ function checkHours(header: Record<string, unknown>, key: string, problems: stri
     problems.push(`${key} must have a from and a to time.`);
     return;
   }
+  checkTimes(value, key, problems);
+}
+
+/**
+ * `work` is a list of the open jobs and studies, each with its hours. Before vault structure v7 it
+ * was one map for one job, which stays valid until the vault upgrade.
+ */
+function checkWork(header: Record<string, unknown>, problems: string[]): void {
+  const value = header["work"];
+  if (isEmpty(value)) return;
+  if (isMap(value)) {
+    checkTimes(value, "work", problems);
+    return;
+  }
+  if (!Array.isArray(value)) {
+    problems.push("work must be a list of jobs, each with from and to times.");
+    return;
+  }
+  value.forEach((entry: unknown, index) => {
+    const label = `work[${String(index)}]`;
+    if (isMap(entry)) checkTimes(entry, label, problems);
+    else if (!isEmpty(entry)) problems.push(`${label} must have a period, and from and to times.`);
+  });
+}
+
+function checkTimes(value: Record<string, unknown>, label: string, problems: string[]): void {
   for (const end of ["from", "to"]) {
     const time = value[end];
     if (!isEmpty(time) && !(typeof time === "string" && timePattern.test(time))) {
-      problems.push(`${key}.${end} ${timeProblem}`);
+      problems.push(`${label}.${end} ${timeProblem}`);
     }
   }
 }
@@ -265,9 +317,8 @@ export async function firstCommitDay(
  */
 export function readHomePlace(vaultPath: string): { readonly lat: number; readonly lon: number } | null {
   const header = readHeader(vaultPath);
-  const places = isMap(header) ? header["places"] : undefined;
-  const home = isMap(places) ? places["home"] : undefined;
-  if (!isMap(home)) return null;
+  const home = isMap(header) ? homeOf(header) : null;
+  if (home === null) return null;
   const [lat, lon] = [coordinate(home["lat"]), coordinate(home["lon"])];
   return lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
 }
@@ -301,7 +352,11 @@ const isoTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 /** The point of `lastLocation` in a note's text, or null when the field is empty or bad. */
 export function parseLastLocation(text: string): LastLocation | null {
   const header = headerOf(text);
-  const value = isMap(header) ? header[lastLocationKey] : undefined;
+  return isMap(header) ? lastLocationOf(header) : null;
+}
+
+function lastLocationOf(header: Record<string, unknown>): LastLocation | null {
+  const value = header[lastLocationKey];
   if (!isMap(value)) return null;
   const [latitude, longitude] = [coordinate(value["latitude"]), coordinate(value["longitude"])];
   if (latitude === null || longitude === null || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;

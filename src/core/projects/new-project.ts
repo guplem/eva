@@ -44,8 +44,8 @@ export interface NewProjectInput {
 export interface NewProjectOptions {
   /** The vault's `Projects/` folder. */
   readonly projectsFolder: string;
-  /** Now, in the configured time zone, as `YYYY-MM-DDTHH:mm`. */
-  readonly wallClock: string;
+  /** Now, as the `created` value: the wall clock of the time zone and its offset, `2026-01-31T09:15+01:00`. */
+  readonly created: string;
 }
 
 /** The optional steps. Each one throws an `EvaError` that the person can read. */
@@ -100,14 +100,14 @@ export async function createProject(
 ): Promise<NewProjectResult> {
   const title = input.name.trim();
   const description = input.description.replaceAll("\r\n", "\n").trim();
-  const projectId = formatProjectId(options.wallClock, title);
+  const projectId = formatProjectId(options.created, title);
   // A general project and a specialist save their work in the vault, so they get no clone and no repository.
   if (!worksInClones(input.type) && input.repository !== null)
     throw new EvaError("project_invalid", `${projectTypeNoun(input.type, true)} has no repository.`);
   if (input.type === "specialist" && input.drive)
     throw new EvaError("project_invalid", "A specialist has no Drive folder.");
   const textWith = (results: { repository: string | null; driveFolder: string | null }): string =>
-    projectText(options.wallClock, title, description, input, results);
+    projectText(options.created, title, description, input, results);
   // A bad title or tag fails here, before the folder or a step exists.
   const first = textWith({ repository: null, driveFolder: null });
 
@@ -184,7 +184,7 @@ async function runStep(step: () => Promise<string>): Promise<NewProjectStep> {
  * the values the same way. The Drive link is a line of the body: a new key would be a schema change.
  */
 function projectText(
-  wallClock: string,
+  created: string,
   title: string,
   description: string,
   input: NewProjectInput,
@@ -207,10 +207,10 @@ function projectText(
   const summary = oneLineSummary(description.split(/\n\s*\n/)[0] ?? "");
   const summaryLine = summary === null ? "" : `summary: ${JSON.stringify(summary)}\n`;
   // A project made as closed closes on the day it is made (#826).
-  const closedLine = input.status === "closed" ? `closed: ${wallClock.slice(0, 10)}\n` : "";
+  const closedLine = input.status === "closed" ? `closed: ${created.slice(0, 10)}\n` : "";
   // Every type writes its key, so a later change of `repos` never changes the type (#768).
   return applyProjectDetails(
-    `---\ncreated: ${wallClock}\n${summaryLine}status: ${input.status}\n${closedLine}type: ${input.type}\n---\n\n${body}\n`,
+    `---\ncreated: ${created}\n${summaryLine}status: ${input.status}\n${closedLine}type: ${input.type}\n---\n\n${body}\n`,
     {
       title,
       status: input.status,

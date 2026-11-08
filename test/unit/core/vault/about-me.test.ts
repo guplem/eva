@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  aboutMeHeaderKeys,
   aboutMeProblemNote,
   firstCommitDay,
   installedOn,
@@ -128,6 +129,83 @@ describe("readAboutMe", () => {
   });
 });
 
+describe("the home region and the hemisphere (vault structure v7)", () => {
+  test("reads the region of the home place, and the hemisphere from its latitude", () => {
+    note(
+      [
+        "name: Alex",
+        "aliases: [Lex]",
+        "places:",
+        "  home: { city: Sydney, region: AU-NSW, lat: -33.87, lon: 151.21 }",
+        "work:",
+        '  - { period: Life/Periods/2024-09-01-example-job, from: "09:00", to: "17:00", days: [mon, tue] }',
+        '  - { period: Life/Periods/2025-02-01-example-study, from: "18:00", to: "21:00" }',
+      ].join("\n"),
+    );
+    expect(readAboutMe(vault)).toEqual({
+      name: "Alex",
+      birthDate: null,
+      region: "AU-NSW",
+      hemisphere: "south",
+      problems: [],
+    });
+  });
+
+  test("prefers the home region to the old top-level region", () => {
+    note("region: US\nplaces:\n  home: { region: US-CA }");
+    expect(readAboutMe(vault).region).toBe("US-CA");
+  });
+
+  test("still reads the old top-level region and hemisphere", () => {
+    note("region: AR\nhemisphere: south");
+    expect(readAboutMe(vault)).toMatchObject({ region: "AR", hemisphere: "south", problems: [] });
+  });
+
+  test("prefers the old hemisphere to the one from the latitude", () => {
+    note("hemisphere: north\nplaces:\n  home: { lat: -33.87, lon: 151.21 }");
+    expect(readAboutMe(vault).hemisphere).toBe("north");
+  });
+
+  test("takes the hemisphere from the last location when the home has no latitude", () => {
+    note(
+      'places:\n  home: { city: Example }\nlastLocation: { latitude: -34.6, longitude: -58.4, accuracy: 30, at: "2026-10-22T08:00:00.000Z", source: web }',
+    );
+    expect(readAboutMe(vault).hemisphere).toBe("south");
+    note('lastLocation: { latitude: 40.4, longitude: -3.7, at: "2026-10-22T08:00:00.000Z", source: web }');
+    expect(readAboutMe(vault).hemisphere).toBe("north");
+  });
+
+  test("puts the equator in the north, and knows no hemisphere without a point", () => {
+    note("places:\n  home: { lat: 0, lon: 10 }");
+    expect(readAboutMe(vault).hemisphere).toBe("north");
+    note("places:\n  home: { lat: far, lon: 10 }");
+    expect(readAboutMe(vault).hemisphere).toBeNull();
+  });
+
+  test("names the bad home region by its own key, and falls back to the old region", () => {
+    note("region: US\nplaces:\n  home: { region: California }");
+    const read = readAboutMe(vault);
+    expect(read.region).toBe("US");
+    expect(read.problems).toEqual([
+      "places.home.region must be a country code, such as US, or a region code, such as US-CA.",
+    ]);
+  });
+
+  test("checks the hours of each job in the work list", () => {
+    note('work:\n  - { period: Life/Periods/a, from: "09:00", to: "17:00" }\n  - { period: Life/Periods/b, to: late }');
+    expect(readAboutMe(vault).problems).toEqual(["work[1].to must be a time as HH:mm."]);
+    note("work:\n  - Life/Periods/a");
+    expect(readAboutMe(vault).problems).toEqual(["work[0] must have a period, and from and to times."]);
+    note("work: nine to five");
+    expect(readAboutMe(vault).problems).toEqual(["work must be a list of jobs, each with from and to times."]);
+  });
+
+  test("still checks the hours of the old work map", () => {
+    note('work: { period: Life/Periods/a, from: "9am", to: "17:00" }');
+    expect(readAboutMe(vault).problems).toEqual(["work.from must be a time as HH:mm."]);
+  });
+});
+
 describe("the format fields that moved to the settings (#770)", () => {
   test("before the hub migrates the vault, they raise no problem, also with a bad value", () => {
     note("clock: 12h\nunits: cubits\nweekStart: someday");
@@ -236,6 +314,14 @@ describe("a new vault's note", () => {
       hemisphere: null,
       problems: [],
     });
+  });
+
+  test("has only keys that the about-me skill describes, and none of the old ones", () => {
+    const text = vaultTemplateFiles({ name: "Alex", notesLanguage: "English", topics: [] })["Life/About me.md"] ?? "";
+    const keys = [...(text.split("\n---")[0] ?? "").matchAll(/^([A-Za-z]+):/gm)].map((match) => match[1]);
+    expect(keys).toContain("aliases");
+    for (const key of keys) expect(aboutMeHeaderKeys).toContain(key as (typeof aboutMeHeaderKeys)[number]);
+    for (const old of ["nickname", "region", "hemisphere"]) expect(keys).not.toContain(old);
   });
 
   test("has an empty lastLocation that Eva fills in place", () => {

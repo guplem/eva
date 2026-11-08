@@ -311,7 +311,9 @@ A request from Eva's own computer can come from any program there, so only the t
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
 - **Status and In use:** the status of a project is the work on it: **Active** while you work on it, **Paused** while the work stops, and **Closed** when it ends. Apart from the status, tick **In use** in the details form when you use the project now, such as a project that makes the week's menus. A project can be active and in use: you still build it, and you use it every day. In the file, the box writes `in-use: true`.
   - Eva updates older projects when she starts: the old status **In use** becomes **Closed** with **In use** ticked, and the old status **Idea** becomes **Paused**.
-  - `started:` and `closed:` are the days of the work. A project with no `started:` started when you created it. When a project closes, the details form asks for the day and writes `closed:`. A project that opens again loses `closed:`.
+  - `created:` is when the project started, with its offset from UTC, such as `2026-01-31T09:15+01:00`. Eva writes it when she creates a project. An old project known only to the day has `created: 2013-07-31`, and its folder has no time. `closed:` is the day the work ended. When a project closes, the details form asks for the day and writes `closed:`. A project that opens again loses `closed:`.
+  - `result:` is one web address where you use the result, such as a website or a store page. The project page shows it as a **Result** link under the description. A value that is not an http or https address gives a warning.
+  - `repos:` lists only addresses that `git clone` accepts. A link into a branch, a folder or a file (`/tree/`, `/blob/`) gives a warning, and Eva does not clone it.
   - The Projects page has two filter rows. Each row starts with its name. **Status** has **Active**, **Paused** and **Closed**. **Use** has **In use** and **Not in use**. Tap a choice to turn it on or off. A row with every choice on filters nothing. A row with no choice on shows the projects with no value for that field: no `status:` that Eva knows, or no `in-use: true`. So, in **Use**, no choice on shows the projects not in use. A project shows when it matches both rows. The page opens with **Active**, **In use** and **Not in use** on. A status word typed in the search wins over both rows.
   - With no project open, a computer shows the chats that need you, your recent chats, and the statistics of your projects: a timeline, a chart by month and the counts. Tap a count to filter the list.
   - Tap the chart icon beside the title of the list to open the statistics on their own page. This works on a phone too.
@@ -368,18 +370,19 @@ A request from Eva's own computer can come from any program there, so only the t
 
 ## Pinned files
 
-Eva knows some files in every chat with no search. At the start of each new chat, she builds a pinned block from the front matter of your files:
+Eva knows some files in every Assistant chat with no search. At the start of each new Assistant chat, she builds a pinned block from the front matter of your files:
 
 - `summary:` is one line that says what the file holds.
 - `pinned: full` puts the whole file in the block. Keep such a file short.
 - `pinned: summary` puts the file's path and its summary in the block.
 - `pinned: false` keeps the file out of the block.
-- With no `pinned:` value, the status decides. Your active projects and your projects in use, your open and waiting cases (`Life/Cases/<folder>/Case.md`) and your open period (`Life/Periods/<folder>/Period.md`) each get a summary line.
+- With no `pinned:` value, the status decides. Your active projects and your projects in use, your open cases (`Life/Cases/<folder>/Case.md`) and your open period (`Life/Periods/<folder>/Period.md`) each get a summary line. A case is open until its `closed` has a date. A period is open while its `to` is empty or not passed yet. An older case or period with a `status` key and no new key still counts by that status.
 
 How the block works:
 
 - **Order and limits.** The `full` files come first, then the `summary` files, each by path. Then come the cases with a mark, the other cases, the period and the projects. The block holds about 25 summary lines and about 2,000 tokens of full text. A full file that does not fit shows as its summary line, or as its path with "(open it when needed)". A project outside `Projects/`, in `projectRoots`, always shows as a summary line, also with `pinned: full`. Over a limit, the block ends with "N more not shown", and Eva offers which files to unpin.
-- **Marks on a case or a project.** `DUE` means that the case's `next` date has come. `DEADLINE` means that its `deadline` is 14 days away or less, or has passed. A closed project gets no mark. Eva counts the days in your time zone.
+- **A case line** shows `open`, or `waiting for` someone, then its current step as `step N of M`, its `due by` day and its `deadline`. The current step is the first of its `steps` without `done-on`. `no due-by` marks a current step with no valid day, and `all steps done` a case that may be ready to close.
+- **Marks on a case or a project.** `DUE` means that the `due-by` day of the case's current step has come. `DEADLINE` means that its `deadline` is 14 days away or less, or has passed. A closed project gets no mark. Eva counts the days in your time zone.
 - **Data, not orders.** A full file sits between markers that name its path, and Eva reads it as facts about you. Its front matter shows with no comments, no empty keys and no `lastLocation`.
 - **Safe.** The block never holds a secret file, an encrypted file, a link, a file in `.eva/`, in the old `Scratch/` folder, in a `node_modules` folder or in a project's clones. A full file that holds a key or a token shows only as its summary line.
 - **Fixed for the chat.** A change to a pinned file shows in the next new chat. The chat details show the block under **Your pinned files**. A project chat gets no block.

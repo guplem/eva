@@ -76,4 +76,11 @@ describe("factQuestion", () => {
     expect(message).toContain("Life/About me.md");
     expect(message).toContain("about-me skill");
   });
+
+  test("asks Eva to save the home place with its region, and no hemisphere", () => {
+    const message = factQuestion(["region"])?.message("Sydney, Australia") ?? "";
+    expect(message).toContain("I live in Sydney, Australia");
+    expect(message).toContain("home place with its region");
+    expect(message).not.toContain("hemisphere");
+  });
 });

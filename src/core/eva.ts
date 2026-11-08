@@ -139,7 +139,7 @@ import { googleStep } from "./google/google-steps.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import { createProject, type NewProjectInput, type NewProjectResult } from "./projects/new-project.ts";
-import { wallClockOf } from "./schedules/schedule-timing.ts";
+import { projectCreatedAt } from "./projects/project-id.ts";
 import { createDriveFolder } from "./google/google-drive.ts";
 import { ghApiRequest, type GithubRequest } from "./projects/repository-facts.ts";
 import type { GithubWrite } from "./projects/repository-fixes.ts";
@@ -2248,7 +2248,7 @@ export class Eva {
     const timeZone = this.options.config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     return createProject(
       input,
-      { projectsFolder: join(vaultPath, "Projects"), wallClock: wallClockOf(this.options.now(), timeZone) },
+      { projectsFolder: join(vaultPath, "Projects"), created: projectCreatedAt(this.options.now(), timeZone) },
       {
         createRepository: async (name, description, visibility) => {
           const token = this.settings.secrets.githubToken;

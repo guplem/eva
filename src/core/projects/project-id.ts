@@ -47,17 +47,43 @@ export function parseProjectId(folderName: string): ParsedProjectId | null {
 }
 
 /**
- * Builds the id of a new project from its creation time and a free-text name. The time is the
- * wall clock of the configured time zone, `YYYY-MM-DDTHH:mm`, the form of `created` (lesson 68).
+ * Builds the id of a new project from its `created` value and a free-text name. The id keeps only
+ * the wall clock digits of the configured time zone, not the offset (lesson 68).
  */
-export function formatProjectId(wallClock: string, name: string): string {
+export function formatProjectId(created: string, name: string): string {
   const slug = projectSlug(name);
   if (slug.length === 0)
     throw new EvaError(
       "project_invalid",
       `A project name needs at least one letter from a to z or one digit: "${name}"`,
     );
-  return `${wallClock.replace("T", "-").replace(":", "")}-${slug}`;
+  return `${created.slice(0, "YYYY-MM-DDTHH:mm".length).replace("T", "-").replace(":", "")}-${slug}`;
+}
+
+/**
+ * The `created` value of a new project: the wall clock of the time zone, with that zone's UTC offset
+ * at this moment, such as `2026-01-31T09:15+01:00`. With the offset, a reader converts the moment
+ * exactly to another zone. Code writes it, so no agent gets a summer time offset wrong.
+ */
+export function projectCreatedAt(moment: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(moment);
+  const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find((item) => item.type === type)?.value ?? "00";
+  const [year, month, day, hour, minute] = [part("year"), part("month"), part("day"), part("hour"), part("minute")];
+  // Each offset is a whole number of minutes, so the wall clock minus the moment, both to the minute, is the offset.
+  const wallMinutes = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)) / 60_000;
+  const offset = wallMinutes - Math.floor(moment.getTime() / 60_000);
+  const size = Math.abs(offset);
+  const sign = offset < 0 ? "-" : "+";
+  const offsetText = `${sign}${String(Math.floor(size / 60)).padStart(2, "0")}:${String(size % 60).padStart(2, "0")}`;
+  return `${year}-${month}-${day}T${hour}:${minute}${offsetText}`;
 }
 
 /**

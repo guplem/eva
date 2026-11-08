@@ -48,6 +48,31 @@ curl -fsSL file:///release/install.sh | sh
 command -v bwrap >/dev/null
 test "$(grep -c "Added by the Eva installer" "$HOME/.bashrc")" = 1
 
+# A stuck apt process holds the locks of apt, as a hung daily update can for months (#898). The
+# install still ends well, says why the sandbox did not install, and gives the command for later.
+sudo apt-get remove -y -qq bubblewrap >/dev/null
+sudo perl -MFcntl -e '
+  for my $path (@ARGV) {
+    open(my $file, ">>", $path) or die "$path: $!";
+    my $lock = pack("ssx4qqix4", F_WRLCK, 0, 0, 0, 0);
+    fcntl($file, F_SETLK, $lock) or die "$path: $!";
+    push @files, $file;
+  }
+  open(my $ready, ">", "/tmp/apt-locked") or die $!;
+  close($ready);
+  sleep 600;
+' /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend &
+holder=$!
+until test -e /tmp/apt-locked; do sleep 0.2; done
+output="$(curl -fsSL file:///release/install.sh | sh 2>&1)"
+sudo kill "$holder"
+wait "$holder" || true
+printf '%s\n' "$output"
+test "$(grep -c "Another apt process holds a lock of apt" <<<"$output")" = 1
+grep -qF "To install later, run: sudo apt-get update && sudo apt-get install bubblewrap socat" <<<"$output"
+curl -fsSL file:///release/install.sh | sh
+command -v bwrap >/dev/null
+
 # The uninstall stops an Eva and deletes her folder, then the program. Enter keeps each safe answer.
 mkdir -p "$HOME/.config/eva-smoke" "$HOME/.config/systemd/user"
 echo "{}" >"$HOME/.config/eva-smoke/config.json"

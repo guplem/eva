@@ -18,10 +18,13 @@ async function logIn(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
 }
 
-/** Opens the list on a phone. A computer always shows it. */
+/** Opens the list where a button hides it, such as on a phone. */
 async function openList(page: Page): Promise<void> {
-  if (test.info().project.name !== "phone") return;
   const menu = page.getByRole("button", { name: "Show the list" });
+  if (test.info().project.name !== "phone") {
+    if (await menu.isVisible()) await menu.click();
+    return;
+  }
   const close = page.getByRole("button", { name: "Close the list" });
   // Just after a page change, the button can be missing for a moment, and a late hashchange closes the list.
   await expect(async () => {

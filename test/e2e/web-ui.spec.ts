@@ -5197,6 +5197,8 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
   await card.getByRole("button", { name: "Update to a version…" }).click();
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
   await expect(dialog).toBeVisible();
+  // The dialog listens for Escape from the same React step that moves the focus into it.
+  await expect(dialog.getByRole("radio", { checked: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   // Focus goes back to the button that opened the dialog.
@@ -5285,6 +5287,8 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
   await update.click();
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
   await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeChecked();
+  // The dialog listens for Escape from the same React step that moves the focus into it.
+  await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   // Focus goes back to the button that opened the dialog.

@@ -26,6 +26,7 @@ function harness(
   script: Script,
   interactive = true,
   answer = "",
+  account: { readonly allowed?: () => readonly string[]; readonly choose?: () => Promise<void> } = {},
 ): {
   readonly lines: string[];
   readonly commands: string[];
@@ -52,6 +53,7 @@ function harness(
     port: 7420,
     program: () => ["tailscale"],
     install: script.install ?? null,
+    ...(account.allowed === undefined ? {} : { allowedAccounts: account.allowed }),
   });
   return {
     lines,
@@ -68,6 +70,7 @@ function harness(
         interactive,
         sleep: () => Promise.resolve(),
         waitLimitMs: 20_000,
+        ...(account.choose === undefined ? {} : { chooseAccount: account.choose }),
       }),
   };
 }
@@ -83,6 +86,26 @@ describe("the network step of eva setup", () => {
     expect(text).toContain("On Eva's computer, run `eva open`.");
     // Setup publishes too, so the printed address works as soon as Eva runs.
     expect(run.commands).toContain("serve --bg --https=443 http://127.0.0.1:7420");
+  });
+
+  test("the account question comes before the device steps, and the steps name the chosen account (#905)", async () => {
+    let allowed: readonly string[] = [];
+    const run = harness({ statuses: [loggedIn(true)] }, true, "", {
+      allowed: () => allowed,
+      choose: () => {
+        run.lines.push("ACCOUNT QUESTION");
+        allowed = ["partner@example.com"];
+        return Promise.resolve();
+      },
+    });
+    await run.run();
+    const question = run.lines.indexOf("ACCOUNT QUESTION");
+    const address = run.lines.findIndex((line) => line.includes("Open Eva:"));
+    expect(question).toBeGreaterThan(-1);
+    expect(address).toBeGreaterThan(question);
+    const signIn = run.lines.find((line) => line.includes("Sign in to Tailscale there"));
+    expect(signIn).toContain("partner@example.com");
+    expect(signIn).not.toContain("owner@example.com");
   });
 
   test("no Tailscale where Eva can install it: she asks, installs, then signs the machine in", async () => {

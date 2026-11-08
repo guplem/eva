@@ -59,7 +59,7 @@ describe("the steps for each new device", () => {
     });
     expect(steps).toHaveLength(3);
     expect(steps[0]).toMatchObject({ link: "https://tailscale.com/download" });
-    expect(steps[1]?.text).toContain("owner@example.com");
+    expect(steps[1]?.text).toBe("Sign in to Tailscale there with owner@example.com.");
     expect(steps[2]?.text).toContain("https://server.example-tailnet.ts.net");
     expect(steps[2]?.text).toContain("scan");
     const notReady = deviceSteps({ ...base, step: "install" });

@@ -134,7 +134,7 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 
 ## Open Eva on your phone
 
-Each device needs the Tailscale app, signed in with the same account as Eva's computer. Then:
+Each device needs the Tailscale app, signed in with the account that this Eva lets in. By default, this is the account of Eva's computer. Then:
 
 1. Open Eva's address. To find it, run `eva link` on Eva's computer, send `/link` to your bot, or open **Settings > Access > Use Eva from any device**.
 2. The first time, the page shows a short code. Allow the device, for example with `eva devices allow <code>` on Eva's computer, or with **Allow** in Telegram. [Logging in to the web page](reference.md#logging-in-to-the-web-page) lists every way.
@@ -155,7 +155,7 @@ To make another Eva, run `eva setup` (the computer has Eva already, so skip the 
 An Eva's page allows the devices of one Tailscale account. For another person's Eva, that is their account:
 
 1. Invite the person to your Tailscale network, on the [Tailscale admin page](https://login.tailscale.com/admin/users). They sign in to the Tailscale app on their phone with their own account.
-2. In setup, at "Which account uses this Eva?", pick their account from the list. Enter keeps your own.
+2. In setup, at "Which account uses this Eva?", pick their account from the list. Enter keeps your own. The question is part of the Phone access step, before the steps for each device. These steps then name the account.
 3. They open their Eva's address, which ends with her own port, such as `:7421`.
 
 If their phone shows "This account cannot open this Eva", the page names the account and the command that allows it: `eva --instance <name> settings set remoteAccess.allowedTailscaleIdentities '["<account>"]'`. Then restart that Eva.

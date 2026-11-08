@@ -148,7 +148,7 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
         </span>
         <div className="access-step-text">
           <b>On each phone or computer</b>
-          <small>Install Tailscale and log in with the same account.</small>
+          <small>Install Tailscale, and sign in with the account below.</small>
         </div>
       </div>
       <ol className="guide-steps">

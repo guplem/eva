@@ -18,6 +18,8 @@ export interface NetworkSetupOptions {
   readonly sleep: (ms: number) => Promise<void>;
   /** How long a wait for the person lasts. */
   readonly waitLimitMs?: number;
+  /** Asks which account uses this Eva. It runs before the device steps, which name that account (#905). */
+  readonly chooseAccount?: (() => Promise<void>) | null;
 }
 
 const pollMs = 5_000;
@@ -55,6 +57,10 @@ export async function runNetworkSetup(given: NetworkSetupOptions): Promise<strin
     if (step === "ready" || step === "failed" || handled.has(step)) break;
     handled.add(step);
     access = await handleStep(options, access, step);
+  }
+  if (given.chooseAccount !== undefined && given.chooseAccount !== null) {
+    await given.chooseAccount();
+    access = await options.access.refresh();
   }
   for (const line of accessLines({
     remoteAccess: access,

@@ -30,7 +30,7 @@ export interface RemoteAccess {
   readonly step?: RemoteAccessStep;
   /** The page that the step needs: the sign-in link, or the page that turns HTTPS on. */
   readonly link?: string | null;
-  /** The Tailscale account of this machine; each new device signs in with it. */
+  /** The Tailscale account that each new device signs in with: the one that this Eva lets in. */
   readonly account?: string | null;
   /** True when Eva can install Tailscale on this machine by herself. */
   readonly canInstall?: boolean;
@@ -63,6 +63,11 @@ export interface RemoteAccessOptions {
   readonly program: () => readonly string[];
   /** Null where Eva cannot install Tailscale by herself. */
   readonly install: (() => Promise<void>) | null;
+  /**
+   * The accounts that this Eva lets in, read again at each read so that a choice in setup shows
+   * at once. Empty, or no function: the machine's owner.
+   */
+  readonly allowedAccounts?: () => readonly string[];
   readonly onChange?: (access: RemoteAccess) => void;
   /** The timer seam; the default is the global `setInterval`. */
   readonly setInterval?: (tick: () => void, ms: number) => { stop(): void };
@@ -203,19 +208,26 @@ export class RemoteAccessWatcher implements RemoteAccessControl {
     let next: RemoteAccess & { readonly step: RemoteAccessStep };
     if (state.kind !== "needs_login") this.loginUrl = null;
     if (state.kind === "missing") {
-      next = { ...base, step: "install", url: null, problem: this.problemFor("install"), link: null, account: null };
+      next = {
+        ...base,
+        step: "install",
+        url: null,
+        problem: this.problemFor("install"),
+        link: null,
+        account: this.deviceAccount(null),
+      };
     } else if (state.kind === "stopped") {
       const problem = this.problemFor("start") ?? state.detail;
-      next = { ...base, step: "start", url: null, problem, link: null, account: this.ownerLogin };
+      next = { ...base, step: "start", url: null, problem, link: null, account: this.deviceAccount(this.ownerLogin) };
     } else if (state.kind === "needs_login") {
       if (state.loginUrl !== null) this.loginUrl = state.loginUrl;
       const problem = this.problemFor("sign_in");
-      next = { ...base, step: "sign_in", url: null, problem, link: this.loginUrl, account: null };
+      next = { ...base, step: "sign_in", url: null, problem, link: this.loginUrl, account: this.deviceAccount(null) };
     } else {
       const facts = state.facts;
       this.hostName = facts.hostName;
       if (facts.ownerLogin !== null) this.ownerLogin = facts.ownerLogin;
-      const account = facts.ownerLogin;
+      const account = this.deviceAccount(facts.ownerLogin);
       const address = tailnetAddress(facts.hostName, this.options.port);
       this.readsSincePublish += 1;
       if (!facts.httpsEnabled) {
@@ -233,6 +245,11 @@ export class RemoteAccessWatcher implements RemoteAccessControl {
     this.access = next;
     if (next.step !== before.step || next.url !== before.url) this.options.onChange?.(next);
     return next;
+  }
+
+  /** A second Eva can let in another account than the owner's (#322), so new devices need that one. */
+  private deviceAccount(owner: string | null): string | null {
+    return this.options.allowedAccounts?.()[0] ?? owner;
   }
 
   private problemFor(step: RemoteAccessStep): string | null {

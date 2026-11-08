@@ -2047,8 +2047,12 @@ test("the project page shows the facts, the quick links and a clones section", a
   const repository = facts.getByRole("link", { name: /github\.com\/example-owner\/example-app/ });
   await expect(repository).toHaveAttribute("href", "https://github.com/example-owner/example-app");
   await expect(repository).toHaveAttribute("target", "_blank");
+  // The result has its own chip, and no second place in the facts.
+  const result = facts.getByRole("link", { name: /^Result/ });
+  await expect(result).toHaveAttribute("href", "https://example-owner.github.io/example-app");
+  await expect(facts.getByText("Result", { exact: true })).toHaveCount(0);
   // A local remote has no web page, so it stays plain text.
-  await expect(facts.getByRole("link")).toHaveCount(3);
+  await expect(facts.getByRole("link")).toHaveCount(4);
   await expect(page.getByRole("region", { name: "Clones" }).getByRole("button", { name: "New clone" })).toBeVisible();
 
   await facts.getByRole("link", { name: "Open in Files" }).click();
@@ -6103,7 +6107,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();
-  await expect(page.getByText("Created 2025-05-01T08:00")).toBeVisible();
+  await expect(page.getByText("Created May 1, 2025, 08:00")).toBeVisible();
   // The page uses the cards of Settings and Repository setup, so it looks like them.
   await expect(page.getByRole("region", { name: "Details" })).toHaveClass(/\bcard\b/);
   await expect(page.getByRole("region", { name: "Whole file" })).toHaveClass(/\bcard\b/);

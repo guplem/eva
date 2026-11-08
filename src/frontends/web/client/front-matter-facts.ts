@@ -236,6 +236,12 @@ function dateValue(text: string, format: FactFormat): FactValue | null {
   return { kind: "date", text: `${days}, ${zonedClockTime(moment, undefined, format.clock)}`, raw: text };
 }
 
+/** A day, a month or a moment as the project card shows it, or the text as written when it is no date. */
+export function dateText(text: string, format: FactFormat): string {
+  const date = dateValue(text, format);
+  return date?.kind === "date" ? date.text : text;
+}
+
 /** A value of the front matter in a readable form, or null for an empty value. */
 export function factValue(value: unknown, format: FactFormat): FactValue | null {
   if (value === null || value === undefined) return null;
@@ -267,26 +273,20 @@ function factsOf(entries: readonly (readonly [string, unknown])[], format: FactF
   });
 }
 
-/** The keys that come first, in this order, when the file has them. */
-const leadingKeys = ["started"];
-
 /**
- * Each fact of the front matter, for the project card. The status and In use pills, the description
- * and the repository chips show `status`, `in-use`, `summary`, `repos` and `repo_types`, so the facts
- * leave them out (#859).
+ * Each fact of the front matter, for the project card. The status and In use pills, the description,
+ * the result link and the repository chips show `status`, `in-use`, `summary`, `result`, `repos` and
+ * `repo_types`, so the facts leave them out (#859).
  */
 export function frontMatterFacts(frontMatter: Project["frontMatter"], format: FactFormat): Fact[] {
-  const extra = Object.entries(frontMatter.extra);
-  const leading = leadingKeys.flatMap((key) => extra.filter(([each]) => each === key));
-  const rest = extra.filter(([key]) => !leadingKeys.includes(key));
   return factsOf(
     [
       ["type", projectTypeLabel(frontMatter.type)],
       ["created", frontMatter.created],
-      ...leading,
       ["closed", frontMatter.closed],
       ["tags", frontMatter.tags.map((tag) => `#${tag}`)],
-      ...rest,
+      ["aliases", frontMatter.aliases],
+      ...Object.entries(frontMatter.extra),
       ["legacy_id", frontMatter.legacyId],
       ["pinned", frontMatter.pinned],
     ],

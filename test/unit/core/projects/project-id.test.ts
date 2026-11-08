@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { formatProjectId, parseProjectId, projectSlug } from "../../../../src/core/projects/project-id.ts";
+import {
+  formatProjectId,
+  parseProjectId,
+  projectCreatedAt,
+  projectSlug,
+} from "../../../../src/core/projects/project-id.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 
 describe("parseProjectId", () => {
@@ -64,5 +69,29 @@ describe("formatProjectId for a long name", () => {
     expect(slug.length).toBeLessThanOrEqual(60);
     expect(slug).toMatch(/^word(-word)*$/);
     expect(formatProjectId("2026-01-05T09:07", "a".repeat(80))).toBe(`2026-01-05-0907-${"a".repeat(60)}`);
+  });
+});
+
+describe("formatProjectId with an offset", () => {
+  test("keeps only the wall clock digits of a created moment", () => {
+    expect(formatProjectId("2026-10-13T15:42+02:00", "Example App")).toBe("2026-10-13-1542-example-app");
+    expect(formatProjectId("2026-01-05T09:07-05:00", "Example App")).toBe("2026-01-05-0907-example-app");
+  });
+});
+
+describe("projectCreatedAt", () => {
+  test("writes the wall clock of the zone with its UTC offset at that moment", () => {
+    expect(projectCreatedAt(new Date("2026-07-01T05:30:00Z"), "Europe/Madrid")).toBe("2026-07-01T07:30+02:00");
+    expect(projectCreatedAt(new Date("2026-01-31T08:15:00Z"), "Europe/Madrid")).toBe("2026-01-31T09:15+01:00");
+    expect(projectCreatedAt(new Date("2026-01-31T14:15:00Z"), "America/New_York")).toBe("2026-01-31T09:15-05:00");
+    expect(projectCreatedAt(new Date("2026-01-31T03:30:00Z"), "Asia/Kathmandu")).toBe("2026-01-31T09:15+05:45");
+  });
+
+  test("writes +00:00, never Z, for a zone at UTC", () => {
+    expect(projectCreatedAt(new Date("2026-07-01T00:05:59Z"), "UTC")).toBe("2026-07-01T00:05+00:00");
+  });
+
+  test("crosses the day line with the zone", () => {
+    expect(projectCreatedAt(new Date("2026-07-01T23:30:00Z"), "Europe/Madrid")).toBe("2026-07-02T01:30+02:00");
   });
 });

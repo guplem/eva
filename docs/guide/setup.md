@@ -32,7 +32,7 @@ irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
 The command does these steps:
 
 - It installs git when git is missing, and on Linux curl too. On Linux, this needs administrator rights, so `sudo` asks for your password. On Windows, it uses winget, the program installer of Windows.
-- On Linux, it also installs the OpenMP library for voice notes, and bubblewrap and socat for the sandbox of project chats. When `sudo` is missing or refuses, it skips them and tells you how to install them later.
+- On Linux, it also installs the OpenMP library for voice notes, and bubblewrap and socat for the sandbox of project chats. When `sudo` is missing or refuses, or the package manager fails, it skips them. It tells you why, and gives the command to install them later.
 - Where AppArmor blocks bubblewrap, as on Ubuntu 24.04, it adds a profile that lets bubblewrap build the sandbox. On a system that ships its own profile, it removes the profile that it added before. When `sudo` is missing or refuses, it shows a link to the steps by hand. See [AppArmor and bubblewrap](reference.md#apparmor-and-bubblewrap).
 - It downloads Eva from the latest release, and checks the download, so a broken download stops.
 - It puts Eva where your terminal finds her: `~/.local/bin` on Linux, `%LOCALAPPDATA%\Programs\Eva` on Windows. On Linux, it adds `~/.local/bin` to the `PATH` in your shell start files, such as `~/.profile`.

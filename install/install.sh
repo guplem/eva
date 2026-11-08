@@ -12,6 +12,8 @@ set -eu
 base_url="${EVA_INSTALL_BASE_URL:-https://github.com/guplem/eva/releases/latest/download}"
 bin_folder="$HOME/.local/bin"
 path_added=""
+lists_updated=""
+lock_explained=""
 
 say() {
   printf '%s\n' "$*"
@@ -44,8 +46,48 @@ as_root() {
   elif command -v sudo >/dev/null 2>&1; then
     sudo "$@" </dev/null >/dev/null
   else
-    fail "git needs an administrator to install. Install git, then run this command again."
+    fail "the packages need an administrator to install."
   fi
+}
+
+can_be_root() {
+  [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1
+}
+
+package_manager() {
+  for manager in apt-get dnf pacman zypper apk; do
+    if command -v "$manager" >/dev/null 2>&1; then
+      echo "$manager"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Runs apt-get. On a failure, it shows the errors of apt and explains a held lock once. A stuck apt
+# process, such as a hung daily update, can hold a lock for months (#898). LC_ALL=C keeps the
+# errors in English, so the lock check finds them. NEEDRESTART_SUSPEND keeps Ubuntu's service check
+# (needrestart) from taking over the screen.
+run_apt() {
+  if errors="$(as_root env LC_ALL=C DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get "$@" 2>&1)"; then
+    return 0
+  fi
+  printf '%s\n' "$errors" >&2
+  if [ -z "$lock_explained" ] && printf '%s\n' "$errors" | grep -qE 'Could not get lock|Unable to lock'; then
+    lock_explained="yes"
+    say "  Another apt process holds a lock of apt. It can be a stuck daily update. Wait for it to end, or end it with \`sudo kill <its process number>\`."
+  fi
+  return 1
+}
+
+# Old package lists name files that the mirror no longer has, so an install with them fails.
+# The lists update once per run, so a failure prints one explanation.
+update_package_lists() {
+  [ -z "$lists_updated" ] || return 0
+  lists_updated="yes"
+  [ "$(package_manager)" = "apt-get" ] || return 0
+  run_apt update -qq ||
+    say "  apt did not update its package lists, so an install can fail. Fix the cause, then run: sudo apt-get update"
 }
 
 # whisper.cpp, for voice notes, needs the OpenMP library. Ubuntu Server does not have it. Eva
@@ -54,28 +96,50 @@ has_openmp() {
   { ldconfig -p || /sbin/ldconfig -p; } 2>/dev/null | grep -q 'libgomp\.so\.1'
 }
 
-# Installs the tools in $1, the OpenMP library when $2 is not empty, and the shell sandbox when $3 is
-# not empty. Each package manager names the library in its own way. $packages is a list of words on
-# purpose. NEEDRESTART_SUSPEND keeps Ubuntu's service check (needrestart) from taking over the screen.
+# Prints the packages, each after a space: the tools in $1, the OpenMP library when $2 is not empty,
+# and the shell sandbox when $3 is not empty. Each package manager names the library in its own way.
+package_names() {
+  case "$(package_manager)" in
+    pacman) openmp_package="gcc-libs" ;;
+    dnf | apk) openmp_package="libgomp" ;;
+    *) openmp_package="libgomp1" ;;
+  esac
+  echo "$1${2:+ $openmp_package}${3:+ bubblewrap socat}"
+}
+
+# Installs the packages that package_names gives for $1, $2 and $3. $packages is a list of words on
+# purpose.
 install_packages() {
-  if command -v apt-get >/dev/null 2>&1; then
-    packages="$1${2:+ libgomp1}${3:+ bubblewrap socat}"
-    as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get update -qq
-    as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq $packages
-  elif command -v dnf >/dev/null 2>&1; then
-    packages="$1${2:+ libgomp}${3:+ bubblewrap socat}"
-    as_root dnf install -y $packages
-  elif command -v pacman >/dev/null 2>&1; then
-    packages="$1${2:+ gcc-libs}${3:+ bubblewrap socat}"
-    as_root pacman -S --noconfirm --needed $packages
-  elif command -v zypper >/dev/null 2>&1; then
-    packages="$1${2:+ libgomp1}${3:+ bubblewrap socat}"
-    as_root zypper --non-interactive install $packages
-  elif command -v apk >/dev/null 2>&1; then
-    packages="$1${2:+ libgomp}${3:+ bubblewrap socat}"
-    as_root apk add $packages
+  packages="$(package_names "$1" "$2" "$3")"
+  case "$(package_manager)" in
+    apt-get) run_apt install -y -qq $packages ;;
+    dnf) as_root dnf install -y $packages ;;
+    pacman) as_root pacman -S --noconfirm --needed $packages ;;
+    zypper) as_root zypper --non-interactive install $packages ;;
+    apk) as_root apk add $packages ;;
+    *) return 1 ;;
+  esac
+}
+
+# Says that an optional package is missing: $1 says what needs it. It gives the command that
+# installs the OpenMP library when $2 is not empty, and the shell sandbox when $3 is not empty.
+say_install_later() {
+  packages="$(package_names "" "$2" "$3")"
+  # root has no need for sudo, and a container often has no sudo.
+  sudo="sudo "
+  [ "$(id -u)" -ne 0 ] || sudo=""
+  case "$(package_manager)" in
+    apt-get) later="${sudo}apt-get update && ${sudo}apt-get install$packages" ;;
+    dnf) later="${sudo}dnf install$packages" ;;
+    pacman) later="${sudo}pacman -S$packages" ;;
+    zypper) later="${sudo}zypper install$packages" ;;
+    apk) later="${sudo}apk add$packages" ;;
+    *) later="" ;;
+  esac
+  if [ -n "$later" ]; then
+    say "  $1 To install later, run: $later"
   else
-    return 1
+    say "  $1 Install later with your package manager."
   fi
 }
 
@@ -96,24 +160,29 @@ install_tools() {
   sandbox=""
   has_sandbox || sandbox="yes"
   if [ -n "$missing" ]; then
-    say "  Installing$missing. It needs administrator rights, so sudo can ask for your password."
-    install_packages "$missing" "" "" ||
+    package_manager >/dev/null ||
       fail "this system has no package manager that the script knows. Install$missing, then run this command again."
+    can_be_root || fail "an administrator must install$missing, and this user has no sudo. Then run this command again."
+    say "  Installing$missing. It needs administrator rights, so sudo can ask for your password."
+    update_package_lists
+    install_packages "$missing" "" "" || true
     for tool in $missing; do
       command -v "$tool" >/dev/null 2>&1 || fail "$tool did not install."
       say "  [ok] Installed $tool."
     done
   fi
   [ -z "$openmp$sandbox" ] && return 0
-  if [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; then
+  if can_be_root; then
     # Each one alone, so a package that this system lacks does not stop the other.
     # The subshell keeps a failed step, such as a refused sudo, from stopping the install.
     if [ -n "$openmp" ]; then
       say "  Installing the OpenMP library for voice notes. It needs administrator rights, so sudo can ask for your password."
+      update_package_lists
       (install_packages "" yes "") || true
     fi
     if [ -n "$sandbox" ]; then
       say "  Installing bubblewrap and socat, the shell sandbox of Project chats. It needs administrator rights, so sudo can ask for your password."
+      update_package_lists
       (install_packages "" "" yes) || true
     fi
   fi
@@ -121,14 +190,14 @@ install_tools() {
     if has_openmp; then
       say "  [ok] Installed the OpenMP library."
     else
-      say "  Voice notes need the OpenMP library. Install it later with your package manager (libgomp1 on Ubuntu)."
+      say_install_later "Voice notes need the OpenMP library." yes ""
     fi
   fi
   if [ -n "$sandbox" ]; then
     if has_sandbox; then
       say "  [ok] Installed bubblewrap and socat."
     else
-      say "  The shell of a Project chat needs bubblewrap and socat to stay out of the vault. Install them later with your package manager."
+      say_install_later "The shell of a Project chat needs bubblewrap and socat to stay out of the vault." "" yes
     fi
   fi
 }

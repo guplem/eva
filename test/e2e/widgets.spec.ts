@@ -5,6 +5,9 @@ import { expect, test, type Frame, type Page } from "@playwright/test";
  * widget of the template for `Life/Health/Habits`.
  */
 
+/** The Projects button. A Project chat of another test can add its unread count to the name. */
+const projectsButton = /^Projects(?: \d+ unread chats?)?$/;
+
 async function logIn(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByLabel(/Token/).fill("e2e-demo-token");
@@ -143,7 +146,7 @@ test("Preview on a clone shows a change that is not pushed, with example data fi
   page,
 }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: projectsButton }).click();
   await page.getByLabel("Search projects").fill("habits widget");
   await page
     .getByRole("navigation", { name: "Projects" })

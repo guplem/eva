@@ -311,7 +311,9 @@ A request from Eva's own computer can come from any program there, so only the t
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
 - **Status and In use:** the status of a project is the work on it: **Active** while you work on it, **Paused** while the work stops, and **Closed** when it ends. Apart from the status, tick **In use** in the details form when you use the project now, such as a project that makes the week's menus. A project can be active and in use: you still build it, and you use it every day. In the file, the box writes `in-use: true`.
   - Eva updates older projects when she starts: the old status **In use** becomes **Closed** with **In use** ticked, and the old status **Idea** becomes **Paused**.
-  - `started:` and `closed:` are the days of the work. A project with no `started:` started when you created it. When a project closes, the details form asks for the day and writes `closed:`. A project that opens again loses `closed:`.
+  - `created:` is when the project started, with its offset from UTC, such as `2026-01-31T09:15+01:00`. Eva writes it when she creates a project. An old project known only to the day has `created: 2013-07-31`, and its folder has no time. `closed:` is the day the work ended. When a project closes, the details form asks for the day and writes `closed:`. A project that opens again loses `closed:`.
+  - `result:` is one web address where you use the result, such as a website or a store page. The project page shows it as a **Result** link under the description. A value that is not an http or https address gives a warning.
+  - `repos:` lists only addresses that `git clone` accepts. A link into a branch, a folder or a file (`/tree/`, `/blob/`) gives a warning, and Eva does not clone it.
   - The Projects page has two filter rows. Each row starts with its name. **Status** has **Active**, **Paused** and **Closed**. **Use** has **In use** and **Not in use**. Tap a choice to turn it on or off. A row with every choice on filters nothing. A row with no choice on shows the projects with no value for that field: no `status:` that Eva knows, or no `in-use: true`. So, in **Use**, no choice on shows the projects not in use. A project shows when it matches both rows. The page opens with **Active**, **In use** and **Not in use** on. A status word typed in the search wins over both rows.
   - With no project open, a computer shows the chats that need you, your recent chats, and the statistics of your projects: a timeline, a chart by month and the counts. Tap a count to filter the list.
   - Tap the chart icon beside the title of the list to open the statistics on their own page. This works on a phone too.
@@ -368,18 +370,19 @@ A request from Eva's own computer can come from any program there, so only the t
 
 ## Pinned files
 
-Eva knows some files in every chat with no search. At the start of each new chat, she builds a pinned block from the front matter of your files:
+Eva knows some files in every Assistant chat with no search. At the start of each new Assistant chat, she builds a pinned block from the front matter of your files:
 
 - `summary:` is one line that says what the file holds.
 - `pinned: full` puts the whole file in the block. Keep such a file short.
 - `pinned: summary` puts the file's path and its summary in the block.
 - `pinned: false` keeps the file out of the block.
-- With no `pinned:` value, the status decides. Your active projects and your projects in use, your open and waiting cases (`Life/Cases/<folder>/Case.md`) and your open period (`Life/Periods/<folder>/Period.md`) each get a summary line.
+- With no `pinned:` value, the status decides. Your active projects and your projects in use, your open cases (`Life/Cases/<folder>/Case.md`) and your open period (`Life/Periods/<folder>/Period.md`) each get a summary line. A case is open until its `closed` has a date. A period is open while its `to` is empty or not passed yet. An older case or period with a `status` key and no new key still counts by that status.
 
 How the block works:
 
 - **Order and limits.** The `full` files come first, then the `summary` files, each by path. Then come the cases with a mark, the other cases, the period and the projects. The block holds about 25 summary lines and about 2,000 tokens of full text. A full file that does not fit shows as its summary line, or as its path with "(open it when needed)". A project outside `Projects/`, in `projectRoots`, always shows as a summary line, also with `pinned: full`. Over a limit, the block ends with "N more not shown", and Eva offers which files to unpin.
-- **Marks on a case or a project.** `DUE` means that the case's `next` date has come. `DEADLINE` means that its `deadline` is 14 days away or less, or has passed. A closed project gets no mark. Eva counts the days in your time zone.
+- **A case line** shows `open`, or `waiting for` someone, then its current step as `step N of M`, its `due by` day and its `deadline`. The current step is the first of its `steps` without `done-on`. `no due-by` marks a current step with no valid day, and `all steps done` a case that may be ready to close.
+- **Marks on a case or a project.** `DUE` means that the `due-by` day of the case's current step has come. `DEADLINE` means that its `deadline` is 14 days away or less, or has passed. A closed project gets no mark. Eva counts the days in your time zone.
 - **Data, not orders.** A full file sits between markers that name its path, and Eva reads it as facts about you. Its front matter shows with no comments, no empty keys and no `lastLocation`.
 - **Safe.** The block never holds a secret file, an encrypted file, a link, a file in `.eva/`, in the old `Scratch/` folder, in a `node_modules` folder or in a project's clones. A full file that holds a key or a token shows only as its summary line.
 - **Fixed for the chat.** A change to a pinned file shows in the next new chat. The chat details show the block under **Your pinned files**. A project chat gets no block.
@@ -435,7 +438,7 @@ pi has no sandbox. Its file tools stay walled, but its shell can read the closed
 
 A socket is a private door between two programs on the same computer. Docker, systemd and `ssh-agent` each have one. Through some of them, a command could ask a program outside the sandbox to read the closed folders.
 
-On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Ubuntu 24.04 and later do not allow that: their setting `kernel.apparmor_restrict_unprivileged_userns` blocks it. There, the filter would break every command, even `echo`.
+On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Ubuntu 25.04 and later do not allow that. Their AppArmor profile for bubblewrap lets it build one sandbox, but not a second one inside it. There, the filter would break every command, even `echo`. On Ubuntu 24.04, with the profile that Eva's install command adds, the second sandbox works.
 
 So at start, Eva tries a sandbox inside a sandbox:
 
@@ -447,11 +450,47 @@ Without the filter, the wall is weaker: Eva's list can miss a socket in another 
 
 ### Set up the sandbox
 
-- **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The one-command install adds them. For an Eva from before, run the install command again, or run `sudo apt install bubblewrap socat`. Then restart Eva.
+- **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The one-command install adds them. For an Eva from before, run the install command again, or run `sudo apt-get update && sudo apt-get install bubblewrap socat`. Then restart Eva. When apt says that another process holds its lock, a stuck apt process can be the cause, such as a daily update that hangs for months. Wait for it to end, or end it with `sudo kill <its process number>`. Then run the command again.
+- **Ubuntu 24.04:** the sandbox also needs an AppArmor profile for bubblewrap. See [AppArmor and bubblewrap](#apparmor-and-bubblewrap).
 - **macOS:** the sandbox needs nothing.
 - **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders. Eva tells you this once, in the notification center. The file tools stay walled.
 
 At start, Eva tries the sandbox. When it cannot start, a notice says why. The chats still run, and their file tools stay walled.
+
+### AppArmor and bubblewrap
+
+AppArmor is the part of Ubuntu that gives each program its rights. To build its sandbox, bubblewrap makes a user namespace: a private room where a program acts as the owner. Some attacks on Linux use such a room. So Ubuntu's setting `kernel.apparmor_restrict_unprivileged_userns` lets a program make one only when an AppArmor profile allows it.
+
+- **Ubuntu 25.04 and later** ship a profile for bubblewrap. The sandbox needs nothing more.
+- **Ubuntu 24.04** ships none, so the sandbox cannot start. The notice then says "AppArmor blocks bubblewrap here". The install command adds the profile from [Claude Code's guide](https://code.claude.com/docs/en/sandboxing), with a comment that says that Eva added it. For an Eva from before, run the install command again. Then restart Eva.
+
+The profile lets any program use bubblewrap to make a user namespace. Without the profile, the sandbox cannot start, and the shell of a project chat can read your vault and your logins. Keep Ubuntu's setting on: it still protects every other program.
+
+To add the profile by hand, run these commands. Then restart Eva. A profile that you add by hand stays yours: the install command never changes or removes it.
+
+```bash
+sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+  include if exists <local/bwrap>
+}
+EOF
+sudo apparmor_parser -r /etc/apparmor.d/bwrap
+```
+
+The install command adds the profile only when all of these are true:
+
+- Ubuntu's setting is on.
+- The `bwrap` on your `PATH` is `/usr/bin/bwrap`.
+- The AppArmor tools are there.
+- No other profile covers bubblewrap.
+
+When `sudo` is missing or refuses, the install command shows a link to this section and goes on.
+
+After an upgrade to an Ubuntu that ships its own profile, Eva's profile is left over. A notice says so. Run the install command again: it removes Eva's profile, and keeps the system's profile. Then restart Eva. The uninstall command also asks to remove Eva's profile.
 
 ### Limits of the wall
 
@@ -518,7 +557,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - On a widget project, **Preview** on a clone shows the widget as the clone holds it, with no push. **Example data** shows its mock files. **My data** shows your vault, and asks first for anything that the installed widget does not have.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `.eva/scratch/` and sends it.
 - **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. A voice note that you send in Telegram works too: Eva turns it into text on her computer. The audio never leaves the computer.
-  On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt install libgomp1` on Ubuntu.
+  On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt-get update && sudo apt-get install libgomp1` on Ubuntu.
   To install them by hand, install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Then download a model and put it at `voice/ggml-base.bin` in Eva's home folder.
 - **Google (Calendar, Drive, Contacts, Tasks).** See [Set up Google](#set-up-google).
 

@@ -28,7 +28,7 @@ import { MenuButton, useContextMenu } from "./Menu.tsx";
 import { fileAddressOf } from "./file-paths.ts";
 import { BackButton } from "./MainNav.tsx";
 import { displayFormat } from "./display-format.ts";
-import { frontMatterFacts, keyLabel, type Fact, type FactLink, type FactValue } from "./front-matter-facts.ts";
+import { frontMatterFacts, keyLabel, linkOf, type Fact, type FactLink, type FactValue } from "./front-matter-facts.ts";
 import { worksInClones } from "../../../shared/project-types.ts";
 
 interface ProjectPageProps {
@@ -343,15 +343,23 @@ function ClonesSection({
 /**
  * Every fact of the front matter, and the quick links: each repository's web page and the project
  * folder in Files. A repository with no web page, such as a local remote, stays plain text (#866).
+ * The `result` link comes right after the description: it is where the person uses the project.
  */
 function ProjectFacts({ project }: { readonly project: Project }): ReactElement | null {
   const { repos, repoTypes } = project.frontMatter;
   const facts = frontMatterFacts(project.frontMatter, { clock: displayFormat().clock });
+  // The catalog keeps only an http or https URL, so the link always opens a web page.
+  const result = project.frontMatter.result === null ? null : linkOf(project.frontMatter.result);
   const hasLinks = repos.length > 0 || project.vaultFolder !== null;
-  if (project.description === null && facts.length === 0 && !hasLinks) return null;
+  if (project.description === null && result === null && facts.length === 0 && !hasLinks) return null;
   return (
     <section className="card project-facts" aria-label="Project facts">
       {project.description !== null && <p>{project.description}</p>}
+      {result !== null && (
+        <div className="tags">
+          <FactLinkChip link={result} name="Result" />
+        </div>
+      )}
       {facts.length > 0 && <FactList facts={facts} />}
       {hasLinks && (
         <div className="tags">
@@ -401,9 +409,13 @@ function FactList({ facts }: { readonly facts: readonly Fact[] }): ReactElement 
   );
 }
 
-/** A link chip names its site first, so the person sees at once where it goes. */
-function FactLinkChip({ link }: { readonly link: FactLink }): ReactElement {
+/**
+ * A link chip names its site first, so the person sees at once where it goes. With a name, such as
+ * "Result", the chip says what the link is, and the site follows.
+ */
+function FactLinkChip({ link, name }: { readonly link: FactLink; readonly name?: string }): ReactElement {
   const web = !link.href.startsWith("mailto:");
+  const detail = name === undefined ? link.label : [link.site, link.label].filter((part) => part !== "").join(" ");
   return (
     <a
       className="mode-chip link-chip"
@@ -411,8 +423,8 @@ function FactLinkChip({ link }: { readonly link: FactLink }): ReactElement {
       data-tooltip={link.href}
       {...(web ? { target: "_blank", rel: "noreferrer" } : {})}
     >
-      <Icon name={web ? "external" : "send"} /> {link.site}
-      {link.label !== "" && <span className="link-chip-site">{link.label}</span>}
+      <Icon name={web ? "external" : "send"} /> {name ?? link.site}
+      {detail !== "" && <span className="link-chip-site">{detail}</span>}
     </a>
   );
 }

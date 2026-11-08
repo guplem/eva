@@ -334,6 +334,7 @@ migration vault 2026-11-02-general-project-type
 migration vault 2026-11-02-pinned-files
 migration vault 2026-11-03-format-settings
 migration vault 2026-11-04-project-in-use
+migration vault 2026-11-06-project-created-offset
 typed cli --check
 typed cli --clone
 typed cli --engine
@@ -474,6 +475,7 @@ vault .eva/widgets.json widgets
 vault .eva/widgets.json widgets[].enabled
 vault .eva/widgets.json widgets[].inputs
 vault .eva/widgets.json widgets[].repository
+vault Life/About-me.md aliases
 vault Life/About-me.md allergies
 vault Life/About-me.md birthDate
 vault Life/About-me.md contact
@@ -501,6 +503,7 @@ vault Life/About-me.md region
 vault Life/About-me.md sleep
 vault Life/About-me.md summary
 vault Life/About-me.md work
+vault Life/Cases/*/Case.md closed
 vault Life/Cases/*/Case.md deadline.cost
 vault Life/Cases/*/Case.md deadline.date
 vault Life/Cases/*/Case.md next.date
@@ -508,8 +511,15 @@ vault Life/Cases/*/Case.md next.step
 vault Life/Cases/*/Case.md status
 vault Life/Cases/*/Case.md status=open
 vault Life/Cases/*/Case.md status=waiting
+vault Life/Cases/*/Case.md steps
+vault Life/Cases/*/Case.md steps[].done-on
+vault Life/Cases/*/Case.md steps[].due-by
+vault Life/Cases/*/Case.md steps[].step
+vault Life/Cases/*/Case.md steps[].waiting-for
 vault Life/Periods/*/Period.md status
 vault Life/Periods/*/Period.md status=open
+vault Life/Periods/*/Period.md to
+vault Projects/*/AGENTS.md aliases
 vault Projects/*/AGENTS.md closed
 vault Projects/*/AGENTS.md created
 vault Projects/*/AGENTS.md in-use
@@ -517,6 +527,7 @@ vault Projects/*/AGENTS.md legacy_id
 vault Projects/*/AGENTS.md pinned
 vault Projects/*/AGENTS.md repo_types
 vault Projects/*/AGENTS.md repos
+vault Projects/*/AGENTS.md result
 vault Projects/*/AGENTS.md status
 vault Projects/*/AGENTS.md status=active
 vault Projects/*/AGENTS.md status=closed

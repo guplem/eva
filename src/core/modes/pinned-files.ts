@@ -17,10 +17,27 @@ export type PinnedValue = "full" | "summary" | "false" | null;
 export const pinnedValues = ["full", "summary", "false"] as const;
 /** The front matter keys that the pinned block reads on any file. A rename is a change of a stored format. */
 export const pinnedFileKeys = ["summary", "pinned"] as const;
-/** The keys that the block reads on `Case.md` and `Period.md`, besides `summary` and `pinned`. */
-export const caseFileKeys = ["status", "next.date", "next.step", "deadline.date", "deadline.cost"] as const;
+/**
+ * The keys that the block reads on `Case.md` and `Period.md`, besides `summary` and `pinned`.
+ * The block still reads the old `status` and `next` until each vault upgrades to structure v7.
+ */
+export const caseFileKeys = [
+  "closed",
+  "steps",
+  "steps[].step",
+  "steps[].done-on",
+  "steps[].waiting-for",
+  "steps[].due-by",
+  "deadline.date",
+  "deadline.cost",
+  "status",
+  "next.date",
+  "next.step",
+] as const;
+/** The open values of the old case `status`. */
 export const caseStatuses = ["open", "waiting"] as const;
-export const periodFileKeys = ["status"] as const;
+export const periodFileKeys = ["to", "status"] as const;
+/** The open value of the old period `status`. */
 export const periodStatuses = ["open"] as const;
 
 export type EntityKind = "case" | "period";

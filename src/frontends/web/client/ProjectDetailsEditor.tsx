@@ -11,6 +11,8 @@ import { BackButton } from "./MainNav.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, SelectField } from "./SettingsParts.tsx";
+import { displayFormat } from "./display-format.ts";
+import { dateText } from "./front-matter-facts.ts";
 import {
   projectTypeChoices,
   projectTypeOf,
@@ -176,7 +178,7 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
           <Card
             icon="pen"
             title="Details"
-            description={`Created ${file.details.created ?? "(not set)"}. The folder name holds this date, so it stays.`}
+            description={`Created ${file.details.created === null ? "(not set)" : dateText(file.details.created, { clock: displayFormat().clock })}. The folder name holds this date, so it stays.`}
           >
             {/* One part waits while the other has a change: a save loads the new file into both parts. */}
             <fieldset className="card-fields" disabled={busy || textChanged}>

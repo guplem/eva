@@ -381,6 +381,18 @@ describe("Eva", () => {
     expect(questions.join("\n")).not.toContain("trusted/x");
   });
 
+  test("a new clone skips a repos entry that links into a folder, so git does not fail on it", async () => {
+    const link = "https://github.com/owner/site/tree/main/apps/example-app";
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n  - ${link}\n---\n# Example app\n`,
+    );
+    const instance = start(new FakeEngine());
+    const clone = await instance.newClone("2025-03-02-1015-example-app");
+    expect(clone.repositories.map((repository) => repository.name)).toEqual(["remote"]);
+  });
+
   test("a free clone that Eva has a record of goes first, so work does not wait on a trust question", async () => {
     sandbox.write(
       vault,
@@ -715,7 +727,7 @@ describe("Eva", () => {
       expect(instance.projects()[0]).toMatchObject({
         id: "2026-10-14-1230-example-app",
         frontMatter: {
-          created: "2026-10-14T12:30",
+          created: "2026-10-14T12:30+02:00",
           status: "paused",
           repos: ["https://github.com/you/example-app"],
           repoTypes: { "https://github.com/you/example-app": "standard" },
@@ -3226,6 +3238,37 @@ describe("migrations (#119)", () => {
     await Promise.resolve();
     expect(alerts.find((alert) => alert.key === "shell_wall")).toMatchObject({ level: "warn" });
     expect(alerts.find((alert) => alert.key === "shell_wall")?.message).toContain("bubblewrap");
+  });
+
+  test("Eva's AppArmor profile, left over next to the system's own, is a problem of its own (#903)", async () => {
+    const instance = start(
+      new FakeEngine(),
+      {},
+      { shellWallGap: () => Promise.resolve(null), bwrapProfileLeft: () => true },
+    );
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await Promise.resolve();
+    expect(alerts.find((alert) => alert.key === "bwrap_profile_left")).toMatchObject({ level: "warn" });
+    // The wall works with either profile, so the shell gap stays closed.
+    expect(instance.status().problemDetails.some((problem) => problem.key === "shell_wall")).toBe(false);
+  });
+
+  test("with no leftover AppArmor profile, Eva reports no such problem (#903)", async () => {
+    const instance = start(
+      new FakeEngine(),
+      {},
+      { shellWallGap: () => Promise.resolve(null), bwrapProfileLeft: () => false },
+    );
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await Promise.resolve();
+    expect(instance.status().problemDetails.some((problem) => problem.key === "bwrap_profile_left")).toBe(false);
   });
 
   test("a gap that the person cannot fix, as on Windows, is news and not a problem that stays open (#825)", async () => {

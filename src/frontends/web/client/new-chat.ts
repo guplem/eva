@@ -110,7 +110,7 @@ const factQuestions: Readonly<Record<"birthDate" | "region", FactQuestion>> = {
     answer: "text",
     label: "Your city and country",
     message: (answer) =>
-      `Hey Eva, I live in ${answer}. Save my region, hemisphere and home place in Life/About me.md with the about-me skill.`,
+      `Hey Eva, I live in ${answer}. Save my home place with its region in Life/About me.md with the about-me skill.`,
   },
 };
 

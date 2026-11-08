@@ -7,22 +7,22 @@ One folder for each pet of the person.
 ```yaml
 ---
 species: dog
-breed: Border collie
-birth: 2020-08-01 # YYYY-MM-DD, or YYYY when only the year is known
-chip: "941000012345678" # the microchip number, in quotes
-vet: Example Vet Clinic
-aliases: [Luna, Lunita]
+breed: Border collie # optional
+birth: 2020-08-01 # optional: YYYY-MM-DD, or YYYY when only the year is known
+death: # YYYY-MM-DD, or YYYY when only the year is known. Empty while the pet lives
+chip: "941000012345678" # optional: the microchip number, in quotes
+aliases: [Luna, Lunita] # optional
 summary: Border collie. Allergic to chicken.
 ---
 ```
 
-- **A pet has no `contact`.** Its vet is plain text, or a link to a folder in `Life/People/`.
+- **A pet has no `contact` and no vet key.** Name its vet in the text: plain text, or the path of a folder in `Life/People/`.
 - **The text under the front matter** holds care facts: food, medicines, vaccines, habits.
-- **Beside `Pet.md`:** the vet records, the vaccine card, photos, adoption papers, and the pet's insurance.
+- **Beside `Pet.md`:** the vet records, such as one dated file for each visit or treatment, the vaccine card, photos, adoption papers, and the pet's insurance.
 
 **Not here:**
 
-- A long matter, such as a surgery or a search for a lost pet → `Life/Cases/`, with `about:` linking the pet.
+- A long matter, such as a surgery or a search for a lost pet → `Life/Cases/`. The case links the pet's folder in its text.
 - How to train or care for a kind of animal in general → `Library/` or `Methods/`.
 
-**Closing:** a pet has no status. When a pet dies or leaves, write it with its date in `summary`. Never move or delete the folder.
+**Closing:** a pet has no status. When a pet dies, set `death`. When a pet leaves alive, such as a pet given away or lost, write it with its date in `summary`. Never move or delete the folder.

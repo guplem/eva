@@ -48,7 +48,7 @@ describe("createProject", () => {
   test("writes the folder and an AGENTS.md that the project list reads", async () => {
     const result = await createProject(
       input,
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       noSteps,
     );
 
@@ -62,7 +62,7 @@ describe("createProject", () => {
     expect(fileOf(result.projectId)).toBe(
       [
         "---",
-        "created: 2026-10-21T15:42",
+        "created: 2026-10-21T15:42+02:00",
         'summary: "A small app to try Eva."',
         "status: active",
         "type: software",
@@ -90,7 +90,7 @@ describe("createProject", () => {
     const started: string[] = [];
     const result = await createProject(
       { ...input, name: "Coach", description: "", tags: [], type: "specialist" },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       {
         ...noSteps,
         startChat: (projectId) => {
@@ -110,7 +110,7 @@ describe("createProject", () => {
     expect(fileOf(result.projectId)).toBe(
       [
         "---",
-        "created: 2026-10-21T15:42",
+        "created: 2026-10-21T15:42+02:00",
         "status: active",
         "type: specialist",
         "---",
@@ -127,14 +127,14 @@ describe("createProject", () => {
   test("a general project gets its type and a Drive folder, but no first chat and no specialist line (#768)", async () => {
     const result = await createProject(
       { ...input, name: "House", description: "Building a house.", tags: [], drive: true, type: "general" },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       { ...noSteps, createDriveFolder: () => Promise.resolve("https://drive.google.com/drive/folders/folder-1") },
     );
     expect(result.chat).toBeNull();
     expect(fileOf(result.projectId)).toBe(
       [
         "---",
-        "created: 2026-10-21T15:42",
+        "created: 2026-10-21T15:42+02:00",
         'summary: "Building a house."',
         "status: active",
         "type: general",
@@ -154,7 +154,7 @@ describe("createProject", () => {
   test("a general project with a repository is refused before any folder exists (#768)", async () => {
     const caught = await createProject(
       { ...input, repository: standard, type: "general" },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       noSteps,
     ).catch((error: unknown) => error);
     expect(isEvaError(caught, "project_invalid")).toBe(true);
@@ -165,7 +165,7 @@ describe("createProject", () => {
     for (const extra of [{ repository: standard }, { drive: true }]) {
       const caught = await createProject(
         { ...input, ...extra, type: "specialist" },
-        { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+        { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
         noSteps,
       ).catch((error: unknown) => error);
       expect(isEvaError(caught, "project_invalid")).toBe(true);
@@ -176,7 +176,7 @@ describe("createProject", () => {
   test("a chat that fails to start keeps the specialist and says why (#703)", async () => {
     const result = await createProject(
       { ...input, type: "specialist" },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       { ...noSteps, startChat: () => Promise.reject(new EvaError("engine_failed", "No engine is ready.")) },
     );
     expect(result.chat).toEqual({ problem: "No engine is ready." });
@@ -186,7 +186,7 @@ describe("createProject", () => {
   test("the summary is the first paragraph of the description, in one quoted line (#769)", async () => {
     const result = await createProject(
       { ...input, description: 'Plan: phase 1, the\n"best" #one.\n\nMore text.', tags: [] },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       noSteps,
     );
     expect(fileOf(result.projectId)).toContain('summary: "Plan: phase 1, the \\"best\\" #one."\n');
@@ -199,12 +199,12 @@ describe("createProject", () => {
   test("without a description, the file has the title only", async () => {
     const result = await createProject(
       { ...input, description: "  ", tags: [] },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       noSteps,
     );
 
     expect(fileOf(result.projectId)).toBe(
-      "---\ncreated: 2026-10-21T15:42\nstatus: active\ntype: software\n---\n\n# Example App\n",
+      "---\ncreated: 2026-10-21T15:42+02:00\nstatus: active\ntype: software\n---\n\n# Example App\n",
     );
   });
 
@@ -212,7 +212,7 @@ describe("createProject", () => {
     const asked: string[] = [];
     const result = await createProject(
       { ...input, repository: { type: "vibe-coded", visibility: "public" }, drive: true },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       {
         ...noSteps,
         setUpRepository: (projectId, url, type) => {
@@ -257,7 +257,7 @@ describe("createProject", () => {
   test("a widget project tells the agent to read the rules of the repository first, as a list item", async () => {
     const result = await createProject(
       { ...input, description: "", repository: { type: "widget", visibility: "public" } },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       {
         ...noSteps,
         createRepository: () => Promise.resolve("https://github.com/example/habits-widget"),
@@ -275,7 +275,7 @@ describe("createProject", () => {
   test("without a description, the Drive link never reads as the description", async () => {
     await createProject(
       { ...input, description: "", drive: true },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       { ...noSteps, createDriveFolder: () => Promise.resolve("https://drive.google.com/drive/folders/folder-1") },
     );
 
@@ -287,7 +287,7 @@ describe("createProject", () => {
     const names: string[] = [];
     await createProject(
       { ...input, name: "A very long project name ".repeat(8), repository: standard },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       {
         ...noSteps,
         setUpRepository: () => Promise.resolve({ sessionId: null, problems: [] }),
@@ -306,7 +306,7 @@ describe("createProject", () => {
   test("a failed step keeps the project and says why", async () => {
     const result = await createProject(
       { ...input, repository: standard, drive: true },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       {
         createRepository: () => Promise.reject(new EvaError("github_failed", "name already exists on this account")),
         createDriveFolder: () => Promise.reject(new EvaError("google_failed", "Turn on Google Drive first.")),
@@ -328,7 +328,7 @@ describe("createProject", () => {
   test("a failed setup keeps the project and the repository, and says why", async () => {
     const result = await createProject(
       { ...input, repository: standard },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       {
         ...noSteps,
         createRepository: () => Promise.resolve("https://github.com/example/example-app"),
@@ -342,7 +342,7 @@ describe("createProject", () => {
   });
 
   test("an id that exists fails, and the old project stays as it was", async () => {
-    const options = { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" };
+    const options = { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" };
     await createProject(input, options, noSteps);
 
     const error = await createProject({ ...input, description: "Another one." }, options, noSteps).catch(
@@ -362,7 +362,7 @@ describe("createProject", () => {
     ]) {
       const error = await createProject(
         { ...bad, repository: standard },
-        { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+        { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
         noSteps,
       ).catch((caught: unknown) => caught);
       expect(isEvaError(error, "project_invalid")).toBe(true);
@@ -375,7 +375,7 @@ describe("a project created as closed (#826)", () => {
   test("closes on the day it is created", async () => {
     const result = await createProject(
       { ...input, status: "closed", description: "", tags: [] },
-      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { projectsFolder: projectsFolder(), created: "2026-10-21T15:42+02:00" },
       noSteps,
     );
     expect(fileOf(result.projectId)).toContain("status: closed\nclosed: 2026-10-21\n");

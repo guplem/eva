@@ -50,6 +50,7 @@ import {
   updateProblem,
   relayedProblem,
   shellWallProblem,
+  bwrapProfileProblem,
   vaultAheadProblem,
   newSecretDefaultsNews,
   vaultSecretsProblems,
@@ -139,7 +140,7 @@ import { googleStep } from "./google/google-steps.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import { createProject, type NewProjectInput, type NewProjectResult } from "./projects/new-project.ts";
-import { wallClockOf } from "./schedules/schedule-timing.ts";
+import { projectCreatedAt } from "./projects/project-id.ts";
 import { createDriveFolder } from "./google/google-drive.ts";
 import { ghApiRequest, type GithubRequest } from "./projects/repository-facts.ts";
 import type { GithubWrite } from "./projects/repository-fixes.ts";
@@ -279,6 +280,8 @@ export interface EvaOptions {
   readonly engines: readonly EnginePort[];
   /** Why the shell of a Project chat has no wall on this computer, or null when it has one (#711). */
   readonly shellWallGap?: () => Promise<ShellWallGap | null>;
+  /** True when Eva's AppArmor profile for bubblewrap is left over next to the system's own (#903). */
+  readonly bwrapProfileLeft?: () => boolean;
   /**
    * Whether a sandbox can start inside the sandbox on this computer, as Claude Code's Unix socket
    * filter needs (#760). Without it, the filter stays off.
@@ -1520,6 +1523,7 @@ export class Eva {
         if (problem !== null && gap?.fixable === false) this.alerts.notifyOnce("shell_wall", "news", problem.message);
         else this.alerts.report("shell_wall", problem);
       });
+      this.alerts.report("bwrap_profile_left", bwrapProfileProblem(this.options.bwrapProfileLeft?.() ?? false));
       void (this.options.nestedSandbox?.() ?? Promise.resolve(false)).then((works) => {
         this.socketFilter = works;
       });
@@ -2248,7 +2252,7 @@ export class Eva {
     const timeZone = this.options.config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     return createProject(
       input,
-      { projectsFolder: join(vaultPath, "Projects"), wallClock: wallClockOf(this.options.now(), timeZone) },
+      { projectsFolder: join(vaultPath, "Projects"), created: projectCreatedAt(this.options.now(), timeZone) },
       {
         createRepository: async (name, description, visibility) => {
           const token = this.settings.secrets.githubToken;

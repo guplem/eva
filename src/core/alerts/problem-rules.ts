@@ -84,6 +84,19 @@ export function shellWallProblem(gap: string | null): AlertProblem | null {
   };
 }
 
+/**
+ * Eva's AppArmor profile for bubblewrap is left over next to the system's own (#903). The wall
+ * works with either one, so the message does not say that the shell is open.
+ */
+export function bwrapProfileProblem(left: boolean): AlertProblem | null {
+  if (!left) return null;
+  return {
+    level: "warn",
+    message: `This computer has its own AppArmor profile for bubblewrap now, so the profile that the install command of Eva added is left over. Run the install command of Eva again: it removes Eva's profile. Then restart Eva. See https://github.com/${evaRepository}/blob/main/docs/guide/reference.md#apparmor-and-bubblewrap`,
+    resolvedMessage: "Only this computer's own AppArmor profile for bubblewrap is left.",
+  };
+}
+
 /** The alert keys of the vault's encryption (#707), so each problem opens and closes by itself. */
 type VaultSecretsKey = "vault_password" | "vault_key_changed" | "vault_secret_files";
 

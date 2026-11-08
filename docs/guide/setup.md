@@ -32,7 +32,8 @@ irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
 The command does these steps:
 
 - It installs git when git is missing, and on Linux curl too. On Linux, this needs administrator rights, so `sudo` asks for your password. On Windows, it uses winget, the program installer of Windows.
-- On Linux, it also installs the OpenMP library for voice notes, and bubblewrap and socat for the sandbox of project chats. When `sudo` is missing or refuses, it skips them and tells you how to install them later.
+- On Linux, it also installs the OpenMP library for voice notes, and bubblewrap and socat for the sandbox of project chats. When `sudo` is missing or refuses, or the package manager fails, it skips them. It tells you why, and gives the command to install them later.
+- Where AppArmor blocks bubblewrap, as on Ubuntu 24.04, it adds a profile that lets bubblewrap build the sandbox. On a system that ships its own profile, it removes the profile that it added before. When `sudo` is missing or refuses, it shows a link to the steps by hand. See [AppArmor and bubblewrap](reference.md#apparmor-and-bubblewrap).
 - It downloads Eva from the latest release, and checks the download, so a broken download stops.
 - It puts Eva where your terminal finds her: `~/.local/bin` on Linux, `%LOCALAPPDATA%\Programs\Eva` on Windows. On Linux, it adds `~/.local/bin` to the `PATH` in your shell start files, such as `~/.profile`.
 - It starts `eva setup`, the next step.
@@ -243,7 +244,7 @@ The command asks before each step. Each question shows the safe answer in `[brac
 2. **Stop her.** The command stops each Eva that you picked, and removes her start at login. This step asks nothing.
 3. **Her folder.** The command asks to delete `eva-<name>`. It holds her settings, logins, logs and copy of your vault. Enter keeps the folder, so a new install finds her again. When the vault copy or a project clone has changes that are not on GitHub yet, the command lists them first.
 4. **The eva program.** When no other Eva uses the computer, the command asks to remove the `eva` program. Enter removes it.
-5. **The shared programs.** The command asks about each program that Eva installed: pi, gh, ffmpeg, whisper.cpp, Tailscale, Claude Code and uv. Other programs can use them too, so Enter keeps each one.
+5. **The shared programs.** The command asks about each program that Eva installed: pi, gh, ffmpeg, whisper.cpp, Tailscale, Claude Code and uv. It also asks about the AppArmor profile for bubblewrap, when Eva added one. Other programs can use them too, so Enter keeps each one.
 
 The command never changes your vault on GitHub, or your own Claude Code settings in `~/.claude`. It also keeps the system packages that the install command added (git, curl, bubblewrap, socat and the OpenMP library), and the `PATH` lines that it added to your shell start files.
 

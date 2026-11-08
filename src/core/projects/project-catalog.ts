@@ -25,6 +25,8 @@ export interface ProjectFrontMatter {
   readonly closed: string | null;
   readonly repos: readonly string[];
   readonly tags: readonly string[];
+  /** The other names that the person uses for the project, from the `aliases` key. */
+  readonly aliases: readonly string[];
   readonly legacyId: string | null;
   /** The type name of each repository address of `repos`, from the `repo_types` key (#681). */
   readonly repoTypes: Readonly<Record<string, string>>;
@@ -37,6 +39,8 @@ export interface ProjectFrontMatter {
   readonly summary: string | null;
   /** The `pinned` value as text, such as `false`, or null. The pinned block reads it. */
   readonly pinned: string | null;
+  /** The main place where the result is used, such as a website or a store page: one http or https URL. */
+  readonly result: string | null;
   /** Every key Eva does not know, kept as it is. */
   readonly extra: Readonly<Record<string, unknown>>;
 }
@@ -76,11 +80,13 @@ export const projectFrontMatterKeys = [
   "closed",
   "repos",
   "tags",
+  "aliases",
   "legacy_id",
   "repo_types",
   "type",
   "summary",
   "pinned",
+  "result",
 ] as const;
 const knownKeys: ReadonlySet<string> = new Set(projectFrontMatterKeys);
 /** The warning of a `repo_types` value that is not a map of text values. */
@@ -89,6 +95,21 @@ export const repoTypesWarning = "repo_types must map each repository to its type
 export function reposWarning(type: ProjectType): string {
   return `${projectTypeNoun(type)} has no clones, so Eva does not clone its repos`;
 }
+/** A web page of a branch, a folder or a file, such as `.../tree/main/app`, is no repository: git cannot clone it. */
+export function repoLinkWarning(url: string): string {
+  return `repos has ${url}, a link into a folder or a file, so Eva does not clone it`;
+}
+
+/** A GitHub or GitLab web path into a branch, a folder or a file: `owner/repo/tree/...` or `group/repo/-/blob/...`. */
+const repoLinkPattern = /^https?:\/\/[^/]+\/(?:[^/]+\/){2,}(?:-\/)?(?:tree|blob)\//i;
+
+/** The `repos` entries that git can clone. A link into a folder would only make a clone fail. */
+export function cloneUrls(repos: readonly string[]): string[] {
+  return repos.filter((url) => !repoLinkPattern.test(url));
+}
+
+/** The warning of a `result` value that is not one web address. */
+const resultWarning = "result must be one http or https URL";
 /**
  * The type syncs to every machine, but clones stay on one. A type that changed on another machine
  * leaves them in the project folder, where its chats would see them (#703).
@@ -137,8 +158,11 @@ export function parseFrontMatter(text: string): FrontMatterResult {
 
   const repos = readTextList(fields["repos"]);
   if (repos === null) warnings.push("repos must be a list of URLs");
+  for (const url of repos ?? []) if (repoLinkPattern.test(url)) warnings.push(repoLinkWarning(url));
   const tags = readTextList(fields["tags"]);
   if (tags === null) warnings.push("tags must be a list");
+  const aliases = readTextList(fields["aliases"]);
+  if (aliases === null) warnings.push("aliases must be a list");
   const legacyId = typeof fields["legacy_id"] === "string" ? fields["legacy_id"] : null;
   const repoTypes = readTextMap(fields["repo_types"]);
   if (repoTypes === null) warnings.push(repoTypesWarning);
@@ -152,6 +176,8 @@ export function parseFrontMatter(text: string): FrontMatterResult {
   const summary = typeof fields["summary"] === "string" ? oneLineSummary(fields["summary"]) : null;
   const pinned = typeof fields["pinned"] === "string" ? fields["pinned"] : null;
   const closed = typeof fields["closed"] === "string" ? fields["closed"] : null;
+  const result = readResult(fields["result"]);
+  if (result === undefined) warnings.push(resultWarning);
   const extra = Object.fromEntries(Object.entries(fields).filter(([key]) => !knownKeys.has(key)));
   return {
     frontMatter: {
@@ -161,11 +187,13 @@ export function parseFrontMatter(text: string): FrontMatterResult {
       closed,
       repos: repos ?? [],
       tags: tags ?? [],
+      aliases: aliases ?? [],
       legacyId,
       repoTypes: repoTypes ?? {},
       type,
       summary,
       pinned,
+      result: result ?? null,
       extra,
     },
     warnings,
@@ -177,6 +205,23 @@ export function oldStatusOf(value: unknown): { readonly status: ProjectStatus; r
   return typeof value === "string" && Object.hasOwn(oldProjectStatuses, value)
     ? (oldProjectStatuses[value] ?? null)
     : null;
+}
+
+/**
+ * The `result` URL: null for no value, undefined for a value that is not one http or https URL.
+ * Only these schemes, so a link on the project page never runs a script.
+ */
+function readResult(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (!/^https?:\/\/\S+$/i.test(text)) return undefined;
+  try {
+    new URL(text);
+  } catch {
+    return undefined;
+  }
+  return text;
 }
 
 /** The `in-use` flag: no key is false, and a value other than true or false is null. */
@@ -261,7 +306,9 @@ export function searchProjects(projects: readonly Project[], query: ProjectQuery
   return projects
     .filter((project) => {
       const tags = project.frontMatter.tags.map((candidate) => candidate.toLowerCase());
-      const haystack = `${project.id} ${project.title} ${tags.join(" ")}`.toLowerCase();
+      // A person may know a project by another name, as a case or a person in the vault.
+      const haystack =
+        `${project.id} ${project.title} ${tags.join(" ")} ${project.frontMatter.aliases.join(" ")}`.toLowerCase();
       if (!words.every((word) => haystack.includes(word))) return false;
       if (query.status !== undefined && !matchesStatus(project.frontMatter, query.status)) return false;
       if (tag !== undefined && !tags.includes(tag)) return false;
@@ -327,9 +374,13 @@ export function projectTitleOf(text: string, name: string): string | null {
   return parseFrontMatter(text).frontMatter === null ? null : readTitle(text);
 }
 
-/** `2025-03-02T10:15` matches `2025-03-02-1015-...`; `2019-03` matches `2019-03-...`. */
+/**
+ * `2025-03-02T10:15+01:00` matches `2025-03-02-1015-...`; `2019-03` matches `2019-03-...`. The folder
+ * name holds only the wall clock, so the check drops the UTC offset. An old `created` has none.
+ */
 function createdMatchesId(created: string, folderName: string): boolean {
-  const asIdPrefix = created.replace("T", "-").replace(":", "");
+  const wallClock = created.replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?:Z|[+-]\d{2}:\d{2})$/i, "$1");
+  const asIdPrefix = wallClock.replace("T", "-").replace(":", "");
   return folderName.startsWith(`${asIdPrefix}-`);
 }
 

@@ -18,9 +18,16 @@ async function logIn(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
 }
 
+/** Opens the list on a phone. A computer always shows it. */
 async function openList(page: Page): Promise<void> {
+  if (test.info().project.name !== "phone") return;
   const menu = page.getByRole("button", { name: "Show the list" });
-  if (await menu.isVisible()) await menu.click();
+  const close = page.getByRole("button", { name: "Close the list" });
+  // Just after a page change, the button can be missing for a moment, and a late hashchange closes the list.
+  await expect(async () => {
+    if (!(await close.isVisible())) await menu.click({ timeout: 2_000 });
+    await expect(close).toBeVisible({ timeout: 2_000 });
+  }).toPass();
 }
 
 /** Opens the New chat page with the New chat button. The first message makes the chat. */
@@ -745,11 +752,17 @@ test("a link to an archived chat opens it, with the archived list (issue 388)", 
   await logIn(page);
   const title = await newAnsweredChat(page, "An archived linked chat");
   const chatId = await chatIdNamed(page, title);
-  await page.request.post(`/api/sessions/${chatId}/archive`, { data: { archived: true } });
   const nav = page.getByRole("navigation", { name: "Chats" });
+  // A phone renders no list item while its list is closed, so a count there would wait for nothing.
+  await openList(page);
+  // The list shows the title after the answer, so a count of 0 can only mean the archive below.
+  await expect(nav.locator(".list-item", { hasText: title })).toHaveCount(1);
+  await page.request.post(`/api/sessions/${chatId}/archive`, { data: { archived: true } });
   // A new hash loads no page, so the link waits until the list of this page has the archive.
   await expect(nav.locator(".list-item", { hasText: title })).toHaveCount(0);
   await page.goto(`/#/chat/${chatId}`);
+  // The chat shows already, so wait until the page uses the link: its hashchange closes a phone's list.
+  await expect(page).toHaveURL(new RegExp(`#/chats/${chatId}$`));
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   await openList(page);
   await expect(nav.getByRole("heading", { name: "Archived" })).toBeVisible();

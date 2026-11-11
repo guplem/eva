@@ -82,7 +82,10 @@ test("the People, Objects, Pets and Periods pages show the facts of each kind", 
   await expect(card(page, "Jordan Example")).toContainText("colleague at Example Corp");
 
   await open(page, "#/objects", "Objects");
-  await expect(page.getByRole("heading", { level: 2, name: /^Car/ })).toBeVisible();
+  await expect(page.locator(".main-header .sub")).toHaveText("2 kept · 1 gone");
+  // Each type holds one object, so the cards name their type and the list has no group headings.
+  await expect(card(page, "Example Model").locator(".life-eyebrow")).toHaveText("Car");
+  await expect(page.locator(".life-group-title")).toHaveCount(0);
   await expect(card(page, "Example Model")).toContainText("In use");
   await expect(card(page, "Example Model")).toContainText("Plate 1234ABC");
   await expect(card(page, "Example Tools")).toContainText("Lent");
@@ -148,11 +151,18 @@ test("a case opens its own page with its facts, steps, text and files, and Back 
 
 test("a path of another entity links to its page, in the text and in the facts", async ({ page }) => {
   await open(page, "#/cases/2026-09-01-bumper-claim", "Bumper claim");
+  // The deadline shows with its state and its cost, not as a raw map of the facts.
+  const facts = page.getByRole("region", { name: "Facts" });
+  await expect(facts.locator(".life-deadline")).toContainText("Deadline 1 Feb 2099");
+  await expect(facts.locator(".life-deadline")).toContainText("The right to claim expires");
+  await expect(facts.getByText("Cost", { exact: true })).toHaveCount(0);
   await page
     .getByRole("region", { name: "Notes" })
     .getByRole("link", { name: "Car - Example Model - 1234ABC" })
     .click();
-  await expect(page.getByRole("heading", { level: 1, name: "Car - Example Model - 1234ABC" })).toBeVisible();
+  // An object goes by its model, with its type under it.
+  await expect(page.getByRole("heading", { level: 1, name: "Example Model" })).toBeVisible();
+  await expect(page.locator(".main-header .sub")).toHaveText("Car");
 
   await open(page, "#/people/Sam%20Example", "Sam Example");
   await page.getByRole("region", { name: "Facts" }).getByRole("link", { name: "Alex Example" }).click();

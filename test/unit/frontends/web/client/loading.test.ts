@@ -135,8 +135,7 @@ describe("skeletons", () => {
       expect(entity).toContain("life-facts");
       expect(entity).not.toContain("life-skeleton");
     }
-    // Only the objects come in groups, and only people and pets have a mark.
-    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "objects" }))).toContain("life-group-title");
+    // Only people and pets have a mark.
     expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "people" }))).toContain("life-mark");
     expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "periods" }))).toContain("life-grid rows");
   });

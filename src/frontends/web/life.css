@@ -126,9 +126,10 @@
   line-height: 1.45;
 }
 
+/* The relation is text on a card: the accent would promise a link, and the link lives on the entity page. */
 .life-relation {
   font-weight: 600;
-  color: var(--soft-ink);
+  color: var(--ink);
 }
 
 .life-line {
@@ -261,7 +262,8 @@
   flex: 1 1 10rem;
 }
 
-.life-files h2 {
+.life-files h2,
+.life-text h2 {
   margin: 0;
 }
 
@@ -449,4 +451,39 @@
 .life-highlight {
   font-weight: 600;
   color: var(--soft-ink);
+}
+
+/* The deadline and what it costs stay together, and wrap together on a phone. */
+.life-deadline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+/* The header of an entity keeps one line on a phone. A long name ends in dots, and its tooltip shows it whole. */
+.life-entity-header {
+  flex-wrap: nowrap;
+}
+
+.life-entity-header > .back-named,
+.life-entity-header > .life-mark {
+  flex: none;
+}
+
+.life-entity-header .header-title {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.life-entity-header h1,
+.life-entity-header .sub {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.life-entity-header .header-title .life-pill {
+  flex: none;
 }

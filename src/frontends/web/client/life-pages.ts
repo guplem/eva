@@ -62,11 +62,11 @@ export const lifePages: Readonly<Record<LifeKind, LifeKindPage>> = {
     empty: "An object is a thing you own or use, such as a car, a phone or a home. Ask Eva to add one.",
     searchLabel: "Search objects",
     filters: [
-      { id: "in-use", label: "In use" },
+      { id: "kept", label: "Kept" },
       { id: "gone", label: "Gone" },
       { id: allFilter, label: "All" },
     ],
-    defaultFilter: "in-use",
+    defaultFilter: "kept",
   },
   pets: {
     title: "Pets",
@@ -266,14 +266,15 @@ function currentStepOf(entity: LifeEntity, now: Date): CurrentStep | null {
   if (isClosedCase(entity)) return null;
   const { fields } = entity;
   if (!Array.isArray(fields["steps"])) {
-    // An old-form case keeps its next step in `next`.
-    const next = textOf(fields["next"]);
+    // An old-form case keeps its next step in `next`: a text, or a map of `step` and `date`.
+    const nextMap = mapOf(fields["next"]);
+    const next = nextMap === null ? textOf(fields["next"]) : textOf(nextMap["step"]);
     return next === null
       ? null
       : {
           text: next,
-          waitingFor: textOf(fields["waiting-for"]),
-          due: dayState(fields["due-by"] ?? fields["due"], now, dueWording),
+          waitingFor: textOf(nextMap?.["waiting-for"] ?? fields["waiting-for"]),
+          due: dayState(nextMap?.["date"] ?? fields["due-by"] ?? fields["due"], now, dueWording),
         };
   }
   const step = caseSteps(fields, now).find((each) => each.state === "current");
@@ -328,8 +329,8 @@ export type LifeCardBody =
   | {
       readonly kind: "periods";
       readonly type: string | null;
-      readonly org: string | null;
-      readonly role: string | null;
+      /** The role at the organisation. */
+      readonly work: string | null;
       readonly span: string | null;
       readonly length: string | null;
       readonly goesOn: boolean;
@@ -456,7 +457,7 @@ function objectCard(entity: LifeEntity): LifeCardBody {
     type: wordOf(entity.fields["type"]) ?? (named ? (parts[0] ?? null) : null),
     model: model === "" ? null : model,
     ids: ids.length > 0 ? ids : folderId === null ? [] : [folderId],
-    pill: status === null ? null : (objectStatusPills[status] ?? { text: status, tone: "idle" }),
+    pill: status === null ? null : (objectStatusPills[status] ?? { text: capitalized(status), tone: "idle" }),
     owner: owner === null ? null : namedText(owner),
   };
 }
@@ -542,6 +543,11 @@ function periodDays(entity: LifeEntity, now: Date): PeriodDays {
   return { from: dayOf(fromText), fromText, to, toText, goesOn };
 }
 
+/** The type of a period. An old form names the key `kind`. */
+function periodType(entity: LifeEntity): string | null {
+  return wordOf(entity.fields["type"]) ?? wordOf(entity.fields["kind"]);
+}
+
 function periodCard(entity: LifeEntity, now: Date): LifeCardBody {
   const { from, fromText, to, toText, goesOn } = periodDays(entity, now);
   const fromWords = fromText === null ? null : from === null ? fromText : monthWords(from);
@@ -568,11 +574,16 @@ function periodCard(entity: LifeEntity, now: Date): LifeCardBody {
       ? null
       : dayAfter(to);
   const months = from === null || end === null ? null : monthsBetween(from, end);
+  const type = periodType(entity);
+  const work = [textOf(entity.fields["role"]), textOf(entity.fields["org"])]
+    .filter((part) => part !== null)
+    .join(" at ");
+  const same = (first: string, second: string): boolean => first.toLowerCase() === second.toLowerCase();
   return {
     kind: "periods",
-    type: wordOf(entity.fields["type"]) ?? wordOf(entity.fields["kind"]),
-    org: textOf(entity.fields["org"]),
-    role: textOf(entity.fields["role"]),
+    // A card says each fact once: a sabbatical needs no "Sabbatical" tag, and a summary can hold the work.
+    type: type === null || same(type, entity.title) ? null : type,
+    work: work === "" || (entity.summary ?? "").toLowerCase().startsWith(work.toLowerCase()) ? null : work,
     span,
     length: months === null || months < 0 ? null : lengthWords(months),
     goesOn,
@@ -665,15 +676,22 @@ export function lifeGroups(kind: LifeKind, entities: readonly LifeEntity[], filt
       ].filter((group) => group.entities.length > 0);
     }
     case "objects": {
-      const types = new Map<string, LifeEntity[]>();
+      // Each key keeps the first spelling that it sees, so "TV" stays "TV".
+      const types = new Map<string, { label: string; entities: LifeEntity[] }>();
       for (const entity of [...kept].sort(byTitle)) {
         const card = objectCard(entity);
         const type = card.kind === "objects" ? (card.type ?? "") : "";
-        types.set(type.toLowerCase(), [...(types.get(type.toLowerCase()) ?? []), entity]);
+        const group = types.get(type.toLowerCase()) ?? { label: type === "" ? "Other" : type, entities: [] };
+        group.entities.push(entity);
+        types.set(type.toLowerCase(), group);
       }
-      return [...types.entries()]
+      const groups = [...types.entries()]
         .sort(([first], [second]) => byKey(first === "" ? null : first, second === "" ? null : second, false))
-        .map(([type, list]) => ({ label: type === "" ? "Other" : capitalized(type), entities: list }));
+        .map(([, group]) => group);
+      // A heading over each single object would waste the width, so the list then has none.
+      if (groups.every((group) => group.entities.length === 1))
+        return oneGroup(groups.flatMap((group) => group.entities));
+      return groups;
     }
     case "periods": {
       const fromKey = (entity: LifeEntity): string | null => {
@@ -703,7 +721,7 @@ export function lifeCounts(kind: LifeKind, entities: readonly LifeEntity[], now:
     }
     case "objects": {
       const gone = count((entity) => matchesLifeFilter(entity, "gone"));
-      return pairWords(entities.length - gone, "in use", gone, "gone");
+      return pairWords(entities.length - gone, "kept", gone, "gone");
     }
     case "pets": {
       const died = count((entity) => textOf(entity.fields["death"]) !== null);
@@ -736,17 +754,68 @@ function linkedValue(value: FactValue): FactValue {
       return { kind: "list", items: value.items.map(linkedValue) };
     case "map":
       return { kind: "map", facts: value.facts.map((fact) => ({ ...fact, value: linkedValue(fact.value) })) };
+    case "date":
+      // A day, a month or a year reads as on the cards and the steps, so a page has one form of date.
+      return dayOf(value.raw) === null ? value : { ...value, text: dayWords(value.raw) };
     default:
       return value;
   }
 }
 
-/** The facts of an entity page. The steps of a case have a list of their own. */
+/** The keys that the header, a pill or a list of the entity page shows, so the facts leave them out. */
+function shownElsewhere(entity: LifeEntity, key: string): boolean {
+  const value = entity.fields[key];
+  switch (entity.kind) {
+    case "cases":
+      // Steps that are not a list show nowhere else, so they stay a fact.
+      return (
+        (key === "steps" && Array.isArray(value)) || (key === "deadline" && deadlineOf(value, new Date(0)) !== null)
+      );
+    case "objects":
+      return key === "status" || key === "type";
+    case "pets":
+      return key === "species" || key === "breed";
+    case "periods":
+      return key === "type" || key === "kind";
+    case "people":
+      return false;
+  }
+}
+
+/** The facts of an entity page: each key that the page shows nowhere else. */
 export function lifeFacts(entity: LifeEntity, format: FactFormat): Fact[] {
-  const fields = Object.entries(entity.fields).filter(([key]) => !(entity.kind === "cases" && key === "steps"));
+  const fields = Object.entries(entity.fields).filter(([key]) => !shownElsewhere(entity, key));
   return factsOf([...fields, ["aliases", entity.aliases], ["tags", entity.tags.map((tag) => `#${tag}`)]], format).map(
-    (fact) => ({ ...fact, value: linkedValue(fact.value) }),
+    (fact) => {
+      const value = linkedValue(fact.value);
+      return fact.key === "ids" && value.kind === "map"
+        ? { ...fact, value: { ...value, facts: value.facts.map((id) => ({ ...id, label: idLabel(id.key) })) } }
+        : { ...fact, value };
+    },
   );
+}
+
+export interface LifeHeader {
+  readonly title: string;
+  /** A short line under the title, such as the type of an object, or null. */
+  readonly sub: string | null;
+}
+
+/** The title and the sub line of an entity page. An object goes by its model, as on its card. */
+export function lifeHeader(entity: LifeEntity, now: Date): LifeHeader {
+  const { body } = lifeCardOf(entity, now);
+  switch (body.kind) {
+    case "objects":
+      return { title: body.model ?? entity.title, sub: body.type };
+    case "pets": {
+      const sub = [body.species, body.breed].filter((part) => part !== null).join(" · ");
+      return { title: entity.title, sub: sub === "" ? null : sub };
+    }
+    case "periods":
+      return { title: entity.title, sub: periodType(entity) };
+    default:
+      return { title: entity.title, sub: null };
+  }
 }
 
 /** The text of the main file without a first heading that repeats the title of the page. */

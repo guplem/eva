@@ -9,6 +9,7 @@ import {
   lifeCounts,
   lifeFacts,
   lifeGroups,
+  lifeHeader,
   lifePages,
   matchesLifeFilter,
   matchesLifeSearch,
@@ -76,7 +77,7 @@ describe("lifePages", () => {
       if (ids.length > 0) expect(ids).toContain(page.defaultFilter);
     }
     expect(lifePages.cases.defaultFilter).toBe("open");
-    expect(lifePages.objects.defaultFilter).toBe("in-use");
+    expect(lifePages.objects.defaultFilter).toBe("kept");
     expect(lifePages.people.filters).toEqual([]);
   });
 });
@@ -240,7 +241,7 @@ describe("objects", () => {
     expect(drill).toMatchObject({ type: "Drill", model: "Example Tools", ids: ["2022"], owner: "Sam Example" });
     expect(drill.pill).toEqual({ text: "Lent", tone: "warn" });
     const odd = body(lifeCardOf(entity("objects", "Thing", { status: "broken", ids: "" }), now), "objects");
-    expect(odd).toMatchObject({ type: null, model: null, ids: [], pill: { text: "broken", tone: "idle" } });
+    expect(odd).toMatchObject({ type: null, model: null, ids: [], pill: { text: "Broken", tone: "idle" } });
     expect(body(lifeCardOf(entity("objects", "Thing", { status: "" }), now), "objects").pill).toBeNull();
     expect(
       body(lifeCardOf(entity("objects", "Phone - Model", { ids: { imei: "4321" } }), now), "objects"),
@@ -255,7 +256,7 @@ describe("objects", () => {
     const sold = entity("objects", "s", { status: "sold" });
     const stored = entity("objects", "t", { status: "stored" });
     const blank = entity("objects", "u", { status: "" });
-    expect([car, stored, blank, sold].map((each) => matchesLifeFilter(each, "in-use"))).toEqual([
+    expect([car, stored, blank, sold].map((each) => matchesLifeFilter(each, "kept"))).toEqual([
       true,
       true,
       true,
@@ -264,12 +265,15 @@ describe("objects", () => {
     expect(
       [car, sold, entity("objects", "g", { status: "gone" })].map((each) => matchesLifeFilter(each, "gone")),
     ).toEqual([false, true, true]);
-    expect(lifeCounts("objects", [car, stored, sold], now)).toBe("2 in use · 1 gone");
+    expect(lifeCounts("objects", [car, stored, sold], now)).toBe("2 kept · 1 gone");
   });
 
-  test("objects group by type, with Other last", () => {
+  test("objects group by type, with Other last, and each label keeps the first spelling", () => {
     const list = [
       entity("objects", "Phone - B", { type: "phone" }),
+      entity("objects", "Phone - C", { type: "phone" }),
+      entity("objects", "TV - A", { type: "TV" }),
+      entity("objects", "TV - B", { type: "tv" }),
       entity("objects", "Lamp", {}),
       entity("objects", "Car - Z", { type: "car" }),
       entity("objects", "Car - A", { type: "Car" }),
@@ -278,7 +282,8 @@ describe("objects", () => {
       lifeGroups("objects", list, "all", now).map((group) => [group.label, group.entities.map((each) => each.id)]),
     ).toEqual([
       ["Car", ["Car - A", "Car - Z"]],
-      ["Phone", ["Phone - B"]],
+      ["Phone", ["Phone - B", "Phone - C"]],
+      ["TV", ["TV - A", "TV - B"]],
       ["Other", ["Lamp"]],
     ]);
   });
@@ -342,8 +347,7 @@ describe("periods", () => {
     expect(body(lifeCardOf(job, now), "periods")).toEqual({
       kind: "periods",
       type: "Job",
-      org: "Example Corp",
-      role: "Engineer",
+      work: "Engineer at Example Corp",
       span: "Sep 2024 to now",
       length: "2 years 2 months",
       goesOn: true,
@@ -463,5 +467,97 @@ describe("lifeCardPill", () => {
     expect(pill("periods", { from: "2020" })).toEqual({ text: "Going on", tone: "live" });
     expect(pill("periods", { to: "2020" })).toBeNull();
     expect(pill("people", {})).toBeNull();
+  });
+});
+
+describe("review round 1", () => {
+  test("an old-form case reads its next step from a map of date and step", () => {
+    const old = body(
+      lifeCardOf(entity("cases", "x", { status: "open", next: { date: "2026-11-12", step: "Call the bank" } }), now),
+      "cases",
+    );
+    expect(old.current).toEqual({
+      text: "Call the bank",
+      waitingFor: null,
+      due: expect.objectContaining({ words: "Due tomorrow" }) as DayState,
+    });
+    const empty = body(lifeCardOf(entity("cases", "x", { next: { date: "", step: "" } }), now), "cases");
+    expect(empty.current).toBeNull();
+  });
+
+  test("the facts keep steps that are not a list, and leave out the deadline that the case page shows", () => {
+    const format = { clock: null };
+    const labels = (fields: Record<string, unknown>): string[] =>
+      lifeFacts(entity("cases", "x", fields), format).map((fact) => fact.label);
+    expect(labels({ steps: "Call the bank", deadline: { date: "2026-12-01", cost: "A fee" } })).toEqual(["Steps"]);
+    expect(labels({ steps: [{ step: "s" }], deadline: "" })).toEqual([]);
+  });
+
+  test("a date in the facts reads as on the cards", () => {
+    const facts = lifeFacts(entity("periods", "x", { from: "2024-09-01", to: "2024-09", at: "2026-01-31T09:15" }), {
+      locale: "en-GB",
+      clock: null,
+    });
+    expect(facts.map((fact) => (fact.value.kind === "date" ? fact.value.text : null))).toEqual([
+      "1 Sep 2024",
+      "Sep 2024",
+      expect.stringContaining("Jan 2026") as string,
+    ]);
+  });
+
+  test("the facts leave out what the header and the pills say, and read ID keys well", () => {
+    const format = { clock: null };
+    const facts = lifeFacts(
+      entity("objects", "Car - M - 1", { status: "in-use", type: "car", ids: { vin: "V1", plate: "P1" }, owner: "" }),
+      format,
+    );
+    expect(facts.map((fact) => fact.label)).toEqual(["IDs"]);
+    const ids = facts[0]?.value;
+    expect(ids?.kind === "map" ? ids.facts.map((fact) => fact.label) : []).toEqual(["VIN", "Plate"]);
+    expect(
+      lifeFacts(entity("pets", "x", { species: "dog", breed: "Collie", chip: "1" }), format).map((f) => f.label),
+    ).toEqual(["Chip"]);
+    expect(
+      lifeFacts(entity("periods", "x", { type: "job", kind: "job", org: "O" }), format).map((f) => f.label),
+    ).toEqual(["Org"]);
+  });
+
+  test("an entity page names its title and a sub line from the facts that the header shows", () => {
+    const header = (kind: LifeKind, id: string, fields: Record<string, unknown>): unknown =>
+      lifeHeader(entity(kind, id, fields, { title: id }), now);
+    expect(header("objects", "Car - Example Model - 1234ABC", { type: "car" })).toEqual({
+      title: "Example Model",
+      sub: "Car",
+    });
+    expect(header("pets", "Luna", { species: "dog", breed: "Border collie" })).toEqual({
+      title: "Luna",
+      sub: "Dog · Border collie",
+    });
+    expect(header("periods", "Study", { type: "study" })).toEqual({ title: "Study", sub: "Study" });
+    expect(header("people", "Sam", { relation: "friend" })).toEqual({ title: "Sam", sub: null });
+  });
+
+  test("Kept holds what the person still has, and Gone what they sold or lost", () => {
+    expect(lifePages.objects.filters.map((filter) => filter.label)).toEqual(["Kept", "Gone", "All"]);
+  });
+
+  test("objects skip the group headings when every group holds one object", () => {
+    const list = [entity("objects", "Phone - B", { type: "phone" }), entity("objects", "Car - A", { type: "car" })];
+    expect(lifeGroups("objects", list, "all", now)).toEqual([{ label: null, entities: [list[1]!, list[0]!] }]);
+  });
+
+  test("a period card hides a type that is its title, and a work line that the summary starts with", () => {
+    const card = (fields: Record<string, unknown>, more: Partial<LifeEntity>): unknown =>
+      body(lifeCardOf(entity("periods", "x", fields, more), now), "periods");
+    expect(card({ type: "sabbatical" }, { title: "Sabbatical" })).toMatchObject({ type: null });
+    expect(
+      card(
+        { type: "job", role: "Engineer", org: "Example Corp" },
+        { title: "Job", summary: "Engineer at Example Corp, a company." },
+      ),
+    ).toMatchObject({ type: null, work: null });
+    expect(card({ org: "Example Corp" }, { title: "T", summary: "Other words." })).toMatchObject({
+      work: "Example Corp",
+    });
   });
 });

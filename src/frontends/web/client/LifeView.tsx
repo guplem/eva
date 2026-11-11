@@ -20,6 +20,7 @@ import {
   lifeCounts,
   lifeFacts,
   lifeGroups,
+  lifeHeader,
   lifePages,
   matchesLifeSearch,
   type CaseStep,
@@ -90,7 +91,11 @@ export function LifeView({
           filter={filter}
           onSearch={setSearch}
           onFilter={setFilter}
-          onRetry={() => setListVersion((version) => version + 1)}
+          onRetry={() => {
+            // The wait shows at once, as on the first load.
+            setList(null);
+            setListVersion((version) => version + 1);
+          }}
         />
       ) : (
         <LifeEntityPage key={entityId} kind={kind} entityId={entityId} />
@@ -194,7 +199,12 @@ function LifeList({ kind, list, search, query, filter, onSearch, onFilter, onRet
             <ul className={kind === "periods" ? "life-grid rows" : "life-grid"}>
               {group.entities.map((entity) => (
                 <li key={entity.id}>
-                  <LifeCardButton kind={kind} card={lifeCardOf(entity, now)} entityId={entity.id} />
+                  <LifeCardButton
+                    kind={kind}
+                    card={lifeCardOf(entity, now)}
+                    entityId={entity.id}
+                    grouped={group.label !== null}
+                  />
                 </li>
               ))}
             </ul>
@@ -241,16 +251,19 @@ function LifeCardButton({
   kind,
   card,
   entityId,
+  grouped,
 }: {
   readonly kind: LifeKind;
   readonly card: LifeCard;
   readonly entityId: string;
+  /** The card sits under a heading of its type. */
+  readonly grouped: boolean;
 }): ReactElement {
   const { body } = card;
   const pill = lifeCardPill(body);
   const mark = body.kind === "people" || body.kind === "pets" ? body : null;
-  // Objects come in groups by type, so only a period names its span above the title.
-  const eyebrow = body.kind === "periods" ? body.span : null;
+  // A period names its span above the title. An object names its type, unless its group heading does.
+  const eyebrow = body.kind === "periods" ? body.span : body.kind === "objects" && !grouped ? body.type : null;
   const title = body.kind === "objects" ? (body.model ?? card.title) : card.title;
   return (
     <button className={`card life-card ${kind}`} onClick={() => goTo(lifeAddressOf(kind, entityId))}>
@@ -302,13 +315,12 @@ function CardBody({ body }: { readonly body: LifeCardBody }): ReactElement | nul
               {body.current.waitingFor !== null && <Line icon="user">Waits for {body.current.waitingFor}</Line>}
             </span>
           )}
-          {(due !== null || deadline !== null || cost !== null) && (
+          {due !== null && (
             <span className="life-pills">
-              {due !== null && <DayPill day={due} />}
-              {deadline !== null && <DayPill day={deadline} />}
-              {cost !== null && <span className="life-small">{cost}</span>}
+              <DayPill day={due} />
             </span>
           )}
+          <DeadlineLine deadline={deadline} cost={cost} />
           {body.closed !== null && <Line icon="check">Closed on {body.closed}</Line>}
         </>
       );
@@ -340,13 +352,17 @@ function CardBody({ body }: { readonly body: LifeCardBody }): ReactElement | nul
       );
     }
     case "periods": {
-      const work = [body.role, body.org].filter((part) => part !== null).join(" at ");
+      // The work gets a line of its own: a dot at the start of a wrapped line would read as noise.
       return (
-        <span className="life-facts-line">
-          {body.type !== null && <span className="tag">{body.type}</span>}
-          {work !== "" && <span>{work}</span>}
-          {body.length !== null && <span className="muted">{body.length}</span>}
-        </span>
+        <>
+          {body.work !== null && <span className="life-work">{body.work}</span>}
+          {(body.type !== null || body.length !== null) && (
+            <span className="life-facts-line">
+              {body.type !== null && <span className="tag">{body.type}</span>}
+              {body.length !== null && <span className="muted">{body.length}</span>}
+            </span>
+          )}
+        </>
       );
     }
   }
@@ -400,18 +416,26 @@ function LifeEntityPage({ kind, entityId }: { readonly kind: LifeKind; readonly 
 
   const back = (): void => goUp(lifeAddressOf(kind));
   const now = new Date();
-  const card = entity !== null && typeof entity === "object" ? lifeCardOf(entity, now) : null;
+  const shown = entity !== null && typeof entity === "object" ? entity : null;
+  const card = shown === null ? null : lifeCardOf(shown, now);
+  const header = shown === null ? null : lifeHeader(shown, now);
   const pill = card === null ? null : lifeCardPill(card.body);
+  const mark = card?.body.kind === "people" || card?.body.kind === "pets" ? card.body : null;
   return (
     <>
-      <div className="main-header">
+      <div className="main-header life-entity-header">
         <BackButton label={`Back to ${page.title.toLowerCase()}`} text={page.title} onClick={back} />
+        {mark !== null && (
+          <span className="project-mark life-mark" style={markStyle(mark.color)} aria-hidden="true">
+            {mark.initials}
+          </span>
+        )}
         <div className="header-text">
           <div className="header-title">
-            <h1>{card?.title ?? (entity === "missing" ? "Not found" : entityId)}</h1>
+            <h1 data-tooltip={header?.title}>{header?.title ?? (entity === "missing" ? "Not found" : entityId)}</h1>
             {pill !== null && <StatePill pill={pill} />}
           </div>
-          {typeof entity === "object" && entity !== null && <div className="sub mono">{entity.folder}</div>}
+          {(header?.sub ?? null) !== null && <div className="sub">{header?.sub}</div>}
         </div>
       </div>
       <div className="life-page life-entity">
@@ -422,7 +446,15 @@ function LifeEntityPage({ kind, entityId }: { readonly kind: LifeKind; readonly 
         )}
         {entity === "failed" && (
           <div className="callout danger life-failed" role="alert">
-            Eva could not read this page. <button onClick={() => setVersion((value) => value + 1)}>Try again</button>
+            Eva could not read this page.{" "}
+            <button
+              onClick={() => {
+                setEntity(null);
+                setVersion((value) => value + 1);
+              }}
+            >
+              Try again
+            </button>
           </div>
         )}
         {entity === "missing" && (
@@ -487,6 +519,7 @@ function EntityDetails({ entity, card }: { readonly entity: LifeEntityDetail; re
       )}
       {body !== "" && (
         <section className="card life-text" aria-label="Notes">
+          <h2>Notes</h2>
           <MarkdownBody
             html={toWebHtml(body, { vaultLinks: true, pathLinks: true })}
             className="answer-body life-markdown"
@@ -538,8 +571,10 @@ function StepRow({ step }: { readonly step: CaseStep }): ReactElement {
   );
 }
 
-/** What the facts do not say: the age of a pet, or the span and length of a period. */
+/** What the facts do not say: the deadline of a case, the age of a pet, or the span and length of a period. */
 function EntityHighlight({ body }: { readonly body: LifeCardBody }): ReactElement | null {
+  if (body.kind === "cases")
+    return <DeadlineLine deadline={body.deadline?.due ?? null} cost={body.deadline?.cost ?? null} />;
   const words = body.kind === "pets" ? [body.life] : body.kind === "periods" ? [body.span, body.length] : [];
   const shown = words.filter((word) => word !== null);
   if (shown.length === 0) return null;
@@ -548,6 +583,23 @@ function EntityHighlight({ body }: { readonly body: LifeCardBody }): ReactElemen
       {shown.map((word) => (
         <span key={word}>{word}</span>
       ))}
+    </span>
+  );
+}
+
+/** The deadline of a case, with what is lost beside it, so the cost reads as part of the deadline. */
+function DeadlineLine({
+  deadline,
+  cost,
+}: {
+  readonly deadline: DayState | null;
+  readonly cost: string | null;
+}): ReactElement | null {
+  if (deadline === null && cost === null) return null;
+  return (
+    <span className="life-deadline">
+      {deadline !== null && <DayPill day={deadline} />}
+      {cost !== null && <span className="life-small">{deadline === null ? `Deadline: ${cost}` : cost}</span>}
     </span>
   );
 }

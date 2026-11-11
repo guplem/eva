@@ -455,8 +455,8 @@ function ProjectListSkeleton(): ReactElement {
 const lifeCardWidths = ["62%", "48%", "70%", "54%"];
 
 /**
- * The list of a Life page (#911): the search, the filter chips and a grid of cards. Objects come in
- * groups by type, so their first group has a title. The grid copies the real one, so the cards keep their place.
+ * The list of a Life page (#911): the search, the filter chips and a grid of cards. The grid copies
+ * the real one, so the cards keep their place.
  */
 export function LifeListSkeleton({ kind, label }: { readonly kind: LifeKind; readonly label?: string }): ReactElement {
   const page = lifePages[kind];
@@ -476,11 +476,6 @@ export function LifeListSkeleton({ kind, label }: { readonly kind: LifeKind; rea
         )}
       </div>
       <div className="life-group">
-        {kind === "objects" && (
-          <h2 className="life-group-title">
-            <Text width="48px" />
-          </h2>
-        )}
         <ul className={kind === "periods" ? "life-grid rows" : "life-grid"} {...copies(".life-grid", "left top right")}>
           {lifeCardWidths.map((width, index) => (
             <li key={width}>

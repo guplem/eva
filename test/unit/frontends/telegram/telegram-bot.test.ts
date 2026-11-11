@@ -1814,7 +1814,7 @@ describe("approvals and commands", () => {
       expect(confirm?.["message_id"]).toBe(messageId);
       expect(String(confirm?.["text"])).toContain("Push code");
       expect(String(confirm?.["text"])).toContain("GitHub");
-      expect(String(confirm?.["text"])).toContain("Settings > AI engines");
+      expect(String(confirm?.["text"])).toContain("Settings > AI engines > Actions that reach other people");
       expect(JSON.stringify(confirm?.["reply_markup"])).toContain(`a:${requestId}:always-yes`);
       expect(JSON.stringify(confirm?.["reply_markup"])).toContain(`a:${requestId}:back`);
       expect(answers).toEqual([]);

@@ -48,6 +48,6 @@ export function alwaysConfirmText(categories: readonly OutwardActionCategory[]):
   const actions = categories.map((category) => outwardActionWords[category].title).join(", ");
   return (
     `Eva will do these with no question from now on: ${actions}. Are you sure? ` +
-    "You can change this any time in Settings > AI engines."
+    "You can change this any time in Settings > AI engines > Actions that reach other people."
   );
 }

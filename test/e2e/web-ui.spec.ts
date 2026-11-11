@@ -3734,6 +3734,12 @@ test("in a window 500 px high, Settings stays in view while the other entries sc
   expect((box?.y ?? Infinity) + (box?.height ?? 0)).toBeLessThanOrEqual(500);
   const scrolls = await nav.locator(".main-nav-scroll").evaluate((part) => part.scrollHeight > part.clientHeight);
   expect(scrolls).toBe(true);
+  // The demo has setup steps left, so the badge shows, and it stays in view with its entry.
+  await expect(settings).toHaveAccessibleName(/^Settings \d+ to set up$/);
+  const badge = await settings.locator(".nav-badge").boundingBox();
+  expect(badge).not.toBeNull();
+  expect((badge?.y ?? Infinity) + (badge?.height ?? 0)).toBeLessThanOrEqual(500);
+  expect(badge?.y ?? -1).toBeGreaterThanOrEqual(0);
   await settings.click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
   await expect(settings).toHaveAttribute("aria-current", "page");
@@ -6152,6 +6158,115 @@ test.describe("on a phone", () => {
     expect((await settings.boundingBox())?.x ?? Infinity).toBeLessThan(
       (await tabs.locator(".main-nav-visor").boundingBox())?.x ?? 0,
     );
+  });
+
+  test("this browser keeps the phone choice after a reload (#911)", async ({ page }) => {
+    await logIn(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    await page.goto("/#/settings/personalize");
+    const phone = page
+      .getByRole("region", { name: "Navigation", exact: true })
+      .getByRole("group", { name: "On a phone" });
+    await phone.getByRole("switch", { name: "Files" }).click();
+    await phone.getByRole("switch", { name: "Settings" }).click();
+    await expect(tabs.getByRole("button", { name: "Files" })).toHaveCount(0);
+    await expect(tabs.getByRole("button", { name: /^Settings/ })).toBeVisible();
+    await page.reload();
+    await expect(tabs.getByRole("button", { name: /^Settings/ })).toBeVisible();
+    await expect(tabs.getByRole("button", { name: "Files" })).toHaveCount(0);
+    await expect(tabs.getByRole("button", { name: "Schedules" })).toBeVisible();
+    await expect(phone.getByRole("switch", { name: "Files" })).toHaveAttribute("aria-checked", "false");
+    await expect(phone.getByRole("switch", { name: "Settings" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("the tab bar spreads over its whole width with one, two, four and five tabs (#911)", async ({ page }) => {
+    await logIn(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    await page.goto("/#/settings/personalize");
+    const phone = page
+      .getByRole("region", { name: "Navigation", exact: true })
+      .getByRole("group", { name: "On a phone" });
+    const toggle = async (name: string): Promise<void> => {
+      await phone.getByRole("switch", { name }).click();
+    };
+    const expectSpread = async (count: number): Promise<void> => {
+      const all = tabs.locator(".nav-button, .main-nav-visor");
+      await expect(all).toHaveCount(count);
+      const bar = await tabs.boundingBox();
+      const boxes = await all.evaluateAll((elements) =>
+        elements
+          .map((element) => element.getBoundingClientRect())
+          .map(({ x, width }) => ({ x, width }))
+          .sort((first, second) => first.x - second.x),
+      );
+      const first = boxes[0];
+      const last = boxes[boxes.length - 1];
+      if (bar === null || first === undefined || last === undefined) throw new Error("The tab bar did not show.");
+      expect(first.x - bar.x, `${count} tabs: the first starts at the left edge`).toBeLessThan(20);
+      expect(bar.x + bar.width - (last.x + last.width), `${count} tabs: the last ends at the right edge`).toBeLessThan(
+        20,
+      );
+      for (const box of boxes) expect(Math.abs(box.width - first.width), `${count} tabs: equal widths`).toBeLessThan(2);
+    };
+    // The default list holds four entries. Eva's face alone fills the bar first.
+    for (const name of ["Chats", "Projects", "Files", "Schedules"]) await toggle(name);
+    await expectSpread(1);
+    await toggle("Chats");
+    await expectSpread(2);
+    await toggle("Projects");
+    await toggle("Files");
+    await expectSpread(4);
+    // Eva's face and four chosen entries, one of them Settings.
+    await toggle("Settings");
+    await expectSpread(5);
+  });
+
+  test("the Open link of a hidden Life page opens it on a phone (#911)", async ({ page }) => {
+    await logIn(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    await page.goto("/#/settings/personalize");
+    const phone = page
+      .getByRole("region", { name: "Navigation", exact: true })
+      .getByRole("group", { name: "On a phone" });
+    await expect(phone.getByRole("switch", { name: "Periods" })).toHaveAttribute("aria-checked", "false");
+    await phone.getByRole("link", { name: "Open Periods" }).click();
+    await expect(page).toHaveURL(/#\/periods$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Periods" })).toBeVisible();
+    await expect(tabs.getByRole("button", { name: "Periods" })).toHaveCount(0);
+  });
+
+  test("with Chats hidden, an unread chat shows on Eva's face (#911)", async ({ page }) => {
+    // The init script runs before the page: the phone list has no Chats entry from the start.
+    await page.addInitScript(() => {
+      window.localStorage.setItem("eva.navigation", JSON.stringify({ phone: ["projects", "files", "schedules"] }));
+    });
+    await logIn(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    await expect(tabs.getByRole("button", { name: /^Chats/ })).toHaveCount(0);
+    await clickNewChat(page);
+    // A chat that answers while the person is elsewhere is unread. The API makes it with no race against the page.
+    const created = await page.request.post("/api/sessions", { data: { mode: "assistant" } });
+    const { id } = (await created.json()) as { id: string };
+    await page.request.post(`/api/sessions/${id}/messages`, {
+      data: { text: `a note about the hidden list ${id}`, id: `hidden-${id}` },
+    });
+    await expect(tabs.locator(".main-nav-visor")).toHaveAccessibleName(/\. \d+ unread chats?$/);
+    await expect(tabs.getByRole("button", { name: /^Chats/ })).toHaveCount(0);
+    // Mark it as seen, so the shared demo keeps no unread chat.
+    await page.request.post(`/api/sessions/${id}/seen`, { data: { turnCount: 1 } });
+  });
+
+  test("with Chats hidden, an approval that waits shows on Eva's face (#911)", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem("eva.navigation", JSON.stringify({ phone: ["projects", "files", "schedules"] }));
+    });
+    await page.route("**/api/approvals", (route) =>
+      route.fulfill({ json: [{ requestId: "r1", sessionId: "s1", toolName: "Bash", summary: "ls" }] }),
+    );
+    await logIn(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    await expect(tabs.getByRole("button", { name: /^Chats/ })).toHaveCount(0);
+    await expect(tabs.locator(".main-nav-visor")).toHaveAccessibleName(/^Eva: 1 approval waits for you/);
   });
 
   test("on Settings too, every button is at least 44 px tall and nothing is wider than the screen", async ({

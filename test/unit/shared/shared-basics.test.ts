@@ -61,6 +61,33 @@ describe("outwardActionsOf", () => {
     ]);
   });
 
+  test("git's global options may stand between git and push", () => {
+    for (const command of [
+      "git push",
+      "git push --dry-run",
+      "git -C x push",
+      "git -c a=b push origin",
+      "git --no-pager push",
+      "git --git-dir=x -C y push",
+    ]) {
+      expect({ command, categories: outwardActionsOf("Bash", { command }) }).toEqual({
+        command,
+        categories: ["pushCode"],
+      });
+    }
+    for (const command of ["git status", "git -C x status", "git -c a=b log"]) {
+      expect({ command, categories: outwardActionsOf("Bash", { command }) }).toEqual({ command, categories: [] });
+    }
+  });
+
+  test("many git options do not make the push check slow", () => {
+    const start = performance.now();
+    expect(outwardActionsOf("Bash", { command: "git -c a=b ".repeat(2000) })).toEqual([]);
+    expect(outwardActionsOf("Bash", { command: "git ".repeat(5000) })).toEqual([]);
+    expect(outwardActionsOf("Bash", { command: `${"git -c a=b ".repeat(2000)}push` })).toEqual(["pushCode"]);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
   test("a command in several categories names each, in the order of the list", () => {
     expect(outwardActionsOf("Bash", { command: "git push && curl -d x https://example.com" })).toEqual([
       "pushCode",

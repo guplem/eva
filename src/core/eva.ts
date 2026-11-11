@@ -2298,7 +2298,8 @@ export class Eva {
 
   /**
    * The "Do not ask again" answer: sets each category of the request to Allow, then allows the
-   * request. The save comes first, so a failed save leaves the question open. A request that
+   * request and every other waiting request that the save now covers. The save comes first, so a
+   * failed save leaves the question open. A request that
    * is gone is ignored, as any late answer is.
    */
   allowApprovalAlways(requestId: string): void {
@@ -2310,6 +2311,15 @@ export class Eva {
     }
     this.updateSettings({ outwardActions: Object.fromEntries(categories.map((category) => [category, "allow"])) });
     this.sessions.answerApproval(requestId, "allow");
+    // Subagents ask in parallel: the other requests of this action would otherwise stay open
+    // though the person said not to ask again.
+    const levels = this.settings.config.outwardActions;
+    for (const other of this.sessions.pendingApprovals()) {
+      const otherCategories = other.categories ?? [];
+      if (otherCategories.length > 0 && otherCategories.every((category) => levels[category] === "allow")) {
+        this.sessions.answerApproval(other.requestId, "allow");
+      }
+    }
   }
 
   /** Whose repositories Eva trusts, and the person's saved answers, for Settings. */

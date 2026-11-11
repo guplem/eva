@@ -5,9 +5,12 @@
  */
 import { Fragment, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
-import { destinations, notificationCenter, type Destination } from "./navigation.ts";
+import { navChoice, shownDestinations } from "./nav-choice.ts";
+import { notificationCenter, type Destination, type NavEntry } from "./navigation.ts";
 import { settingsSections } from "./settings-routes.ts";
 import { inUseRow, statusRow } from "./project-format.ts";
+import { lifePages } from "./life-pages.ts";
+import { isLifeKind, type LifeKind } from "../../../shared/life-kinds.ts";
 
 /**
  * A pill bar with the sentence of the wait. A known share (0 to 1) fills the bar and shows the
@@ -164,7 +167,7 @@ function indexesOf(count: number): number[] {
 }
 
 /** The rows of a `facts` list, such as the Versions card: a short name, then a value. */
-export function FactsSkeleton({ label, rows }: { readonly label: string; readonly rows: number }): ReactElement {
+export function FactsSkeleton({ label, rows }: { readonly label?: string; readonly rows: number }): ReactElement {
   return (
     <Skeleton label={label} className="facts-skeleton">
       {indexesOf(rows).map((index) => (
@@ -449,6 +452,115 @@ function ProjectListSkeleton(): ReactElement {
   );
 }
 
+const lifeCardWidths = ["62%", "48%", "70%", "54%"];
+
+/**
+ * The list of a Life page (#911): the search, the filter chips and a grid of cards. The grid copies
+ * the real one, so the cards keep their place.
+ */
+export function LifeListSkeleton({ kind, label }: { readonly kind: LifeKind; readonly label?: string }): ReactElement {
+  const page = lifePages[kind];
+  const marked = kind === "people" || kind === "pets";
+  return (
+    <Skeleton label={label} className="life-skeleton">
+      <div className="life-tools" {...copies(".life-tools", "left top right")}>
+        <input className="project-search life-search skeleton-ghost" disabled placeholder={page.searchLabel} />
+        {page.filters.length > 0 && (
+          <div className="filter-chips">
+            {page.filters.map((filter) => (
+              <button key={filter.id} className="filter-chip skeleton-ghost" disabled>
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="life-group">
+        <ul className={kind === "periods" ? "life-grid rows" : "life-grid"} {...copies(".life-grid", "left top right")}>
+          {lifeCardWidths.map((width, index) => (
+            <li key={width}>
+              <span className="card life-card" {...(index === 0 ? copies(".life-card", "left top right") : {})}>
+                <span className="life-card-head">
+                  {marked && <span className="project-mark life-mark skeleton-block" />}
+                  <span className="life-card-name">
+                    <b className="life-card-title">
+                      <Text width={width} />
+                    </b>
+                  </span>
+                </span>
+                <Text width={lifeCardWidths[(index + 2) % lifeCardWidths.length] ?? "50%"} />
+                <Text width="36%" />
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Skeleton>
+  );
+}
+
+/** A Life page before its list or its entity comes: the header, then the list or the facts of the entity. */
+/**
+ * The header of an entity page, as `LifeView.tsx` draws it: a person and a pet have a mark, an object
+ * has its status pill, and an object, a pet and a period have a sub line. So the title does not move.
+ */
+function LifeEntityHeaderSkeleton({ kind }: { readonly kind: LifeKind }): ReactElement {
+  const { title } = lifePages[kind];
+  return (
+    <div className="main-header life-entity-header" {...copies(".life-entity-header", "left top right")}>
+      <button className="back-named skeleton-ghost" disabled>
+        <Icon name="back" />
+        {title}
+      </button>
+      {(kind === "people" || kind === "pets") && <span className="project-mark life-mark skeleton-block" />}
+      <div className="header-text">
+        <div className="header-title">
+          <h1 {...copies(".life-entity-header h1", "left")}>
+            <Text width="160px" />
+          </h1>
+          {kind === "objects" && <Ghost className="pill life-pill">In use</Ghost>}
+        </div>
+        {(kind === "objects" || kind === "pets" || kind === "periods") && (
+          <div className="sub">
+            <Text width="80px" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LifePageSkeleton({ kind, entity }: { readonly kind: LifeKind; readonly entity: boolean }): ReactElement {
+  const { title } = lifePages[kind];
+  return (
+    <div className="main life-view">
+      {entity ? (
+        <LifeEntityHeaderSkeleton kind={kind} />
+      ) : (
+        <div className="main-header" {...copies(".life-view .main-header", "left top right")}>
+          <div className="header-text">
+            <h1>{title}</h1>
+            <div className="sub">
+              <Text width="120px" />
+            </div>
+          </div>
+        </div>
+      )}
+      {entity ? (
+        <div className="life-page life-entity">
+          <section className="card project-facts life-facts">
+            <FactsSkeleton rows={4} />
+          </section>
+        </div>
+      ) : (
+        <div className="life-page">
+          <LifeListSkeleton kind={kind} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The header of a chat: the name of the chat, and the button that opens the list on a phone. */
 function ChatHeaderSkeleton(): ReactElement {
   return (
@@ -543,8 +655,15 @@ function SchedulesSkeleton(): ReactElement {
 }
 
 /** The main navigation: the visor, a button for each destination, and Settings at the end. */
-function MainNavSkeleton({ current }: { readonly current: Destination }): ReactElement {
-  const button = (destination: (typeof destinations)[number]): ReactElement => (
+function MainNavSkeleton({
+  current,
+  isPhone,
+}: {
+  readonly current: Destination;
+  readonly isPhone: boolean;
+}): ReactElement {
+  const shown = shownDestinations(navChoice(), isPhone);
+  const button = (destination: NavEntry): ReactElement => (
     <button
       key={destination.id}
       className={`nav-button nav-${destination.id}`}
@@ -572,9 +691,8 @@ function MainNavSkeleton({ current }: { readonly current: Destination }): ReactE
           <Ghost>Eva</Ghost>
         </span>
       </button>
-      {destinations.filter((destination) => destination.id !== "settings").map(button)}
-      <span className="nav-spacer" />
-      {destinations.filter((destination) => destination.id === "settings").map(button)}
+      <div className="main-nav-scroll">{shown.filter((destination) => destination.id !== "settings").map(button)}</div>
+      {shown.filter((destination) => destination.id === "settings").map(button)}
     </div>
   );
 }
@@ -587,16 +705,22 @@ export function AppSkeleton({
   page,
   chatPanel = false,
   project = "list",
+  isPhone = false,
+  lifeEntity = false,
 }: {
   readonly page: Destination;
+  /** A Life page opens one entity, not the list. */
+  readonly lifeEntity?: boolean;
   /** The page of Projects that opens: the list, a project, or one of its chats. */
   readonly project?: "list" | "page" | "chat";
   /** The person keeps the details of a chat shown. */
   readonly chatPanel?: boolean;
+  /** A phone shows its own, shorter list of navigation entries. */
+  readonly isPhone?: boolean;
 }): ReactElement {
   return (
     <Skeleton label="Loading Eva…" className="app">
-      <MainNavSkeleton current={page} />
+      <MainNavSkeleton current={page} isPhone={isPhone} />
       <div className="app-body">
         {page === "chats" && (
           <div className="layout">
@@ -632,6 +756,7 @@ export function AppSkeleton({
               {project === "chat" && chatPanel && <ChatPanelSkeleton />}
             </div>
           ))}
+        {isLifeKind(page) && <LifePageSkeleton kind={page} entity={lifeEntity} />}
         {page === "files" && <FilesSkeleton />}
         {page === "schedules" && <SchedulesSkeleton />}
         {page === "settings" && <SettingsSkeleton />}

@@ -69,6 +69,8 @@ export interface VisorSignalInput {
   readonly offline: boolean;
   /** The notification center is the open page, so the person already looks. */
   readonly centerOpen: boolean;
+  /** The unread chats whose entry the navigation hides, so no badge shows them (#911). */
+  readonly hiddenUnread: number;
 }
 
 export interface VisorSignal {
@@ -93,7 +95,7 @@ export function bellName(signal: VisorSignal): string {
 export function visorSignal(input: VisorSignalInput): VisorSignal {
   return {
     count: input.unreadProblems,
-    dot: input.unreadProblems === 0 && (input.news || input.offline),
+    dot: input.unreadProblems === 0 && (input.news || input.offline || input.hiddenUnread > 0),
     alarm: input.unreadError && !input.centerOpen,
   };
 }
@@ -116,4 +118,33 @@ export const tapFaceMs = 1_800;
 export function tapFace(random: () => number = Math.random, last?: Face): Face {
   const choices = tapFaces.filter((face) => face !== last);
   return choices[Math.min(Math.floor(random() * choices.length), choices.length - 1)] ?? "happy";
+}
+
+/**
+ * The unread chats that no badge shows, because the person hid their entry: Chats for the Assistant chats, Projects for
+ * the Project chats. The visor shows them instead, so a new answer reaches a phone with a short tab bar (#911).
+ */
+export function hiddenUnreadChats(input: {
+  readonly unreadChats: number;
+  readonly unreadProjectChats: number;
+  readonly shown: readonly Destination[];
+}): number {
+  return (
+    (input.shown.includes("chats") ? 0 : input.unreadChats) +
+    (input.shown.includes("projects") ? 0 : input.unreadProjectChats)
+  );
+}
+
+/**
+ * The accessible name of the visor. The visible label "Eva" starts it, so a voice command that says it finds the
+ * button. The count is in the words. A hidden unread chat names itself, also beside a count: the count is for problems.
+ */
+export function visorName(words: string, signal: VisorSignal, hiddenUnread: number): string {
+  if (hiddenUnread > 0) return `Eva: ${words}. ${count(hiddenUnread, "unread chat", "unread chats")}`;
+  return `Eva: ${words}${signal.dot ? ". Something new waits" : ""}`;
+}
+
+/** The name of the gear of the home page. It holds the count of the Settings badge, for a phone with no Settings tab. */
+export function homeGearName(setupMissing: number): string {
+  return setupMissing > 0 ? `Settings: ${String(setupMissing)} to set up` : "Settings";
 }

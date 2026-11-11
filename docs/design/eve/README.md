@@ -164,14 +164,14 @@ The visor and the looping waits keep their own timing, which [EVE's expressions]
 
 A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) and inspector (300 px). A page without a list or an inspector drops that column.
 
-- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the home page, the new chat page, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news, a setup step that is left, or that Eva does not answer. Offline, a crossed wifi in the warn hue takes the place of the eyes, and a tap plays no playful face.
+- **Nav rail:** EVE's visor at the top, then the entries that the person chose in Settings > Personalize > Navigation (`client/nav-choice.ts`). By default, all of them show: Chats, Projects, Files, Schedules, Cases, People, Objects, Pets and Periods. A computer always shows Settings. It stays at the bottom, outside the part that scrolls. A low window still shows it. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the home page, the new chat page, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news, a setup step that is left, an unread chat whose entry is hidden, or that Eva does not answer. Offline, a crossed wifi in the warn hue takes the place of the eyes, and a tap plays no playful face.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column that fills the free width, and the composer. In a chat, an answer takes at most 86 % of the column, and a message of the person at most 72 %.
 - **Inspector:** the details of the selected item, such as the chat details.
 
 ### Phone
 
-From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with Chats, Projects, Files, Schedules and Eva. The Eva tab is the nav visor, with the label "Eva". It opens the home page, which has a bell and a button to Settings. List pages use a large 30 px title.
+From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with the entries that the person chose, and Eva. By default, the entries are Chats, Projects, Files and Schedules. The person picks up to four, and Settings can be one of them. The bar spreads one to five tabs over its width. The Eva tab is the nav visor, with the label "Eva". It always shows, and it opens the home page, which has a bell and a button to Settings. List pages use a large 30 px title.
 
 Dialogs are centred boxes on a computer and bottom sheets on a phone. Their buttons stack at full width in a sheet. `phoneDialogForm` in `client/Dialog.tsx` picks the phone form of every dialog.
 
@@ -344,6 +344,30 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - Edit opens the edit page of the schedule, as Details does for a project. One card holds when it runs. The other holds what it does, with a large box for the prompt.
 - The confirmation card says that nothing runs without a yes.
 
+### Life pages
+
+Cases, People, Objects, Pets and Periods share one page layout (`client/LifeView.tsx`). Their icons are `case`, `people`, `box`, `paw` and `timeline`.
+
+Cases, a case page, People, Objects, Pets and Periods, on a computer and on a phone:
+
+![Computer](screenshots/cases-computer-light.webp) ![Phone](screenshots/cases-phone-light.webp)
+
+![Computer](screenshots/case-computer-light.webp) ![Phone](screenshots/case-phone-light.webp)
+
+![Computer](screenshots/people-computer-light.webp) ![Phone](screenshots/people-phone-light.webp)
+
+![Computer](screenshots/objects-computer-light.webp) ![Phone](screenshots/objects-phone-light.webp)
+
+![Computer](screenshots/pets-computer-light.webp) ![Phone](screenshots/pets-phone-light.webp)
+
+![Computer](screenshots/periods-computer-light.webp) ![Phone](screenshots/periods-phone-light.webp)
+
+- The list is a column of cards, with a count, a search box and filter chips where the kind has them. A card has the mark with initials and pills for the status, as Projects has.
+- The page of an entity has the layout of the project page: a facts card, the steps of a case, the text, the files beside it and an "Open in Files" link.
+- A step that is late takes `--warn`: it waits for the person. Only a deadline that passed takes `--bad`. Both show a word and an icon too.
+- A path of the vault in a text or a fact is a link, to the page of a Life entity that exists or to Files.
+- The pages only read. An empty page says how to ask Eva for a first entity.
+
 ### Setup and appearance
 
 ![Computer](screenshots/settings-computer-light.webp) ![Phone](screenshots/settings-phone-light.webp)
@@ -412,23 +436,23 @@ Each open gap has an issue that closes it. No gap is open now.
 
 The pull requests of #161 and the owner chose these differences, each for the reason below. Do not copy these parts of the reference while the reason holds.
 
-| Reference                                           | Today                                                                                  | Why                                                                                                    | Pull request |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
-| A six-character pairing code with a dot, `K7Q·4MF`  | Four characters, with no dot.                                                          | Eva's codes have four characters, with no 0, O, 1 or I, so the person can compare them by eye.         | #183         |
-| `+N −N` on each edit, and diffs in the chat         | Each edit is a plain step line.                                                        | No step carries line counts.                                                                           | #186         |
-| Messages that wait while offline, and a retry time  | The text stays in the box, and the center has a "Try now" button.                      | The owner chose no message queue. The page retries every 2 seconds, so a countdown would only flicker. | #190         |
-| A time on each background task                      | The state only, with one icon for every task.                                          | Eva keeps no time and no kind for a task.                                                              | #191         |
-| Engine and model chips in the chat details          | Plain text.                                                                            | The composer changes the engine before the first turn, and the model between turns (#545).             | #191         |
-| Update policy chips in the version dialog           | The policy lives in Settings only.                                                     | Each setting has one home.                                                                             | #206         |
-| The last use of each device                         | The date when the device was allowed.                                                  | Eva stores only that date. A last use needs a new stored field and a write at each request.            | #205         |
-| Fonts from the internet                             | Fonts bundled with the web client.                                                     | The executable must work with no internet access.                                                      | #182         |
-| A glance of the neutral face                        | The neutral face only blinks.                                                          | The reference names `glance` keyframes that it does not define.                                        | #181         |
-| Separate Telegram and Google sections               | One Connections section.                                                               | #166 grouped them on purpose. Each still has its own setup step page.                                  | #197         |
-| A time on each message, and a duration on the steps | Only the running turn shows its time. A stored turn keeps only the time when it ended. | The owner closed #211: not a priority now.                                                             | (none)       |
-| Settings in the phone tab bar                       | The visor, with the label "Eva", in its place.                                         | The visor opens the home page, which links to Settings. The tab bar keeps five entries.                | #567, #761   |
-| Problem notices at the top of each page             | The notification center behind the bell of the home page.                              | The owner found the notices too large. The visor counts the problems, and the center lists them.       | #567, #761   |
-| A "Create a project" suggestion in a new chat       | No project suggestion.                                                                 | The owner chose one way to make a project: the New project form, which can also create its repository. | #682         |
-| The "In use" pill has a glowing dot                 | The dot has no glow.                                                                   | A glow means that something runs now, as on "Working". A project in use runs nothing.                  | #722         |
+| Reference                                           | Today                                                                                    | Why                                                                                                    | Pull request     |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------- |
+| A six-character pairing code with a dot, `K7Q·4MF`  | Four characters, with no dot.                                                            | Eva's codes have four characters, with no 0, O, 1 or I, so the person can compare them by eye.         | #183             |
+| `+N −N` on each edit, and diffs in the chat         | Each edit is a plain step line.                                                          | No step carries line counts.                                                                           | #186             |
+| Messages that wait while offline, and a retry time  | The text stays in the box, and the center has a "Try now" button.                        | The owner chose no message queue. The page retries every 2 seconds, so a countdown would only flicker. | #190             |
+| A time on each background task                      | The state only, with one icon for every task.                                            | Eva keeps no time and no kind for a task.                                                              | #191             |
+| Engine and model chips in the chat details          | Plain text.                                                                              | The composer changes the engine before the first turn, and the model between turns (#545).             | #191             |
+| Update policy chips in the version dialog           | The policy lives in Settings only.                                                       | Each setting has one home.                                                                             | #206             |
+| The last use of each device                         | The date when the device was allowed.                                                    | Eva stores only that date. A last use needs a new stored field and a write at each request.            | #205             |
+| Fonts from the internet                             | Fonts bundled with the web client.                                                       | The executable must work with no internet access.                                                      | #182             |
+| A glance of the neutral face                        | The neutral face only blinks.                                                            | The reference names `glance` keyframes that it does not define.                                        | #181             |
+| Separate Telegram and Google sections               | One Connections section.                                                                 | #166 grouped them on purpose. Each still has its own setup step page.                                  | #197             |
+| A time on each message, and a duration on the steps | Only the running turn shows its time. A stored turn keeps only the time when it ended.   | The owner closed #211: not a priority now.                                                             | (none)           |
+| Settings in the phone tab bar                       | Eva's face is fixed. The person picks up to four other entries, and Settings can be one. | The visor opens the home page, which links to Settings. The person knows best which pages need a tap.  | #567, #761, #911 |
+| Problem notices at the top of each page             | The notification center behind the bell of the home page.                                | The owner found the notices too large. The visor counts the problems, and the center lists them.       | #567, #761       |
+| A "Create a project" suggestion in a new chat       | No project suggestion.                                                                   | The owner chose one way to make a project: the New project form, which can also create its repository. | #682             |
+| The "In use" pill has a glowing dot                 | The dot has no glow.                                                                     | A glow means that something runs now, as on "Working". A project in use runs nothing.                  | #722             |
 
 ## Captures
 

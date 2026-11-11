@@ -266,7 +266,8 @@ export function factValue(value: unknown, format: FactFormat): FactValue | null 
   return { kind: "text", parts: textParts(text) };
 }
 
-function factsOf(entries: readonly (readonly [string, unknown])[], format: FactFormat): Fact[] {
+/** The facts of any front matter, such as the fields of a Life entity. An empty value gives no fact. */
+export function factsOf(entries: readonly (readonly [string, unknown])[], format: FactFormat): Fact[] {
   return entries.flatMap(([key, raw]) => {
     const value = factValue(raw, format);
     return value === null ? [] : [{ key, label: keyLabel(key), value }];

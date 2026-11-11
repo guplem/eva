@@ -110,6 +110,13 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
     ["#/schedules", [page.locator(".schedule-panel:visible").first()]],
     ["#/settings", [page.locator(".section-card").first()]],
     ["#/settings/guide/reference", [page.locator(".guide-body")]],
+    // The Life pages (#911): the list of each kind, and the page of an entity with its steps and files.
+    ["#/cases", [page.locator(".life-card").first()]],
+    ["#/people", [page.locator(".life-card").first()]],
+    ["#/objects", [page.locator(".life-card").first()]],
+    ["#/pets", [page.locator(".life-card").first()]],
+    ["#/periods", [page.locator(".life-card").first()]],
+    ["#/cases/2026-05-15-phone-repair", [page.locator(".life-steps"), page.locator(".life-files")]],
   ];
   for (const [address, cards] of pages) {
     await page.goto(`/${address}`);

@@ -76,6 +76,13 @@ test("no page scrolls sideways on a narrow phone, also with long names", async (
     ["#/schedules", page.locator(".schedule-panel:visible").first()],
     ["#/notifications", page.getByRole("heading", { level: 1 })],
     ["#/settings", page.locator(".section-card").first()],
+    ["#/cases", page.locator(".life-card").first()],
+    ["#/people", page.getByRole("button", { name: /Wolfeschlegelsteinhausenbergerdorff/ })],
+    ["#/objects", page.locator(".life-card").first()],
+    ["#/pets", page.locator(".life-card").first()],
+    ["#/periods", page.locator(".life-card").first()],
+    ["#/cases/2026-09-01-bumper-claim", page.locator(".life-steps")],
+    ["#/people/Wolfeschlegelsteinhausenbergerdorff%20Example", page.locator(".life-facts")],
   ];
   for (const [address, shown] of pages) {
     await page.goto(`/${address}`);

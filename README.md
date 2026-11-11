@@ -57,7 +57,7 @@ You can also send voice notes, photos and files.
 
 ### On the web page
 
-Eva's web page shows your chats, your projects, your files, your schedules (reminders) and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`: send `/link` in Telegram to get it. See [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone).
+Eva's web page shows your chats, your projects, your files, your schedules (reminders), the cases, people, objects, pets and periods of your life notes, and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`: send `/link` in Telegram to get it. See [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone).
 
 On Eva's own computer, run `eva open` to open her page. On Windows, her icon next to the clock opens it too: see [Open Eva on her own computer](docs/guide/setup.md#open-eva-on-her-own-computer).
 

@@ -313,11 +313,20 @@ samp {
     background-color: var(--accent);
   }
 
+  /* The nav rail is 76 px wide: a scrollbar would push its 50 px buttons off the centre. The wheel still scrolls it. */
+  .main-nav-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Firefox does not read the rules above. Chromium ignores them on a box with these properties. */
   @supports not selector(::-webkit-scrollbar) {
     * {
       scrollbar-width: thin;
       scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+
+    .main-nav-scroll {
+      scrollbar-width: none;
     }
   }
 }
@@ -636,9 +645,25 @@ textarea {
   overscroll-behavior-y: contain;
 }
 
+/* Only the entries between the visor and Settings scroll, so a low window still shows Settings (#911).
+   The pearl scrollbar hides here: see its rules. The padding keeps the focus ring whole. */
+.main-nav-scroll {
+  flex: 1;
+  min-height: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
 .main-nav-visor {
   display: grid;
-  margin-bottom: 14px;
+  /* The padding of the part that scrolls adds the rest of the space under the visor. */
+  margin-bottom: 10px;
   padding: 0;
   border: none;
   background: transparent;
@@ -690,12 +715,14 @@ textarea {
   margin-left: auto;
 }
 
-/* The bell holds the count and the dot of the visor. */
-.home-bell {
+/* The bell holds the count and the dot of the visor. The gear holds the count of the Settings badge. */
+.home-bell,
+.home-gear {
   position: relative;
 }
 
-.home-bell .nav-badge {
+.home-bell .nav-badge,
+.home-gear .nav-badge {
   top: -6px;
   right: -2px;
   left: auto;
@@ -760,10 +787,6 @@ textarea {
   display: grid;
   place-items: center;
   padding: 0 4px;
-}
-
-.nav-spacer {
-  flex: 1;
 }
 
 .notice {
@@ -1830,8 +1853,10 @@ textarea {
     order: 1;
     flex: none;
     display: grid;
-    /* minmax(0, 1fr): a wide tab, such as one with a large font, shrinks instead of widening the bar. */
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* The person chooses 1 to 5 tabs, so each new tab takes a column and they share the whole width (#911).
+       minmax(0, 1fr): a wide tab, such as one with a large font, shrinks instead of widening the bar. */
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 0;
     padding: 8px max(6px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom))
       max(6px, env(safe-area-inset-left));
@@ -1874,13 +1899,13 @@ textarea {
     }
   }
 
-  /* The visor takes the place of Settings at the end of the tab bar. The gear of the home page opens Settings (#761).
-     The selector outweighs `.nav-button[aria-current]` below, which would show Settings again. */
-  .nav-spacer,
-  .main-nav .nav-button.nav-settings {
-    display: none;
+  /* The tab bar does not scroll: its entries are tabs of the bar itself. A box with no size must not clip them either. */
+  .main-nav-scroll {
+    display: contents;
+    overflow: visible;
   }
 
+  /* The visor is the last tab. The gear of the home page opens Settings when Settings has no tab (#761). */
   .main-nav-visor {
     order: 1;
     margin: 0;
@@ -2289,7 +2314,8 @@ button.link-button {
   left: 20px;
 }
 
-.toggle[role="switch"]:disabled {
+.toggle[role="switch"]:disabled,
+.toggle[role="switch"][aria-disabled="true"] {
   opacity: 0.6;
 }
 
@@ -2446,6 +2472,58 @@ button.link-button {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+}
+
+/* The two lists of the Navigation card: side by side when the card is wide enough. */
+.nav-choice-forms {
+  display: grid;
+  /* min() keeps one column on a narrow phone, where 240 px and the gutters leave no room. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--space-4);
+}
+
+.nav-choice-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each row is as tall as a finger, so the switch is easy to press on a phone. */
+.nav-choice-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+}
+
+.nav-choice-entry > .icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+
+.nav-choice-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-choice-entry > .toggle[role="switch"] {
+  height: 44px;
+}
+
+/* A small word, but a target as tall as a finger. */
+.nav-choice-open {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.nav-choice-refusal {
+  color: var(--warn-ink);
 }
 
 .secret-password-changes {

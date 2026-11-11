@@ -109,7 +109,7 @@ Each instance gives each harness its own config folder (`CLAUDE_CONFIG_DIR` and 
 
 **The web page** reaches the local API through `tailscale serve`. Tailscale makes the address work only on your own devices. Eva never uses a public tunnel. A new browser logs in with the token from `secrets.json`, or with a device login that you allow in Telegram, the terminal or another logged-in page. See [Logging in to the web page](reference.md#logging-in-to-the-web-page).
 
-**The Life pages** of the web page read `Life/` through the Life catalog, `src/core/life/life-catalog.ts`. It lists the entity folders of five kinds and reads the main file of each. It reads only: it writes nothing and follows no link. Each read has a size limit, and a bad file gives a warning, never a failure. It skips secret and encrypted files. Eva redacts each text before it leaves the core, as for every other event.
+**The Life pages** of the web page read `Life/` through the Life catalog, `src/core/life/life-catalog.ts`. It lists the entity folders of five kinds and reads the main file of each. It only reads. It writes nothing and follows no link. Each read has a size limit: a list reads only the start of each main file, and the page of one entity reads its text. A bad file gives a warning, never a failure. It skips secret and encrypted files. Eva redacts each text before it leaves the core, as for every other event.
 
 **Telegram** runs only on the hub. The bot talks only to the one Telegram chat that you paired. Each Telegram topic is one Eva chat.
 

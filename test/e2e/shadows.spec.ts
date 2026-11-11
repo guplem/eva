@@ -109,6 +109,7 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
     ["#/projects/stats", [page.getByRole("region", { name: "By month" })]],
     ["#/schedules", [page.locator(".schedule-panel:visible").first()]],
     ["#/settings", [page.locator(".section-card").first()]],
+    ["#/settings/engines", [page.getByRole("region", { name: "Actions that reach other people" })]],
     ["#/settings/guide/reference", [page.locator(".guide-body")]],
   ];
   for (const [address, cards] of pages) {

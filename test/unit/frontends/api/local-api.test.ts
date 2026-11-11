@@ -2290,6 +2290,37 @@ describe("web routes", () => {
     expect((await call("/api/files/rename", { method: "POST", body: { path: "README.md" } })).status).toBe(400);
   });
 
+  test("life: lists a kind, reads one entity, and redacts each text (#911)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    const leaked = `ghp_${"a".repeat(36)}`;
+    const folder = join(vaultPath, "Life", "Cases", "2026-05-15-phone-repair");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, "Case.md"),
+      `---\nsummary: Key ${leaked}\nsteps:\n  - { step: "Send ${leaked}" }\n---\n# Phone repair\n\nBody ${leaked}.\n`,
+    );
+    writeFileSync(join(folder, "photo.jpg"), "jpg");
+    const list = await json<{ id: string; summary: string; fields: unknown }[]>(await call("/api/life/cases"));
+    expect(list).toMatchObject([
+      { id: "2026-05-15-phone-repair", summary: "Key [redacted]", fields: { steps: [{ step: "Send [redacted]" }] } },
+    ]);
+    const one = await call(`/api/life/cases/${encodeURIComponent("2026-05-15-phone-repair")}`);
+    expect(one.status).toBe(200);
+    const detail = await json<{ body: string; files: { name: string }[] }>(one);
+    expect(detail.body).toBe("# Phone repair\n\nBody [redacted].\n");
+    expect(detail.files.map((file) => file.name)).toEqual(["photo.jpg"]);
+    expect(await json(await call("/api/life/pets"))).toEqual([]);
+  });
+
+  test("life: an unknown kind or entity, or an id out of its folder, is not found", async () => {
+    expect((await call("/api/life/health")).status).toBe(404);
+    expect((await call("/api/life/cases/2026-01-01-gone")).status).toBe(404);
+    expect((await call(`/api/life/cases/${encodeURIComponent("../People")}`)).status).toBe(404);
+    expect((await call(`/api/life/cases/${encodeURIComponent("a/b")}`)).status).toBe(404);
+    expect((await call("/api/life/cases/a/b")).status).toBe(404);
+    expect((await call("/api/life/cases", { method: "POST", body: {} })).status).toBe(404);
+  });
+
   test("files: a file from the chat lands in .eva/scratch/received/ and answers its note (issue 409)", async () => {
     const vaultPath = eva.status().vaultPath ?? "";
     const response = await fetch(`${api.url}/api/files/received?name=${encodeURIComponent("my photo.jpg")}`, {
@@ -2399,6 +2430,10 @@ describe("without a vault", () => {
       expect(rules.status).toBe(409);
       const files = await fetch(`${bareApi.url}/api/files`, { headers: headers() });
       expect(await files.json()).toMatchObject({ code: "vault_not_found" });
+      const life = await fetch(`${bareApi.url}/api/life/cases`, { headers: headers() });
+      expect(await life.json()).toMatchObject({ code: "vault_not_found" });
+      const lifeEntity = await fetch(`${bareApi.url}/api/life/cases/x`, { headers: headers() });
+      expect(await lifeEntity.json()).toMatchObject({ code: "vault_not_found" });
       const received = await fetch(`${bareApi.url}/api/files/received?name=a.txt`, {
         method: "POST",
         headers: headers({ "content-type": "text/plain" }),

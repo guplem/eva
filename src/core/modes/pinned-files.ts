@@ -4,13 +4,13 @@
  * hides an open case. Only the manual pins need a walk of the vault. Every read is bounded, and the
  * walk follows no link, as the vault search does (lesson 72).
  */
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { noWait } from "../files/file-browser.ts";
+import { lifeKindPlaces } from "../../shared/life-kinds.ts";
+import { childFolders, entriesOf, isRealFolder, readBounded } from "../files/bounded-reading.ts";
 import { secretMatcherOf, type SecretPaths } from "../files/secret-paths.ts";
 import { frontMatterPattern, titleHeading } from "../projects/project-catalog.ts";
-import { encryptedState } from "../vault/vault-crypto.ts";
 
 /** How a file asks to be pinned. Null: no value, or a value that Eva does not know, so the status decides. */
 export type PinnedValue = "full" | "summary" | "false" | null;
@@ -77,8 +77,8 @@ const maxReadBytes = 20_000_000;
 export const maxFullBytes = 64 * 1024;
 
 const entityFolders: readonly { readonly folder: string; readonly file: string; readonly kind: EntityKind }[] = [
-  { folder: "Life/Cases", file: "Case.md", kind: "case" },
-  { folder: "Life/Periods", file: "Period.md", kind: "period" },
+  { folder: lifeKindPlaces.cases.folder, file: lifeKindPlaces.cases.mainFile, kind: "case" },
+  { folder: lifeKindPlaces.periods.folder, file: lifeKindPlaces.periods.mainFile, kind: "period" },
 ];
 
 /**
@@ -117,20 +117,6 @@ export function findPinnedFiles(vaultPath: string, options: { readonly oldForm: 
 export function readWholeFile(absolutePath: string): string | null {
   const read = readBounded(absolutePath, maxFullBytes);
   return read === null || read.cut ? null : read.text;
-}
-
-/** True when each part of the path is a folder, not a link. */
-function isRealFolder(root: string, path: string): boolean {
-  let current = root;
-  for (const part of path.split("/")) {
-    current = join(current, part);
-    try {
-      if (!lstatSync(current).isDirectory()) return false;
-    } catch {
-      return false;
-    }
-  }
-  return true;
 }
 
 /** Breadth-first, so the files near the root come first when the budget runs out. */
@@ -172,30 +158,6 @@ function skippedFolder(path: string): boolean {
   if (parts.at(-1) === "node_modules") return true;
   if (parts.length === 1 && parts[0] === "scratch") return true;
   return parts[0] === "projects" && parts[2] === "repos" && parts.length === 3;
-}
-
-/**
- * The folders and regular files of a folder, by name. A link or a special file is left out, and so
- * is a name with a control character: a line break in a path could add a line to the prompt.
- */
-function entriesOf(folder: string): { readonly name: string; readonly folder: boolean }[] {
-  try {
-    return readdirSync(folder, { withFileTypes: true })
-      .filter((entry) => (entry.isDirectory() || entry.isFile()) && !controlCharacter.test(entry.name))
-      .map((entry) => ({ name: entry.name, folder: entry.isDirectory() }))
-      .sort((first, second) => first.name.localeCompare(second.name));
-  } catch {
-    return [];
-  }
-}
-
-// eslint-disable-next-line no-control-regex -- the pattern looks for control characters on purpose.
-const controlCharacter = /[\u0000-\u001f\u007f\u0085\u2028\u2029]/;
-
-function childFolders(folder: string): string[] {
-  return entriesOf(folder)
-    .filter((entry) => entry.folder && !entry.name.startsWith("."))
-    .map((entry) => entry.name);
 }
 
 interface PinnedRead {
@@ -313,38 +275,4 @@ function importantLine(body: string): string | null {
     .replace(/\s+/g, " ")
     .trim();
   return why === "" ? null : why;
-}
-
-/**
- * At most `limit` bytes of a plain text file, or null. The open does not wait, so a pipe never
- * blocks the core. `cut` says that the file is larger than what Eva read.
- */
-function readBounded(
-  absolutePath: string,
-  limit: number,
-): { readonly text: string; readonly bytes: number; readonly cut: boolean } | null {
-  let handle: number;
-  try {
-    handle = openSync(absolutePath, constants.O_RDONLY | noWait);
-  } catch {
-    return null;
-  }
-  try {
-    const stats = fstatSync(handle);
-    if (!stats.isFile()) return null;
-    const bytes = Buffer.alloc(Math.min(stats.size, limit));
-    const read = bytes.subarray(0, readSync(handle, bytes, 0, bytes.length, 0));
-    // An encrypted file holds no words of its own, whatever its name.
-    if (encryptedState(read) !== "plain" || read.includes(0)) return null;
-    // Not fatal: a head can cut a character in two.
-    return {
-      text: new TextDecoder("utf-8", { ignoreBOM: true }).decode(read),
-      bytes: read.length,
-      cut: stats.size > read.length,
-    };
-  } catch {
-    return null;
-  } finally {
-    closeSync(handle);
-  }
 }

@@ -104,3 +104,23 @@ Each gap has a proposed answer. Sub-agents check each one against the rules and 
 ## Decisions
 
 Written after the gaps are checked.
+
+Three sub-agents checked the gaps against the rules and the code. Every proposed answer holds. These points change the parts:
+
+1. **The browser keeps the choice,** under its own key `eva.navigation`. The card says that each browser keeps its own choice, and that a narrow window of a computer uses the phone list.
+2. **Five pages.** No rule file of `Life/` defines `tags`, so the search matches the name, the aliases, the summary and any tag.
+3. **Eva's face is the only fixed phone entry.** This reverses a row of the decision table in `docs/design/eve/README.md` ("Settings in the phone tab bar", #567 and #761). Part 4 updates the row.
+4. **The order is fixed.**
+5. **One `LifeView`.** The table of kinds gives each kind its own card body, filters and facts. Extract the shared part of `frontMatterFacts` in `client/front-matter-facts.ts` instead of a copy.
+6. **The kinds live in `src/shared/`. `LifeEntity` lives in `src/core/life/`,** and the client imports it only with `import type`.
+7. **Settings stays outside the part of the rail that scrolls,** so a low window still shows it. An e2e test presses Settings in a window 500 px high.
+8. **No template change.**
+
+Part 1 also follows these points:
+
+- Do not call `parseFrontMatter` of the project catalog: it is for projects. Reuse `frontMatterPattern` and the title and summary helpers, and parse with `yaml` and the `failsafe` schema.
+- Share the safe reading of `pinned-files.ts` (the bounded read, the check of a linked folder, the secret matcher) instead of a copy.
+- The failsafe parser gives `""` for an empty key such as `closed:`. An empty text means "not set".
+- Check that an entity id is one folder name: no `/`, no `..`, no control character. Find the folder in the listing, never through a joined path.
+- Redact every text, also inside the nested `fields`.
+- A case of an old vault can lack `closed` and `steps`. Show it as open.

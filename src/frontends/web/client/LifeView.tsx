@@ -6,6 +6,7 @@
 import { useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { api, ApiError, type LifeEntity, type LifeEntityDetail } from "./api.ts";
 import { goTo, goUp } from "./back-layers.ts";
+import { lifeAddressOf } from "./life-routes.ts";
 import { displayFormat } from "./display-format.ts";
 import { useShowError } from "./error-toast.tsx";
 import { FactList } from "./FactList.tsx";
@@ -14,7 +15,6 @@ import { Icon, type IconName } from "./icons.tsx";
 import {
   bodyWithoutTitle,
   caseSteps,
-  lifeAddressOf,
   lifeCardOf,
   lifeCardPill,
   lifeCounts,
@@ -28,7 +28,7 @@ import {
   type LifeCardBody,
   type LifePill,
 } from "./life-pages.ts";
-import { FactsSkeleton } from "./Loading.tsx";
+import { FactsSkeleton, LifeListSkeleton } from "./Loading.tsx";
 import { BackButton } from "./MainNav.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { countOf } from "./project-format.ts";
@@ -124,7 +124,10 @@ function LifeList({ kind, list, search, query, filter, onSearch, onFilter, onRet
       <div className="main-header">
         <div className="header-text">
           <h1>{page.title}</h1>
-          <div className="sub">{hasEntities ? lifeCounts(kind, entities, now) : page.description}</div>
+          {/* One line while the list loads: the description can wrap on a phone, and the cards would then jump. */}
+          <div className="sub">
+            {hasEntities ? lifeCounts(kind, entities, now) : list === null ? "\u00a0" : page.description}
+          </div>
         </div>
       </div>
       <div className="life-page">
@@ -154,7 +157,7 @@ function LifeList({ kind, list, search, query, filter, onSearch, onFilter, onRet
             )}
           </div>
         )}
-        {list === null && <LifeListSkeleton kind={kind} />}
+        {list === null && <LifeListSkeleton kind={kind} label={`Loading the ${page.title.toLowerCase()}…`} />}
         {list === "failed" && (
           <div className="callout danger life-failed" role="alert">
             Eva could not read the {page.title.toLowerCase()}. <button onClick={onRetry}>Try again</button>
@@ -202,42 +205,6 @@ function LifeList({ kind, list, search, query, filter, onSearch, onFilter, onRet
   );
 }
 
-/** Cards in the grid of the list, with a title, a line and a block, so the page does not jump when the list comes. */
-function LifeListSkeleton({ kind }: { readonly kind: LifeKind }): ReactElement {
-  const widths = ["62%", "48%", "70%", "54%"];
-  return (
-    <div className="skeleton life-skeleton" aria-busy="true">
-      <span className="visually-hidden" role="status">
-        Loading the {lifePages[kind].title.toLowerCase()}…
-      </span>
-      <ul
-        className={kind === "periods" ? "life-grid rows skeleton-shapes" : "life-grid skeleton-shapes"}
-        aria-hidden="true"
-        inert
-      >
-        {widths.map((width, index) => (
-          <li key={index}>
-            <span className="card life-card">
-              <span className="life-card-head">
-                {(kind === "people" || kind === "pets") && <span className="project-mark skeleton-block" />}
-                <span className="skeleton-text life-card-title">
-                  <span className="skeleton-line title" style={{ width }} />
-                </span>
-              </span>
-              <span className="skeleton-text">
-                <span className="skeleton-line" style={{ width: widths[(index + 2) % widths.length] }} />
-              </span>
-              <span className="skeleton-text">
-                <span className="skeleton-line" style={{ width: "36%" }} />
-              </span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function StatePill({
   pill,
   tooltip,
@@ -282,7 +249,8 @@ function LifeCardButton({
   const { body } = card;
   const pill = lifeCardPill(body);
   const mark = body.kind === "people" || body.kind === "pets" ? body : null;
-  const eyebrow = body.kind === "objects" ? body.type : body.kind === "periods" ? body.span : null;
+  // Objects come in groups by type, so only a period names its span above the title.
+  const eyebrow = body.kind === "periods" ? body.span : null;
   const title = body.kind === "objects" ? (body.model ?? card.title) : card.title;
   return (
     <button className={`card life-card ${kind}`} onClick={() => goTo(lifeAddressOf(kind, entityId))}>
@@ -474,7 +442,8 @@ function LifeEntityPage({ kind, entityId }: { readonly kind: LifeKind; readonly 
 }
 
 function EntityDetails({ entity, card }: { readonly entity: LifeEntityDetail; readonly card: LifeCard }): ReactElement {
-  const facts = lifeFacts(entity, { clock: displayFormat().clock });
+  // The day order of the cards and the steps, such as "15 May 2026", so one page never shows two forms.
+  const facts = lifeFacts(entity, { locale: "en-GB", clock: displayFormat().clock });
   const body = bodyWithoutTitle(entity.body, entity.title).trim();
   const steps = entity.kind === "cases" ? caseSteps(entity.fields, new Date()) : [];
   return (
@@ -491,7 +460,7 @@ function EntityDetails({ entity, card }: { readonly entity: LifeEntityDetail; re
       )}
       <section className={`card project-facts life-facts ${entity.kind}`} aria-label="Facts">
         {card.summary !== null && <p className="life-lead">{card.summary}</p>}
-        {card.body.kind !== "cases" && <CardBody body={card.body} />}
+        <EntityHighlight body={card.body} />
         {facts.length > 0 && <FactList facts={facts} />}
         <div className="tags">
           <a className="mode-chip link-chip" href={fileAddressOf(entity.folder)}>
@@ -518,7 +487,10 @@ function EntityDetails({ entity, card }: { readonly entity: LifeEntityDetail; re
       )}
       {body !== "" && (
         <section className="card life-text" aria-label="Notes">
-          <MarkdownBody html={toWebHtml(body, { vaultLinks: true })} className="answer-body life-markdown" />
+          <MarkdownBody
+            html={toWebHtml(body, { vaultLinks: true, pathLinks: true })}
+            className="answer-body life-markdown"
+          />
         </section>
       )}
       {entity.files.length > 0 && (
@@ -563,5 +535,19 @@ function StepRow({ step }: { readonly step: CaseStep }): ReactElement {
         </span>
       </span>
     </li>
+  );
+}
+
+/** What the facts do not say: the age of a pet, or the span and length of a period. */
+function EntityHighlight({ body }: { readonly body: LifeCardBody }): ReactElement | null {
+  const words = body.kind === "pets" ? [body.life] : body.kind === "periods" ? [body.span, body.length] : [];
+  const shown = words.filter((word) => word !== null);
+  if (shown.length === 0) return null;
+  return (
+    <span className="life-facts-line life-highlight">
+      {shown.map((word) => (
+        <span key={word}>{word}</span>
+      ))}
+    </span>
   );
 }

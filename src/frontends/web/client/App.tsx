@@ -29,7 +29,7 @@ import { unsentTexts } from "./Composer.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { FilesView } from "./FilesView.tsx";
 import { LifeView } from "./LifeView.tsx";
-import { lifeRouteOf } from "./life-pages.ts";
+import { lifeRouteOf } from "./life-routes.ts";
 import {
   applyEvent,
   emptyLiveState,
@@ -537,6 +537,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         chatPanel={chatPanelKeptShown()}
         project={projectPage === "list" ? "list" : projectPage === "chat" ? "chat" : "page"}
         isPhone={isPhone}
+        lifeEntity={lifeRoute !== null && lifeRoute.entityId !== null}
       />
     );
   }

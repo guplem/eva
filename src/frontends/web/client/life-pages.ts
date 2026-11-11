@@ -6,18 +6,11 @@
  */
 import type { LifeEntity } from "./api.ts";
 import { daysBefore, months } from "./chat-list.ts";
-import {
-  factsOf,
-  linkOf,
-  type Fact,
-  type FactFormat,
-  type FactLink,
-  type FactValue,
-  type TextPart,
-} from "./front-matter-facts.ts";
+import { factsOf, linkOf, type Fact, type FactFormat, type FactLink, type FactValue } from "./front-matter-facts.ts";
 import { projectColor, projectInitials } from "./projects-home.ts";
 import { countOf } from "./project-format.ts";
-import { isLifeKind, type LifeKind } from "../../../shared/life-kinds.ts";
+import type { LifeKind } from "../../../shared/life-kinds.ts";
+import { vaultTextParts } from "./vault-text-links.ts";
 
 export interface LifeFilter {
   readonly id: string;
@@ -173,14 +166,26 @@ interface DayWording {
   /** Up to this many days away, the day is near and takes the warn colour. */
   readonly soonDays: number;
   readonly past: (days: number) => string;
+  /** The colour of a passed day. */
+  readonly pastTone: LifeTone;
 }
 
-const dueWording: DayWording = { word: "Due", soonDays: 7, past: (days) => `Overdue by ${countOf(days, "day")}` };
-const deadlineWording: DayWording = { word: "Deadline", soonDays: 14, past: () => "Deadline passed" };
+const dueWording: DayWording = {
+  word: "Due",
+  soonDays: 7,
+  past: (days) => `Overdue by ${countOf(days, "day")}`,
+  pastTone: "warn",
+};
+const deadlineWording: DayWording = {
+  word: "Deadline",
+  soonDays: 14,
+  past: () => "Deadline passed",
+  pastTone: "failed",
+};
 
 /**
- * The state of a day at `now`. A missed day is a failure, so it takes the `--bad` colour. A month
- * or a year alone has no day to pass, so it only says when.
+ * The state of a day at `now`. A late step still waits for the person, so it takes `--warn`. A
+ * passed deadline lost something, so it takes `--bad`. A month or a year alone has no day to pass.
  */
 function dayState(value: unknown, now: Date, wording: DayWording): DayState | null {
   const raw = textOf(value);
@@ -191,7 +196,7 @@ function dayState(value: unknown, now: Date, wording: DayWording): DayState | nu
     return { raw, text, words: `${wording.word} ${text}`, tone: "idle", overdue: false };
   }
   const days = -daysBefore(new Date(day.year, (day.month ?? 1) - 1, day.day ?? 1), now);
-  if (days < 0) return { raw, text, words: wording.past(-days), tone: "failed", overdue: true };
+  if (days < 0) return { raw, text, words: wording.past(-days), tone: wording.pastTone, overdue: true };
   const words =
     days === 0
       ? `${wording.word} today`
@@ -205,40 +210,9 @@ function dayState(value: unknown, now: Date, wording: DayWording): DayState | nu
 
 // Links between entities
 
-const lifeFolderKinds: Readonly<Record<string, LifeKind>> = {
-  Cases: "cases",
-  People: "people",
-  Objects: "objects",
-  Pets: "pets",
-  Periods: "periods",
-};
-
-/**
- * A path of a Life entity in a text, such as `Life/People/Alex Example`. A name holds spaces, so it
- * ends at the end of the text, at a comma, a semicolon, a bracket, or a dot that ends a sentence.
- */
-const lifePathPattern =
-  /Life\/(Cases|People|Objects|Pets|Periods)\/([^,;()\n/]+?)(?:\/(?:[^,;()\n/]+\.md)?)?(?=$|[,;()\n]|\.(?:\s|$))/g;
-
-/** The text with each path of a Life entity as a link to its page, named by its folder. */
-export function lifeLinkParts(text: string): TextPart[] {
-  const parts: TextPart[] = [];
-  let last = 0;
-  for (const match of text.matchAll(lifePathPattern)) {
-    const kind = lifeFolderKinds[match[1] ?? ""];
-    const id = (match[2] ?? "").trim();
-    if (kind === undefined || id === "") continue;
-    if (match.index > last) parts.push({ text: text.slice(last, match.index) });
-    parts.push({ text: id, href: lifeAddressOf(kind, id) });
-    last = match.index + match[0].length;
-  }
-  if (last < text.length || parts.length === 0) parts.push({ text: text.slice(last) });
-  return parts;
-}
-
 /** The text with each path of a Life entity as its name, for a card, where a link cannot sit in the button. */
 function namedText(text: string): string {
-  return lifeLinkParts(text)
+  return vaultTextParts(text)
     .map((part) => part.text)
     .join("");
 }
@@ -752,7 +726,11 @@ function linkedValue(value: FactValue): FactValue {
     case "text":
       return {
         kind: "text",
-        parts: value.parts.flatMap((part) => (part.href === undefined ? lifeLinkParts(part.text) : [part])),
+        parts: value.parts.flatMap((part) =>
+          part.href === undefined
+            ? vaultTextParts(part.text).map(({ text, href }) => (href === undefined ? { text } : { text, href }))
+            : [part],
+        ),
       };
     case "list":
       return { kind: "list", items: value.items.map(linkedValue) };
@@ -775,31 +753,4 @@ export function lifeFacts(entity: LifeEntity, format: FactFormat): Fact[] {
 export function bodyWithoutTitle(body: string, title: string): string {
   const match = /^\s*#[ \t]+(.+?)[ \t]*(?:\r?\n|$)\s*/.exec(body);
   return match?.[1] === title ? body.slice(match[0].length) : body;
-}
-
-// Addresses
-
-export interface LifeRoute {
-  readonly kind: LifeKind;
-  readonly entityId: string | null;
-}
-
-/** The Life page that the address names: `#/<kind>`, or `#/<kind>/<id>` for one entity. */
-export function lifeRouteOf(hash: string): LifeRoute | null {
-  const match = /^#\/([^/]+)(?:\/(.*))?$/.exec(hash);
-  const kind = match?.[1] ?? "";
-  if (!isLifeKind(kind)) return null;
-  const rest = match?.[2] ?? "";
-  // An id is one folder name, so a longer path shows the list.
-  if (rest === "" || rest.includes("/")) return { kind, entityId: null };
-  try {
-    return { kind, entityId: decodeURIComponent(rest) };
-  } catch {
-    // A hand-typed address with a bad `%` escape.
-    return { kind, entityId: null };
-  }
-}
-
-export function lifeAddressOf(kind: LifeKind, entityId?: string | null): string {
-  return entityId === undefined || entityId === null ? `#/${kind}` : `#/${kind}/${encodeURIComponent(entityId)}`;
 }

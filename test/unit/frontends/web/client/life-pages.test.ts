@@ -4,15 +4,12 @@ import {
   bodyWithoutTitle,
   caseSteps,
   dayWords,
-  lifeAddressOf,
   lifeCardOf,
   lifeCardPill,
   lifeCounts,
   lifeFacts,
   lifeGroups,
-  lifeLinkParts,
   lifePages,
-  lifeRouteOf,
   matchesLifeFilter,
   matchesLifeSearch,
   type DayState,
@@ -118,7 +115,7 @@ describe("cases", () => {
   test("a day words each state and never with the colour alone", () => {
     const due = (day: string): DayState | null | undefined =>
       body(lifeCardOf(entity("cases", "x", { steps: [{ step: "s", "due-by": day }] }), now), "cases").current?.due;
-    expect(due("2026-11-10")).toMatchObject({ words: "Overdue by 1 day", tone: "failed", overdue: true });
+    expect(due("2026-11-10")).toMatchObject({ words: "Overdue by 1 day", tone: "warn", overdue: true });
     expect(due("2026-11-01")).toMatchObject({ words: "Overdue by 10 days", overdue: true });
     expect(due("2026-11-11")).toMatchObject({ words: "Due today", tone: "warn", overdue: false });
     expect(due("2026-11-12")).toMatchObject({ words: "Due tomorrow", tone: "warn" });
@@ -213,24 +210,6 @@ describe("people", () => {
     ]);
     expect(lifeCounts("people", list, now)).toBe("3 people");
     expect(lifeCounts("people", list.slice(0, 1), now)).toBe("1 person");
-  });
-});
-
-describe("lifeLinkParts", () => {
-  test("splits a path of a Life entity into a link to its page", () => {
-    expect(lifeLinkParts("partner of Life/People/Marta Example, since 2020")).toEqual([
-      { text: "partner of " },
-      { text: "Marta Example", href: "#/people/Marta%20Example" },
-      { text: ", since 2020" },
-    ]);
-    expect(lifeLinkParts("About Life/Objects/Car - Example - 1234ABC.")).toEqual([
-      { text: "About " },
-      { text: "Car - Example - 1234ABC", href: "#/objects/Car%20-%20Example%20-%201234ABC" },
-      { text: "." },
-    ]);
-    expect(lifeLinkParts("Life/Pets/Luna/Pet.md")).toEqual([{ text: "Luna", href: "#/pets/Luna" }]);
-    expect(lifeLinkParts("friend")).toEqual([{ text: "friend" }]);
-    expect(lifeLinkParts("Life/Health/Habits")).toEqual([{ text: "Life/Health/Habits" }]);
   });
 });
 
@@ -469,22 +448,6 @@ describe("bodyWithoutTitle", () => {
     expect(bodyWithoutTitle("\n# Phone repair\n\n- A line\n", "Phone repair")).toBe("- A line\n");
     expect(bodyWithoutTitle("# Other\n\nText", "Phone repair")).toBe("# Other\n\nText");
     expect(bodyWithoutTitle("Text", "Text")).toBe("Text");
-  });
-});
-
-describe("routes", () => {
-  test("an address names a kind and an entity, and back again", () => {
-    expect(lifeRouteOf("#/cases")).toEqual({ kind: "cases", entityId: null });
-    expect(lifeRouteOf("#/cases/")).toEqual({ kind: "cases", entityId: null });
-    expect(lifeRouteOf("#/people/Alex%20Example")).toEqual({ kind: "people", entityId: "Alex Example" });
-    expect(lifeRouteOf("#/people/%E0%A4%A")).toEqual({ kind: "people", entityId: null });
-    expect(lifeRouteOf("#/people/a/b")).toEqual({ kind: "people", entityId: null });
-    expect(lifeRouteOf("#/projects")).toBeNull();
-    expect(lifeRouteOf("")).toBeNull();
-    expect(lifeAddressOf("pets")).toBe("#/pets");
-    for (const id of ["Alex Example", "Car - Example Model - 1234ABC", "Luna 2020", "50% #1 ?"]) {
-      expect(lifeRouteOf(lifeAddressOf("objects", id))).toEqual({ kind: "objects", entityId: id });
-    }
   });
 });
 

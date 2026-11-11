@@ -2,6 +2,8 @@ import { expect, test, type Locator, type Page, type WebSocketRoute } from "@pla
 
 const token = "e2e-demo-token";
 const vaultPassword = "a long demo password";
+/** The Projects button. A Project chat of another test can add its unread count to the name. */
+const projectsButton = /^Projects(?: \d+ unread chats?)?$/;
 
 // A route handler can still run as its test ends, and its error then fails the next test.
 test.afterEach(async ({ page }) => {
@@ -18,9 +20,19 @@ async function logIn(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
 }
 
+/** Opens the list where a button hides it, such as on a phone. */
 async function openList(page: Page): Promise<void> {
   const menu = page.getByRole("button", { name: "Show the list" });
-  if (await menu.isVisible()) await menu.click();
+  if (test.info().project.name !== "phone") {
+    if (await menu.isVisible()) await menu.click();
+    return;
+  }
+  const close = page.getByRole("button", { name: "Close the list" });
+  // Just after a page change, the button can be missing for a moment, and a late hashchange closes the list.
+  await expect(async () => {
+    if (!(await close.isVisible())) await menu.click({ timeout: 2_000 });
+    await expect(close).toBeVisible({ timeout: 2_000 });
+  }).toPass();
 }
 
 /** Opens the New chat page with the New chat button. The first message makes the chat. */
@@ -54,7 +66,7 @@ function projectCard(page: Page, name: RegExp): Locator {
  * both sizes. openList would race: the menu button of the page before can still show for a moment.
  */
 async function openProjects(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: projectsButton }).click();
   await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
 }
 
@@ -198,9 +210,20 @@ async function openSettings(page: Page, section?: string): Promise<void> {
     await nav.locator(".main-nav-visor").click();
     await page.locator(".home-buttons").getByRole("button", { name: "Settings", exact: true }).click();
   }
-  if (section === "Setup") await page.getByRole("button", { name: "See every step" }).click();
-  else if (section !== undefined) await page.locator(".section-card", { hasText: section }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(section ?? "Settings");
+  const heading = page.getByRole("heading", { level: 1 });
+  if (section === undefined) {
+    await expect(heading).toHaveText("Settings");
+    return;
+  }
+  const opener =
+    section === "Setup"
+      ? page.getByRole("button", { name: "See every step" })
+      : page.locator(".section-card", { hasText: section });
+  // Under load, a tap just after Settings opens can be lost while the page still draws, so it taps again.
+  await expect(async () => {
+    if ((await heading.textContent()) !== section) await opener.click({ timeout: 2_000 });
+    await expect(heading).toHaveText(section, { timeout: 2_000 });
+  }).toPass();
 }
 
 /** The browser resolves a token to the same form as a computed style, so the two compare as text. */
@@ -745,11 +768,17 @@ test("a link to an archived chat opens it, with the archived list (issue 388)", 
   await logIn(page);
   const title = await newAnsweredChat(page, "An archived linked chat");
   const chatId = await chatIdNamed(page, title);
-  await page.request.post(`/api/sessions/${chatId}/archive`, { data: { archived: true } });
   const nav = page.getByRole("navigation", { name: "Chats" });
+  // A phone renders no list item while its list is closed, so a count there would wait for nothing.
+  await openList(page);
+  // The list shows the title after the answer, so a count of 0 can only mean the archive below.
+  await expect(nav.locator(".list-item", { hasText: title })).toHaveCount(1);
+  await page.request.post(`/api/sessions/${chatId}/archive`, { data: { archived: true } });
   // A new hash loads no page, so the link waits until the list of this page has the archive.
   await expect(nav.locator(".list-item", { hasText: title })).toHaveCount(0);
   await page.goto(`/#/chat/${chatId}`);
+  // The chat shows already, so wait until the page uses the link: its hashchange closes a phone's list.
+  await expect(page).toHaveURL(new RegExp(`#/chats/${chatId}$`));
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   await openList(page);
   await expect(nav.getByRole("heading", { name: "Archived" })).toBeVisible();
@@ -1115,7 +1144,7 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   await page.goto(`/#/chat/${chatId}`);
-  await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: projectsButton })).toHaveAttribute("aria-current", "page");
   await expect(page.locator(".message.user").first()).toContainText(title);
   await expect(page.getByText("Project mode")).toBeVisible();
 });
@@ -2288,7 +2317,7 @@ test("a project with a bad front matter field shows its warnings", async ({ page
 test("on a phone, the project list is the page, and Back to the projects returns to it", async ({ page }) => {
   test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: projectsButton }).click();
   // No tap on the menu: with no project open, the list is already on the screen.
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(projectCard(page, /Example app/)).toBeVisible();
@@ -2306,7 +2335,7 @@ test("on a phone, the Statistics button of the list opens the statistics, and Ba
 }) => {
   test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: projectsButton }).click();
   await page.getByRole("button", { name: "Statistics" }).click();
   await expect(page).toHaveURL(/#\/projects\/stats$/);
   await expect(page.getByRole("heading", { level: 1, name: "Statistics" })).toBeVisible();
@@ -2539,7 +2568,7 @@ test("on a short phone, a long project list scrolls, and no card cuts its text",
   // A screen shorter than the list makes the flex column squeeze each card to the 44 px of a button.
   await page.setViewportSize({ width: 375, height: 360 });
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: projectsButton }).click();
   await expect(projectCard(page, /Example app/)).toBeVisible();
   const cut = await page
     .locator(".project-card")
@@ -2963,11 +2992,16 @@ test("Settings: the eyes beside a Project chat's answers take their own colour",
   await answerInNewClone(page, projectTitle);
   const visor = besideAnswer(projectTitle);
   await expect(visor).toHaveClass(/project-eyes/);
-  const eye = await visor.evaluate((element) => getComputedStyle(element).getPropertyValue("--eye"));
-  const hue = await page.evaluate(() =>
-    getComputedStyle(document.documentElement).getPropertyValue("--project-eye-h").trim(),
-  );
-  expect(eye).toContain(hue);
+  // The colour can apply a moment after the class, so the check reads both values again until they agree.
+  await expect
+    .poll(async () => {
+      const eye = await visor.evaluate((element) => getComputedStyle(element).getPropertyValue("--eye"));
+      const hue = await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--project-eye-h").trim(),
+      );
+      return hue !== "" && eye.includes(hue);
+    })
+    .toBe(true);
 });
 
 test("the page brings its own fonts, so it needs no other server", async ({ page, baseURL }) => {
@@ -3726,7 +3760,7 @@ test("the nav visor wears the Project eyes in Projects on a phone only, even on 
   await expect(visor).not.toHaveClass(/project-eyes/);
   await openProjects(page);
   // The tab is current first, so the computer check below does not pass before the page renders.
-  await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: projectsButton })).toHaveAttribute("aria-current", "page");
   if (test.info().project.name === "phone") {
     // The mode tells the person more than the day, so it wins.
     await expect(visor).toHaveClass(/project-eyes/);
@@ -5188,6 +5222,8 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
   await card.getByRole("button", { name: "Update to a version…" }).click();
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
   await expect(dialog).toBeVisible();
+  // The dialog listens for Escape from the same React step that moves the focus into it.
+  await expect(dialog.getByRole("radio", { checked: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   // Focus goes back to the button that opened the dialog.
@@ -5276,6 +5312,8 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
   await update.click();
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
   await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeChecked();
+  // The dialog listens for Escape from the same React step that moves the focus into it.
+  await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   // Focus goes back to the button that opened the dialog.
@@ -5971,7 +6009,7 @@ test.describe("on a phone", () => {
     await openSettings(page);
     await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
     await expect(page.getByRole("region", { name: "Setup" })).toBeVisible();
-    await tabs.getByRole("button", { name: "Projects", exact: true }).click();
+    await tabs.getByRole("button", { name: projectsButton }).click();
     // With no project open, the project list is the page.
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
     // A chat of a clone has an arrow to its project, and the project page has one to the list.
@@ -6382,8 +6420,8 @@ test("each page shows line icons, never an emoji or a symbol mark", async ({ pag
     page.getByRole("navigation", { name: "Schedules" }).getByRole("heading", { name: "Schedules" }),
   ).toBeVisible();
   await expectNoSymbolMarks(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.getByRole("button", { name: projectsButton }).click();
+  await expect(page.getByRole("button", { name: projectsButton })).toHaveAttribute("aria-current", "page");
   await expectNoSymbolMarks(page);
   await openSettings(page, "Setup");
   await expect(page.getByRole("region", { name: "Progress list" })).toBeVisible();

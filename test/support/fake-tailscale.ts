@@ -61,13 +61,20 @@ export class FakeTailscale {
   }
 
   /** A real watcher on this fake program. */
-  watcher(options: { install?: (() => Promise<void>) | null; port?: number } = {}): RemoteAccessWatcher {
+  watcher(
+    options: {
+      install?: (() => Promise<void>) | null;
+      port?: number;
+      allowedAccounts?: () => readonly string[];
+    } = {},
+  ): RemoteAccessWatcher {
     return new RemoteAccessWatcher({
       runner: this.runner,
       environment: {},
       port: options.port ?? 7420,
       program: () => ["tailscale"],
       install: options.install ?? null,
+      ...(options.allowedAccounts === undefined ? {} : { allowedAccounts: options.allowedAccounts }),
     });
   }
 }

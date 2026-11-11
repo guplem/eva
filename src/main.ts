@@ -224,9 +224,14 @@ async function serve(paths: HomePaths): Promise<number> {
   for (const note of notes) logger.log(note.level, note.message, note.fields);
   // The first read happens before the local API starts, so a ready tailnet's host is known at once.
   const remoteAccess = config.remoteAccess.tailscaleServe
-    ? remoteAccessWatcher(host, config.port, (access) => {
-        logger.log(access.step === "failed" ? "warn" : "info", "Tailscale access.", { ...access });
-      })
+    ? remoteAccessWatcher(
+        host,
+        config.port,
+        (access) => {
+          logger.log(access.step === "failed" ? "warn" : "info", "Tailscale access.", { ...access });
+        },
+        () => config.remoteAccess.allowedTailscaleIdentities,
+      )
     : null;
   await remoteAccess?.refresh();
 

@@ -201,6 +201,24 @@ describe("the Tailscale account of a second Eva (#322)", () => {
     expect(setup.asked.indexOf("tailscaleAccount")).toBeLessThan(setup.asked.indexOf("startService"));
   });
 
+  test("the network step asks the question before its device steps, and only once (#905)", async () => {
+    const setup = fake({ tailnet, answers: { tailscaleAccount: ["2"] } });
+    await startAndLetIn({
+      ...setup.options,
+      network: async (chooseAccount) => {
+        setup.lines.push("PHONE ACCESS");
+        await chooseAccount?.();
+        setup.lines.push("DEVICE STEPS");
+        return "https://eva.example-tailnet.ts.net";
+      },
+    });
+    expect(setup.accounts.allowed).toEqual(["partner@example.com"]);
+    expect(setup.asked.filter((key) => key === "tailscaleAccount")).toHaveLength(1);
+    const question = setup.lines.findIndex((line) => line.includes("Which account uses this Eva?"));
+    expect(question).toBeGreaterThan(setup.lines.indexOf("PHONE ACCESS"));
+    expect(question).toBeLessThan(setup.lines.indexOf("DEVICE STEPS"));
+  });
+
   test("Enter keeps the computer owner's account", async () => {
     const setup = fake({ tailnet, answers: { tailscaleAccount: [""] } });
     await startAndLetIn(setup.options);

@@ -81,7 +81,7 @@ export function deviceSteps(access: RemoteAccess): GuideStep[] {
       text:
         account === null
           ? "Sign in to Tailscale there with the same account as this machine."
-          : `Sign in to Tailscale there with the same account as this machine: ${account}.`,
+          : `Sign in to Tailscale there with ${account}.`,
       link: null,
       action: null,
     },

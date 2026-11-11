@@ -14,8 +14,11 @@ export interface StartOptions {
     question: string,
   ) => Promise<string>;
   readonly write: (line: string) => void;
-  /** The Tailscale steps. Returns the address that opens Eva on other devices, or null. */
-  readonly network: () => Promise<string | null>;
+  /**
+   * The Tailscale steps. Returns the address that opens Eva on other devices, or null.
+   * `chooseAccount` asks which account uses this Eva, before the steps for each device (#905).
+   */
+  readonly network: (chooseAccount: (() => Promise<void>) | null) => Promise<string | null>;
   /** The page on this computer. */
   readonly localUrl: string;
   /** Installs and starts the service, as `eva service install` does. True when it worked. */
@@ -62,17 +65,26 @@ const setupPagePath = "/#/settings/setup";
 
 /** Returns where the person finishes the setup. Without a running Eva, there is no page to open. */
 export async function startAndLetIn(options: StartOptions): Promise<FinishPlace> {
-  const address = (await options.network()) ?? options.localUrl;
   // Before the start, so a new Eva starts with the account; a running one restarts below.
   if (options.account === null)
     await refuseScriptedAccount(
       options,
       "the account question is only for a new Eva beside another one, or for an Eva that lets in a chosen account.",
     );
-  const accountChanged = options.account === null ? false : await chooseAccount(options, options.account);
+  const choice = options.account;
+  // An object: TypeScript does not see what a closure sets in a plain variable.
+  const question = { asked: false, changed: false };
+  const ask = async (): Promise<void> => {
+    if (choice === null || question.asked) return;
+    question.asked = true;
+    question.changed = await chooseAccount(options, choice);
+  };
+  // The device steps name the account, so the question comes first, inside the Tailscale step.
+  const address = (await options.network(choice === null ? null : ask)) ?? options.localUrl;
+  await ask();
   for (const line of stepLines("Start Eva")) options.write(line);
   if (await options.isRunning()) {
-    if (accountChanged && options.account !== null && !(await options.account.restart()))
+    if (question.changed && choice !== null && !(await choice.restart()))
       options.write(noteLine("Eva did not restart. Restart her from Settings, so the account can log in."));
     options.write(doneLine("Eva runs."));
   } else {

@@ -53,6 +53,21 @@ describe("the remote access watcher", () => {
     ]);
   });
 
+  test("the account for new devices is the one that this Eva lets in, read again at each read (#905)", async () => {
+    const fake = new FakeTailscale();
+    fake.status = running(true);
+    let allowed: readonly string[] = [];
+    const access = fake.watcher({ allowedAccounts: () => allowed });
+    expect(await access.refresh()).toMatchObject({ account: "owner@example.com" });
+    allowed = ["partner@example.com"];
+    expect(await access.refresh()).toMatchObject({ account: "partner@example.com" });
+    // The identity check still knows the machine's owner.
+    expect(access.tailnet().ownerLogin).toBe("owner@example.com");
+    // Before this machine signs in, the chosen account is known already.
+    fake.status = needsLogin;
+    expect(await access.refresh()).toMatchObject({ step: "sign_in", account: "partner@example.com" });
+  });
+
   test("a ready address is published again only now and then, a lost one at once", async () => {
     const fake = new FakeTailscale();
     fake.status = running(true);

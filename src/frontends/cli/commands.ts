@@ -268,9 +268,15 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
             : Promise.resolve(key === "deviceCode" || key === "finishOn" || key === "openHere" ? "" : script(key)),
         write,
         // Setup publishes too, so the address that it prints works as soon as Eva runs.
-        network: () =>
+        network: (chooseAccount) =>
           runNetworkSetup({
-            access: remoteAccessWatcher(host, port()),
+            access: remoteAccessWatcher(
+              host,
+              port(),
+              undefined,
+              () => loadSettings(paths).config.remoteAccess.allowedTailscaleIdentities,
+            ),
+            chooseAccount,
             write,
             sleep: host.sleep,
             interactive,

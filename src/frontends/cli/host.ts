@@ -161,6 +161,7 @@ export function remoteAccessWatcher(
   host: CliHost,
   port: number,
   onChange?: (access: RemoteAccess) => void,
+  allowedAccounts?: () => readonly string[],
 ): RemoteAccessWatcher {
   const environment = childEnvironment(host);
   return new RemoteAccessWatcher({
@@ -186,6 +187,7 @@ export function remoteAccessWatcher(
           })
       : null,
     ...(onChange === undefined ? {} : { onChange }),
+    ...(allowedAccounts === undefined ? {} : { allowedAccounts }),
   });
 }
 

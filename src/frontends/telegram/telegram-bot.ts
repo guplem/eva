@@ -864,20 +864,31 @@ export class TelegramBot {
     }
     const isApproval = kind === "a" && first !== undefined && (second === "allow" || second === "deny");
     const isAlwaysYes = kind === "a" && first !== undefined && second === "always-yes";
+    if (isAlwaysYes && isAllowed) {
+      // "Allowed" must follow the save, as the `q:` press above does. A throw still stops the spinner.
+      let saved = false;
+      try {
+        this.options.eva.allowApprovalAlways(first);
+        saved = true;
+      } finally {
+        await this.sender.quietCall("answerCallbackQuery", {
+          callback_query_id: query.id,
+          ...(saved ? { text: "Allowed" } : {}),
+        });
+      }
+      return;
+    }
     const isDeviceAnswer = kind === "l" && first !== undefined && (second === "allow" || second === "deny");
     // The device answer comes first, so the reply to the press can say that the request expired.
     const deviceAnswered = isAllowed && isDeviceAnswer ? this.options.eva.deviceLogins.answer(first, second) : null;
-    const answerText =
-      deviceAnswered === false ? deviceExpiredText : second === "allow" || isAlwaysYes ? "Allowed" : "Denied";
+    const answerText = deviceAnswered === false ? deviceExpiredText : second === "allow" ? "Allowed" : "Denied";
     await this.sender.quietCall("answerCallbackQuery", {
       callback_query_id: query.id,
-      ...(isAllowed && (isApproval || isDeviceAnswer || isAlwaysYes) ? { text: answerText } : {}),
+      ...(isAllowed && (isApproval || isDeviceAnswer) ? { text: answerText } : {}),
     });
     if (!isAllowed) return;
     if (isApproval) {
       this.options.eva.sessions.answerApproval(first, second);
-    } else if (isAlwaysYes) {
-      this.options.eva.allowApprovalAlways(first);
     } else if (kind === "a" && first !== undefined && (second === "always" || second === "back")) {
       await this.showApprovalStep(first, second);
     } else if (isDeviceAnswer) {

@@ -1846,6 +1846,17 @@ describe("approvals and commands", () => {
       expect(telegram.callsTo("answerCallbackQuery").at(-1)?.params["text"]).toBe("Allowed");
     });
 
+    test("yes on a request that cannot be allowed for good never says Allowed", async () => {
+      const answers: string[] = [];
+      const { bot, requestId } = await askPush([], answers);
+      telegram.pressButton(owner, `a:${requestId}:always-yes`);
+      await settle(bot, () => telegram.callsTo("answerCallbackQuery").length === 1);
+      expect(telegram.callsTo("answerCallbackQuery").map((call) => call.params["text"])).not.toContain("Allowed");
+      expect(answers).toEqual([]);
+      telegram.pressButton(owner, `a:${requestId}:deny`);
+      await settle(bot, () => answers.length === 1);
+    });
+
     test("a press on a request with no categories does nothing", async () => {
       const answers: string[] = [];
       const { bot, requestId } = await askPush([], answers);

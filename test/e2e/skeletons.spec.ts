@@ -136,7 +136,11 @@ for (const [name, address] of [
   ["Settings", "#/settings"],
   ["Cases", "#/cases"],
   ["Objects", "#/objects"],
+  ["Pets", "#/pets"],
+  ["Periods", "#/periods"],
   ["People", "#/people"],
+  ["a person", "#/people/Sam%20Example"],
+  ["an object", "#/objects/Car%20-%20Example%20Model%20-%201234ABC"],
 ] as const) {
   test(`the first load of ${name} has the shape of the page`, async ({ page }) => {
     await expectSameShape(page, address, firstLoad);

@@ -71,9 +71,28 @@ test("the search filters a list by name, alias and summary, and says when nothin
   await search.fill("no such words here");
   await expect(page.getByRole("status").filter({ hasText: "Nothing matches" })).toBeVisible();
 
+  // A match that the Open filter hides is offered, not denied.
+  await search.fill("flat move");
+  await expect(page.getByRole("status").filter({ hasText: "the filter hides 1 match" })).toBeVisible();
+  await page.getByRole("status").getByRole("button", { name: "Show all" }).click();
+  await expect(card(page, "Flat move")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Show" }).getByRole("button", { name: "All" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
   await open(page, "#/people", "People");
   await page.getByRole("searchbox", { name: "Search people" }).fill("Al");
   await expect(card(page, "Alex Example")).toBeVisible();
+
+  // A tag matches with or without its #.
+  await open(page, "#/objects", "Objects");
+  const objects = page.getByRole("searchbox", { name: "Search objects" });
+  await objects.fill("#workshop");
+  await expect(page.locator(".life-card")).toHaveCount(1);
+  await expect(card(page, "Example Tools")).toBeVisible();
+  await objects.fill("WORKSHOP");
+  await expect(page.locator(".life-card")).toHaveCount(1);
 });
 
 test("the People, Objects, Pets and Periods pages show the facts of each kind", async ({ page }) => {
@@ -143,6 +162,13 @@ test("a case opens its own page with its facts, steps, text and files, and Back 
   await expect(page.getByRole("heading", { level: 1, name: "Cases", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/#\/cases$/);
 
+  // The Back of the browser, or of a phone, returns to the list too.
+  await card(page, "Bumper claim").click();
+  await expect(page.getByRole("heading", { level: 1, name: "Bumper claim" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "Cases", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/cases$/);
+
   await card(page, "Phone repair").click();
   await page.getByRole("region", { name: "Files" }).getByRole("link", { name: "Repair quote.md" }).click();
   await expect(page).toHaveURL(/#\/files\/Life\/Cases\/2026-05-15-phone-repair\/Repair%20quote\.md$/);
@@ -170,16 +196,20 @@ test("a path of another entity links to its page, in the text and in the facts",
 });
 
 test("a page with no entry in the navigation opens by its address", async ({ page }) => {
+  // Each form shows only Chats and Projects, so Periods is hidden on a computer and on a phone.
+  await page.evaluate(() => {
+    localStorage.setItem("eva.navigation", JSON.stringify({ computer: ["chats", "projects"], phone: ["chats"] }));
+  });
+  await page.reload();
   const nav = page.getByRole("navigation", { name: "Main" });
-  if (test.info().project.name === "phone") {
-    // A phone shows Chats, Projects, Files and Schedules by default.
-    await expect(nav.getByRole("button", { name: "Periods" })).toHaveCount(0);
-  } else {
-    await nav.getByRole("button", { name: "Periods" }).click();
-    await expect(page).toHaveURL(/#\/periods$/);
-  }
+  await expect(nav.getByRole("button", { name: /^Chats/ })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Periods" })).toHaveCount(0);
   await open(page, "#/periods", "Periods");
   await expect(card(page, "Sabbatical")).toBeVisible();
+  // The browser keeps the choice: the next test starts with the defaults.
+  await page.evaluate(() => {
+    localStorage.removeItem("eva.navigation");
+  });
 });
 
 test("a missing entity and an empty folder each show a clear state", async ({ page }) => {

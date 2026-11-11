@@ -8,7 +8,7 @@
 import { closesFence, openingFencePattern } from "../../markdown-fence.ts";
 import { escapeHtml, inlineHtml, unescapeHtml } from "../../markdown-inline.ts";
 import { fileAddressOf, vaultPathLabel, vaultPathOf } from "./file-paths.ts";
-import { vaultTextParts } from "./vault-text-links.ts";
+import { vaultTextParts, type KnownLifeIds } from "./vault-text-links.ts";
 
 const headingPattern = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const quotePattern = /^\s{0,3}>\s?(.*)$/;
@@ -31,30 +31,30 @@ interface ListItem {
 export interface WebHtmlOptions {
   /** Links each code span that names a vault path to the Files page. */
   readonly vaultLinks?: boolean;
-  /** Links each vault path in the plain text: a Life entity to its page, any other path to Files. */
-  readonly pathLinks?: boolean;
+  /** Links each vault path in the plain text: a Life entity that it names to its page, any other path to Files. */
+  readonly pathLinks?: KnownLifeIds;
 }
 
-export function toWebHtml(markdown: string, { vaultLinks = false, pathLinks = false }: WebHtmlOptions = {}): string {
+export function toWebHtml(markdown: string, { vaultLinks = false, pathLinks }: WebHtmlOptions = {}): string {
   const html = blocks(expandIndentTabs(markdown.replaceAll("\r\n", "\n").split("\n")), false);
   // A link opens in a new tab, so the chat stays open. Telegram takes only href, so the shared
   // inlineHtml leaves these out. Every "<a " in the output is a link tag, as all text is escaped.
   const linked = html.replaceAll("<a href=", '<a target="_blank" rel="noreferrer" href=');
   const withCode = vaultLinks ? linkVaultPaths(linked) : linked;
-  return pathLinks ? linkTextPaths(withCode) : withCode;
+  return pathLinks === undefined ? withCode : linkTextPaths(withCode, pathLinks);
 }
 
 /**
  * Links each vault path in the text between the tags. A code block, a code span and a link keep
  * their text. The text is unescaped, parsed and escaped again, so a link holds only a parsed path.
  */
-function linkTextPaths(html: string): string {
+function linkTextPaths(html: string, known: KnownLifeIds): string {
   return html
     .split(/(<pre[\s\S]*?<\/pre>|<a [\s\S]*?<\/a>|<code>[\s\S]*?<\/code>|<[^>]*>)/)
     .map((piece, index) => {
       // split puts each captured tag at an odd index.
       if (index % 2 === 1 || piece === "") return piece;
-      const parts = vaultTextParts(unescapeHtml(piece));
+      const parts = vaultTextParts(unescapeHtml(piece), known);
       if (parts.every((part) => part.href === undefined)) return piece;
       const attribute = (text: string): string => escapeHtml(text).replaceAll('"', "&quot;");
       return parts

@@ -500,24 +500,52 @@ export function LifeListSkeleton({ kind, label }: { readonly kind: LifeKind; rea
 }
 
 /** A Life page before its list or its entity comes: the header, then the list or the facts of the entity. */
+/**
+ * The header of an entity page, as `LifeView.tsx` draws it: a person and a pet have a mark, an object
+ * has its status pill, and an object, a pet and a period have a sub line. So the title does not move.
+ */
+function LifeEntityHeaderSkeleton({ kind }: { readonly kind: LifeKind }): ReactElement {
+  const { title } = lifePages[kind];
+  return (
+    <div className="main-header life-entity-header" {...copies(".life-entity-header", "left top right")}>
+      <button className="back-named skeleton-ghost" disabled>
+        <Icon name="back" />
+        {title}
+      </button>
+      {(kind === "people" || kind === "pets") && <span className="project-mark life-mark skeleton-block" />}
+      <div className="header-text">
+        <div className="header-title">
+          <h1 {...copies(".life-entity-header h1", "left")}>
+            <Text width="160px" />
+          </h1>
+          {kind === "objects" && <Ghost className="pill life-pill">In use</Ghost>}
+        </div>
+        {(kind === "objects" || kind === "pets" || kind === "periods") && (
+          <div className="sub">
+            <Text width="80px" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LifePageSkeleton({ kind, entity }: { readonly kind: LifeKind; readonly entity: boolean }): ReactElement {
   const { title } = lifePages[kind];
   return (
     <div className="main life-view">
-      <div className="main-header" {...copies(".life-view .main-header", "left top right")}>
-        {entity && (
-          <button className="back-named skeleton-ghost" disabled>
-            <Icon name="back" />
-            {title}
-          </button>
-        )}
-        <div className="header-text">
-          <h1>{entity ? <Text width="160px" /> : title}</h1>
-          <div className="sub">
-            <Text width="120px" />
+      {entity ? (
+        <LifeEntityHeaderSkeleton kind={kind} />
+      ) : (
+        <div className="main-header" {...copies(".life-view .main-header", "left top right")}>
+          <div className="header-text">
+            <h1>{title}</h1>
+            <div className="sub">
+              <Text width="120px" />
+            </div>
           </div>
         </div>
-      </div>
+      )}
       {entity ? (
         <div className="life-page life-entity">
           <section className="card project-facts life-facts">

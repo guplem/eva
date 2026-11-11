@@ -10,6 +10,7 @@ import {
   lifeFacts,
   lifeGroups,
   lifeHeader,
+  lifeHiddenMatches,
   lifePages,
   matchesLifeFilter,
   matchesLifeSearch,
@@ -432,18 +433,25 @@ describe("lifeFacts", () => {
         { aliases: ["the claim"], tags: ["car"] },
       ),
       format,
+      { pets: ["Luna"] },
     );
     expect(facts.map((fact) => fact.label)).toEqual(["Opened", "About", "Aliases", "Tags"]);
     expect(facts[1]?.value).toEqual({ kind: "text", parts: [{ text: "Luna", href: "#/pets/Luna" }] });
     const nested = lifeFacts(
       entity("objects", "x", { owners: ["Life/People/Sam Example"], ids: { plate: "1" } }),
       format,
+      { people: ["Sam Example"] },
     );
     expect(nested[0]?.value).toEqual({
       kind: "list",
       items: [{ kind: "text", parts: [{ text: "Sam Example", href: "#/people/Sam%20Example" }] }],
     });
     expect(nested[1]?.value.kind).toBe("map");
+    // With no known id, a Life path stays text: its end is not sure.
+    expect(lifeFacts(entity("cases", "x", { about: "Life/Pets/Luna" }), format)[0]?.value).toEqual({
+      kind: "text",
+      parts: [{ text: "Life/Pets/Luna" }],
+    });
   });
 });
 
@@ -559,5 +567,21 @@ describe("review round 1", () => {
     expect(card({ org: "Example Corp" }, { title: "T", summary: "Other words." })).toMatchObject({
       work: "Example Corp",
     });
+  });
+});
+
+describe("lifeHiddenMatches", () => {
+  test("counts the entities that match the search but not the filter, so the page can show them", () => {
+    const list = [
+      entity("cases", "a", { closed: "2025-01-01" }, { title: "Flat move" }),
+      entity("cases", "b", {}, { title: "Flat repair" }),
+      entity("cases", "c", { closed: "2025-02-01" }, { title: "Gym refund" }),
+    ];
+    expect(lifeHiddenMatches(list, "flat", "open")).toBe(1);
+    expect(lifeHiddenMatches(list, "move", "open")).toBe(1);
+    expect(lifeHiddenMatches(list, "nothing", "open")).toBe(0);
+    // All hides nothing, and an empty search is no search.
+    expect(lifeHiddenMatches(list, "flat", "all")).toBe(0);
+    expect(lifeHiddenMatches(list, "  ", "open")).toBe(0);
   });
 });

@@ -215,7 +215,7 @@ const lifeSamples: Readonly<Record<string, string>> = {
   "Life/Objects/Car - Example Model - 1234ABC/Object.md":
     "---\nstatus: in-use\ntype: car\nowner:\nids: { plate: 1234ABC, vin: EXAMPLEVIN0000000 }\naliases: [the car]\nsummary: The family car. The insurance ends on 2099-03-01.\n---\n\nThe service is every 15000 km.\n",
   "Life/Objects/Drill - Example Tools - 2022/Object.md":
-    "---\nstatus: lent\ntype: drill\nowner: Life/People/Sam Example\nsummary: Sam's drill, lent to Jordan Example.\n---\n\nIt needs a new battery.\n",
+    "---\nstatus: lent\ntype: drill\nowner: Life/People/Sam Example\ntags: [workshop]\nsummary: Sam's drill, lent to Jordan Example.\n---\n\nIt needs a new battery.\n",
   "Life/Objects/Phone - Example Phone 12 - 4321/Object.md":
     "---\nstatus: sold\ntype: phone\nowner:\nids: { imei: '4321' }\nsummary: The old phone. Sold on 2026-03-01.\n---\n\nSold with its case.\n",
   "Life/Pets/Luna/Pet.md":

@@ -21,6 +21,7 @@ import {
   lifeFacts,
   lifeGroups,
   lifeHeader,
+  lifeHiddenMatches,
   lifePages,
   matchesLifeSearch,
   type CaseStep,
@@ -36,7 +37,8 @@ import { countOf } from "./project-format.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 import { toWebHtml } from "./web-format.ts";
-import type { LifeKind } from "../../../shared/life-kinds.ts";
+import { isLifeKind, type LifeKind } from "../../../shared/life-kinds.ts";
+import { lifeKindsNamed, type KnownLifeIds } from "./vault-text-links.ts";
 
 /** The search filters as the person types, after a short pause, so a long list does not stutter. */
 const searchPauseMs = 150;
@@ -123,6 +125,7 @@ function LifeList({ kind, list, search, query, filter, onSearch, onFilter, onRet
   const entities: readonly LifeEntity[] = list === null || list === "failed" ? [] : list;
   const found = entities.filter((entity) => matchesLifeSearch(entity, query));
   const groups = lifeGroups(kind, found, filter, now);
+  const hidden = lifeHiddenMatches(entities, query, filter);
   const hasEntities = entities.length > 0;
   return (
     <>
@@ -169,23 +172,25 @@ function LifeList({ kind, list, search, query, filter, onSearch, onFilter, onRet
           </div>
         )}
         {Array.isArray(list) && !hasEntities && (
-          <div className="life-empty">
+          <div className="center-empty life-empty">
             <Visor size={76} face={stateFaces.resting} />
             <strong>No {page.title.toLowerCase()} yet.</strong>
             <p>{page.empty}</p>
           </div>
         )}
         {hasEntities && groups.length === 0 && (
-          <div className="life-none" role="status">
-            {query.trim() === "" ? (
-              <>
-                Nothing to show with this filter.{" "}
-                <button className="ghost" onClick={() => onFilter("all")}>
-                  Show all
-                </button>
-              </>
-            ) : (
-              <>Nothing matches “{query.trim()}”.</>
+          <div className="empty life-none" role="status">
+            <span>
+              {query.trim() === ""
+                ? "Nothing to show with this filter."
+                : hidden === 0
+                  ? `Nothing matches “${query.trim()}”.`
+                  : `Nothing here matches “${query.trim()}”, but the filter hides ${hidden === 1 ? "1 match" : `${String(hidden)} matches`}.`}
+            </span>
+            {(query.trim() === "" || hidden > 0) && (
+              <button className="ghost" onClick={() => onFilter("all")}>
+                Show all
+              </button>
             )}
           </div>
         )}
@@ -347,7 +352,7 @@ function CardBody({ body }: { readonly body: LifeCardBody }): ReactElement | nul
       return kindWords === "" && body.life === null ? null : (
         <span className="life-facts-line">
           {kindWords !== "" && <span>{kindWords}</span>}
-          {body.life !== null && <span className="muted">{body.life}</span>}
+          {body.life !== null && <span className="life-small">{body.life}</span>}
         </span>
       );
     }
@@ -355,11 +360,11 @@ function CardBody({ body }: { readonly body: LifeCardBody }): ReactElement | nul
       // The work gets a line of its own: a dot at the start of a wrapped line would read as noise.
       return (
         <>
-          {body.work !== null && <span className="life-work">{body.work}</span>}
+          {body.work !== null && <span>{body.work}</span>}
           {(body.type !== null || body.length !== null) && (
             <span className="life-facts-line">
               {body.type !== null && <span className="tag">{body.type}</span>}
-              {body.length !== null && <span className="muted">{body.length}</span>}
+              {body.length !== null && <span className="life-small">{body.length}</span>}
             </span>
           )}
         </>
@@ -458,7 +463,7 @@ function LifeEntityPage({ kind, entityId }: { readonly kind: LifeKind; readonly 
           </div>
         )}
         {entity === "missing" && (
-          <div className="life-empty life-missing" role="status">
+          <div className="center-empty life-empty life-missing" role="status">
             <Visor size={76} face={stateFaces.resting} />
             <strong>Eva cannot find “{entityId}”.</strong>
             <p>Its folder may have a new name, or it is gone.</p>
@@ -473,9 +478,38 @@ function LifeEntityPage({ kind, entityId }: { readonly kind: LifeKind; readonly 
   );
 }
 
+/**
+ * The ids of each kind that the text or the facts of the entity name. A name holds spaces, so only
+ * the real names tell where a path ends. A kind that fails to load links nothing.
+ */
+function useKnownIds(entity: LifeEntityDetail): KnownLifeIds {
+  const [known, setKnown] = useState<KnownLifeIds>({});
+  // A string, so the effect runs again only when the named kinds change.
+  const named = lifeKindsNamed(`${entity.body}\n${JSON.stringify(entity.fields)}`).join(" ");
+  useEffect(() => {
+    let isCurrent = true;
+    const kinds = named.split(" ").filter(isLifeKind);
+    void Promise.all(
+      kinds.map((kind) =>
+        api.lifeEntities(kind).then(
+          (list) => [kind, list.map((each) => each.id)] as const,
+          () => [kind, []] as const,
+        ),
+      ),
+    ).then((pairs) => {
+      if (isCurrent) setKnown(Object.fromEntries(pairs) as KnownLifeIds);
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [named]);
+  return known;
+}
+
 function EntityDetails({ entity, card }: { readonly entity: LifeEntityDetail; readonly card: LifeCard }): ReactElement {
   // The day order of the cards and the steps, such as "15 May 2026", so one page never shows two forms.
-  const facts = lifeFacts(entity, { locale: "en-GB", clock: displayFormat().clock });
+  const known = useKnownIds(entity);
+  const facts = lifeFacts(entity, { locale: "en-GB", clock: displayFormat().clock }, known);
   const body = bodyWithoutTitle(entity.body, entity.title).trim();
   const steps = entity.kind === "cases" ? caseSteps(entity.fields, new Date()) : [];
   return (
@@ -521,7 +555,7 @@ function EntityDetails({ entity, card }: { readonly entity: LifeEntityDetail; re
         <section className="card life-text" aria-label="Notes">
           <h2>Notes</h2>
           <MarkdownBody
-            html={toWebHtml(body, { vaultLinks: true, pathLinks: true })}
+            html={toWebHtml(body, { vaultLinks: true, pathLinks: known })}
             className="answer-body life-markdown"
           />
         </section>
@@ -562,7 +596,7 @@ function StepRow({ step }: { readonly step: CaseStep }): ReactElement {
         <span className="visually-hidden">{stepStateWords[step.state]}: </span>
         <span>{step.text}</span>
         <span className="life-step-meta">
-          {step.doneOn !== null && <span className="muted">Done on {step.doneOn}</span>}
+          {step.doneOn !== null && <span className="life-small">Done on {step.doneOn}</span>}
           {step.waitingFor !== null && <Line icon="user">Waits for {step.waitingFor}</Line>}
           {step.due !== null && step.state !== "done" && <DayPill day={step.due} />}
         </span>

@@ -2477,7 +2477,8 @@ button.link-button {
 /* The two lists of the Navigation card: side by side when the card is wide enough. */
 .nav-choice-forms {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* min() keeps one column on a narrow phone, where 240 px and the gutters leave no room. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: var(--space-4);
 }
 

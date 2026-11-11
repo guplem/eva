@@ -10,7 +10,7 @@ import { factsOf, linkOf, type Fact, type FactFormat, type FactLink, type FactVa
 import { projectColor, projectInitials } from "./projects-home.ts";
 import { countOf } from "./project-format.ts";
 import type { LifeKind } from "../../../shared/life-kinds.ts";
-import { vaultTextParts } from "./vault-text-links.ts";
+import { vaultTextParts, withEntityNames, type KnownLifeIds } from "./vault-text-links.ts";
 
 export interface LifeFilter {
   readonly id: string;
@@ -208,15 +208,6 @@ function dayState(value: unknown, now: Date, wording: DayWording): DayState | nu
   return { raw, text, words, tone: days <= wording.soonDays ? "warn" : "idle", overdue: false };
 }
 
-// Links between entities
-
-/** The text with each path of a Life entity as its name, for a card, where a link cannot sit in the button. */
-function namedText(text: string): string {
-  return vaultTextParts(text)
-    .map((part) => part.text)
-    .join("");
-}
-
 // Cases
 
 export interface CaseStep {
@@ -392,7 +383,7 @@ const cardBodies: Readonly<Record<LifeKind, (entity: LifeEntity, now: Date) => L
       kind: "people",
       initials: projectInitials(entity.title),
       color: projectColor(entity.id),
-      relation: relation === null ? null : namedText(relation),
+      relation: relation === null ? null : withEntityNames(relation),
       contact: contact === null ? null : linkOf(contact),
     };
   },
@@ -458,7 +449,7 @@ function objectCard(entity: LifeEntity): LifeCardBody {
     model: model === "" ? null : model,
     ids: ids.length > 0 ? ids : folderId === null ? [] : [folderId],
     pill: status === null ? null : (objectStatusPills[status] ?? { text: capitalized(status), tone: "idle" }),
-    owner: owner === null ? null : namedText(owner),
+    owner: owner === null ? null : withEntityNames(owner),
   };
 }
 
@@ -739,21 +730,21 @@ export function lifeCounts(kind: LifeKind, entities: readonly LifeEntity[], now:
 // The entity page
 
 /** The value with each path of a Life entity as a link to its page. */
-function linkedValue(value: FactValue): FactValue {
+function linkedValue(value: FactValue, known: KnownLifeIds): FactValue {
   switch (value.kind) {
     case "text":
       return {
         kind: "text",
         parts: value.parts.flatMap((part) =>
           part.href === undefined
-            ? vaultTextParts(part.text).map(({ text, href }) => (href === undefined ? { text } : { text, href }))
+            ? vaultTextParts(part.text, known).map(({ text, href }) => (href === undefined ? { text } : { text, href }))
             : [part],
         ),
       };
     case "list":
-      return { kind: "list", items: value.items.map(linkedValue) };
+      return { kind: "list", items: value.items.map((item) => linkedValue(item, known)) };
     case "map":
-      return { kind: "map", facts: value.facts.map((fact) => ({ ...fact, value: linkedValue(fact.value) })) };
+      return { kind: "map", facts: value.facts.map((fact) => ({ ...fact, value: linkedValue(fact.value, known) })) };
     case "date":
       // A day, a month or a year reads as on the cards and the steps, so a page has one form of date.
       return dayOf(value.raw) === null ? value : { ...value, text: dayWords(value.raw) };
@@ -782,12 +773,12 @@ function shownElsewhere(entity: LifeEntity, key: string): boolean {
   }
 }
 
-/** The facts of an entity page: each key that the page shows nowhere else. */
-export function lifeFacts(entity: LifeEntity, format: FactFormat): Fact[] {
+/** The facts of an entity page: each key that the page shows nowhere else. A path links when `known` holds its entity. */
+export function lifeFacts(entity: LifeEntity, format: FactFormat, known: KnownLifeIds = {}): Fact[] {
   const fields = Object.entries(entity.fields).filter(([key]) => !shownElsewhere(entity, key));
   return factsOf([...fields, ["aliases", entity.aliases], ["tags", entity.tags.map((tag) => `#${tag}`)]], format).map(
     (fact) => {
-      const value = linkedValue(fact.value);
+      const value = linkedValue(fact.value, known);
       return fact.key === "ids" && value.kind === "map"
         ? { ...fact, value: { ...value, facts: value.facts.map((id) => ({ ...id, label: idLabel(id.key) })) } }
         : { ...fact, value };
@@ -822,4 +813,13 @@ export function lifeHeader(entity: LifeEntity, now: Date): LifeHeader {
 export function bodyWithoutTitle(body: string, title: string): string {
   const match = /^\s*#[ \t]+(.+?)[ \t]*(?:\r?\n|$)\s*/.exec(body);
   return match?.[1] === title ? body.slice(match[0].length) : body;
+}
+
+/**
+ * The entities that match the search but that the filter hides, such as a closed case while the
+ * page shows the open ones. The page offers them, so an empty result never hides a match.
+ */
+export function lifeHiddenMatches(entities: readonly LifeEntity[], query: string, filter: string): number {
+  if (filter === allFilter || query.trim() === "") return 0;
+  return entities.filter((entity) => matchesLifeSearch(entity, query) && !matchesLifeFilter(entity, filter)).length;
 }

@@ -204,22 +204,23 @@ describe("toWebHtml with vault links", () => {
 });
 
 describe("toWebHtml with path links", () => {
+  const known = { people: ["Sam Example", "A & B", "Sam"] };
   test("links a Life entity to its page, and another vault path to Files, in the same tab", () => {
-    expect(toWebHtml("About Life/People/Sam Example.", { pathLinks: true })).toBe(
+    expect(toWebHtml("About Life/People/Sam Example.", { pathLinks: known })).toBe(
       '<p>About <a class="vault-link" href="#/people/Sam%20Example" title="Life/People/Sam Example">Sam Example</a>.</p>',
     );
-    expect(toWebHtml("- Read Library/https.md", { pathLinks: true })).toBe(
+    expect(toWebHtml("- Read Library/https.md", { pathLinks: known })).toBe(
       '<ul><li>Read <a class="vault-link" href="#/files/Library/https.md" title="Library/https.md">Library/https.md</a></li></ul>',
     );
   });
 
   test("escapes the text of a link and leaves code and links alone", () => {
-    expect(toWebHtml("Life/People/A & B <b>", { pathLinks: true })).toBe(
+    expect(toWebHtml("Life/People/A & B <b>", { pathLinks: known })).toBe(
       '<p><a class="vault-link" href="#/people/A%20%26%20B" title="Life/People/A &amp; B">A &amp; B</a> &lt;b&gt;</p>',
     );
-    expect(toWebHtml("`Life/People/Sam` and [x](https://example.com/Life/People/Sam)", { pathLinks: true })).toBe(
+    expect(toWebHtml("`Life/People/Sam` and [x](https://example.com/Life/People/Sam)", { pathLinks: known })).toBe(
       toWebHtml("`Life/People/Sam` and [x](https://example.com/Life/People/Sam)"),
     );
-    expect(toWebHtml("```\nLife/People/Sam\n```", { pathLinks: true })).toBe(toWebHtml("```\nLife/People/Sam\n```"));
+    expect(toWebHtml("```\nLife/People/Sam\n```", { pathLinks: known })).toBe(toWebHtml("```\nLife/People/Sam\n```"));
   });
 });

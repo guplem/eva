@@ -37,8 +37,9 @@ function assistantChat(mode: ClaudePermissionMode): ChatPermissions {
   if (mode === "bypassPermissions") {
     return {
       chat: "assistant",
-      runs: ["Every action, also one that reaches other people"],
-      asks: [],
+      // Eva's own approvals do not read the mode, so outward actions still ask (issue #910).
+      runs: ["Every other action, with no safety check"],
+      asks: askedActionWords,
       blocks: [denyRules],
       note: null,
     };

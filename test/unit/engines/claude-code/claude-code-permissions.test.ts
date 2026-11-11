@@ -41,7 +41,9 @@ describe("describeClaudePermissions", () => {
   test("in bypass mode, a trusted chat asks nothing, and an untrusted clone still uses auto", () => {
     const permissions = describeClaudePermissions("bypassPermissions", noRules);
     expect(permissions.mode?.value).toBe("bypassPermissions");
-    expect(chat(permissions, "assistant").asks).toEqual([]);
+    // Issue #910: Eva's own approvals do not read the mode, so an Assistant chat still asks.
+    expect(chat(permissions, "assistant").asks).toEqual(askedActionWords);
+    expect(chat(permissions, "assistant").runs.join(" ")).not.toContain("reaches other people");
     expect(chat(permissions, "trusted-project").asks).toEqual([]);
     expect(chat(permissions, "untrusted-project").asks).not.toEqual([]);
     expect(chat(permissions, "untrusted-project").note).toContain("Auto");

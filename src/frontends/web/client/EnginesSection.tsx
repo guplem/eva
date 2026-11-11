@@ -106,7 +106,7 @@ function DefaultEngineCard({ context }: { readonly context: SettingsContext }): 
         label="Claude Code permission mode"
         value={config.engines.claudeCode.permissionMode}
         choices={permissionModeChoices}
-        hint="Auto: Claude Code asks you only about risky actions. Bypass permissions: every action runs with no question, also one that reaches other people. A clone that Eva does not trust always uses Auto. The next card lists what each kind of chat may do."
+        hint="Auto: Claude Code asks you only about risky actions. Bypass permissions: Claude Code asks nothing, but in an Assistant chat Eva still asks before an action that reaches other people. A clone that Eva does not trust always uses Auto. The next card lists what each kind of chat may do."
         onChange={(value) => void context.saveNow({ engines: { claudeCode: { permissionMode: value } } })}
       />
     </Card>

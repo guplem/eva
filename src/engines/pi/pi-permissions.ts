@@ -2,7 +2,7 @@
  * What pi chats may do, in words for Settings. The words follow `decide` and `buildPiArguments`
  * in pi-adapter.ts: change them together.
  */
-import { askedActionWords } from "../../shared/outward-actions.ts";
+import { defaultOutwardActionLevels, outwardActionWordsByLevel } from "../../shared/outward-actions.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 
 /** The file wall of a Project chat (#711). pi has no sandbox, so its shell is not walled. */
@@ -18,7 +18,7 @@ export function describePiPermissions(): EnginePermissions {
       {
         chat: "assistant",
         runs: ["Every other action that stays on this computer"],
-        asks: askedActionWords,
+        asks: outwardActionWordsByLevel(defaultOutwardActionLevels).ask,
         blocks: [],
         note: null,
       },

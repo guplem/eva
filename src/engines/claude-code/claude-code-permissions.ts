@@ -4,7 +4,7 @@
  */
 import { join } from "node:path";
 import { readJsonTolerant } from "../../shared/files.ts";
-import { askedActionWords } from "../../shared/outward-actions.ts";
+import { defaultOutwardActionLevels, outwardActionWordsByLevel } from "../../shared/outward-actions.ts";
 import type {
   ChatPermissions,
   EnginePermissions,
@@ -52,7 +52,7 @@ function assistantChat(mode: ClaudePermissionMode): ChatPermissions {
       "Eva's own tools, such as Google, when the action stays with you",
       "Each other action that the safety check of Claude Code allows",
     ],
-    asks: askedActionWords,
+    asks: outwardActionWordsByLevel(defaultOutwardActionLevels).ask,
     blocks: [safetyCheckRefusals, denyRules],
     note: null,
   };

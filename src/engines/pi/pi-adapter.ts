@@ -43,7 +43,12 @@ import { wallRefusesCall } from "../../shared/path-area.ts";
 import type { EngineEventPayload, TaskState, TurnUsage } from "../../shared/events.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
-import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
+import {
+  decideOutwardAction,
+  defaultOutwardActionLevels,
+  summarizeToolCall,
+  toolCategory,
+} from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
 import { questionExtensionSource, questionTitle } from "./pi-question-extension.ts";
@@ -778,7 +783,8 @@ function decide(request: TurnRequest, toolName: string, input: Record<string, un
   };
   if (wall !== null && wallRefusesCall(wall, request.startFolder, input, options)) return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
-  if (request.mode === "project" || !asksThePerson(toolName, input)) return Promise.resolve("allow");
+  if (request.mode === "project" || decideOutwardAction(toolName, input, defaultOutwardActionLevels).level !== "ask")
+    return Promise.resolve("allow");
   return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });
 }
 

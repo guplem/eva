@@ -23,7 +23,12 @@ import {
 import { readTextTolerant } from "../../shared/files.ts";
 import { describeClaudeContext, projectInstructionFiles } from "./claude-code-context.ts";
 import { carryClaudeHistory } from "./claude-code-history.ts";
-import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
+import {
+  decideOutwardAction,
+  defaultOutwardActionLevels,
+  summarizeToolCall,
+  toolCategory,
+} from "../../shared/outward-actions.ts";
 import { askUserQuestionTool, collectAnswers } from "../../shared/questions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
@@ -633,7 +638,7 @@ async function decidePermission(
   // A model call has no tools; a tool that still appears gets no question, because nobody waits for one.
   if (request.mode === "model-call") return "deny";
   const summary = summarizeToolCall(toolName, input);
-  if (request.mode === "project" || asksThePerson(toolName, input)) {
+  if (request.mode === "project" || decideOutwardAction(toolName, input, defaultOutwardActionLevels).level === "ask") {
     return request.requestApproval({ requestId: "", toolName, summary });
   }
   return "allow";

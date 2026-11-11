@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeCodeEngine } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
 import { describeClaudePermissions } from "../../../../src/engines/claude-code/claude-code-permissions.ts";
-import { askedActionWords } from "../../../../src/shared/outward-actions.ts";
+import { defaultOutwardActionLevels, outwardActionWordsByLevel } from "../../../../src/shared/outward-actions.ts";
 import type { ChatPermissions, EnginePermissions } from "../../../../src/shared/permissions.ts";
 
 let folder: string;
@@ -29,11 +29,11 @@ describe("describeClaudePermissions", () => {
   test("in auto mode, an Assistant chat asks before each action that reaches other people", () => {
     const permissions = describeClaudePermissions("auto", noRules);
     expect(permissions.mode).toEqual({ value: "auto", words: "Auto" });
-    expect(chat(permissions, "assistant").asks).toEqual(askedActionWords);
+    expect(chat(permissions, "assistant").asks).toEqual(outwardActionWordsByLevel(defaultOutwardActionLevels).ask);
     expect(chat(permissions, "assistant").blocks.join(" ")).toContain("safety check");
     expect(chat(permissions, "assistant").runs.join(" ")).toContain(".eva/");
     // Issue #451: curl sends data without -X too, so the words name the data flags.
-    expect(chat(permissions, "assistant").asks.join(" ")).toContain("curl: -d");
+    expect(chat(permissions, "assistant").asks.join(" ")).toContain("curl or gh api with data");
     // Issue #440: a schedule runs a turn later on its own, so a change to one asks first.
     expect(chat(permissions, "assistant").asks.join(" ")).toContain("schedules.json");
   });

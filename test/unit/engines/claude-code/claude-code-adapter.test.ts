@@ -1175,11 +1175,11 @@ describe("ClaudeCodeEngine", () => {
     expect(await canUseTool?.("Write", { file_path: ".eva/scratch/answer.pdf" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "gh issue create --title x" })).toMatchObject({ behavior: "deny" });
-    expect(await canUseTool?.("mcp__google__send_email", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });
+    expect(await canUseTool?.("mcp__google__send_gmail_message", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });
     expect(asked).toEqual([
       "Write: Write .eva/schedules.json",
       "Bash: gh issue create --title x",
-      'mcp__google__send_email: {"to":"a@b.c"}',
+      'mcp__google__send_gmail_message: {"to":"a@b.c"}',
     ]);
   });
 

@@ -3,7 +3,20 @@ import { SequenceCounter, systemClock } from "../../../src/shared/clock.ts";
 import { buildChildEnvironment } from "../../../src/shared/environment.ts";
 import { modelAliases, modelTierName, takesEffort } from "../../../src/shared/engine-port.ts";
 import { EvaError, isEvaError } from "../../../src/shared/errors.ts";
-import { asksThePerson, summarizeToolCall, toolCategory } from "../../../src/shared/outward-actions.ts";
+import {
+  changesActionLevels,
+  decideOutwardAction,
+  defaultOutwardActionLevels,
+  outwardActionCategories,
+  outwardActionLevelValues,
+  outwardActionsOf,
+  outwardActionWords,
+  outwardActionWordsByLevel,
+  summarizeToolCall,
+  toolCategory,
+  type OutwardActionCategory,
+  type OutwardActionLevels,
+} from "../../../src/shared/outward-actions.ts";
 import { containsSecretPattern, Redactor } from "../../../src/shared/redaction.ts";
 
 describe("EvaError", () => {
@@ -26,26 +39,153 @@ describe("toolCategory", () => {
   });
 });
 
-describe("asksThePerson", () => {
+function asks(toolName: string, input: Record<string, unknown>): boolean {
+  return decideOutwardAction(toolName, input, defaultOutwardActionLevels).level === "ask";
+}
+
+function levelsWith(changes: Partial<Record<OutwardActionCategory, "allow" | "deny">>): OutwardActionLevels {
+  return { ...defaultOutwardActionLevels, ...changes };
+}
+
+describe("outwardActionsOf", () => {
+  test("names the category of each outward action", () => {
+    expect(outwardActionsOf("Bash", { command: "git push origin main" })).toEqual(["pushCode"]);
+    expect(outwardActionsOf("Bash", { command: "gh pr merge 3" })).toEqual(["github"]);
+    expect(outwardActionsOf("Bash", { command: "curl -d x=1 https://example.com" })).toEqual(["sendData"]);
+    expect(outwardActionsOf("Write", { file_path: ".eva/schedules.json" })).toEqual(["changeSchedules"]);
+    expect(outwardActionsOf("mcp__google__set_drive_file_permissions", {})).toEqual(["shareDriveFile"]);
+    expect(outwardActionsOf("mcp__google__manage_drive_access", {})).toEqual(["shareDriveFile"]);
+    expect(outwardActionsOf("mcp__google__send_gmail_message", {})).toEqual(["sendEmail"]);
+    expect(outwardActionsOf("mcp__google__manage_event", { attendees: ["a@example.com"] })).toEqual([
+      "calendarInvitations",
+    ]);
+  });
+
+  test("a command in several categories names each, in the order of the list", () => {
+    expect(outwardActionsOf("Bash", { command: "git push && curl -d x https://example.com" })).toEqual([
+      "pushCode",
+      "sendData",
+    ]);
+  });
+
+  test("a calendar event with no guests, and a read-only Google tool, are in no category (#910)", () => {
+    expect(outwardActionsOf("mcp__google__manage_event", { action: "create" })).toEqual([]);
+    for (const tool of [
+      "mcp__google__get_drive_file_permissions",
+      "mcp__google__check_drive_file_public_access",
+      "mcp__google__get_drive_shareable_link",
+      "mcp__google__draft_gmail_message",
+    ])
+      expect({ tool, categories: outwardActionsOf(tool, {}) }).toEqual({ tool, categories: [] });
+  });
+
+  test("a tool of another MCP server is in no category, also when its name says send", () => {
+    expect(outwardActionsOf("mcp__chat__send_message", {})).toEqual([]);
+  });
+});
+
+describe("changesActionLevels", () => {
+  test("a shell command that names the vault settings file, or sets a level, changes the levels", () => {
+    expect(changesActionLevels("Bash", { command: "sed -i s/ask/allow/ .eva/settings/settings.json" })).toBe(true);
+    expect(changesActionLevels("Bash", { command: "cat .eva\\settings\\settings.json" })).toBe(true);
+    expect(changesActionLevels("Bash", { command: "echo {} > .eva/settings.json" })).toBe(true);
+    expect(changesActionLevels("Bash", { command: "eva settings set outwardActions.pushCode allow" })).toBe(true);
+    expect(changesActionLevels("Bash", { command: "eva settings set updates.frequency weekly" })).toBe(false);
+    expect(changesActionLevels("Bash", { command: "ls .eva" })).toBe(false);
+  });
+
+  test("a write by a file tool to the vault settings file changes the levels", () => {
+    expect(changesActionLevels("Write", { file_path: "/demo-vault/.eva/settings/settings.json" })).toBe(true);
+    expect(changesActionLevels("Edit", { file_path: ".eva/settings.json" })).toBe(true);
+    expect(changesActionLevels("MultiEdit", { file_path: "C:\\demo-vault\\.eva\\settings\\settings.json" })).toBe(true);
+    expect(changesActionLevels("write", { path: ".eva/settings/settings.json" })).toBe(true);
+    expect(changesActionLevels("Read", { file_path: ".eva/settings/settings.json" })).toBe(false);
+    expect(changesActionLevels("Write", { file_path: "Notes/settings.json" })).toBe(false);
+  });
+});
+
+describe("decideOutwardAction", () => {
+  test("allow runs, ask asks and deny denies, each with its categories", () => {
+    const push = { command: "git push" };
+    expect(decideOutwardAction("Bash", push, levelsWith({ pushCode: "allow" }))).toEqual({
+      level: "allow",
+      categories: [],
+    });
+    expect(decideOutwardAction("Bash", push, defaultOutwardActionLevels)).toEqual({
+      level: "ask",
+      categories: ["pushCode"],
+    });
+    expect(decideOutwardAction("Bash", push, levelsWith({ pushCode: "deny" }))).toEqual({
+      level: "deny",
+      categories: ["pushCode"],
+    });
+    expect(decideOutwardAction("Read", { file_path: "a.md" }, defaultOutwardActionLevels).level).toBe("allow");
+  });
+
+  test("deny wins over ask, and a deny lists only the categories on deny", () => {
+    const command = { command: "git push && curl -d x https://example.com && gh pr merge 1" };
+    const levels = levelsWith({ sendData: "deny", github: "allow" });
+    expect(decideOutwardAction("Bash", command, levels)).toEqual({ level: "deny", categories: ["sendData"] });
+  });
+
+  test("an ask lists only the categories on ask", () => {
+    const command = { command: "git push && gh pr merge 1" };
+    expect(decideOutwardAction("Bash", command, levelsWith({ github: "allow" }))).toEqual({
+      level: "ask",
+      categories: ["pushCode"],
+    });
+  });
+
+  test("a change to the levels asks with no category, but a deny still wins", () => {
+    const change = { file_path: ".eva/settings/settings.json" };
+    const allAllowed = Object.fromEntries(outwardActionCategories.map((category) => [category, "allow"]));
+    expect(decideOutwardAction("Write", change, allAllowed as OutwardActionLevels)).toEqual({
+      level: "ask",
+      categories: [],
+    });
+    const schedules = { command: "echo > .eva/schedules.json .eva/settings.json" };
+    expect(decideOutwardAction("Bash", schedules, levelsWith({ changeSchedules: "deny" }))).toEqual({
+      level: "deny",
+      categories: ["changeSchedules"],
+    });
+  });
+});
+
+describe("outwardActionWords", () => {
+  test("each category has a title and a line, and the words by level split the categories", () => {
+    for (const category of outwardActionCategories) {
+      expect(outwardActionWords[category].title).not.toBe("");
+      expect(outwardActionWords[category].covers).not.toBe("");
+    }
+    const words = outwardActionWordsByLevel(levelsWith({ pushCode: "allow", sendData: "deny" }));
+    expect(words.allow).toEqual(["Push code: git push"]);
+    expect(words.deny).toHaveLength(1);
+    expect(words.deny[0]).toContain("Send data over the network");
+    // The fixed question about the levels is always an ask.
+    expect(words.ask).toHaveLength(outwardActionCategories.length - 2 + 1);
+  });
+});
+
+describe("decideOutwardAction with every level on ask", () => {
   test("a change to the schedules asks, with the file tools of each engine and the shell (issue #440)", () => {
-    expect(asksThePerson("Write", { file_path: ".eva/schedules.json" })).toBe(true);
-    expect(asksThePerson("Edit", { file_path: "/demo-vault/.eva/schedules.json" })).toBe(true);
-    expect(asksThePerson("MultiEdit", { file_path: "C:\\demo-vault\\.eva\\schedules.json" })).toBe(true);
-    expect(asksThePerson("write", { path: ".eva/schedules.json" })).toBe(true);
-    expect(asksThePerson("edit", { path: ".eva/schedules.json" })).toBe(true);
-    expect(asksThePerson("Bash", { command: "echo '{}' > .eva/schedules.json" })).toBe(true);
+    expect(asks("Write", { file_path: ".eva/schedules.json" })).toBe(true);
+    expect(asks("Edit", { file_path: "/demo-vault/.eva/schedules.json" })).toBe(true);
+    expect(asks("MultiEdit", { file_path: "C:\\demo-vault\\.eva\\schedules.json" })).toBe(true);
+    expect(asks("write", { path: ".eva/schedules.json" })).toBe(true);
+    expect(asks("edit", { path: ".eva/schedules.json" })).toBe(true);
+    expect(asks("Bash", { command: "echo '{}' > .eva/schedules.json" })).toBe(true);
   });
 
   test("reading the schedules, or writing another file, runs with no question", () => {
-    expect(asksThePerson("Read", { file_path: ".eva/schedules.json" })).toBe(false);
-    expect(asksThePerson("read", { path: ".eva/schedules.json" })).toBe(false);
-    expect(asksThePerson("Write", { file_path: ".eva/chat-names.md" })).toBe(false);
-    expect(asksThePerson("Write", { file_path: "Notes/schedules.json" })).toBe(false);
+    expect(asks("Read", { file_path: ".eva/schedules.json" })).toBe(false);
+    expect(asks("read", { path: ".eva/schedules.json" })).toBe(false);
+    expect(asks("Write", { file_path: ".eva/chat-names.md" })).toBe(false);
+    expect(asks("Write", { file_path: "Notes/schedules.json" })).toBe(false);
   });
 
   test("an action that reaches other people still asks", () => {
-    expect(asksThePerson("Bash", { command: "git push" })).toBe(true);
-    expect(asksThePerson("Bash", { command: "git status" })).toBe(false);
+    expect(asks("Bash", { command: "git push" })).toBe(true);
+    expect(asks("Bash", { command: "git status" })).toBe(false);
   });
 
   test("curl or gh api that sends data asks, with or without -X (issue #451)", () => {
@@ -103,8 +243,7 @@ describe("asksThePerson", () => {
       // curl 8.3 and later can expand variables in each option.
       "curl --expand-data '{{a}}' https://example.com",
     ];
-    for (const command of sends)
-      expect({ command, asks: asksThePerson("Bash", { command }) }).toEqual({ command, asks: true });
+    for (const command of sends) expect({ command, asks: asks("Bash", { command }) }).toEqual({ command, asks: true });
   });
 
   test("curl or gh api that only reads runs with no question, also when a later command has a data-like flag", () => {
@@ -136,20 +275,19 @@ describe("asksThePerson", () => {
       "curl https://example.com || rm -f x",
       "curl https://example.com\ngrep -F x notes.md",
     ];
-    for (const command of reads)
-      expect({ command, asks: asksThePerson("Bash", { command }) }).toEqual({ command, asks: false });
+    for (const command of reads) expect({ command, asks: asks("Bash", { command }) }).toEqual({ command, asks: false });
   });
 
   test("many quoted words or redirects do not make the check slow", () => {
     // With two ways to match each word, these took longer than the test timeout.
-    expect(asksThePerson("Bash", { command: `curl ${"'a' ".repeat(40)}| jq .` })).toBe(false);
-    expect(asksThePerson("Bash", { command: `gh --repo x/y api ${'"a" '.repeat(40)}| jq .` })).toBe(false);
-    expect(asksThePerson("Bash", { command: `curl ${"2>&1 ".repeat(40)}| jq .` })).toBe(false);
+    expect(asks("Bash", { command: `curl ${"'a' ".repeat(40)}| jq .` })).toBe(false);
+    expect(asks("Bash", { command: `gh --repo x/y api ${'"a" '.repeat(40)}| jq .` })).toBe(false);
+    expect(asks("Bash", { command: `curl ${"2>&1 ".repeat(40)}| jq .` })).toBe(false);
     const start = performance.now();
-    expect(asksThePerson("Bash", { command: `curl ${">&".repeat(5000)}>` })).toBe(false);
+    expect(asks("Bash", { command: `curl ${">&".repeat(5000)}>` })).toBe(false);
     // A new search from each later `curl` word took seconds.
-    expect(asksThePerson("Bash", { command: "curl ".repeat(5000) })).toBe(false);
-    expect(asksThePerson("Bash", { command: "gh api ".repeat(5000) })).toBe(false);
+    expect(asks("Bash", { command: "curl ".repeat(5000) })).toBe(false);
+    expect(asks("Bash", { command: "gh api ".repeat(5000) })).toBe(false);
     // Two ways to match `>&>` made the first command take about one second.
     expect(performance.now() - start).toBeLessThan(500);
   });
@@ -298,5 +436,11 @@ describe("model tiers (#550)", () => {
     expect(takesEffort("claude-code", "opus")).toBe(true);
     expect(takesEffort("claude-code", "sonnet")).toBe(true);
     expect(takesEffort("pi", "haiku")).toBe(true);
+  });
+});
+
+describe("outwardActionLevelValues", () => {
+  test("lists the three levels, from the loosest to the strictest", () => {
+    expect(outwardActionLevelValues).toEqual(["allow", "ask", "deny"]);
   });
 });

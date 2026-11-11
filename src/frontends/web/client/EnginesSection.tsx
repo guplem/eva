@@ -141,7 +141,7 @@ function OutwardActionsCard({ context }: { readonly context: SettingsContext }):
       item="outward-actions"
       icon="shield"
       title="Actions that reach other people"
-      description="Allow, ask or deny each kind of action. These are your preferences, not a security wall. They apply in Assistant chats, in every permission mode. A change applies from the next action."
+      description="Allow, ask or deny each kind of action. These are your preferences, not a protection against an agent that follows hidden instructions. They apply in Assistant chats, in every permission mode. A change applies from the next action."
     >
       {outwardActionCategories.map((category) => (
         <ChoiceChips

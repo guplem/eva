@@ -1,9 +1,9 @@
 /**
- * The personalize page: this browser's look and sounds, the person's rules for Eva, the widgets, then the time zone, the
- * language and formats, the rules for chat names, and the message box menu. The text fields wait for Save; the look and the sounds
+ * The personalize page: this browser's look, navigation and sounds, the person's rules for Eva, the widgets, then the time zone, the
+ * language and formats, the rules for chat names, and the message box menu. The text fields wait for Save; the look, the navigation and the sounds
  * apply at once. Each item of the message box menu saves on its own.
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactElement } from "react";
 import { api, ApiError, type EvaStatus } from "./api.ts";
 import { AssistantRulesCard } from "./AssistantRulesCard.tsx";
 import { ComposerMenuCard } from "./ComposerMenuCard.tsx";
@@ -34,6 +34,17 @@ import { knownTimeZones, timeZoneChoices } from "./time-zones.ts";
 import type { Clock, Units, WeekStart } from "../../../shared/time-format.ts";
 import { displayFormat, setDisplayFormat } from "./display-format.ts";
 import { formatChange, formatFormChanged, formatFormOf, type FormatForm } from "./format-form.ts";
+import {
+  faceFixedReason,
+  isFixedEntry,
+  maxPhoneEntries,
+  navChoice,
+  onNavChoiceChange,
+  saveNavChoice,
+  toggled,
+  type NavForm,
+} from "./nav-choice.ts";
+import { addressOf, destinations, homeAddress, type NavEntryId } from "./navigation.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
 const chatNameRulesLength = 4_000;
@@ -93,6 +104,7 @@ export function PersonalizeSection({ context }: { readonly context: SettingsCont
   return (
     <>
       <AppearanceCard />
+      <NavigationCard />
       <CuesCard />
       <AssistantRulesCard context={context} />
       <ComposerMenuCard context={context} />
@@ -167,6 +179,116 @@ export function AppearanceCard(): ReactElement {
         onChange={(fileNameCut) => change({ fileNameCut })}
       />
     </Card>
+  );
+}
+
+const navForms: readonly { form: NavForm; title: string; hint: string }[] = [
+  { form: "computer", title: "On a computer", hint: "The rail at the left. Settings always shows at its foot." },
+  {
+    form: "phone",
+    title: "On a phone",
+    hint: `The tab bar at the bottom: up to ${String(maxPhoneEntries)} entries beside Eva's face. The gear of the home page opens Settings.`,
+  },
+];
+
+/**
+ * The entries of the main navigation. Each press applies at once, with no Save, as the look does. A press that
+ * cannot apply is turned off with `aria-disabled`, so it plays the problem cue and the card says why.
+ */
+function NavigationCard(): ReactElement {
+  const choice = useSyncExternalStore(onNavChoiceChange, navChoice);
+  const [refusal, setRefusal] = useState<{ readonly form: NavForm; readonly reason: string } | null>(null);
+  const press = (form: NavForm, id: NavEntryId): void => {
+    const result = toggled(choice, form, id);
+    if (!result.ok) {
+      setRefusal({ form, reason: result.reason });
+      return;
+    }
+    setRefusal(null);
+    saveNavChoice(result.choice);
+  };
+  return (
+    <Card
+      item="navigation"
+      title="Navigation"
+      description="Choose the pages that the main navigation shows. Each browser keeps its own choice. A narrow window of a computer uses the phone list."
+    >
+      <div className="nav-choice-forms">
+        {navForms.map(({ form, title, hint }) => (
+          <div key={form} className="field" role="group" aria-label={title}>
+            <span className="field-label">{title}</span>
+            <span className="field-hint">{hint}</span>
+            <ul className="nav-choice-list">
+              <NavChoiceRow
+                icon="eve"
+                label="Eva's face"
+                address={homeAddress}
+                on
+                fixed
+                blocked
+                onPress={() => setRefusal({ form, reason: faceFixedReason })}
+              />
+              {destinations.map((destination) => (
+                <NavChoiceRow
+                  key={destination.id}
+                  icon={destination.icon}
+                  label={destination.label}
+                  address={addressOf(destination.id)}
+                  on={choice[form].includes(destination.id)}
+                  fixed={isFixedEntry(form, destination.id)}
+                  blocked={!toggled(choice, form, destination.id).ok}
+                  onPress={() => press(form, destination.id)}
+                />
+              ))}
+            </ul>
+            {refusal?.form === form && (
+              <span className="field-hint nav-choice-refusal" role="status">
+                {refusal.reason}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function NavChoiceRow({
+  icon,
+  label,
+  address,
+  on,
+  fixed,
+  blocked,
+  onPress,
+}: {
+  readonly icon: IconName;
+  readonly label: string;
+  readonly address: string;
+  readonly on: boolean;
+  readonly fixed: boolean;
+  /** A press cannot change it: it is fixed, or the list is full. */
+  readonly blocked: boolean;
+  readonly onPress: () => void;
+}): ReactElement {
+  return (
+    <li className="nav-choice-entry">
+      <Icon name={icon} />
+      <span className="nav-choice-name">{label}</span>
+      {fixed && <span className="pill">Fixed</span>}
+      <a className="nav-choice-open" href={address} aria-label={`Open ${label}`}>
+        Open
+      </a>
+      <button
+        type="button"
+        className="toggle"
+        role="switch"
+        aria-checked={on}
+        aria-disabled={blocked ? "true" : undefined}
+        aria-label={label}
+        onClick={onPress}
+      />
+    </li>
   );
 }
 

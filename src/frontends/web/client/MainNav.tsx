@@ -2,8 +2,9 @@
  * The main navigation of the EVE shell: a nav rail on a computer and a bottom tab bar on a phone.
  * It is one element that the stylesheet places, so each destination has one accessible name.
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
+import { navChoice, onNavChoiceChange, shownDestinations } from "./nav-choice.ts";
 import {
   bellName,
   navVisorProjectEyes,
@@ -13,7 +14,7 @@ import {
   type NavVisorInput,
   type VisorSignal,
 } from "./nav-visor.ts";
-import { currentNavButton, destinations, navBadges, type Destination } from "./navigation.ts";
+import { currentNavButton, navBadges, type Destination, type NavEntry } from "./navigation.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -65,7 +66,8 @@ export function MainNav(props: MainNavProps): ReactElement {
     unreadChats: props.unreadChats,
     unreadProjectChats: props.unreadProjectChats,
   });
-  const button = (destination: (typeof destinations)[number]): ReactElement => {
+  const shown = shownDestinations(useSyncExternalStore(onNavChoiceChange, navChoice), props.isPhone);
+  const button = (destination: NavEntry): ReactElement => {
     const badge = badges[destination.id];
     return (
       <button
@@ -89,7 +91,8 @@ export function MainNav(props: MainNavProps): ReactElement {
       </button>
     );
   };
-  // The visor opens the home page (#761). On a phone it takes the place of Settings, which the home page links to.
+  // The visor opens the home page (#761). On a phone it is the last tab, and the home page has a gear for Settings.
+  // On a computer, Settings stays out of the part that scrolls, so a low window still shows it (#911).
   return (
     <nav className="main-nav" aria-label="Main">
       <button
@@ -124,16 +127,16 @@ export function MainNav(props: MainNavProps): ReactElement {
           Eva
         </span>
       </button>
-      {destinations.filter((destination) => destination.id !== "settings").map(button)}
-      <span className="nav-spacer" />
-      {destinations.filter((destination) => destination.id === "settings").map(button)}
+      <div className="main-nav-scroll">{shown.filter((destination) => destination.id !== "settings").map(button)}</div>
+      {shown.filter((destination) => destination.id === "settings").map(button)}
     </nav>
   );
 }
 
 /**
  * The buttons at the right of the home page's header (#761). The bell opens the notification center,
- * with the count and the dot of the visor. A phone has no Settings tab, so it also shows a gear.
+ * with the count and the dot of the visor. A phone shows a Settings tab only when the person chooses it,
+ * so it always shows a gear too.
  */
 export function HomeButtons({
   signal,

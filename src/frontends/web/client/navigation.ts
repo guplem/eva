@@ -9,8 +9,19 @@ export const destinations = [
   { id: "projects", label: "Projects", icon: "briefcase" },
   { id: "files", label: "Files", icon: "folder" },
   { id: "schedules", label: "Schedules", icon: "clock" },
+  // The Life pages: one for each kind of entity in the vault's `Life/` folder (#911).
+  { id: "cases", label: "Cases", icon: "case" },
+  { id: "people", label: "People", icon: "people" },
+  { id: "objects", label: "Objects", icon: "box" },
+  { id: "pets", label: "Pets", icon: "paw" },
+  { id: "periods", label: "Periods", icon: "timeline" },
   { id: "settings", label: "Settings", icon: "gear" },
 ] as const satisfies readonly { id: string; label: string; icon: IconName }[];
+
+/** A destination with a button in the main navigation. */
+export type NavEntry = (typeof destinations)[number];
+
+export type NavEntryId = NavEntry["id"];
 
 /**
  * The notification center has an address but no button in the main navigation. The bell of the
@@ -18,7 +29,7 @@ export const destinations = [
  */
 export const notificationCenter = "notifications";
 
-export type Destination = (typeof destinations)[number]["id"] | typeof notificationCenter;
+export type Destination = NavEntryId | typeof notificationCenter;
 
 /** A badge of the main navigation. The visible part is only the number: the hidden words say what it counts. */
 export interface NavBadge {

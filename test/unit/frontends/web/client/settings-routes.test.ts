@@ -189,6 +189,13 @@ describe("where each setting lives", () => {
     const appearance = settingPlaces.find((place) => place.link?.item === "appearance");
     expect(appearance?.home).toBe("browser");
   });
+
+  test("the browser keeps the choice of navigation entries, which the search finds", () => {
+    const navigation = settingPlaces.find((place) => place.link?.item === "navigation");
+    expect(navigation?.home).toBe("browser");
+    expect(searchSettings("tab bar").map((entry) => entry.item)).toContain("navigation");
+    expect(searchSettings("rail pets").map((entry) => entry.item)).toEqual(["navigation"]);
+  });
 });
 
 test("each key of a setting home is a real setting key", () => {

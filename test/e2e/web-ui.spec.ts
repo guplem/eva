@@ -3653,7 +3653,7 @@ test("the main navigation opens each destination at its own address, and the bac
   await page.goto("/#/notifications");
   await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
-  // A Settings section address opens Settings. A phone has no Settings tab: the visor takes its place (#566).
+  // A Settings section address opens Settings. By default a phone has no Settings tab: the home page has a gear (#911).
   await page.goto("/#/settings/appearance");
   if (test.info().project.name === "desktop")
     await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
@@ -3682,16 +3682,87 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.getByRole("button", { name: "Chats" })).toContainText("1 approval waits");
   if (test.info().project.name === "desktop") {
-    // Settings stays the last destination of the rail. A phone shows the visor in its place (#566).
+    // Settings stays the last destination of the rail. A phone shows no Settings tab unless the person chooses it (#911).
     await expect(nav.getByRole("button").last()).toHaveAccessibleName(/^Settings/);
     const rail = await nav.boundingBox();
     const settings = await nav.getByRole("button", { name: /^Settings/ }).boundingBox();
-    const schedules = await nav.getByRole("button", { name: "Schedules" }).boundingBox();
-    if (rail === null || settings === null || schedules === null) throw new Error("The rail did not show.");
+    const periods = await nav.getByRole("button", { name: "Periods" }).boundingBox();
+    if (rail === null || settings === null || periods === null) throw new Error("The rail did not show.");
     // A gap splits Settings from the other destinations, and the rail ends with it.
-    expect(settings.y - (schedules.y + schedules.height)).toBeGreaterThan(schedules.height);
+    expect(settings.y - (periods.y + periods.height)).toBeGreaterThan(periods.height);
     expect(rail.y + rail.height - (settings.y + settings.height)).toBeLessThan(40);
   }
+});
+
+test("the rail shows the nine destinations, with Settings at its foot (#911)", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop", "The rail is for a computer.");
+  await logIn(page);
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.locator(".nav-button .nav-label")).toHaveText([
+    "Chats",
+    "Projects",
+    "Files",
+    "Schedules",
+    "Cases",
+    "People",
+    "Objects",
+    "Pets",
+    "Periods",
+    "Settings",
+  ]);
+  await expect(nav.getByRole("button").first()).toHaveAccessibleName(/^Eva: /);
+  await expect(nav.getByRole("button").last()).toHaveAccessibleName(/^Settings/);
+  // Each button keeps the centre of the rail: no scrollbar pushes it aside.
+  const centres = await nav
+    .locator(".nav-button, .main-nav-visor")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => Math.round(button.getBoundingClientRect().x * 2 + button.getBoundingClientRect().width)),
+    );
+  expect(new Set(centres).size).toBe(1);
+});
+
+test("in a window 500 px high, Settings stays in view while the other entries scroll (#911)", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop", "The rail is for a computer.");
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await logIn(page);
+  const nav = page.getByRole("navigation", { name: "Main" });
+  const settings = nav.getByRole("button", { name: /^Settings/ });
+  const box = await settings.boundingBox();
+  expect((box?.y ?? Infinity) + (box?.height ?? 0)).toBeLessThanOrEqual(500);
+  const scrolls = await nav.locator(".main-nav-scroll").evaluate((part) => part.scrollHeight > part.clientHeight);
+  expect(scrolls).toBe(true);
+  await settings.click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
+  await expect(settings).toHaveAttribute("aria-current", "page");
+});
+
+test("Settings turns a rail entry off at once, and this browser keeps the choice (#911)", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop", "The phone list has its own test.");
+  await logIn(page);
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await page.goto("/#/settings/personalize/navigation");
+  const card = page.getByRole("region", { name: "Navigation", exact: true });
+  const computer = card.getByRole("group", { name: "On a computer" });
+  const cases = computer.getByRole("switch", { name: "Cases" });
+  await expect(cases).toHaveAttribute("aria-checked", "true");
+  await cases.click();
+  await expect(cases).toHaveAttribute("aria-checked", "false");
+  await expect(nav.getByRole("button", { name: "Cases" })).toHaveCount(0);
+  await page.reload();
+  await expect(nav.getByRole("button", { name: "People" })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Cases" })).toHaveCount(0);
+  await expect(cases).toHaveAttribute("aria-checked", "false");
+  // Settings is fixed on a computer: a press only says why.
+  const fixed = computer.getByRole("switch", { name: "Settings" });
+  await expect(fixed).toHaveAttribute("aria-disabled", "true");
+  // Playwright waits for a control with aria-disabled to turn on, so the press must force it.
+  await fixed.click({ force: true });
+  await expect(computer.getByRole("status")).toContainText("always shows Settings");
+  await expect(fixed).toHaveAttribute("aria-checked", "true");
+  await expect(nav.getByRole("button", { name: /^Settings/ })).toBeVisible();
+  // The link of an entry opens its page.
+  await computer.getByRole("link", { name: "Open Schedules" }).click();
+  await expect(nav.getByRole("button", { name: "Schedules" })).toHaveAttribute("aria-current", "page");
 });
 
 test("the nav visor names the approval that waits, and a tap opens the home page with a face that ends", async ({
@@ -5999,7 +6070,7 @@ test.describe("on a phone", () => {
     const box = await tabs.boundingBox();
     expect((box?.y ?? 0) + (box?.height ?? 0)).toBe(page.viewportSize()?.height);
     await expect(tabs.getByText("Schedules", { exact: true })).toBeVisible();
-    // The visor takes the place of Settings, the last tab, with the label "Eva" (#566).
+    // By default the tab bar has no Settings tab. The visor is the last tab, with the label "Eva" (#566, #911).
     await expect(tabs.getByRole("button", { name: /^Settings/ })).toHaveCount(0);
     const visor = tabs.locator(".main-nav-visor");
     await expect(visor).toContainText("Eva");
@@ -6019,6 +6090,45 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Back to the project" }).click();
     await page.getByRole("button", { name: "Back to the projects" }).click();
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
+  });
+
+  test("the tab bar takes at most four entries beside Eva's face, and spreads them over its width (#911)", async ({
+    page,
+  }) => {
+    await logIn(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    // The section page, not the card's address: the page would scroll back to the card's top during the click.
+    await page.goto("/#/settings/personalize");
+    const phone = page
+      .getByRole("region", { name: "Navigation", exact: true })
+      .getByRole("group", { name: "On a phone" });
+    // The four default tabs fill the bar: a fifth is refused, with the reason.
+    const cases = phone.getByRole("switch", { name: "Cases" });
+    await expect(cases).toHaveAttribute("aria-disabled", "true");
+    // Playwright waits for a control with aria-disabled to turn on, so the press must force it.
+    await cases.scrollIntoViewIfNeeded();
+    await cases.click({ force: true });
+    await expect(phone.getByRole("status")).toContainText("at most 4 entries");
+    await expect(cases).toHaveAttribute("aria-checked", "false");
+    await expect(tabs.getByRole("button", { name: "Cases" })).toHaveCount(0);
+    for (const name of ["Files", "Schedules"]) await phone.getByRole("switch", { name }).click();
+    await expect(tabs.locator(".nav-button")).toHaveCount(2);
+    // Chats, Projects and the visor share the whole width.
+    const bar = await tabs.boundingBox();
+    const chats = await tabs.locator(".nav-chats").boundingBox();
+    const visor = await tabs.locator(".main-nav-visor").boundingBox();
+    if (bar === null || chats === null || visor === null) throw new Error("The tab bar did not show.");
+    expect(chats.x - bar.x).toBeLessThan(20);
+    expect(bar.x + bar.width - (visor.x + visor.width)).toBeLessThan(20);
+    expect(Math.abs(chats.width - visor.width)).toBeLessThan(2);
+    expect(chats.width).toBeGreaterThan(bar.width / 3 - 10);
+    // Settings becomes a tab when the person chooses it, before the visor.
+    await phone.getByRole("switch", { name: "Settings" }).click();
+    const settings = tabs.getByRole("button", { name: /^Settings/ });
+    await expect(settings).toBeVisible();
+    expect((await settings.boundingBox())?.x ?? Infinity).toBeLessThan(
+      (await tabs.locator(".main-nav-visor").boundingBox())?.x ?? 0,
+    );
   });
 
   test("on Settings too, every button is at least 44 px tall and nothing is wider than the screen", async ({

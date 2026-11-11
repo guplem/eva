@@ -5,7 +5,8 @@
  */
 import { Fragment, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
-import { destinations, notificationCenter, type Destination } from "./navigation.ts";
+import { navChoice, shownDestinations } from "./nav-choice.ts";
+import { notificationCenter, type Destination, type NavEntry } from "./navigation.ts";
 import { settingsSections } from "./settings-routes.ts";
 import { inUseRow, statusRow } from "./project-format.ts";
 
@@ -543,8 +544,15 @@ function SchedulesSkeleton(): ReactElement {
 }
 
 /** The main navigation: the visor, a button for each destination, and Settings at the end. */
-function MainNavSkeleton({ current }: { readonly current: Destination }): ReactElement {
-  const button = (destination: (typeof destinations)[number]): ReactElement => (
+function MainNavSkeleton({
+  current,
+  isPhone,
+}: {
+  readonly current: Destination;
+  readonly isPhone: boolean;
+}): ReactElement {
+  const shown = shownDestinations(navChoice(), isPhone);
+  const button = (destination: NavEntry): ReactElement => (
     <button
       key={destination.id}
       className={`nav-button nav-${destination.id}`}
@@ -572,9 +580,8 @@ function MainNavSkeleton({ current }: { readonly current: Destination }): ReactE
           <Ghost>Eva</Ghost>
         </span>
       </button>
-      {destinations.filter((destination) => destination.id !== "settings").map(button)}
-      <span className="nav-spacer" />
-      {destinations.filter((destination) => destination.id === "settings").map(button)}
+      <div className="main-nav-scroll">{shown.filter((destination) => destination.id !== "settings").map(button)}</div>
+      {shown.filter((destination) => destination.id === "settings").map(button)}
     </div>
   );
 }
@@ -587,16 +594,19 @@ export function AppSkeleton({
   page,
   chatPanel = false,
   project = "list",
+  isPhone = false,
 }: {
   readonly page: Destination;
   /** The page of Projects that opens: the list, a project, or one of its chats. */
   readonly project?: "list" | "page" | "chat";
   /** The person keeps the details of a chat shown. */
   readonly chatPanel?: boolean;
+  /** A phone shows its own, shorter list of navigation entries. */
+  readonly isPhone?: boolean;
 }): ReactElement {
   return (
     <Skeleton label="Loading Eva…" className="app">
-      <MainNavSkeleton current={page} />
+      <MainNavSkeleton current={page} isPhone={isPhone} />
       <div className="app-body">
         {page === "chats" && (
           <div className="layout">

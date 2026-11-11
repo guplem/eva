@@ -532,6 +532,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         page={screen}
         chatPanel={chatPanelKeptShown()}
         project={projectPage === "list" ? "list" : projectPage === "chat" ? "chat" : "page"}
+        isPhone={isPhone}
       />
     );
   }
@@ -763,6 +764,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         )}
         {screen === "schedules" && <SchedulesView chatIds={chatIds} />}
         {screen === "files" && <FilesView />}
+        {/* Life pages: Part 3 */}
       </div>
       {/* Before the other dialogs: a device request that comes meanwhile shows on top. */}
       {conflictsOpen && syncState !== null && (

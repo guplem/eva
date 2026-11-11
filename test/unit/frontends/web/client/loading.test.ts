@@ -99,6 +99,16 @@ describe("skeletons", () => {
     );
   });
 
+  test("the navigation shows the list of the form: every entry on a computer, a short one on a phone", () => {
+    const computer = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats" }));
+    const phone = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats", isPhone: true }));
+    expect(computer).toContain("nav-button nav-cases");
+    expect(computer).toMatch(/<\/div><button class="nav-button nav-settings"/);
+    expect(phone).toContain("nav-button nav-schedules");
+    expect(phone).not.toContain("nav-button nav-cases");
+    expect(phone).not.toContain("nav-button nav-settings");
+  });
+
   test("the chat details show only when the person keeps them shown", () => {
     const shown = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats", chatPanel: true }));
     const hidden = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats" }));

@@ -28,6 +28,8 @@ import { AssistantView } from "./AssistantView.tsx";
 import { unsentTexts } from "./Composer.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { FilesView } from "./FilesView.tsx";
+import { LifeView } from "./LifeView.tsx";
+import { lifeRouteOf } from "./life-pages.ts";
 import {
   applyEvent,
   emptyLiveState,
@@ -158,6 +160,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [, setFormatChanges] = useState(0);
   useEffect(() => onDisplayFormatChange(() => setFormatChanges((count) => count + 1)), []);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
+  const [lifeRoute, setLifeRoute] = useState(() => lifeRouteOf(window.location.hash));
   const showError = useShowError();
   const linkedChat = sessions.find((session) => session.id === linkedChatId) ?? null;
 
@@ -167,6 +170,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       const destination = destinationOf(window.location.hash);
       if (destination !== null) setScreen(destination);
       setLinkedChatId(linkedChatIdOf(window.location.hash));
+      setLifeRoute(lifeRouteOf(window.location.hash));
       // Back to an entry of the chat list opened the list again: it stays open.
       if (!layersOfEntry().includes("list")) setSidebarOpen(false);
     };
@@ -764,7 +768,10 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         )}
         {screen === "schedules" && <SchedulesView chatIds={chatIds} />}
         {screen === "files" && <FilesView />}
-        {/* Life pages: Part 3 */}
+        {/* The key resets the search and the filter when the person opens another kind. */}
+        {lifeRoute !== null && screen === lifeRoute.kind && (
+          <LifeView key={lifeRoute.kind} kind={lifeRoute.kind} entityId={lifeRoute.entityId} />
+        )}
       </div>
       {/* Before the other dialogs: a device request that comes meanwhile shows on top. */}
       {conflictsOpen && syncState !== null && (

@@ -351,7 +351,7 @@ Cases, People, Objects, Pets and Periods share one page layout (`client/LifeView
 - The list is a column of cards, with a count, a search box and filter chips where the kind has them. A card has the mark with initials and pills for the status, as Projects has.
 - The page of an entity has the layout of the project page: a facts card, the steps of a case, the text, the files beside it and an "Open in Files" link.
 - A step that is late takes `--warn`: it waits for the person. Only a deadline that passed takes `--bad`. Both show a word and an icon too.
-- A path of the vault in a text or a fact is a link, to the page of a Life entity or to Files.
+- A path of the vault in a text or a fact is a link, to the page of a Life entity that exists or to Files.
 - The pages only read. An empty page says how to ask Eva for a first entity.
 
 ### Setup and appearance

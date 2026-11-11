@@ -66,6 +66,11 @@ const designIcons: readonly IconName[] = [
   "wand",
   "clipboard",
   "archive",
+  "case",
+  "people",
+  "box",
+  "paw",
+  "timeline",
   "bubbles",
   "orbit",
   "panes",
@@ -116,6 +121,14 @@ describe("Icon", () => {
     const eve = render("eve");
     expect(eve).toMatch(/<path d="M12 3A10 9.9[^"]+z" style="fill:var\(--visor2\)[^"]*"/);
     expect(eve.match(/<ellipse [^>]*style="fill:var\(--eye\)[^"]*"/g)).toHaveLength(2);
+  });
+
+  test("the icons of the Life pages each look different from the icons that they could be taken for", () => {
+    expect(render("people")).not.toEqual(render("user"));
+    expect(render("box")).not.toEqual(render("archive"));
+    expect(render("box")).not.toEqual(render("cube"));
+    expect(render("case")).not.toEqual(render("clipboard"));
+    expect(render("timeline")).not.toEqual(render("calendar"));
   });
 
   test("an icon without a name is hidden from a screen reader", () => {

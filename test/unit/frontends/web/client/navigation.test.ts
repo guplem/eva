@@ -190,6 +190,13 @@ describe("homeAddress and currentNavButton (#761)", () => {
     expect(currentNavButton("chats", true)).toBe("visor");
   });
 
+  test("a page whose entry the navigation hides has no current button (#911)", () => {
+    expect(currentNavButton("cases", false, ["chats", "projects"])).toBeNull();
+    expect(currentNavButton("cases", false, ["chats", "cases"])).toBe("cases");
+    // The home page belongs to the visor, which always shows.
+    expect(currentNavButton("chats", true, [])).toBe("visor");
+  });
+
   test("another page keeps its own button current", () => {
     expect(currentNavButton("chats", false)).toBe("chats");
     expect(currentNavButton("settings", false)).toBe("settings");

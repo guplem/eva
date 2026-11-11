@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   bellName,
+  hiddenUnreadChats,
+  homeGearName,
+  visorName,
   navVisorProjectEyes,
   navVisorState,
   tapFace,
@@ -75,7 +78,14 @@ describe("navVisorState", () => {
 });
 
 describe("visorSignal (#566)", () => {
-  const quiet = { unreadProblems: 0, unreadError: false, news: false, offline: false, centerOpen: false };
+  const quiet = {
+    unreadProblems: 0,
+    unreadError: false,
+    news: false,
+    offline: false,
+    centerOpen: false,
+    hiddenUnread: 0,
+  };
 
   test("counts the unread problems, and an unread error pulses", () => {
     expect(visorSignal({ ...quiet, unreadProblems: 2 })).toEqual({ count: 2, dot: false, alarm: false });
@@ -147,5 +157,51 @@ describe("bellName (#761)", () => {
 
   test("the count comes before the dot, as on the visor", () => {
     expect(bellName({ count: 1, dot: true, alarm: false })).toBe("Notifications: 1 problem needs you");
+  });
+});
+
+describe("an unread chat whose entry is hidden (#911)", () => {
+  const counts = { unreadChats: 2, unreadProjectChats: 1 };
+
+  test("counts only the unread chats whose entry the navigation does not show", () => {
+    expect(hiddenUnreadChats({ ...counts, shown: ["chats", "projects"] })).toBe(0);
+    expect(hiddenUnreadChats({ ...counts, shown: ["projects"] })).toBe(2);
+    expect(hiddenUnreadChats({ ...counts, shown: ["chats"] })).toBe(1);
+    expect(hiddenUnreadChats({ ...counts, shown: [] })).toBe(3);
+  });
+
+  test("shows the dot of the visor, and the count keeps its meaning", () => {
+    const quiet = {
+      unreadProblems: 0,
+      unreadError: false,
+      news: false,
+      offline: false,
+      centerOpen: false,
+      hiddenUnread: 0,
+    };
+    expect(visorSignal({ ...quiet, hiddenUnread: 1 })).toEqual({ count: 0, dot: true, alarm: false });
+    expect(visorSignal({ ...quiet, hiddenUnread: 1, unreadProblems: 2 })).toEqual({
+      count: 2,
+      dot: false,
+      alarm: false,
+    });
+  });
+
+  test("the name of the visor says that a chat waits, also beside a count", () => {
+    const signal = { count: 0, dot: false, alarm: false };
+    expect(visorName("Eva is online", signal, 0)).toBe("Eva: Eva is online");
+    expect(visorName("Eva is online", { ...signal, dot: true }, 0)).toBe("Eva: Eva is online. Something new waits");
+    expect(visorName("Eva is online", { ...signal, dot: true }, 1)).toBe("Eva: Eva is online. 1 unread chat");
+    expect(visorName("1 problem needs you", { ...signal, count: 1 }, 2)).toBe(
+      "Eva: 1 problem needs you. 2 unread chats",
+    );
+  });
+});
+
+describe("homeGearName (#911)", () => {
+  test("names the gear, and says how many setup steps are left", () => {
+    expect(homeGearName(0)).toBe("Settings");
+    expect(homeGearName(1)).toBe("Settings: 1 to set up");
+    expect(homeGearName(3)).toBe("Settings: 3 to set up");
   });
 });

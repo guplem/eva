@@ -208,7 +208,10 @@ async function openSettings(page: Page, section?: string): Promise<void> {
   else {
     // On a phone, the visor takes the place of Settings. It opens the home page, which has a gear (#761).
     await nav.locator(".main-nav-visor").click();
-    await page.locator(".home-buttons").getByRole("button", { name: "Settings", exact: true }).click();
+    await page
+      .locator(".home-buttons")
+      .getByRole("button", { name: /^Settings/ })
+      .click();
   }
   const heading = page.getByRole("heading", { level: 1 });
   if (section === undefined) {
@@ -3809,7 +3812,7 @@ test("the visor opens the home page from a chat, and the home page has a bell an
   const box = await buttons.boundingBox();
   expect(header!.x + header!.width - (box!.x + box!.width)).toBeLessThan(40);
   expect(box!.y).toBeLessThan(header!.y + header!.height);
-  const gear = buttons.getByRole("button", { name: "Settings", exact: true });
+  const gear = buttons.getByRole("button", { name: /^Settings/ });
   if (test.info().project.name === "desktop") {
     // A computer keeps Settings at the foot of the rail.
     await expect(gear).toHaveCount(0);
@@ -4669,7 +4672,7 @@ test("the center keeps its settings gear beside the title, and 'Mark all as read
   await logIn(page);
   await openCenter(page);
   const title = await page.getByRole("heading", { name: "Notifications", level: 1 }).boundingBox();
-  const gear = page.locator(".notification-center").getByRole("button", { name: "Settings", exact: true });
+  const gear = page.locator(".notification-center").getByRole("button", { name: /^Settings/ });
   const gearBox = await gear.boundingBox();
   // The gear shares the row of the title, at its right, on a computer and on a phone.
   expect(gearBox!.y).toBeLessThan(title!.y + title!.height);
@@ -6090,6 +6093,26 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Back to the project" }).click();
     await page.getByRole("button", { name: "Back to the projects" }).click();
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
+  });
+
+  test("the home gear holds the Settings badge, and a hidden page opens with no current tab (#911)", async ({
+    page,
+  }) => {
+    await logIn(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    // The demo has setup steps left. Settings has no tab, so the gear of the home page counts them.
+    await tabs.locator(".main-nav-visor").click();
+    const gear = page.locator(".home-buttons").getByRole("button", { name: /^Settings: \d+ to set up$/ });
+    await expect(gear.locator(".nav-badge")).toBeVisible();
+    // Cases has no tab by default, but its address still opens it.
+    await tabs.getByRole("button", { name: projectsButton }).click();
+    await page.goto("/#/cases");
+    await expect(page.getByRole("heading", { level: 1, name: "Cases" })).toBeVisible();
+    await expect(tabs.getByRole("button", { name: "Cases" })).toHaveCount(0);
+    await expect(tabs.locator('[aria-current="page"]')).toHaveCount(0);
+    await page.goBack();
+    await expect(tabs.getByRole("button", { name: projectsButton })).toHaveAttribute("aria-current", "page");
+    expect(new URL(page.url()).hash).toBe("#/projects");
   });
 
   test("the tab bar takes at most four entries beside Eva's face, and spreads them over its width (#911)", async ({

@@ -193,3 +193,60 @@ describe("the store", () => {
     saveNavChoice(defaultNavChoice);
   });
 });
+
+describe("two tabs of one browser (#911)", () => {
+  let storageListeners: ((event: { key: string | null }) => void)[] = [];
+  beforeEach(() => {
+    storageListeners = [];
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        addEventListener: (type: string, listener: (event: { key: string | null }) => void) => {
+          if (type === "storage") storageListeners.push(listener);
+        },
+        removeEventListener: (type: string, listener: (event: { key: string | null }) => void) => {
+          if (type === "storage") storageListeners = storageListeners.filter((each) => each !== listener);
+        },
+      },
+      configurable: true,
+    });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, "localStorage");
+    Reflect.deleteProperty(globalThis, "window");
+  });
+
+  test("a save changes only the form that this tab changed, so it keeps the other tab's change", () => {
+    const storage = new FakeStorage();
+    useStorage(storage);
+    saveNavChoice(defaultNavChoice);
+    const stale = navChoice();
+    // Another tab turns Files off for the phone. This tab does not hear it yet.
+    const other: NavChoice = { ...stale, phone: ["chats", "projects", "schedules"] };
+    storage.setItem(navChoiceKey, JSON.stringify(other));
+    const result = toggled(stale, "computer", "cases");
+    if (!result.ok) throw new Error(result.reason);
+    saveNavChoice(result.choice);
+    const stored = JSON.parse(storage.getItem(navChoiceKey) ?? "null") as NavChoice;
+    expect(stored.phone).toEqual(["chats", "projects", "schedules"]);
+    expect(stored.computer).not.toContain("cases");
+    expect(navChoice()).toEqual(stored);
+    saveNavChoice(defaultNavChoice);
+  });
+
+  test("a change in another tab reaches the listeners of this tab", () => {
+    const storage = new FakeStorage();
+    useStorage(storage);
+    saveNavChoice(defaultNavChoice);
+    let calls = 0;
+    const stop = onNavChoiceChange(() => (calls += 1));
+    const other: NavChoice = { computer: ["chats", "settings"], phone: ["chats"] };
+    storage.setItem(navChoiceKey, JSON.stringify(other));
+    for (const listener of storageListeners) listener({ key: "eva.appearance" });
+    expect(calls).toBe(0);
+    for (const listener of storageListeners) listener({ key: navChoiceKey });
+    expect(calls).toBe(1);
+    expect(navChoice()).toEqual(other);
+    stop();
+    saveNavChoice(defaultNavChoice);
+  });
+});

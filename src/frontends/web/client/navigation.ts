@@ -117,9 +117,12 @@ export const homeAddress = assistantChatAddressOf(newChatPageId);
 export function currentNavButton(
   current: Destination,
   homeShown: boolean,
-): Exclude<Destination, typeof notificationCenter> | "visor" | null {
+  shown: readonly NavEntryId[] = destinations.map((destination) => destination.id),
+): NavEntryId | "visor" | null {
   if (current === notificationCenter) return null;
-  return current === "chats" && homeShown ? "visor" : current;
+  if (current === "chats" && homeShown) return "visor";
+  // A page that the person hid from the navigation still opens from a link, with no button to mark.
+  return shown.includes(current) ? current : null;
 }
 
 /** A page of Projects. Each page has an address, so Back goes from a chat to its project, then to the list. */

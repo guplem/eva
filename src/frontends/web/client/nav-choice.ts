@@ -48,13 +48,18 @@ function formOf(form: NavForm, stored: unknown): NavEntryId[] {
 
 /** A private window or blocked storage throws or holds nothing: the page then uses the defaults. */
 export function readNavChoice(): NavChoice {
+  return storedNavChoice() ?? defaultNavChoice;
+}
+
+/** Null when the browser keeps no choice, or cannot give it. */
+function storedNavChoice(): NavChoice | null {
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(navChoiceKey) ?? "null");
-    if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return defaultNavChoice;
+    if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return null;
     const record = stored as Partial<Record<NavForm, unknown>>;
     return { computer: formOf("computer", record.computer), phone: formOf("phone", record.phone) };
   } catch {
-    return defaultNavChoice;
+    return null;
   }
 }
 
@@ -92,20 +97,52 @@ export function navChoice(): NavChoice {
   return current;
 }
 
-/** Calls the listener after each save, so the main navigation draws the new list at once. Returns the unsubscribe. */
+function tellListeners(): void {
+  for (const listener of listeners) listener();
+}
+
+/** Another tab of this browser saved a choice: this tab reads it again, so a later save here does not undo it. */
+function onStorage(event: { readonly key: string | null }): void {
+  // A null key means that the whole storage was cleared.
+  if (event.key !== navChoiceKey && event.key !== null) return;
+  current = readNavChoice();
+  tellListeners();
+}
+
+/**
+ * Calls the listener after each save, in this tab or in another tab, so the main navigation draws the new list at once.
+ * Returns the unsubscribe.
+ */
 export function onNavChoiceChange(listener: () => void): () => void {
+  if (listeners.size === 0 && typeof window !== "undefined") window.addEventListener("storage", onStorage);
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0 && typeof window !== "undefined") window.removeEventListener("storage", onStorage);
   };
 }
 
+function sameList(a: readonly NavEntryId[], b: readonly NavEntryId[]): boolean {
+  return a.length === b.length && a.every((id, index) => b[index] === id);
+}
+
+/**
+ * Keeps only the forms that this tab changed, over the stored choice. The tab's own copy can be old: another tab may
+ * have saved the other form meanwhile.
+ */
 export function saveNavChoice(choice: NavChoice): void {
-  current = choice;
+  const known = navChoice();
+  // Without a stored choice, this tab's copy is the best one.
+  const stored = storedNavChoice() ?? known;
+  const merged: NavChoice = {
+    computer: sameList(choice.computer, known.computer) ? stored.computer : choice.computer,
+    phone: sameList(choice.phone, known.phone) ? stored.phone : choice.phone,
+  };
+  current = merged;
   try {
-    localStorage.setItem(navChoiceKey, JSON.stringify(choice));
+    localStorage.setItem(navChoiceKey, JSON.stringify(merged));
   } catch {
     // The choice still applies until the page reloads.
   }
-  for (const listener of listeners) listener();
+  tellListeners();
 }

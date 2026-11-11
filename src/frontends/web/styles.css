@@ -715,12 +715,14 @@ textarea {
   margin-left: auto;
 }
 
-/* The bell holds the count and the dot of the visor. */
-.home-bell {
+/* The bell holds the count and the dot of the visor. The gear holds the count of the Settings badge. */
+.home-bell,
+.home-gear {
   position: relative;
 }
 
-.home-bell .nav-badge {
+.home-bell .nav-badge,
+.home-gear .nav-badge {
   top: -6px;
   right: -2px;
   left: auto;

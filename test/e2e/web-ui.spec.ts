@@ -1354,6 +1354,34 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
   await expect(page.getByRole("button", { name: "Set up voice notes" })).toBeVisible();
 });
 
+test("Do not ask again asks first, names the action and links to Settings (#914)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("please approve this");
+  await composer.press("Enter");
+  const card = page.getByRole("region", { name: "Eva asks for permission" });
+  await expect(card).toContainText("gh issue create");
+  await card.getByRole("button", { name: "Do not ask again" }).click();
+  const dialog = page.getByRole("dialog", { name: "Do not ask again" });
+  await expect(dialog).toContainText('Eva will do the action "GitHub: issues and pull requests" with no question');
+  await expect(dialog.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    "href",
+    "#/settings/engines/outward-actions",
+  );
+  // Cancel changes nothing: the card still waits.
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Do not ask again" }).click();
+  await page
+    .getByRole("dialog", { name: "Do not ask again" })
+    .getByRole("button", { name: "Do not ask again" })
+    .click();
+  await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
+  await expect(card).toHaveCount(0);
+});
+
 test("the model's questions show as a form in the chat, and Send answers gives the picks to the turn (#544)", async ({
   page,
 }) => {

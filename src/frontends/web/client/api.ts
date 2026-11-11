@@ -309,7 +309,7 @@ export const api = {
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals", undefined, { limit: quickRead }),
   backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks", undefined, { limit: quickRead }),
   runningTurns: (): Promise<TurnSnapshot> => request("GET", "/api/turns", undefined, { limit: quickRead }),
-  answerApproval: (requestId: string, answer: "allow" | "deny", answers?: QuestionAnswers): Promise<void> =>
+  answerApproval: (requestId: string, answer: "allow" | "deny" | "always", answers?: QuestionAnswers): Promise<void> =>
     request(
       "POST",
       `/api/approvals/${encodeURIComponent(requestId)}`,

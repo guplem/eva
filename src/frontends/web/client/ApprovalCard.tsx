@@ -5,15 +5,19 @@
  */
 import { useLayoutEffect, useState, type ReactElement } from "react";
 import type { ApprovalQuestion, QuestionAnswers } from "../../../shared/events.ts";
+import type { OutwardActionCategory } from "../../../shared/outward-actions.ts";
 import type { PendingApproval } from "./api.ts";
+import { Dialog } from "./Dialog.tsx";
+import { settingsHash } from "./settings-routes.ts";
 import { pickOption } from "../../../shared/questions.ts";
-import { approvalTitle, questionAnswers, type QuestionDraft } from "./approvals.ts";
+import { alwaysAllowWords, approvalTitle, questionAnswers, type QuestionDraft } from "./approvals.ts";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
-export type ApprovalAnswer = "allow" | "deny";
+/** "always" allows the request and sets each of its categories to Allow in Settings. */
+export type ApprovalAnswer = "allow" | "deny" | "always";
 
 /** The pending approvals, and what the views do with them. */
 export interface ChatApprovals {
@@ -84,7 +88,12 @@ function ApprovalCard({
         </div>
         <h2>{approvalTitle(approval.toolName, questions)}</h2>
         {questions === undefined ? (
-          <PermissionBody summary={approval.summary} answering={answering} onAnswer={answer} />
+          <PermissionBody
+            summary={approval.summary}
+            categories={approval.categories ?? []}
+            answering={answering}
+            onAnswer={answer}
+          />
         ) : (
           <QuestionForm requestId={approval.requestId} questions={questions} answering={answering} onAnswer={answer} />
         )}
@@ -95,13 +104,17 @@ function ApprovalCard({
 
 function PermissionBody({
   summary,
+  categories,
   answering,
   onAnswer: answer,
 }: {
   readonly summary: string;
+  /** The action categories of the request. Only a request with some can be allowed for good. */
+  readonly categories: readonly OutwardActionCategory[];
   readonly answering: boolean;
   readonly onAnswer: (choice: ApprovalAnswer) => void;
 }): ReactElement {
+  const [confirming, setConfirming] = useState(false);
   return (
     <>
       <pre className="approval-input">
@@ -111,11 +124,59 @@ function PermissionBody({
         <button className="primary" disabled={answering} onClick={() => answer("allow")}>
           <Icon name="check" /> Allow once
         </button>
+        {categories.length > 0 && (
+          <button className="ghost" disabled={answering} onClick={() => setConfirming(true)}>
+            Do not ask again
+          </button>
+        )}
         <button className="danger" disabled={answering} onClick={() => answer("deny")}>
           Deny
         </button>
       </div>
+      {confirming && (
+        <AlwaysDialog
+          categories={categories}
+          answering={answering}
+          onClose={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            answer("always");
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/** The question before "Do not ask again": it names each action and links to the levels in Settings. */
+function AlwaysDialog({
+  categories,
+  answering,
+  onClose,
+  onConfirm,
+}: {
+  readonly categories: readonly OutwardActionCategory[];
+  readonly answering: boolean;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+}): ReactElement {
+  const words = alwaysAllowWords(categories);
+  return (
+    <Dialog label="Do not ask again" closeLabel="Cancel" onClose={onClose}>
+      <h2>Do not ask again?</h2>
+      <p>
+        {words.lead} {words.tail}{" "}
+        <a href={settingsHash({ section: "engines", item: "outward-actions" })} onClick={onClose}>
+          Settings
+        </a>
+        .
+      </p>
+      <div className="button-row">
+        <button className="primary" disabled={answering} onClick={onConfirm}>
+          Do not ask again
+        </button>
+      </div>
+    </Dialog>
   );
 }
 

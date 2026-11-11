@@ -1243,6 +1243,20 @@ describe("the subagents of a pi Assistant chat (#824)", () => {
     expect(finished.usage.inputTokens).toBeGreaterThan(1000);
   });
 
+  test("a subagent's action on Allow runs with no request to the person (#914)", async () => {
+    const asked: ApprovalRequest[] = [];
+    const ask = (approval: ApprovalRequest): Promise<ApprovalAnswer> => {
+      asked.push(approval);
+      return Promise.resolve("deny");
+    };
+    const levels = { ...defaultOutwardActionLevels, pushCode: "allow" } as const;
+    const push = withCommand(loadPiFixture("approval-denied"), "rm -rf ./scratch-dir", "git push origin main");
+    const fake = new FakePi([{ records: taskTurn("Push it") }, { records: push }]);
+    await drain(engine(fake).runTurn(request({ requestApproval: ask, outwardActionLevels: () => levels })));
+    expect(asked).toEqual([]);
+    expect(fake.runs[1]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
+  });
+
   test("a failed subagent tells the model why, and its task shows as failed", async () => {
     const ready = { records: [{ status: "ready", provider: "fake", authType: "api_key" }], oneShot: true };
     const fake = new FakePi([{ records: taskTurn("Broken") }, { records: loadPiFixture("error-401") }, ready]);

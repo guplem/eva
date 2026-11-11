@@ -3,7 +3,7 @@
  * chats. The clones grid ends with the card that makes a new clone, so a project with no clones still
  * shows the way to start (issue 392).
  */
-import { Fragment, useState, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import type { CloneDetails, PreviewPlace, Project, RepositoryDetails, SessionRecord } from "./api.ts";
 import { WidgetPreviewDialog } from "./WidgetPreviewDialog.tsx";
 import { Icon } from "./icons.tsx";
@@ -28,7 +28,8 @@ import { MenuButton, useContextMenu } from "./Menu.tsx";
 import { fileAddressOf } from "./file-paths.ts";
 import { BackButton } from "./MainNav.tsx";
 import { displayFormat } from "./display-format.ts";
-import { frontMatterFacts, keyLabel, linkOf, type Fact, type FactLink, type FactValue } from "./front-matter-facts.ts";
+import { frontMatterFacts, keyLabel, linkOf } from "./front-matter-facts.ts";
+import { FactLinkChip, FactList } from "./FactList.tsx";
 import { worksInClones } from "../../../shared/project-types.ts";
 
 interface ProjectPageProps {
@@ -392,84 +393,6 @@ function ProjectFacts({ project }: { readonly project: Project }): ReactElement 
       )}
     </section>
   );
-}
-
-function FactList({ facts }: { readonly facts: readonly Fact[] }): ReactElement {
-  return (
-    <dl className="chat-facts">
-      {facts.map((fact) => (
-        <Fragment key={fact.key}>
-          <dt>{fact.label}</dt>
-          <dd>
-            <FactValueView value={fact.value} />
-          </dd>
-        </Fragment>
-      ))}
-    </dl>
-  );
-}
-
-/**
- * A link chip names its site first, so the person sees at once where it goes. With a name, such as
- * "Result", the chip says what the link is, and the site follows.
- */
-function FactLinkChip({ link, name }: { readonly link: FactLink; readonly name?: string }): ReactElement {
-  const web = !link.href.startsWith("mailto:");
-  const detail = name === undefined ? link.label : [link.site, link.label].filter((part) => part !== "").join(" ");
-  return (
-    <a
-      className="mode-chip link-chip"
-      href={link.href}
-      data-tooltip={link.href}
-      {...(web ? { target: "_blank", rel: "noreferrer" } : {})}
-    >
-      <Icon name={web ? "external" : "send"} /> {name ?? link.site}
-      {detail !== "" && <span className="link-chip-site">{detail}</span>}
-    </a>
-  );
-}
-
-function FactValueView({ value }: { readonly value: FactValue }): ReactElement {
-  switch (value.kind) {
-    case "date":
-      return (
-        <time dateTime={value.raw} data-tooltip={value.raw}>
-          {value.text}
-        </time>
-      );
-    case "link":
-      return <FactLinkChip link={value.link} />;
-    case "list":
-      return (
-        <div className="tags">
-          {value.items.map((item, index) =>
-            item.kind === "text" || item.kind === "date" ? (
-              <span key={index} className="tag">
-                <FactValueView value={item} />
-              </span>
-            ) : (
-              <FactValueView key={index} value={item} />
-            ),
-          )}
-        </div>
-      );
-    case "map":
-      return <FactList facts={value.facts} />;
-    case "text":
-      return (
-        <span className="fact-text">
-          {value.parts.map((part, index) =>
-            part.href === undefined ? (
-              part.text
-            ) : (
-              <a key={index} href={part.href} target="_blank" rel="noreferrer">
-                {part.text}
-              </a>
-            ),
-          )}
-        </span>
-      );
-  }
 }
 
 /** The last card of the clones grid. With no clone yet, it says what a clone is. */

@@ -2231,14 +2231,18 @@
     ["briefcase", "projects"],
     ["folder", "files"],
     ["clock", "schedules"],
-    ["gear", "settings"],
+    ["case", "cases"],
+    ["people", "people"],
+    ["box", "objects"],
+    ["paw", "pets"],
+    ["timeline", "periods"],
   ]
     .map(
       ([i, k]) =>
         `<span class="nb ${on === k ? "on" : ""}">${I(i)}${k === "chats" && badge ? `<span class="n">${badge}</span>` : ""}</span>`,
     )
     .join("")}
-  <span class="sp"></span><span class="hubdot" title="Hub online"></span></nav>`;
+  <span class="sp"></span><span class="nb ${on === "settings" ? "on" : ""}">${I("gear")}</span><span class="hubdot" title="Hub online"></span></nav>`;
 
       const desk = ({ on = "chats", list = "", main, panel = "", badge = 1, overlay = "" }) => {
         const cls = list && panel ? "" : list ? "nopanel" : panel ? "nolist" : "solo";
@@ -2250,7 +2254,7 @@
           ["briefcase", "Projects", "projects"],
           ["folder", "Files", "files"],
           ["clock", "Schedules", "schedules"],
-          ["gear", "Settings", "settings"],
+          ["eve", "Eva", "home"],
         ]
           .map(
             ([i, t, k]) =>

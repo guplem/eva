@@ -348,6 +348,20 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 Cases, People, Objects, Pets and Periods share one page layout (`client/LifeView.tsx`). Their icons are `case`, `people`, `box`, `paw` and `timeline`.
 
+Cases, a case page, People, Objects, Pets and Periods, on a computer and on a phone:
+
+![Computer](screenshots/cases-computer-light.webp) ![Phone](screenshots/cases-phone-light.webp)
+
+![Computer](screenshots/case-computer-light.webp) ![Phone](screenshots/case-phone-light.webp)
+
+![Computer](screenshots/people-computer-light.webp) ![Phone](screenshots/people-phone-light.webp)
+
+![Computer](screenshots/objects-computer-light.webp) ![Phone](screenshots/objects-phone-light.webp)
+
+![Computer](screenshots/pets-computer-light.webp) ![Phone](screenshots/pets-phone-light.webp)
+
+![Computer](screenshots/periods-computer-light.webp) ![Phone](screenshots/periods-phone-light.webp)
+
 - The list is a column of cards, with a count, a search box and filter chips where the kind has them. A card has the mark with initials and pills for the status, as Projects has.
 - The page of an entity has the layout of the project page: a facts card, the steps of a case, the text, the files beside it and an "Open in Files" link.
 - A step that is late takes `--warn`: it waits for the person. Only a deadline that passed takes `--bad`. Both show a word and an icon too.

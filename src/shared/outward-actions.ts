@@ -69,7 +69,7 @@ const fileChangeToolPattern = /^(write|edit|multiedit)$/i;
 const schedulesFilePattern = /\.eva[\\/]schedules\.json/i;
 /** The vault settings file, and the path before the migration that moved it. */
 const settingsFilePattern = /\.eva[\\/]settings(?:[\\/]settings)?\.json/i;
-const settingsSetPattern = /\bsettings\s+set\s+outwardActions\b/i;
+const settingsSetPattern = /\bsettings\s+set\s+["']?outwardActions\b/i;
 /** Eva's own Google server. Only these exact tools reach other people: a word pattern asked for read-only tools too (#910). */
 const driveSharingTools = new Set(["mcp__google__set_drive_file_permissions", "mcp__google__manage_drive_access"]);
 const sendEmailTool = "mcp__google__send_gmail_message";
@@ -170,8 +170,11 @@ export function decideOutwardAction(
   const found = outwardActionsOf(toolName, input);
   const denied = found.filter((category) => levels[category] === "deny");
   if (denied.length > 0) return { level: "deny", categories: denied };
+  // The fixed question comes first and names no category: "Do not ask again" there could let a
+  // hidden instruction allow the levels away, and Decision 1 gives that question no such button.
+  if (changesActionLevels(toolName, input)) return { level: "ask", categories: [] };
   const asked = found.filter((category) => levels[category] === "ask");
-  if (asked.length > 0 || changesActionLevels(toolName, input)) return { level: "ask", categories: asked };
+  if (asked.length > 0) return { level: "ask", categories: asked };
   return { level: "allow", categories: [] };
 }
 

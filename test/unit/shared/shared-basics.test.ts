@@ -94,6 +94,15 @@ describe("changesActionLevels", () => {
     expect(changesActionLevels("Bash", { command: "ls .eva" })).toBe(false);
   });
 
+  test("a quoted key still changes the levels, a read or another key does not", () => {
+    expect(changesActionLevels("Bash", { command: 'eva settings set "outwardActions.sendData" allow' })).toBe(true);
+    expect(
+      changesActionLevels("Bash", { command: "eva settings set 'outwardActions' '{\"sendData\":\"allow\"}'" }),
+    ).toBe(true);
+    expect(changesActionLevels("Bash", { command: "eva settings get outwardActions" })).toBe(false);
+    expect(changesActionLevels("Bash", { command: "eva settings set language en" })).toBe(false);
+  });
+
   test("a write by a file tool to the vault settings file changes the levels", () => {
     expect(changesActionLevels("Write", { file_path: "/demo-vault/.eva/settings/settings.json" })).toBe(true);
     expect(changesActionLevels("Edit", { file_path: ".eva/settings.json" })).toBe(true);
@@ -134,6 +143,11 @@ describe("decideOutwardAction", () => {
       level: "ask",
       categories: ["pushCode"],
     });
+  });
+
+  test("a change to the levels asks with no category, also when its command is on Ask", () => {
+    const command = { command: "git push && sed -i s/ask/allow/ .eva/settings/settings.json" };
+    expect(decideOutwardAction("Bash", command, defaultOutwardActionLevels)).toEqual({ level: "ask", categories: [] });
   });
 
   test("a change to the levels asks with no category, but a deny still wins", () => {

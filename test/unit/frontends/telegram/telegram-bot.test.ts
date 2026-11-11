@@ -1767,6 +1767,97 @@ describe("approvals and commands", () => {
     expect(telegram.callsTo("answerCallbackQuery")[0]?.params["text"]).toBe("Denied");
   });
 
+  describe("do not ask again", () => {
+    async function askPush(
+      categories: ("pushCode" | "github")[],
+      answers: string[],
+    ): Promise<{
+      bot: TelegramBot;
+      requestId: string;
+      messageId: number;
+    }> {
+      createEva(async function* (request) {
+        answers.push(
+          await request.requestApproval({ requestId: "", toolName: "Bash", summary: "git push", categories }),
+        );
+        yield* FakeEngine.answer(request, "ok");
+      });
+      const bot = createBot();
+      telegram.sendText(owner, "push it");
+      await settle(bot, () =>
+        telegram.callsTo("sendMessage").some((call) => call.params["reply_markup"] !== undefined),
+      );
+      const question = telegram.callsTo("sendMessage").find((call) => call.params["reply_markup"] !== undefined);
+      const requestId = /"a:([^:"]+):deny"/.exec(JSON.stringify(question?.params["reply_markup"]))?.[1] ?? "";
+      return { bot, requestId, messageId: (question?.result as { message_id: number }).message_id };
+    }
+
+    test("a request with categories gets a third button, and one with none keeps two", async () => {
+      const answers: string[] = [];
+      const { requestId } = await askPush(["pushCode"], answers);
+      const question = telegram.callsTo("sendMessage").find((call) => call.params["reply_markup"] !== undefined);
+      const rows = (
+        question?.params["reply_markup"] as { inline_keyboard: { text: string; callback_data: string }[][] }
+      ).inline_keyboard;
+      expect(rows.flat().map((button) => button.text)).toEqual(["Allow", "Deny", "Do not ask again"]);
+      expect(rows.flat()[2]?.callback_data).toBe(`a:${requestId}:always`);
+      expect(rows.flat().every((button) => new TextEncoder().encode(button.callback_data).length <= 64)).toBe(true);
+      eva.sessions.answerApproval(requestId, "deny");
+    });
+
+    test("the press asks to confirm, names each category and answers nothing; cancel restores the buttons", async () => {
+      const answers: string[] = [];
+      const { bot, requestId, messageId } = await askPush(["pushCode", "github"], answers);
+      telegram.pressButton(owner, `a:${requestId}:always`);
+      await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+      const confirm = telegram.callsTo("editMessageText")[0]?.params;
+      expect(confirm?.["message_id"]).toBe(messageId);
+      expect(String(confirm?.["text"])).toContain("Push code");
+      expect(String(confirm?.["text"])).toContain("GitHub");
+      expect(String(confirm?.["text"])).toContain("Settings > AI engines");
+      expect(JSON.stringify(confirm?.["reply_markup"])).toContain(`a:${requestId}:always-yes`);
+      expect(JSON.stringify(confirm?.["reply_markup"])).toContain(`a:${requestId}:back`);
+      expect(answers).toEqual([]);
+      telegram.pressButton(owner, `a:${requestId}:back`);
+      await settle(bot, () => telegram.callsTo("editMessageText").length === 2);
+      const restored = telegram.callsTo("editMessageText")[1]?.params;
+      expect(String(restored?.["text"])).toBe("Eva wants to run Bash: git push");
+      expect(JSON.stringify(restored?.["reply_markup"])).toContain(`a:${requestId}:always"`);
+      expect(answers).toEqual([]);
+      telegram.pressButton(owner, `a:${requestId}:deny`);
+      await settle(bot, () => answers.length === 1);
+    });
+
+    test("yes saves the levels, allows the request and closes the message", async () => {
+      const answers: string[] = [];
+      const { bot, requestId } = await askPush(["pushCode", "github"], answers);
+      telegram.pressButton(owner, `a:${requestId}:always`);
+      await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+      telegram.pressButton(owner, `a:${requestId}:always-yes`);
+      await settle(bot, () => answers.length === 1 && telegram.callsTo("editMessageText").length === 2);
+      expect(answers).toEqual(["allow"]);
+      const levels = eva.publicSettings().config.outwardActions;
+      expect(levels.pushCode).toBe("allow");
+      expect(levels.github).toBe("allow");
+      expect(levels.sendEmail).toBe("ask");
+      expect(String(telegram.callsTo("editMessageText")[1]?.params["text"])).toBe(
+        "Eva wants to run Bash: git push\n\nAllowed",
+      );
+      expect(telegram.callsTo("answerCallbackQuery").at(-1)?.params["text"]).toBe("Allowed");
+    });
+
+    test("a press on a request with no categories does nothing", async () => {
+      const answers: string[] = [];
+      const { bot, requestId } = await askPush([], answers);
+      telegram.pressButton(owner, `a:${requestId}:always`);
+      await settle(bot, () => telegram.callsTo("answerCallbackQuery").length === 1);
+      expect(telegram.callsTo("editMessageText")).toHaveLength(0);
+      expect(answers).toEqual([]);
+      telegram.pressButton(owner, `a:${requestId}:deny`);
+      await settle(bot, () => answers.length === 1);
+    });
+  });
+
   test("/status, /projects and /help answer without the engine (lesson 43)", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/status");

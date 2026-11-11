@@ -44,6 +44,9 @@ export function Dialog({
 }): ReactElement {
   const close = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null);
+  // A ref, so a change of `closeDisabled` does not reopen the Escape listener or its focus.
+  const disabled = useRef(closeDisabled);
+  disabled.current = closeDisabled;
   useBackLayer(back, () => {
     if (!closeDisabled) onClose();
   });
@@ -58,7 +61,7 @@ export function Dialog({
       if (dialogs[dialogs.length - 1] !== box.current) return;
       // The schedule forms listen on the window, after the document: they must not close too.
       event.stopPropagation();
-      onClose();
+      if (!disabled.current) onClose();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

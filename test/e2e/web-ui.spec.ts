@@ -1382,6 +1382,31 @@ test("Do not ask again asks first, names the action and links to Settings (#914)
   await expect(card).toHaveCount(0);
 });
 
+test("Escape does not close the Do not ask again dialog while the answer travels (#914)", async ({ page }) => {
+  let release = (): void => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/approvals/*", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("please approve this");
+  await composer.press("Enter");
+  const card = page.getByRole("region", { name: "Eva asks for permission" });
+  await card.getByRole("button", { name: "Do not ask again" }).click();
+  const dialog = page.getByRole("dialog", { name: "Do not ask again" });
+  await dialog.getByRole("button", { name: "Do not ask again" }).click();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  release();
+  await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
+});
+
 test("the Settings link of the Do not ask again dialog opens the card and keeps the request (#914)", async ({
   page,
 }) => {

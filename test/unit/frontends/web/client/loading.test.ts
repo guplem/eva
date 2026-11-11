@@ -126,6 +126,21 @@ describe("skeletons", () => {
     expect(chat).toContain("composer-box");
   });
 
+  test("a Life page shows the shape of its list, or the facts of an entity", () => {
+    for (const kind of ["cases", "people", "objects", "pets", "periods"] as const) {
+      const list = renderToStaticMarkup(createElement(AppSkeleton, { page: kind }));
+      expect(list).toContain("life-skeleton");
+      expect(list).toContain("life-card");
+      const entity = renderToStaticMarkup(createElement(AppSkeleton, { page: kind, lifeEntity: true }));
+      expect(entity).toContain("life-facts");
+      expect(entity).not.toContain("life-skeleton");
+    }
+    // Only the objects come in groups, and only people and pets have a mark.
+    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "objects" }))).toContain("life-group-title");
+    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "people" }))).toContain("life-mark");
+    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "periods" }))).toContain("life-grid rows");
+  });
+
   test("a skeleton takes no focus", () => {
     expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "settings" }))).toContain(
       'aria-hidden="true" inert=""',

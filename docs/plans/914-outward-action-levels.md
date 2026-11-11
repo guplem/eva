@@ -79,3 +79,15 @@ Today `asksThePerson` asks for a fixed list of actions. It matches words in a to
 4. **Other MCP servers.** A tool of a person's own MCP server, such as a chat tool that sends, asked through the word pattern. With explicit names, it no longer asks. Accept this, or keep a rule for unknown servers?
 5. **Project chats.** Do the levels apply to a Project chat, or only to Assistant mode?
 6. **A tool call in several categories,** such as `git push && curl -d`. Which categories does "Do not ask again" change?
+
+## Decisions
+
+Three sub-agents looked for an obvious answer to each gap.
+
+1. **The home is the vault,** as the issue says. The levels are a preference, not a security setting. The docs say so, and say that an agent can edit the vault. One fixed question stays, with no level and no "Do not ask again": a change by the agent to the levels themselves. It covers a shell command that names the vault settings file or runs `settings set outwardActions`, and a file tool's write to the vault settings file. Without it, a hidden instruction could set the schedules to Allow and undo #440. The sub-agents split 2 to 1 on this question, so the PR names it for the owner.
+2. **Bypass mode keeps the levels.** The bundled Claude Code checks an `ask` rule before the mode, so `canUseTool` runs in bypass mode too. The reference, the schema comment and `assistantChat("bypassPermissions")` are wrong today. Fix them. Add a test that the `ask` rules stay in the options in bypass mode.
+3. **Deny lives only in Eva's own decision.** A Claude Code rule cannot read curl flags or the guests of an event, and pi has no rules.
+4. **A tool of another MCP server no longer asks through Eva.** Eva gives only the `google` server. The docs say that the tools of a person's own server follow Claude Code's rules.
+5. **The levels apply in Assistant mode only.** Project mode is a clean wrapper.
+6. **A request carries only its categories on Ask.** "Do not ask again" sets each of them to Allow, and the dialog names each one.
+7. **The prompt block stays fixed for the session,** as the format block does. After a change in the middle of a chat, the deny message tells the model.

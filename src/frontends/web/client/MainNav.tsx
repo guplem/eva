@@ -2,18 +2,21 @@
  * The main navigation of the EVE shell: a nav rail on a computer and a bottom tab bar on a phone.
  * It is one element that the stylesheet places, so each destination has one accessible name.
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
+import { navChoice, onNavChoiceChange, shownDestinations } from "./nav-choice.ts";
 import {
   bellName,
+  homeGearName,
   navVisorProjectEyes,
   navVisorState,
   tapFace,
   tapFaceMs,
   type NavVisorInput,
   type VisorSignal,
+  visorName,
 } from "./nav-visor.ts";
-import { currentNavButton, destinations, navBadges, type Destination } from "./navigation.ts";
+import { currentNavButton, navBadges, type Destination, type NavEntry } from "./navigation.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -29,24 +32,29 @@ interface MainNavProps extends NavVisorInput {
   readonly setupMissing: number;
   /** An unread problem is an error, so the count is red. */
   readonly unreadError: boolean;
-  /** The count and the dot of the visor. The bell of the home page shows the same signal. */
+  /** The count and the dot of the visor. The bell of the home page shows the same signal, except the hidden unread chats. */
   readonly signal: VisorSignal;
   /** The Assistant chats with an answer that the person did not see. */
   readonly unreadChats: number;
   /** The Project chats with an answer that the person did not see. */
   readonly unreadProjectChats: number;
+  /** The unread chats whose entry the navigation hides. The visor names them (#911). */
+  readonly hiddenUnread: number;
 }
 
 export function MainNav(props: MainNavProps): ReactElement {
   const { current, onOpen, approvals, setupMissing, signal } = props;
+  const shown = shownDestinations(useSyncExternalStore(onNavChoiceChange, navChoice), props.isPhone);
+  const shownButton = currentNavButton(
+    current,
+    props.homeShown,
+    shown.map((destination) => destination.id),
+  );
   const visor = navVisorState(props);
-  const shownButton = currentNavButton(current, props.homeShown);
   const offline = !props.isConnected;
   // Only the crossed face pulses: an approval or an offline face would only borrow the red.
   const alarm = signal.alarm && visor.face === stateFaces.broken;
-  // The visible label "Eva" starts the name, so a voice command that says it finds the button.
-  // The count is in the words. The dot, which has no words, adds its own.
-  const name = `Eva: ${visor.words}${signal.dot ? ". Something new waits" : ""}`;
+  const name = visorName(visor.words, signal, props.hiddenUnread);
   const projectEyes = navVisorProjectEyes(current, props.isPhone);
   // At rest, on a special day, the visor wears that day's eyes. Any state that informs comes first,
   // and so do the Project eyes: they are the phone's only sign of the mode.
@@ -65,7 +73,7 @@ export function MainNav(props: MainNavProps): ReactElement {
     unreadChats: props.unreadChats,
     unreadProjectChats: props.unreadProjectChats,
   });
-  const button = (destination: (typeof destinations)[number]): ReactElement => {
+  const button = (destination: NavEntry): ReactElement => {
     const badge = badges[destination.id];
     return (
       <button
@@ -89,7 +97,8 @@ export function MainNav(props: MainNavProps): ReactElement {
       </button>
     );
   };
-  // The visor opens the home page (#761). On a phone it takes the place of Settings, which the home page links to.
+  // The visor opens the home page (#761). On a phone it is the last tab, and the home page has a gear for Settings.
+  // On a computer, Settings stays out of the part that scrolls, so a low window still shows it (#911).
   return (
     <nav className="main-nav" aria-label="Main">
       <button
@@ -124,25 +133,28 @@ export function MainNav(props: MainNavProps): ReactElement {
           Eva
         </span>
       </button>
-      {destinations.filter((destination) => destination.id !== "settings").map(button)}
-      <span className="nav-spacer" />
-      {destinations.filter((destination) => destination.id === "settings").map(button)}
+      <div className="main-nav-scroll">{shown.filter((destination) => destination.id !== "settings").map(button)}</div>
+      {shown.filter((destination) => destination.id === "settings").map(button)}
     </nav>
   );
 }
 
 /**
  * The buttons at the right of the home page's header (#761). The bell opens the notification center,
- * with the count and the dot of the visor. A phone has no Settings tab, so it also shows a gear.
+ * with the count and the dot of the visor. A phone shows a Settings tab only when the person chooses it,
+ * so it always shows a gear too.
  */
 export function HomeButtons({
   signal,
   unreadError,
   isPhone,
+  setupMissing,
   onNotifications,
   onSettings,
 }: {
   readonly signal: VisorSignal;
+  /** The setup steps that are left: the count of the Settings badge. */
+  readonly setupMissing: number;
   readonly unreadError: boolean;
   readonly isPhone: boolean;
   readonly onNotifications: () => void;
@@ -165,8 +177,19 @@ export function HomeButtons({
         {signal.dot && <span className="nav-dot" aria-hidden="true" />}
       </button>
       {isPhone && (
-        <button className="icon-button" aria-label="Settings" data-tooltip="Settings" onClick={onSettings}>
+        // The badge of the Settings tab, which a phone may hide (#911). The name holds its words.
+        <button
+          className="icon-button home-gear"
+          aria-label={homeGearName(setupMissing)}
+          data-tooltip="Settings"
+          onClick={onSettings}
+        >
           <Icon name="gear" />
+          {setupMissing > 0 && (
+            <span className="nav-badge" aria-hidden="true">
+              {setupMissing}
+            </span>
+          )}
         </button>
       )}
     </div>

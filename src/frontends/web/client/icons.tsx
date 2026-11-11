@@ -252,6 +252,38 @@ const drawings = {
       <path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9M10 13h4" />
     </>
   ),
+  /** A list of steps, two of them done: a case moves step by step to its end. */
+  case: <path d="M4 6.5l1.5 1.5 3-3M11.5 7H20M4 12.5l1.5 1.5 3-3M11.5 13H20M5 18.5h2M11.5 19H20" />,
+  /** Two heads, so it does not read as the one person of `user`. */
+  people: (
+    <>
+      <circle cx="9" cy="8.5" r="3.25" />
+      <path d="M3 20a6 6 0 0 1 12 0M15.5 5.3a3.25 3.25 0 0 1 0 6.4M17.5 14.4A6 6 0 0 1 21 20" />
+    </>
+  ),
+  /** An open carton: a thing that the person owns. */
+  box: (
+    <>
+      <rect x="4" y="9" width="16" height="11" rx="1.5" />
+      <path d="M4 9l2-4.5h12L20 9M12 4.5V9M10 13h4" />
+    </>
+  ),
+  paw: (
+    <>
+      <circle cx="6" cy="10.5" r="1.75" />
+      <circle cx="9.75" cy="6.25" r="1.75" />
+      <circle cx="14.25" cy="6.25" r="1.75" />
+      <circle cx="18" cy="10.5" r="1.75" />
+      <path d="M12 12c-2.6 0-5 3.2-5 5.6 0 1.5 1.2 2.4 2.6 2.1l1.3-.3a5 5 0 0 1 2.2 0l1.3.3c1.4.3 2.6-.6 2.6-2.1 0-2.4-2.4-5.6-5-5.6z" />
+    </>
+  ),
+  /** Two spans that overlap in time: a period of life, such as a job or a home. */
+  timeline: (
+    <>
+      <rect x="3.5" y="6" width="11" height="4.5" rx="2.25" />
+      <rect x="9.5" y="13.5" width="11" height="4.5" rx="2.25" />
+    </>
+  ),
   /* The icons of the sound palettes: each one shows what inspired its palette. */
   /** Coin: the bubbles of a payment app. */
   bubbles: (

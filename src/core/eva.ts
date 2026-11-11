@@ -31,6 +31,7 @@ import {
 } from "../shared/pi-login.ts";
 import type { SessionEvent, TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
+import type { LifeKind } from "../shared/life-kinds.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
 import { ChatNotifications, holdingChat, type NotificationKind } from "./alerts/chat-notifications.ts";
@@ -139,6 +140,13 @@ import { googleScopes } from "./google/google-scopes.ts";
 import { googleStep } from "./google/google-steps.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
+import {
+  discoverLifeEntities,
+  readLifeEntity,
+  redactLifeEntity,
+  type LifeEntity,
+  type LifeEntityDetail,
+} from "./life/life-catalog.ts";
 import { createProject, type NewProjectInput, type NewProjectResult } from "./projects/new-project.ts";
 import { projectCreatedAt } from "./projects/project-id.ts";
 import { createDriveFolder } from "./google/google-drive.ts";
@@ -2138,6 +2146,19 @@ export class Eva {
   /** A vault folder's entries, or a text file, for the file explorer of the web page. */
   browseFiles(path: string): BrowsedPath {
     return browseVault(this.browsedVault(), path, (text) => this.redactor.redact(text));
+  }
+
+  /** The entities of one kind of `Life/`, for its page of the web app (#911). */
+  lifeEntities(kind: LifeKind): LifeEntity[] {
+    return discoverLifeEntities(this.browsedVault(), kind).map((entity) =>
+      redactLifeEntity(entity, (text) => this.redactor.redact(text)),
+    );
+  }
+
+  /** One entity of `Life/` with its text and files, or null when the id names none. */
+  lifeEntity(kind: LifeKind, id: string): LifeEntityDetail | null {
+    const entity = readLifeEntity(this.browsedVault(), kind, id);
+    return entity === null ? null : redactLifeEntity(entity, (text) => this.redactor.redact(text));
   }
 
   /**

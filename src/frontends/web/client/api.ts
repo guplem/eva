@@ -32,6 +32,8 @@ import type { Clone, CloneDetails, RepositoryDetails } from "../../../core/proje
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
+import type { LifeEntity, LifeEntityDetail } from "../../../core/life/life-catalog.ts";
+import type { LifeKind } from "../../../shared/life-kinds.ts";
 import type {
   BranchResult,
   CloneFetch,
@@ -89,6 +91,8 @@ export type { VaultSecretsStatus };
 export type { WidgetFrame, WidgetInputValue, WidgetItem, WidgetReview, PreviewMode, PreviewPlace, WidgetPreview };
 /** Where the person is, for scripts: a recent point from a phone, or the home place. */
 export type CurrentPlaceView = CurrentPlace;
+
+export type { LifeEntity, LifeEntityDetail, LifeKind };
 
 export type {
   QuestionAnswers,
@@ -322,6 +326,10 @@ export const api = {
     if (tag !== "") query.set("tag", tag);
     return request("GET", `/api/projects?${query.toString()}`);
   },
+  lifeEntities: (kind: LifeKind): Promise<LifeEntity[]> => request("GET", `/api/life/${kind}`),
+  /** Rejects with a 404 `ApiError` when the entity is gone. */
+  lifeEntity: (kind: LifeKind, id: string): Promise<LifeEntityDetail> =>
+    request("GET", `/api/life/${kind}/${encodeURIComponent(id)}`),
   clones: (projectId: string): Promise<CloneDetails[]> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/clones`),
   repositorySetup: (projectId: string): Promise<SetupReport[]> =>

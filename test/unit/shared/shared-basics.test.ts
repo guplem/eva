@@ -101,6 +101,8 @@ describe("outwardActionsOf", () => {
       "mcp__google__get_drive_file_permissions",
       "mcp__google__check_drive_file_public_access",
       "mcp__google__get_drive_shareable_link",
+      "mcp__google__list_document_comments",
+      "mcp__google__list_shared_drive_access",
       "mcp__google__draft_gmail_message",
     ])
       expect({ tool, categories: outwardActionsOf(tool, {}) }).toEqual({ tool, categories: [] });

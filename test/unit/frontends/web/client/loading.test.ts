@@ -99,6 +99,16 @@ describe("skeletons", () => {
     );
   });
 
+  test("the navigation shows the list of the form: every entry on a computer, a short one on a phone", () => {
+    const computer = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats" }));
+    const phone = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats", isPhone: true }));
+    expect(computer).toContain("nav-button nav-cases");
+    expect(computer).toMatch(/<\/div><button class="nav-button nav-settings"/);
+    expect(phone).toContain("nav-button nav-schedules");
+    expect(phone).not.toContain("nav-button nav-cases");
+    expect(phone).not.toContain("nav-button nav-settings");
+  });
+
   test("the chat details show only when the person keeps them shown", () => {
     const shown = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats", chatPanel: true }));
     const hidden = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats" }));
@@ -114,6 +124,20 @@ describe("skeletons", () => {
     expect(project).not.toContain("list-home");
     expect(project).toContain("cards-skeleton");
     expect(chat).toContain("composer-box");
+  });
+
+  test("a Life page shows the shape of its list, or the facts of an entity", () => {
+    for (const kind of ["cases", "people", "objects", "pets", "periods"] as const) {
+      const list = renderToStaticMarkup(createElement(AppSkeleton, { page: kind }));
+      expect(list).toContain("life-skeleton");
+      expect(list).toContain("life-card");
+      const entity = renderToStaticMarkup(createElement(AppSkeleton, { page: kind, lifeEntity: true }));
+      expect(entity).toContain("life-facts");
+      expect(entity).not.toContain("life-skeleton");
+    }
+    // Only people and pets have a mark.
+    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "people" }))).toContain("life-mark");
+    expect(renderToStaticMarkup(createElement(AppSkeleton, { page: "periods" }))).toContain("life-grid rows");
   });
 
   test("a skeleton takes no focus", () => {

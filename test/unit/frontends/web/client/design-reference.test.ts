@@ -51,6 +51,11 @@ describe("the design reference", () => {
     expect(parts.some((part) => part?.includes("Skeleton") === true)).toBe(true);
   });
 
+  test("each Life page has its own icon, and the page names it", () => {
+    for (const name of ["case", "people", "box", "paw", "timeline"] as const)
+      expect(iconUses[name], name).toContain("Life page");
+  });
+
   test("each icon has one use, so the page shows when to take it", () => {
     for (const name of iconNames) expect(iconUses[name], name).not.toBe("");
     expect(Object.keys(iconUses).sort()).toEqual([...iconNames].sort());

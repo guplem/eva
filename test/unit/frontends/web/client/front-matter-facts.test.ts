@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   dateText,
   factValue,
+  factsOf,
   frontMatterFacts,
   keyLabel,
   linkOf,
@@ -252,5 +253,20 @@ describe("frontMatterFacts", () => {
       format,
     );
     expect(facts.map((fact) => fact.key)).toEqual(["type"]);
+  });
+});
+
+describe("factsOf", () => {
+  test("gives a fact for each key of any front matter, and none for an empty value", () => {
+    const facts = factsOf(
+      [
+        ["opened", "2026-09-01"],
+        ["closed", ""],
+        ["deadline", { date: "2026-12-01", cost: "A fee" }],
+      ],
+      format,
+    );
+    expect(facts.map((fact) => fact.label)).toEqual(["Opened", "Deadline"]);
+    expect(facts[1]?.value.kind).toBe("map");
   });
 });

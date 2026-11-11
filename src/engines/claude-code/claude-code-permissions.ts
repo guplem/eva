@@ -43,7 +43,7 @@ function assistantChat(mode: ClaudePermissionMode, levels: OutwardActionLevels):
   if (mode === "bypassPermissions") {
     return {
       chat: "assistant",
-      runs: ["Every other action", ...words.allow],
+      runs: ["Every other action, with no safety check", ...words.allow],
       asks: words.ask,
       blocks: [denyRules, ...words.deny],
       note: null,

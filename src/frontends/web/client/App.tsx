@@ -2,7 +2,7 @@
  * The web UI: the main navigation, the destinations and approvals. The address names the
  * destination, so the back button and a reload work.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import {
   api,
   ApiError,
@@ -28,6 +28,8 @@ import { AssistantView } from "./AssistantView.tsx";
 import { unsentTexts } from "./Composer.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { FilesView } from "./FilesView.tsx";
+import { LifeView } from "./LifeView.tsx";
+import { lifeRouteOf } from "./life-routes.ts";
 import {
   applyEvent,
   emptyLiveState,
@@ -40,7 +42,8 @@ import {
 } from "./live-state.ts";
 import { AccountRefusedView, LoginView } from "./LoginView.tsx";
 import { HomeButtons, MainNav } from "./MainNav.tsx";
-import { visorSignal } from "./nav-visor.ts";
+import { hiddenUnreadChats, visorSignal } from "./nav-visor.ts";
+import { navChoice, onNavChoiceChange, shownDestinations } from "./nav-choice.ts";
 import {
   addressOf,
   chatsTapAgain,
@@ -121,6 +124,9 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   /** The Chats page shows the New chat page, the home page of the visor (#761). */
   const [homeShown, setHomeShown] = useState(false);
   const isPhone = useIsPhone();
+  const shownEntries = shownDestinations(useSyncExternalStore(onNavChoiceChange, navChoice), isPhone).map(
+    (destination) => destination.id,
+  );
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
   /** The hides that this page sent and Eva has not answered yet. */
@@ -158,6 +164,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [, setFormatChanges] = useState(0);
   useEffect(() => onDisplayFormatChange(() => setFormatChanges((count) => count + 1)), []);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
+  const [lifeRoute, setLifeRoute] = useState(() => lifeRouteOf(window.location.hash));
   const showError = useShowError();
   const linkedChat = sessions.find((session) => session.id === linkedChatId) ?? null;
 
@@ -167,6 +174,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       const destination = destinationOf(window.location.hash);
       if (destination !== null) setScreen(destination);
       setLinkedChatId(linkedChatIdOf(window.location.hash));
+      setLifeRoute(lifeRouteOf(window.location.hash));
       // Back to an entry of the chat list opened the list again: it stays open.
       if (!layersOfEntry().includes("list")) setSidebarOpen(false);
     };
@@ -532,6 +540,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         page={screen}
         chatPanel={chatPanelKeptShown()}
         project={projectPage === "list" ? "list" : projectPage === "chat" ? "chat" : "page"}
+        isPhone={isPhone}
+        lifeEntity={lifeRoute !== null && lifeRoute.entityId !== null}
       />
     );
   }
@@ -664,14 +674,24 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const unreadProblems = shownProblems(problems);
   const unread = unreadChats(sessions, readChats);
   const unreadError = unreadProblems.some((problem) => problem.level === "error");
-  // One signal for the visor and the bell of the home page, so both always show the same (#761).
-  const signal = visorSignal({
+  const unreadAssistantChats = unread.filter((chat) => chat.mode === "assistant").length;
+  const unreadProjectChats = unread.filter((chat) => chat.mode === "project").length;
+  // One signal for the visor and the bell of the home page, so both show the same (#761). Only the visor
+  // also shows an unread chat whose entry is hidden: the bell opens the notification center, which has no chats (#911).
+  const signalInput = {
     unreadProblems: unreadProblems.length,
     unreadError,
     news: setupMissing > 0 || notifications.some((entry) => !entry.read),
     offline: !isConnected,
     centerOpen: screen === notificationCenter,
+  };
+  const bellSignal = visorSignal({ ...signalInput, hiddenUnread: 0 });
+  const hiddenUnread = hiddenUnreadChats({
+    unreadChats: unreadAssistantChats,
+    unreadProjectChats,
+    shown: shownEntries,
   });
+  const signal = visorSignal({ ...signalInput, hiddenUnread });
   /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
   const onConflictState = (state: VaultSyncState): void => {
     setSyncState(state);
@@ -694,8 +714,9 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         unreadProblems={unreadProblems.length}
         unreadError={unreadError}
         signal={signal}
-        unreadChats={unread.filter((chat) => chat.mode === "assistant").length}
-        unreadProjectChats={unread.filter((chat) => chat.mode === "project").length}
+        unreadChats={unreadAssistantChats}
+        unreadProjectChats={unreadProjectChats}
+        hiddenUnread={hiddenUnread}
         chatBlocked={chatBlocker !== null}
         assistantTurns={runningTurns.assistant}
         projectTurns={runningTurns.project}
@@ -718,7 +739,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
             voiceNotes={voiceNotes}
             homeButtons={
               <HomeButtons
-                signal={signal}
+                signal={bellSignal}
+                setupMissing={setupMissing}
                 unreadError={unreadError}
                 isPhone={isPhone}
                 onNotifications={() => openDestination(notificationCenter)}
@@ -763,6 +785,10 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
         )}
         {screen === "schedules" && <SchedulesView chatIds={chatIds} />}
         {screen === "files" && <FilesView />}
+        {/* The key resets the search and the filter when the person opens another kind. */}
+        {lifeRoute !== null && screen === lifeRoute.kind && (
+          <LifeView key={lifeRoute.kind} kind={lifeRoute.kind} entityId={lifeRoute.entityId} />
+        )}
       </div>
       {/* Before the other dialogs: a device request that comes meanwhile shows on top. */}
       {conflictsOpen && syncState !== null && (

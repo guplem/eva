@@ -286,6 +286,13 @@ const scenes: readonly Scene[] = [
       await openAddress(page, "#/schedules/daily-summary", "Daily summary");
     },
   },
+  // The Life pages of the demo vault (#911).
+  { name: "cases", show: (page) => openAddress(page, "#/cases", "Cases") },
+  { name: "case", show: (page) => openAddress(page, "#/cases/2026-09-01-bumper-claim", "Bumper claim") },
+  { name: "people", show: (page) => openAddress(page, "#/people", "People") },
+  { name: "objects", show: (page) => openAddress(page, "#/objects", "Objects") },
+  { name: "pets", show: (page) => openAddress(page, "#/pets", "Pets") },
+  { name: "periods", show: (page) => openAddress(page, "#/periods", "Periods") },
   { name: "settings", show: (page) => openAddress(page, "#/settings", "Settings") },
   { name: "devices", show: (page) => openAddress(page, "#/settings/access", "Access") },
   {
@@ -313,6 +320,13 @@ const scenes: readonly Scene[] = [
         route.fulfill({ json: { state: { status: "conflict" }, conflicts: [planConflict] } }),
       );
       await page.reload();
+      // The problems show in the notification center, behind the bell of the home page (#761).
+      await openAddress(page, homeAddress, "New chat");
+      await page
+        .locator(".home-buttons")
+        .getByRole("button", { name: /^Notifications/ })
+        .click();
+      await page.getByRole("heading", { level: 1, name: "Notifications" }).waitFor();
       const banner = page.getByRole("region", { name: "Problems" });
       await banner.getByRole("button", { name: "Pick a version" }).click();
       await page.getByRole("dialog", { name: "Note conflicts" }).waitFor();

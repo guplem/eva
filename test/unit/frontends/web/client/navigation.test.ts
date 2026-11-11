@@ -39,6 +39,11 @@ describe("destinationOf", () => {
     expect(destinationOf("#/settings/remote-access")).toBe("settings");
   });
 
+  test("the address of one Life entity opens its page", () => {
+    expect(destinationOf("#/cases/some%20id")).toBe("cases");
+    expect(destinationOf("#/pets/example-cat")).toBe("pets");
+  });
+
   test("a name that only starts like a destination does not open it", () => {
     expect(destinationOf("#/settingsx")).toBe("chats");
   });
@@ -55,8 +60,21 @@ describe("addressOf", () => {
       "#/projects",
       "#/files",
       "#/schedules",
+      "#/cases",
+      "#/people",
+      "#/objects",
+      "#/pets",
+      "#/periods",
       "#/settings",
     ]);
+  });
+
+  test("each Life page has a plain name and its own icon", () => {
+    const life = destinations.filter((destination) =>
+      ["cases", "people", "objects", "pets", "periods"].includes(destination.id),
+    );
+    expect(life.map((destination) => destination.label)).toEqual(["Cases", "People", "Objects", "Pets", "Periods"]);
+    expect(new Set(destinations.map((destination) => destination.icon)).size).toBe(destinations.length);
   });
 });
 
@@ -170,6 +188,13 @@ describe("homeAddress and currentNavButton (#761)", () => {
 
   test("on the home page, the visor is the current button, not Chats", () => {
     expect(currentNavButton("chats", true)).toBe("visor");
+  });
+
+  test("a page whose entry the navigation hides has no current button (#911)", () => {
+    expect(currentNavButton("cases", false, ["chats", "projects"])).toBeNull();
+    expect(currentNavButton("cases", false, ["chats", "cases"])).toBe("cases");
+    // The home page belongs to the visor, which always shows.
+    expect(currentNavButton("chats", true, [])).toBe("visor");
   });
 
   test("another page keeps its own button current", () => {

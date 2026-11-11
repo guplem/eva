@@ -232,6 +232,14 @@ describe("discoverLifeEntities", () => {
     write("Life/Pets/Big/Pet.md", `---\nspecies: dog\nnotes: ${"a".repeat(maxBodyBytes)}\n---\n`);
     expect(discoverLifeEntities(vault, "pets")[0]).toMatchObject({ fields: {}, warnings: [expect.any(String)] });
   });
+
+  test("a front matter that the read cuts gives no title from a comment in it", () => {
+    write(
+      "Life/Pets/Big Dog/Pet.md",
+      `---\nspecies: dog\n# old address\nnotes: ${"a".repeat(maxBodyBytes)}\n---\n# Rex\n`,
+    );
+    expect(discoverLifeEntities(vault, "pets")[0]).toMatchObject({ title: "Big Dog" });
+  });
 });
 
 describe("readLifeEntity", () => {

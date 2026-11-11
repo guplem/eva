@@ -200,11 +200,13 @@ function readEntity(
   const warnings: string[] = [];
   const text = read.text.replace(/^\uFEFF/, "");
   const match = frontMatterOf(text);
+  // A front matter that is never closed is YAML to its end: a comment in it, such as `# old address`, is no title.
+  const unclosed = match === null && /^---\r?\n/.test(text);
   let body = text;
   let keys: Record<string, unknown> = {};
   if (match === null) {
     warnings.push(
-      read.cut && /^---\r?\n/.test(text)
+      read.cut && unclosed
         ? `The front matter is longer than ${String(read.bytes / 1024)} KB, so Eva did not read it.`
         : "The file has no front matter.",
     );
@@ -222,7 +224,7 @@ function readEntity(
       id,
       folder,
       path,
-      title: titleHeading(body)?.title ?? readableName(id),
+      title: (unclosed ? undefined : titleHeading(body)?.title) ?? readableName(id),
       summary: readSummary(keys["summary"], warnings),
       aliases: readList(keys["aliases"], "aliases", warnings),
       tags: readList(keys["tags"], "tags", warnings),

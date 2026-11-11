@@ -390,7 +390,7 @@ Some actions reach other people, or change what Eva does later. Each action has 
 - **Deny:** the action never runs. Eva tells the AI that you chose this, and that it must not try another way.
 - **A preference, not a protection against an agent that follows hidden instructions.** The levels live in your vault, in the setting `outwardActions`. An agent can edit the vault. So Eva asks you before an agent changes the levels. This one question has no level and no "Do not ask again".
 - **Where they apply.** The levels apply in Assistant chats, in every permission mode, also in Bypass permissions. A Project chat runs the engine as you run it, so it keeps the engine's own rules.
-- **When a change applies.** A change applies from the next action, also in a chat that is open.
+- **When a change applies.** A change applies from the next action, also in a chat that is open. The AI reads the levels at the start of a chat. After a change, start a new chat to tell it.
 - **A call with several kinds.** A command such as `git push && curl -d @file` has two kinds. The strictest level wins: Deny, then Ask, then Allow.
 - **Your own MCP servers.** Eva gives levels only to her own Google tools. Eva does not ask about the tools of your own MCP server. To get a question, add a rule in Claude Code's own settings.
 - **Do not ask again.** A permission card of a request with a kind of action has a third button, **Do not ask again**, in the web app and in Telegram. Eva asks you to confirm. The question names each kind of the request. After you confirm, Eva allows the request, sets each of its kinds to Allow, and also allows the other waiting requests of the same action. To undo it, set the level to Ask in **Settings > AI engines > Actions that reach other people**.

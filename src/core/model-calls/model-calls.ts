@@ -3,6 +3,7 @@
  * needs a short answer from a model, such as a chat name or a suggested reply, asks here.
  * The call runs through the engine port, so the person's own engine login pays for it.
  */
+import { defaultOutwardActionLevels } from "../../shared/outward-actions.ts";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -99,6 +100,7 @@ export class ModelCalls {
         fileWall: null,
         environment: this.options.environment,
         requestApproval: () => Promise.resolve("deny"),
+        outwardActionLevels: () => defaultOutwardActionLevels,
         askQuestions: () => Promise.resolve("declined"),
         signal: controller.signal,
       });

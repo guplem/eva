@@ -826,6 +826,7 @@ export class Eva {
         model: this.settings.config.engines.defaultModel,
         effort: this.settings.config.engines.defaultEffort,
       }),
+      outwardActionLevels: () => this.settings.config.outwardActions,
       store: new SessionStore(options.paths.sessions, {
         now: options.now,
         ...(options.logger === undefined ? {} : { logger: options.logger }),
@@ -2308,7 +2309,11 @@ export class Eva {
    * config folder of their own runs, which holds no token.
    */
   permissions(): PermissionsOverview {
-    const context = { vaultFolder: this.options.config.vaultPath, environment: engineToolEnvironment(this.facts) };
+    const context = {
+      vaultFolder: this.options.config.vaultPath,
+      environment: engineToolEnvironment(this.facts),
+      outwardActionLevels: this.settings.config.outwardActions,
+    };
     return this.options.engines.flatMap((engine) =>
       engine.describePermissions === undefined ? [] : [{ engine: engine.name, ...engine.describePermissions(context) }],
     );

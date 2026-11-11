@@ -4,7 +4,7 @@
  */
 import { join } from "node:path";
 import { readJsonTolerant } from "../../shared/files.ts";
-import { defaultOutwardActionLevels, outwardActionWordsByLevel } from "../../shared/outward-actions.ts";
+import { outwardActionWordsByLevel, type OutwardActionLevels } from "../../shared/outward-actions.ts";
 import type {
   ChatPermissions,
   EnginePermissions,
@@ -28,18 +28,24 @@ const anyDenyRule = "Each action that a deny rule names";
 export function describeClaudePermissions(mode: ClaudePermissionMode, context: PermissionContext): EnginePermissions {
   return {
     mode: { value: mode, words: modeWords[mode] },
-    chats: [assistantChat(mode), projectChat("trusted-project", mode), projectChat("untrusted-project", "auto")],
+    chats: [
+      assistantChat(mode, context.outwardActionLevels),
+      projectChat("trusted-project", mode),
+      projectChat("untrusted-project", "auto"),
+    ],
     personRules: personRules(context),
   };
 }
 
-function assistantChat(mode: ClaudePermissionMode): ChatPermissions {
+function assistantChat(mode: ClaudePermissionMode, levels: OutwardActionLevels): ChatPermissions {
+  const words = outwardActionWordsByLevel(levels);
+  // The levels hold in bypass mode too: the bundled Claude Code checks an ask rule before the mode (#914).
   if (mode === "bypassPermissions") {
     return {
       chat: "assistant",
-      runs: ["Every action, also one that reaches other people"],
-      asks: [],
-      blocks: [denyRules],
+      runs: ["Every other action", ...words.allow],
+      asks: words.ask,
+      blocks: [denyRules, ...words.deny],
       note: null,
     };
   }
@@ -48,12 +54,13 @@ function assistantChat(mode: ClaudePermissionMode): ChatPermissions {
     runs: [
       "Reading and searching files",
       "Shell commands that stay on this computer",
-      "Changes to Eva's own files in .eva/, except the schedules",
+      "Changes to Eva's own files in .eva/, except those that a question below names",
       "Eva's own tools, such as Google, when the action stays with you",
       "Each other action that the safety check of Claude Code allows",
+      ...words.allow,
     ],
-    asks: outwardActionWordsByLevel(defaultOutwardActionLevels).ask,
-    blocks: [safetyCheckRefusals, denyRules],
+    asks: words.ask,
+    blocks: [safetyCheckRefusals, denyRules, ...words.deny],
     note: null,
   };
 }

@@ -387,3 +387,28 @@ describe("a new satellite on a vault that the hub did not move yet (#662)", () =
     expect(loadSettings(paths).config).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
   });
 });
+
+describe("the level of each outward action (#914)", () => {
+  test("a new instance asks for every category, and the vault holds the levels", () => {
+    expect(Object.values(defaultConfig.outwardActions)).toEqual(Array.from({ length: 7 }, () => "ask"));
+    expect(isSharedSettingKey("outwardActions")).toBe(true);
+    expect(isSharedSettingKey("outwardActions.pushCode")).toBe(true);
+  });
+
+  test("a vault level applies, and a category that the file leaves out stays on ask", () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    writeFileSync(
+      vaultSettingsPath(vault),
+      JSON.stringify({ outwardActions: { pushCode: "allow", sendData: "deny" } }),
+    );
+    const levels = loadSettings(paths).config.outwardActions;
+    expect(levels).toMatchObject({ pushCode: "allow", sendData: "deny", github: "ask", changeSchedules: "ask" });
+  });
+
+  test("a value that is no level makes the file invalid, so nothing loosens by accident", () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ outwardActions: { pushCode: "never" } }));
+    expect(loadSettings(paths).problem).not.toBeNull();
+    expect(loadSettings(paths).config.outwardActions.pushCode).toBe("ask");
+  });
+});

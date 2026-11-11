@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeCodeEngine } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
 import { describeClaudePermissions } from "../../../../src/engines/claude-code/claude-code-permissions.ts";
-import { defaultOutwardActionLevels, outwardActionWordsByLevel } from "../../../../src/shared/outward-actions.ts";
+import {
+  defaultOutwardActionLevels,
+  outwardActionWordsByLevel,
+  outwardLevelChangeWords,
+} from "../../../../src/shared/outward-actions.ts";
 import type { ChatPermissions, EnginePermissions } from "../../../../src/shared/permissions.ts";
 
 let folder: string;
@@ -23,7 +27,7 @@ function chat(permissions: EnginePermissions, kind: ChatPermissions["chat"]): Ch
   return found;
 }
 
-const noRules = { vaultFolder: null, environment: {} };
+const noRules = { vaultFolder: null, environment: {}, outwardActionLevels: defaultOutwardActionLevels };
 
 describe("describeClaudePermissions", () => {
   test("in auto mode, an Assistant chat asks before each action that reaches other people", () => {
@@ -38,10 +42,21 @@ describe("describeClaudePermissions", () => {
     expect(chat(permissions, "assistant").asks.join(" ")).toContain("schedules.json");
   });
 
-  test("in bypass mode, a trusted chat asks nothing, and an untrusted clone still uses auto", () => {
+  test("the levels move each category between runs, asks and blocks (#914)", () => {
+    const levels = { ...defaultOutwardActionLevels, pushCode: "allow", sendData: "deny" } as const;
+    const assistant = chat(describeClaudePermissions("auto", { ...noRules, outwardActionLevels: levels }), "assistant");
+    expect(assistant.runs).toContain("Push code: git push");
+    expect(assistant.asks.join(" ")).not.toContain("Push code");
+    expect(assistant.asks).toContain(outwardLevelChangeWords);
+    expect(assistant.blocks.join(" ")).toContain("Send data over the network");
+    expect(assistant.asks.join(" ")).not.toContain("Send data over the network");
+  });
+
+  test("in bypass mode, a trusted chat asks nothing, an Assistant chat keeps the levels, and an untrusted clone uses auto", () => {
     const permissions = describeClaudePermissions("bypassPermissions", noRules);
     expect(permissions.mode?.value).toBe("bypassPermissions");
-    expect(chat(permissions, "assistant").asks).toEqual([]);
+    expect(chat(permissions, "assistant").asks).toEqual(outwardActionWordsByLevel(defaultOutwardActionLevels).ask);
+    expect(chat(permissions, "assistant").runs.join(" ")).not.toContain("reaches other people");
     expect(chat(permissions, "trusted-project").asks).toEqual([]);
     expect(chat(permissions, "untrusted-project").asks).not.toEqual([]);
     expect(chat(permissions, "untrusted-project").note).toContain("Auto");
@@ -61,6 +76,7 @@ describe("describeClaudePermissions", () => {
     const permissions = describeClaudePermissions("auto", {
       vaultFolder: vault,
       environment: { CLAUDE_CONFIG_DIR: configFolder },
+      outwardActionLevels: defaultOutwardActionLevels,
     });
 
     expect(permissions.personRules).toEqual([
@@ -80,6 +96,7 @@ describe("describeClaudePermissions", () => {
     const permissions = describeClaudePermissions("auto", {
       vaultFolder: join(folder, "vault"),
       environment: { CLAUDE_CONFIG_DIR: join(folder, "claude") },
+      outwardActionLevels: defaultOutwardActionLevels,
     });
     expect(permissions.personRules?.map((rules) => rules.state)).toEqual(["missing", "missing"]);
   });

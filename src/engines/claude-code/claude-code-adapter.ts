@@ -15,7 +15,6 @@ import { posix, win32 } from "node:path";
 import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
 import {
   lostHistoryPreamble,
-  type ApprovalAnswer,
   type CarryHistoryInput,
   type EnginePort,
   type TurnRequest,
@@ -25,7 +24,7 @@ import { describeClaudeContext, projectInstructionFiles } from "./claude-code-co
 import { carryClaudeHistory } from "./claude-code-history.ts";
 import {
   decideOutwardAction,
-  defaultOutwardActionLevels,
+  outwardDenyMessage,
   summarizeToolCall,
   toolCategory,
 } from "../../shared/outward-actions.ts";
@@ -122,10 +121,7 @@ export class ClaudeCodeEngine implements EnginePort {
         // tells the model that the person did not answer (#544). So Eva shows the form herself.
         // A model call denies every tool, so its questions go to decidePermission and nobody sees them.
         if (toolName === askUserQuestionTool && request.mode !== "model-call") return answerQuestions(request, input);
-        const decision = await decidePermission(request, toolName, input);
-        return decision === "allow"
-          ? { behavior: "allow", updatedInput: input }
-          : { behavior: "deny", message: "The person did not allow this action." };
+        return decidePermission(request, toolName, input);
       },
     };
     try {
@@ -634,14 +630,26 @@ async function decidePermission(
   request: TurnRequest,
   toolName: string,
   input: Record<string, unknown>,
-): Promise<ApprovalAnswer> {
+): Promise<ToolDecision> {
+  const allowed: ToolDecision = { behavior: "allow", updatedInput: input };
+  const refused: ToolDecision = { behavior: "deny", message: "The person did not allow this action." };
   // A model call has no tools; a tool that still appears gets no question, because nobody waits for one.
-  if (request.mode === "model-call") return "deny";
+  if (request.mode === "model-call") return refused;
   const summary = summarizeToolCall(toolName, input);
-  if (request.mode === "project" || decideOutwardAction(toolName, input, defaultOutwardActionLevels).level === "ask") {
-    return request.requestApproval({ requestId: "", toolName, summary });
+  // Project mode is Claude Code as the person runs it: the outward action levels are for Assistant mode.
+  if (request.mode === "project") {
+    return (await request.requestApproval({ requestId: "", toolName, summary })) === "allow" ? allowed : refused;
   }
-  return "allow";
+  const decision = decideOutwardAction(toolName, input, request.outwardActionLevels());
+  if (decision.level === "deny") return { behavior: "deny", message: outwardDenyMessage(decision.categories) };
+  if (decision.level === "allow") return allowed;
+  const answer = await request.requestApproval({
+    requestId: "",
+    toolName,
+    summary,
+    ...(decision.categories.length === 0 ? {} : { categories: decision.categories }),
+  });
+  return answer === "allow" ? allowed : refused;
 }
 
 export function abortControllerFor(signal: AbortSignal): AbortController {

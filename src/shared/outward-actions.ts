@@ -5,7 +5,8 @@
  * the same actions alike. Tool names differ in case between the two engines (`Bash` and `bash`),
  * so they are matched without case.
  */
-import type { ToolCategory } from "./events.ts";
+/** A command runs in a shell; a tool is every other tool call. The activity chips count each kind. */
+export type ToolCategory = "command" | "tool";
 
 /** Shell commands that push code. */
 const pushCodePattern = /\bgit\s+push/i;
@@ -85,8 +86,8 @@ export const outwardActionCategories = [
 ] as const;
 
 export type OutwardActionCategory = (typeof outwardActionCategories)[number];
-export type OutwardActionLevel = "allow" | "ask" | "deny";
-export const outwardActionLevelValues: readonly OutwardActionLevel[] = ["allow", "ask", "deny"];
+export const outwardActionLevelValues = ["allow", "ask", "deny"] as const;
+export type OutwardActionLevel = (typeof outwardActionLevelValues)[number];
 export type OutwardActionLevels = Readonly<Record<OutwardActionCategory, OutwardActionLevel>>;
 
 /** The categories in plain words, for Settings, the approval dialog and the prompt. Change them with the rules above. */
@@ -184,6 +185,18 @@ export function outwardActionWordsByLevel(levels: OutwardActionLevels): Record<O
       .filter((category) => levels[category] === level)
       .map((category) => `${outwardActionWords[category].title}: ${outwardActionWords[category].covers}`);
   return { allow: lines("allow"), ask: [...lines("ask"), outwardLevelChangeWords], deny: lines("deny") };
+}
+
+/**
+ * What the model reads when a category is on Deny. It names the actions and bans the workaround:
+ * a model that cannot push may still try a second way to publish the same code.
+ */
+export function outwardDenyMessage(categories: readonly OutwardActionCategory[]): string {
+  const titles = categories.map((category) => outwardActionWords[category].title).join(", ");
+  return (
+    `The person set this action to Deny in Eva's settings: ${titles}. ` +
+    "Do not try another way to do the same thing. Tell the person that you did not do it."
+  );
 }
 
 /** Every category on Ask: the levels that a person gets with no choice made. */

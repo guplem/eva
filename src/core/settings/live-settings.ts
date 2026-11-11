@@ -54,6 +54,8 @@ const liveSettingKeys: readonly string[] = [
   "sync.pullIntervalMinutes",
   "widgets.checkIntervalMinutes",
   "trust.trustedRepositoryOwners",
+  // The next tool call reads the levels.
+  "outwardActions",
   // A new chat reads them at its first turn, and the web app with the status.
   "language",
   "units",

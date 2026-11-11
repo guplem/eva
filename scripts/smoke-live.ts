@@ -13,6 +13,7 @@ import { ClaudeCodeEngine } from "../src/engines/claude-code/claude-code-adapter
 import { baseEnvironmentAllowlist, buildChildEnvironment } from "../src/shared/environment.ts";
 import type { TurnHistory, TurnRequest } from "../src/shared/engine-port.ts";
 import type { EngineEventPayload } from "../src/shared/events.ts";
+import { defaultOutwardActionLevels } from "../src/shared/outward-actions.ts";
 
 const token = process.env["CLAUDE_CODE_OAUTH_TOKEN"];
 if (token === undefined || token.length < 20) {
@@ -53,6 +54,7 @@ async function turn(prompt: string, history: TurnHistory): Promise<EngineEventPa
     fileWall: null,
     environment,
     requestApproval: () => Promise.resolve("deny"),
+    outwardActionLevels: () => defaultOutwardActionLevels,
     askQuestions: () => Promise.resolve("declined"),
     signal: AbortSignal.timeout(180_000),
   };

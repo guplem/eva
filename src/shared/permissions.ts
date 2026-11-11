@@ -3,6 +3,7 @@
  * words next to the code that enforces them, so the page and the behavior change together.
  * The core adds the engine name to each description.
  */
+import type { OutwardActionLevels } from "./outward-actions.ts";
 
 /** The kinds of chat whose rules differ. A model call has no tools, so it is not one. */
 export type PermissionChat = "assistant" | "trusted-project" | "untrusted-project";
@@ -45,4 +46,6 @@ export interface PermissionContext {
   readonly vaultFolder: string | null;
   /** The environment of the engine's own runs, such as its config folder. It holds no secret. */
   readonly environment: Readonly<Record<string, string>>;
+  /** The live level of each outward action, which the words of an Assistant chat list. */
+  readonly outwardActionLevels: OutwardActionLevels;
 }

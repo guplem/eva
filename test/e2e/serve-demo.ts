@@ -139,6 +139,97 @@ sandbox.write(
   `${widgetProject}/AGENTS.md`,
   `---\ncreated: 2026-01-01T09:00\nstatus: active\nin-use: true\nrepos:\n  - https://github.com/example-owner/habits-widget\nrepo_types:\n  https://github.com/example-owner/habits-widget: widget\n---\n# Habits widget\n\nThe habits of the home page.\n`,
 );
+// The entities of the Life pages (#911). A date of 2099 stays in the future, and a date of 2025
+// has passed, so the open, waiting and overdue cases keep their state on any day of a run.
+const lifeSamples: Readonly<Record<string, string>> = {
+  "Life/Cases/2026-05-15-phone-repair/Case.md": [
+    "---",
+    "opened: 2026-05-15",
+    "closed:",
+    "steps:",
+    "  - { step: Back up the phone, done-on: 2026-05-15 }",
+    "  - { step: Take the phone to the repair shop, due-by: 2099-06-01 }",
+    "  - { step: Collect the phone and the invoice }",
+    "deadline:",
+    "summary: The screen of the phone broke. The backup is done.",
+    "---",
+    "# Phone repair",
+    "",
+    "- 2026-05-15: The screen broke. Backed up the phone.",
+    "",
+  ].join("\n"),
+  "Life/Cases/2026-05-15-phone-repair/Repair quote.md": "# Repair quote\n\nA new screen costs 120 euros.\n",
+  "Life/Cases/2026-09-01-bumper-claim/Case.md": [
+    "---",
+    "opened: 2026-09-01",
+    "closed:",
+    "steps:",
+    "  - { step: Send the photos to the insurer, done-on: 2026-09-02 }",
+    "  - { step: Get the insurer's answer, waiting-for: Example Insurance, due-by: 2099-01-15 }",
+    '  - { step: "Take the car to the garage, and ask for the invoice" }',
+    "deadline: { date: 2099-02-01, cost: The right to claim expires }",
+    "aliases: [the bumper claim]",
+    "summary: Claim for a broken bumper. The insurer has the photos.",
+    "---",
+    "# Bumper claim",
+    "",
+    "The case is about Life/Objects/Car - Example Model - 1234ABC.",
+    "",
+    "- 2026-09-02: Sent the photos to Example Insurance.",
+    "",
+  ].join("\n"),
+  "Life/Cases/2025-11-03-gym-refund/Case.md": [
+    "---",
+    "opened: 2025-11-03",
+    "closed:",
+    "steps:",
+    "  - { step: Ask the gym for the refund, done-on: 2025-11-03 }",
+    "  - { step: Call the gym again, due-by: 2025-12-01 }",
+    "summary: Refund of a month of the gym that was closed.",
+    "---",
+    "# Gym refund",
+    "",
+    "- 2025-11-03: Sent the request by email.",
+    "",
+  ].join("\n"),
+  "Life/Cases/2025-02-10-flat-move/Case.md": [
+    "---",
+    "opened: 2025-02-10",
+    "closed: 2025-04-30",
+    "steps:",
+    "  - { step: Book the van, done-on: 2025-03-01 }",
+    "  - { step: Move the boxes, done-on: 2025-04-12 }",
+    "summary: Moved to the new flat on 2025-04-12.",
+    "---",
+    "# Flat move",
+    "",
+    "- 2025-04-12: Moved with the help of Life/People/Sam Example.",
+    "",
+  ].join("\n"),
+  "Life/People/Alex Example/Person.md":
+    "---\nrelation: friend from university\naliases: [Al]\nsummary: Lives in the city. Vegetarian.\n---\n\nLikes board games.\n",
+  "Life/People/Sam Example/Person.md":
+    "---\nrelation: sister of Life/People/Alex Example\nsummary: Plays the piano.\n---\n\nAllergic to cats.\n",
+  "Life/People/Jordan Example/Person.md":
+    "---\nrelation: colleague at Example Corp\nsummary: Works on the example app.\n---\n\nPrefers short meetings.\n",
+  "Life/Objects/Car - Example Model - 1234ABC/Object.md":
+    "---\nstatus: in-use\ntype: car\nowner:\nids: { plate: 1234ABC, vin: EXAMPLEVIN0000000 }\naliases: [the car]\nsummary: The family car. The insurance ends on 2099-03-01.\n---\n\nThe service is every 15000 km.\n",
+  "Life/Objects/Drill - Example Tools - 2022/Object.md":
+    "---\nstatus: lent\ntype: drill\nowner: Life/People/Sam Example\nsummary: Sam's drill, lent to Jordan Example.\n---\n\nIt needs a new battery.\n",
+  "Life/Objects/Phone - Example Phone 12 - 4321/Object.md":
+    "---\nstatus: sold\ntype: phone\nowner:\nids: { imei: '4321' }\nsummary: The old phone. Sold on 2026-03-01.\n---\n\nSold with its case.\n",
+  "Life/Pets/Luna/Pet.md":
+    '---\nspecies: dog\nbreed: Border collie\nbirth: 2020-08-01\ndeath:\nchip: "941000012345678"\nsummary: Border collie. Allergic to chicken.\n---\n\nEats twice a day.\n',
+  "Life/Pets/Milo/Pet.md":
+    "---\nspecies: cat\nbirth: 2008\ndeath: 2024-03-10\nsummary: A calm cat.\n---\n\nLiked the sun on the balcony.\n",
+  "Life/Periods/2024-09-01-example-corp-engineer/Period.md":
+    "---\ntype: job\nfrom: 2024-09-01\nto:\norg: Example Corp\nrole: Software engineer\nsummary: Software engineer at Example Corp, a company that makes example apps.\n---\n\nThe first job after the sabbatical.\n\n## Work and achievements\n\n- Built the example app.\n",
+  "Life/Periods/2019-09-01-example-university-study/Period.md":
+    "---\ntype: study\nfrom: 2019-09-01\nto: 2023-06-30\norg: Example University\nrole: Computer science student\nsummary: A degree in computer science.\n---\n\nFour years of study.\n",
+  "Life/Periods/2023-07-01-sabbatical/Period.md":
+    "---\ntype: sabbatical\nfrom: 2023-07-01\nto: 2024-08-31\nsummary: A year of travel.\n---\n\nA year to travel and rest.\n",
+};
+for (const [path, text] of Object.entries(lifeSamples)) sandbox.write(vault, path, text);
 sandbox.write(vault, ".gitignore", "Projects/*/repos/\n");
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");

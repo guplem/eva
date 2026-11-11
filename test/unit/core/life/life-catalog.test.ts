@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   discoverLifeEntities,
+  listHeadBytes,
   maxBodyBytes,
   readLifeEntity,
   redactLifeEntity,
@@ -129,23 +130,77 @@ describe("discoverLifeEntities", () => {
     expect(entities[4]).toMatchObject({ summary: null, aliases: ["one"] });
   });
 
-  test("a folder with no main file, a linked folder, a dot folder and a linked main file are left out", () => {
+  test("a folder with no main file, a linked folder and a dot folder are left out", () => {
     write("Life/Cases/2026-01-01-empty/notes.md", "# Notes\n");
-    write("Life/Cases/.hidden/Case.md", "---\n---\n");
+    write("Life/Cases/.hidden/Case.md", "---\nsummary: Hidden.\n---\n");
     const outside = mkdtempSync(join(tmpdir(), "eva-life-outside-"));
     try {
       mkdirSync(join(outside, "case"), { recursive: true });
       writeFileSync(join(outside, "case", "Case.md"), "---\nsummary: Outside.\n---\n");
+      // A junction needs no rights on Windows, so this check runs on every system.
       symlinkSync(join(outside, "case"), join(vault, "Life/Cases/2026-01-02-linked"), "junction");
-      mkdirSync(join(vault, "Life/Cases/2026-01-03-linked-file"));
-      symlinkSync(join(outside, "case", "Case.md"), join(vault, "Life/Cases/2026-01-03-linked-file/Case.md"));
       expect(discoverLifeEntities(vault, "cases")).toEqual([]);
-    } catch (error) {
-      // Windows without developer mode refuses a file link: the folder link alone was checked.
-      if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  test("a linked main file is left out", () => {
+    const outside = mkdtempSync(join(tmpdir(), "eva-life-outside-"));
+    try {
+      writeFileSync(join(outside, "Case.md"), "---\nsummary: Outside.\n---\n");
+      mkdirSync(join(vault, "Life/Cases/2026-01-03-linked-file"), { recursive: true });
+      try {
+        symlinkSync(join(outside, "Case.md"), join(vault, "Life/Cases/2026-01-03-linked-file/Case.md"));
+      } catch (error) {
+        // Windows without developer mode refuses a file link, so there is nothing to check.
+        if ((error as NodeJS.ErrnoException).code === "EPERM") return;
+        throw error;
+      }
+      expect(discoverLifeEntities(vault, "cases")).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("an empty front matter gives no warning, and the text starts at the heading", () => {
+    write("Life/Pets/Luna/Pet.md", "---\n---\n# Luna\n\nA dog.\n");
+    write("Life/Pets/Milo/Pet.md", "---\r\n---\r\n# Milo\r\n");
+    expect(discoverLifeEntities(vault, "pets").map((pet) => [pet.title, pet.fields, pet.warnings])).toEqual([
+      ["Luna", {}, []],
+      ["Milo", {}, []],
+    ]);
+    expect(readLifeEntity(vault, "pets", "Luna")?.body).toBe("# Luna\n\nA dog.\n");
+  });
+
+  test("a collection key parses with no warning on the process", () => {
+    const emitted = spyOn(process, "emitWarning");
+    try {
+      write("Life/Pets/Luna/Pet.md", "---\n? [a, b]\n: c\nspecies: dog\n---\n");
+      expect(discoverLifeEntities(vault, "pets")[0]?.fields).toMatchObject({ species: "dog" });
+      expect(emitted).not.toHaveBeenCalled();
+    } finally {
+      emitted.mockRestore();
+    }
+  });
+
+  test("the list reads only the head of each main file", () => {
+    const text = `---\nspecies: dog\n---\n${"word ".repeat(listHeadBytes / 4)}\n# Luna\n`;
+    write("Life/Pets/Luna/Pet.md", text);
+    // The heading lies past the head, so the card falls back to the folder name, with no warning.
+    expect(discoverLifeEntities(vault, "pets")[0]).toMatchObject({
+      title: "Luna",
+      fields: { species: "dog" },
+      warnings: [],
+    });
+    write("Life/Pets/Luna/Pet.md", text.replace("# Luna", "# Luna the dog"));
+    expect(discoverLifeEntities(vault, "pets")[0]?.title).toBe("Luna");
+    expect(readLifeEntity(vault, "pets", "Luna")?.title).toBe("Luna the dog");
+  });
+
+  test("a front matter longer than the head still gives its keys", () => {
+    write("Life/Pets/Luna/Pet.md", `---\nspecies: dog\nnotes: ${"a".repeat(listHeadBytes * 2)}\n---\n# Luna\n`);
+    expect(discoverLifeEntities(vault, "pets")[0]).toMatchObject({ fields: { species: "dog" }, warnings: [] });
   });
 
   test("a linked Life folder is not read", () => {
@@ -230,5 +285,13 @@ describe("redactLifeEntity", () => {
     expect(JSON.stringify(redacted)).not.toContain("SECRET");
     expect(redacted).toMatchObject({ title: "[redacted] title", fields: { steps: [{ step: "send [redacted]" }] } });
     expect(redacted.body).toContain("Body [redacted].");
+  });
+
+  test("redacts a key of a nested map", () => {
+    write("Life/Objects/Car - Example Model - 1234ABC/Object.md", "---\nids: { SECRET: 1234ABC }\n---\n");
+    const [entity] = discoverLifeEntities(vault, "objects");
+    if (entity === undefined) throw new Error("The object is missing.");
+    const redacted = redactLifeEntity(entity, (text) => text.replaceAll("SECRET", "[redacted]"));
+    expect(redacted.fields).toEqual({ ids: { "[redacted]": "1234ABC" } });
   });
 });

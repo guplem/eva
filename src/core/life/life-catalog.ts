@@ -7,7 +7,14 @@ import { lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { lifeKindPlaces, type LifeKind } from "../../shared/life-kinds.ts";
-import { childFolders, entriesOf, hasControlCharacter, isRealFolder, readBounded } from "../files/bounded-reading.ts";
+import {
+  childFolders,
+  entriesOf,
+  hasControlCharacter,
+  isRealFolder,
+  readBounded,
+  type BoundedText,
+} from "../files/bounded-reading.ts";
 import { secretMatcherOf, type SecretPaths } from "../files/secret-paths.ts";
 import { frontMatterPattern, oneLineSummary, titleHeading } from "../projects/project-catalog.ts";
 
@@ -44,12 +51,24 @@ export interface LifeEntityDetail extends LifeEntity {
 
 /**
  * The most that Eva reads of one main file, front matter and text together. A main file holds
- * keys and short dated lines, and its evidence sits beside it, so a larger file is rare. The list
- * reads every main file of a kind, so the limit also bounds the list.
+ * keys and short dated lines, and its evidence sits beside it, so a larger file is rare.
  */
 export const maxBodyBytes = 64 * 1024;
-/** The list blocks the core while it reads, so a huge folder shows only its first entities by id. */
-const maxEntities = 2_000;
+/**
+ * What the list reads of each main file: enough for the front matter and the title heading of a
+ * card. The list grows a read up to `maxBodyBytes` only while the front matter is not closed.
+ */
+export const listHeadBytes = 8 * 1024;
+/**
+ * The list blocks the core while it reads, so a huge folder shows only its first entities by id.
+ * The heads take at most 1,000 x 8 KiB = 8 MB.
+ */
+const maxEntities = 1_000;
+/**
+ * The bytes that the longer reads of one list may add to the heads. After it, a front matter that
+ * a head cuts gives a warning. So one list reads at most 8 MB + 8 MB = 16 MB.
+ */
+const maxGrowthBytes = 8 * 1024 * 1024;
 /** The page lists the files beside a main file. A folder of thousands of photos shows the first ones. */
 const maxFiles = 500;
 
@@ -61,11 +80,12 @@ export function discoverLifeEntities(vaultPath: string, kind: LifeKind): LifeEnt
   // A linked `Life/` could point out of the vault (lesson 72).
   if (!isRealFolder(root, folder)) return [];
   const secrets = secretMatcherOf(root);
+  const budget = { growth: maxGrowthBytes };
   return childFolders(join(root, folder))
     .sort(byId)
     .slice(0, maxEntities)
     .flatMap((id) => {
-      const read = readEntity(root, kind, id, secrets);
+      const read = readEntity(root, kind, id, secrets, budget);
       return read === null ? [] : [read.entity];
     });
 }
@@ -135,11 +155,34 @@ function isFolderName(id: string): boolean {
 /** The front matter keys that every note can have. The other keys go to `fields`. */
 const commonKeys: ReadonlySet<string> = new Set(["summary", "aliases", "tags"]);
 
+/** A front matter with no key: `frontMatterPattern` needs a line between the two `---` lines. */
+const emptyFrontMatterPattern = /^---\r?\n---(?:\r?\n|$)/;
+
+function frontMatterOf(text: string): RegExpExecArray | null {
+  return frontMatterPattern.exec(text) ?? emptyFrontMatterPattern.exec(text);
+}
+
+/**
+ * The text of a main file. With `budget`, for the list, Eva reads only a head, and grows it while
+ * the budget lasts when the head cuts the front matter. Without it, she reads up to the full limit.
+ */
+function readMainFile(absolutePath: string, budget: { growth: number } | null): BoundedText | null {
+  if (budget === null) return readBounded(absolutePath, maxBodyBytes);
+  const head = readBounded(absolutePath, listHeadBytes);
+  if (head === null || !head.cut || budget.growth <= 0) return head;
+  const text = head.text.replace(/^\uFEFF/, "");
+  if (!/^---\r?\n/.test(text) || frontMatterOf(text) !== null) return head;
+  const longer = readBounded(absolutePath, maxBodyBytes);
+  if (longer !== null) budget.growth -= longer.bytes;
+  return longer;
+}
+
 function readEntity(
   root: string,
   kind: LifeKind,
   id: string,
   secrets: SecretPaths,
+  budget: { growth: number } | null = null,
 ): { readonly entity: LifeEntity; readonly body: string } | null {
   const folder = `${lifeKindPlaces[kind].folder}/${id}`;
   const path = `${folder}/${lifeKindPlaces[kind].mainFile}`;
@@ -152,23 +195,25 @@ function readEntity(
     return null;
   }
   // Null for an encrypted or binary file: it holds nothing to show.
-  const read = readBounded(absolutePath, maxBodyBytes);
+  const read = readMainFile(absolutePath, budget);
   if (read === null) return null;
   const warnings: string[] = [];
   const text = read.text.replace(/^\uFEFF/, "");
-  const match = frontMatterPattern.exec(text);
+  const match = frontMatterOf(text);
   let body = text;
   let keys: Record<string, unknown> = {};
   if (match === null) {
     warnings.push(
-      read.cut && text.startsWith("---")
-        ? `The front matter is longer than ${String(maxBodyBytes / 1024)} KB, so Eva did not read it.`
+      read.cut && /^---\r?\n/.test(text)
+        ? `The front matter is longer than ${String(read.bytes / 1024)} KB, so Eva did not read it.`
         : "The file has no front matter.",
     );
   } else {
     body = text.slice(match[0].length);
     keys = parseKeys(match[1] ?? "", warnings);
-    if (read.cut) warnings.push(`The file is longer than ${String(maxBodyBytes / 1024)} KB. The page shows its start.`);
+    // The list reads a head on purpose: only the full read warns that it cut the text.
+    if (read.cut && budget === null)
+      warnings.push(`The file is longer than ${String(maxBodyBytes / 1024)} KB. The page shows its start.`);
   }
   const fields = Object.fromEntries(Object.entries(keys).filter(([key]) => !commonKeys.has(key)));
   return {
@@ -191,7 +236,8 @@ function readEntity(
 function parseKeys(yaml: string, warnings: string[]): Record<string, unknown> {
   try {
     // The failsafe schema keeps each value as text, so a date or a chip number stays as written.
-    const parsed: unknown = parseYaml(yaml, { schema: "failsafe" });
+    // A key such as `? [a, b]` makes a warning that would go to the output, past the logger.
+    const parsed: unknown = parseYaml(yaml, { schema: "failsafe", logLevel: "error" });
     if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed))
       return parsed as Record<string, unknown>;
     // An empty front matter parses to null: it has no keys, and nothing is wrong.

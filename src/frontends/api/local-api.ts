@@ -133,7 +133,8 @@ const unsentTextKeySchema = z.string().regex(/^[\w-]{1,128}$/);
 const archiveSchema = z.object({ archived: z.boolean() });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 /** The core checks that the answers fit the questions. The bounds keep a wild request small. */
-const approvalAnswerSchema = approvalSchema.extend({
+const approvalAnswerSchema = z.object({
+  answer: z.enum(["allow", "deny", "always"]),
   answers: z
     .array(
       z.object({
@@ -1281,9 +1282,15 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer, answers } = approvalAnswerSchema.parse(await request.json());
+    const requestId = decodeURIComponent(parts[2]);
+    if (answer === "always") {
+      if (answers !== undefined) throw new EvaError("approval_invalid", "Do not ask again takes no answers.");
+      eva.allowApprovalAlways(requestId);
+      return new Response(null, { status: 204 });
+    }
     // zod gives an absent text as undefined, and the core type has no undefined value.
     const fitted = answers?.map(({ selected, other }) => (other === undefined ? { selected } : { selected, other }));
-    eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer, fitted);
+    eva.sessions.answerApproval(requestId, answer, fitted);
     return new Response(null, { status: 204 });
   }
   return json({ error: "Not found." }, 404);

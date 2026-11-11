@@ -2296,6 +2296,22 @@ export class Eva {
     return this.settings.update(patch);
   }
 
+  /**
+   * The "Do not ask again" answer: sets each category of the request to Allow, then allows the
+   * request. The save comes first, so a failed save leaves the question open. A request that
+   * is gone is ignored, as any late answer is.
+   */
+  allowApprovalAlways(requestId: string): void {
+    const pending = this.sessions.pendingApprovals().find((approval) => approval.requestId === requestId);
+    if (pending === undefined) return;
+    const categories = pending.categories ?? [];
+    if (categories.length === 0) {
+      throw new EvaError("approval_invalid", "This approval has no action to allow for good.");
+    }
+    this.updateSettings({ outwardActions: Object.fromEntries(categories.map((category) => [category, "allow"])) });
+    this.sessions.answerApproval(requestId, "allow");
+  }
+
   /** Whose repositories Eva trusts, and the person's saved answers, for Settings. */
   trust(): TrustOverview {
     return {

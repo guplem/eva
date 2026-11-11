@@ -1277,6 +1277,49 @@ describe("routes", () => {
     expect(await json<unknown[]>(await call("/api/approvals"))).toEqual([]);
   });
 
+  test("the answer always allows the request and sets its categories to allow", async () => {
+    const outcomes: string[] = [];
+    turnScript = async function* (request) {
+      outcomes.push(
+        await request.requestApproval({
+          requestId: "",
+          toolName: "Bash",
+          summary: "git push",
+          categories: ["pushCode"],
+        }),
+      );
+      outcomes.push(await request.requestApproval({ requestId: "", toolName: "Bash", summary: "ls" }));
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    const next = async (): Promise<string> => {
+      let listed = await json<{ requestId: string }[]>(await call("/api/approvals"));
+      while (listed.length === 0) {
+        await Bun.sleep(10);
+        listed = await json<{ requestId: string }[]>(await call("/api/approvals"));
+      }
+      return listed[0]?.requestId ?? "";
+    };
+    const first = await next();
+    const both = await call(`/api/approvals/${first}`, { method: "POST", body: { answer: "always", answers: [] } });
+    expect(both.status).toBe(400);
+    expect((await call(`/api/approvals/${first}`, { method: "POST", body: { answer: "always" } })).status).toBe(204);
+    expect(eva.publicSettings().config.outwardActions.pushCode).toBe("allow");
+    expect(eva.publicSettings().config.outwardActions.github).toBe("ask");
+    // A request with no category refuses the answer and stays open.
+    const second = await next();
+    const refused = await call(`/api/approvals/${second}`, { method: "POST", body: { answer: "always" } });
+    expect(refused.status).toBe(400);
+    expect(await json<{ code: string }>(refused)).toMatchObject({ code: "approval_invalid" });
+    eva.sessions.answerApproval(second, "deny");
+    await turn;
+    expect(outcomes).toEqual(["allow", "deny"]);
+    expect((await call("/api/approvals/gone", { method: "POST", body: { answer: "always" } })).status).toBe(204);
+  });
+
   test("the answers to the model's questions reach the turn, and a bad answer is refused", async () => {
     const outcomes: unknown[] = [];
     turnScript = async function* (request) {

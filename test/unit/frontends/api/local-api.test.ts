@@ -1001,6 +1001,8 @@ describe("routes", () => {
       ["prompt", "Your pinned files"],
       // The format settings follow the pinned files (#770).
       ["prompt", "Your format settings"],
+      // The default levels ask for every outward action, so their block is a part too (#914).
+      ["prompt", "Your action levels"],
       ["message", "Before each message"],
     ]);
     expect((await call("/api/sessions/unknown/context")).status).toBe(404);

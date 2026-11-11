@@ -854,6 +854,8 @@ export class Eva {
               { ...this.settings.config, timeZone: effectiveTimeZone(this.settings.config.timeZone) },
               vaultPath,
             ),
+          // From memory, as the format block: a change reaches the next new chat, and a denied call tells the model at once.
+          outwardActionLevels: () => this.settings.config.outwardActions,
           projects: () => this.projects(),
           // Read at each call: the widgets exist only after the session manager.
           widgetLines: () => this.widgets?.formats.promptLines() ?? [],

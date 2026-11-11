@@ -61,6 +61,14 @@ function programSends(command: string, program: { start: RegExp; flag: RegExp })
   return false;
 }
 const outwardMcpPattern = /^mcp__.*(send|share|invite|post|reply|forward|permission|access|comment|reaction)/i;
+/**
+ * A tool whose own name starts with a read verb only reads, such as `get_drive_file_permissions`
+ * (issue #910). The server's name is not part of it. The rest of the name must not hold a word
+ * that sends or shares, a change verb, or a joining word: `get_and_share` does two things.
+ * A noun such as `comments` or `shared` is fine.
+ */
+const readOnlyMcpPattern =
+  /^mcp__.+__(?:get|list|read|check|search|fetch|find|view|query)[_-](?!(?:.*[_-])?(?:send|share|invite|post|reply|forward|and|or|then|set|manage|update|create|add|remove|delete|grant|revoke|modify|change|publish|enable|disable|transfer|make|upload|move|copy|trash|write|insert|append|assign|schedule|submit|approve|toggle|run|execute|react)s?(?:[_-]|$))/i;
 /** A calendar event reaches other people only when it has guests or sends updates. */
 const calendarEventToolPattern = /^mcp__.*manage_event$/;
 /** Claude Code's file tools take `file_path`; pi's `write` and `edit` take `path`. */
@@ -105,7 +113,7 @@ function reachesOtherPeople(toolName: string, input: Readonly<Record<string, unk
   return (
     (isShellTool(toolName) &&
       (outwardCommandPattern.test(command) || programSends(command, curlSends) || programSends(command, ghApiSends))) ||
-    outwardMcpPattern.test(toolName) ||
+    (outwardMcpPattern.test(toolName) && !readOnlyMcpPattern.test(toolName)) ||
     (calendarEventToolPattern.test(toolName) && eventReachesOthers(input))
   );
 }

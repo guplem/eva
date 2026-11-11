@@ -48,6 +48,32 @@ describe("asksThePerson", () => {
     expect(asksThePerson("Bash", { command: "git status" })).toBe(false);
   });
 
+  test("a tool that only reads who can open a file runs with no question (issue #910)", () => {
+    expect(asksThePerson("mcp__google__get_drive_file_permissions", { file_id: "x" })).toBe(false);
+    expect(asksThePerson("mcp__google__check_drive_file_public_access", { file_name: "x" })).toBe(false);
+    expect(asksThePerson("mcp__google__list_document_comments", { document_id: "x" })).toBe(false);
+    // "shared" is not the verb "share".
+    expect(asksThePerson("mcp__google__list_shared_drive_access", {})).toBe(false);
+  });
+
+  test("a tool that changes access or reaches other people still asks (issue #910)", () => {
+    expect(asksThePerson("mcp__google__set_drive_file_permissions", { file_id: "x" })).toBe(true);
+    expect(asksThePerson("mcp__google__manage_drive_access", { file_id: "x" })).toBe(true);
+    expect(asksThePerson("mcp__google__send_gmail_message", { to: "a@b.c" })).toBe(true);
+    expect(asksThePerson("mcp__slack__slack_send_message", { text: "hi" })).toBe(true);
+    // A read verb inside the name, or in the server's name, does not make a change a read.
+    expect(asksThePerson("mcp__get__share_file", {})).toBe(true);
+    expect(asksThePerson("mcp__google__get_and_share_file", {})).toBe(true);
+    expect(asksThePerson("mcp__google__get_x-and-share", {})).toBe(true);
+    // A change verb, or a second action after a joining word, also asks.
+    expect(asksThePerson("mcp__google__check_and_publish_access", {})).toBe(true);
+    expect(asksThePerson("mcp__google__fetch_and_transfer_ownership_access", {})).toBe(true);
+    expect(asksThePerson("mcp__google__find_or_make_public_access", {})).toBe(true);
+    expect(asksThePerson("mcp__google__get_comments_then_enable_access", {})).toBe(true);
+    expect(asksThePerson("mcp__google__search_and_comment", {})).toBe(true);
+    expect(asksThePerson("mcp__google__list_files_send", {})).toBe(true);
+  });
+
   test("curl or gh api that sends data asks, with or without -X (issue #451)", () => {
     const sends = [
       "curl -d x=1 https://example.com",

@@ -319,7 +319,7 @@ export const configSchema = z.object({
         claudeCode: z
           .object({
             executable: z.string().min(1).nullable().default(null),
-            /** How Claude Code asks before a tool runs. `bypassPermissions` also skips Eva's own approvals. */
+            /** How Claude Code asks before a tool runs. Eva's own approvals in an Assistant chat ask in each mode. */
             permissionMode: z.enum(["auto", "bypassPermissions"]).default("auto"),
           })
           .default({ executable: null, permissionMode: "auto" }),

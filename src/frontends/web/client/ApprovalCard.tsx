@@ -7,6 +7,7 @@ import { useLayoutEffect, useState, type ReactElement } from "react";
 import type { ApprovalQuestion, QuestionAnswers } from "../../../shared/events.ts";
 import type { OutwardActionCategory } from "../../../shared/outward-actions.ts";
 import type { PendingApproval } from "./api.ts";
+import { goTo } from "./back-layers.ts";
 import { Dialog } from "./Dialog.tsx";
 import { settingsHash } from "./settings-routes.ts";
 import { pickOption } from "../../../shared/questions.ts";
@@ -138,10 +139,9 @@ function PermissionBody({
           categories={categories}
           answering={answering}
           onClose={() => setConfirming(false)}
-          onConfirm={() => {
-            setConfirming(false);
-            answer("always");
-          }}
+          // The dialog stays while the answer travels. It goes with the card when the answer
+          // succeeds, and stays for a new press or Cancel when it fails.
+          onConfirm={() => answer("always")}
         />
       )}
     </>
@@ -161,21 +161,32 @@ function AlwaysDialog({
   readonly onConfirm: () => void;
 }): ReactElement {
   const words = alwaysAllowWords(categories);
+  const settingsAddress = settingsHash({ section: "engines", item: "outward-actions" });
   return (
-    <Dialog label="Do not ask again" closeLabel="Cancel" onClose={onClose}>
+    <Dialog label="Do not ask again" closeLabel="Cancel" onClose={onClose} closeDisabled={answering}>
       <h2>Do not ask again?</h2>
       <p>
         {words.lead} {words.tail}{" "}
-        <a href={settingsHash({ section: "engines", item: "outward-actions" })} onClick={onClose}>
+        <a
+          href={settingsAddress}
+          onClick={(event) => {
+            // The dialog owns a history layer, and closing it steps the history back. The move
+            // goes through the app's own routing, which waits for that step.
+            event.preventDefault();
+            onClose();
+            goTo(settingsAddress);
+          }}
+        >
           Settings
         </a>
         .
       </p>
       <div className="button-row">
-        <button className="primary" disabled={answering} onClick={onConfirm}>
-          Do not ask again
+        <button className="primary" disabled={answering} aria-busy={answering} onClick={onConfirm}>
+          {answering && <ButtonSpinner />} Do not ask again
         </button>
       </div>
+      {answering && <ProgressBar label="Eva saves the level." />}
     </Dialog>
   );
 }

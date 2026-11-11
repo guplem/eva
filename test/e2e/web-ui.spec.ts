@@ -1382,6 +1382,23 @@ test("Do not ask again asks first, names the action and links to Settings (#914)
   await expect(card).toHaveCount(0);
 });
 
+test("the Settings link of the Do not ask again dialog opens the card and keeps the request (#914)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("please approve this");
+  await composer.press("Enter");
+  const card = page.getByRole("region", { name: "Eva asks for permission" });
+  await card.getByRole("button", { name: "Do not ask again" }).click();
+  const dialog = page.getByRole("dialog", { name: "Do not ask again" });
+  await dialog.getByRole("link", { name: "Settings" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/settings\/engines\/outward-actions$/);
+  await expect(page.getByRole("heading", { name: "Actions that reach other people" })).toBeVisible();
+});
+
 test("the model's questions show as a form in the chat, and Send answers gives the picks to the turn (#544)", async ({
   page,
 }) => {

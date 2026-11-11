@@ -222,6 +222,11 @@ const lifeSamples: Readonly<Record<string, string>> = {
     '---\nspecies: dog\nbreed: Border collie\nbirth: 2020-08-01\ndeath:\nchip: "941000012345678"\nsummary: Border collie. Allergic to chicken.\n---\n\nEats twice a day.\n',
   "Life/Pets/Milo/Pet.md":
     "---\nspecies: cat\nbirth: 2008\ndeath: 2024-03-10\nsummary: A calm cat.\n---\n\nLiked the sun on the balcony.\n",
+  // A main file with broken front matter: the page shows it with a warning, and the other pets too.
+  "Life/Pets/Pebble/Pet.md": "---\nspecies: [goldfish\n---\n\nSwims in slow circles.\n",
+  // A long name with no break point, for the narrow phone check.
+  "Life/People/Wolfeschlegelsteinhausenbergerdorff Example/Person.md":
+    "---\nrelation: neighbour\nsummary: Waters the plants in August.\n---\n",
   "Life/Periods/2024-09-01-example-corp-engineer/Period.md":
     "---\ntype: job\nfrom: 2024-09-01\nto:\norg: Example Corp\nrole: Software engineer\nsummary: Software engineer at Example Corp, a company that makes example apps.\n---\n\nThe first job after the sabbatical.\n\n## Work and achievements\n\n- Built the example app.\n",
   "Life/Periods/2019-09-01-example-university-study/Period.md":

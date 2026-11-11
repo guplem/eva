@@ -3695,7 +3695,7 @@ test("the AI engines page lists what Eva may do, with the person's own rules apa
   await card.getByText("Claude Code, Auto mode").click();
   const assistant = card.getByRole("region", { name: "Assistant chats", exact: true });
   await expect(assistant).toContainText("Asks you first");
-  await expect(assistant).toContainText("Push commits with git push");
+  await expect(assistant).toContainText("Push code: git push");
   await expect(card.getByRole("heading", { name: "Your own rules" })).toBeVisible();
   await expect(card.locator("code", { hasText: "Bash(npm test:*)" })).toBeVisible();
   await expect(card.locator("code", { hasText: "Read(./.env)" })).toBeVisible();

@@ -5,7 +5,7 @@
  * restart (lesson 89). This file also holds `eva supervise`, and how Eva starts again after an update.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { hardExitGraceMs, shutdownDeadlineMs } from "../../core/instance/shutdown.ts";
@@ -15,7 +15,7 @@ import {
   type Supervisor,
   type SupervisorPhase,
 } from "../../core/instance/supervisor.ts";
-import { createHomeFolders, instanceNameOf, type HomePaths } from "../../core/settings/home.ts";
+import { createHomeFolders, instanceNameOf, loadConfig, type HomePaths } from "../../core/settings/home.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment } from "../../shared/environment.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
 import type { LineProcessStarter } from "../../shared/line-process.ts";
@@ -247,6 +247,8 @@ export interface SuperviseStarters {
 
 /** How long the tray icon waits for Eva's status before it reads her as not answering. */
 const trayStatusWaitMs = 4_000;
+/** How long File Explorer may take to show the vault folder. */
+const explorerTimeoutMs = 30_000;
 
 /**
  * `eva supervise`: runs Eva as a child, and starts her again after a crash or an update.
@@ -280,7 +282,8 @@ export async function supervise(host: CliHost, paths: HomePaths, starters: Super
         tray?.setPhase({ kind: "starting" });
         state.supervisor.restart();
       }
-    } else openFromTray(host, paths, log);
+    } else if (choice === "vault") openVaultFromTray(host, paths, log);
+    else openFromTray(host, paths, log);
   };
   const tray =
     host.platform === "win32" ? startWindowsTray(host, paths, starters.startLineProcess, log, onChoice) : null;
@@ -394,6 +397,29 @@ function openFromTray(host: CliHost, paths: HomePaths, log: (message: string) =>
     if (client !== null) await openLoggedIn(host, client, null);
   })().catch((error: unknown) => {
     log(`Eva's page did not open: ${error instanceof Error ? error.message : String(error)}`);
+  });
+}
+
+/**
+ * Open vault in the tray menu: the vault folder in File Explorer. It reads the machine config, not
+ * Eva, so it works also while she is stopped.
+ */
+function openVaultFromTray(host: CliHost, paths: HomePaths, log: (message: string) => void): void {
+  // Async, so a broken settings file becomes a log line, not a crash of the supervisor.
+  void (async () => {
+    const vaultPath = loadConfig(paths).vaultPath;
+    if (vaultPath === null || !existsSync(vaultPath)) {
+      log("Eva has no vault folder to open.");
+      return;
+    }
+    // File Explorer answers 1 also when it opens the folder, so the exit code tells nothing.
+    await host.runner.run(["explorer.exe", vaultPath], {
+      cwd: host.userHome,
+      environment: buildChildEnvironment(host.environment, baseEnvironmentAllowlist),
+      timeoutMs: explorerTimeoutMs,
+    });
+  })().catch((error: unknown) => {
+    log(`The vault folder did not open: ${error instanceof Error ? error.message : String(error)}`);
   });
 }
 

@@ -1,8 +1,8 @@
 /**
  * Eva's icon in the Windows system tray (#457). The start at logon runs Eva with no window, so
- * this icon shows that she runs, with her face for her state, and a menu to open, restart or
- * quit her. A PowerShell script draws the icon and its menu. It is only a view: this file
- * decides what it shows, and what each menu choice does.
+ * this icon shows that she runs, with her face for her state, and a menu to open her page or her
+ * vault folder, or to restart or quit her. A PowerShell script draws the icon and its menu. It is
+ * only a view: this file decides what it shows, and what each menu choice does.
  */
 import type { EvaStatus } from "../../core/eva.ts";
 import type { LineProcess, LineProcessStarter } from "../../shared/line-process.ts";
@@ -119,7 +119,7 @@ export function trayCommand(systemRoot: string): string[] {
   ];
 }
 
-export type TrayChoice = "open" | "restart" | "quit";
+export type TrayChoice = "open" | "vault" | "restart" | "quit";
 
 export interface TrayOptions {
   readonly start: LineProcessStarter;
@@ -192,7 +192,7 @@ export function startTray(options: TrayOptions): Tray | null {
   const ended = (async () => {
     try {
       for await (const line of child.lines) {
-        if (line !== "open" && line !== "restart" && line !== "quit") continue;
+        if (line !== "open" && line !== "vault" && line !== "restart" && line !== "quit") continue;
         // One failed choice must not end the icon.
         try {
           options.onChoice(line);

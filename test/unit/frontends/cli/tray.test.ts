@@ -235,9 +235,9 @@ describe("startTray", () => {
     const fake = fakeTray();
     const { options, choices } = trayOptions(fake);
     const tray = startTray(options);
-    for (const line of ["open", "hello", "restart", "quit"]) fake.choose(line);
+    for (const line of ["open", "vault", "hello", "restart", "quit"]) fake.choose(line);
     await settle();
-    expect(choices).toEqual(["open", "restart", "quit"]);
+    expect(choices).toEqual(["open", "vault", "restart", "quit"]);
     await tray?.close();
     expect(fake.closed()).toBe(true);
   });

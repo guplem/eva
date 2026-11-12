@@ -824,7 +824,9 @@ describe("service install and supervise", () => {
       },
     });
     try {
-      saveConfig(paths, { ...loadSettings(paths).config, port: api.port ?? 0 });
+      const vault = join(root, "vault");
+      mkdirSync(vault);
+      saveConfig(paths, { ...loadSettings(paths).config, port: api.port ?? 0, vaultPath: vault });
       saveSecrets(paths, { localApiToken: "test-token" });
       writeFileSync(paths.lock, "999999");
       const host = fakeHost({
@@ -844,6 +846,9 @@ describe("service install and supervise", () => {
       tray.choose("open");
       await waitFor(() => host.commands.some((command) => command[0] === "rundll32.exe"));
       expect(host.commands.find((command) => command[0] === "rundll32.exe")?.[2]).toContain("/#login=s");
+      tray.choose("vault");
+      await waitFor(() => host.commands.some((command) => command[0] === "explorer.exe"));
+      expect(host.commands.find((command) => command[0] === "explorer.exe")).toEqual(["explorer.exe", vault]);
       tray.choose("restart");
       await waitFor(() => eva.starts() === 2);
       await waitFor(() => restarts.length === 1);
@@ -885,6 +890,9 @@ describe("service install and supervise", () => {
       startLineProcess: tray.start,
     });
     await waitFor(() => tray.faces().includes("asleep"));
+    tray.choose("vault");
+    await waitFor(() => printed(host).includes("Eva has no vault folder to open."));
+    expect(host.commands.some((command) => command[0] === "explorer.exe")).toBe(false);
     tray.choose("quit");
     expect(await done).toBe(exitCodes.clean);
     expect(tray.closed()).toBe(true);

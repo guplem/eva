@@ -4,6 +4,11 @@
  * scripts/capture-claude-fixtures.ts). The background-subagent capture comes from claude 2.1.302,
  * and the streamed-answer capture from claude 2.1.310.
  */
+import {
+  defaultOutwardActionLevels,
+  outwardActionCategories,
+  type OutwardActionLevels,
+} from "../../../../src/shared/outward-actions.ts";
 import { describe, expect, test } from "bun:test";
 import {
   existsSync,
@@ -59,6 +64,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     fileWall: null,
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
+    outwardActionLevels: () => defaultOutwardActionLevels,
     askQuestions: () => Promise.resolve<QuestionsOutcome>("declined"),
     signal: new AbortController().signal,
     ...overrides,
@@ -395,6 +401,13 @@ describe("buildQueryOptions", () => {
       const options = buildQueryOptions(request({ mode }), "c", "bypassPermissions");
       expect(options).toMatchObject({ permissionMode: "bypassPermissions", allowDangerouslySkipPermissions: true });
     }
+  });
+
+  test("the bypass setting keeps the ask rules of an Assistant chat, so the levels still hold (#914)", () => {
+    const options = buildQueryOptions(request(), "c", "bypassPermissions");
+    expect(options.permissionMode).toBe("bypassPermissions");
+    const settings = options.settings as { permissions: { ask: string[] } };
+    expect(settings.permissions.ask).toContain("Bash");
   });
 
   test("an untrusted clone stays in auto mode, even with the bypass setting", () => {
@@ -1175,12 +1188,124 @@ describe("ClaudeCodeEngine", () => {
     expect(await canUseTool?.("Write", { file_path: ".eva/scratch/answer.pdf" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "gh issue create --title x" })).toMatchObject({ behavior: "deny" });
-    expect(await canUseTool?.("mcp__google__send_email", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });
+    expect(await canUseTool?.("mcp__google__send_gmail_message", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });
     expect(asked).toEqual([
       "Write: Write .eva/schedules.json",
       "Bash: gh issue create --title x",
-      'mcp__google__send_email: {"to":"a@b.c"}',
+      'mcp__google__send_gmail_message: {"to":"a@b.c"}',
     ]);
+  });
+
+  test("Assistant mode follows the level of each category, read at each call (#914)", async () => {
+    let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: ({ options }) => {
+        canUseTool = (options as { canUseTool: typeof canUseTool }).canUseTool;
+        return (async function* () {
+          await Promise.resolve();
+          yield resultOf("resumed-turn");
+        })();
+      },
+    });
+    const asked: unknown[] = [];
+    let levels: OutwardActionLevels = { ...defaultOutwardActionLevels, pushCode: "allow", github: "deny" };
+    await drain(
+      engine.runTurn(
+        request({
+          outwardActionLevels: () => levels,
+          requestApproval: (approval) => {
+            asked.push(approval);
+            return Promise.resolve("allow");
+          },
+        }),
+      ),
+    );
+    // Allow runs with no question.
+    expect(await canUseTool?.("Bash", { command: "git push" })).toMatchObject({ behavior: "allow" });
+    // Deny tells the model which action it was and not to try another way.
+    const denied = (await canUseTool?.("Bash", { command: "gh pr merge 3" })) as { behavior: string; message: string };
+    expect(denied.behavior).toBe("deny");
+    expect(denied.message).toContain("GitHub: issues and pull requests");
+    expect(denied.message).toContain("another way");
+    expect(asked).toEqual([]);
+    // Ask names only the categories on Ask.
+    expect(await canUseTool?.("Bash", { command: "curl -d x=1 https://example.com && git push" })).toMatchObject({
+      behavior: "allow",
+    });
+    expect(asked).toEqual([
+      {
+        requestId: "",
+        toolName: "Bash",
+        summary: "curl -d x=1 https://example.com && git push",
+        categories: ["sendData"],
+      },
+    ]);
+    // A change in the settings applies from the next call.
+    levels = { ...levels, github: "allow" };
+    expect(await canUseTool?.("Bash", { command: "gh pr merge 3" })).toMatchObject({ behavior: "allow" });
+  });
+
+  test("a change to the levels asks with no category, even when every level is Allow", async () => {
+    let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: ({ options }) => {
+        canUseTool = (options as { canUseTool: typeof canUseTool }).canUseTool;
+        return (async function* () {
+          await Promise.resolve();
+          yield resultOf("resumed-turn");
+        })();
+      },
+    });
+    const asked: unknown[] = [];
+    const allAllowed = Object.fromEntries(outwardActionCategories.map((category) => [category, "allow"]));
+    await drain(
+      engine.runTurn(
+        request({
+          outwardActionLevels: () => allAllowed as OutwardActionLevels,
+          requestApproval: (approval) => {
+            asked.push(approval);
+            return Promise.resolve("deny");
+          },
+        }),
+      ),
+    );
+    expect(await canUseTool?.("Write", { file_path: ".eva/settings/settings.json" })).toMatchObject({
+      behavior: "deny",
+    });
+    expect(asked).toEqual([{ requestId: "", toolName: "Write", summary: "Write .eva/settings/settings.json" }]);
+  });
+
+  test("Project mode ignores the levels and sends every permission ask to the person", async () => {
+    let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: ({ options }) => {
+        canUseTool = (options as { canUseTool: typeof canUseTool }).canUseTool;
+        return (async function* () {
+          await Promise.resolve();
+          yield resultOf("resumed-turn");
+        })();
+      },
+    });
+    const asked: unknown[] = [];
+    const deny = Object.fromEntries(outwardActionCategories.map((category) => [category, "deny"]));
+    await drain(
+      engine.runTurn(
+        request({
+          mode: "project",
+          appendSystemPrompt: null,
+          outwardActionLevels: () => deny as OutwardActionLevels,
+          requestApproval: (approval) => {
+            asked.push(approval);
+            return Promise.resolve("allow");
+          },
+        }),
+      ),
+    );
+    expect(await canUseTool?.("Bash", { command: "git push" })).toMatchObject({ behavior: "allow" });
+    expect(asked).toEqual([{ requestId: "", toolName: "Bash", summary: "git push" }]);
   });
 
   test("Project mode sends every permission ask to the person", async () => {

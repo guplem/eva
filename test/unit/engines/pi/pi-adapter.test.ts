@@ -2,11 +2,16 @@
  * Contract tests for the pi adapter on records captured from pi 0.73.1 against a fake model
  * server (test/fixtures/pi/). A live run with a real login is issue #59.
  */
+import { defaultOutwardActionLevels } from "../../../../src/shared/outward-actions.ts";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { approvalExtensionSource, approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
+import {
+  approvalExtensionSource,
+  approvalReasonTitle,
+  approvalTitle,
+} from "../../../../src/engines/pi/pi-approval-extension.ts";
 import {
   backgroundResultsPreamble,
   backgroundStartedNote,
@@ -78,6 +83,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     fileWall: null,
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
+    outwardActionLevels: () => defaultOutwardActionLevels,
     askQuestions: () => Promise.resolve("declined"),
     signal: new AbortController().signal,
     ...overrides,
@@ -400,7 +406,14 @@ describe("PiEngine", () => {
     await drain(engine(fake).runTurn(request({ requestApproval: ask })));
     await drain(engine(fake).runTurn(request({ requestApproval: ask })));
     expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
-    expect(asked).toEqual([{ requestId: "", toolName: "mcp__google__manage_event", summary: JSON.stringify(invite) }]);
+    expect(asked).toEqual([
+      {
+        requestId: "",
+        toolName: "mcp__google__manage_event",
+        summary: JSON.stringify(invite),
+        categories: ["calendarInvitations"],
+      },
+    ]);
     expect(fake.runs[1]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
@@ -477,7 +490,9 @@ describe("PiEngine", () => {
       { records: withCommand(loadPiFixture("approval-denied"), "rm -rf ./scratch-dir", "git push origin main") },
     ]);
     await drain(engine(outward).runTurn(request({ requestApproval: ask })));
-    expect(asked).toEqual([{ requestId: "", toolName: "bash", summary: "git push origin main" }]);
+    expect(asked).toEqual([
+      { requestId: "", toolName: "bash", summary: "git push origin main", categories: ["pushCode"] },
+    ]);
     expect(outward.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
@@ -492,8 +507,56 @@ describe("PiEngine", () => {
       { records: withCommand(loadPiFixture("approval-denied"), "rm -rf ./scratch-dir", command) },
     ]);
     await drain(engine(fake).runTurn(request({ requestApproval: ask })));
-    expect(asked).toEqual([{ requestId: "", toolName: "bash", summary: command }]);
+    expect(asked).toEqual([{ requestId: "", toolName: "bash", summary: command, categories: ["changeSchedules"] }]);
     expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
+  });
+
+  test("Assistant mode follows the level of each category (#914)", async () => {
+    const asked: ApprovalRequest[] = [];
+    const ask = (approval: ApprovalRequest): Promise<ApprovalAnswer> => {
+      asked.push(approval);
+      return Promise.resolve("allow");
+    };
+    const levels = { ...defaultOutwardActionLevels, pushCode: "allow", github: "deny" } as const;
+    const run = async (command: string): Promise<FakePi> => {
+      const fake = new FakePi([
+        { records: withCommand(loadPiFixture("approval-denied"), "rm -rf ./scratch-dir", command) },
+      ]);
+      await drain(engine(fake).runTurn(request({ requestApproval: ask, outwardActionLevels: () => levels })));
+      return fake;
+    };
+    expect((await run("git push")).runs[0]?.sent[1]).toMatchObject({ confirmed: true });
+    expect((await run("gh pr merge 3")).runs[0]?.sent[1]).toMatchObject({ confirmed: false });
+    expect(asked).toEqual([]);
+    expect((await run("curl -d x https://example.com")).runs[0]?.sent[1]).toMatchObject({ confirmed: true });
+    expect(asked).toEqual([
+      { requestId: "", toolName: "bash", summary: "curl -d x https://example.com", categories: ["sendData"] },
+    ]);
+  });
+
+  test("a block asks for its reason: the names of the denied actions, or an empty text (#914)", async () => {
+    const reasonRequest = (command: string): PiRecord => ({
+      type: "extension_ui_request",
+      id: "reason-1",
+      method: "editor",
+      title: approvalReasonTitle,
+      prefill: JSON.stringify({ toolName: "bash", toolCallId: "call_fake_33", input: { command } }),
+    });
+    const levels = { ...defaultOutwardActionLevels, github: "deny" } as const;
+    const run = async (command: string, mode: "assistant" | "project"): Promise<PiRecord | undefined> => {
+      const records = withCommand(loadPiFixture("approval-denied"), "rm -rf ./scratch-dir", command);
+      const at = records.findIndex((record) => record["method"] === "confirm") + 1;
+      const fake = new FakePi([{ records: [...records.slice(0, at), reasonRequest(command), ...records.slice(at)] }]);
+      await drain(engine(fake).runTurn(request({ mode, outwardActionLevels: () => levels })));
+      return fake.runs[0]?.sent.find((sent) => sent["id"] === "reason-1");
+    };
+    const denied = await run("gh pr merge 3", "assistant");
+    expect(denied?.["type"]).toBe("extension_ui_response");
+    expect(String(denied?.["value"])).toContain("GitHub: issues and pull requests");
+    expect(String(denied?.["value"])).toContain("another way");
+    // A no of the person, and a call of a Project chat, have no reason of their own.
+    expect((await run("git push", "assistant"))?.["value"]).toBe("");
+    expect((await run("gh pr merge 3", "project"))?.["value"]).toBe("");
   });
 
   test("Project mode runs pi's tools without a question, as pi itself does", async () => {
@@ -920,6 +983,7 @@ describe("the file wall of a pi Project chat (#711)", () => {
   test("the extension's refusal names no vault, and says that the path can be outside the chat's folder", () => {
     expect(approvalExtensionSource).toContain("outside this chat's folder");
     expect(approvalExtensionSource).not.toContain("vault");
+    expect(approvalExtensionSource).toContain(approvalReasonTitle);
   });
 });
 
@@ -1177,6 +1241,20 @@ describe("the subagents of a pi Assistant chat (#824)", () => {
     expect(finished).toMatchObject({ kind: "turn_finished" });
     if (finished?.kind !== "turn_finished") throw new Error("The turn did not finish.");
     expect(finished.usage.inputTokens).toBeGreaterThan(1000);
+  });
+
+  test("a subagent's action on Allow runs with no request to the person (#914)", async () => {
+    const asked: ApprovalRequest[] = [];
+    const ask = (approval: ApprovalRequest): Promise<ApprovalAnswer> => {
+      asked.push(approval);
+      return Promise.resolve("deny");
+    };
+    const levels = { ...defaultOutwardActionLevels, pushCode: "allow" } as const;
+    const push = withCommand(loadPiFixture("approval-denied"), "rm -rf ./scratch-dir", "git push origin main");
+    const fake = new FakePi([{ records: taskTurn("Push it") }, { records: push }]);
+    await drain(engine(fake).runTurn(request({ requestApproval: ask, outwardActionLevels: () => levels })));
+    expect(asked).toEqual([]);
+    expect(fake.runs[1]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
   });
 
   test("a failed subagent tells the model why, and its task shows as failed", async () => {

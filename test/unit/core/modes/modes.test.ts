@@ -9,6 +9,11 @@ import { EvaCore } from "../../../../src/core/modes/eva-core.ts";
 import { cloneNotesFile, evaFileMarker, ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { widgetsIntro } from "../../../../src/core/modes/widgets-block.ts";
 import type { FormatSettings } from "../../../../src/core/modes/format-block.ts";
+import {
+  defaultOutwardActionLevels,
+  outwardActionCategories,
+  type OutwardActionLevels,
+} from "../../../../src/shared/outward-actions.ts";
 import { SpecialistPreparer } from "../../../../src/core/modes/specialist-mode.ts";
 import { discoverProjects } from "../../../../src/core/projects/project-catalog.ts";
 import { CloneOriginStore, TrustStore } from "../../../../src/core/projects/clones.ts";
@@ -338,6 +343,34 @@ describe("Assistant mode", () => {
       (await preparer.describe(session({ id }))).parts.find((part) => part.title === "Your format settings")?.text;
     expect(await formatPart("s1")).toContain("Answer language: Spanish");
     expect(await formatPart("s2")).toContain("Answer language: English");
+  });
+
+  test("the block of the outward actions follows the format block, fixed for the chat, and the details show it (#914)", async () => {
+    let levels: OutwardActionLevels = { ...defaultOutwardActionLevels, pushCode: "allow", sendData: "deny" };
+    const preparer = assistant(silentRunner, new FakeSync(), [], { outwardActionLevels: () => levels });
+    const first = await preparer.prepare(session());
+    expect(first.appendSystemPrompt).toContain("# Actions that reach other people");
+    expect(first.appendSystemPrompt).toContain("- Send an email:");
+    expect(first.appendSystemPrompt).toContain("Do not do them, and do not try another way to do the same thing");
+    expect(first.appendSystemPrompt).not.toContain("- Push code");
+    levels = { ...levels, pushCode: "deny" };
+    expect((await preparer.prepare(session())).appendSystemPrompt).toBe(first.appendSystemPrompt);
+    const part = async (id: string): Promise<{ text: string | null; note: string | null } | undefined> =>
+      (await preparer.describe(session({ id }))).parts.find((entry) => entry.title === "Your action levels");
+    expect((await part("s1"))?.text).not.toContain("- Push code");
+    expect((await part("s2"))?.text).toContain("- Push code");
+    expect((await part("s2"))?.note).toContain("next chat");
+  });
+
+  test("with every outward action on Allow, the prompt gets no block", async () => {
+    const allAllowed = Object.fromEntries(outwardActionCategories.map((category) => [category, "allow"]));
+    const preparer = assistant(silentRunner, new FakeSync(), [], {
+      outwardActionLevels: () => allAllowed as OutwardActionLevels,
+    });
+    expect((await preparer.prepare(session())).appendSystemPrompt).not.toContain("Actions that reach other people");
+    expect((await preparer.describe(session())).parts.some((entry) => entry.title === "Your action levels")).toBe(
+      false,
+    );
   });
 
   test("the local time of a chat uses the zone and the clock of its format block (#770)", async () => {

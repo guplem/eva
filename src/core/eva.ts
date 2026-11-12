@@ -834,6 +834,7 @@ export class Eva {
         model: this.settings.config.engines.defaultModel,
         effort: this.settings.config.engines.defaultEffort,
       }),
+      outwardActionLevels: () => this.settings.config.outwardActions,
       store: new SessionStore(options.paths.sessions, {
         now: options.now,
         ...(options.logger === undefined ? {} : { logger: options.logger }),
@@ -861,6 +862,8 @@ export class Eva {
               { ...this.settings.config, timeZone: effectiveTimeZone(this.settings.config.timeZone) },
               vaultPath,
             ),
+          // From memory, as the format block: a change reaches the next new chat, and a denied call tells the model at once.
+          outwardActionLevels: () => this.settings.config.outwardActions,
           projects: () => this.projects(),
           // Read at each call: the widgets exist only after the session manager.
           widgetLines: () => this.widgets?.formats.promptLines() ?? [],
@@ -2314,6 +2317,32 @@ export class Eva {
     return this.settings.update(patch);
   }
 
+  /**
+   * The "Do not ask again" answer: sets each category of the request to Allow, then allows the
+   * request and every other waiting request that the save now covers. The save comes first, so a
+   * failed save leaves the question open. A request that
+   * is gone is ignored, as any late answer is.
+   */
+  allowApprovalAlways(requestId: string): void {
+    const pending = this.sessions.pendingApprovals().find((approval) => approval.requestId === requestId);
+    if (pending === undefined) return;
+    const categories = pending.categories ?? [];
+    if (categories.length === 0) {
+      throw new EvaError("approval_invalid", "This approval has no action to allow for good.");
+    }
+    this.updateSettings({ outwardActions: Object.fromEntries(categories.map((category) => [category, "allow"])) });
+    this.sessions.answerApproval(requestId, "allow");
+    // Subagents ask in parallel: the other requests of this action would otherwise stay open
+    // though the person said not to ask again.
+    const levels = this.settings.config.outwardActions;
+    for (const other of this.sessions.pendingApprovals()) {
+      const otherCategories = other.categories ?? [];
+      if (otherCategories.length > 0 && otherCategories.every((category) => levels[category] === "allow")) {
+        this.sessions.answerApproval(other.requestId, "allow");
+      }
+    }
+  }
+
   /** Whose repositories Eva trusts, and the person's saved answers, for Settings. */
   trust(): TrustOverview {
     return {
@@ -2329,7 +2358,11 @@ export class Eva {
    * config folder of their own runs, which holds no token.
    */
   permissions(): PermissionsOverview {
-    const context = { vaultFolder: this.options.config.vaultPath, environment: engineToolEnvironment(this.facts) };
+    const context = {
+      vaultFolder: this.options.config.vaultPath,
+      environment: engineToolEnvironment(this.facts),
+      outwardActionLevels: this.settings.config.outwardActions,
+    };
     return this.options.engines.flatMap((engine) =>
       engine.describePermissions === undefined ? [] : [{ engine: engine.name, ...engine.describePermissions(context) }],
     );

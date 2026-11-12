@@ -136,7 +136,7 @@ Two or more computers can run Eva with the same vault. The vault names the hub i
 ## Safety
 
 - **Remote access only through Tailscale.** The local API listens on the computer itself. Tailscale gives the address to your devices only.
-- **Settings have homes.** Your personal settings live in the vault. The settings of the computer, and each security setting, stay in `config.json`. An agent can edit the vault, so Eva never reads a security setting from it.
+- **Settings have homes.** Your personal settings live in the vault. The settings of the computer, and each security setting, stay in `config.json`. An agent can edit the vault, so Eva never reads a security setting from it. The levels of the actions that reach other people are a preference, so they live in the vault. An agent can edit them, so Eva asks you before an agent changes them.
 - **Secrets never reach a front end.** The `Redactor` removes each known secret, and each common token shape, from the text of each event and log line.
 - **The file wall.** A Project chat cannot open the vault, the other projects or Eva's folder. On Linux and macOS, a sandbox also walls the shell of the chat, when the computer can run it. See [What a chat can reach](reference.md#what-a-chat-can-reach).
 - **Trust of a clone.** A clone of an unknown repository runs with its hooks, project settings and MCP servers off, until you trust it.

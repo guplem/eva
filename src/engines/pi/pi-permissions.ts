@@ -2,8 +2,8 @@
  * What pi chats may do, in words for Settings. The words follow `decide` and `buildPiArguments`
  * in pi-adapter.ts: change them together.
  */
-import { askedActionWords } from "../../shared/outward-actions.ts";
-import type { EnginePermissions } from "../../shared/permissions.ts";
+import { outwardActionWordsByLevel } from "../../shared/outward-actions.ts";
+import type { EnginePermissions, PermissionContext } from "../../shared/permissions.ts";
 
 /** The file wall of a Project chat (#711). pi has no sandbox, so its shell is not walled. */
 const outsideFolder =
@@ -11,15 +11,16 @@ const outsideFolder =
 const settingsWrites = "A file tool's write to the folder's .pi settings or to a .git folder";
 
 /** pi has no modes and no permission rules of its own. Eva's extension asks the questions. */
-export function describePiPermissions(): EnginePermissions {
+export function describePiPermissions(context: PermissionContext): EnginePermissions {
+  const words = outwardActionWordsByLevel(context.outwardActionLevels);
   return {
     mode: null,
     chats: [
       {
         chat: "assistant",
-        runs: ["Every other action that stays on this computer"],
-        asks: askedActionWords,
-        blocks: [],
+        runs: ["Every other action that stays on this computer", ...words.allow],
+        asks: words.ask,
+        blocks: words.deny,
         note: null,
       },
       {

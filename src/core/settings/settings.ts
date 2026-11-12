@@ -28,6 +28,7 @@ export const sharedSettingKeys: readonly string[] = [
   "engines.pi.models",
   "google.email",
   "voice.language",
+  "outwardActions",
 ];
 
 /**

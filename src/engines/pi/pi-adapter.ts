@@ -41,11 +41,16 @@ import {
 import type { ContextPart, EngineContextInput } from "../../shared/chat-context.ts";
 import { wallRefusesCall } from "../../shared/path-area.ts";
 import type { EngineEventPayload, TaskState, TurnUsage } from "../../shared/events.ts";
-import type { EnginePermissions } from "../../shared/permissions.ts";
+import type { EnginePermissions, PermissionContext } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
-import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
+import {
+  decideOutwardAction,
+  outwardDenyMessage,
+  summarizeToolCall,
+  toolCategory,
+} from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
-import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
+import { approvalExtensionSource, approvalReasonTitle, approvalTitle } from "./pi-approval-extension.ts";
 import { questionExtensionSource, questionTitle } from "./pi-question-extension.ts";
 import { subagentExtensionSource, subagentTitle } from "./pi-subagent-extension.ts";
 import { askInTextMessage, collectAnswers } from "../../shared/questions.ts";
@@ -115,8 +120,8 @@ export class PiEngine implements EnginePort {
     this.options = options;
   }
 
-  describePermissions(): EnginePermissions {
-    return describePiPermissions();
+  describePermissions(context: PermissionContext): EnginePermissions {
+    return describePiPermissions(context);
   }
 
   describeContext(input: EngineContextInput): ContextPart[] {
@@ -727,6 +732,11 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
       });
     return;
   }
+  if (method === "editor" && record["title"] === approvalReasonTitle) {
+    const call = parseToolCall(record["prefill"]);
+    pi.send({ type: "extension_ui_response", id, value: denyReason(request, call.toolName, call.input) });
+    return;
+  }
   if (method !== "confirm" || record["title"] !== approvalTitle) {
     pi.send({ type: "extension_ui_response", id, cancelled: true });
     return;
@@ -778,8 +788,26 @@ function decide(request: TurnRequest, toolName: string, input: Record<string, un
   };
   if (wall !== null && wallRefusesCall(wall, request.startFolder, input, options)) return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
-  if (request.mode === "project" || !asksThePerson(toolName, input)) return Promise.resolve("allow");
-  return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });
+  if (request.mode === "project") return Promise.resolve("allow");
+  const decision = decideOutwardAction(toolName, input, request.outwardActionLevels());
+  if (decision.level === "deny") return Promise.resolve("deny");
+  if (decision.level === "allow") return Promise.resolve("allow");
+  return request.requestApproval({
+    requestId: "",
+    toolName,
+    summary: summarizeToolCall(toolName, input),
+    ...(decision.categories.length === 0 ? {} : { categories: decision.categories }),
+  });
+}
+
+/**
+ * The reason that the model reads after a call on Deny, or an empty text for any other block. The
+ * extension asks for it after a `false` answer: a confirm cannot carry it (see pi-approval-extension.ts).
+ */
+function denyReason(request: TurnRequest, toolName: string, input: Record<string, unknown>): string {
+  if (request.mode !== "assistant") return "";
+  const decision = decideOutwardAction(toolName, input, request.outwardActionLevels());
+  return decision.level === "deny" ? outwardDenyMessage(decision.categories) : "";
 }
 
 function parseToolCall(message: unknown): { toolName: string; input: Record<string, unknown> } {

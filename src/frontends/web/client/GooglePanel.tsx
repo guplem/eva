@@ -265,7 +265,7 @@ function GoogleAccessFields({
           { value: "custom", label: "Custom: choose for each service" },
         ]}
         onChange={choosePreset}
-        hint="Eva asks you before any change that reaches other people, such as an invitation or a sent mail. After a change of access, log in to Google again."
+        hint="For a sent mail, a shared file and an invitation, Eva follows the levels in the card Actions that reach other people, on the AI engines page. After a change of access, log in to Google again."
       />
       {custom &&
         services.map((service) => {

@@ -1,3 +1,4 @@
+import { defaultOutwardActionLevels } from "../../../../src/shared/outward-actions.ts";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -43,6 +44,7 @@ function projectRequest(overrides: Partial<TurnRequest> = {}): TurnRequest {
     fileWall: { area: clone, closed: [vault, "/srv/projects"], readable: [join(vault, "gh")], socketFilter: true },
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
+    outwardActionLevels: () => defaultOutwardActionLevels,
     askQuestions: () => Promise.resolve<QuestionsOutcome>("declined"),
     signal: new AbortController().signal,
     ...overrides,

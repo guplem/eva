@@ -24,8 +24,11 @@ const engineTitles: Readonly<Record<EngineEntry["engine"], string>> = { "claude-
 /** `chosenClaudeMode` is the saved setting and its words, which can differ from the running mode until a restart. */
 export function PermissionsCard({
   chosenClaudeMode,
+  levelsKey,
 }: {
   readonly chosenClaudeMode: { readonly value: string; readonly words: string };
+  /** Changes when a level of an outward action changes, so the lists show the new levels. */
+  readonly levelsKey: string;
 }): ReactElement {
   const [overview, setOverview] = useState<PermissionsOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -38,7 +41,8 @@ export function PermissionsCard({
       .catch((error: unknown) => setLoadError(errorText(error)));
   }, []);
 
-  useEffect(load, [load]);
+  // A new key reads the lists again after a change of levels.
+  useEffect(load, [load, levelsKey]);
 
   return (
     <Card

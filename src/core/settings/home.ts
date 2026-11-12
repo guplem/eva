@@ -8,8 +8,11 @@ import { z } from "zod";
 import { effortLevels, modelAliases } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
+import { defaultOutwardActionLevels, outwardActionLevelValues } from "../../shared/outward-actions.ts";
 import { googleAccessLevels } from "../google/google-access.ts";
 import { clocks, unitSystems, weekStarts } from "../../shared/time-format.ts";
+
+const outwardActionLevel = z.enum(outwardActionLevelValues).default("ask");
 
 /** The variable that names the instance of an `eva` command, as `--instance` does. */
 export const instanceVariable = "EVA_INSTANCE";
@@ -319,7 +322,7 @@ export const configSchema = z.object({
         claudeCode: z
           .object({
             executable: z.string().min(1).nullable().default(null),
-            /** How Claude Code asks before a tool runs. Eva's own approvals in an Assistant chat ask in each mode. */
+            /** How Claude Code asks before a tool runs. `bypassPermissions` skips its own checks, not the outward action levels. */
             permissionMode: z.enum(["auto", "bypassPermissions"]).default("auto"),
           })
           .default({ executable: null, permissionMode: "auto" }),
@@ -349,6 +352,21 @@ export const configSchema = z.object({
       claudeCode: { executable: null, permissionMode: "auto" },
       pi: { executable: null, models: { opus: null, sonnet: null, haiku: null } },
     }),
+  /**
+   * What Eva does with each outward action in an Assistant chat. A preference of the person, so it
+   * lives in the vault: it is not a security setting, and an agent can edit it (#914).
+   */
+  outwardActions: z
+    .object({
+      pushCode: outwardActionLevel,
+      github: outwardActionLevel,
+      shareDriveFile: outwardActionLevel,
+      sendEmail: outwardActionLevel,
+      calendarInvitations: outwardActionLevel,
+      sendData: outwardActionLevel,
+      changeSchedules: outwardActionLevel,
+    })
+    .default(defaultOutwardActionLevels),
   telegram: z
     .object({
       allowedChatId: z.number().int().nullable().default(null),

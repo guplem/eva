@@ -549,7 +549,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   const answerApproval = async (
     requestId: string,
-    answer: "allow" | "deny",
+    answer: "allow" | "deny" | "always",
     answers?: QuestionAnswers,
   ): Promise<void> => {
     try {

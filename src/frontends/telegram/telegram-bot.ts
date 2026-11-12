@@ -58,7 +58,8 @@ import { TelegramQuestions } from "./telegram-questions.ts";
 import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { TelegramUpdates } from "./telegram-updates.ts";
-import { approvalAnswerText, fitProjects } from "./telegram-texts.ts";
+import type { OutwardActionCategory } from "../../shared/outward-actions.ts";
+import { alwaysConfirmText, approvalAnswerText, approvalKeyboard, fitProjects } from "./telegram-texts.ts";
 
 export interface TelegramBotOptions {
   readonly api: TelegramApi;
@@ -153,7 +154,10 @@ export class TelegramBot {
   /** Aborts at stop(), so a wait in the loop ends at once. */
   private stopping: AbortController;
   /** The approval and device login questions in the chat, by request id, so the answer can replace their buttons. */
-  private readonly approvalMessages: Map<string, { chatId: number; messageId: number; text: string }>;
+  private readonly approvalMessages: Map<
+    string,
+    { chatId: number; messageId: number; text: string; categories: readonly OutwardActionCategory[] }
+  >;
   /** The chats that /stop stopped, so their failed turn says "Stopped." instead of a failure. */
   private readonly stoppedSessions: Set<string>;
   private readonly detachDeviceApprover: () => void;
@@ -859,6 +863,21 @@ export class TelegramBot {
       return;
     }
     const isApproval = kind === "a" && first !== undefined && (second === "allow" || second === "deny");
+    const isAlwaysYes = kind === "a" && first !== undefined && second === "always-yes";
+    if (isAlwaysYes && isAllowed) {
+      // "Allowed" must follow the save, as the `q:` press above does. A throw still stops the spinner.
+      let saved = false;
+      try {
+        this.options.eva.allowApprovalAlways(first);
+        saved = true;
+      } finally {
+        await this.sender.quietCall("answerCallbackQuery", {
+          callback_query_id: query.id,
+          ...(saved ? { text: "Allowed" } : {}),
+        });
+      }
+      return;
+    }
     const isDeviceAnswer = kind === "l" && first !== undefined && (second === "allow" || second === "deny");
     // The device answer comes first, so the reply to the press can say that the request expired.
     const deviceAnswered = isAllowed && isDeviceAnswer ? this.options.eva.deviceLogins.answer(first, second) : null;
@@ -870,6 +889,8 @@ export class TelegramBot {
     if (!isAllowed) return;
     if (isApproval) {
       this.options.eva.sessions.answerApproval(first, second);
+    } else if (kind === "a" && first !== undefined && (second === "always" || second === "back")) {
+      await this.showApprovalStep(first, second);
     } else if (isDeviceAnswer) {
       await this.closeQuestion(first, answerText);
     } else if (kind === "m" && first !== undefined && modelAliases.includes(second as ModelAlias)) {
@@ -1171,15 +1192,34 @@ export class TelegramBot {
     }
     const where = chatTitle === null ? "" : ` (in “${chatTitle}”)`;
     const text = `Eva wants to run ${event.toolName}${where}: ${event.summary}`;
-    const messageId = await this.send(chatId, topicId, text, {
-      inline_keyboard: [
-        [
-          { text: "Allow", callback_data: `a:${event.requestId}:allow` },
-          { text: "Deny", callback_data: `a:${event.requestId}:deny` },
-        ],
-      ],
+    const categories = event.categories ?? [];
+    const messageId = await this.send(chatId, topicId, text, approvalKeyboard(event.requestId, categories));
+    if (messageId !== null) this.approvalMessages.set(event.requestId, { chatId, messageId, text, categories });
+  }
+
+  /**
+   * "Do not ask again" changes a setting for good, so its press only asks to confirm. Cancel
+   * restores the first question. Neither answers the approval.
+   */
+  private async showApprovalStep(requestId: string, step: "always" | "back"): Promise<void> {
+    const question = this.approvalMessages.get(requestId);
+    if (question === undefined || question.categories.length === 0) return;
+    const confirming = step === "always";
+    await this.sender.quietCall("editMessageText", {
+      chat_id: question.chatId,
+      message_id: question.messageId,
+      text: confirming ? alwaysConfirmText(question.categories) : question.text,
+      reply_markup: confirming
+        ? {
+            inline_keyboard: [
+              [
+                { text: "Yes, do not ask again", callback_data: `a:${requestId}:always-yes` },
+                { text: "Cancel", callback_data: `a:${requestId}:back` },
+              ],
+            ],
+          }
+        : approvalKeyboard(requestId, question.categories),
     });
-    if (messageId !== null) this.approvalMessages.set(event.requestId, { chatId, messageId, text });
   }
 
   /** Shows the answer in the question message; an edit with no keyboard removes the buttons. */
@@ -1207,7 +1247,7 @@ export class TelegramBot {
         ],
       ],
     });
-    if (messageId !== null) this.approvalMessages.set(request.id, { chatId, messageId, text });
+    if (messageId !== null) this.approvalMessages.set(request.id, { chatId, messageId, text, categories: [] });
   }
 
   private send(chatId: number, topicId: number | null, text: string, replyMarkup?: unknown): Promise<number | null> {

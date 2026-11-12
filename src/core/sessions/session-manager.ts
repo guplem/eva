@@ -31,6 +31,11 @@ import {
   type TurnMessage,
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
+import {
+  defaultOutwardActionLevels,
+  type OutwardActionCategory,
+  type OutwardActionLevels,
+} from "../../shared/outward-actions.ts";
 import { answerFits } from "../../shared/questions.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { ProjectReport } from "../../shared/project-report.ts";
@@ -167,6 +172,8 @@ export interface SessionManagerOptions {
   readonly engines: readonly EnginePort[];
   /** The model and the effort of a new chat that names none, read at each new chat. Default: Smart, Medium. */
   readonly chatDefaults?: () => ChatDefaults;
+  /** The level of each outward action, read at each tool call. Default: every level on Ask. */
+  readonly outwardActionLevels?: () => OutwardActionLevels;
   readonly store: SessionStore;
   /** Keeps the whole input and output of each tool step. Without it, Eva keeps none. */
   readonly stepDetails?: StepDetailsStore;
@@ -193,6 +200,8 @@ export interface PendingApproval {
   readonly summary: string;
   /** The model's questions, also redacted. The person answers them, and allows or denies nothing. */
   readonly questions?: readonly ApprovalQuestion[];
+  /** The outward action categories on Ask that caused the request. */
+  readonly categories?: readonly OutwardActionCategory[];
 }
 
 /** How an approval ends: the person's answer, the answers to its questions, or no answer in time. */
@@ -1334,10 +1343,17 @@ ${engineText}`,
         fileWall: prepared.fileWall,
         environment: prepared.environment,
         requestApproval: async (request) =>
-          (await this.requestApproval(sessionId, request.toolName, request.summary, null, controller.signal)) ===
-          "allow"
+          (await this.requestApproval(
+            sessionId,
+            request.toolName,
+            request.summary,
+            null,
+            controller.signal,
+            request.categories,
+          )) === "allow"
             ? "allow"
             : "deny",
+        outwardActionLevels: this.options.outwardActionLevels ?? (() => defaultOutwardActionLevels),
         askQuestions: async (toolName, questions): Promise<QuestionsOutcome> => {
           const summary = questions[0]?.question ?? toolName;
           const outcome = await this.requestApproval(sessionId, toolName, summary, questions, controller.signal);
@@ -1738,6 +1754,7 @@ ${engineText}`,
     summary: string,
     questions: readonly ApprovalQuestion[] | null,
     signal: AbortSignal,
+    categories: readonly OutwardActionCategory[] = [],
   ): Promise<ApprovalOutcome> {
     // The stop already expired the open questions, so a later one would wait for nobody.
     if (signal.aborted) return Promise.resolve("expired");
@@ -1754,6 +1771,7 @@ ${engineText}`,
           toolName,
           summary: redactor.redact(summary),
           ...(questions === null ? {} : { questions: redactedQuestions(questions, redactor) }),
+          ...(categories.length === 0 ? {} : { categories }),
         },
         resolve: (outcome) => {
           clearTimeout(timer);
@@ -1766,6 +1784,7 @@ ${engineText}`,
         toolName,
         summary,
         ...(questions === null ? {} : { questions }),
+        ...(categories.length === 0 ? {} : { categories }),
       });
     });
   }

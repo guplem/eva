@@ -1357,6 +1357,91 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
   await expect(page.getByRole("button", { name: "Set up voice notes" })).toBeVisible();
 });
 
+test.describe("Do not ask again (#914)", () => {
+  test.afterEach(async ({ page }) => {
+    // "Do not ask again" saves the level Allow in the shared demo vault. Put it back for later tests.
+    await page.request.put("/api/settings", { data: { outwardActions: { github: "ask" } } });
+  });
+
+  test("Do not ask again asks first, names the action and links to Settings (#914)", async ({ page }) => {
+    await logIn(page);
+    await clickNewChat(page);
+    const composer = page.getByLabel("Message").first();
+    await composer.fill("please approve this");
+    await composer.press("Enter");
+    const card = page.getByRole("region", { name: "Eva asks for permission" });
+    await expect(card).toContainText("gh issue create");
+    await card.getByRole("button", { name: "Do not ask again" }).click();
+    const dialog = page.getByRole("dialog", { name: "Do not ask again" });
+    await expect(dialog).toContainText('Eva will do the action "GitHub: issues and pull requests" with no question');
+    await expect(dialog.getByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "#/settings/engines/outward-actions",
+    );
+    // Cancel changes nothing: the card still waits.
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(card).toBeVisible();
+    await card.getByRole("button", { name: "Do not ask again" }).click();
+    await page
+      .getByRole("dialog", { name: "Do not ask again" })
+      .getByRole("button", { name: "Do not ask again" })
+      .click();
+    await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
+    await expect(card).toHaveCount(0);
+  });
+
+  test("Escape does not close the Do not ask again dialog while the answer travels (#914)", async ({ page }) => {
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/approvals/*", async (route) => {
+      if (route.request().method() === "POST") await held;
+      await route.continue();
+    });
+    await logIn(page);
+    await clickNewChat(page);
+    const composer = page.getByLabel("Message").first();
+    await composer.fill("please approve this");
+    await composer.press("Enter");
+    const card = page.getByRole("region", { name: "Eva asks for permission" });
+    await card.getByRole("button", { name: "Do not ask again" }).click();
+    const dialog = page.getByRole("dialog", { name: "Do not ask again" });
+    await dialog.getByRole("button", { name: "Do not ask again" }).click();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeVisible();
+    release();
+    await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
+  });
+
+  test("the Settings link of the Do not ask again dialog opens the card and keeps the request (#914)", async ({
+    page,
+  }) => {
+    await logIn(page);
+    await clickNewChat(page);
+    const composer = page.getByLabel("Message").first();
+    await composer.fill("please approve this");
+    await composer.press("Enter");
+    const card = page.getByRole("region", { name: "Eva asks for permission" });
+    await card.getByRole("button", { name: "Do not ask again" }).click();
+    const dialog = page.getByRole("dialog", { name: "Do not ask again" });
+    await dialog.getByRole("link", { name: "Settings" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/settings\/engines\/outward-actions$/);
+    await expect(page.getByRole("heading", { name: "Actions that reach other people" })).toBeVisible();
+    // The request stays open in its chat. Answer it, so the shared demo server keeps no waiting turn.
+    await page.goBack();
+    await expect(page.getByRole("region", { name: "Eva asks for permission" })).toBeVisible();
+    await page
+      .getByRole("region", { name: "Eva asks for permission" })
+      .getByRole("button", { name: "Allow once" })
+      .click();
+    await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
+  });
+});
+
 test("the model's questions show as a form in the chat, and Send answers gives the picks to the turn (#544)", async ({
   page,
 }) => {
@@ -3670,7 +3755,7 @@ test("the AI engines page lists what Eva may do, with the person's own rules apa
   await card.getByText("Claude Code, Auto mode").click();
   const assistant = card.getByRole("region", { name: "Assistant chats", exact: true });
   await expect(assistant).toContainText("Asks you first");
-  await expect(assistant).toContainText("Push commits with git push");
+  await expect(assistant).toContainText("Push code: git push");
   await expect(card.getByRole("heading", { name: "Your own rules" })).toBeVisible();
   await expect(card.locator("code", { hasText: "Bash(npm test:*)" })).toBeVisible();
   await expect(card.locator("code", { hasText: "Read(./.env)" })).toBeVisible();

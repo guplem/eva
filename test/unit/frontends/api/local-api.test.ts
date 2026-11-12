@@ -1001,6 +1001,8 @@ describe("routes", () => {
       ["prompt", "Your pinned files"],
       // The format settings follow the pinned files (#770).
       ["prompt", "Your format settings"],
+      // The default levels ask for every outward action, so their block is a part too (#914).
+      ["prompt", "Your action levels"],
       ["message", "Before each message"],
     ]);
     expect((await call("/api/sessions/unknown/context")).status).toBe(404);
@@ -1273,6 +1275,80 @@ describe("routes", () => {
     eva.sessions.answerApproval(listed[0]?.requestId ?? "", "deny");
     await turn;
     expect(await json<unknown[]>(await call("/api/approvals"))).toEqual([]);
+  });
+
+  test("the answer always allows the request and sets its categories to allow", async () => {
+    const outcomes: string[] = [];
+    turnScript = async function* (request) {
+      outcomes.push(
+        await request.requestApproval({
+          requestId: "",
+          toolName: "Bash",
+          summary: "git push",
+          categories: ["pushCode"],
+        }),
+      );
+      outcomes.push(await request.requestApproval({ requestId: "", toolName: "Bash", summary: "ls" }));
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    const next = async (): Promise<string> => {
+      let listed = await json<{ requestId: string }[]>(await call("/api/approvals"));
+      while (listed.length === 0) {
+        await Bun.sleep(10);
+        listed = await json<{ requestId: string }[]>(await call("/api/approvals"));
+      }
+      return listed[0]?.requestId ?? "";
+    };
+    const first = await next();
+    const both = await call(`/api/approvals/${first}`, { method: "POST", body: { answer: "always", answers: [] } });
+    expect(both.status).toBe(400);
+    expect((await call(`/api/approvals/${first}`, { method: "POST", body: { answer: "always" } })).status).toBe(204);
+    expect(eva.publicSettings().config.outwardActions.pushCode).toBe("allow");
+    expect(eva.publicSettings().config.outwardActions.github).toBe("ask");
+    // A request with no category refuses the answer and stays open.
+    const second = await next();
+    const refused = await call(`/api/approvals/${second}`, { method: "POST", body: { answer: "always" } });
+    expect(refused.status).toBe(400);
+    expect(await json<{ code: string }>(refused)).toMatchObject({ code: "approval_invalid" });
+    eva.sessions.answerApproval(second, "deny");
+    await turn;
+    expect(outcomes).toEqual(["allow", "deny"]);
+    expect((await call("/api/approvals/gone", { method: "POST", body: { answer: "always" } })).status).toBe(204);
+  });
+
+  test("the answer always also allows the other waiting requests of the same action", async () => {
+    let outcomes: string[] = [];
+    turnScript = async function* (request) {
+      const ask = (summary: string, categories: ("pushCode" | "github")[]): Promise<string> =>
+        request.requestApproval({ requestId: "", toolName: "Bash", summary, categories });
+      // Subagents ask in parallel, so several requests of one action wait at once.
+      outcomes = await Promise.all([
+        ask("git push a", ["pushCode"]),
+        ask("git push b", ["pushCode"]),
+        ask("gh pr merge 1", ["github"]),
+      ]);
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    let listed = await json<{ requestId: string; summary: string }[]>(await call("/api/approvals"));
+    while (listed.length < 3) {
+      await Bun.sleep(10);
+      listed = await json<{ requestId: string; summary: string }[]>(await call("/api/approvals"));
+    }
+    const idOf = (summary: string): string => listed.find((item) => item.summary === summary)?.requestId ?? "";
+    await call(`/api/approvals/${idOf("git push a")}`, { method: "POST", body: { answer: "always" } });
+    const left = await json<{ summary: string }[]>(await call("/api/approvals"));
+    expect(left.map((item) => item.summary)).toEqual(["gh pr merge 1"]);
+    eva.sessions.answerApproval(idOf("gh pr merge 1"), "deny");
+    await turn;
+    expect(outcomes).toEqual(["allow", "allow", "deny"]);
   });
 
   test("the answers to the model's questions reach the turn, and a bad answer is refused", async () => {

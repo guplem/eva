@@ -177,6 +177,12 @@ export const searchEntries: readonly SearchEntry[] = [
     title: "What Eva may do",
     words: "permissions advanced allow ask deny block rules approval auto bypass safety",
   },
+  {
+    item: "outward-actions",
+    section: "engines",
+    title: "Actions that reach other people",
+    words: "outward allow ask deny push git github email drive share calendar invitation curl data schedules approval",
+  },
   { item: "claude-code", section: "engines", title: "Claude Code", words: "token login setup-token" },
   {
     item: "pi",
@@ -374,6 +380,12 @@ export const settingPlaces: readonly SettingPlace[] = [
     home: "machine",
     keys: ["engines.claudeCode.permissionMode"],
     link: { section: "engines", item: "default-engine" },
+  },
+  {
+    title: "Actions that reach other people",
+    home: "vault",
+    keys: ["outwardActions"],
+    link: { section: "engines", item: "outward-actions" },
   },
   { title: "pi models", home: "vault", keys: ["engines.pi.models"], link: { section: "engines", item: "pi" } },
   { title: "Google account", home: "vault", keys: ["google.email"], link: { section: "connections", item: "google" } },

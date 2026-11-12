@@ -17,6 +17,7 @@ import { isEvaError } from "../../../../src/shared/errors.ts";
 import { Redactor } from "../../../../src/shared/redaction.ts";
 import { historyLostNote } from "../../../../src/shared/turn-steps.ts";
 import type { ContextPart, EngineContextInput } from "../../../../src/shared/chat-context.ts";
+import { defaultOutwardActionLevels, type OutwardActionLevels } from "../../../../src/shared/outward-actions.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
 
 let folder: string;
@@ -56,6 +57,7 @@ function createManager(
     turnTimeoutMs?: number;
     nameChat?: SessionManagerOptions["nameChat"];
     chatDefaults?: SessionManagerOptions["chatDefaults"];
+    outwardActionLevels?: SessionManagerOptions["outwardActionLevels"];
     /** Where the ids start, so a second manager on the same store makes new ones. */
     firstId?: number;
     /** The preparer of Project chats; without one, the same as for Assistant chats. */
@@ -85,6 +87,7 @@ function createManager(
     turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
     ...(overrides.nameChat === undefined ? {} : { nameChat: overrides.nameChat }),
     ...(overrides.chatDefaults === undefined ? {} : { chatDefaults: overrides.chatDefaults }),
+    ...(overrides.outwardActionLevels === undefined ? {} : { outwardActionLevels: overrides.outwardActionLevels }),
     logger: { log: (level, message, details) => logged.push(`${level} ${message} ${JSON.stringify(details)}`) },
   });
   manager.subscribe((event) => events.push(event));
@@ -2249,6 +2252,31 @@ describe("approvals", () => {
     expect(events.filter((event) => event.kind === "approval_resolved")).toMatchObject([
       { answer: "allow", timedOut: false },
     ]);
+  });
+
+  test("the categories of a request reach the event and the pending list, and the engine reads the live levels (#914)", async () => {
+    let levels: OutwardActionLevels = { ...defaultOutwardActionLevels };
+    const seen: string[] = [];
+    const engine = new FakeEngine(async function* (request) {
+      seen.push(request.outwardActionLevels().pushCode);
+      await request.requestApproval({
+        requestId: "x",
+        toolName: "Bash",
+        summary: "git push",
+        categories: ["pushCode"],
+      });
+      seen.push(request.outwardActionLevels().pushCode);
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine, { outwardActionLevels: () => levels });
+    const turn = manager.send(newAssistantSession(manager), "go");
+    while (manager.pendingApprovals().length === 0) await Bun.sleep(5);
+    expect(manager.pendingApprovals()[0]?.categories).toEqual(["pushCode"]);
+    expect(events.find((event) => event.kind === "approval_needed")).toMatchObject({ categories: ["pushCode"] });
+    levels = { ...levels, pushCode: "allow" };
+    manager.answerApproval(manager.pendingApprovals()[0]?.requestId ?? "", "allow");
+    await turn;
+    expect(seen).toEqual(["ask", "allow"]);
   });
 
   test("an ask that nobody answers is denied after the timeout", async () => {

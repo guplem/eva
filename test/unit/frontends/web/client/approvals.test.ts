@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  alwaysAllowWords,
   approvalNoticeWords,
   approvalPlace,
   approvalTitle,
@@ -110,5 +111,50 @@ describe("pendingOf", () => {
       toolName: "AskUserQuestion",
       summary: "Which?",
     });
+  });
+});
+
+describe("pendingOf categories", () => {
+  test("copies the categories of the event, so the card can offer Do not ask again", () => {
+    const event = {
+      kind: "approval_needed" as const,
+      requestId: "r",
+      sessionId: "s",
+      seq: 1,
+      at: "2026-10-24T10:00:00Z",
+      toolName: "Bash",
+      summary: "git push",
+      categories: ["pushCode" as const],
+    };
+    expect(pendingOf(event)).toEqual({
+      requestId: "r",
+      sessionId: "s",
+      toolName: "Bash",
+      summary: "git push",
+      categories: ["pushCode"],
+    });
+  });
+});
+
+describe("alwaysAllowWords", () => {
+  const tail = "Are you sure? You can change this any time in";
+
+  test("names one category", () => {
+    expect(alwaysAllowWords(["pushCode"])).toEqual({
+      lead: 'Eva will do the action "Push code" with no question from now on.',
+      tail,
+    });
+  });
+
+  test("joins two categories with and", () => {
+    expect(alwaysAllowWords(["pushCode", "sendEmail"]).lead).toBe(
+      'Eva will do the actions "Push code" and "Send an email" with no question from now on.',
+    );
+  });
+
+  test("joins three categories with commas and a last and", () => {
+    expect(alwaysAllowWords(["pushCode", "sendEmail", "sendData"]).lead).toBe(
+      'Eva will do the actions "Push code", "Send an email" and "Send data over the network" with no question from now on.',
+    );
   });
 });

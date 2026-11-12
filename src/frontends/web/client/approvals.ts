@@ -1,7 +1,7 @@
 /** The parts of a permission request that need no page: where it comes from and what it asks. */
 import type { PendingApproval, SessionEvent, SessionRecord } from "./api.ts";
 import type { ApprovalQuestion, QuestionAnswers } from "../../../shared/events.ts";
-import { toolCategory } from "../../../shared/outward-actions.ts";
+import { outwardActionWords, toolCategory, type OutwardActionCategory } from "../../../shared/outward-actions.ts";
 import { chatKind } from "../../../shared/chat-kind.ts";
 
 /** The approvals of the sessions that the page does not show now. They get a notice instead of a card. */
@@ -54,6 +54,28 @@ export function questionAnswers(
 
 /** The pending request that an event announces. A spread would copy the event's seq and time too. */
 export function pendingOf(event: Extract<SessionEvent, { kind: "approval_needed" }>): PendingApproval {
-  const { requestId, sessionId, toolName, summary, questions } = event;
-  return { requestId, sessionId, toolName, summary, ...(questions === undefined ? {} : { questions }) };
+  const { requestId, sessionId, toolName, summary, questions, categories } = event;
+  return {
+    requestId,
+    sessionId,
+    toolName,
+    summary,
+    ...(questions === undefined ? {} : { questions }),
+    ...(categories === undefined ? {} : { categories }),
+  };
+}
+
+/**
+ * The words of the "Do not ask again" question. The page puts the link to Settings after `tail`,
+ * so the link is a real link and not text. The lead names every category of the request.
+ */
+export function alwaysAllowWords(categories: readonly OutwardActionCategory[]): { lead: string; tail: string } {
+  const names = categories.map((category) => `"${outwardActionWords[category].title}"`);
+  const joined =
+    names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1] ?? ""}` : names.join("");
+  const noun = names.length > 1 ? "actions" : "action";
+  return {
+    lead: `Eva will do the ${noun} ${joined} with no question from now on.`,
+    tail: "Are you sure? You can change this any time in",
+  };
 }

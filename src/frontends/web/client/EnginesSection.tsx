@@ -1,6 +1,11 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { effortLevels, modelAliases, modelTierName, type ModelAlias } from "../../../shared/engine-port.ts";
+import {
+  outwardActionCategories,
+  outwardActionWords,
+  type OutwardActionLevel,
+} from "../../../shared/outward-actions.ts";
 import { effortName } from "./conversation-parts.ts";
 import type { PiModel } from "../../../shared/pi-login.ts";
 import { api, type PublicSettings } from "./api.ts";
@@ -17,6 +22,7 @@ import { ToolInstallButton } from "./ToolInstallButton.tsx";
 import {
   Card,
   CheckRow,
+  ChoiceChips,
   CommandLine,
   errorText,
   SecretField,
@@ -53,7 +59,12 @@ export function EnginesSection({ context }: { readonly context: SettingsContext 
   return (
     <>
       <DefaultEngineCard context={context} />
-      <PermissionsCard chosenClaudeMode={chosenMode(context)} />
+      <OutwardActionsCard context={context} />
+      <PermissionsCard
+        chosenClaudeMode={chosenMode(context)}
+        // A new level changes the lists, so the card reads them again.
+        levelsKey={outwardActionCategories.map((category) => context.settings.config.outwardActions[category]).join()}
+      />
       <ClaudeCodeCard context={context} />
       <PiCard context={context} />
     </>
@@ -106,9 +117,42 @@ function DefaultEngineCard({ context }: { readonly context: SettingsContext }): 
         label="Claude Code permission mode"
         value={config.engines.claudeCode.permissionMode}
         choices={permissionModeChoices}
-        hint="Auto: Claude Code asks you only about risky actions. Bypass permissions: Claude Code asks nothing, but in an Assistant chat Eva still asks before an action that reaches other people. A clone that Eva does not trust always uses Auto. The next card lists what each kind of chat may do."
+        hint="Auto: Claude Code asks you only about risky actions. Bypass permissions: Claude Code skips its own checks, so most actions run with no question. The levels of actions that reach other people still apply in Assistant chats. A clone that Eva does not trust always uses Auto. The cards below list what each kind of chat may do."
         onChange={(value) => void context.saveNow({ engines: { claudeCode: { permissionMode: value } } })}
       />
+    </Card>
+  );
+}
+
+const levelChoices: readonly { value: OutwardActionLevel; label: string }[] = [
+  { value: "allow", label: "Allow" },
+  { value: "ask", label: "Ask" },
+  { value: "deny", label: "Deny" },
+];
+
+/**
+ * One level for each outward action. The save sends only the changed category: the server merges
+ * it into the others. The words say that this is a preference, so nobody takes it for a wall.
+ */
+function OutwardActionsCard({ context }: { readonly context: SettingsContext }): ReactElement {
+  const levels = context.settings.config.outwardActions;
+  return (
+    <Card
+      item="outward-actions"
+      icon="shield"
+      title="Actions that reach other people"
+      description="Allow, ask or deny each kind of action. These are your preferences, not a protection against an agent that follows hidden instructions. They apply in Assistant chats, in every permission mode. A change applies from the next action."
+    >
+      {outwardActionCategories.map((category) => (
+        <ChoiceChips
+          key={category}
+          label={outwardActionWords[category].title}
+          hint={outwardActionWords[category].covers}
+          value={levels[category]}
+          choices={levelChoices}
+          onChange={(value) => void context.saveNow({ outwardActions: { [category]: value } })}
+        />
+      ))}
     </Card>
   );
 }

@@ -4,6 +4,7 @@
  */
 import type { ContextPart, EngineContextInput } from "./chat-context.ts";
 import type { ApprovalQuestion, EngineEventPayload, QuestionAnswers } from "./events.ts";
+import type { OutwardActionCategory, OutwardActionLevels } from "./outward-actions.ts";
 import type { EnginePermissions, PermissionContext } from "./permissions.ts";
 
 export type EngineName = "claude-code" | "pi";
@@ -48,6 +49,8 @@ export interface ApprovalRequest {
   readonly requestId: string;
   readonly toolName: string;
   readonly summary: string;
+  /** The outward action categories on Ask that caused the question. Absent for any other question. */
+  readonly categories?: readonly OutwardActionCategory[];
 }
 
 export type ApprovalAnswer = "allow" | "deny";
@@ -130,6 +133,11 @@ export interface TurnRequest {
   /** The whole environment of the engine process (lesson 96). */
   readonly environment: Readonly<Record<string, string>>;
   readonly requestApproval: (request: ApprovalRequest) => Promise<ApprovalAnswer>;
+  /**
+   * Assistant mode: the level of each outward action. The engine calls it at each tool call, so a
+   * change in Settings applies from the next call.
+   */
+  readonly outwardActionLevels: () => OutwardActionLevels;
   /** Shows the model's questions to the person and waits for the answers. */
   readonly askQuestions: (toolName: string, questions: readonly ApprovalQuestion[]) => Promise<QuestionsOutcome>;
   readonly signal: AbortSignal;

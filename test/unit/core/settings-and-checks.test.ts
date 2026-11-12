@@ -514,6 +514,16 @@ describe("settings", () => {
     expect(() => eva.updateSettings({ port: 5 })).toThrow("port");
   });
 
+  test("the outward action levels live in the vault and apply with no restart (#914)", () => {
+    expect(eva.updateSettings({ outwardActions: { pushCode: "allow" } })).toEqual({
+      saved: true,
+      restartNeeded: false,
+    });
+    expect(eva.publicSettings().config.outwardActions).toMatchObject({ pushCode: "allow", github: "ask" });
+    const saved = JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8")) as { outwardActions?: unknown };
+    expect(saved.outwardActions).toMatchObject({ pushCode: "allow" });
+  });
+
   test("the widget check interval lives in the vault and applies with no restart", () => {
     expect(eva.publicSettings().config.widgets.checkIntervalMinutes).toBe(30);
     expect(eva.updateSettings({ widgets: { checkIntervalMinutes: 120 } })).toEqual({
@@ -902,6 +912,10 @@ describe("live settings, the vault fetch and updates", () => {
       // The fake Claude Code engine describes nothing, so only pi shows.
       expect(instance.permissions()).toEqual([{ engine: "pi", mode: null, chats: [], personRules: null }]);
       expect(contexts[0]?.vaultFolder).toBe(vault);
+      expect(contexts[0]?.outwardActionLevels).toEqual(defaultConfig.outwardActions);
+      instance.updateSettings({ outwardActions: { pushCode: "deny" } });
+      instance.permissions();
+      expect(contexts[1]?.outwardActionLevels.pushCode).toBe("deny");
       expect(contexts[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(engineFolders(homePaths(home)).claude);
       expect(JSON.stringify(contexts)).not.toContain("sk-ant-oat-example");
     } finally {

@@ -23,6 +23,8 @@ import { VaultTurns, type TurnSnapshots, type VaultSyncPort } from "./vault-turn
 import { widgetsBlock } from "./widgets-block.ts";
 import type { EvaCore } from "./eva-core.ts";
 import { formatBlock, type FormatSettings } from "./format-block.ts";
+import { outwardActionsBlock } from "./outward-actions-block.ts";
+import type { OutwardActionLevels } from "../../shared/outward-actions.ts";
 import { clockTime, type Clock } from "../../shared/time-format.ts";
 
 export interface AssistantPreparerOptions {
@@ -56,6 +58,11 @@ export interface AssistantPreparerOptions {
    * and at each message for the clock of the local time.
    */
   readonly formatSettings?: () => FormatSettings;
+  /**
+   * The level of each outward action, read at the first turn of each chat for the block of the
+   * actions on Ask and Deny (#914).
+   */
+  readonly outwardActionLevels?: () => OutwardActionLevels;
   /** One line for each widget that is on, read at the first turn of each chat (#692). */
   readonly widgetLines?: () => readonly string[];
   /** Checks the data files that a turn changed against the widget schemas: one sentence for each problem. */
@@ -83,6 +90,8 @@ interface KeptPrompt {
   readonly pinned: PinnedBlock;
   /** The format settings of the chat's first turn, and their block. Null when the preparer has none. */
   readonly format: KeptFormat | null;
+  /** The block of the actions on Ask and Deny. Null when the preparer has no levels, or every action is on Allow. */
+  readonly outward: string | null;
   /** Null when no widget is on. */
   readonly widgets: string | null;
   /** The vault structure line, which only the first new chat after the alert gets (#773). */
@@ -121,6 +130,7 @@ export class AssistantPreparer implements TurnPreparer {
       rules: readFileSync(personalRulesPath, "utf-8"),
       pinned: this.pinnedBlockNow(),
       format: this.formatBlockNow(),
+      outward: this.outwardBlockNow(),
       widgets: this.widgetsBlockNow(),
       // Only a new chat that a person started: a chat with turns started before the alert, and a schedule's chat has nobody to agree.
       structureLine:
@@ -159,6 +169,7 @@ export class AssistantPreparer implements TurnPreparer {
     const rules = kept?.rules ?? onDisk;
     const pinned = kept === undefined ? this.pinnedBlockNow() : kept.pinned;
     const format = kept === undefined ? this.formatBlockNow() : kept.format;
+    const outward = kept === undefined ? this.outwardBlockNow() : kept.outward;
     const widgets = kept === undefined ? this.widgetsBlockNow() : kept.widgets;
     const parts: ContextPart[] = [
       { group: "prompt", title: "Eva's prompt", source: null, text: this.options.basePrompt, note: null },
@@ -194,6 +205,17 @@ export class AssistantPreparer implements TurnPreparer {
               source: null,
               text: format.text,
               note: "Eva reads the answer language, the time zone, the units, the clock and the first day of the week from Settings at the start of each chat. A change shows in the next chat.",
+            },
+          ]),
+      ...(outward === null
+        ? []
+        : [
+            {
+              group: "prompt" as const,
+              title: "Your action levels",
+              source: null,
+              text: outward,
+              note: "Eva lists the actions that you set to Ask or Deny at the start of each chat. A change shows in the next chat. A denied action also tells the model at once.",
             },
           ]),
       ...(widgets === null
@@ -246,7 +268,7 @@ export class AssistantPreparer implements TurnPreparer {
    */
   private appendedPrompt(kept: KeptPrompt): string {
     let prompt = `${this.options.basePrompt}\n\n${kept.rules}`;
-    for (const block of [kept.pinned.text, kept.format?.text ?? null, kept.widgets, kept.structureLine])
+    for (const block of [kept.pinned.text, kept.format?.text ?? null, kept.outward, kept.widgets, kept.structureLine])
       if (block !== null) prompt = `${prompt.trimEnd()}\n\n${block}`;
     return prompt;
   }
@@ -269,6 +291,11 @@ export class AssistantPreparer implements TurnPreparer {
   private formatBlockNow(): KeptFormat | null {
     const settings = this.options.formatSettings?.();
     return settings === undefined ? null : { settings, text: formatBlock(settings) };
+  }
+
+  private outwardBlockNow(): string | null {
+    const levels = this.options.outwardActionLevels?.();
+    return levels === undefined ? null : outwardActionsBlock(levels);
   }
 
   private widgetsBlockNow(): string | null {

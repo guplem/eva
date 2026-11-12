@@ -3,6 +3,9 @@
  * emits payloads; the core stamps each one with its session, a sequence number and a
  * time, and sends it to every front end.
  */
+import type { OutwardActionCategory, ToolCategory } from "./outward-actions.ts";
+
+export type { ToolCategory };
 import type { ProjectReport } from "./project-report.ts";
 
 export interface TurnUsage {
@@ -13,9 +16,6 @@ export interface TurnUsage {
 }
 
 export type TaskState = "running" | "done" | "failed";
-
-/** A command runs in a shell; a tool is every other tool call. The activity chips count each kind. */
-export type ToolCategory = "command" | "tool";
 
 /** A usage window of a subscription. `other` is a window that Eva does not know yet. */
 export type UsageWindow = "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "overage" | "other";
@@ -82,6 +82,8 @@ export type EngineEventPayload =
       readonly summary: string;
       /** The model's questions: the person answers them, and allows or denies nothing. An older Eva sends none. */
       readonly questions?: readonly ApprovalQuestion[];
+      /** The outward action categories on Ask that caused the request. An older Eva sends none. */
+      readonly categories?: readonly OutwardActionCategory[];
     }
   /** The first answer to an approval won; every other front end closes its question. */
   | {

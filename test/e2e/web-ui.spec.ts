@@ -6818,6 +6818,21 @@ test("Settings: the Devices page lists each computer, marks the hub, and links t
   await expect(page.getByRole("heading", { name: "Several computers" })).toBeVisible();
 });
 
+test("Settings: an old link to the Access page opens the card at its new place (#925)", async ({ page }) => {
+  await page.route("**/api/computers", (route) => route.fulfill({ status: 500, json: { error: "Disk broke." } }));
+  await logIn(page);
+  await page.evaluate(() => (window.location.hash = "#/settings/access/devices"));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Devices");
+  await expect(
+    page.getByRole("list", { name: "Browsers" }).or(page.getByText("No device has logged in")),
+  ).toBeVisible();
+  // A failed read says so, and never waits for ever.
+  await expect(page.getByRole("region", { name: "Computers" })).toContainText("Eva could not read the computers");
+  await page.evaluate(() => (window.location.hash = "#/settings/access/location"));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Personalize");
+  await expect(page.getByRole("region", { name: "Your location" })).toBeVisible();
+});
+
 test("Settings: the device list marks this device, and Remove logs out another one", async ({ page }) => {
   let devices = [
     {

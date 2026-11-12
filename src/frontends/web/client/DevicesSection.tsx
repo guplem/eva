@@ -23,13 +23,22 @@ export function DevicesSection({ context }: { readonly context: SettingsContext 
 
 /** The card id stays "machine", so old links, the search and the "?" still reach it. */
 function ComputersCard({ context }: { readonly context: SettingsContext }): ReactElement {
-  const [computers, setComputers] = useState<ComputerSummary[] | null>(null);
+  /** Null while it loads, and an error text when the read failed. */
+  const [computers, setComputers] = useState<ComputerSummary[] | string | null>(null);
   const role = context.status?.role;
   const hub = context.status?.hub;
 
   // A new hub, from here or from another computer, changes the list.
   useEffect(() => {
-    api.computers().then(setComputers, (error: unknown) => context.notify(errorText(error)));
+    let current = true;
+    // Only the newest read counts, so a slow answer never hides a newer hub.
+    api.computers().then(
+      (list) => current && setComputers(list),
+      (error: unknown) => current && setComputers(errorText(error)),
+    );
+    return () => {
+      current = false;
+    };
   }, [role, hub]);
 
   const becomeHub = async (): Promise<void> => {
@@ -48,6 +57,8 @@ function ComputersCard({ context }: { readonly context: SettingsContext }): Reac
     >
       {computers === null ? (
         <ProgressBar label="Reading the computers…" />
+      ) : typeof computers === "string" ? (
+        <div className="field-hint">Eva could not read the computers: {computers}</div>
       ) : (
         <ul className="device-list" aria-label="Computers">
           {computers.map((computer) => (

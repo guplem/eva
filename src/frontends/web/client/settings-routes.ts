@@ -116,12 +116,12 @@ export function isSettingsHash(hash: string): boolean {
 }
 
 /** The cards that left the Access page (#925), so an old link, such as in a Telegram message, still reaches them. */
-const movedCards: Readonly<Record<string, SectionId>> = {
-  devices: "devices",
-  machine: "devices",
-  notifications: "devices",
-  location: "personalize",
-};
+const movedCards: ReadonlyMap<string, SectionId> = new Map([
+  ["devices", "devices"],
+  ["machine", "devices"],
+  ["notifications", "devices"],
+  ["location", "personalize"],
+]);
 
 /** An unknown section opens the home page, so an old link never shows an empty page. */
 export function parseSettingsHash(hash: string): SettingsRoute {
@@ -132,7 +132,7 @@ export function parseSettingsHash(hash: string): SettingsRoute {
   // A guide item has two parts, a doc and a heading. Another section reads only the first part, as before.
   const item = (known.id === "guide" ? parts : parts.slice(0, 1)).map(decodeURIComponent).join("/");
   if (item === "") return { section: known.id, item: null };
-  const moved = known.id === "access" ? movedCards[item] : undefined;
+  const moved = known.id === "access" ? movedCards.get(item) : undefined;
   return { section: moved ?? known.id, item };
 }
 

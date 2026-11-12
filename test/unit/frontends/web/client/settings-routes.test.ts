@@ -61,6 +61,7 @@ describe("settings addresses", () => {
     expect(parseSettingsHash("#/settings/access/notifications")).toEqual({ section: "devices", item: "notifications" });
     expect(parseSettingsHash("#/settings/access/location")).toEqual({ section: "personalize", item: "location" });
     expect(parseSettingsHash("#/settings/access/accounts")).toEqual({ section: "access", item: "accounts" });
+    expect(parseSettingsHash("#/settings/access/constructor")).toEqual({ section: "access", item: "constructor" });
   });
 
   test("only a settings address counts as one", () => {

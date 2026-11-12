@@ -378,14 +378,15 @@ Cases, a case page, People, Objects, Pets and Periods, on a computer and on a ph
 - Optional steps have another icon and colour, so they do not look like errors.
 - Appearance has the colour picker, the theme and the density.
 
-### Remote access and devices
+### Devices
 
 ![Computer](screenshots/devices-computer-light.webp) ![Phone](screenshots/devices-phone-light.webp)
 
-- The new-device notice shows the code in the same type as the login page.
-- "This one" marks the current device.
-- A button copies the Tailscale address.
+- Computers lists each computer with the vault. A "Hub" pill marks the hub.
+- "This one" marks the current computer and the current browser.
 - "Log out every device" stands apart, in red.
+- The new-device notice shows the code in the same type as the login page.
+- On the Access page, a button copies the Tailscale address.
 
 ### When something goes wrong
 

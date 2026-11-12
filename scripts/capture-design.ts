@@ -294,7 +294,7 @@ const scenes: readonly Scene[] = [
   { name: "pets", show: (page) => openAddress(page, "#/pets", "Pets") },
   { name: "periods", show: (page) => openAddress(page, "#/periods", "Periods") },
   { name: "settings", show: (page) => openAddress(page, "#/settings", "Settings") },
-  { name: "devices", show: (page) => openAddress(page, "#/settings/access", "Access") },
+  { name: "devices", show: (page) => openAddress(page, "#/settings/devices", "Devices") },
   {
     name: "problems",
     show: async (page, _view, demo) => {

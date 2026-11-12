@@ -94,6 +94,7 @@ import {
   type CheckRecord,
   type ProgressStep,
 } from "./setup/progress.ts";
+import { listComputers, type ComputerSummary } from "./instance/computers.ts";
 import { claimHub, claimHubIfUnclaimed, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
@@ -1196,6 +1197,11 @@ export class Eva {
     }
     this.noticeRoleChange();
     return this.status();
+  }
+
+  /** The computers that run Eva with this vault, the hub first, for the Devices page. */
+  computers(): ComputerSummary[] {
+    return listComputers(this.options.config.vaultPath, this.machine, evaVersion, this.role());
   }
 
   /** "Sync now": brings the remote's changes in, then commits and pushes this machine's changes. */

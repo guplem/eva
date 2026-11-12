@@ -1095,7 +1095,7 @@ test("a link opened before the login opens its chat after the login", async ({ p
   const linked = await newAnsweredChat(page, "Linked before login");
   await newAnsweredChat(page, "Newer chat");
   const chatId = await chatIdNamed(page, linked);
-  await openSettings(page, "Access");
+  await openSettings(page, "Devices");
   page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Log out of this browser" }).click();
 
@@ -2682,8 +2682,8 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   release();
   await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
   await expect(vaultRow.getByRole("progressbar")).toHaveCount(0);
-  // Log out sits on the Devices card, because it ends only this browser's login.
-  await openSettings(page, "Access");
+  // Log out sits on the Browsers card, because it ends only this browser's login.
+  await openSettings(page, "Devices");
   page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Log out of this browser" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
@@ -2779,7 +2779,7 @@ test("Settings: Use Eva from any device installs Tailscale, then shares the addr
 
 test("Settings: Log out every device ends this login too", async ({ page }) => {
   await logIn(page);
-  await openSettings(page, "Access");
+  await openSettings(page, "Devices");
   page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Log out every device" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
@@ -6383,6 +6383,7 @@ test.describe("on a phone", () => {
       "#/settings/vault",
       "#/settings/connections",
       "#/settings/access",
+      "#/settings/devices",
       "#/settings/personalize",
       "#/settings/developer/design",
       "#/settings/developer",
@@ -6810,6 +6811,41 @@ test("device login: an open page shows a new device's code, and Allow answers it
   expect(answers).toEqual([{ answer: "allow" }]);
 });
 
+test("Settings: the Devices page lists each computer, marks the hub, and links the guide (#925)", async ({ page }) => {
+  await page.route("**/api/computers", (route) =>
+    route.fulfill({
+      json: [
+        { name: "server", role: "hub", version: "1.3.0", current: false },
+        { name: "laptop", role: "satellite", version: "1.4.0", current: true },
+      ],
+    }),
+  );
+  await logIn(page);
+  await openSettings(page, "Devices");
+  const rows = page.getByRole("list", { name: "Computers" }).getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Runs Telegram and the schedules · Eva 1.3.0");
+  await expect(rows.nth(0).locator(".pill", { hasText: "Hub" })).toBeVisible();
+  await expect(rows.nth(1)).toContainText("This one");
+  await page.getByRole("link", { name: "Help on Computers: Several computers" }).click();
+  await expect(page.getByRole("heading", { name: "Several computers" })).toBeVisible();
+});
+
+test("Settings: an old link to the Access page opens the card at its new place (#925)", async ({ page }) => {
+  await page.route("**/api/computers", (route) => route.fulfill({ status: 500, json: { error: "Disk broke." } }));
+  await logIn(page);
+  await page.evaluate(() => (window.location.hash = "#/settings/access/devices"));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Devices");
+  await expect(
+    page.getByRole("list", { name: "Browsers" }).or(page.getByText("No device has logged in")),
+  ).toBeVisible();
+  // A failed read says so, and never waits for ever.
+  await expect(page.getByRole("region", { name: "Computers" })).toContainText("Eva could not read the computers");
+  await page.evaluate(() => (window.location.hash = "#/settings/access/location"));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Personalize");
+  await expect(page.getByRole("region", { name: "Your location" })).toBeVisible();
+});
+
 test("Settings: the device list marks this device, and Remove logs out another one", async ({ page }) => {
   let devices = [
     {
@@ -6833,8 +6869,8 @@ test("Settings: the device list marks this device, and Remove logs out another o
     await route.fulfill({ status: 204 });
   });
   await logIn(page);
-  await openSettings(page, "Access");
-  const list = page.getByRole("list", { name: "Devices" });
+  await openSettings(page, "Devices");
+  const list = page.getByRole("list", { name: "Browsers" });
   await expect(list.getByRole("listitem")).toHaveCount(2);
   await expect(list.getByRole("listitem").nth(1)).toContainText("This one");
   await expect(
@@ -6887,8 +6923,8 @@ test("Settings: the device list names each device from its browser", async ({ pa
     }),
   );
   await logIn(page);
-  await openSettings(page, "Access");
-  const row = page.getByRole("list", { name: "Devices" }).getByRole("listitem");
+  await openSettings(page, "Devices");
+  const row = page.getByRole("list", { name: "Browsers" }).getByRole("listitem");
   await expect(row).toContainText("Windows computer");
   await expect(row).toContainText("Chrome · owner@example.com · allowed");
   await expect(row.getByRole("button", { name: /^Remove Windows computer/ })).toBeVisible();

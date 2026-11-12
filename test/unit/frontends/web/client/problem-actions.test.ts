@@ -84,7 +84,7 @@ describe("problemSettingsRoute", () => {
       ["default_engine_restart", { section: "updates", item: "restart" }],
       ["update", { section: "updates", item: "eva-updates" }],
       ["vault_ahead", { section: "updates", item: "eva-updates" }],
-      ["last_location", { section: "access", item: "location" }],
+      ["last_location", { section: "personalize", item: "location" }],
       ["telegram_poll", { section: "connections", item: "telegram" }],
       ["widget_check:example-owner/habits", { section: "personalize", item: "widgets" }],
       ["widget_update:example-owner/habits:0123456789ab", { section: "personalize", item: "widgets" }],

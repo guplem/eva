@@ -2648,6 +2648,12 @@ describe("updates and the vault sync", () => {
     expect(await json<{ role: string }>(response)).toMatchObject({ role: "hub" });
   });
 
+  test("lists the computers with the vault, with this one as the hub", async () => {
+    const computers = await json<{ name: string; role: string; current: boolean }[]>(await call("/api/computers"));
+    expect(computers).toHaveLength(1);
+    expect(computers[0]).toMatchObject({ role: "hub", current: true });
+  });
+
   test("hides the notice of an open problem, and answers 404 for a problem that is not open (#541)", async () => {
     eva.reportProblem("example_problem", { level: "warn", message: "Something broke.", resolvedMessage: "Fixed." });
     const hidden = await call("/api/problems/hide", { method: "POST", body: { key: "example_problem" } });

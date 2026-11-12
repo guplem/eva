@@ -110,6 +110,7 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
     ["#/schedules", [page.locator(".schedule-panel:visible").first()]],
     ["#/settings", [page.locator(".section-card").first()]],
     ["#/settings/engines", [page.getByRole("region", { name: "Actions that reach other people" })]],
+    ["#/settings/devices", [page.getByRole("region", { name: "Computers" })]],
     ["#/settings/guide/reference", [page.locator(".guide-body")]],
     // The Life pages (#911): the list of each kind, and the page of an entity with its steps and files.
     ["#/cases", [page.locator(".life-card").first()]],

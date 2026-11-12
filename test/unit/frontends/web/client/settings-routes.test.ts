@@ -55,6 +55,15 @@ describe("settings addresses", () => {
     expect(parseSettingsHash("#/settings/")).toEqual(settingsHome);
   });
 
+  test("an old link to a card that moved opens the card at its new place (#925)", () => {
+    expect(parseSettingsHash("#/settings/access/devices")).toEqual({ section: "devices", item: "devices" });
+    expect(parseSettingsHash("#/settings/access/machine")).toEqual({ section: "devices", item: "machine" });
+    expect(parseSettingsHash("#/settings/access/notifications")).toEqual({ section: "devices", item: "notifications" });
+    expect(parseSettingsHash("#/settings/access/location")).toEqual({ section: "personalize", item: "location" });
+    expect(parseSettingsHash("#/settings/access/accounts")).toEqual({ section: "access", item: "accounts" });
+    expect(parseSettingsHash("#/settings/access/constructor")).toEqual({ section: "access", item: "constructor" });
+  });
+
   test("only a settings address counts as one", () => {
     expect(isSettingsHash("#/settings")).toBe(true);
     expect(isSettingsHash("#/settings/vault")).toBe(true);
@@ -71,7 +80,7 @@ describe("settings addresses", () => {
 
   test("each setup step has a section that holds its controls", () => {
     expect(sectionOfStep("engine")).toBe("engines");
-    expect(sectionOfStep("device")).toBe("access");
+    expect(sectionOfStep("device")).toBe("devices");
     expect(sectionOfStep("google")).toBe("connections");
     const owned = settingsSections.flatMap((section) => section.steps);
     expect(new Set(owned).size).toBe(owned.length);

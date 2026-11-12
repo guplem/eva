@@ -1,5 +1,5 @@
 /**
- * The personalize page: this browser's look, navigation and sounds, the person's rules for Eva, the widgets, then the time zone, the
+ * The personalize page: this browser's look, navigation and sounds, the person's rules for Eva, the widgets, then the location, the time zone, the
  * language and formats, the rules for chat names, and the message box menu. The text fields wait for Save; the look, the navigation and the sounds
  * apply at once. Each item of the message box menu saves on its own.
  */
@@ -7,6 +7,7 @@ import { useEffect, useState, useSyncExternalStore, type ReactElement } from "re
 import { api, ApiError, type EvaStatus } from "./api.ts";
 import { AssistantRulesCard } from "./AssistantRulesCard.tsx";
 import { ComposerMenuCard } from "./ComposerMenuCard.tsx";
+import { LocationCard } from "./LocationCard.tsx";
 import { WidgetsCard } from "./WidgetsCard.tsx";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
 import {
@@ -109,6 +110,7 @@ export function PersonalizeSection({ context }: { readonly context: SettingsCont
       <AssistantRulesCard context={context} />
       <ComposerMenuCard context={context} />
       <WidgetsCard context={context} />
+      <LocationCard context={context} />
       <PreferencesForm context={context} />
     </>
   );

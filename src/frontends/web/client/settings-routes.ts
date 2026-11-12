@@ -11,6 +11,7 @@ export type SectionId =
   | "connections"
   | "trust"
   | "access"
+  | "devices"
   | "personalize"
   | "updates"
   | "guide"
@@ -54,13 +55,19 @@ export const settingsSections: readonly SettingsSection[] = [
   {
     id: "access",
     title: "Access",
-    summary: "Phone access with Tailscale, devices and this machine.",
-    steps: ["remoteAccess", "device"],
+    summary: "Phone access with Tailscale, and the accounts that may use it.",
+    steps: ["remoteAccess"],
+  },
+  {
+    id: "devices",
+    title: "Devices",
+    summary: "The computers that run Eva, the hub, the browsers and their notifications.",
+    steps: ["device"],
   },
   {
     id: "personalize",
     title: "Personalize",
-    summary: "Theme, navigation, sounds, Eva's rules, time zone and chat names.",
+    summary: "Theme, navigation, sounds, Eva's rules, location, time zone and chat names.",
     steps: [],
   },
   {
@@ -108,6 +115,14 @@ export function isSettingsHash(hash: string): boolean {
   return hash === prefix || hash.startsWith(`${prefix}/`);
 }
 
+/** The cards that left the Access page (#925), so an old link, such as in a Telegram message, still reaches them. */
+const movedCards: ReadonlyMap<string, SectionId> = new Map([
+  ["devices", "devices"],
+  ["machine", "devices"],
+  ["notifications", "devices"],
+  ["location", "personalize"],
+]);
+
 /** An unknown section opens the home page, so an old link never shows an empty page. */
 export function parseSettingsHash(hash: string): SettingsRoute {
   if (!isSettingsHash(hash)) return settingsHome;
@@ -116,7 +131,9 @@ export function parseSettingsHash(hash: string): SettingsRoute {
   if (known === undefined) return settingsHome;
   // A guide item has two parts, a doc and a heading. Another section reads only the first part, as before.
   const item = (known.id === "guide" ? parts : parts.slice(0, 1)).map(decodeURIComponent).join("/");
-  return { section: known.id, item: item === "" ? null : item };
+  if (item === "") return { section: known.id, item: null };
+  const moved = known.id === "access" ? movedCards.get(item) : undefined;
+  return { section: moved ?? known.id, item };
 }
 
 /**
@@ -249,15 +266,19 @@ export const searchEntries: readonly SearchEntry[] = [
     words: "trust hooks ask again allow deny forget repositories",
   },
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },
-  { item: "devices", section: "access", title: "Devices", words: "browsers log out this browser remove lost phone" },
-  { item: "location", section: "access", title: "Your location", words: "weather place gps telegram live home" },
+  {
+    item: "machine",
+    section: "devices",
+    title: "Computers",
+    words: "hub satellite machine this machine telegram schedules version",
+  },
+  { item: "devices", section: "devices", title: "Browsers", words: "log out this browser remove lost phone" },
   {
     item: "notifications",
-    section: "access",
+    section: "devices",
     title: "Notifications on this device",
     words: "push alerts notify phone closed telegram answers replies schedules approvals background",
   },
-  { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
   { item: "accounts", section: "access", title: "Allowed Tailscale accounts", words: "identities device login" },
   {
     item: "appearance",
@@ -286,6 +307,7 @@ export const searchEntries: readonly SearchEntry[] = [
     words:
       "sound audio volume mute quiet loud effects chirp style palette coin orbit fluent kalimba halo aurora crystal pulse blocks eve haptic haptics vibrate vibration buzz phone",
   },
+  { item: "location", section: "personalize", title: "Your location", words: "weather place gps telegram live home" },
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   {
     item: "formats",
@@ -410,7 +432,7 @@ export const settingPlaces: readonly SettingPlace[] = [
     keys: ["widgets.checkIntervalMinutes"],
     link: { section: "personalize", item: "widget-updates" },
   },
-  { title: "The hub machine", home: "vault", keys: [], link: { section: "access", item: "machine" } },
+  { title: "The hub machine", home: "vault", keys: [], link: { section: "devices", item: "machine" } },
   { title: "Voice note language", home: "vault", keys: ["voice.language"], link: null },
   { title: "Claude Code login", home: "machine", keys: [], link: { section: "engines", item: "claude-code" } },
   { title: "pi login", home: "machine", keys: [], link: { section: "engines", item: "pi" } },
@@ -450,9 +472,9 @@ export const settingPlaces: readonly SettingPlace[] = [
     title: "This machine's name",
     home: "machine",
     keys: ["machineName"],
-    link: { section: "access", item: "machine" },
+    link: { section: "devices", item: "machine" },
   },
-  { title: "Devices", home: "machine", keys: [], link: { section: "access", item: "devices" } },
+  { title: "Browsers", home: "machine", keys: [], link: { section: "devices", item: "devices" } },
   {
     title: "Allowed Tailscale accounts",
     home: "machine",

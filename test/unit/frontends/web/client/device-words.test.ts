@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { allowedWords, describeDevice } from "../../../../../src/frontends/web/client/device-words.ts";
+import { allowedWords, computerDetail, describeDevice } from "../../../../../src/frontends/web/client/device-words.ts";
 
 // The local API keeps the first 120 characters of the user agent.
 const label = (agent: string): string => `owner@example.com, ${agent.slice(0, 120)}`;
@@ -101,5 +101,22 @@ describe("allowedWords", () => {
 
   test("a bad stored date says only allowed", () => {
     expect(allowedWords("not a date", now)).toBe("allowed");
+  });
+});
+
+describe("the words of a computer", () => {
+  test("the hub says what it runs, and each computer gives its Eva version", () => {
+    expect(computerDetail({ name: "server", role: "hub", version: "1.3.0", current: false })).toBe(
+      "Runs Telegram and the schedules · Eva 1.3.0",
+    );
+    expect(computerDetail({ name: "laptop", role: "satellite", version: "1.4.0", current: true })).toBe(
+      "Satellite: syncs the vault · Eva 1.4.0",
+    );
+  });
+
+  test("a computer that did not report yet has no version", () => {
+    expect(computerDetail({ name: "server", role: "hub", version: null, current: false })).toBe(
+      "Runs Telegram and the schedules",
+    );
   });
 });

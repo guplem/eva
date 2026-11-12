@@ -25,6 +25,7 @@ import type {
   DeviceSummary,
 } from "../../../core/remote-access/device-logins.ts";
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
+import type { ComputerSummary } from "../../../core/instance/computers.ts";
 import type { BrowsedPath, FileEntry } from "../../../core/files/file-browser.ts";
 import type { Favorite } from "../../../core/files/vault-favorites.ts";
 import type { SearchResult } from "../../../core/files/vault-search.ts";
@@ -88,6 +89,7 @@ export type { ComposerMenuItems, SavedPrompt, TextAction };
 
 export type { PersonalFactsView, VaultStructureView };
 export type { VaultSecretsStatus };
+export type { ComputerSummary };
 export type { WidgetFrame, WidgetInputValue, WidgetItem, WidgetReview, PreviewMode, PreviewPlace, WidgetPreview };
 /** Where the person is, for scripts: a recent point from a phone, or the home place. */
 export type CurrentPlaceView = CurrentPlace;
@@ -519,6 +521,7 @@ export const api = {
   vaultConflicts: (): Promise<VaultConflictReport> => request("GET", "/api/vault/conflicts"),
   resolveVaultConflict: (path: string, choice: ConflictChoice): Promise<ConflictResolution> =>
     request("POST", "/api/vault/conflicts", { path, choice }),
+  computers: (): Promise<ComputerSummary[]> => request("GET", "/api/computers"),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
   /** Hides the notice of an open problem, and answers with the new status. */
   hideProblem: (key: string): Promise<EvaStatus> =>

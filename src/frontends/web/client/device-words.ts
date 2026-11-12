@@ -1,4 +1,5 @@
-/** The words of the device list: a name, a browser and an icon from a stored label, and the allowed date. */
+/** The words of the device lists: a computer's role, and a browser's name, browser and icon from a stored label, and the allowed date. */
+import type { ComputerSummary } from "../../../core/instance/computers.ts";
 import { chatTime, daysBefore } from "./chat-list.ts";
 
 export interface DeviceWords {
@@ -56,4 +57,10 @@ export function allowedWords(createdAt: string, now: Date): string {
   if (days === 1) return "allowed yesterday";
   if (days < 7) return `allowed ${String(days)} days ago`;
   return `allowed ${chatTime(at, now)}`;
+}
+
+/** "Runs Telegram and the schedules · Eva 1.3.0": a "Hub" pill names the hub. A computer that did not report yet has no version. */
+export function computerDetail(computer: ComputerSummary): string {
+  const role = computer.role === "hub" ? "Runs Telegram and the schedules" : "Satellite: syncs the vault";
+  return computer.version === null ? role : `${role} · Eva ${computer.version}`;
 }

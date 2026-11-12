@@ -1,21 +1,13 @@
-/** The access page: phone access with Tailscale, the devices that may open Eva, and this machine's role. */
+/** The access page: phone access with Tailscale, and the Tailscale accounts that may ask for a device login. */
 import type { ReactElement } from "react";
-import { api } from "./api.ts";
-import { DevicesPanel } from "./DevicesPanel.tsx";
-import { LocationCard } from "./LocationCard.tsx";
-import { PushCard } from "./PushCard.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
-import { Card, errorText, Steps, type SettingsContext } from "./SettingsParts.tsx";
+import { Card, Steps, type SettingsContext } from "./SettingsParts.tsx";
 import { ProgressBar } from "./Loading.tsx";
 
 export function AccessSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
     <>
       <PhoneAccess context={context} />
-      <DevicesPanel onChanged={context.notify} onLoggedOut={context.onLoggedOut} />
-      <LocationCard context={context} />
-      <PushCard context={context} />
-      <MachineCard context={context} />
       <AccountsCard context={context} />
     </>
   );
@@ -50,36 +42,6 @@ export function DevicesGuide(): ReactElement {
           Eva&apos;s computer.
         </li>
       </Steps>
-    </Card>
-  );
-}
-
-function MachineCard({ context }: { readonly context: SettingsContext }): ReactElement | null {
-  const status = context.status;
-  if (status === null) return null;
-  const becomeHub = async (): Promise<void> => {
-    try {
-      context.setStatus(await api.becomeHub());
-    } catch (error) {
-      context.notify(errorText(error));
-    }
-  };
-  return (
-    <Card
-      item="machine"
-      title="This machine"
-      description="The hub is the one machine that runs Telegram and the schedules."
-    >
-      <div>
-        {status.role === "hub"
-          ? `This machine (${status.machine}) is the hub: it runs Telegram and the schedules.`
-          : `This machine (${status.machine}) is a satellite. The hub is ${status.hub ?? "unknown"}.`}
-      </div>
-      {status.role === "satellite" && (
-        <div className="button-row">
-          <button onClick={() => void becomeHub()}>Make this machine the hub</button>
-        </div>
-      )}
     </Card>
   );
 }

@@ -70,8 +70,8 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
   return (
     <Card
       item="devices"
-      title="Devices"
-      description="These browsers may open Eva. When one is lost, remove it here."
+      title="Browsers"
+      description="These browsers may open Eva on this computer. When one is lost, remove it here."
       aside={
         <button className="danger device-log-out" onClick={() => void removeAll()}>
           Log out every device
@@ -83,7 +83,7 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
       ) : devices.length === 0 ? (
         <div className="field-hint">No device has logged in with a code yet.</div>
       ) : (
-        <ul className="device-list" aria-label="Devices">
+        <ul className="device-list" aria-label="Browsers">
           {devices.map((device) => {
             const words = describeDevice(device.label);
             const detail = [words.browser, words.account, allowedWords(device.createdAt, now)]

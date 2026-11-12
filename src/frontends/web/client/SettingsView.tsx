@@ -5,6 +5,7 @@
  */
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { AccessSection } from "./AccessSection.tsx";
+import { DevicesSection } from "./DevicesSection.tsx";
 import { api, type EvaSetupState, type EvaStatus, type ProgressStep, type PublicSettings } from "./api.ts";
 import { Dialog } from "./Dialog.tsx";
 import { ConnectionsSection } from "./ConnectionsSection.tsx";
@@ -408,6 +409,7 @@ const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   connections: "globe",
   trust: "shield",
   access: "phone",
+  devices: "laptop",
   personalize: "palette",
   updates: "download",
   guide: "book",
@@ -633,6 +635,8 @@ function SectionPage({
       return <TrustSection context={context} />;
     case "access":
       return <AccessSection context={context} />;
+    case "devices":
+      return <DevicesSection context={context} />;
     case "personalize":
       return <PersonalizeSection context={context} />;
     case "updates":

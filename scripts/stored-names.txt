@@ -104,6 +104,7 @@ machine config.json sync.sweepSeconds
 machine config.json telegram
 machine config.json telegram.allowedChatId
 machine config.json telegram.allowedUserId
+machine config.json telegram.setupDismissed
 machine config.json timeZone
 machine config.json trust
 machine config.json trust.trustedRepositoryOwners

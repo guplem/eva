@@ -372,8 +372,10 @@ export const configSchema = z.object({
       allowedChatId: z.number().int().nullable().default(null),
       /** The person who paired the chat; in a group, only this person may act. */
       allowedUserId: z.number().int().nullable().default(null),
+      /** True: the person does not use Telegram, so the setup hides its step until a bot token is saved (#920). */
+      setupDismissed: z.boolean().default(false),
     })
-    .default({ allowedChatId: null, allowedUserId: null }),
+    .default({ allowedChatId: null, allowedUserId: null, setupDismissed: false }),
   trust: z
     .object({ trustedRepositoryOwners: z.array(z.string().min(1)).default([]) })
     .default({ trustedRepositoryOwners: [] }),

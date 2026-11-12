@@ -22,7 +22,7 @@ const fresh: ProgressInput = {
   githubCli: false,
   remoteAccess: { url: null, problem: null, step: "sign_in", link: "https://login.tailscale.com/a/x", account: null },
   devices: 0,
-  telegram: { token: false, paired: false },
+  telegram: { token: false, paired: false, dismissed: false },
   google: false,
   checks: {},
 };
@@ -35,14 +35,15 @@ describe("setupProgress", () => {
   test("a new machine misses the engine login, the vault, Tailscale and a device; the rest is optional", () => {
     const steps = setupProgress(fresh);
     // GitHub comes before the vault: its login lists the repositories to pick the vault from.
+    // The engine comes after the steps that make Eva reachable (#918).
     expect(steps.map((found) => [found.key, found.state])).toEqual([
-      ["engine", "missing"],
       ["github", "optional"],
       ["vault", "missing"],
       ["remoteAccess", "missing"],
       ["device", "missing"],
-      ["telegram", "optional"],
+      ["engine", "missing"],
       ["google", "optional"],
+      ["telegram", "optional"],
     ]);
     expect(missingSteps(steps)).toBe(4);
     expect(step(fresh, "engine")?.detail).toContain("Start the login");
@@ -67,7 +68,7 @@ describe("setupProgress", () => {
       githubCli: true,
       remoteAccess: ready,
       devices: 2,
-      telegram: { token: true, paired: true },
+      telegram: { token: true, paired: true, dismissed: false },
       google: true,
       checks: { "claude-code": { ok: true, detail: "Claude Code answered.", at: "2026-10-18T10:00:00.000Z" } },
     };
@@ -130,12 +131,24 @@ describe("setupProgress", () => {
   });
 
   test("phone access that is off is optional; a bot with no paired chat says how to pair", () => {
-    const input: ProgressInput = { ...fresh, remoteAccess: null, telegram: { token: true, paired: false } };
+    const input: ProgressInput = {
+      ...fresh,
+      remoteAccess: null,
+      telegram: { token: true, paired: false, dismissed: false },
+    };
     expect(step(input, "remoteAccess")?.state).toBe("optional");
     expect(step(input, "telegram")).toMatchObject({
       state: "optional",
       detail: expect.stringContaining("pairing code") as string,
     });
+  });
+
+  test("a person who does not use Telegram dismisses its step; a saved bot token shows it again (#920)", () => {
+    const dismissed: ProgressInput = { ...fresh, telegram: { token: false, paired: false, dismissed: true } };
+    expect(step(dismissed, "telegram")).toBeUndefined();
+    expect(setupProgress(dismissed)).toHaveLength(setupProgress(fresh).length - 1);
+    const withBot: ProgressInput = { ...fresh, telegram: { token: true, paired: false, dismissed: true } };
+    expect(step(withBot, "telegram")?.state).toBe("optional");
   });
 });
 
@@ -145,8 +158,9 @@ describe("chatBlocker", () => {
     { name: "pi", found: true, loggedIn: false },
   ];
 
-  test("names the engine first, then the vault, the two steps that a chat needs", () => {
-    expect(chatBlocker(setupProgress(fresh))).toBe("engine");
+  test("names the vault first, then the engine, the two steps that a chat needs, in the setup order", () => {
+    expect(chatBlocker(setupProgress(fresh))).toBe("vault");
+    expect(chatBlocker(setupProgress({ ...fresh, vaultPath: "/vaults/eva" }))).toBe("engine");
     expect(chatBlocker(setupProgress({ ...fresh, engines: engineReady }))).toBe("vault");
   });
 

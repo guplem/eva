@@ -27,7 +27,8 @@ export interface ProgressInput {
   readonly remoteAccess: RemoteAccess | null;
   /** How many browsers may open Eva with a device login. */
   readonly devices: number;
-  readonly telegram: { readonly token: boolean; readonly paired: boolean };
+  /** `dismissed`: the person pressed "I do not use Telegram" on the step. */
+  readonly telegram: { readonly token: boolean; readonly paired: boolean; readonly dismissed: boolean };
   readonly google: boolean;
   readonly checks: Readonly<Partial<Record<CheckName, CheckRecord>>>;
 }
@@ -47,6 +48,12 @@ export interface ProgressStep {
 }
 
 export function setupProgress(input: ProgressInput): ProgressStep[] {
+  // A saved bot token shows the step again: the person now uses Telegram after all.
+  const telegramHidden = input.telegram.dismissed && !input.telegram.token;
+  return everyStep(input).filter((step) => step.key !== "telegram" || !telegramHidden);
+}
+
+function everyStep(input: ProgressInput): ProgressStep[] {
   const make = (
     key: ProgressKey,
     title: string,
@@ -61,8 +68,9 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
     check,
     lastCheck: check === null ? null : (input.checks[check] ?? null),
   });
+  // The order is the order that the person follows. The steps that make Eva reachable come first,
+  // and the engine login follows them (#918).
   return [
-    engineStep(input, make),
     // Before the vault: the GitHub login lists the repositories that the vault step picks from.
     !input.githubToken
       ? make(
@@ -106,10 +114,11 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           input.remoteAccess === null ? "optional" : "missing",
           "Open Eva's page on your phone. It shows a short code: run `eva devices allow <code>` on Eva's computer.",
         ),
-    telegramStep(input.telegram, make),
+    engineStep(input, make),
     input.google
       ? make("google", "Google", "done", "A Google account is set.", "google")
       : make("google", "Google", "optional", "Calendar, Drive, Contacts and Tasks.", "google"),
+    telegramStep(input.telegram, make),
   ];
 }
 

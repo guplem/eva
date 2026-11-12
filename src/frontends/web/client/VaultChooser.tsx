@@ -1,6 +1,6 @@
 /**
- * The vault step on the page, as in `eva setup`: pick the vault from the GitHub repositories, type
- * its address, or start a new vault in a new private repository. Eva clones it into her home folder.
+ * The vault step on the page, as in `eva setup`: search the GitHub repositories and pick the vault,
+ * type its address, or start a new vault in a new private repository. Eva clones it into her home folder.
  */
 import { regionalLocale } from "../../../shared/time-format.ts";
 import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
@@ -13,6 +13,14 @@ import { ChoiceChips, errorText, SecretField, type SettingsContext } from "./Set
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { NewPasswordFields } from "./VaultPasswordForms.tsx";
+import { Icon } from "./icons.tsx";
+import {
+  chosenRepository,
+  defaultVaultRepository,
+  firstVaultMatch,
+  matchingRepositories,
+  vaultFirst,
+} from "./vault-repositories.ts";
 
 type Path = "existing" | "new";
 
@@ -117,15 +125,19 @@ function PickRepository({
   readonly onClone: (repository: string) => void;
 }): ReactElement {
   const [listing, setListing] = useState<Listing>({ state: "loading" });
-  const [picked, setPicked] = useState("");
-  const [typed, setTyped] = useState("");
+  // The clone address of the picked repository, or null before a pick.
+  const [picked, setPicked] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   // A save would clone, so the question offers no save. While the clone runs, the guard waits.
-  useLeaveGuard(typed.trim() !== "" && busy === null, null);
+  useLeaveGuard(search.trim() !== "" && busy === null, null);
 
   const load = useCallback(async (): Promise<void> => {
     setListing({ state: "loading" });
     try {
-      setListing({ state: "ready", repositories: await api.vaultRepositories() });
+      const repositories = vaultFirst(await api.vaultRepositories());
+      setListing({ state: "ready", repositories });
+      // The likely vault is picked already, unless the person picked another one before.
+      setPicked((current) => current ?? firstVaultMatch(repositories)?.cloneUrl ?? null);
     } catch (error) {
       setListing({ state: "failed", reason: errorText(error) });
     }
@@ -135,13 +147,27 @@ function PickRepository({
     void load();
   }, [load]);
 
-  // A typed address wins: the person typed it after the pick.
-  const repository = typed.trim() !== "" ? typed.trim() : picked;
+  const shown = listing.state === "ready" ? matchingRepositories(listing.repositories, search) : [];
+  const repository = chosenRepository(shown, picked, search);
   return (
     <div className="vault-choice">
       <p className="field-hint">
-        Eva copies a vault that you made before, for example on another computer. Pick its repository.
+        Eva copies a vault that you made before, for example on another computer. Search for its repository, and pick
+        it.
       </p>
+      <label className="field">
+        <span className="field-label">Your vault&apos;s repository</span>
+        <span className="search-field">
+          <Icon name="search" />
+          <input
+            type="search"
+            autoComplete="off"
+            placeholder="Search, or type an address"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </span>
+      </label>
       {listing.state === "loading" && <ProgressBar label="Reading your GitHub repositories…" />}
       {listing.state === "failed" && (
         <div className="callout danger callout-action">
@@ -151,29 +177,29 @@ function PickRepository({
           <GitHubStepLink context={context} />
         </div>
       )}
-      {listing.state === "ready" && (
-        <label className="field">
-          <span className="field-label">Your vault&apos;s repository</span>
-          <select value={picked} onChange={(event) => setPicked(event.target.value)}>
-            <option value="">Pick a repository</option>
-            {listing.repositories.map((each) => (
-              <option key={each.cloneUrl} value={each.cloneUrl}>
-                {each.fullName}
-                {each.private ? " (private)" : ""}
-              </option>
+      {shown.length > 0 && (
+        // The rows of the update dialog: a hidden radio covers each row, for a tap on a phone.
+        <div className="version-list repository-list">
+          <div className="version-choices" role="radiogroup" aria-label="Your repositories">
+            {shown.map((each) => (
+              <label key={each.cloneUrl} className="version-row">
+                <input
+                  type="radio"
+                  name="vault-repository"
+                  value={each.cloneUrl}
+                  checked={each.cloneUrl === repository}
+                  onChange={() => setPicked(each.cloneUrl)}
+                />
+                <span className="repository-name">{each.fullName}</span>
+                {each.private && <span className="status-pill idle">Private</span>}
+              </label>
             ))}
-          </select>
-        </label>
+          </div>
+        </div>
       )}
-      <label className="field">
-        <span className="field-label">Or type its name or address</span>
-        <input
-          autoComplete="off"
-          placeholder="you/vault"
-          value={typed}
-          onChange={(event) => setTyped(event.target.value)}
-        />
-      </label>
+      {listing.state === "ready" && shown.length === 0 && search.trim() !== "" && (
+        <p className="field-hint">No repository in your list has this name. Eva uses what you typed as its address.</p>
+      )}
       <div className="button-row">
         <button
           className="primary"
@@ -182,7 +208,7 @@ function PickRepository({
           onClick={() => onClone(repository)}
         >
           {busy === "clone" && <ButtonSpinner />}
-          {busy === "clone" ? "Cloning…" : "Clone this vault"}
+          {busy === "clone" ? "Cloning…" : "Use this vault"}
         </button>
       </div>
       {busy === "clone" && <ProgressBar label="Eva clones your vault…" />}
@@ -203,7 +229,7 @@ function NewVault({
   const [language, setLanguage] = useState("English");
   const [notesLanguage, setNotesLanguage] = useState("English");
   const [topics, setTopics] = useState("");
-  const [repository, setRepository] = useState("vault");
+  const [repository, setRepository] = useState(defaultVaultRepository);
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -213,7 +239,7 @@ function NewVault({
     language !== "English" ||
     notesLanguage !== "English" ||
     topics !== "" ||
-    repository !== "vault" ||
+    repository !== defaultVaultRepository ||
     password !== "";
   useLeaveGuard(changed && busy === null, null);
   const create = (): void => {
@@ -316,10 +342,10 @@ function NewVault({
 
 /** A new vault with no repository yet, such as after a failed push: Eva puts it on GitHub. */
 export function VaultPush({ context }: { readonly context: SettingsContext }): ReactElement {
-  const [repository, setRepository] = useState("vault");
+  const [repository, setRepository] = useState(defaultVaultRepository);
   const [pushing, setPushing] = useState(false);
   // A save would push, so the question offers no save.
-  useLeaveGuard(repository !== "vault" && !pushing, null);
+  useLeaveGuard(repository !== defaultVaultRepository && !pushing, null);
   const push = async (): Promise<void> => {
     setPushing(true);
     try {

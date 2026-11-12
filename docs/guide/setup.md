@@ -113,6 +113,8 @@ In the terminal, setup first logs in to GitHub:
 
 On the page, open **Settings > Setup**, then the **GitHub** step, and press **Log in with GitHub**. Enter the code on GitHub. Then pick or create the vault in the **Your vault** step. To use a token instead, press **Paste a token instead**.
 
+In the **Your vault** step, a repository named `vault` comes first, and the step picks it already. To find another repository, type a part of its name in the search field. To use a repository that is not in the list, type its name or address, such as `you/vault`. Then press **Use this vault**.
+
 What the GitHub login does:
 
 - It lets Eva and her agents read and write all your repositories, private ones too.
@@ -132,6 +134,8 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 3. BotFather answers with a **token**: a long code such as `123456789:AAH...`. Paste it into setup, or into the **Telegram** step of **Settings > Setup**. Never share it: whoever has it controls the bot.
 4. Pair your Telegram chat, so that Eva answers only you. The Telegram card in **Settings > Connections** shows a pairing code, such as `EVA-1A2B3C4D`. On Eva's computer, `eva status` shows it too. Send that code to your bot.
 5. Optional: give your bot Eva's face. Save [this picture](../../src/frontends/web/icons/icon-512.png), send `/setuserpic` to BotFather, pick your bot and send the picture.
+
+You do not use Telegram? Press **I do not use Telegram** on the Telegram step of **Settings > Setup**. The step leaves the list. To use Telegram later, save a bot token on the **Telegram** card in **Settings > Connections**. The step then shows again.
 
 ## Open Eva on your phone
 

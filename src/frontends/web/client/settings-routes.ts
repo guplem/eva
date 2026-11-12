@@ -446,7 +446,7 @@ export const settingPlaces: readonly SettingPlace[] = [
   {
     title: "Telegram bot",
     home: "machine",
-    keys: ["telegram.allowedChatId", "telegram.allowedUserId"],
+    keys: ["telegram.allowedChatId", "telegram.allowedUserId", "telegram.setupDismissed"],
     link: { section: "connections", item: "telegram" },
   },
   {

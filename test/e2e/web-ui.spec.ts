@@ -5026,7 +5026,8 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
     const progress = setup.progress.map((step) =>
       step.key === "engine"
         ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
-        : step,
+        : // The steps before the engine are done, so the failed engine is the first step to do.
+          { ...step, state: step.state === "missing" ? "done" : step.state },
     );
     await route.fulfill({ response, json: { ...setup, progress } });
   });
@@ -5035,12 +5036,12 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   const list = page.getByRole("region", { name: "Progress list" });
   await expect(list.getByRole("img", { name: /^\d+ of \d+ steps done$/ })).toBeVisible();
   await expect(list).toContainText(/Setup: \d+ steps? left/);
-  const first = list.getByRole("button").filter({ hasText: "Step 1" });
-  await expect(first.locator(".status-icon")).toHaveAttribute("aria-label", "Failed");
-  await expect(first).toContainText("Last test: The token expired.");
+  const engine = list.locator(".step-link").filter({ hasText: "An AI engine" });
+  await expect(engine.locator(".status-icon")).toHaveAttribute("aria-label", "Failed");
+  await expect(engine).toContainText("Last test: The token expired.");
   // A failed step needs the person, so it keeps the main action, and its page says why.
-  await expect(first).toContainText("Set up");
-  await first.click();
+  await expect(engine).toContainText("Set up");
+  await engine.click();
   const step = page.getByRole("region", { name: "An AI engine" });
   await expect(step).toContainText("The last test failed.");
   // The test waits until this test lets it go, so this test sees the progress bar of the wait.
@@ -5089,8 +5090,8 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
 
   await openSettings(page, "Setup");
   const list = page.getByRole("region", { name: "Progress list" });
-  const failed = list.getByRole("button").filter({ hasText: "Step 1" });
-  const left = list.getByRole("button").filter({ hasText: "Your vault" });
+  const failed = list.locator(".step-link").filter({ hasText: "An AI engine" });
+  const left = list.locator(".step-link").filter({ hasText: "Your vault" });
   expect(await style(failed.locator(".status-icon"), "backgroundColor")).toBe(bad);
   await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
   expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));
@@ -5122,9 +5123,10 @@ test("Settings: the vault step lists the repositories and clones the picked one,
   });
   await page.route("**/api/vault/repositories", (route) =>
     route.fulfill({
+      // Pushed most recently first, so the vault is not first on GitHub.
       json: [
-        { fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true },
         { fullName: "you/example-app", cloneUrl: "https://github.com/you/example-app.git", private: false },
+        { fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true },
       ],
     }),
   );
@@ -5144,9 +5146,20 @@ test("Settings: the vault step lists the repositories and clones the picked one,
   // The page asks for one path first and shows only its form.
   await expect(page.getByRole("button", { name: "I have a vault on GitHub" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Create a new vault" })).toHaveCount(0);
-  const clone = page.getByRole("button", { name: "Clone this vault" });
-  await expect(clone).toBeDisabled();
-  await page.getByLabel("Your vault's repository").selectOption({ label: "you/vault (private)" });
+  // The repository with the default name comes first, and the step picks it already.
+  const repositories = page.getByRole("radiogroup", { name: "Your repositories" }).getByRole("radio");
+  await expect(repositories).toHaveCount(2);
+  await expect(repositories.first()).toHaveAccessibleName(/you\/vault/);
+  await expect(repositories.first()).toBeChecked();
+  // A search shows only the matching repositories.
+  const search = page.getByLabel("Your vault's repository");
+  await search.fill("EXAMPLE");
+  await expect(repositories).toHaveCount(1);
+  await expect(repositories.first()).toHaveAccessibleName(/you\/example-app/);
+  await search.fill("vault");
+  await expect(repositories).toHaveCount(1);
+  await expect(repositories.first()).toBeChecked();
+  const clone = page.getByRole("button", { name: "Use this vault" });
   await clone.click();
   await expect(page.getByText("Cloned the vault into /eva-home/vault.")).toBeVisible();
   expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
@@ -5211,7 +5224,7 @@ test("Settings: a token saved in the vault step lists the repositories at once",
   await expect(page.getByRole("button", { name: "Open the GitHub step" })).toBeVisible();
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
-  await expect(page.getByLabel("Your vault's repository")).toBeVisible();
+  await expect(page.getByRole("radio", { name: /you\/vault/ })).toBeChecked();
   await page.getByRole("button", { name: "Start a new vault" }).click();
   await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
   await page.request.delete("/api/secrets/githubToken");
@@ -7199,6 +7212,41 @@ test("Settings: a paired Telegram bot shows as connected, and disconnects after 
   await question.getByRole("button", { name: "Disconnect", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Disconnected Telegram." })).toBeVisible();
   await expect(card.getByLabel("Telegram bot token", { exact: true })).toBeVisible();
+});
+
+test("Setup: a person who does not use Telegram hides its step, and the card stays in Connections (#920)", async ({
+  page,
+}) => {
+  // The demo server is shared, so the page saves the choice to a fake, not to the demo config.
+  let dismissed = false;
+  const patches: unknown[] = [];
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    patches.push(route.request().postDataJSON());
+    dismissed = true;
+    await route.fulfill({ json: { saved: true, restartNeeded: false } });
+  });
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = dismissed ? setup.progress.filter((step) => step.key !== "telegram") : setup.progress;
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await logIn(page);
+  await page.goto("/#/settings/setup");
+  const list = page.getByRole("region", { name: "Progress list" });
+  const ring = list.getByRole("img", { name: /steps done$/ });
+  const before = (await ring.getAttribute("aria-label")) ?? "";
+  await expect(list.getByRole("button", { name: /Telegram/ })).toBeVisible();
+  await page.goto("/#/settings/setup/telegram");
+  await page.getByRole("button", { name: "I do not use Telegram" }).click();
+  await expect(page).toHaveURL(/#\/settings\/setup$/);
+  await expect(list.getByRole("button", { name: /Telegram/ })).toHaveCount(0);
+  const total = (label: string): number => Number(/of (\d+) steps/.exec(label)?.[1]);
+  await expect.poll(async () => total((await ring.getAttribute("aria-label")) ?? "")).toBe(total(before) - 1);
+  expect(patches).toEqual([{ telegram: { setupDismissed: true } }]);
+  await openSettings(page, "Connections");
+  await expect(page.getByRole("region", { name: "Telegram", exact: true })).toBeVisible();
 });
 
 /** Opens the "More actions" menu of the open file and picks an item. */

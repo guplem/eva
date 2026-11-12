@@ -1207,6 +1207,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     }
   }
   if (method === "POST" && url.pathname === "/api/hub") return json(await eva.becomeHub());
+  if (method === "GET" && url.pathname === "/api/computers") return json(eva.computers());
   if (method === "POST" && url.pathname.startsWith("/api/remote-access/")) {
     const action = url.pathname.slice("/api/remote-access/".length);
     const access =

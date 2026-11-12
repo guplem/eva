@@ -193,7 +193,7 @@ function pageSteps(address: string, localUrl: string, opened: boolean): string[]
     noteLine(
       '  2. The page lists each step. A step marked "Needs you" is left to do. Open it, and follow its instructions.',
     ),
-    noteLine("  3. Do the steps in their order. Eva needs at least the AI engine and the vault to answer."),
+    noteLine("  3. Do the steps in their order. Eva needs at least the vault and the AI engine to answer."),
     noteLine("  4. Each answer is saved at once. When the page asks for a restart, press Restart Eva."),
     "",
     noteLine("You can close this terminal now. Eva keeps running."),

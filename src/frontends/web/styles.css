@@ -2790,10 +2790,6 @@ button.link-button {
   color: var(--panel);
 }
 
-.nav-mark.done {
-  color: var(--ok);
-}
-
 /* The index of the open page: its cards, under the section in the side list, or in a row on a phone. */
 .page-index {
   list-style: none;

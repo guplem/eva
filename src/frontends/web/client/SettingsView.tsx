@@ -416,14 +416,10 @@ const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   developer: "bolt",
 };
 
-/** The state of a section's setup steps: a count when a step needs the person, a green check when all are done. */
-function sectionState(section: SettingsSection, steps: readonly ProgressStep[]): "missing" | "done" | null {
-  const own = section.id === "setup" ? steps : steps.filter((step) => section.steps.some((key) => key === step.key));
-  if (own.length === 0) return null;
-  if (own.some(needsYou)) return "missing";
-  return own.every((step) => stepMark(step) === "done") ? "done" : null;
-}
-
+/**
+ * The count of a section's steps that need the person. A section with nothing to do shows no mark:
+ * a green check on some rows and not on others reads as noise (#930).
+ */
 function SectionMark({
   section,
   steps,
@@ -431,15 +427,8 @@ function SectionMark({
   readonly section: SettingsSection;
   readonly steps: readonly ProgressStep[];
 }): ReactElement | null {
-  const state = sectionState(section, steps);
-  if (state === null) return null;
-  if (state === "done")
-    return (
-      <span className="nav-mark done" role="img" aria-label="Done">
-        <Icon name="check" />
-      </span>
-    );
   const own = steps.filter((step) => needsYou(step) && (section.id === "setup" || section.steps.includes(step.key)));
+  if (own.length === 0) return null;
   const failed = own.filter((step) => stepMark(step) === "failed").length;
   // A failed step is red on its own page, so its section's count is red too.
   return (

@@ -7214,7 +7214,7 @@ test("Settings: a paired Telegram bot shows as connected, and disconnects after 
   await expect(card.getByLabel("Telegram bot token", { exact: true })).toBeVisible();
 });
 
-test("Setup: a person who does not use Telegram hides its step, and the card stays in Connections (#920)", async ({
+test("Setup: a person who does not use Telegram skips its step, which stays in the list and the search (#920, #930)", async ({
   page,
 }) => {
   // The demo server is shared, so the page saves the choice to a fake, not to the demo config.
@@ -7222,14 +7222,19 @@ test("Setup: a person who does not use Telegram hides its step, and the card sta
   const patches: unknown[] = [];
   await page.route("**/api/settings", async (route) => {
     if (route.request().method() !== "PUT") return route.continue();
-    patches.push(route.request().postDataJSON());
-    dismissed = true;
+    const patch = route.request().postDataJSON() as { telegram: { setupDismissed: boolean } };
+    patches.push(patch);
+    dismissed = patch.telegram.setupDismissed;
     await route.fulfill({ json: { saved: true, restartNeeded: false } });
   });
   await page.route("**/api/settings/setup", async (route) => {
     const response = await route.fetch();
     const setup = (await response.json()) as { progress: { key: string }[] };
-    const progress = dismissed ? setup.progress.filter((step) => step.key !== "telegram") : setup.progress;
+    const progress = setup.progress.map((step) =>
+      step.key === "telegram" && dismissed
+        ? { ...step, state: "optional", skipped: true, detail: "Skipped: you do not use Telegram." }
+        : step,
+    );
     await route.fulfill({ response, json: { ...setup, progress } });
   });
   await logIn(page);
@@ -7241,10 +7246,18 @@ test("Setup: a person who does not use Telegram hides its step, and the card sta
   await page.goto("/#/settings/setup/telegram");
   await page.getByRole("button", { name: "I do not use Telegram" }).click();
   await expect(page).toHaveURL(/#\/settings\/setup$/);
-  await expect(list.getByRole("button", { name: /Telegram/ })).toHaveCount(0);
-  const total = (label: string): number => Number(/of (\d+) steps/.exec(label)?.[1]);
-  await expect.poll(async () => total((await ring.getAttribute("aria-label")) ?? "")).toBe(total(before) - 1);
+  const row = list.getByRole("button", { name: /Telegram/ });
+  await expect(row).toContainText("Skipped");
+  // The skipped step still counts in the total, so the ring keeps its size.
+  await expect(ring).toHaveAttribute("aria-label", before);
   expect(patches).toEqual([{ telegram: { setupDismissed: true } }]);
+  // The search result leads to the step, not to "This setup step does not exist".
+  await page.getByRole("searchbox", { name: /Search settings/ }).fill("telegram");
+  await page.getByRole("button", { name: "Connect Telegram Setup" }).click();
+  await expect(page.getByRole("region", { name: "Telegram" }).first()).toBeVisible();
+  await expect(page.getByText("This setup step does not exist.")).toHaveCount(0);
+  await page.getByRole("button", { name: "Do not skip this step" }).click();
+  expect(patches).toEqual([{ telegram: { setupDismissed: true } }, { telegram: { setupDismissed: false } }]);
   await openSettings(page, "Connections");
   await expect(page.getByRole("region", { name: "Telegram", exact: true })).toBeVisible();
 });

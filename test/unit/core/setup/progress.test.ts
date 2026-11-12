@@ -143,12 +143,16 @@ describe("setupProgress", () => {
     });
   });
 
-  test("a person who does not use Telegram dismisses its step; a saved bot token shows it again (#920)", () => {
+  test("a person who does not use Telegram skips its step; the step stays in the list (#920, #930)", () => {
     const dismissed: ProgressInput = { ...fresh, telegram: { token: false, paired: false, dismissed: true } };
-    expect(step(dismissed, "telegram")).toBeUndefined();
-    expect(setupProgress(dismissed)).toHaveLength(setupProgress(fresh).length - 1);
+    expect(step(dismissed, "telegram")).toMatchObject({ state: "optional", skipped: true });
+    expect(setupProgress(dismissed)).toHaveLength(setupProgress(fresh).length);
+    expect(step(fresh, "telegram")?.skipped).toBe(false);
+  });
+
+  test("a saved bot token ends the skip: the person uses Telegram after all", () => {
     const withBot: ProgressInput = { ...fresh, telegram: { token: true, paired: false, dismissed: true } };
-    expect(step(withBot, "telegram")?.state).toBe("optional");
+    expect(step(withBot, "telegram")).toMatchObject({ state: "optional", skipped: false });
   });
 });
 

@@ -23,6 +23,11 @@ const calloutTone: Readonly<Record<StepMark, string>> = {
   failed: "danger",
 };
 
+/** A skipped step says so. Every other step keeps the word of its mark. */
+function markLabel(step: ProgressStep): string | undefined {
+  return step.skipped ? "Skipped" : undefined;
+}
+
 /** Why each step matters, in words for a person who is new to all of this. */
 const whyItMatters: Readonly<Record<ProgressStep["key"], string>> = {
   engine:
@@ -128,7 +133,7 @@ function StepLink({
   const mark = stepMark(step);
   return (
     <button className={`step-link ${mark}`} onClick={() => context.navigate({ section: "setup", item: step.key })}>
-      <StatusIcon state={mark} />
+      <StatusIcon state={mark} label={markLabel(step)} />
       <span className="step-link-text">
         <span className="step-link-title">
           <span className="step-number">Step {String(number)}</span> {step.title}
@@ -148,7 +153,7 @@ function StepLink({
           Set up
         </span>
       ) : (
-        <StatusPill state={mark} />
+        <StatusPill state={mark} label={markLabel(step)} />
       )}
       <Icon name="back" className="chevron flip" />
     </button>
@@ -247,7 +252,7 @@ function StepHeader({
   const mark = stepMark(step);
   return (
     <section className={`card step-header ${mark}`} aria-label={step.title}>
-      <StatusIcon state={mark} size="large" />
+      <StatusIcon state={mark} size="large" label={markLabel(step)} />
       <div className="step-header-text">
         <span className="step-number">
           Step {String(number)} of {String(total)}
@@ -255,7 +260,7 @@ function StepHeader({
         <h2>{step.title}</h2>
         <p>{whyItMatters[step.key]}</p>
         <div className={`callout ${calloutTone[mark]}`}>
-          <StatusPill state={mark} />{" "}
+          <StatusPill state={mark} label={markLabel(step)} />{" "}
           {mark === "failed" ? (
             "The last test failed. Follow the steps below to fix it, then press Test this step."
           ) : mark === "missing" ? (
@@ -331,20 +336,21 @@ function StepBody({
 }
 
 /**
- * The Telegram card, and a button that hides the step for a person who does not use Telegram.
- * The card stays in Settings, Connections: a saved bot token there shows the step again.
+ * The Telegram card, and a button that skips the step for a person who does not use Telegram.
+ * A skipped step stays in the list, so its page offers to undo the skip. A saved bot token also ends it.
  */
 function TelegramStep({ context }: { readonly context: SettingsContext }): ReactElement {
-  const dismiss = async (): Promise<void> => {
-    if (await context.saveNow({ telegram: { setupDismissed: true } }))
+  const skipped = context.setup?.progress.find((step) => step.key === "telegram")?.skipped === true;
+  const skip = async (value: boolean): Promise<void> => {
+    if ((await context.saveNow({ telegram: { setupDismissed: value } })) && value)
       context.navigate({ section: "setup", item: null });
   };
   return (
     <>
       <TelegramCard context={context} />
       {!context.settings.secretsSet.telegramBotToken && (
-        <button className="link-button" onClick={() => void dismiss()}>
-          I do not use Telegram
+        <button className="link-button" onClick={() => void skip(!skipped)}>
+          {skipped ? "Do not skip this step" : "I do not use Telegram"}
         </button>
       )}
     </>

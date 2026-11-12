@@ -2774,12 +2774,6 @@ button.link-button {
   font-weight: 700;
 }
 
-.nav-mark .icon {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2.6;
-}
-
 .nav-mark.missing {
   background: var(--warn);
   color: var(--on-warn);
@@ -2788,10 +2782,6 @@ button.link-button {
 .nav-mark.failed {
   background: var(--bad);
   color: var(--panel);
-}
-
-.nav-mark.done {
-  color: var(--ok);
 }
 
 /* The index of the open page: its cards, under the section in the side list, or in a row on a phone. */

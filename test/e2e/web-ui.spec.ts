@@ -5026,7 +5026,8 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
     const progress = setup.progress.map((step) =>
       step.key === "engine"
         ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
-        : step,
+        : // The steps before the engine are done, so the failed engine is the first step to do.
+          { ...step, state: step.state === "missing" ? "done" : step.state },
     );
     await route.fulfill({ response, json: { ...setup, progress } });
   });
@@ -5035,12 +5036,12 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   const list = page.getByRole("region", { name: "Progress list" });
   await expect(list.getByRole("img", { name: /^\d+ of \d+ steps done$/ })).toBeVisible();
   await expect(list).toContainText(/Setup: \d+ steps? left/);
-  const first = list.getByRole("button").filter({ hasText: "Step 1" });
-  await expect(first.locator(".status-icon")).toHaveAttribute("aria-label", "Failed");
-  await expect(first).toContainText("Last test: The token expired.");
+  const engine = list.locator(".step-link").filter({ hasText: "An AI engine" });
+  await expect(engine.locator(".status-icon")).toHaveAttribute("aria-label", "Failed");
+  await expect(engine).toContainText("Last test: The token expired.");
   // A failed step needs the person, so it keeps the main action, and its page says why.
-  await expect(first).toContainText("Set up");
-  await first.click();
+  await expect(engine).toContainText("Set up");
+  await engine.click();
   const step = page.getByRole("region", { name: "An AI engine" });
   await expect(step).toContainText("The last test failed.");
   // The test waits until this test lets it go, so this test sees the progress bar of the wait.
@@ -5089,8 +5090,8 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
 
   await openSettings(page, "Setup");
   const list = page.getByRole("region", { name: "Progress list" });
-  const failed = list.getByRole("button").filter({ hasText: "Step 1" });
-  const left = list.getByRole("button").filter({ hasText: "Your vault" });
+  const failed = list.locator(".step-link").filter({ hasText: "An AI engine" });
+  const left = list.locator(".step-link").filter({ hasText: "Your vault" });
   expect(await style(failed.locator(".status-icon"), "backgroundColor")).toBe(bad);
   await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
   expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));

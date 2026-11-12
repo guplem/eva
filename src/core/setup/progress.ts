@@ -61,8 +61,9 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
     check,
     lastCheck: check === null ? null : (input.checks[check] ?? null),
   });
+  // The order is the order that the person follows. The steps that make Eva reachable come first,
+  // and the engine login follows them (#918).
   return [
-    engineStep(input, make),
     // Before the vault: the GitHub login lists the repositories that the vault step picks from.
     !input.githubToken
       ? make(
@@ -106,10 +107,11 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           input.remoteAccess === null ? "optional" : "missing",
           "Open Eva's page on your phone. It shows a short code: run `eva devices allow <code>` on Eva's computer.",
         ),
-    telegramStep(input.telegram, make),
+    engineStep(input, make),
     input.google
       ? make("google", "Google", "done", "A Google account is set.", "google")
       : make("google", "Google", "optional", "Calendar, Drive, Contacts and Tasks.", "google"),
+    telegramStep(input.telegram, make),
   ];
 }
 

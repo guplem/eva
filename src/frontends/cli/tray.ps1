@@ -1,6 +1,6 @@
 # Eva's icon in the Windows system tray. src/frontends/cli/tray.ts runs this script and owns
 # every decision. The file in EVA_LINE_FILE holds the newest JSON view: face, tooltip, title and
-# canOpen. Each menu choice writes one output line: open, restart or quit. When the file goes
+# canOpen. Each menu choice writes one output line: open, vault, restart or quit. When the file goes
 # away, or Eva's supervisor ends, the icon goes away.
 $ErrorActionPreference = 'Stop'
 # A progress record would reach the error output, where Eva reads only real errors.
@@ -88,6 +88,8 @@ $titleItem.Enabled = $false
 $openItem = $menu.Items.Add('Open Eva')
 $openItem.Font = New-Object System.Drawing.Font($openItem.Font, [System.Drawing.FontStyle]::Bold)
 $openItem.add_Click({ Send-Choice 'open' })
+$vaultItem = $menu.Items.Add('Open vault')
+$vaultItem.add_Click({ Send-Choice 'vault' })
 $restartItem = $menu.Items.Add('Restart Eva')
 $restartItem.add_Click({ Send-Choice 'restart' })
 $quitItem = $menu.Items.Add('Quit Eva')

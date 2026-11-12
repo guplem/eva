@@ -67,6 +67,7 @@ To open Eva on her own computer later, run `eva open`. It opens her page in this
 On Windows, a few seconds after you log in, Eva also has an icon in the system tray, the area next to the clock. Windows can hide it under the arrow there: drag it onto the taskbar, so that it always shows. The icon shows her face for her state: she runs, she works, she needs you, or she stopped. Point at the icon to read her state. Right-click it for the menu:
 
 - **Open Eva** opens her page in this computer's browser, already logged in. A double-click does the same.
+- **Open vault** opens her vault folder in File Explorer. It works also while she is stopped.
 - **Restart Eva** stops her and starts her again.
 - **Quit Eva** stops her until you log in again.
 

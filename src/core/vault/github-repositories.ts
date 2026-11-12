@@ -25,16 +25,30 @@ const requestTimeoutMs = 30_000;
 // The letters that GitHub keeps in a repository name; it silently changes the others.
 const repositoryName = /^[A-Za-z0-9._-]{1,100}$/;
 
+const pageSize = 100;
+// A vault that nobody pushed for years still shows, and a huge account still lists in a few seconds.
+// A typed address reaches a repository past the limit.
+const maxPages = 10;
+
 /** The repositories that the token can reach, pushed most recently first, with no archived one. */
 export async function listGitHubRepositories(options: GitHubApiOptions): Promise<GitHubRepository[]> {
-  // One page holds the repositories that a person is likely to pick; a typed address covers the rest.
-  const body = await request(options, "GET", "/user/repos?sort=pushed&per_page=100");
-  if (!Array.isArray(body)) throw new EvaError("github_failed", "GitHub sent a list that Eva cannot read.");
-  // Eva must push to the vault, and GitHub refuses a push to an archived repository.
-  return body.flatMap((item: unknown) => {
-    const repository = repositoryOf(item);
-    return repository === null || (item as Record<string, unknown>)["archived"] === true ? [] : [repository];
-  });
+  const repositories: GitHubRepository[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const body = await request(
+      options,
+      "GET",
+      `/user/repos?sort=pushed&per_page=${String(pageSize)}&page=${String(page)}`,
+    );
+    if (!Array.isArray(body)) throw new EvaError("github_failed", "GitHub sent a list that Eva cannot read.");
+    for (const item of body as unknown[]) {
+      const repository = repositoryOf(item);
+      // Eva must push to the vault, and GitHub refuses a push to an archived repository.
+      if (repository !== null && (item as Record<string, unknown>)["archived"] !== true) repositories.push(repository);
+    }
+    // Only the last page is not full.
+    if (body.length < pageSize) break;
+  }
+  return repositories;
 }
 
 export type RepositoryVisibility = "private" | "public";

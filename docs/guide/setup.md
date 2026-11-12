@@ -113,6 +113,8 @@ In the terminal, setup first logs in to GitHub:
 
 On the page, open **Settings > Setup**, then the **GitHub** step, and press **Log in with GitHub**. Enter the code on GitHub. Then pick or create the vault in the **Your vault** step. To use a token instead, press **Paste a token instead**.
 
+In the **Your vault** step, a repository named `vault` comes first, and the step picks it already. To find another repository, type a part of its name in the search field. To use a repository that is not in the list, type its name or address, such as `you/vault`. Then press **Use this vault**.
+
 What the GitHub login does:
 
 - It lets Eva and her agents read and write all your repositories, private ones too.

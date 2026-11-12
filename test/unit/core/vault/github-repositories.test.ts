@@ -25,8 +25,8 @@ afterEach(async () => {
   server = null;
 });
 
-/** A fake GitHub API that answers each request with `reply`. */
-function fakeApi(reply: FakeReply): { baseUrl: string; requests: SeenRequest[] } {
+/** A fake GitHub API that answers each request with `reply`, or with the reply for its URL. */
+function fakeApi(reply: FakeReply | ((url: URL) => FakeReply)): { baseUrl: string; requests: SeenRequest[] } {
   const requests: SeenRequest[] = [];
   server = Bun.serve({
     hostname: "127.0.0.1",
@@ -39,9 +39,10 @@ function fakeApi(reply: FakeReply): { baseUrl: string; requests: SeenRequest[] }
         headers: request.headers,
         body: await request.text(),
       });
-      return typeof reply.body === "string"
-        ? new Response(reply.body, { status: reply.status })
-        : Response.json(reply.body, { status: reply.status });
+      const answer = typeof reply === "function" ? reply(url) : reply;
+      return typeof answer.body === "string"
+        ? new Response(answer.body, { status: answer.status })
+        : Response.json(answer.body, { status: answer.status });
     },
   });
   return { baseUrl: `http://127.0.0.1:${String(server.port)}`, requests };
@@ -82,9 +83,46 @@ describe("listGitHubRepositories", () => {
       { fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true },
       { fullName: "team/notes", cloneUrl: "https://github.com/team/notes.git", private: false },
     ]);
-    expect(api.requests[0]?.path).toBe("/user/repos?sort=pushed&per_page=100");
+    expect(api.requests.map((request) => request.path)).toEqual(["/user/repos?sort=pushed&per_page=100&page=1"]);
     expect(api.requests[0]?.headers.get("authorization")).toBe("Bearer secret-token");
     expect(api.requests[0]?.headers.get("user-agent")).toBeTruthy();
+  });
+
+  test("reads the next pages, so a vault pushed long ago is in the list too", async () => {
+    const full = (page: number): Record<string, unknown>[] =>
+      Array.from({ length: 100 }, (_, index) => repository(`you/repo-${String(page)}-${String(index)}`));
+    const api = fakeApi((url) => {
+      const page = Number(url.searchParams.get("page"));
+      // The last page is not full, even with an archived repository in it.
+      return {
+        status: 200,
+        body: page < 3 ? full(page) : [repository("you/old", { archived: true }), repository("you/vault")],
+      };
+    });
+
+    const repositories = await listGitHubRepositories({ token: "secret-token", baseUrl: api.baseUrl });
+
+    expect(api.requests.map((request) => request.path)).toEqual([
+      "/user/repos?sort=pushed&per_page=100&page=1",
+      "/user/repos?sort=pushed&per_page=100&page=2",
+      "/user/repos?sort=pushed&per_page=100&page=3",
+    ]);
+    expect(repositories).toHaveLength(201);
+    expect(repositories.at(-1)?.fullName).toBe("you/vault");
+  });
+
+  test("stops after 10 pages, so a huge account still lists quickly", async () => {
+    const api = fakeApi((url) => ({
+      status: 200,
+      body: Array.from({ length: 100 }, (_, index) =>
+        repository(`you/repo-${url.searchParams.get("page") ?? ""}-${String(index)}`),
+      ),
+    }));
+
+    const repositories = await listGitHubRepositories({ token: "secret-token", baseUrl: api.baseUrl });
+
+    expect(api.requests).toHaveLength(10);
+    expect(repositories).toHaveLength(1000);
   });
 
   test("skips archived repositories, which Eva cannot push to", async () => {

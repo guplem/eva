@@ -133,6 +133,8 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 4. Pair your Telegram chat, so that Eva answers only you. The Telegram card in **Settings > Connections** shows a pairing code, such as `EVA-1A2B3C4D`. On Eva's computer, `eva status` shows it too. Send that code to your bot.
 5. Optional: give your bot Eva's face. Save [this picture](../../src/frontends/web/icons/icon-512.png), send `/setuserpic` to BotFather, pick your bot and send the picture.
 
+You do not use Telegram? Press **I do not use Telegram** on the Telegram step of **Settings > Setup**. The step leaves the list. To use Telegram later, save a bot token on the **Telegram** card in **Settings > Connections**. The step then shows again.
+
 ## Open Eva on your phone
 
 Each device needs the Tailscale app, signed in with the account that this Eva lets in. By default, this is the account of Eva's computer. Then:

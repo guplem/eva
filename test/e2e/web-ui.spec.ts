@@ -7165,6 +7165,41 @@ test("Settings: a paired Telegram bot shows as connected, and disconnects after 
   await expect(card.getByLabel("Telegram bot token", { exact: true })).toBeVisible();
 });
 
+test("Setup: a person who does not use Telegram hides its step, and the card stays in Connections (#920)", async ({
+  page,
+}) => {
+  // The demo server is shared, so the page saves the choice to a fake, not to the demo config.
+  let dismissed = false;
+  const patches: unknown[] = [];
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    patches.push(route.request().postDataJSON());
+    dismissed = true;
+    await route.fulfill({ json: { saved: true, restartNeeded: false } });
+  });
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = dismissed ? setup.progress.filter((step) => step.key !== "telegram") : setup.progress;
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await logIn(page);
+  await page.goto("/#/settings/setup");
+  const list = page.getByRole("region", { name: "Progress list" });
+  const ring = list.getByRole("img", { name: /steps done$/ });
+  const before = (await ring.getAttribute("aria-label")) ?? "";
+  await expect(list.getByRole("button", { name: /Telegram/ })).toBeVisible();
+  await page.goto("/#/settings/setup/telegram");
+  await page.getByRole("button", { name: "I do not use Telegram" }).click();
+  await expect(page).toHaveURL(/#\/settings\/setup$/);
+  await expect(list.getByRole("button", { name: /Telegram/ })).toHaveCount(0);
+  const total = (label: string): number => Number(/of (\d+) steps/.exec(label)?.[1]);
+  await expect.poll(async () => total((await ring.getAttribute("aria-label")) ?? "")).toBe(total(before) - 1);
+  expect(patches).toEqual([{ telegram: { setupDismissed: true } }]);
+  await openSettings(page, "Connections");
+  await expect(page.getByRole("region", { name: "Telegram", exact: true })).toBeVisible();
+});
+
 /** Opens the "More actions" menu of the open file and picks an item. */
 async function chooseFileAction(page: Page, item: string): Promise<void> {
   await page.getByRole("region", { name: "File text" }).getByRole("button", { name: "More actions" }).click();

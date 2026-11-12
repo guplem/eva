@@ -127,7 +127,7 @@ Eva works on several computers with one vault, with no role to set.
 
 - **The hub** is the one computer that runs the Telegram bot and the reminders. The first computer that starts with the vault becomes the hub. The vault names it in `.eva/hub.json`.
 - **A satellite** is any other computer with the vault. It keeps the vault up to date and serves its own terminal and web page, but stays quiet in Telegram.
-- **See every computer** in **Settings > Devices > Computers**. The list comes from the vault, so each computer shows the same one. It marks the hub and the computer that you use now.
+- **See every computer** in **Settings > Devices > Computers**. The list comes from the vault, so each computer shows the same one. It marks the hub, and the computer whose page you see.
 - **A computer with an older Eva** than the vault does not change the vault's settings, reminders or hub until you update it. Its web page shows a warning, and the hub sends it to Telegram.
 - **Problems on a satellite** reach Telegram through the hub. Each computer writes its open problems to `.eva/machines/<computer>.json` in the vault, and the hub sends them. A vault sync problem cannot travel this way: it shows on that computer only.
 - **A computer that is off** sends no news. When its report is more than one day old, its alerts say so, such as "laptop last reported 5 days ago".

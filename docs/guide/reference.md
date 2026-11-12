@@ -127,11 +127,12 @@ Eva works on several computers with one vault, with no role to set.
 
 - **The hub** is the one computer that runs the Telegram bot and the reminders. The first computer that starts with the vault becomes the hub. The vault names it in `.eva/hub.json`.
 - **A satellite** is any other computer with the vault. It keeps the vault up to date and serves its own terminal and web page, but stays quiet in Telegram.
+- **See every computer** in **Settings > Devices > Computers**. The list comes from the vault, so each computer shows the same one. It marks the hub and the computer that you use now.
 - **A computer with an older Eva** than the vault does not change the vault's settings, reminders or hub until you update it. Its web page shows a warning, and the hub sends it to Telegram.
 - **Problems on a satellite** reach Telegram through the hub. Each computer writes its open problems to `.eva/machines/<computer>.json` in the vault, and the hub sends them. A vault sync problem cannot travel this way: it shows on that computer only.
 - **A computer that is off** sends no news. When its report is more than one day old, its alerts say so, such as "laptop last reported 5 days ago".
 - **A computer that no longer runs Eva** still has its file in the vault, and the hub keeps its alerts. Ask Eva in a chat to delete the file.
-- **Move the hub** with **Make this machine the hub** on the Settings page, or `eva hub` on the new hub. The old hub stops its bot and reminders at its next vault fetch (5 minutes by default).
+- **Move the hub** with **Make this machine the hub** in **Settings > Devices > Computers**, or `eva hub` on the new hub. The old hub stops its bot and reminders at its next vault fetch (5 minutes by default).
 - **Two Evas on one computer** work too, one for each person: see [More than one Eva on a computer](setup.md#more-than-one-eva-on-a-computer).
 
 ## Updates
@@ -248,7 +249,7 @@ A problem on a satellite shows on the hub too, with the name of that computer. F
 
 Eva can also tell a phone or a computer through the browser, with a system notification. This works also when Eva's page is closed.
 
-1. Open **Settings > Access > Notifications on this device**.
+1. Open **Settings > Devices > Notifications on this device**.
 2. Tap **Turn on notifications**, and allow them in the browser's question.
 3. Pick when Eva tells this device:
    - **Eva answers:** her answer is ready, also at the end of a long task.
@@ -277,7 +278,7 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Through Tailscale,** only the Tailscale account that owns Eva's computer can ask. To allow other accounts to ask, such as a partner's, list them all in `remoteAccess.allowedTailscaleIdentities`.
 - **On the computer itself,** run `eva open`. It opens the page in that computer's browser, already logged in, with no code. Its login link works once, for 2 minutes, and only on that computer. The page listens at `http://127.0.0.1:7420` (or that Eva's port).
 - **The last way in,** when nothing else works: the token `localApiToken` from `secrets.json` in Eva's home folder. On the page, press "Log in with the token instead", and paste it. Never share it.
-- **Devices** in Settings lists each allowed device. Tap **Remove** to log out one, such as a lost phone, or **Log out every device**. A lost phone that is still logged in can allow new devices, so remove it at once.
+- **Settings > Devices > Browsers** lists each browser that this computer allowed. Each computer keeps its own list. Tap **Remove** to log out one, such as a lost phone, or **Log out every device**. A lost phone that is still logged in can allow new devices, so remove it at once.
 - **Keep Eva off Tailscale:** to turn off her Tailscale address, run `eva settings set remoteAccess.tailscaleServe false`.
 
 ## Chats
@@ -577,7 +578,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Eva refuses a secret file, an encrypted file, a file that holds a secret, a folder, and a file in a clone of a project.
   - When a file that you mention is gone, Eva does not send the message, and says which file is gone.
 - **Favorites.** Tap the star on a file or a folder in **Files** to make it a favorite. Your favorites show first on the Files page, so one tap opens them. Eva keeps them in `.eva/favorites.json` in the vault, so each computer shows the same ones.
-- **Your location.** Share your live location with Eva's bot in Telegram, or open **Settings > Access > Your location** and allow a device to send its location while Eva is open. Eva keeps only the last location, as `lastLocation` in the header of `Life/About me.md`, so each computer sees it. The hub writes it at most once every 15 minutes, and only after a move of more than 50 m, or when the stored point is more than 6 hours old. So a day in one place makes only a few vault commits. Scripts such as a weather forecast use it. When your phone sent nothing in the last day, they use the home place of `Life/About me.md`.
+- **Your location.** Share your live location with Eva's bot in Telegram, or open **Settings > Personalize > Your location** and allow a device to send its location while Eva is open. Eva keeps only the last location, as `lastLocation` in the header of `Life/About me.md`, so each computer sees it. The hub writes it at most once every 15 minutes, and only after a move of more than 50 m, or when the stored point is more than 6 hours old. So a day in one place makes only a few vault commits. Scripts such as a weather forecast use it. When your phone sent nothing in the last day, they use the home place of `Life/About me.md`.
 - **Widgets.** A widget is a small web page on Eva's home page, in a grid below EVE's face. [docs/widgets.md](../widgets.md) tells how to make one. Open **Settings > Personalize > Widgets** to manage them.
   - The list shows each widget project of yours, each widget that ships with Eva, and each widget that you add by the address of its GitHub repository. Each one starts off.
   - Eva ships two widgets. [**Habits**](https://github.com/guplem/eva-widget-habits) tracks your habits in a vault folder: mark a habit for today on the card, and see its history, streaks and strength in full screen. [**Weather**](https://github.com/guplem/eva-widget-weather) shows the forecast for your last location. It sends that location to Open-Meteo, rounded to about one kilometre. With no location yet, it says how to share one.

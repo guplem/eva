@@ -324,8 +324,29 @@ function StepBody({
     case "github":
       return <GitHubCard context={context} />;
     case "telegram":
-      return <TelegramCard context={context} />;
+      return <TelegramStep context={context} />;
     case "google":
       return <GooglePanel context={context} />;
   }
+}
+
+/**
+ * The Telegram card, and a button that hides the step for a person who does not use Telegram.
+ * The card stays in Settings, Connections: a saved bot token there shows the step again.
+ */
+function TelegramStep({ context }: { readonly context: SettingsContext }): ReactElement {
+  const dismiss = async (): Promise<void> => {
+    if (await context.saveNow({ telegram: { setupDismissed: true } }))
+      context.navigate({ section: "setup", item: null });
+  };
+  return (
+    <>
+      <TelegramCard context={context} />
+      {!context.settings.secretsSet.telegramBotToken && (
+        <button className="link-button" onClick={() => void dismiss()}>
+          I do not use Telegram
+        </button>
+      )}
+    </>
+  );
 }

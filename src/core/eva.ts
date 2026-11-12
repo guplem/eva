@@ -2509,7 +2509,11 @@ export class Eva {
       githubCli: githubCliAccount(folders.gh) !== null,
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       devices: this.deviceLogins.count(),
-      telegram: { token: secretsSet.telegramBotToken, paired: config.telegram.allowedChatId !== null },
+      telegram: {
+        token: secretsSet.telegramBotToken,
+        paired: config.telegram.allowedChatId !== null,
+        dismissed: config.telegram.setupDismissed,
+      },
       google: config.google.email !== null,
       checks: Object.fromEntries(this.checkResults),
     });

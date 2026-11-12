@@ -61,6 +61,8 @@ const liveSettingKeys: readonly string[] = [
   "units",
   "clock",
   "weekStart",
+  // The setup progress reads the files at each request.
+  "telegram.setupDismissed",
 ];
 
 export class LiveSettings {

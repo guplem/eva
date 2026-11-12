@@ -27,7 +27,8 @@ export interface ProgressInput {
   readonly remoteAccess: RemoteAccess | null;
   /** How many browsers may open Eva with a device login. */
   readonly devices: number;
-  readonly telegram: { readonly token: boolean; readonly paired: boolean };
+  /** `dismissed`: the person pressed "I do not use Telegram" on the step. */
+  readonly telegram: { readonly token: boolean; readonly paired: boolean; readonly dismissed: boolean };
   readonly google: boolean;
   readonly checks: Readonly<Partial<Record<CheckName, CheckRecord>>>;
 }
@@ -47,6 +48,12 @@ export interface ProgressStep {
 }
 
 export function setupProgress(input: ProgressInput): ProgressStep[] {
+  // A saved bot token shows the step again: the person now uses Telegram after all.
+  const telegramHidden = input.telegram.dismissed && !input.telegram.token;
+  return everyStep(input).filter((step) => step.key !== "telegram" || !telegramHidden);
+}
+
+function everyStep(input: ProgressInput): ProgressStep[] {
   const make = (
     key: ProgressKey,
     title: string,

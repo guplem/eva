@@ -87,7 +87,10 @@ describe("startTelegram", () => {
 
   test("a paired bot needs no pairing code", async () => {
     saveSecrets(paths, { telegramBotToken: telegram.token });
-    saveConfig(paths, { ...defaultConfig, telegram: { allowedChatId: 4242, allowedUserId: 4242 } });
+    saveConfig(paths, {
+      ...defaultConfig,
+      telegram: { allowedChatId: 4242, allowedUserId: 4242, setupDismissed: false },
+    });
     const lines: string[] = [];
     const bot = startTelegram({
       paths,

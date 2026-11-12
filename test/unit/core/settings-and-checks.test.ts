@@ -448,6 +448,20 @@ describe("settings", () => {
     });
   });
 
+  test("the dismissed Telegram step is a machine setting that applies with no restart (#920)", async () => {
+    const telegramStep = async (): Promise<boolean> =>
+      (await eva.setupState()).progress.some((step) => step.key === "telegram");
+    await eva.saveSecret("telegramBotToken", null);
+    expect(await telegramStep()).toBe(true);
+    expect(eva.updateSettings({ telegram: { setupDismissed: true } })).toEqual({ saved: true, restartNeeded: false });
+    expect(await telegramStep()).toBe(false);
+    const machine = JSON.parse(readFileSync(homePaths(home).config, "utf-8")) as { telegram?: unknown };
+    expect(machine.telegram).toMatchObject({ setupDismissed: true });
+    expect(readFileSync(vaultSettingsPath(vault), "utf-8")).not.toContain("setupDismissed");
+    await eva.saveSecret("telegramBotToken", "123:abc-telegram-token-value");
+    expect(await telegramStep()).toBe(true);
+  });
+
   test("a chat keeps working when the files lose the token that the running engine holds", () => {
     const running = new Eva({
       paths: homePaths(home),
@@ -499,7 +513,7 @@ describe("settings", () => {
     eva.updateSettings({ timeZone: "UTC" });
     changeSettings(homePaths(home), { telegram: { allowedChatId: 4242, allowedUserId: 7 } });
     eva.updateSettings({ timeZone: "Europe/Madrid" });
-    expect(loadSettings(homePaths(home)).config.telegram).toEqual({ allowedChatId: 4242, allowedUserId: 7 });
+    expect(loadSettings(homePaths(home)).config.telegram).toMatchObject({ allowedChatId: 4242, allowedUserId: 7 });
   });
 
   test("with a broken vault settings file, a change keeps the vault's values from memory", () => {

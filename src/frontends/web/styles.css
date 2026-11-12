@@ -3998,6 +3998,25 @@ a.link-chip {
   border-top: 1px solid var(--line);
 }
 
+/* The search pill fills the width of its field, not the 300 px of the settings header. */
+.vault-choice .search-field {
+  flex: none;
+}
+
+/* The repositories reuse the rows of the update dialog (updates.css). A long list scrolls, so the button stays near. */
+.repository-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.repository-list .version-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.repository-name {
+  overflow-wrap: anywhere;
+}
+
 /* The one tooltip of the page: client/Tooltip.tsx places it. Dark, as the toast is, so it reads on every surface. */
 .tooltip {
   position: fixed;

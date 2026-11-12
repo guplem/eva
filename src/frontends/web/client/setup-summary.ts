@@ -26,6 +26,14 @@ export function nextToDo(steps: readonly ProgressStep[]): ProgressStep | undefin
   return steps.find(needsYou);
 }
 
+/**
+ * Every step is done, or the person skipped it. The Settings home page then hides its setup card.
+ * An optional step that waits still shows the card, as an offer.
+ */
+export function setupFinished(steps: readonly ProgressStep[]): boolean {
+  return steps.length > 0 && steps.every((step) => step.skipped || stepMark(step) === "done");
+}
+
 export interface SetupSummary {
   readonly done: number;
   readonly total: number;

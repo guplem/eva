@@ -35,7 +35,7 @@ import {
   type SettingsSection,
 } from "./settings-routes.ts";
 import { errorText, type SettingsContext } from "./SettingsParts.tsx";
-import { needsYou, nextToDo, restartQuestion, setupSummary, stepMark } from "./setup-summary.ts";
+import { needsYou, nextToDo, restartQuestion, setupFinished, setupSummary, stepMark } from "./setup-summary.ts";
 import { SetupOverview, SetupRing, SetupStepPage } from "./SetupPages.tsx";
 import { statusFacts } from "./status-overview.ts";
 import { Toast } from "./Toast.tsx";
@@ -461,7 +461,7 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
   const closeHomes = useCallback((): void => setShowingHomes(false), []);
   return (
     <>
-      {context.setup !== null && (
+      {context.setup !== null && !setupFinished(steps) && (
         <section className="card hero" aria-label="Setup">
           <div className="hero-text">
             <h2>{missing === 0 ? "Eva is set up" : "Finish setting up Eva"}</h2>

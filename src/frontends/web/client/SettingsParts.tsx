@@ -129,7 +129,7 @@ export function StatusIcon({
   readonly state: StepMark;
   readonly size?: "medium" | "large";
   /** A word that fits the page better, such as "Partly done". */
-  readonly label?: string;
+  readonly label?: string | undefined;
 }): ReactElement {
   const name = iconOfMark[state];
   return (
@@ -139,8 +139,15 @@ export function StatusIcon({
   );
 }
 
-export function StatusPill({ state }: { readonly state: StepMark }): ReactElement {
-  return <span className={`pill ${state}`}>{stateLabels[state]}</span>;
+export function StatusPill({
+  state,
+  label = stateLabels[state],
+}: {
+  readonly state: StepMark;
+  /** A word that fits the page better, such as "Skipped". */
+  readonly label?: string | undefined;
+}): ReactElement {
+  return <span className={`pill ${state}`}>{label}</span>;
 }
 
 /** Text from the core marks a command with backticks; the page shows it as code. */

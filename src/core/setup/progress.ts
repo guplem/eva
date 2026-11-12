@@ -42,18 +42,14 @@ export interface ProgressStep {
   readonly state: "done" | "missing" | "optional";
   /** What is done, or what to do. */
   readonly detail: string;
+  /** The person said that they do not use this step. It stays in the list, as optional. */
+  readonly skipped: boolean;
   /** The check behind this step's Test button, or null. */
   readonly check: CheckName | null;
   readonly lastCheck: CheckRecord | null;
 }
 
 export function setupProgress(input: ProgressInput): ProgressStep[] {
-  // A saved bot token shows the step again: the person now uses Telegram after all.
-  const telegramHidden = input.telegram.dismissed && !input.telegram.token;
-  return everyStep(input).filter((step) => step.key !== "telegram" || !telegramHidden);
-}
-
-function everyStep(input: ProgressInput): ProgressStep[] {
   const make = (
     key: ProgressKey,
     title: string,
@@ -65,6 +61,7 @@ function everyStep(input: ProgressInput): ProgressStep[] {
     title,
     state,
     detail,
+    skipped: false,
     check,
     lastCheck: check === null ? null : (input.checks[check] ?? null),
   });
@@ -207,5 +204,12 @@ function telegramStep(telegram: ProgressInput["telegram"], make: Make): Progress
       "Send the pairing code to your bot, so that it talks only to you.",
       "telegram",
     );
+  // The step stays in the list, so the search and the stepper still find it (#930).
+  // A saved bot token ends the skip: the person now uses Telegram after all.
+  if (telegram.dismissed)
+    return {
+      ...make("telegram", "Telegram", "optional", "Skipped: you do not use Telegram.", "telegram"),
+      skipped: true,
+    };
   return make("telegram", "Telegram", "optional", "A bot of your own lets you talk to Eva in Telegram.", "telegram");
 }

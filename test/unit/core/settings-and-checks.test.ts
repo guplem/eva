@@ -449,17 +449,17 @@ describe("settings", () => {
   });
 
   test("the dismissed Telegram step is a machine setting that applies with no restart (#920)", async () => {
-    const telegramStep = async (): Promise<boolean> =>
-      (await eva.setupState()).progress.some((step) => step.key === "telegram");
+    const skipped = async (): Promise<boolean | undefined> =>
+      (await eva.setupState()).progress.find((step) => step.key === "telegram")?.skipped;
     await eva.saveSecret("telegramBotToken", null);
-    expect(await telegramStep()).toBe(true);
+    expect(await skipped()).toBe(false);
     expect(eva.updateSettings({ telegram: { setupDismissed: true } })).toEqual({ saved: true, restartNeeded: false });
-    expect(await telegramStep()).toBe(false);
+    expect(await skipped()).toBe(true);
     const machine = JSON.parse(readFileSync(homePaths(home).config, "utf-8")) as { telegram?: unknown };
     expect(machine.telegram).toMatchObject({ setupDismissed: true });
     expect(readFileSync(vaultSettingsPath(vault), "utf-8")).not.toContain("setupDismissed");
     await eva.saveSecret("telegramBotToken", "123:abc-telegram-token-value");
-    expect(await telegramStep()).toBe(true);
+    expect(await skipped()).toBe(false);
   });
 
   test("a chat keeps working when the files lose the token that the running engine holds", () => {

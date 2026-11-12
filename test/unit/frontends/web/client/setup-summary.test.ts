@@ -3,16 +3,18 @@ import type { ProgressStep } from "../../../../../src/core/setup/progress.ts";
 import {
   nextToDo,
   restartQuestion,
+  setupFinished,
   setupSummary,
   stepMark,
 } from "../../../../../src/frontends/web/client/setup-summary.ts";
 
-function step(state: ProgressStep["state"], lastOk: boolean | null = null): ProgressStep {
+function step(state: ProgressStep["state"], lastOk: boolean | null = null, skipped = false): ProgressStep {
   return {
     key: "engine",
     title: "Engine",
     state,
     detail: "",
+    skipped,
     check: null,
     lastCheck: lastOk === null ? null : { ok: lastOk, detail: "", at: "2026-01-01T00:00:00.000Z" },
   };
@@ -64,6 +66,25 @@ describe("the setup ring", () => {
   test("says when nothing is left, and shows no steps as an empty ring", () => {
     expect(setupSummary([step("done"), step("optional")]).headline).toBe("Setup is complete");
     expect(setupSummary([])).toMatchObject({ done: 0, total: 0, percent: 0 });
+  });
+});
+
+describe("a finished setup", () => {
+  test("has every step done, or skipped by the person (#930)", () => {
+    expect(setupFinished([step("done"), step("done")])).toBe(true);
+    expect(setupFinished([step("done"), step("optional", null, true)])).toBe(true);
+  });
+
+  test("is not finished while an optional step waits, or a step needs the person", () => {
+    expect(setupFinished([step("done"), step("optional")])).toBe(false);
+    expect(setupFinished([step("done"), step("missing")])).toBe(false);
+    expect(setupFinished([step("done", false)])).toBe(false);
+    expect(setupFinished([])).toBe(false);
+  });
+
+  test("keeps a skipped step in the ring's total, and still says that setup is complete", () => {
+    const summary = setupSummary([step("done"), step("done"), step("optional", null, true)]);
+    expect(summary).toMatchObject({ done: 2, total: 3, left: 0, headline: "Setup is complete" });
   });
 });
 

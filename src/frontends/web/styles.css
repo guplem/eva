@@ -2774,12 +2774,6 @@ button.link-button {
   font-weight: 700;
 }
 
-.nav-mark .icon {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2.6;
-}
-
 .nav-mark.missing {
   background: var(--warn);
   color: var(--on-warn);

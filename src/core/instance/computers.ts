@@ -16,7 +16,7 @@ export interface ComputerSummary {
 
 /**
  * The hub comes first, then the others by name. `role` is this computer's role: it names the hub
- * when the vault has no readable claim, as `machineRole` does.
+ * when the vault has no readable claim, as `machineRole` does. Names compare exactly, as there.
  */
 export function listComputers(
   vaultPath: string | null,
@@ -25,25 +25,19 @@ export function listComputers(
   role: MachineRole,
 ): ComputerSummary[] {
   const versions = new Map<string, string | null>();
-  const add = (name: string, known: string | null): void => {
-    // Report files are lower case, because Windows sees "Laptop" and "laptop" as one file.
-    const same = [...versions.keys()].find((each) => each.toLowerCase() === name.toLowerCase());
-    if (same === undefined) versions.set(name, known);
-    else if (known !== null) versions.set(same, known);
-  };
   const hub = (vaultPath === null ? null : readHubClaim(vaultPath)?.machine) ?? (role === "hub" ? machine : null);
   if (vaultPath !== null)
-    for (const { report } of readMachineReports(vaultPath)) if (report !== null) add(report.machine, report.version);
-  if (hub !== null) add(hub, null);
-  add(machine, version);
-  const isSame = (first: string, second: string | null): boolean =>
-    second !== null && first.toLowerCase() === second.toLowerCase();
+    for (const { report } of readMachineReports(vaultPath))
+      // An older report can lack its version, which reads as "".
+      if (report !== null) versions.set(report.machine, report.version === "" ? null : report.version);
+  if (hub !== null && !versions.has(hub)) versions.set(hub, null);
+  versions.set(machine, version);
   return [...versions]
     .map(([name, known]) => ({
       name,
-      role: isSame(name, hub) ? ("hub" as const) : ("satellite" as const),
+      role: name === hub ? ("hub" as const) : ("satellite" as const),
       version: known,
-      current: isSame(name, machine),
+      current: name === machine,
     }))
     .sort((first, second) =>
       first.role === second.role ? first.name.localeCompare(second.name) : first.role === "hub" ? -1 : 1,

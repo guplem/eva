@@ -57,3 +57,19 @@ describe("the computers with the vault", () => {
     expect(listComputers(vault, "laptop", "1.4.0", "hub").map((each) => each.name)).toEqual(["laptop", "desktop"]);
   });
 });
+
+describe("the computers, edge cases", () => {
+  test("a report with no version shows none, and names compare exactly, as the hub claim does", () => {
+    mkdirSync(join(vault, ".eva", "machines"), { recursive: true });
+    writeFileSync(
+      join(vault, ".eva", "machines", "desktop.json"),
+      JSON.stringify({ machine: "desktop", problems: [] }),
+    );
+    claimHub(vault, "Laptop", now);
+    expect(listComputers(vault, "laptop", "1.4.0", "satellite")).toEqual([
+      { name: "Laptop", role: "hub", version: null, current: false },
+      { name: "desktop", role: "satellite", version: null, current: false },
+      { name: "laptop", role: "satellite", version: "1.4.0", current: true },
+    ]);
+  });
+});

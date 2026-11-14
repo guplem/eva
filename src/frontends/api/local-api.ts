@@ -172,7 +172,7 @@ const projectWorkSchema = z.object({ request: z.string().min(1), reportToSession
 const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
 const vaultFileSchema = projectFileSchema.extend({ path: z.string() });
 const favoriteSchema = z.object({ path: z.string(), favorite: z.boolean() });
-/** One answer holds a few links. The limit keeps one request from making the core stat without end. */
+/** The limit keeps one request from making the core stat without end. The page splits a longer list (`maxPathsPerAsk`). */
 const existingFilesSchema = z.object({ paths: z.array(z.string()).max(500) });
 const vaultRenameSchema = z.object({ path: z.string(), name: z.string().max(1_000) });
 /** A status that a page sends. An older open page can send a status that #859 replaced. */

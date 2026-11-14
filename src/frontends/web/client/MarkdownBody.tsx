@@ -17,6 +17,25 @@ interface CodeBar {
 /** One check for the whole page, so each path costs one request. */
 const missingPaths = missingPathsChecker(api.existingFiles);
 
+interface FilesLink {
+  readonly link: HTMLAnchorElement;
+  readonly path: string;
+}
+
+/** Each vault link to the Files page. A link to a Life page names an entity that exists. */
+function filesLinks(root: HTMLElement | null): FilesLink[] {
+  if (root === null) return [];
+  return [...root.querySelectorAll<HTMLAnchorElement>("a.vault-link")].flatMap((link) => {
+    const path = filePathOf(link.getAttribute("href") ?? "");
+    return path === null ? [] : [{ link, path }];
+  });
+}
+
+/** Keeps the text of each link to a missing path, such as its code span, and drops the link. */
+function unlink(links: readonly FilesLink[], missing: ReadonlySet<string>): void {
+  for (const { link, path } of links) if (missing.has(path) && link.isConnected) link.replaceWith(...link.childNodes);
+}
+
 export function MarkdownBody({
   html,
   className,
@@ -42,19 +61,19 @@ export function MarkdownBody({
     const found = [...root.querySelectorAll<HTMLElement>(".code-box-bar")];
     setBars(found.map((bar) => ({ bar, code: bar.parentElement?.querySelector("code")?.textContent ?? "" })));
   }, [html, copy]);
+  // A live answer sets new HTML on each token, and each link comes back. A path known as missing
+  // loses its link before the browser paints, so it does not flash.
+  useLayoutEffect(() => {
+    const links = filesLinks(body.current);
+    unlink(links, missingPaths.knownMissing(links.map(({ path }) => path)));
+  }, [html]);
   useEffect(() => {
-    const root = body.current;
-    if (root === null) return;
-    const links = [...root.querySelectorAll<HTMLAnchorElement>("a.vault-link")].flatMap((link) => {
-      const path = filePathOf(link.getAttribute("href") ?? "");
-      return path === null ? [] : [{ link, path }];
-    });
+    const links = filesLinks(body.current).filter(({ link }) => link.isConnected);
     if (links.length === 0) return;
     let current = true;
-    void missingPaths(links.map(({ path }) => path)).then((missing) => {
+    void missingPaths.missing(links.map(({ path }) => path)).then((missing) => {
       // A new HTML string replaced these links, and its own effect checks the new ones.
-      if (!current) return;
-      for (const { link, path } of links) if (missing.has(path)) link.replaceWith(...link.childNodes);
+      if (current) unlink(links, missing);
     });
     return () => {
       current = false;

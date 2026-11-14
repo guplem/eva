@@ -200,6 +200,12 @@ export const searchEntries: readonly SearchEntry[] = [
     title: "Actions that reach other people",
     words: "outward allow ask deny push git github email drive share calendar invitation curl data schedules approval",
   },
+  {
+    item: "answer-timeouts",
+    section: "engines",
+    title: "Time to answer",
+    words: "timeout time limit wait expire question permission approval minutes",
+  },
   { item: "claude-code", section: "engines", title: "Claude Code", words: "token login setup-token" },
   {
     item: "pi",
@@ -408,6 +414,12 @@ export const settingPlaces: readonly SettingPlace[] = [
     home: "vault",
     keys: ["outwardActions"],
     link: { section: "engines", item: "outward-actions" },
+  },
+  {
+    title: "Time to answer",
+    home: "vault",
+    keys: ["answerTimeouts"],
+    link: { section: "engines", item: "answer-timeouts" },
   },
   { title: "pi models", home: "vault", keys: ["engines.pi.models"], link: { section: "engines", item: "pi" } },
   { title: "Google account", home: "vault", keys: ["google.email"], link: { section: "connections", item: "google" } },

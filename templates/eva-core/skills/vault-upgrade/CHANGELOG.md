@@ -172,7 +172,7 @@ The root `AGENTS.md` has a _Front matter_ section, and `Life/Cases/AGENTS.md` na
 
 - **Version:** 8
 - **Date:** 2026-11-14
-- **Pull request:** https://github.com/guplem/eva/pull/PRNUMBER
+- **Pull request:** https://github.com/guplem/eva/pull/936
 - **Summary:** The businesses and self-employed people that serve you, such as your car workshop, your plumber or your dentist, get a folder of their own. Places to visit some day go to your maps app.
 
 ### What changes, and why

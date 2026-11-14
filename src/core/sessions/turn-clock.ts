@@ -60,7 +60,7 @@ export class TurnClock {
     this.runningSince = this.seams.now();
     this.timer = this.seams.setTimer(
       () => {
-        this.runningSince = null;
+        this.stop();
         this.onLimit();
       },
       Math.max(0, this.remainingMs),

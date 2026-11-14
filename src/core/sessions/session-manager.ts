@@ -1460,6 +1460,8 @@ ${engineText}`,
       emit({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
     } finally {
       clock?.stop();
+      // A question with no limit would otherwise outlive an engine that ended while it waited.
+      this.expireApprovals(sessionId);
       this.turnClocks.delete(sessionId);
       // While the turn still holds the folder, so no other turn changes the files first. A finished turn took it already.
       if (engineRan && finished === null) endSnapshot = await this.takeSnapshot(session, preparer);

@@ -2520,6 +2520,21 @@ describe("questions of the model", () => {
     expect(outcomes).toEqual([[{ selected: [0] }]]);
   });
 
+  test("a question with no limit ends with its turn, so no dead question stays open (#938)", async () => {
+    const outcomes: unknown[] = [];
+    const engine = new FakeEngine(async function* (request) {
+      // An engine that crashes while its question waits: the stream ends, the callback never returns.
+      void request.askQuestions("AskUserQuestion", [question]).then((outcome) => outcomes.push(outcome));
+      await waitUntil(() => events.some((event) => event.kind === "approval_needed"));
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    await manager.send(newAssistantSession(manager), "go");
+    expect(manager.pendingApprovals()).toEqual([]);
+    await waitUntil(() => outcomes.length === 1);
+    expect(outcomes).toEqual(["expired"]);
+  });
+
   test("the time that a turn waits for an answer does not count toward the turn's limit (#938)", async () => {
     const outcomes: unknown[] = [];
     const manager = questionManager(outcomes, { turnTimeoutMs: 40 });

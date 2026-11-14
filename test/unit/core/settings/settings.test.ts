@@ -412,3 +412,23 @@ describe("the level of each outward action (#914)", () => {
     expect(loadSettings(paths).config.outwardActions.pushCode).toBe("ask");
   });
 });
+
+describe("the time to answer a permission or a question (#938)", () => {
+  test("a permission waits 10 minutes, a question has no limit, and the vault holds both", () => {
+    expect(defaultConfig.answerTimeouts).toEqual({ permissionMinutes: 10, questionMinutes: null });
+    expect(isSharedSettingKey("answerTimeouts")).toBe(true);
+    expect(isSharedSettingKey("answerTimeouts.questionMinutes")).toBe(true);
+  });
+
+  test("a vault limit applies, and the limit that the file leaves out keeps its default", () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ answerTimeouts: { questionMinutes: 30 } }));
+    expect(loadSettings(paths).config.answerTimeouts).toEqual({ permissionMinutes: 10, questionMinutes: 30 });
+  });
+
+  test("a limit of no whole minutes makes the file invalid", () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ answerTimeouts: { permissionMinutes: 0 } }));
+    expect(loadSettings(paths).problem).not.toBeNull();
+  });
+});

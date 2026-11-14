@@ -1,5 +1,8 @@
 # The stored and typed names of Eva. scripts/check-stored-names.ts compares them with origin/main.
 # Update this file with: bun run scripts/check-stored-names.ts --write
+machine config.json answerTimeouts
+machine config.json answerTimeouts.permissionMinutes
+machine config.json answerTimeouts.questionMinutes
 machine config.json clock
 machine config.json clock=12h
 machine config.json clock=24h
@@ -442,6 +445,9 @@ vault .eva/schedules.json schedules[].text
 vault .eva/schedules.json schedules[].until
 vault .eva/schedules.json version
 vault .eva/schedules.json version=1
+vault .eva/settings/settings.json answerTimeouts
+vault .eva/settings/settings.json answerTimeouts.permissionMinutes
+vault .eva/settings/settings.json answerTimeouts.questionMinutes
 vault .eva/settings/settings.json clock
 vault .eva/settings/settings.json clock=12h
 vault .eva/settings/settings.json clock=24h

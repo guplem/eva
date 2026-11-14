@@ -29,6 +29,7 @@ export const sharedSettingKeys: readonly string[] = [
   "google.email",
   "voice.language",
   "outwardActions",
+  "answerTimeouts",
 ];
 
 /**

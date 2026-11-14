@@ -67,25 +67,27 @@ Eva keeps her settings in two places, and her tokens in a third:
 
 In the vault:
 
-| Setting                        | Default        | What it does                                                                                                                                                  |
-| ------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `timeZone`                     | Asked at setup | The time zone of the reminders, and of the time in each message.                                                                                              |
-| `language`                     | Asked at setup | The language of Eva's answers, such as `Spanish`.                                                                                                             |
-| `units`                        | From setup     | `metric` or `imperial`. `null`: not set.                                                                                                                      |
-| `clock`                        | From setup     | `24h` or `12h`: the form of each time that Eva writes and shows. `null`: 24-hour.                                                                             |
-| `weekStart`                    | From setup     | The first day of the week, `monday` to `sunday`. `null`: Monday.                                                                                              |
-| `sync.pullIntervalMinutes`     | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.                                                                    |
-| `sync.sweepSeconds`            | `60`           | Seconds between two saves of changed notes.                                                                                                                   |
-| `updates.frequency`            | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                                                                                               |
-| `updates.install`              | `minor`        | What Eva installs by herself: see [Updates](#updates).                                                                                                        |
-| `widgets.checkIntervalMinutes` | `30`           | Minutes between two update checks of your own widgets, 5 at least. Other widgets: once a day.                                                                 |
-| `engines.default`              | `claude-code`  | The engine of a new chat: `claude-code` or `pi`.                                                                                                              |
-| `engines.defaultModel`         | `opus`         | The model of a new chat: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).                                                                               |
-| `engines.defaultEffort`        | `medium`       | The effort of a new chat: `low`, `medium`, `high`, `xhigh` or `max`.                                                                                          |
-| `engines.pi.models.<model>`    | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default. In Settings, the field suggests the models of your pi logins.          |
-| `outwardActions.<category>`    | `ask`          | The level of one kind of action that reaches other people: `allow`, `ask` or `deny`. See [Actions that reach other people](#actions-that-reach-other-people). |
-| `google.email`                 | `null`         | The Google account. The Google login sets it.                                                                                                                 |
-| `voice.language`               | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                                                                                          |
+| Setting                            | Default        | What it does                                                                                                                                                  |
+| ---------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeZone`                         | Asked at setup | The time zone of the reminders, and of the time in each message.                                                                                              |
+| `language`                         | Asked at setup | The language of Eva's answers, such as `Spanish`.                                                                                                             |
+| `units`                            | From setup     | `metric` or `imperial`. `null`: not set.                                                                                                                      |
+| `clock`                            | From setup     | `24h` or `12h`: the form of each time that Eva writes and shows. `null`: 24-hour.                                                                             |
+| `weekStart`                        | From setup     | The first day of the week, `monday` to `sunday`. `null`: Monday.                                                                                              |
+| `sync.pullIntervalMinutes`         | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.                                                                    |
+| `sync.sweepSeconds`                | `60`           | Seconds between two saves of changed notes.                                                                                                                   |
+| `updates.frequency`                | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                                                                                               |
+| `updates.install`                  | `minor`        | What Eva installs by herself: see [Updates](#updates).                                                                                                        |
+| `widgets.checkIntervalMinutes`     | `30`           | Minutes between two update checks of your own widgets, 5 at least. Other widgets: once a day.                                                                 |
+| `engines.default`                  | `claude-code`  | The engine of a new chat: `claude-code` or `pi`.                                                                                                              |
+| `engines.defaultModel`             | `opus`         | The model of a new chat: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).                                                                               |
+| `engines.defaultEffort`            | `medium`       | The effort of a new chat: `low`, `medium`, `high`, `xhigh` or `max`.                                                                                          |
+| `engines.pi.models.<model>`        | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default. In Settings, the field suggests the models of your pi logins.          |
+| `outwardActions.<category>`        | `ask`          | The level of one kind of action that reaches other people: `allow`, `ask` or `deny`. See [Actions that reach other people](#actions-that-reach-other-people). |
+| `answerTimeouts.permissionMinutes` | `10`           | Minutes that a permission waits for your answer, 1 to 1440. `null`: no limit. See [Time to answer](#time-to-answer).                                          |
+| `answerTimeouts.questionMinutes`   | `null`         | Minutes that a question of the AI waits for your answer, 1 to 1440. `null`: no limit. See [Time to answer](#time-to-answer).                                  |
+| `google.email`                     | `null`         | The Google account. The Google login sets it.                                                                                                                 |
+| `voice.language`                   | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                                                                                          |
 
 On this computer:
 
@@ -374,6 +376,7 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Trusted repositories:** a project chat uses the project's own agent settings and tools (the hooks, settings and MCP servers of its clone) only when Eva trusts every repository in it. Eva trusts the repositories of the GitHub account that she logs in with. She also trusts the owners in `trust.trustedRepositoryOwners`. She asks about any other repository once, and keeps your answer. **Settings > Trusted repositories** lists the trusted accounts and the saved answers. Add or remove one there. A change applies to the next project chat.
 - **What Eva may do:** **Settings > AI engines > What Eva may do** lists, for each engine and each kind of chat, what runs with no question, what Eva asks you first and what never runs. See also [What a chat can reach](#what-a-chat-can-reach). It also lists your own Claude Code `allow`, `ask` and `deny` rules apart, with the file that holds them: the `settings.json` in this Eva's Claude Code folder, and `.claude/settings.json` in your vault.
 - **Actions that reach other people:** **Settings > AI engines > Actions that reach other people** gives each kind of action one level: Allow, Ask or Deny. See [Actions that reach other people](#actions-that-reach-other-people).
+- **Time to answer:** **Settings > AI engines > Time to answer** sets how long a chat waits for your answer. See [Time to answer](#time-to-answer).
 
 ### Actions that reach other people
 
@@ -398,6 +401,17 @@ Some actions reach other people, or change what Eva does later. Each action has 
 - **A call with several kinds.** A command such as `git push && curl -d @file` has two kinds. The strictest level wins: Deny, then Ask, then Allow.
 - **Your own MCP servers.** Eva gives levels only to her own Google tools. Eva does not ask about the tools of your own MCP server. To get a question, add a rule in Claude Code's own settings.
 - **Do not ask again.** A permission card of a request with a kind of action has a third button, **Do not ask again**, in the web app and in Telegram. Eva asks you to confirm. The question names each kind of the request. After you confirm, Eva allows the request, sets each of its kinds to Allow, and also allows the other waiting requests of the same action. To undo it, set the level to Ask in **Settings > AI engines > Actions that reach other people**.
+
+### Time to answer
+
+A chat waits for you in two cases:
+
+- **A permission** asks you to allow or deny an action, such as a push. It also covers the question about a repository that Eva does not trust. With no answer in time, Eva denies it. By default, a permission waits 10 minutes.
+- **A question** is a form that the AI asks you, with options to pick. With no answer in time, the AI asks you again in the chat. By default, a question waits with no limit.
+
+Set each limit in **Settings > AI engines > Time to answer**. A change applies from the next request. The settings live in your vault, in `answerTimeouts`. A longer wait never allows more: a permission with no answer is still denied.
+
+A turn stops after 2 hours, so an engine that hangs never keeps a chat busy. The time that a chat waits for your answer does not count. Press **Stop** to end a chat that waits.
 
 ## Pinned files
 

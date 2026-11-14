@@ -160,7 +160,7 @@ import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
-import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
+import { SessionManager, type AnswerTimeouts, type FirstTurn } from "./sessions/session-manager.ts";
 import { answersToUndo, refsStillNamed } from "./sessions/retry-undo.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
 import { ComposerMenu } from "./composer-menu/composer-menu.ts";
@@ -480,7 +480,6 @@ export interface TrustOverview {
   readonly answers: readonly TrustAnswer[];
 }
 
-const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
 const scheduleTickMs = 30_000;
@@ -904,7 +903,7 @@ export class Eva {
       newId: () => crypto.randomUUID(),
       redactor,
       gatherMs: options.gatherMs ?? 1_000,
-      approvalTimeoutMs,
+      answerTimeouts: () => answerTimeoutsOf(this.settings.config),
       turnTimeoutMs,
     });
     this.projectWork = new ProjectWork({
@@ -3075,4 +3074,13 @@ function defaultGitHubLogin(now: () => Date): DeviceLogin | null {
   const clientId = githubClientId;
   if (clientId === null) return null;
   return (show, sleep) => githubDeviceLogin({ clientId, show, sleep, clock: { now } });
+}
+
+/** The time that a permission and a question wait for the person, from the minutes of the settings. */
+function answerTimeoutsOf(config: EvaConfig): AnswerTimeouts {
+  const ms = (minutes: number | null): number | null => (minutes === null ? null : minutes * 60_000);
+  return {
+    permissionMs: ms(config.answerTimeouts.permissionMinutes),
+    questionMs: ms(config.answerTimeouts.questionMinutes),
+  };
 }

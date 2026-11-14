@@ -53,6 +53,7 @@ import {
 import { chatKind, type ChatKind } from "../../shared/chat-kind.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
 import type { StepDetailsStore } from "./step-details-store.ts";
+import { TurnClock } from "./turn-clock.ts";
 
 export interface PreparedTurn {
   readonly startFolder: string;
@@ -184,8 +185,8 @@ export interface SessionManagerOptions {
   readonly redactor: Redactor;
   /** How long a first message waits for more messages to join its turn (lesson 51). */
   readonly gatherMs: number;
-  /** An approval nobody answers is denied after this time. */
-  readonly approvalTimeoutMs: number;
+  /** How long a permission and a question wait for the person, read at each one. Null: no limit. */
+  readonly answerTimeouts: () => AnswerTimeouts;
   /** A turn that runs longer is stopped, so a hung engine never keeps a chat busy for good. */
   readonly turnTimeoutMs: number;
   /** Where an error of the work after a turn goes. The turn has its end event already. */
@@ -202,6 +203,12 @@ export interface PendingApproval {
   readonly questions?: readonly ApprovalQuestion[];
   /** The outward action categories on Ask that caused the request. */
   readonly categories?: readonly OutwardActionCategory[];
+}
+
+/** The time that a permission and a question wait for the person. Null: no limit. */
+export interface AnswerTimeouts {
+  readonly permissionMs: number | null;
+  readonly questionMs: number | null;
 }
 
 /** How an approval ends: the person's answer, the answers to its questions, or no answer in time. */
@@ -319,6 +326,8 @@ export class SessionManager {
   private readonly brokenListeners = new WeakSet<EventListener>();
   private readonly idleListeners = new Set<IdleListener>();
   private readonly runtimes = new Map<string, SessionRuntime>();
+  /** The clock of each running turn, by session id: it stops while the turn waits for the person. */
+  private readonly turnClocks = new Map<string, TurnClock>();
   private readonly approvals = new Map<
     string,
     { readonly question: PendingApproval; readonly resolve: (outcome: ApprovalOutcome) => void }
@@ -1277,7 +1286,7 @@ export class SessionManager {
     controller.signal.addEventListener("abort", () => {
       this.expireApprovals(sessionId);
     });
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let clock: TurnClock | undefined;
     // An object, as only the timer callback sets it.
     const timeLimit = { reached: false };
     let releaseFolder = (): void => undefined;
@@ -1290,10 +1299,11 @@ export class SessionManager {
       await this.waitForAskingTurn(session, controller.signal);
       this.lastActivity.set(sessionId, this.options.now().getTime());
       // After the wait: the other turn may itself run up to the time-out.
-      timeout = setTimeout(() => {
+      clock = TurnClock.start(this.options.turnTimeoutMs, () => {
         timeLimit.reached = true;
         controller.abort();
-      }, this.options.turnTimeoutMs);
+      });
+      this.turnClocks.set(sessionId, clock);
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);
       const prepared = await preparer.prepare(session, {
         ask: async (question, detail) => {
@@ -1449,7 +1459,8 @@ ${engineText}`,
     } catch (error) {
       emit({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
     } finally {
-      clearTimeout(timeout);
+      clock?.stop();
+      this.turnClocks.delete(sessionId);
       // While the turn still holds the folder, so no other turn changes the files first. A finished turn took it already.
       if (engineRan && finished === null) endSnapshot = await this.takeSnapshot(session, preparer);
       releaseFolder();
@@ -1760,10 +1771,17 @@ ${engineText}`,
     if (signal.aborted) return Promise.resolve("expired");
     const requestId = this.options.newId();
     const redactor = this.options.redactor;
+    const limits = this.options.answerTimeouts();
+    const limitMs = questions === null ? limits.permissionMs : limits.questionMs;
+    const clock = this.turnClocks.get(sessionId);
+    clock?.pause();
     return new Promise<ApprovalOutcome>((resolve) => {
-      const timer = setTimeout(() => {
-        this.resolveApproval(requestId, "expired");
-      }, this.options.approvalTimeoutMs);
+      const timer =
+        limitMs === null
+          ? undefined
+          : setTimeout(() => {
+              this.resolveApproval(requestId, "expired");
+            }, limitMs);
       this.approvals.set(requestId, {
         question: {
           requestId,
@@ -1775,6 +1793,7 @@ ${engineText}`,
         },
         resolve: (outcome) => {
           clearTimeout(timer);
+          clock?.resume();
           resolve(outcome);
         },
       });

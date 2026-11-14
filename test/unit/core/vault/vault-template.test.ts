@@ -248,6 +248,12 @@ describe("the vault template", () => {
     expect(files["Life/People/AGENTS.md"]).toContain("hairdresser at Life/Providers/Example Salon");
     expect(files["Life/People/AGENTS.md"]).toContain("`Life/Providers/`");
     expect(files["Life/Objects/AGENTS.md"]).toContain("names the provider by its path");
+    // The first yes wins, so the provider comes before the person, and a bank stays in Finances.
+    expect(map).toContain(
+      "6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A bank, a subscription or an employer is not a provider. About another person",
+    );
+    expect(files["Life/People/AGENTS.md"]).toContain("A self-employed provider always gets one");
+    expect(map).not.toContain("such as a company, stays as plain text");
   });
 
   test("every vault migration leaves each file of a new vault as the template wrote it (#772)", () => {

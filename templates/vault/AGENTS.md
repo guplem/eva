@@ -14,7 +14,7 @@ The vault has three parts: the person's life, what they build, and what they kno
 | `Life/Cases/` | Matters the person deals with. A case has a goal and some steps, and it closes when the goal is reached or dropped. It lasts days or months. To tell a case from a project, ask: does something built remain after the work ends? No, it only resolves a matter → a case. A claim, a refund, a dispute, a fine, this year's tax return, a trip (also a work trip), a party, a move, a surgery, a therapy, a job application, buying or selling a home or a car, a short paid job, buying or organizing a gift. | One reminder with a date and nothing else to keep → the task app. Something that already happened and needs no follow-up → one dated line in the note of what it was about, such as a repair in the object's note. |
 | `Life/Objects/` | Things the person has or uses, even when someone else owns them: a car, a home (also one they left), a phone, a laptop, a borrowed bike, a rented parking space. Each thing's contracts and insurance go in its folder: the car insurance, the rent, the mortgage, electricity, internet at home. | A thing of someone else that the person does not use → a line in its owner's `Person.md`. |
 | `Life/People/` | One folder for each person who matters. What the person knows about them: who they are to them, tastes, allergies, gift ideas, history, agreements made with them, such as a rule a couple sets. | Their phone, email and birthday → the contacts app. A day spent together → `Diary/`. The service of a business or a self-employed person → `Life/Providers/`. |
-| `Life/Providers/` | The businesses and self-employed people that serve the person: the car workshop, the plumber, the dentist's clinic, the hair salon, the tax adviser, the vet. What the person knows about the service: how to book, who to ask for, prices paid and whether it went well. | A place to visit some day → the maps app. A company that is a contract of a thing, such as the car insurer or the electricity company → that thing's folder. A bank, a subscription or the phone operator → `Life/Finances/`. An employer → `Life/Periods/`. A client → the project. |
+| `Life/Providers/` | The businesses and self-employed people that serve the person: the car workshop, the plumber, the dentist's clinic, the hair salon, the tax adviser, the vet. What the person knows about the service: how to book, who to ask for, prices paid and whether it went well. | A place to visit some day → the maps app. A company that serves one thing through a contract, such as the car insurer or the electricity company → the folder of that thing. A bank, a subscription or the phone operator → `Life/Finances/`. An employer → `Life/Periods/`. A client → the project. |
 | `Life/Pets/` | The pets that live with the person, also a foster pet. | A pet of someone else → a line in its owner's `Person.md`. |
 | `Life/Periods/` | What the person spends their days doing, for months or years: each job, full-time studies, volunteering, a sabbatical. A period describes who they were at that time, so it feeds their CV. It has no goal to reach: it ends when they stop. It holds the record: dates, role, enrolment, contract, grades, diploma. | The day-to-day work of a job or of studies, such as meetings, clients or assignments → a project, such as the employer's folder or a study specialist. |
 | `Life/Health/` | Body and mind: allergies, diet, sleep, measurements, conditions, test results, goals, and what stays after a surgery or a treatment, such as an implant or a chronic condition. | The process of a surgery or a treatment (appointments, papers, recovery) → a case. When it closes, add what stays to `Health/`. A training plan or a routine to follow → `Methods/`. |
@@ -60,7 +60,7 @@ Each role has its own service. _Personal rules_ names the person's app for each 
 | A photo of daily life | The photos app |
 | Code with its own repository | GitHub |
 | A place to visit some day, such as a restaurant to try or a city to see | The maps app |
-| Something to watch, read or try some day | Its app, or the task app |
+| Something else to watch, read or try some day | Its app, or the task app |
 | Logins for websites and apps, a password export, or the master password | The password manager, if the person has one |
 
 With no tool for that service, tell the person where to put it. Never store it in the vault instead.
@@ -74,7 +74,7 @@ Go down this list in order. Stop at the first yes. _What is where_ says what eac
 3. Something built remains after the work ends, even when the work has a goal, steps and an end, or a specialist → `Projects/`.
 4. A matter being handled, with steps, that ends and leaves nothing built → `Life/Cases/`.
 5. About a thing or a home → `Life/Objects/`.
-6. About a person → `Life/People/`. About a pet → `Life/Pets/`. About a business or a self-employed person that serves them → `Life/Providers/`.
+6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A bank, a subscription or an employer is not a provider. About another person → `Life/People/`. About a pet → `Life/Pets/`.
 7. About a stage of life → `Life/Periods/`.
 8. About body or mind → `Life/Health/`.
 9. About money that stays → `Life/Finances/`.
@@ -117,7 +117,7 @@ These rules hold for the front matter of every note, and each `AGENTS.md` in `Li
   - `aliases:` lists other names of the thing, such as `[the car, the blue car]`. A search by name also searches the aliases.
   - `tags:` lists words that group notes, such as `[hobby, videogame]`. Write each tag in lowercase, with hyphens, in one or two words.
 - **Reuse a tag.** Before you add a tag, list the tags that the vault already uses. Pick one that fits. Create a new tag only when none fits.
-- **A reference to another note is its path from the vault root,** such as `relation: cousin of Life/People/Marta Example`. In the text, link a note by its path too, so a search for the path finds every note that names it. A thing with no note, such as a company, stays as plain text.
+- **A reference to another note is its path from the vault root,** such as `relation: cousin of Life/People/Marta Example`. In the text, link a note by its path too, so a search for the path finds every note that names it. A thing with no note, such as the car insurer, stays as plain text.
 - **A day is `YYYY-MM-DD`,** with no time zone.
 - **A moment is `YYYY-MM-DDTHH:mm` plus its offset from UTC,** such as `2026-01-31T09:15+01:00`. So any reader in any time zone knows the exact moment. The offset changes in summer: take it from a command in the person's time zone, such as `TZ=Europe/Paris date +%Y-%m-%dT%H:%M%:z`, never from your own sum.
 - **When only part of a date is known, write that part,** such as `2013-07-31` or `2013`.

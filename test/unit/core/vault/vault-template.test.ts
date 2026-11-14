@@ -79,6 +79,7 @@ describe("the vault template", () => {
       "Life/People/AGENTS.md",
       "Life/Periods/AGENTS.md",
       "Life/Pets/AGENTS.md",
+      "Life/Providers/AGENTS.md",
       "Methods/.gitkeep",
       "Principles/.gitkeep",
       "Projects/.gitkeep",
@@ -164,7 +165,17 @@ describe("the vault template", () => {
     for (const folder of ["Principles/", "Methods/", "Toolbox/", "Library/", "Projects/", ".eva/"]) {
       expect(map).toContain(`\`${folder}`);
     }
-    for (const folder of ["Cases", "Objects", "People", "Pets", "Periods", "Health", "Finances", "Diary"]) {
+    for (const folder of [
+      "Cases",
+      "Objects",
+      "People",
+      "Pets",
+      "Providers",
+      "Periods",
+      "Health",
+      "Finances",
+      "Diary",
+    ]) {
       expect(map).toContain(`\`Life/${folder}/`);
     }
     for (const heading of ["## What is where", "## Outside the vault", "## Where things go", "## Entities"]) {
@@ -219,6 +230,24 @@ describe("the vault template", () => {
     expect(files[".eva/AGENTS.md"]).toContain("`eva settings set`");
     expect(files["Life/Finances/AGENTS.md"]).toContain("**Closing:** When a contract or account ends");
     expect(files["AGENTS.md"]).toContain("any service, except the person's password manager.");
+  });
+
+  test("a provider has its own folder, apart from the people behind it, and a place to visit goes to the maps app (#934)", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    const providers = files["Life/Providers/AGENTS.md"] ?? "";
+    expect(map).toContain("| Provider | `Life/Providers/Example Garage/` | `Provider.md` |");
+    expect(map).toContain("About a business or a self-employed person that serves them → `Life/Providers/`.");
+    expect(map).toContain("| A place to visit some day, such as a restaurant to try or a city to see | The maps app |");
+    expect(map).toContain("| The maps app | not set |");
+    expect(providers).toContain("Provider.md");
+    expect(providers).toContain("status: current # current or former");
+    expect(providers).toContain("`Life/Providers/Joan Example - Plumber/`");
+    // A provider needs no more than a name and a contact, unlike a person.
+    expect(providers).toContain("even with only a name and a contact");
+    expect(files["Life/People/AGENTS.md"]).toContain("hairdresser at Life/Providers/Example Salon");
+    expect(files["Life/People/AGENTS.md"]).toContain("`Life/Providers/`");
+    expect(files["Life/Objects/AGENTS.md"]).toContain("names the provider by its path");
   });
 
   test("every vault migration leaves each file of a new vault as the template wrote it (#772)", () => {

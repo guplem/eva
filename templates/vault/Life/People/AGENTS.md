@@ -16,7 +16,7 @@ summary: Lives in Berlin. Vegetarian.
 **`relation`** says who they are to the person, in plain words:
 - **Family:** the name of the bond, such as `mother`, `brother` or `aunt`. Add the side when it helps: `aunt, mother's side`.
 - **Through someone else:** the bond, then `of`, then the path of that person's folder: `partner of Life/People/Marta Example`, `sister of Life/People/Alex Example`.
-- **Work:** the role and the place: `colleague at Example Corp`, `manager at Example Corp`.
+- **Work:** the role and the place: `colleague at Example Corp`, `manager at Example Corp`. When the place is a provider, write its path: `hairdresser at Life/Providers/Example Salon`.
 - **Others:** `friend`, `neighbour`, `doctor`. Add where from when it helps: `friend from university`.
 - **When it changes,** such as a colleague who becomes a friend, update it and keep the old one as a dated line.
 
@@ -32,5 +32,6 @@ summary: Lives in Berlin. Vegetarian.
 - A pet → `Life/Pets/`.
 - A matter with steps, such as organizing a party for them → `Life/Cases/`. The case links their folder in its text.
 - Day-to-day work with a colleague → the employer's folder in `Projects/`.
+- The service of a business or a self-employed person, such as prices, jobs and verdicts → `Life/Providers/`. A self-employed person has both folders, linked both ways: this one keeps only what is personal.
 
 **Closing:** a person has no status. When a relation changes or ends, update `relation` and `summary`. Never move or delete the folder.

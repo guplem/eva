@@ -167,3 +167,32 @@ The root `AGENTS.md` has a _Front matter_ section, and `Life/Cases/AGENTS.md` na
 3. Each case whose `waiting-for` is not clear from its text, with your best guess as the default.
 4. Each closed period with no `to`, and each closed case with no `closed` date, with the day of its last dated line as the default.
 5. Each project link that could become `result`, as one list, with "yes to all" as the default.
+
+## v8
+
+- **Version:** 8
+- **Date:** 2026-11-14
+- **Pull request:** https://github.com/guplem/eva/pull/PRNUMBER
+- **Summary:** The businesses and self-employed people that serve you, such as your car workshop, your plumber or your dentist, get a folder of their own. Places to visit some day go to your maps app.
+
+### What changes, and why
+
+The examples are generic: a vault can have any notes.
+
+1. **The vault gets `Life/Providers/`,** with its `AGENTS.md` in the exact text of `template/`. A provider is a folder with `Provider.md`: the service, the status, the contact and dated verdicts. A self-employed person has both a provider folder and a person folder, linked both ways. Why: "my workshop" or "the plumber we used" had no home. Its facts ended in a person's note, in an object's note, or nowhere.
+2. **The root `AGENTS.md` names the new folder and the maps app.** Replace these parts with the exact text of `template/`: the `Life/People/` and `Life/Providers/` rows of the _Their life_ table, the _Outside the vault_ table, step 6 of _Where things go_, and the first sentence and the table of _Entities_. Leave the rest of the file as it is.
+3. **The _Personal rules_ apps table gets the row `| The maps app | not set |`** at its end, when it has no row for the maps app. This is the one change to _Personal rules_ that this entry makes. Change no other line of the section.
+4. **`Life/People/AGENTS.md`, `Life/Objects/AGENTS.md` and `Life/Pets/AGENTS.md` get the new text** of `template/`. A person's `relation` can name a provider by its path. A finished repair names its provider by its path. A pet's vet can be a provider.
+5. **Provider facts can leave their old notes,** only for each one that the person approves. Search `Life/People/*/Person.md` and `Life/Objects/*/Object.md` for a business or a self-employed person that serves the person, such as a hairdresser, a plumber, a workshop or a clinic. Commit the providers in their own group, such as "Give each provider its folder". For each approved one:
+   - Create `Life/Providers/<Name>/Provider.md`, with the service facts: how to book, prices, jobs and verdicts.
+   - For a person, keep only what is personal in `Person.md`, and set `relation` to the role at the provider's path, such as `plumber at Life/Providers/Joan Example - Plumber`. Add the person's path to the provider's `people`.
+   - For an object, keep each dated repair line where it is, and replace the provider's plain name in it with the provider's path.
+
+### How to detect a vault that has it
+
+`Life/Providers/AGENTS.md` exists, the _Entities_ table of the root `AGENTS.md` has a `Provider` row, and the _Outside the vault_ table has a row for the maps app. Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. Each provider found in a `Person.md` or an `Object.md`, as one list with its new folder name and the facts that move. The default is "no": nothing moves unless the person says yes. Offer "yes to all".
+2. Each line of _Personal rules_ that sends a provider or a place to visit somewhere else, such as "Restaurants to try go to the task app". The default is "keep it as an exception", with the rule that it overrides.

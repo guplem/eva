@@ -13,7 +13,8 @@ The vault has three parts: the person's life, what they build, and what they kno
 | `Life/About me.md` | The basics only: name, birthday, their own phone and email, region, home address, current jobs and studies, languages. | Anything else about them → the folders below. |
 | `Life/Cases/` | Matters the person deals with. A case has a goal and some steps, and it closes when the goal is reached or dropped. It lasts days or months. To tell a case from a project, ask: does something built remain after the work ends? No, it only resolves a matter → a case. A claim, a refund, a dispute, a fine, this year's tax return, a trip (also a work trip), a party, a move, a surgery, a therapy, a job application, buying or selling a home or a car, a short paid job, buying or organizing a gift. | One reminder with a date and nothing else to keep → the task app. Something that already happened and needs no follow-up → one dated line in the note of what it was about, such as a repair in the object's note. |
 | `Life/Objects/` | Things the person has or uses, even when someone else owns them: a car, a home (also one they left), a phone, a laptop, a borrowed bike, a rented parking space. Each thing's contracts and insurance go in its folder: the car insurance, the rent, the mortgage, electricity, internet at home. | A thing of someone else that the person does not use → a line in its owner's `Person.md`. |
-| `Life/People/` | One folder for each person who matters. What the person knows about them: who they are to them, tastes, allergies, gift ideas, history, agreements made with them, such as a rule a couple sets. | Their phone, email and birthday → the contacts app. A day spent together → `Diary/`. |
+| `Life/People/` | One folder for each person who matters. What the person knows about them: who they are to them, tastes, allergies, gift ideas, history, agreements made with them, such as a rule a couple sets. | Their phone, email and birthday → the contacts app. A day spent together → `Diary/`. The service of a business or a self-employed person → `Life/Providers/`. |
+| `Life/Providers/` | The businesses and self-employed people that serve the person: the car workshop, the plumber, the dentist's clinic, the hair salon, the tax adviser, the vet. What the person knows about the service: how to book, who to ask for, prices paid and whether it went well. | A place to visit some day → the maps app. A company that is a contract of a thing, such as the car insurer or the electricity company → that thing's folder. A bank, a subscription or the phone operator → `Life/Finances/`. An employer → `Life/Periods/`. A client → the project. |
 | `Life/Pets/` | The pets that live with the person, also a foster pet. | A pet of someone else → a line in its owner's `Person.md`. |
 | `Life/Periods/` | What the person spends their days doing, for months or years: each job, full-time studies, volunteering, a sabbatical. A period describes who they were at that time, so it feeds their CV. It has no goal to reach: it ends when they stop. It holds the record: dates, role, enrolment, contract, grades, diploma. | The day-to-day work of a job or of studies, such as meetings, clients or assignments → a project, such as the employer's folder or a study specialist. |
 | `Life/Health/` | Body and mind: allergies, diet, sleep, measurements, conditions, test results, goals, and what stays after a surgery or a treatment, such as an implant or a chronic condition. | The process of a surgery or a treatment (appointments, papers, recovery) → a case. When it closes, add what stays to `Health/`. A training plan or a routine to follow → `Methods/`. |
@@ -58,6 +59,7 @@ Each role has its own service. _Personal rules_ names the person's app for each 
 | A big file, such as a book, a long PDF, a video, or an ID document needed in a hurry | The cloud drive |
 | A photo of daily life | The photos app |
 | Code with its own repository | GitHub |
+| A place to visit some day, such as a restaurant to try or a city to see | The maps app |
 | Something to watch, read or try some day | Its app, or the task app |
 | Logins for websites and apps, a password export, or the master password | The password manager, if the person has one |
 
@@ -72,7 +74,7 @@ Go down this list in order. Stop at the first yes. _What is where_ says what eac
 3. Something built remains after the work ends, even when the work has a goal, steps and an end, or a specialist → `Projects/`.
 4. A matter being handled, with steps, that ends and leaves nothing built → `Life/Cases/`.
 5. About a thing or a home → `Life/Objects/`.
-6. About a person → `Life/People/`. About a pet → `Life/Pets/`.
+6. About a person → `Life/People/`. About a pet → `Life/Pets/`. About a business or a self-employed person that serves them → `Life/Providers/`.
 7. About a stage of life → `Life/Periods/`.
 8. About body or mind → `Life/Health/`.
 9. About money that stays → `Life/Finances/`.
@@ -90,7 +92,7 @@ Then:
 
 ## Entities
 
-Each project, case, object, person, pet and period is always a folder with one main file of a fixed name. Everything else about it sits beside that file. Create one as soon as there is something to keep about it.
+Each project, case, object, person, pet, provider and period is always a folder with one main file of a fixed name. Everything else about it sits beside that file. Create one as soon as there is something to keep about it.
 
 | Type | Example folder | Main file |
 | --- | --- | --- |
@@ -99,6 +101,7 @@ Each project, case, object, person, pet and period is always a folder with one m
 | Object | `Life/Objects/Car - Example Model - 1234ABC/` | `Object.md` |
 | Person | `Life/People/Alex Example/` | `Person.md` |
 | Pet | `Life/Pets/Luna/` | `Pet.md` |
+| Provider | `Life/Providers/Example Garage/` | `Provider.md` |
 | Period | `Life/Periods/2024-09-01-example-job/` | `Period.md` |
 
 - **Each folder in `Life/` has its own `AGENTS.md`** with the names, fields, statuses and format of what it holds. Read it before you create or change something there.
@@ -209,3 +212,4 @@ Each role of _Outside the vault_ uses this app. When a cell says "not set", ask 
 | The cloud drive | not set |
 | The photos app | not set |
 | The password manager | not set |
+| The maps app | not set |

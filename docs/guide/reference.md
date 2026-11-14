@@ -67,27 +67,27 @@ Eva keeps her settings in two places, and her tokens in a third:
 
 In the vault:
 
-| Setting                            | Default        | What it does                                                                                                                                                  |
-| ---------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `timeZone`                         | Asked at setup | The time zone of the reminders, and of the time in each message.                                                                                              |
-| `language`                         | Asked at setup | The language of Eva's answers, such as `Spanish`.                                                                                                             |
-| `units`                            | From setup     | `metric` or `imperial`. `null`: not set.                                                                                                                      |
-| `clock`                            | From setup     | `24h` or `12h`: the form of each time that Eva writes and shows. `null`: 24-hour.                                                                             |
-| `weekStart`                        | From setup     | The first day of the week, `monday` to `sunday`. `null`: Monday.                                                                                              |
-| `sync.pullIntervalMinutes`         | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.                                                                    |
-| `sync.sweepSeconds`                | `60`           | Seconds between two saves of changed notes.                                                                                                                   |
-| `updates.frequency`                | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                                                                                               |
-| `updates.install`                  | `minor`        | What Eva installs by herself: see [Updates](#updates).                                                                                                        |
-| `widgets.checkIntervalMinutes`     | `30`           | Minutes between two update checks of your own widgets, 5 at least. Other widgets: once a day.                                                                 |
-| `engines.default`                  | `claude-code`  | The engine of a new chat: `claude-code` or `pi`.                                                                                                              |
-| `engines.defaultModel`             | `opus`         | The model of a new chat: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).                                                                               |
-| `engines.defaultEffort`            | `medium`       | The effort of a new chat: `low`, `medium`, `high`, `xhigh` or `max`.                                                                                          |
-| `engines.pi.models.<model>`        | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default. In Settings, the field suggests the models of your pi logins.          |
-| `outwardActions.<category>`        | `ask`          | The level of one kind of action that reaches other people: `allow`, `ask` or `deny`. See [Actions that reach other people](#actions-that-reach-other-people). |
-| `answerTimeouts.permissionMinutes` | `10`           | Minutes that a permission waits for your answer, 1 to 1440. `null`: no limit. See [Time to answer](#time-to-answer).                                          |
-| `answerTimeouts.questionMinutes`   | `null`         | Minutes that a question of the AI waits for your answer, 1 to 1440. `null`: no limit. See [Time to answer](#time-to-answer).                                  |
-| `google.email`                     | `null`         | The Google account. The Google login sets it.                                                                                                                 |
-| `voice.language`                   | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                                                                                          |
+| Setting                            | Default        | What it does                                                                                                                                                              |
+| ---------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeZone`                         | Asked at setup | The time zone of the reminders, and of the time in each message.                                                                                                          |
+| `language`                         | Asked at setup | The language of Eva's answers, such as `Spanish`.                                                                                                                         |
+| `units`                            | From setup     | `metric` or `imperial`. `null`: not set.                                                                                                                                  |
+| `clock`                            | From setup     | `24h` or `12h`: the form of each time that Eva writes and shows. `null`: 24-hour.                                                                                         |
+| `weekStart`                        | From setup     | The first day of the week, `monday` to `sunday`. `null`: Monday.                                                                                                          |
+| `sync.pullIntervalMinutes`         | `5`            | Minutes between two fetches of other computers' notes. `null`: only before each chat turn.                                                                                |
+| `sync.sweepSeconds`                | `60`           | Seconds between two saves of changed notes.                                                                                                                               |
+| `updates.frequency`                | `daily`        | How often Eva looks for a new version: see [Updates](#updates).                                                                                                           |
+| `updates.install`                  | `minor`        | What Eva installs by herself: see [Updates](#updates).                                                                                                                    |
+| `widgets.checkIntervalMinutes`     | `30`           | Minutes between two update checks of your own widgets, 5 at least. Other widgets: once a day.                                                                             |
+| `engines.default`                  | `claude-code`  | The engine of a new chat: `claude-code` or `pi`.                                                                                                                          |
+| `engines.defaultModel`             | `opus`         | The model of a new chat: `opus` (Smart), `sonnet` (Balanced) or `haiku` (Fast).                                                                                           |
+| `engines.defaultEffort`            | `medium`       | The effort of a new chat: `low`, `medium`, `high`, `xhigh` or `max`.                                                                                                      |
+| `engines.pi.models.<model>`        | `null`         | The pi model of each of the 3 tiers, such as `openai/gpt-5`. `null`: pi's own default. In Settings, the field suggests the models of your pi logins.                      |
+| `outwardActions.<category>`        | `ask`          | The level of one kind of action that reaches other people: `allow`, `ask` or `deny`. See [Actions that reach other people](#actions-that-reach-other-people).             |
+| `answerTimeouts.permissionMinutes` | `10`           | Minutes that a permission waits for your answer, 1 to 720. `null`: no limit of its own, up to the 12-hour end of the turn. See [Time to answer](#time-to-answer).         |
+| `answerTimeouts.questionMinutes`   | `null`         | Minutes that a question of the AI waits for your answer, 1 to 720. `null`: no limit of its own, up to the 12-hour end of the turn. See [Time to answer](#time-to-answer). |
+| `google.email`                     | `null`         | The Google account. The Google login sets it.                                                                                                                             |
+| `voice.language`                   | `null`         | The language of voice notes, such as `es`. `null`: whisper finds it.                                                                                                      |
 
 On this computer:
 
@@ -411,7 +411,7 @@ A chat waits for you in two cases:
 
 Set each limit in **Settings > AI engines > Time to answer**. A change applies from the next request. The settings live in your vault, in `answerTimeouts`. A longer wait never allows more: a permission with no answer is still denied.
 
-A turn stops after 2 hours, so an engine that hangs never keeps a chat busy. The time that a chat waits for your answer does not count. Press **Stop** to end a chat that waits.
+A turn stops after 2 hours, so an engine that hangs never keeps a chat busy. The time that a chat waits for your answer does not count. A chat that waits pauses the vault sync and the updates. So a turn always ends after 12 hours, waits included. Press **Stop** to end a chat that waits sooner.
 
 ## Pinned files
 

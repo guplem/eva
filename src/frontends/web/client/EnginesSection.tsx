@@ -168,7 +168,7 @@ function AnswerTimeoutsCard({ context }: { readonly context: SettingsContext }):
       item="answer-timeouts"
       icon="clock"
       title="Time to answer"
-      description="How long a chat waits for your answer. The time that a chat waits does not count toward the 2-hour limit of a turn. A change applies from the next request."
+      description="How long a chat waits for your answer. The time that a chat waits does not count toward the 2-hour limit of a turn. A turn always ends after 12 hours, so a wait never pauses the vault sync and the updates for longer. A change applies from the next request."
     >
       <SelectField
         label="Permissions"

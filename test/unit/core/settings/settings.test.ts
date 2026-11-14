@@ -430,5 +430,8 @@ describe("the time to answer a permission or a question (#938)", () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     writeFileSync(vaultSettingsPath(vault), JSON.stringify({ answerTimeouts: { permissionMinutes: 0 } }));
     expect(loadSettings(paths).problem).not.toBeNull();
+    // A turn never runs longer than 12 hours, so a longer wait could never happen.
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ answerTimeouts: { questionMinutes: 721 } }));
+    expect(loadSettings(paths).problem).not.toBeNull();
   });
 });

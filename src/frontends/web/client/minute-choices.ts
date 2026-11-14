@@ -4,8 +4,8 @@ export function minuteChoices(presets: readonly number[], current: number): { va
   return minutes.map((value) => ({ value: String(value), label: minutesLabel(value) }));
 }
 
-/** The choices of a time to answer a permission or a question (#938). The core takes 1 minute to 1 day. */
-const answerWaitMinutes: readonly number[] = [5, 10, 30, 60, 240, 1440];
+/** The choices of a time to answer a permission or a question (#938). The core takes 1 minute to 12 hours. */
+const answerWaitMinutes: readonly number[] = [5, 10, 30, 60, 240, 720];
 
 export function answerWaitChoices(current: number | null): { value: string; label: string }[] {
   const noLimit = { value: "null", label: "No limit" };

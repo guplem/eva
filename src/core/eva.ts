@@ -482,6 +482,8 @@ export interface TrustOverview {
 
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
+/** A running chat pauses the vault sync and the updates, so even a wait for the person ends (#938). */
+const turnCapMs = 12 * 60 * 60_000;
 const scheduleTickMs = 30_000;
 /**
  * How many alerts a device can read after a push: the newest is the one it shows. The chats push
@@ -905,6 +907,7 @@ export class Eva {
       gatherMs: options.gatherMs ?? 1_000,
       answerTimeouts: () => answerTimeoutsOf(this.settings.config),
       turnTimeoutMs,
+      turnCapMs,
     });
     this.projectWork = new ProjectWork({
       sessions: this.sessions,

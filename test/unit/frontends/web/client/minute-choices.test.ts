@@ -10,7 +10,7 @@ describe("the choices of a time to answer (#938)", () => {
       { value: "30", label: "30 minutes" },
       { value: "60", label: "1 hour" },
       { value: "240", label: "4 hours" },
-      { value: "1440", label: "1 day" },
+      { value: "720", label: "12 hours" },
     ]);
   });
 
@@ -23,7 +23,7 @@ describe("the choices of a time to answer (#938)", () => {
       "45",
       "60",
       "240",
-      "1440",
+      "720",
     ]);
   });
 });

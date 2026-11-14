@@ -189,6 +189,8 @@ export interface SessionManagerOptions {
   readonly answerTimeouts: () => AnswerTimeouts;
   /** A turn that runs longer is stopped, so a hung engine never keeps a chat busy for good. */
   readonly turnTimeoutMs: number;
+  /** A turn stops after this time even while it waits for the person: a running chat pauses the vault sync. */
+  readonly turnCapMs: number;
   /** Where an error of the work after a turn goes. The turn has its end event already. */
   readonly logger?: Logger;
 }
@@ -1299,9 +1301,13 @@ export class SessionManager {
       await this.waitForAskingTurn(session, controller.signal);
       this.lastActivity.set(sessionId, this.options.now().getTime());
       // After the wait: the other turn may itself run up to the time-out.
-      clock = TurnClock.start(this.options.turnTimeoutMs, () => {
-        timeLimit.reached = true;
-        controller.abort();
+      clock = TurnClock.start({
+        limitMs: this.options.turnTimeoutMs,
+        capMs: this.options.turnCapMs,
+        onLimit: () => {
+          timeLimit.reached = true;
+          controller.abort();
+        },
       });
       this.turnClocks.set(sessionId, clock);
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);

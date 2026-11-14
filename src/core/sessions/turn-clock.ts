@@ -1,11 +1,21 @@
 /**
- * The time limit of one turn. The limit catches an engine that hangs. The time that the turn waits
- * for the person is not the engine's, so the clock stops while a permission or a question is open (#938).
+ * The time limits of one turn. The limit catches an engine that hangs. The time that the turn waits
+ * for the person is not the engine's, so this clock stops while a permission or a question is open.
+ * A running chat pauses the vault sync and the updates, so a cap of the whole turn, waits included,
+ * keeps an unanswered question from holding them for good (#938).
  */
 export interface ClockSeams {
   readonly now: () => number;
   readonly setTimer: (run: () => void, ms: number) => unknown;
   readonly clearTimer: (timer: unknown) => void;
+}
+
+export interface TurnClockOptions {
+  /** The time that the engine may work, without the waits for the person. */
+  readonly limitMs: number;
+  /** The time of the whole turn, waits included. Null: no cap. */
+  readonly capMs: number | null;
+  readonly onLimit: () => void;
 }
 
 const realSeams: ClockSeams = {
@@ -18,19 +28,20 @@ export class TurnClock {
   private remainingMs: number;
   private runningSince: number | null = null;
   private timer: unknown = null;
+  private capTimer: unknown = null;
   private waits = 0;
   private stopped = false;
 
   private constructor(
-    limitMs: number,
-    private readonly onLimit: () => void,
+    private readonly options: TurnClockOptions,
     private readonly seams: ClockSeams,
   ) {
-    this.remainingMs = limitMs;
+    this.remainingMs = options.limitMs;
   }
 
-  static start(limitMs: number, onLimit: () => void, seams: ClockSeams = realSeams): TurnClock {
-    const clock = new TurnClock(limitMs, onLimit, seams);
+  static start(options: TurnClockOptions, seams: ClockSeams = realSeams): TurnClock {
+    const clock = new TurnClock(options, seams);
+    if (options.capMs !== null) clock.capTimer = seams.setTimer(() => clock.reach(), options.capMs);
     clock.run();
     return clock;
   }
@@ -53,18 +64,20 @@ export class TurnClock {
   stop(): void {
     this.stopped = true;
     this.halt();
+    if (this.capTimer !== null) this.seams.clearTimer(this.capTimer);
+    this.capTimer = null;
+  }
+
+  private reach(): void {
+    if (this.stopped) return;
+    this.stop();
+    this.options.onLimit();
   }
 
   private run(): void {
     if (this.stopped) return;
     this.runningSince = this.seams.now();
-    this.timer = this.seams.setTimer(
-      () => {
-        this.stop();
-        this.onLimit();
-      },
-      Math.max(0, this.remainingMs),
-    );
+    this.timer = this.seams.setTimer(() => this.reach(), Math.max(0, this.remainingMs));
   }
 
   private halt(): void {

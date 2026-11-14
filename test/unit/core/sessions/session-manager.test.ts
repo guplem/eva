@@ -57,6 +57,7 @@ function createManager(
     questionTimeoutMs?: number | null;
     redactor?: Redactor;
     turnTimeoutMs?: number;
+    turnCapMs?: number;
     nameChat?: SessionManagerOptions["nameChat"];
     chatDefaults?: SessionManagerOptions["chatDefaults"];
     outwardActionLevels?: SessionManagerOptions["outwardActionLevels"];
@@ -90,6 +91,7 @@ function createManager(
       questionMs: overrides.questionTimeoutMs ?? null,
     }),
     turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
+    turnCapMs: overrides.turnCapMs ?? 60_000,
     ...(overrides.nameChat === undefined ? {} : { nameChat: overrides.nameChat }),
     ...(overrides.chatDefaults === undefined ? {} : { chatDefaults: overrides.chatDefaults }),
     ...(overrides.outwardActionLevels === undefined ? {} : { outwardActionLevels: overrides.outwardActionLevels }),
@@ -2304,6 +2306,7 @@ describe("approvals", () => {
     overrides: {
       permissionTimeoutMs?: number;
       turnTimeoutMs?: number;
+      turnCapMs?: number;
       engine?: FakeEngine;
       /** The mode waits for it before it asks, as for a vault pull. */
       beforeAsk?: Promise<void>;
@@ -2331,6 +2334,7 @@ describe("approvals", () => {
       gatherMs: 5,
       answerTimeouts: () => ({ permissionMs: overrides.permissionTimeoutMs ?? 30_000, questionMs: null }),
       turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
+      turnCapMs: overrides.turnCapMs ?? 60_000,
     });
     manager.subscribe((event) => events.push(event));
     return manager;
@@ -2448,7 +2452,12 @@ describe("questions of the model", () => {
 
   function questionManager(
     outcomes: unknown[],
-    overrides: { questionTimeoutMs?: number | null; permissionTimeoutMs?: number; turnTimeoutMs?: number } = {},
+    overrides: {
+      questionTimeoutMs?: number | null;
+      permissionTimeoutMs?: number;
+      turnTimeoutMs?: number;
+      turnCapMs?: number;
+    } = {},
   ): SessionManager {
     const redactor = new Redactor();
     redactor.addSecret("the-secret-value-123");
@@ -2518,6 +2527,15 @@ describe("questions of the model", () => {
     manager.answerApproval(manager.pendingApprovals()[0]?.requestId ?? "", "allow", [{ selected: [0] }]);
     await turn;
     expect(outcomes).toEqual([[{ selected: [0] }]]);
+  });
+
+  test("a question with no limit still ends at the cap of the whole turn (#938)", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes, { turnTimeoutMs: 1_000, turnCapMs: 40 });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(outcomes).toEqual(["expired"]);
+    expect(manager.pendingApprovals()).toEqual([]);
   });
 
   test("a question with no limit ends with its turn, so no dead question stays open (#938)", async () => {
@@ -3575,6 +3593,7 @@ describe("recent activity (issue 356)", () => {
       gatherMs: 5,
       answerTimeouts: () => ({ permissionMs: 1_000, questionMs: null }),
       turnTimeoutMs: 30_000,
+      turnCapMs: 60_000,
     });
     const tenMinutes = 10 * 60_000;
     const sessionId = newAssistantSession(manager);

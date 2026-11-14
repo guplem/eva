@@ -31,7 +31,7 @@ describe("the clock of a turn (#938)", () => {
   test("reaches the limit when nobody waits for the person", () => {
     const time = new FakeTime();
     let reached = 0;
-    TurnClock.start(100, () => (reached += 1), time.seams);
+    TurnClock.start({ limitMs: 100, capMs: null, onLimit: () => (reached += 1) }, time.seams);
     time.advance(99);
     expect(reached).toBe(0);
     time.advance(1);
@@ -41,7 +41,7 @@ describe("the clock of a turn (#938)", () => {
   test("does not count the time that the turn waits for an answer", () => {
     const time = new FakeTime();
     let reached = 0;
-    const clock = TurnClock.start(100, () => (reached += 1), time.seams);
+    const clock = TurnClock.start({ limitMs: 100, capMs: null, onLimit: () => (reached += 1) }, time.seams);
     time.advance(60);
     clock.pause();
     time.advance(10_000);
@@ -56,7 +56,7 @@ describe("the clock of a turn (#938)", () => {
   test("runs again only when the last open wait ends", () => {
     const time = new FakeTime();
     let reached = 0;
-    const clock = TurnClock.start(100, () => (reached += 1), time.seams);
+    const clock = TurnClock.start({ limitMs: 100, capMs: null, onLimit: () => (reached += 1) }, time.seams);
     clock.pause();
     clock.pause();
     clock.resume();
@@ -67,10 +67,25 @@ describe("the clock of a turn (#938)", () => {
     expect(reached).toBe(1);
   });
 
+  test("reaches the cap of the whole turn even while it waits for an answer", () => {
+    const time = new FakeTime();
+    let reached = 0;
+    const clock = TurnClock.start({ limitMs: 100, capMs: 1_000, onLimit: () => (reached += 1) }, time.seams);
+    time.advance(50);
+    clock.pause();
+    time.advance(949);
+    expect(reached).toBe(0);
+    time.advance(1);
+    expect(reached).toBe(1);
+    clock.resume();
+    time.advance(1_000);
+    expect(reached).toBe(1);
+  });
+
   test("a stopped clock never reaches the limit, even after a wait ends", () => {
     const time = new FakeTime();
     let reached = 0;
-    const clock = TurnClock.start(100, () => (reached += 1), time.seams);
+    const clock = TurnClock.start({ limitMs: 100, capMs: null, onLimit: () => (reached += 1) }, time.seams);
     clock.pause();
     clock.stop();
     clock.resume();

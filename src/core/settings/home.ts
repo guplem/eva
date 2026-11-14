@@ -13,8 +13,8 @@ import { googleAccessLevels } from "../google/google-access.ts";
 import { clocks, unitSystems, weekStarts } from "../../shared/time-format.ts";
 
 const outwardActionLevel = z.enum(outwardActionLevelValues).default("ask");
-/** A day at most: a timer holds 32 bits of milliseconds, about 24 days. */
-const answerMinutes = z.number().int().min(1).max(1440).nullable();
+/** 12 hours at most: a turn never runs longer, waits included (#938). */
+const answerMinutes = z.number().int().min(1).max(720).nullable();
 
 /** The variable that names the instance of an `eva` command, as `--instance` does. */
 export const instanceVariable = "EVA_INSTANCE";

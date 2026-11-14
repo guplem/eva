@@ -2,14 +2,20 @@
  * The HTML of `toWebHtml`, with a Copy button on each code block. The HTML is a string, so it cannot
  * hold a React button: a portal puts one in each empty bar that `toWebHtml` leaves in the block.
  */
-import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
+import { api } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
+import { filePathOf } from "./file-paths.ts";
+import { missingPathsChecker } from "./vault-link-check.ts";
 
 interface CodeBar {
   readonly bar: HTMLElement;
   readonly code: string;
 }
+
+/** One check for the whole page, so each path costs one request. */
+const missingPaths = missingPathsChecker(api.existingFiles);
 
 export function MarkdownBody({
   html,
@@ -36,6 +42,24 @@ export function MarkdownBody({
     const found = [...root.querySelectorAll<HTMLElement>(".code-box-bar")];
     setBars(found.map((bar) => ({ bar, code: bar.parentElement?.querySelector("code")?.textContent ?? "" })));
   }, [html, copy]);
+  useEffect(() => {
+    const root = body.current;
+    if (root === null) return;
+    const links = [...root.querySelectorAll<HTMLAnchorElement>("a.vault-link")].flatMap((link) => {
+      const path = filePathOf(link.getAttribute("href") ?? "");
+      return path === null ? [] : [{ link, path }];
+    });
+    if (links.length === 0) return;
+    let current = true;
+    void missingPaths(links.map(({ path }) => path)).then((missing) => {
+      // A new HTML string replaced these links, and its own effect checks the new ones.
+      if (!current) return;
+      for (const { link, path } of links) if (missing.has(path)) link.replaceWith(...link.childNodes);
+    });
+    return () => {
+      current = false;
+    };
+  }, [html]);
   return (
     <>
       <div ref={body} className={className} dangerouslySetInnerHTML={{ __html: html }} />

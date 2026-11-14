@@ -1261,6 +1261,19 @@ test("a file that an answer sends shows as a download button, not as a marker (#
   expect((await download).suggestedFilename()).toBe("2027-trips.md");
 });
 
+test("an answer links a vault path that exists, and leaves a missing one as code (#932)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("point at the journal");
+  await composer.press("Enter");
+  const body = page.locator(".message.answer").first().locator(".answer-body");
+  await expect(body.locator("code")).toHaveText(["2027-trips.md", "Paperwork/"]);
+  await expect(body.locator("a.vault-link")).toHaveText(["2027-trips.md"]);
+  await body.getByRole("link", { name: "2027-trips.md" }).click();
+  await expect(page).toHaveURL(/#\/files\/Journal\/2027-trips\.md$/);
+});
+
 test("a usage warning shows under the chat after its answer (issue #67)", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);

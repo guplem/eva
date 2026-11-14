@@ -376,6 +376,9 @@ export const api = {
     request("POST", `${repositoryAddress(projectId, clone, repository)}/push`, { note }),
   /** A vault folder or file, by its path from the vault root. The empty path is the root. */
   files: (path: string): Promise<BrowsedPath> => request("GET", `/api/files?path=${encodeURIComponent(path)}`),
+  /** The paths of the list that the Files page opens (#932). */
+  existingFiles: async (paths: readonly string[]): Promise<readonly string[]> =>
+    (await request<{ existing: string[] }>("POST", "/api/files/existing", { paths })).existing,
   /** A file that changed since `version` answers 409 with `file_changed`. */
   saveFile: (path: string, version: string, text: string): Promise<BrowsedPath> =>
     request("PUT", "/api/files", { path, version, text }),

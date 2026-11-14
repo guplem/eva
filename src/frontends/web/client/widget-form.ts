@@ -7,6 +7,7 @@ import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
 import { isClosedPlace, isPlainName } from "../../../core/widgets/widget-places.ts";
 import { defaultPrompt, filledPrompt, type PromptPlace } from "../../../core/widgets/widget-prompt.ts";
 import type { IconName } from "./icons.tsx";
+import { minuteChoices } from "./minute-choices.ts";
 
 export type FormValues = Readonly<Record<string, WidgetInputValue | undefined>>;
 
@@ -112,15 +113,7 @@ const checkMinutes: readonly number[] = [5, 15, 30, 60, 120, 360, 720, 1440];
 
 /** The choices of "Check my widgets every". A value set by hand, such as 45, shows too. */
 export function checkChoices(current: number): { value: string; label: string }[] {
-  const minutes = checkMinutes.includes(current) ? checkMinutes : [...checkMinutes, current].sort((a, b) => a - b);
-  return minutes.map((value) => ({ value: String(value), label: intervalLabel(value) }));
-}
-
-function intervalLabel(minutes: number): string {
-  if (minutes % 60 !== 0) return `${String(minutes)} minutes`;
-  const hours = minutes / 60;
-  if (hours % 24 === 0) return hours === 24 ? "1 day" : `${String(hours / 24)} days`;
-  return hours === 1 ? "1 hour" : `${String(hours)} hours`;
+  return minuteChoices(checkMinutes, current);
 }
 
 /** The note after "Check for updates". A failed check comes first: the person must know it. */

@@ -52,9 +52,12 @@ const preparer: TurnPreparer = {
 function createManager(
   engine: FakeEngine,
   overrides: {
-    approvalTimeoutMs?: number;
+    permissionTimeoutMs?: number;
+    /** Null: no limit, the default of a new instance. */
+    questionTimeoutMs?: number | null;
     redactor?: Redactor;
     turnTimeoutMs?: number;
+    turnCapMs?: number;
     nameChat?: SessionManagerOptions["nameChat"];
     chatDefaults?: SessionManagerOptions["chatDefaults"];
     outwardActionLevels?: SessionManagerOptions["outwardActionLevels"];
@@ -83,8 +86,12 @@ function createManager(
     },
     redactor: overrides.redactor ?? new Redactor(),
     gatherMs: 5,
-    approvalTimeoutMs: overrides.approvalTimeoutMs ?? 1_000,
+    answerTimeouts: () => ({
+      permissionMs: overrides.permissionTimeoutMs ?? 1_000,
+      questionMs: overrides.questionTimeoutMs ?? null,
+    }),
     turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
+    turnCapMs: overrides.turnCapMs ?? 60_000,
     ...(overrides.nameChat === undefined ? {} : { nameChat: overrides.nameChat }),
     ...(overrides.chatDefaults === undefined ? {} : { chatDefaults: overrides.chatDefaults }),
     ...(overrides.outwardActionLevels === undefined ? {} : { outwardActionLevels: overrides.outwardActionLevels }),
@@ -2285,7 +2292,7 @@ describe("approvals", () => {
       answers.push(await request.requestApproval({ requestId: "x", toolName: "Bash", summary: "push" }));
       yield* FakeEngine.answer(request, "done");
     });
-    const manager = createManager(engine, { approvalTimeoutMs: 20 });
+    const manager = createManager(engine, { permissionTimeoutMs: 20 });
     await manager.send(newAssistantSession(manager), "go");
     expect(answers).toEqual(["deny"]);
     expect(events.find((event) => event.kind === "approval_resolved")).toMatchObject({
@@ -2297,8 +2304,9 @@ describe("approvals", () => {
   function askingManager(
     answers: string[],
     overrides: {
-      approvalTimeoutMs?: number;
+      permissionTimeoutMs?: number;
       turnTimeoutMs?: number;
+      turnCapMs?: number;
       engine?: FakeEngine;
       /** The mode waits for it before it asks, as for a vault pull. */
       beforeAsk?: Promise<void>;
@@ -2324,8 +2332,9 @@ describe("approvals", () => {
       },
       redactor: new Redactor(),
       gatherMs: 5,
-      approvalTimeoutMs: overrides.approvalTimeoutMs ?? 30_000,
+      answerTimeouts: () => ({ permissionMs: overrides.permissionTimeoutMs ?? 30_000, questionMs: null }),
       turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
+      turnCapMs: overrides.turnCapMs ?? 60_000,
     });
     manager.subscribe((event) => events.push(event));
     return manager;
@@ -2333,7 +2342,7 @@ describe("approvals", () => {
 
   test("a mode's question that nobody answers tells the mode it expired, not that the person said no", async () => {
     const answers: string[] = [];
-    const manager = askingManager(answers, { approvalTimeoutMs: 20 });
+    const manager = askingManager(answers, { permissionTimeoutMs: 20 });
     await manager.send(newAssistantSession(manager), "go");
     expect(answers).toEqual(["expired"]);
   });
@@ -2441,7 +2450,15 @@ describe("questions of the model", () => {
     multiSelect: false,
   };
 
-  function questionManager(outcomes: unknown[], overrides: { approvalTimeoutMs?: number } = {}): SessionManager {
+  function questionManager(
+    outcomes: unknown[],
+    overrides: {
+      questionTimeoutMs?: number | null;
+      permissionTimeoutMs?: number;
+      turnTimeoutMs?: number;
+      turnCapMs?: number;
+    } = {},
+  ): SessionManager {
     const redactor = new Redactor();
     redactor.addSecret("the-secret-value-123");
     const engine = new FakeEngine(async function* (request) {
@@ -2495,9 +2512,58 @@ describe("questions of the model", () => {
     });
     await manager.send(newAssistantSession(manager), "go");
     const late: unknown[] = [];
-    const lateManager = questionManager(late, { approvalTimeoutMs: 20 });
+    const lateManager = questionManager(late, { questionTimeoutMs: 20 });
     await lateManager.send(newAssistantSession(lateManager), "go");
     expect([...outcomes, ...late]).toEqual(["declined", "expired"]);
+  });
+
+  test("a question has its own limit: with none, it waits past the limit of a permission (#938)", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes, { permissionTimeoutMs: 20, questionTimeoutMs: null });
+    const turn = manager.send(newAssistantSession(manager), "go");
+    await waitUntil(() => manager.pendingApprovals().length === 1);
+    await Bun.sleep(80);
+    expect(manager.pendingApprovals()).toHaveLength(1);
+    manager.answerApproval(manager.pendingApprovals()[0]?.requestId ?? "", "allow", [{ selected: [0] }]);
+    await turn;
+    expect(outcomes).toEqual([[{ selected: [0] }]]);
+  });
+
+  test("a question with no limit still ends at the cap of the whole turn (#938)", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes, { turnTimeoutMs: 1_000, turnCapMs: 40 });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(outcomes).toEqual(["expired"]);
+    expect(manager.pendingApprovals()).toEqual([]);
+  });
+
+  test("a question with no limit ends with its turn, so no dead question stays open (#938)", async () => {
+    const outcomes: unknown[] = [];
+    const engine = new FakeEngine(async function* (request) {
+      // An engine that crashes while its question waits: the stream ends, the callback never returns.
+      void request.askQuestions("AskUserQuestion", [question]).then((outcome) => outcomes.push(outcome));
+      await waitUntil(() => events.some((event) => event.kind === "approval_needed"));
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    await manager.send(newAssistantSession(manager), "go");
+    expect(manager.pendingApprovals()).toEqual([]);
+    await waitUntil(() => outcomes.length === 1);
+    expect(outcomes).toEqual(["expired"]);
+  });
+
+  test("the time that a turn waits for an answer does not count toward the turn's limit (#938)", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes, { turnTimeoutMs: 40 });
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => manager.pendingApprovals().length === 1);
+    await Bun.sleep(100);
+    manager.answerApproval(manager.pendingApprovals()[0]?.requestId ?? "", "allow", [{ selected: [0] }]);
+    await turn;
+    expect(outcomes).toEqual([[{ selected: [0] }]]);
+    expect(manager.get(sessionId).turns).toMatchObject([{ failure: null }]);
   });
 
   test("an answer that does not fit the questions is refused, and the question stays open", async () => {
@@ -3525,8 +3591,9 @@ describe("recent activity (issue 356)", () => {
       newId: () => `id-${String((nextId += 1))}`,
       redactor: new Redactor(),
       gatherMs: 5,
-      approvalTimeoutMs: 1_000,
+      answerTimeouts: () => ({ permissionMs: 1_000, questionMs: null }),
       turnTimeoutMs: 30_000,
+      turnCapMs: 60_000,
     });
     const tenMinutes = 10 * 60_000;
     const sessionId = newAssistantSession(manager);

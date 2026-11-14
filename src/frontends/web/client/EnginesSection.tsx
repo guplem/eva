@@ -15,6 +15,7 @@ import { ProgressBar } from "./Loading.tsx";
 import { PermissionsCard } from "./PermissionsCard.tsx";
 import { PiLoginPanel } from "./PiLoginPanel.tsx";
 import { restartNote } from "./notes.ts";
+import { answerWaitChoices } from "./minute-choices.ts";
 import { SaveButton } from "./SaveButton.tsx";
 import { engineLoginExpired } from "./problem-actions.ts";
 import { stepMark } from "./setup-summary.ts";
@@ -60,6 +61,7 @@ export function EnginesSection({ context }: { readonly context: SettingsContext 
     <>
       <DefaultEngineCard context={context} />
       <OutwardActionsCard context={context} />
+      <AnswerTimeoutsCard context={context} />
       <PermissionsCard
         chosenClaudeMode={chosenMode(context)}
         // A new level changes the lists, so the card reads them again.
@@ -153,6 +155,35 @@ function OutwardActionsCard({ context }: { readonly context: SettingsContext }):
           onChange={(value) => void context.saveNow({ outwardActions: { [category]: value } })}
         />
       ))}
+    </Card>
+  );
+}
+
+/** How long Eva waits for the person (#938). "null" in the select is no limit. */
+function AnswerTimeoutsCard({ context }: { readonly context: SettingsContext }): ReactElement {
+  const limits = context.settings.config.answerTimeouts;
+  const minutes = (value: string): number | null => (value === "null" ? null : Number(value));
+  return (
+    <Card
+      item="answer-timeouts"
+      icon="clock"
+      title="Time to answer"
+      description="How long a chat waits for your answer. The time that a chat waits does not count toward the 2-hour limit of a turn. A turn always ends after 12 hours, so a wait never pauses the vault sync and the updates for longer. A change applies from the next request."
+    >
+      <SelectField
+        label="Permissions"
+        value={String(limits.permissionMinutes)}
+        choices={answerWaitChoices(limits.permissionMinutes)}
+        hint="A request to allow or deny an action. With no answer in time, Eva denies it."
+        onChange={(value) => void context.saveNow({ answerTimeouts: { permissionMinutes: minutes(value) } })}
+      />
+      <SelectField
+        label="Questions"
+        value={String(limits.questionMinutes)}
+        choices={answerWaitChoices(limits.questionMinutes)}
+        hint="A question that the AI asks you, with options to pick. With no answer in time, the AI asks you again in the chat."
+        onChange={(value) => void context.saveNow({ answerTimeouts: { questionMinutes: minutes(value) } })}
+      />
     </Card>
   );
 }

@@ -13,6 +13,8 @@ import { googleAccessLevels } from "../google/google-access.ts";
 import { clocks, unitSystems, weekStarts } from "../../shared/time-format.ts";
 
 const outwardActionLevel = z.enum(outwardActionLevelValues).default("ask");
+/** 12 hours at most: a turn never runs longer, waits included (#938). */
+const answerMinutes = z.number().int().min(1).max(720).nullable();
 
 /** The variable that names the instance of an `eva` command, as `--instance` does. */
 export const instanceVariable = "EVA_INSTANCE";
@@ -367,6 +369,16 @@ export const configSchema = z.object({
       changeSchedules: outwardActionLevel,
     })
     .default(defaultOutwardActionLevels),
+  /**
+   * How long Eva waits for the person's answer, in minutes. Null: no limit. A permission with no
+   * answer is denied, so a longer wait never allows more, and the vault may hold it (#938).
+   */
+  answerTimeouts: z
+    .object({
+      permissionMinutes: answerMinutes.default(10),
+      questionMinutes: answerMinutes.default(null),
+    })
+    .default({ permissionMinutes: 10, questionMinutes: null }),
   telegram: z
     .object({
       allowedChatId: z.number().int().nullable().default(null),

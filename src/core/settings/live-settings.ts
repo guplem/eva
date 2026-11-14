@@ -56,6 +56,8 @@ const liveSettingKeys: readonly string[] = [
   "trust.trustedRepositoryOwners",
   // The next tool call reads the levels.
   "outwardActions",
+  // The next permission or question reads them.
+  "answerTimeouts",
   // A new chat reads them at its first turn, and the web app with the status.
   "language",
   "units",

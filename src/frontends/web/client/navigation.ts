@@ -174,3 +174,9 @@ export function scheduleAddressOf(scheduleId: string | null, edit = false): stri
   if (scheduleId === null) return addressOf("schedules");
   return `${addressOf("schedules")}/${encodeURIComponent(scheduleId)}${edit ? "/edit" : ""}`;
 }
+
+/** The page of a chat: in Chats for an Assistant chat, or in its project for a Project chat. */
+export function chatAddressOf(chat: { readonly id: string; readonly projectId: string | null }): string {
+  if (chat.projectId === null) return assistantChatAddressOf(chat.id);
+  return projectAddressOf({ kind: "chat", projectId: chat.projectId, chatId: chat.id });
+}

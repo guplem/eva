@@ -45,6 +45,7 @@ import { VaultSection } from "./VaultSection.tsx";
 import { ProgressBar, SettingsSkeleton } from "./Loading.tsx";
 import { noteActionLabels, noteParts, restartNote, type Note } from "./notes.ts";
 import { goTo, goUp } from "./back-layers.ts";
+import { tabLinkProps } from "./new-tab.ts";
 
 const statusPollMs = 3_000;
 const restartPollLimit = 60;
@@ -294,7 +295,7 @@ export function SettingsView({
           <button
             className="nav-item"
             aria-current={atHome ? "page" : undefined}
-            onClick={() => navigate(settingsHome)}
+            {...tabLinkProps(settingsHash(settingsHome), () => navigate(settingsHome))}
           >
             <Icon name="gear" />
             Overview
@@ -304,7 +305,9 @@ export function SettingsView({
               <button
                 className="nav-item"
                 aria-current={each.id === route.section ? "page" : undefined}
-                onClick={() => navigate({ section: each.id, item: null })}
+                {...tabLinkProps(settingsHash({ section: each.id, item: null }), () =>
+                  navigate({ section: each.id, item: null }),
+                )}
               >
                 <Icon name={sectionIcons[each.id]} />
                 <span className="settings-nav-label">{each.title}</span>
@@ -493,7 +496,9 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
             <button
               key={each.id}
               className="section-card"
-              onClick={() => context.navigate({ section: each.id, item: null })}
+              {...tabLinkProps(settingsHash({ section: each.id, item: null }), () =>
+                context.navigate({ section: each.id, item: null }),
+              )}
             >
               <span className="section-icon">
                 <Icon name={sectionIcons[each.id]} />
@@ -555,7 +560,11 @@ function SettingHomesDialog({
                         hint={`No page yet. In a terminal: eva settings set ${keys.join(", ")}`}
                       />
                     ) : (
-                      <SettingLink section={link.section} title={title} onOpen={() => navigate(link)} />
+                      <SettingLink
+                        section={link.section}
+                        title={title}
+                        onOpen={{ route: link, open: () => navigate(link) }}
+                      />
                     )}
                   </li>
                 ))}
@@ -578,7 +587,7 @@ function SettingLink({
   readonly title: string;
   /** Absent: the section's title. */
   readonly hint?: ReactNode;
-  readonly onOpen?: () => void;
+  readonly onOpen?: { readonly route: SettingsRoute; readonly open: () => void };
 }): ReactElement {
   const known = settingsSections.find((each) => each.id === section);
   const parts = (
@@ -595,7 +604,7 @@ function SettingLink({
   // A row that opens nothing is text, not a disabled button, so a keyboard user still reads it.
   if (onOpen === undefined) return <div className="section-card">{parts}</div>;
   return (
-    <button className="section-card" onClick={onOpen}>
+    <button className="section-card" {...tabLinkProps(settingsHash(onOpen.route), onOpen.open)}>
       {parts}
       <Icon name="back" className="chevron flip" />
     </button>
@@ -664,7 +673,10 @@ function SearchResults({
               <SettingLink
                 section={result.section}
                 title={result.title}
-                onOpen={() => navigate({ section: result.section, item: result.item })}
+                onOpen={{
+                  route: { section: result.section, item: result.item },
+                  open: () => navigate({ section: result.section, item: result.item }),
+                }}
               />
             </li>
           ))}
@@ -684,7 +696,10 @@ function SearchResults({
                       {match.pageTitle} · <Snippet parts={match.snippet} />
                     </>
                   }
-                  onOpen={() => navigate({ section: "guide", item: guideItem(match.page, match.slug) })}
+                  onOpen={{
+                    route: { section: "guide", item: guideItem(match.page, match.slug) },
+                    open: () => navigate({ section: "guide", item: guideItem(match.page, match.slug) }),
+                  }}
                 />
               </li>
             ))}

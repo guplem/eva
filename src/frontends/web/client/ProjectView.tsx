@@ -54,6 +54,7 @@ import { projectStatusFilters } from "../../../shared/project-statuses.ts";
 import { ListSkeleton } from "./Loading.tsx";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
+import { tabLinkProps } from "./new-tab.ts";
 import { chatKind, chatKindName } from "../../../shared/chat-kind.ts";
 import { worksInClones } from "../../../shared/project-types.ts";
 
@@ -928,7 +929,12 @@ function ProjectCard({
   );
   return (
     <>
-      <button className="project-card" aria-current={isOpen} onClick={() => onOpen("project")} {...props}>
+      <button
+        className="project-card"
+        aria-current={isOpen}
+        {...tabLinkProps(projectAddressOf({ kind: "project", projectId: project.id }), () => onOpen("project"))}
+        {...props}
+      >
         <span className="card-row">
           <b>{project.title}</b>
           <ProjectPills frontMatter={project.frontMatter} />

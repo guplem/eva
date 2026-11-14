@@ -10,6 +10,8 @@ import { CardsSkeleton } from "./Loading.tsx";
 import { colorStyle, ProjectStats, RangePicker } from "./ProjectStats.tsx";
 import { homeChats, projectInitials, type RangeChoice } from "./projects-home.ts";
 import type { StatusCount } from "./project-format.ts";
+import { chatAddressOf } from "./navigation.ts";
+import { tabLinkProps } from "./new-tab.ts";
 
 interface ChatRowsProps {
   readonly chats: readonly { readonly chat: SessionRecord; readonly state: ChatState }[];
@@ -26,7 +28,7 @@ function ChatRows({ chats, projectOf, onOpenChat, now }: ChatRowsProps): ReactEl
         const project = projectOf(chat);
         const projectTitle = project?.title ?? "A project";
         return (
-          <button key={chat.id} className="home-chat" onClick={() => onOpenChat(chat)}>
+          <button key={chat.id} className="home-chat" {...tabLinkProps(chatAddressOf(chat), () => onOpenChat(chat))}>
             <span className="project-mark" style={colorStyle(project)} aria-hidden="true">
               {projectInitials(projectTitle)}
             </span>

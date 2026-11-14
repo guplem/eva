@@ -39,6 +39,8 @@ import {
 } from "./projects-home.ts";
 import { Icon } from "./icons.tsx";
 import { projectStatuses, type ProjectStatus } from "../../../shared/project-statuses.ts";
+import { projectAddressOf } from "./navigation.ts";
+import { tabLinkProps } from "./new-tab.ts";
 
 /** The colour of a project, as a custom property, so the rules in `projects-home.css` use it. */
 export function colorStyle(project: Project | undefined): CSSProperties {
@@ -317,7 +319,9 @@ export function ProjectStats({ projects, range, onOpenProject, onFilterStatus }:
                 // The whole row asks for the tooltip, so a bar of one day is easy to reach (#893).
                 data-tooltip={rowTooltip(row, now)}
                 style={colorStyle(row.project)}
-                onClick={() => onOpenProject(row.project)}
+                {...tabLinkProps(projectAddressOf({ kind: "project", projectId: row.project.id }), () =>
+                  onOpenProject(row.project),
+                )}
               >
                 <span className="timeline-name">
                   <span>{row.title}</span>

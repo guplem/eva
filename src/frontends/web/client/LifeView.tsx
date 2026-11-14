@@ -39,6 +39,7 @@ import { stateFaces } from "./visor-faces.ts";
 import { toWebHtml } from "./web-format.ts";
 import { isLifeKind, type LifeKind } from "../../../shared/life-kinds.ts";
 import { lifeKindsNamed, type KnownLifeIds } from "./vault-text-links.ts";
+import { tabLinkProps } from "./new-tab.ts";
 
 /** The search filters as the person types, after a short pause, so a long list does not stutter. */
 const searchPauseMs = 150;
@@ -271,7 +272,10 @@ function LifeCardButton({
   const eyebrow = body.kind === "periods" ? body.span : body.kind === "objects" && !grouped ? body.type : null;
   const title = body.kind === "objects" ? (body.model ?? card.title) : card.title;
   return (
-    <button className={`card life-card ${kind}`} onClick={() => goTo(lifeAddressOf(kind, entityId))}>
+    <button
+      className={`card life-card ${kind}`}
+      {...tabLinkProps(lifeAddressOf(kind, entityId), () => goTo(lifeAddressOf(kind, entityId)))}
+    >
       <span className="life-card-head">
         {mark !== null && (
           <span className="project-mark life-mark" style={markStyle(mark.color)} aria-hidden="true">

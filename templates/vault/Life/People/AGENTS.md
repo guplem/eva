@@ -16,15 +16,15 @@ summary: Lives in Berlin. Vegetarian.
 **`relation`** says who they are to the person, in plain words:
 - **Family:** the name of the bond, such as `mother`, `brother` or `aunt`. Add the side when it helps: `aunt, mother's side`.
 - **Through someone else:** the bond, then `of`, then the path of that person's folder: `partner of Life/People/Marta Example`, `sister of Life/People/Alex Example`.
-- **Work:** the role and the place: `colleague at Example Corp`, `manager at Example Corp`.
-- **Others:** `friend`, `neighbour`, `doctor`. Add where from when it helps: `friend from university`.
+- **Work:** the role and the place: `colleague at Example Corp`, `manager at Example Corp`. When the place is a provider, write its path: `hairdresser at Life/Providers/Example Salon`, `doctor at Life/Providers/Example Dental`.
+- **Others:** `friend`, `neighbour`. Add where from when it helps: `friend from university`.
 - **When it changes,** such as a colleague who becomes a friend, update it and keep the old one as a dated line.
 
 **What goes here:**
 - **Everything the person knows about them** except contact data: tastes, allergies, gift ideas, history, and agreements made with them, such as a rule a couple sets.
 - **Short facts go under the front matter.** A long or repeated kind of note goes beside it, such as `Gift ideas.md`, or in a subfolder, such as `Meetings/`.
 - **Something about several people at once,** such as a family tradition, goes in a note directly in `Life/People/`, such as `Life/People/Family Christmas.md`, linked from each of them.
-- **Create a folder as soon as there is something to keep** beyond the contact data.
+- **Create a folder as soon as there is something to keep** beyond the contact data. A self-employed provider always gets one, as `Life/Providers/AGENTS.md` says.
 
 **Not here:**
 - Phone, email, address and birthday → the contacts app. Eva reads them through `contact`.
@@ -32,5 +32,6 @@ summary: Lives in Berlin. Vegetarian.
 - A pet → `Life/Pets/`.
 - A matter with steps, such as organizing a party for them → `Life/Cases/`. The case links their folder in its text.
 - Day-to-day work with a colleague → the employer's folder in `Projects/`.
+- The service of a business or a self-employed person, such as prices, jobs and verdicts → `Life/Providers/`. A self-employed person has both folders, linked both ways. Their folder here keeps only what is personal.
 
 **Closing:** a person has no status. When a relation changes or ends, update `relation` and `summary`. Never move or delete the folder.

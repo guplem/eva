@@ -24,7 +24,8 @@ summary: Sam's car. The insurance ends on 2027-03-01.
 
 **Not here:**
 
-- A repair, a claim or a return that needs follow-up → `Life/Cases/`. The case links the object's folder in its text. A finished repair → a dated line here.
+- A repair, a claim or a return that needs follow-up → `Life/Cases/`. The case links the object's folder in its text. A finished repair → a dated line here. When a provider did the repair, the line names the provider by its path, such as `- 2026-05-20: new brakes at Life/Providers/Example Garage, 240 €.`
 - A subscription or a phone line → `Life/Finances/`.
+- The workshop or the shop that serves the thing → `Life/Providers/`. The text here can name it by its path.
 
 **Closing:** when the object is sold, lost or thrown away, set `status: sold` or `status: gone`, and put the date in `summary`. Never move or delete the folder.

@@ -25,6 +25,7 @@ import { NewChatDraft } from "./NewChatDraft.tsx";
 import { BusyProjects } from "./MentionPicker.tsx";
 import { busyProjects } from "./mentions.ts";
 import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf, newChatPageId } from "./navigation.ts";
+import { tabLinkProps } from "./new-tab.ts";
 import { goTo, replaceAddress } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
@@ -418,7 +419,7 @@ function ChatItem({
       <button
         className={`list-item chat-item${state === "unread" ? " unread" : ""}`}
         aria-current={isSelected}
-        onClick={onSelect}
+        {...tabLinkProps(assistantChatAddressOf(chat.id), onSelect)}
         {...props}
       >
         <span className="chat-item-title">

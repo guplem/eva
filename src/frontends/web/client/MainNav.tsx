@@ -16,7 +16,16 @@ import {
   type VisorSignal,
   visorName,
 } from "./nav-visor.ts";
-import { currentNavButton, navBadges, type Destination, type NavEntry } from "./navigation.ts";
+import {
+  addressOf,
+  currentNavButton,
+  homeAddress,
+  navBadges,
+  notificationCenter,
+  type Destination,
+  type NavEntry,
+} from "./navigation.ts";
+import { tabLinkProps } from "./new-tab.ts";
 import { useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -82,7 +91,7 @@ export function MainNav(props: MainNavProps): ReactElement {
         data-tooltip={destination.label}
         data-tooltip-side="right"
         aria-current={destination.id === shownButton ? "page" : undefined}
-        onClick={() => onOpen(destination.id)}
+        {...tabLinkProps(addressOf(destination.id), () => onOpen(destination.id))}
       >
         <span className="nav-icon">
           <Icon name={destination.icon} />
@@ -107,11 +116,11 @@ export function MainNav(props: MainNavProps): ReactElement {
         aria-current={shownButton === "visor" ? "page" : undefined}
         data-tooltip={visor.words}
         data-tooltip-side="right"
-        onClick={() => {
+        {...tabLinkProps(homeAddress, () => {
           // A playful face would hide that Eva does not answer.
           if (!offline) setTapped((last) => ({ face: tapFace(Math.random, last?.face) }));
           props.onHome();
-        }}
+        })}
       >
         <span className="nav-icon">
           <Visor
@@ -166,7 +175,7 @@ export function HomeButtons({
         className="icon-button home-bell"
         aria-label={bellName(signal)}
         data-tooltip="Notifications"
-        onClick={onNotifications}
+        {...tabLinkProps(addressOf(notificationCenter), onNotifications)}
       >
         <Icon name="bell" />
         {signal.count > 0 && (
@@ -182,7 +191,7 @@ export function HomeButtons({
           className="icon-button home-gear"
           aria-label={homeGearName(setupMissing)}
           data-tooltip="Settings"
-          onClick={onSettings}
+          {...tabLinkProps(addressOf("settings"), onSettings)}
         >
           <Icon name="gear" />
           {setupMissing > 0 && (

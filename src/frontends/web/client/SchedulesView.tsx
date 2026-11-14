@@ -20,6 +20,7 @@ import { assistantChatAddressOf, scheduleAddressOf, scheduleRouteOf } from "./na
 import { ScheduleEditPage } from "./ScheduleEditPage.tsx";
 import { SchedulePage } from "./SchedulePage.tsx";
 import { useIsPhone } from "./ChatHeader.tsx";
+import { tabLinkProps } from "./new-tab.ts";
 
 /** The day line moves on and the last results change, so the page asks again each minute. */
 const reloadMs = 60_000;
@@ -306,7 +307,7 @@ function ScheduleCard(props: { view: ScheduleView; now: string; isOpen: boolean;
       <button
         className={`project-card schedule-card${schedule.enabled ? "" : " off"}`}
         aria-current={props.isOpen}
-        onClick={props.onOpen}
+        {...tabLinkProps(scheduleAddressOf(schedule.id), props.onOpen)}
       >
         <span className="card-row">
           <b>{schedule.name}</b>

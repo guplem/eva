@@ -31,6 +31,8 @@ import { displayFormat } from "./display-format.ts";
 import { frontMatterFacts, keyLabel, linkOf } from "./front-matter-facts.ts";
 import { FactLinkChip, FactList } from "./FactList.tsx";
 import { worksInClones } from "../../../shared/project-types.ts";
+import { chatAddressOf } from "./navigation.ts";
+import { tabLinkProps } from "./new-tab.ts";
 
 interface ProjectPageProps {
   readonly project: Project;
@@ -653,7 +655,7 @@ function CloneChat({
   );
   return (
     <>
-      <button className="clone-chat" onClick={() => onOpen()} {...props}>
+      <button className="clone-chat" {...tabLinkProps(chatAddressOf(chat), () => onOpen())} {...props}>
         <Icon name="chat" />
         <span className="clone-chat-title">{chat.title}</span>
         {/* Eva reused the clone of a closed chat: it can be read, but takes no message. */}

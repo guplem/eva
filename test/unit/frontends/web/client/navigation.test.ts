@@ -13,6 +13,7 @@ import {
   newChatPageId,
   notificationCenter,
   projectAddressOf,
+  chatAddressOf,
   projectRouteOf,
   scheduleAddressOf,
   scheduleRouteOf,
@@ -226,5 +227,19 @@ describe("scheduleRouteOf and scheduleAddressOf", () => {
     expect(scheduleRouteOf("#/schedules")).toEqual(none);
     expect(scheduleRouteOf("#/projects/morning")).toEqual(none);
     expect(scheduleRouteOf("#/schedules/morning/more")).toEqual(none);
+  });
+});
+
+describe("chatAddressOf (#935)", () => {
+  test("an Assistant chat opens in Chats", () => {
+    expect(chatAddressOf({ id: "a b", projectId: null })).toBe("#/chats/a%20b");
+  });
+
+  test("a Project chat opens in its project", () => {
+    expect(projectRouteOf(chatAddressOf({ id: "c1", projectId: "2026-01-01-0000-example-app" }))).toEqual({
+      kind: "chat",
+      projectId: "2026-01-01-0000-example-app",
+      chatId: "c1",
+    });
   });
 });

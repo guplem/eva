@@ -16,7 +16,7 @@ summary: Border collie. Allergic to chicken.
 ---
 ```
 
-- **A pet has no `contact` and no vet key.** Name its vet in the text: plain text, or the path of a folder in `Life/Providers/` or `Life/People/`.
+- **A pet has no `contact` and no vet key.** Name its vet in the text by the path of its folder in `Life/Providers/`.
 - **The text under the front matter** holds care facts: food, medicines, vaccines, habits.
 - **Beside `Pet.md`:** the vet records, such as one dated file for each visit or treatment, the vaccine card, photos, adoption papers, and the pet's insurance.
 

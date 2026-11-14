@@ -20,18 +20,19 @@ summary: The car's workshop since 2025. Fair prices, slow with parts.
 ---
 ```
 
-- **`status`** is `current` while the person uses the provider. It is `former` when the person stops. Write the reason as a dated line in the text, such as `- 2026-03-02: too expensive.`
+- **`status`** is `current` while the person uses the provider. It is `former` when the person stops. Write the reason as a dated line in the text, such as `- 2026-03-02: too expensive.` Update `summary` too.
 - **A verdict** is one dated line in the text that says what the provider did and whether it went well, such as `- 2026-11-14: haircut, 18 €. Good.`
 
 **What goes here:**
 
 - **Create a folder as soon as the person names a provider, even with only a name and a contact.** The fact "this is my workshop" is already useful. Ask no question to fill the other keys.
-- **The text under the front matter holds the service:** how to book, opening hours, who to ask for and a customer number. Add one verdict for each visit or job.
+- **The text under the front matter holds the service:** how to book, opening hours, who to ask for and a customer number. Add a verdict when the person says how a visit or a job went.
+- **A repair or a treatment keeps its own dated line, with its price,** in the note of what it was about: the object, the pet or `Life/Health/`. That line names the provider by its path. Do not copy it here.
 - **Beside `Provider.md`:** a price list, a quote or a business card.
 
 **The provider and its people.** One fact lives in one file:
 
-- **A business with staff:** the business has a folder with `Provider.md`. Each staff member who the person deals with by name gets a `Person.md` in `Life/People/`, with `relation: <role> at Life/Providers/<Name>`. The provider lists them in `people`. So each file links the other.
+- **A business with staff:** the business has a folder with `Provider.md`. Each staff member who the person deals with by name gets a `Person.md` in `Life/People/`. Its `relation` is `<role> at Life/Providers/<Name>`. The provider lists them in `people`. So each file links the other.
 - **A self-employed person always has both folders.** `Person.md` holds only what is personal: tastes, family, how the two get on. `Provider.md` holds the service: prices, jobs and verdicts. `Person.md` names the provider in `relation`, and the provider lists the person in `people`.
 - **When a fact fits both files, treat it as a fact about the service.** Put it in `Provider.md`.
 
@@ -46,10 +47,10 @@ summary: The car's workshop since 2025. Fair prices, slow with parts.
 **Not here:**
 
 - A place to visit some day, such as a restaurant to try → the maps app.
-- A company that serves one thing through a contract, such as the car insurer or the electricity company → the folder of that thing in `Life/Objects/`.
+- A company that serves one thing through a contract, such as the car insurer or the electricity company → the folder of that thing, such as its object or its pet. Health insurance → `Life/Finances/`.
 - A bank, a subscription or the phone operator → `Life/Finances/`.
 - An employer → `Life/Periods/`.
 - A client → the project in `Projects/`.
-- A repair or a treatment → the note of what it was about: the object, `Life/Health/` or a case.
+- A repair or a treatment → the note of what it was about: the object, the pet, `Life/Health/` or a case.
 
-**Closing:** when the person stops using a provider, set `status: former`, and write the reason with its date. Never move or delete the folder.
+**Closing:** when the person stops using a provider, set `status: former`, write the reason with its date, and update `summary`. Never move or delete the folder.

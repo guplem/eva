@@ -16,8 +16,8 @@ summary: Lives in Berlin. Vegetarian.
 **`relation`** says who they are to the person, in plain words:
 - **Family:** the name of the bond, such as `mother`, `brother` or `aunt`. Add the side when it helps: `aunt, mother's side`.
 - **Through someone else:** the bond, then `of`, then the path of that person's folder: `partner of Life/People/Marta Example`, `sister of Life/People/Alex Example`.
-- **Work:** the role and the place: `colleague at Example Corp`, `manager at Example Corp`. When the place is a provider, write its path: `hairdresser at Life/Providers/Example Salon`.
-- **Others:** `friend`, `neighbour`, `doctor`. Add where from when it helps: `friend from university`.
+- **Work:** the role and the place: `colleague at Example Corp`, `manager at Example Corp`. When the place is a provider, write its path: `hairdresser at Life/Providers/Example Salon`, `doctor at Life/Providers/Example Dental`.
+- **Others:** `friend`, `neighbour`. Add where from when it helps: `friend from university`.
 - **When it changes,** such as a colleague who becomes a friend, update it and keep the old one as a dated line.
 
 **What goes here:**

@@ -172,6 +172,8 @@ const projectWorkSchema = z.object({ request: z.string().min(1), reportToSession
 const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
 const vaultFileSchema = projectFileSchema.extend({ path: z.string() });
 const favoriteSchema = z.object({ path: z.string(), favorite: z.boolean() });
+/** One answer holds a few links. The limit keeps one request from making the core stat without end. */
+const existingFilesSchema = z.object({ paths: z.array(z.string()).max(500) });
 const vaultRenameSchema = z.object({ path: z.string(), name: z.string().max(1_000) });
 /** A status that a page sends. An older open page can send a status that #859 replaced. */
 const sentStatusSchema = z.enum([...projectStatuses, "idea", "in-use"]);
@@ -1087,6 +1089,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
         url.searchParams.get("shareable") === "true",
       ),
     );
+  if (method === "POST" && url.pathname === "/api/files/existing") {
+    const { paths } = existingFilesSchema.parse(await request.json());
+    return json({ existing: eva.existingFiles(paths) });
+  }
   if (method === "GET" && url.pathname === "/api/files/download")
     return downloadResponse(eva.downloadFile(url.searchParams.get("path") ?? ""));
   if (method === "PUT" && url.pathname === "/api/files") {

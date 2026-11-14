@@ -86,6 +86,21 @@ export function browseVault(vaultPath: string, requested: string, redact: (text:
 }
 
 /**
+ * The paths of `requested` that the Files page opens, each as asked. A chat links a path by its
+ * shape alone, so the web page drops the link of a path that is missing (#932).
+ */
+export function existingVaultPaths(vaultPath: string, requested: readonly string[]): string[] {
+  return requested.filter((path) => {
+    try {
+      resolveInVault(vaultPath, path);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
  * Replaces the text of the file at `requested` with `edited`, with the line endings of the file
  * on disk. It never creates a file. Throws `file_changed` when the file is no longer at `version`,
  * and `file_not_writable` for a file that the page cannot edit. The idle sweep commits the change.

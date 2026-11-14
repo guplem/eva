@@ -375,6 +375,10 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
   }
   // The chat takes these words as its title, and a title shows as a button in the list. So they
   // hold no word of a button that another test looks for, such as "Send".
+  if (lastLine.includes("point at the journal")) {
+    yield* FakeEngine.answer(request, "See `Journal/2027-trips.md` and `Paperwork/`.");
+    return;
+  }
   if (lastLine.includes("hand me the parcel")) {
     yield* FakeEngine.answer(request, "Here are the trips.\n[[attach: Journal/2027-trips.md]]");
     return;

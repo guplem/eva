@@ -126,6 +126,7 @@ import { Scheduler } from "./schedules/scheduler.ts";
 import { moveFavorites, readFavorites, setFavorite, type Favorite } from "./files/vault-favorites.ts";
 import {
   browseVault,
+  existingVaultPaths,
   normalizedPath,
   renameVaultEntry,
   saveVaultFile,
@@ -2152,6 +2153,11 @@ export class Eva {
   /** A vault folder's entries, or a text file, for the file explorer of the web page. */
   browseFiles(path: string): BrowsedPath {
     return browseVault(this.browsedVault(), path, (text) => this.redactor.redact(text));
+  }
+
+  /** The paths that the Files page opens, so a chat links only these (#932). */
+  existingFiles(paths: readonly string[]): string[] {
+    return existingVaultPaths(this.browsedVault(), paths);
   }
 
   /** The entities of one kind of `Life/`, for its page of the web app (#911). */

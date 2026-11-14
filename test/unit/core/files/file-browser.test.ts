@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   browseVault,
+  existingVaultPaths,
   maxShownBytes,
   renameVaultEntry,
   saveVaultFile,
@@ -481,5 +482,27 @@ describe("renameVaultEntry (issue 343)", () => {
     expect(renameVaultEntry(vault, "link.txt", "shortcut.txt")).toBe("shortcut.txt");
     expect(lstatSync(join(vault, "shortcut.txt")).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
+  });
+});
+
+describe("existingVaultPaths (#932)", () => {
+  test("keeps each path that the Files page opens, and drops a missing one", () => {
+    write("secret.bin", new Uint8Array([0, 1, 2]));
+    expect(
+      existingVaultPaths(vault, ["Methods", "Methods/Plan.md", "Burocracia", "Methods/Gone.md", "secret.bin"]),
+    ).toEqual(["Methods", "Methods/Plan.md", "secret.bin"]);
+  });
+
+  test("drops a path out of the vault or into git data", () => {
+    writeFileSync(join(folder, "outside.txt"), "Out.\n");
+    expect(existingVaultPaths(vault, ["../outside.txt", "..", ".git/config", ".git"])).toEqual([]);
+  });
+
+  test("answers each path as the page sent it", () => {
+    expect(existingVaultPaths(vault, ["./Methods/", "notes.txt", "notes.txt"])).toEqual([
+      "./Methods/",
+      "notes.txt",
+      "notes.txt",
+    ]);
   });
 });

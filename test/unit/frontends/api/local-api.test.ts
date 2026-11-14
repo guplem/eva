@@ -2248,6 +2248,15 @@ describe("web routes", () => {
     expect((await call("/api/files", { method: "POST", body: {} })).status).toBe(404);
   });
 
+  test("files: the existing check answers only the paths that the Files page opens (#932)", async () => {
+    const answer = await call("/api/files/existing", {
+      method: "POST",
+      body: { paths: [".eva/assistant.md", "Projects", "Burocracia", "../"] },
+    });
+    expect(await json(answer)).toEqual({ existing: [".eva/assistant.md", "Projects"] });
+    expect((await call("/api/files/existing", { method: "POST", body: { paths: "Projects" } })).status).toBe(400);
+  });
+
   test("files: the search finds a name, and the text only when the page asks for it", async () => {
     interface Found {
       matches: { path: string; name: string; kind: string; line?: { number: number } }[];

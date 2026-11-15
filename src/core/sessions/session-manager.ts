@@ -609,6 +609,11 @@ export class SessionManager {
     return done;
   }
 
+  /** True when a message with this client id came to the chat already, so a send of it again runs nothing. */
+  knowsClientId(sessionId: string, clientId: string): boolean {
+    return this.clientSends.get(sessionId)?.has(clientId) ?? false;
+  }
+
   /** Sends the message of a stored turn again, as a retry does, with the sender that the turn had. */
   sendAgain(sessionId: string, turn: SessionRecord["turns"][number]): Promise<void> {
     const { fromEva, projectReports, personText } = turn;

@@ -801,6 +801,18 @@ describe("routes", () => {
     expect(events.find((event) => event.kind === "turn_started")).toMatchObject({ message: { clientIds: ["page-1"] } });
     const listed = await json<{ id: string; turns: unknown[] }[]>(await call("/api/sessions"));
     expect(listed.find((entry) => entry.id === session.id)?.turns).toHaveLength(1);
+    // A page that lost the answer sends the message again: Eva says that she has it, and runs nothing (#945).
+    const again = await call(`/api/sessions/${session.id}/messages`, {
+      method: "POST",
+      body: { text: "Hello", id: "page-1" },
+    });
+    expect(again.status).toBe(202);
+    expect(await again.json()).toEqual({ accepted: true, repeat: true });
+    const fresh = await call(`/api/sessions/${session.id}/messages`, {
+      method: "POST",
+      body: { text: "New", id: "page-2" },
+    });
+    expect(await fresh.json()).toEqual({ accepted: true, repeat: false });
   });
 
   test("serves the background tasks of a running turn, for a page that missed their events", async () => {

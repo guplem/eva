@@ -913,8 +913,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       const { text, id } = messageSchema.parse(await request.json());
       // Before the 202: a gone or refused file must stop the message, and the person must hear why.
       eva.checkMessage(sessionId, text);
+      // A page that lost the answer sends the message again. A turn already shows it, so the page drops its copy (#945).
+      const repeat = id !== undefined && eva.sessions.knowsClientId(sessionId, id);
       void eva.sessions.send(sessionId, text, "api", id === undefined ? {} : { clientId: id });
-      return json({ accepted: true }, 202);
+      return json({ accepted: true, repeat }, 202);
     }
     if (action === "fork") {
       const { atMessageId, files } = forkSchema.parse(await request.json());

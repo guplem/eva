@@ -415,6 +415,8 @@ describe("a conversation", () => {
     // A try after the turn ended is a repeat too.
     await manager.send(sessionId, "lost answer", "api", { clientId: "page-1" });
     expect(manager.get(sessionId).turns.map((turn) => turn.userText)).toEqual(["lost answer"]);
+    expect(manager.knowsClientId(sessionId, "page-1")).toBe(true);
+    expect(manager.knowsClientId(sessionId, "page-2")).toBe(false);
     // Another chat keeps its own ids.
     const other = newAssistantSession(manager);
     await manager.send(other, "lost answer", "api", { clientId: "page-1" });

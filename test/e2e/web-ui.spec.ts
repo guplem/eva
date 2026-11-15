@@ -615,24 +615,41 @@ test("a text too long for the box opens a large editor, and Send from it sends (
   await expect(page.getByRole("button", { name: "Close the large editor" })).toHaveCount(0);
 });
 
-test("a send turns the box into the new bubble, and reduced motion only fades it in (#943)", async ({ page }) => {
+test("a send turns the box into the new bubble, and reduced motion plays no morph (#943)", async ({ page }) => {
   await logIn(page);
   await newChat(page);
+  // The copy lives for half a second. A watcher on the page sees it even when a slow machine skips the polls.
+  const watchMorphs = (): Promise<void> =>
+    page.evaluate(() => {
+      const seen = { count: 0 };
+      Object.assign(window, { morphsSeen: seen });
+      new MutationObserver((changes) => {
+        for (const change of changes)
+          for (const added of change.addedNodes)
+            if (added instanceof HTMLElement && added.classList.contains("send-morph")) seen.count += 1;
+      }).observe(document.body, { childList: true });
+    });
+  const morphsSeen = (): Promise<number> =>
+    page.evaluate(() => (window as unknown as { morphsSeen: { count: number } }).morphsSeen.count);
   const box = page.getByRole("textbox", { name: "Message" });
+  await watchMorphs();
   await box.fill("A morph to watch");
   await box.press("Enter");
-  // The flying copy shows at once, and leaves the bubble whole when it lands.
-  await expect(page.locator(".send-morph")).toHaveCount(1);
+  await expect.poll(morphsSeen).toBe(1);
+  // The copy leaves the bubble whole when it lands.
   await expect(page.locator(".send-morph")).toHaveCount(0);
   const bubble = page.locator(".message.user").first();
   await expect(bubble).toContainText("A morph to watch");
   await expect(bubble).toHaveCSS("opacity", "1");
 
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await watchMorphs();
   await box.fill("A calm second message");
   await box.press("Enter");
   await expect(page.locator(".message.user").last()).toContainText("A calm second message");
-  await expect(page.locator(".send-morph")).toHaveCount(0);
+  // Past the time of a whole morph, none has come.
+  await page.waitForTimeout(800);
+  expect(await morphsSeen()).toBe(0);
 });
 
 test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {

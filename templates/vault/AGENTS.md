@@ -16,7 +16,7 @@ The vault has three parts: the person's life, what they build, and what they kno
 | `Life/People/` | One folder for each person who matters. What the person knows about them: who they are to them, tastes, allergies, gift ideas, history, agreements made with them, such as a rule a couple sets. | Their phone, email and birthday → the contacts app. A day spent together → `Diary/`. The service of a business or a self-employed person → `Life/Providers/`. |
 | `Life/Providers/` | The businesses and self-employed people that serve the person: the car workshop, the plumber, the dentist's clinic, the hair salon, the tax adviser, the vet. What the person knows about the service: how to book, who to ask for, prices paid and whether it went well. | A place to visit some day → the maps app. A company that the person deals with only through a contract, such as the car insurer, the electricity company, the bank, the phone operator or a streaming service → the `provider` key of its item in `Life/Inventory/`. An employer → `Life/Periods/`. A client → the project. |
 | `Life/Pets/` | The pets that live with the person, also a foster pet. | A pet of someone else → a line in its owner's `Person.md`. |
-| `Life/Periods/` | What the person spends their days doing, for months or years: each job, full-time studies, volunteering, a sabbatical. A period describes who they were at that time, so it feeds their CV. It has no goal to reach: it ends when they stop. It holds the record: dates, role, enrolment, contract, grades, diploma. | The day-to-day work of a job or of studies, such as meetings, clients or assignments → a project, such as the employer's folder or a study specialist. |
+| `Life/Periods/` | What the person spends their days doing, for months or years: each job, full-time studies, volunteering, a sabbatical. A period describes who they were at that time, so it feeds their CV. It has no goal to reach: it ends when they stop. It holds the record: dates, role, enrolment, contract, grades, diploma. | The ongoing or substantial work of a job or of studies, such as meetings, clients or assignments → a project, such as the employer's folder or a study specialist. The few files left of a short or old job stay in its period. |
 | `Life/Health/` | Body and mind: allergies, diet, sleep, measurements, conditions, test results, goals, and what stays after a surgery or a treatment, such as an implant or a chronic condition. | The process of a surgery or a treatment (appointments, papers, recovery) → a case. When it closes, add what stays to `Health/`. A training plan or a routine to follow → `Methods/`. |
 | `Life/Diary/YYYY-MM-DD.md` | What happened on one day and belongs to nothing above: an outing, a dinner, a first time, a decision about life and its reasons. | A fact that stays true → its folder. |
 
@@ -55,7 +55,7 @@ Each role has its own service. _Personal rules_ names the person's app for each 
 | A task | The task app |
 | A list read on the phone many times a week, such as shopping | The notes app |
 | Someone else's phone, email, address or birthday | The contacts app |
-| A big file, such as a book, a long PDF, a video, or an ID document needed in a hurry | The cloud drive |
+| A big file, or a group of files that holds one, such as a book, a long PDF, a video, the files of one video project, or an ID document needed in a hurry | The cloud drive |
 | A photo of daily life | The photos app |
 | Code with its own repository | GitHub |
 | A place to visit some day, such as a restaurant to try or a city to see | The maps app |
@@ -171,6 +171,8 @@ The project's notes sit loose beside its `AGENTS.md`. Create a subfolder, such a
 - **One fact lives in one file.** Other files link to it, never copy it.
 - **Prefer fewer, larger notes.** Propose to split one that grows too long to scan. In a knowledge folder, group by topic, and create a topic folder when none fits.
 - **Small files can live in the vault,** beside what they belong to: a contract, a receipt, a scan, a short PDF, a photo of evidence. Anything over about 10 MB goes to the cloud drive, with its link in the note it belongs to.
+- **Decide by group, not by file.** A folder, or a group of files of one kind, stays together, such as progress captures, logo variants, the files of one video or a set of photos. When such a group holds a file over about 10 MB, the whole group goes to the cloud drive. The note links that folder and says what it holds. A file outside such a group, such as a document, a spreadsheet or a note, still goes to the vault.
+- **Keep a small file, even when the web has a copy.** Sites close, free kits disappear and versions change. Fonts always stay with their design. Only the size rule sends a file to the cloud drive. A link to the source can go beside the file, but it never replaces the file.
 - **Secrets** live only in encrypted secret files, such as `Wi-Fi.secrets` or `.env.local`. Never copy a secret into a note, a chat or any service, except the person's password manager.
 - **`.eva/` is Eva's configuration, not notes.** `.eva/AGENTS.md` says what each part holds.
 - **This file is the map of the vault. Keep it true.** When a folder in the root or in `Life/` is created, renamed or removed, update _What is where_ in the same turn.
@@ -183,6 +185,8 @@ The person can read this prose in a second language. An agent reads it as instru
 
 - **Write all notes in {{notesLanguage}},** even when the person talks in another language. Keep quotes and names in their own language.
 - **Prefer plain text,** so one search finds it and any device opens it. Write dates as `YYYY-MM-DD`, and a moment with its offset, as _Front matter_ says.
+- **A spreadsheet becomes a note, plus its export.** The note has one section for each tab: a table of the values, and under it each formula as text, with its cell. So a search finds the logic, and any editor shows it. The exported `.xlsx` sits beside the note. It is an open format (ISO/IEC 29500) that LibreOffice opens.
+- **Before you delete the original of a spreadsheet, check the export.** An export keeps only the last value of a Google-only function, such as `GOOGLEFINANCE` or `IMPORTRANGE`, and wraps it in `__xludf.DUMMYFUNCTION`. It drops scripts, and can lose charts, comments and dropdowns. Write each Google-only formula as text in the note, next to its last value. Name in the note what else the export lost.
 - **Name a file after the moment when the person opens it,** such as `Mental Strength Checklist`, not after its origin.
 - **Write notes impersonally,** as statements about the world: "The mind believes what it hears", not "My mind believes". The diary is the exception.
 - **Close a note with its source:** `> Source: *Title*, Author`, plus a link when one exists. When a text looks taken from somewhere and the person gives no source, search for it, and ask when the search fails.

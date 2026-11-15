@@ -38,4 +38,4 @@ summary: Claim for a broken bumper. The insurer has the photos.
 - A lasting condition → `Life/Health/`. A surgery or a therapy for it is a case.
 - A contract that outlives the case → with what it regulates, such as the car.
 
-**Closing:** set `closed`, set `done-on` on each step that was done, remove each step that will never happen, and write the outcome in `summary`. Never move or rename the folder.
+**Closing:** set `closed`, set `done-on` on each step that was done, remove each step that will never happen, and write the outcome in `summary`. When the case created something that the person has, such as a fund or a new car, create its item in `Life/Inventory/`, and link the case in its text. A general rule that the person learned goes to `Methods/`. Never move or rename the folder.

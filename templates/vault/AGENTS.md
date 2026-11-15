@@ -72,8 +72,8 @@ Go down this list in order. Stop at the first yes. _What is where_ says what eac
 2. One of the basics → `Life/About me.md`.
 3. Something built remains after the work ends, even when the work has a goal, steps and an end, or a specialist → `Projects/`.
 4. A matter being handled, with steps, that ends and leaves nothing built → `Life/Cases/`.
-5. About something the person has or uses: a thing, a home, a document, a licence, a subscription, a membership, a line, an account, a card or another money product → `Life/Inventory/`.
-6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A bank, a subscription or an employer is not a provider. About another person → `Life/People/`. About a pet → `Life/Pets/`.
+5. About something the person has or uses: a thing, a home, a document, a licence, a subscription, a membership, a line, an account, a card or another money product → `Life/Inventory/`. A contract of a pet goes in the pet's folder in `Life/Pets/`.
+6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A company that the person deals with only through a contract, such as a bank or a streaming service, is not a provider. An employer is not one either. About another person → `Life/People/`. About a pet → `Life/Pets/`.
 7. About a stage of life → `Life/Periods/`.
 8. About body or mind → `Life/Health/`.
 9. What happened on one day → `Life/Diary/`.

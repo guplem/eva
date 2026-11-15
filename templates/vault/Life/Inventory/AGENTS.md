@@ -39,11 +39,12 @@ summary: Streaming service, shared with Life/People/Sam Example. Cancel in the a
   - `subscription`: a service paid each period, such as streaming, cloud storage or a software plan.
   - `membership`: a gym, a club or an association.
   - `line`: a phone line. The internet line of a home goes in the home's folder.
-  - `account`, `card`, `investment`, `pension`, `loan` and `insurance`: a money product or a policy.
+  - `account`, `card`, `investment`, `pension`, `loan` and `insurance`: a money product or a policy. A loan or a policy for one thing, such as a car loan or the home insurance, is a contract of that thing instead.
   - When no kind fits, write a new lowercase word, and use the same word for each item of that kind.
 - **`status`** is `in-use` while the person has or uses the item. `stored` and `lent` are for a thing that waits. `sold` and `gone` are for a thing that left. `ended` is for a contract, a subscription or an account that ended.
 - **`provider`** is the company behind the item, such as the bank, the insurer, the phone operator or the streaming service. Write it as plain text. When the company has a folder in `Life/Providers/`, such as the gym, write its path.
 - **`cost`** is a cost that repeats. `amount` is a number. `currency` is a three-letter code, such as `EUR` or `USD`. `every` is `day`, `week`, `month` or `year`. Eva adds the `cost` of each item to answer what the person spends, so never keep a separate list of costs.
+- **A thing with contracts that cost money,** such as a home with its rent and electricity, has a list in `cost`. Each entry names its contract in `for`, such as `cost: [{ for: rent, amount: 850, currency: EUR, every: month }, { for: electricity, amount: 60, currency: EUR, every: month }]`.
 - **A price paid once** is a dated line in the text, such as `- 2024-03-10: bought for 49 EUR at Example Software.`
 - **`renews`** is the next day when the contract renews or ends. Update it after each renewal.
 
@@ -51,7 +52,8 @@ summary: Streaming service, shared with Life/People/Sam Example. Cancel in the a
 
 - **The text under the front matter** holds what the person needs to use the item: how to cancel, the last digits of a policy number, the people who share it.
 - **Beside `Item.md`:** photos, manuals, warranties, invoices, the contract, and each contract that the item regulates.
-- **The contract follows what it gives access to.** The car insurance, the rent, the mortgage, electricity and the internet at home go in the folder of the car or the home. A subscription to a tool goes in the tool's folder.
+- **The contract follows what it gives access to.** The car insurance, the car loan, the rent, the mortgage, electricity and the internet at home go in the folder of the car or the home. A pet's insurance goes in the pet's folder in `Life/Pets/`.
+- **One tool is one item, however the person pays for it.** A software plan paid each month is an item with `kind: subscription`. When the person changes from a licence to a plan, keep the folder and change `kind`.
 - **A key, a password or a PIN goes in a `.secrets` file beside `Item.md`,** which Eva encrypts. Use `Licence.secrets` for a software key, `Wi-Fi.secrets` in the home folder, and `Card.secrets` for a full card number or a PIN. Never write one in `Item.md`. An online-banking login goes in the password manager.
 - **Software links where its installer lives,** such as the download page or the file in the cloud drive. With the key beside it, the folder holds all that a reinstall needs.
 - **A card gets its own item.** Its text links the account that it draws from by its path, such as `Life/Inventory/Bank account - Example Bank - 1234`.

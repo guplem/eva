@@ -241,7 +241,7 @@ describe("the vault template", () => {
     expect(files["Life/Inventory/AGENTS.md"]).toContain("names the provider by its path");
     // The first yes wins, so the provider comes before the person, and a bank stays in the item.
     expect(map).toContain(
-      "6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A bank, a subscription or an employer is not a provider. About another person",
+      "6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A company that the person deals with only through a contract, such as a bank or a streaming service, is not a provider. An employer is not one either. About another person",
     );
     expect(files["Life/People/AGENTS.md"]).toContain("A self-employed provider always gets one");
     expect(map).not.toContain("such as a company, stays as plain text");
@@ -273,6 +273,7 @@ describe("the vault template", () => {
     ])
       expect(inventory).toContain(`\`${kind}\``);
     expect(inventory).toContain("cost: { amount: 9.99, currency: EUR, every: month }");
+    expect(inventory).toContain("cost: [{ for: rent, amount: 850");
     expect(inventory).toContain("`Licence.secrets`");
     expect(inventory).toContain("installer");
     // A plan with steps is a case, and the product it leaves is an item.

@@ -48,7 +48,7 @@ summary: The car's workshop since 2025. Fair prices, slow with parts.
 **Not here:**
 
 - A place to visit some day, such as a restaurant to try → the maps app.
-- A company that the person deals with only through a contract, such as the car insurer, the electricity company, the bank, the phone operator or a streaming service → the `provider` key of its item in `Life/Inventory/`, as plain text. A pet's insurance goes in the pet's folder.
+- A company that the person deals with only through a contract, such as the car insurer, the electricity company, the bank, the phone operator or a streaming service → the `provider` key of its item in `Life/Inventory/`, as plain text. When the person also visits the company, such as a gym, it is a provider too, and the item's `provider` key holds its path. A pet's insurance goes in the pet's folder.
 - An employer → `Life/Periods/`.
 - A client → the project in `Projects/`.
 - A repair or a treatment → the note of what it was about: the item, the pet, `Life/Health/` or a case.

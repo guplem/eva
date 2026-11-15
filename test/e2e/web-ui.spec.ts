@@ -4522,9 +4522,8 @@ test("an approval and a task from while the connection was down still show after
   await expect(runningTask).toHaveCount(0);
 });
 
-test("a failed send shows the error and keeps the typed text", async ({ page }) => {
+test("a refused first message opens its chat, says why there, and Edit puts its text back (#945)", async ({ page }) => {
   await logIn(page);
-  await newChat(page);
   await page.route("**/api/sessions/*/messages", (route) =>
     route.fulfill({
       status: 409,
@@ -4532,12 +4531,18 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
       body: JSON.stringify({ error: "The chat is busy." }),
     }),
   );
+  const text = `Keep this text (${test.info().project.name})`;
+  await sendFirstMessage(page, text);
+  // The chat exists, so the message stays in it with its state, not in the box of the New chat page.
+  await expect(page).toHaveURL(/#\/chats\/(?!new$)[^/]+$/);
+  const bubble = page.locator(".msg.me", { hasText: text });
+  await expect(bubble.locator(".delivery")).toContainText("Not sent: The chat is busy.");
   const composer = page.getByLabel("Message").first();
-  await composer.fill("Keep this text");
-  await page.getByRole("button", { name: "Send" }).first().click();
-  await expect(page.getByRole("alert")).toContainText("The chat is busy.");
-  await expect(composer).toHaveValue("Keep this text");
-  await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
+  await expect(composer).toHaveValue("");
+  await bubble.getByRole("button", { name: "Edit" }).click();
+  await expect(composer).toHaveValue(text);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(0);
+  await composer.fill("");
 });
 
 test("a voice note puts what Eva heard in the box, and the person sends it as text (issue 658)", async ({ page }) => {

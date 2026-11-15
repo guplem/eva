@@ -53,7 +53,6 @@ interface MenuListProps {
 export function MenuList({ items, label, className, style, listRef, onClose }: MenuListProps): ReactElement {
   const own = useRef<HTMLDivElement>(null);
   const menu = listRef ?? own;
-  const groupId = useId();
   // A long press opens a menu on a phone, so the Back button closes it, as in the phone's own apps.
   useBackLayer(true, () => onClose(false));
 
@@ -88,16 +87,39 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
     event.stopPropagation();
   };
 
+  return (
+    <div className={`menu ${className}`} role="menu" aria-label={label} ref={menu} style={style} onKeyDown={onKeyDown}>
+      <MenuItems items={items} itemRole="menuitem" onChosen={() => onClose(false)} />
+    </div>
+  );
+}
+
+/**
+ * The items of a menu, with a heading for each group. A menu inside a dialog, such as the + menu of the message box,
+ * shows them as plain buttons and keeps the focus where it is.
+ */
+export function MenuItems({
+  items,
+  itemRole,
+  onChosen,
+}: {
+  readonly items: readonly MenuItem[];
+  /** "menuitem" inside a menu. A list of buttons inside a dialog gives none. */
+  readonly itemRole?: "menuitem";
+  /** Runs before the chosen item, so the list closes first. */
+  readonly onChosen: () => void;
+}): ReactElement {
+  const groupId = useId();
   const button = (item: MenuItem): ReactElement => (
     <button
       key={item.label}
-      role="menuitem"
+      role={itemRole}
       className={item.danger === true ? "danger" : undefined}
       // Not `disabled`: a turned-off item keeps the focus, so the arrow keys and a screen reader still reach it.
       aria-disabled={item.disabled === true ? true : undefined}
       onClick={() => {
         if (item.disabled === true) return;
-        onClose(false);
+        onChosen();
         item.onChoose();
       }}
     >
@@ -105,7 +127,7 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
     </button>
   );
   return (
-    <div className={`menu ${className}`} role="menu" aria-label={label} ref={menu} style={style} onKeyDown={onKeyDown}>
+    <>
       {menuGroups(items).map((group, index) =>
         group.name === undefined ? (
           <Fragment key={`items-${String(index)}`}>{group.items.map(button)}</Fragment>
@@ -119,7 +141,7 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
           </div>
         ),
       )}
-    </div>
+    </>
   );
 }
 

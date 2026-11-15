@@ -554,6 +554,104 @@ test("a drag of the handle sets the tallest height of the message box (issue 660
   await expectHeight(box, usual + 16);
 });
 
+test("a short window folds the message box to one row, and + opens every setting of the row (#943)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport?.width ?? 1280, height: 440 });
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await expect(page.locator(".composer-box.folded")).toHaveCount(1);
+  // The row of chips folds away: the engine chip is in the + menu now.
+  await expect(page.locator(".composer-row")).toHaveCount(0);
+  await box.fill("Words for a short window");
+  await box.focus();
+  await page.getByRole("button", { name: "Attach and settings" }).click();
+  const menu = page.getByRole("dialog", { name: "Attach and settings" });
+  await expect(menu.getByRole("button", { name: "Attach a file" })).toBeVisible();
+  await expect(menu.getByRole("button", { name: "Polish" })).toBeVisible();
+  await expect(menu.getByRole("group", { name: "Model" })).toBeVisible();
+  await expect(menu.getByRole("slider", { name: "Effort" })).toBeVisible();
+  // The tap keeps the focus in the text, so a phone keyboard stays open.
+  await expect(box).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+
+  // A saved prompt from the + menu goes at the cursor, not at the end.
+  await box.press("Home");
+  for (const _letter of "Words") await box.press("ArrowRight");
+  await page.getByRole("button", { name: "Attach and settings" }).click();
+  await menu.getByRole("button", { name: "Summary" }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(box).toHaveValue(/^Words.+ for a short window$/s);
+
+  // A tall window keeps the row of chips, as before.
+  await page.setViewportSize({ width: viewport?.width ?? 1280, height: viewport?.height ?? 720 });
+  await expect(page.locator(".composer-box.folded")).toHaveCount(0);
+  await expect(page.locator(".composer-row .chip-picker > .chip")).toBeVisible();
+});
+
+test("a text too long for the box opens a large editor, and Send from it sends (#943)", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const editor = page.getByRole("button", { name: "Open the large editor" });
+  await box.fill("A short line");
+  await expect(editor).toHaveCount(0);
+  const long = Array.from({ length: 30 }, (_, line) => `Row ${String(line + 1)} of a long note`).join("\n");
+  await box.fill(long);
+  const usual = (await box.boundingBox())?.height ?? 0;
+  await editor.click();
+  await expect(page.getByRole("button", { name: "Close the large editor" })).toBeVisible();
+  await expect.poll(async () => (await box.boundingBox())?.height ?? 0).toBeGreaterThan(usual + 50);
+  await expect(box).toBeFocused();
+  // Escape gives the box back.
+  await page.keyboard.press("Escape");
+  await expect(editor).toBeVisible();
+  await editor.click();
+  await box.press("Enter");
+  await expect(page.locator(".message.user").first()).toContainText("Row 30 of a long note");
+  await expect(page.getByRole("button", { name: "Close the large editor" })).toHaveCount(0);
+});
+
+test("a send turns the box into the new bubble, and reduced motion plays no morph (#943)", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  // The copy lives for half a second. A watcher on the page sees it even when a slow machine skips the polls.
+  const watchMorphs = (): Promise<void> =>
+    page.evaluate(() => {
+      const seen = { count: 0 };
+      Object.assign(window, { morphsSeen: seen });
+      new MutationObserver((changes) => {
+        for (const change of changes)
+          for (const added of change.addedNodes)
+            if (added instanceof HTMLElement && added.classList.contains("send-morph")) seen.count += 1;
+      }).observe(document.body, { childList: true });
+    });
+  const morphsSeen = (): Promise<number> =>
+    page.evaluate(() => (window as unknown as { morphsSeen: { count: number } }).morphsSeen.count);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await watchMorphs();
+  await box.fill("A morph to watch");
+  await box.press("Enter");
+  await expect.poll(morphsSeen).toBe(1);
+  // The copy leaves the bubble whole when it lands.
+  await expect(page.locator(".send-morph")).toHaveCount(0);
+  const bubble = page.locator(".message.user").first();
+  await expect(bubble).toContainText("A morph to watch");
+  await expect(bubble).toHaveCSS("opacity", "1");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await watchMorphs();
+  await box.fill("A calm second message");
+  await box.press("Enter");
+  await expect(page.locator(".message.user").last()).toContainText("A calm second message");
+  // Past the time of a whole morph, none has come.
+  await page.waitForTimeout(800);
+  expect(await morphsSeen()).toBe(0);
+});
+
 test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
   // The demo engine has a login, so the browser plays a machine without one.
   let blocker: string | null = "engine";
@@ -969,6 +1067,82 @@ async function newAnsweredChat(page: Page, text: string): Promise<string> {
   await expect(page.locator(".message.answer").first()).toContainText(title);
   return title;
 }
+
+test("a message sent with no network stays in the chat, says so, and goes when the network comes back (#945)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the network drops"));
+  await waitUntilIdle(page, chatId);
+  let online = false;
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    if (online) await route.fallback();
+    else await route.abort("internetdisconnected");
+  });
+  const text = `Sent with no network (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  // The text leaves the box at once, and the bubble says what happens to it.
+  await expect(composer).toHaveValue("");
+  const bubble = page.locator(".msg.me", { hasText: text });
+  await expect(bubble.locator(".delivery")).toContainText("Not sent, trying again");
+  online = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
+  await expect(bubble.locator(".delivery")).toHaveCount(0);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(1);
+  await waitUntilIdle(page, chatId);
+  await waitUntilNewestChatSeen(page);
+});
+
+test("a message whose answer got lost runs once, though the page sends it again (#945)", async ({ page }) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the answer gets lost"));
+  await waitUntilIdle(page, chatId);
+  let lose = true;
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    if (!lose) return route.fallback();
+    lose = false;
+    // Eva takes the message, and the page never hears it.
+    await route.fetch();
+    return route.abort("connectionreset");
+  });
+  const text = `An answer that got lost (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
+  await waitUntilIdle(page, chatId);
+  const sessions = (await (await page.request.get("/api/sessions")).json()) as {
+    id: string;
+    turns: { userText: string }[];
+  }[];
+  const turns = sessions.find((session) => session.id === chatId)?.turns ?? [];
+  expect(turns.filter((turn) => turn.userText === text)).toHaveLength(1);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(1);
+  await waitUntilNewestChatSeen(page);
+});
+
+test("a refused message says why, and Edit puts its text back in the box (#945)", async ({ page }) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before a refusal"));
+  await waitUntilIdle(page, chatId);
+  await page.route("**/api/sessions/*/messages", (route) =>
+    route.fulfill({ status: 409, json: { error: "The chat is closed." } }),
+  );
+  const text = `A refused message (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  const bubble = page.locator(".msg.me", { hasText: text });
+  await expect(bubble.locator(".delivery")).toContainText("Not sent: The chat is closed.");
+  await bubble.getByRole("button", { name: "Edit" }).click();
+  await expect(bubble).toHaveCount(0);
+  await expect(composer).toHaveValue(text);
+  await composer.fill("");
+  await waitUntilNewestChatSeen(page);
+});
 
 test("a retry of an answer that wrote a note asks to undo it, and the undo removes the note (#525)", async ({
   page,
@@ -4446,9 +4620,8 @@ test("an approval and a task from while the connection was down still show after
   await expect(runningTask).toHaveCount(0);
 });
 
-test("a failed send shows the error and keeps the typed text", async ({ page }) => {
+test("a refused first message opens its chat, says why there, and Edit puts its text back (#945)", async ({ page }) => {
   await logIn(page);
-  await newChat(page);
   await page.route("**/api/sessions/*/messages", (route) =>
     route.fulfill({
       status: 409,
@@ -4456,12 +4629,18 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
       body: JSON.stringify({ error: "The chat is busy." }),
     }),
   );
+  const text = `Keep this text (${test.info().project.name})`;
+  await sendFirstMessage(page, text);
+  // The chat exists, so the message stays in it with its state, not in the box of the New chat page.
+  await expect(page).toHaveURL(/#\/chats\/(?!new$)[^/]+$/);
+  const bubble = page.locator(".msg.me", { hasText: text });
+  await expect(bubble.locator(".delivery")).toContainText("Not sent: The chat is busy.");
   const composer = page.getByLabel("Message").first();
-  await composer.fill("Keep this text");
-  await page.getByRole("button", { name: "Send" }).first().click();
-  await expect(page.getByRole("alert")).toContainText("The chat is busy.");
-  await expect(composer).toHaveValue("Keep this text");
-  await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
+  await expect(composer).toHaveValue("");
+  await bubble.getByRole("button", { name: "Edit" }).click();
+  await expect(composer).toHaveValue(text);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(0);
+  await composer.fill("");
 });
 
 test("a voice note puts what Eva heard in the box, and the person sends it as text (issue 658)", async ({ page }) => {
@@ -6142,6 +6321,14 @@ test("a long chat follows the newest message, unless the person scrolled up", as
   await expect(answer).toContainText("line 59");
   await expect(answer).toBeInViewport();
   await expect(composer).toBeInViewport();
+  // The empty box comes in with an animation after a send (#943). A click on a moving Send retries with a forced
+  // scroll into view, and the sticky box then pulls the chat down, as no person's click does.
+  await page
+    .locator(".composer-box")
+    .first()
+    .evaluate((element) =>
+      Promise.all(element.getAnimations().map((animation) => animation.finished)).then(() => undefined),
+    );
 
   const branches = page.locator(".branches");
   await branches.evaluate((element) => {

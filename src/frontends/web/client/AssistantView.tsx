@@ -8,7 +8,7 @@ import { latestId, type LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { seenPart } from "./branch-path.ts";
 import { BranchesButton, useBranchStates, useForkMenu, useShownBranch } from "./Branches.tsx";
-import { chatTree, Conversation, rootChats, rootIdOf, type SentMessage } from "./Conversation.tsx";
+import { chatTree, Conversation, rootChats, rootIdOf } from "./Conversation.tsx";
 import { Icon } from "./icons.tsx";
 import {
   ChatHeader,
@@ -109,7 +109,6 @@ export function AssistantView({
     () => setShowArchived(true),
   );
   // The turn start lists the new chat, and the chat then opens before its turn is stored.
-  const [firstMessage, setFirstMessage] = useState<SentMessage | null>(null);
   const shown = chats.filter((chat) => matchesSearch(chat.title, query));
   const now = new Date();
   // The list knows the turns that ran before this page loaded. The events know the newer ones.
@@ -329,7 +328,6 @@ export function AssistantView({
               onShowList={onShowList}
               listHasUnread={listHasUnread}
               homeButtons={homeButtons}
-              onSending={setFirstMessage}
               onStarted={openNewChat}
             />
           ) : (
@@ -360,7 +358,6 @@ export function AssistantView({
                 approvals={approvals}
                 blocker={blocker}
                 voiceNotes={voiceNotes}
-                firstMessage={firstMessage}
               />
             </>
           )}

@@ -2125,6 +2125,8 @@ textarea {
   --dur-fast: 150ms;
   --dur-medium: 220ms;
   --dur-slow: 400ms;
+  /* The send morph (#943). Its spring lands at about 40 % of the time, then settles. */
+  --dur-morph: 560ms;
   /* A thing that comes in starts fast and settles. A thing that leaves starts slow and speeds away. */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);

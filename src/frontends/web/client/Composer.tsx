@@ -10,7 +10,16 @@
  * The command button opens the menu of the vault's text actions, such as Polish, and saved prompts (issue 661).
  * A text action rewrites the typed text and sends nothing; Undo brings the typed text back.
  */
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement, type RefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactElement,
+  type RefObject,
+} from "react";
 import {
   effortLevels,
   modelAliases,
@@ -37,14 +46,16 @@ import {
 } from "./conversation-parts.ts";
 import { ColumnDivider } from "./ColumnDivider.tsx";
 import { composerHeightRange, heightShare, readComposerHeight, saveComposerHeight } from "./composer-height.ts";
+import { autoTextHeight, foldsToOneRow } from "./composer-layout.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { useMentionPicker } from "./MentionPicker.tsx";
-import { MenuButton } from "./Menu.tsx";
+import { MenuButton, MenuItems, type MenuItem } from "./Menu.tsx";
 import { composerMenuItems, insertedText } from "./menu-text.ts";
 import { setupBlock } from "./new-chat.ts";
+import { prepareSendMorph, startSendMorph } from "./send-morph-player.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType, withHeardText } from "./voice-notes.ts";
@@ -205,6 +216,12 @@ export function Composer({
   const [undoText, setUndoText] = useState<string | null>(null);
   /** The number of the newest text action run. A run whose number is old ends with no change. */
   const actionRun = useRef(0);
+  /** True while the large editor is open, for a text too long for the box. */
+  const [expanded, setExpanded] = useState(false);
+  /** True while the + menu of a folded box is open. */
+  const [plusOpen, setPlusOpen] = useState(false);
+  // The morph copies the page's styles. Doing it while the page rests keeps the first send smooth.
+  useEffect(prepareSendMorph, []);
   // The box shows another chat now. A late answer belongs to the old chat's text, so it must not land here.
   useEffect(() => {
     actionRun.current += 1;
@@ -212,7 +229,13 @@ export function Composer({
     touched.current = false;
     setRewriting(null);
     setUndoText(null);
+    // The large editor belongs to the old chat's text.
+    setExpanded(false);
   }, [draftKey]);
+  // A locked box takes no text, so it closes the large editor.
+  useEffect(() => {
+    if (blocker !== null) setExpanded(false);
+  }, [blocker]);
   const showError = useShowError();
   const runAction = async (name: string): Promise<void> => {
     const before = text;
@@ -232,8 +255,14 @@ export function Composer({
     }
   };
   const insertPrompt = (inserted: string): void => {
-    // With no cursor from the person, the prompt goes at the end: a browser can put a restored draft's cursor at its start.
-    const selection = caret.current ?? { start: text.length, end: text.length };
+    // The + menu keeps the focus in the text, so the cursor is read there. With no cursor from the person, the prompt goes
+    // at the end: a browser can put a restored draft's cursor at its start.
+    const field = box.current;
+    const live =
+      field !== null && document.activeElement === field && touched.current
+        ? { start: field.selectionStart, end: field.selectionEnd }
+        : null;
+    const selection = live ?? caret.current ?? { start: text.length, end: text.length };
     const next = insertedText(text, selection, inserted);
     setText(next.text);
     setUndoText(null);
@@ -250,17 +279,25 @@ export function Composer({
   const notes = files.attachments.flatMap((attachment) => (attachment.note === null ? [] : [attachment.note]));
   const isEmpty = text.trim() === "" && files.attachments.length === 0;
 
+  /** The card of the box, which the send morph copies. */
+  const shell = useRef<HTMLDivElement>(null);
+
   const send = async (): Promise<void> => {
     const message = messageWithFiles(text, [...mentions.notes(text), ...notes]);
     if (message === "" || uploading || sending || rewriting !== null || blocker !== null) return;
     const attached = files.attachments;
+    // The picture of the box is taken before it clears, so the morph starts from what the person saw (#943).
+    const morph = shell.current === null ? null : startSendMorph(shell.current);
     playCue("send");
     setSending(true);
     setText("");
     setUndoText(null);
+    setExpanded(false);
     files.set([]);
+    morph?.play();
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
+      morph?.cancel();
       restore(text);
       files.set(attached);
     }
@@ -273,6 +310,12 @@ export function Composer({
   const lineId = useId();
   const box = useRef<HTMLTextAreaElement>(null);
   const height = useComposerHeight(box, text);
+  const visibleHeight = useVisibleHeight();
+  // A short screen, such as a phone with its keyboard up, gets one row, and the + button opens the settings (#943).
+  // The box stays folded while its + menu is open: a tablet keyboard that closes must not take the menu away.
+  const folded = plusOpen || foldsToOneRow({ visibleHeight, touch: isTouchScreen(), phoneSized: isPhoneSized() });
+  // The text is gone while a voice note records, so the line is measured again when it comes back.
+  const lineHeight = useLineHeight(box, [folded, block === null, voice.state.phase]);
   const locked = block !== null;
   // On a computer the person types into a chat at once. On a touch screen the focus would raise the keyboard over the chat.
   useEffect(() => {
@@ -326,11 +369,107 @@ export function Composer({
       </div>
     );
   }
+  const keepFocus = (event: ReactPointerEvent): void => {
+    // A tap on these buttons keeps the focus in the text, so a phone keyboard stays open.
+    event.preventDefault();
+  };
+  const textActions =
+    block === null
+      ? composerMenuItems(menu, {
+          canRewrite: text.trim() !== "",
+          onAction: (name) => void runAction(name),
+          onPrompt: insertPrompt,
+        })
+      : [];
+  // The + menu holds every setting of the row, so a folded box loses none of them.
+  const plusActions: MenuItem[] = [
+    ...(canAttach
+      ? [
+          {
+            label: "Attach a file",
+            icon: "clip" as const,
+            disabled: !takesFiles,
+            onChoose: () => picker.current?.click(),
+          },
+        ]
+      : []),
+    ...textActions.map((item) => (rewriting === null ? item : { ...item, disabled: true })),
+  ];
+  const undoButton =
+    undoText !== null && rewriting === null ? (
+      <button
+        className="ghost"
+        data-tooltip="Bring back the text from before the text action"
+        onClick={() => {
+          setText(undoText);
+          setUndoText(null);
+        }}
+      >
+        <Icon name="restart" />
+        Undo
+      </button>
+    ) : null;
+  const sendButtons = (
+    <>
+      {showMic && (
+        <button
+          // Beside Stop it stays quiet; alone it takes the place of Send.
+          className={showStop ? "send voice" : "send"}
+          aria-label={voiceNotes ? "Record a voice note" : "Set up voice notes"}
+          data-tooltip={voiceNotes ? "Record a voice note" : "Set up voice notes"}
+          onClick={() => {
+            // A missing button tells nothing; this one leads to the button that installs voice notes.
+            if (voiceNotes) void voice.start();
+            else goTo(settingsHash({ section: "updates", item: "versions" }));
+          }}
+        >
+          <Icon name="mic" />
+        </button>
+      )}
+      {showStop ? (
+        <button className="send stop" aria-label="Stop" data-tooltip="Stop" onClick={onStop}>
+          <Icon name="stop" />
+        </button>
+      ) : (
+        !showMic && (
+          <button
+            className="send"
+            // The send itself plays its cue, also for the Enter key.
+            data-cue="none"
+            aria-label="Send"
+            data-tooltip="Send"
+            disabled={
+              sending || uploading || rewriting !== null || messageWithFiles(text, notes) === "" || block !== null
+            }
+            onClick={() => void send()}
+          >
+            <Icon name="send" />
+          </button>
+        )
+      )}
+    </>
+  );
+  const textStyle = {
+    "--composer-auto-height": `${String(autoTextHeight(visibleHeight, lineHeight))}px`,
+    ...(height.share === null ? {} : { "--composer-height": `${String(height.share * 100)}dvh` }),
+  } as CSSProperties;
   return (
     <div className="composer">
       {mentions.menu}
       <div
-        className={dropping ? "composer-box dropping" : "composer-box"}
+        ref={shell}
+        className={[
+          "composer-box",
+          ...(dropping ? ["dropping"] : []),
+          ...(folded ? ["folded"] : []),
+          ...(expanded ? ["expanded"] : []),
+        ].join(" ")}
+        style={
+          {
+            "--composer-editor-height": `${String(Math.round(visibleHeight * editorShare))}px`,
+            "--composer-visible-height": `${String(Math.round(visibleHeight))}px`,
+          } as CSSProperties
+        }
         onDragOver={(event) => {
           if (!takesFiles || !event.dataTransfer.types.includes("Files")) return;
           // Without this, the browser opens the dropped file in place of Eva.
@@ -349,7 +488,7 @@ export function Composer({
           files.add([...event.dataTransfer.files]);
         }}
       >
-        {height.tall && (
+        {height.tall && !expanded && (
           <ColumnDivider
             label="Height of the text"
             side="top"
@@ -361,63 +500,104 @@ export function Composer({
             onWidth={height.onHeight}
           />
         )}
-        <textarea
-          ref={box}
-          className={height.share === null ? undefined : "resized"}
-          style={
-            height.share === null
-              ? undefined
-              : ({ "--composer-height": `${String(height.share * 100)}dvh` } as CSSProperties)
-          }
-          aria-label="Message"
-          enterKeyHint={enterKeyHint(isTouchScreen())}
-          aria-describedby={block === null ? undefined : lineId}
-          placeholder={block === null ? placeholder : "Eva cannot answer yet"}
-          rows={1}
-          disabled={block !== null}
-          // The answer of a text action takes the place of the text, so an edit meanwhile would be lost.
-          readOnly={rewriting !== null}
-          aria-busy={rewriting !== null}
-          value={text}
-          {...mentions.boxProps}
+        {(expanded || (block === null && height.overflows)) && (
+          <button
+            className="icon-button composer-expand"
+            aria-label={expanded ? "Close the large editor" : "Open the large editor"}
+            data-tooltip={expanded ? "Close the large editor" : "Open the large editor"}
+            aria-pressed={expanded}
+            onPointerDown={keepFocus}
+            onClick={() => {
+              setExpanded((open) => !open);
+              box.current?.focus({ preventScroll: true });
+            }}
+          >
+            <Icon name={expanded ? "shrink" : "expand"} />
+          </button>
+        )}
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          hidden
           onChange={(event) => {
-            setText(event.target.value);
-            setUndoText(null);
-            touched.current = true;
-            mentions.follow();
-          }}
-          onSelect={mentions.follow}
-          onPointerDown={() => {
-            touched.current = true;
-          }}
-          onBlur={(event) => {
-            mentions.boxProps.onBlur();
-            // A press on the menu button takes the focus. The cursor counts only when the person placed it.
-            const field = event.currentTarget;
-            if (touched.current) caret.current = { start: field.selectionStart, end: field.selectionEnd };
-          }}
-          onPaste={(event) => {
-            const pasted = pastedFiles(event.clipboardData);
-            if (!takesFiles || pasted.length === 0) return;
-            event.preventDefault();
-            files.add(pasted);
-          }}
-          onKeyDown={(event) => {
-            touched.current = true;
-            if (mentions.onKeyDown(event)) return;
-            const press = {
-              key: event.key,
-              shiftKey: event.shiftKey,
-              isComposing: event.nativeEvent.isComposing,
-              // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's Enter only with this code.
-              keyCode: event.keyCode,
-            };
-            if (sendsOnEnter(press, isTouchScreen())) {
-              event.preventDefault();
-              void send();
-            }
+            files.add([...(event.target.files ?? [])]);
+            // The same file can be picked again after the person removes it.
+            event.target.value = "";
           }}
         />
+        <div className="composer-line">
+          {folded && (
+            <EngineChip
+              session={session}
+              choices={choices}
+              running={running}
+              onChanged={onChanged}
+              trigger="plus"
+              actions={plusActions}
+              onOpenChange={setPlusOpen}
+            />
+          )}
+          <textarea
+            ref={box}
+            className={height.share === null ? undefined : "resized"}
+            style={textStyle}
+            aria-label="Message"
+            enterKeyHint={enterKeyHint(isTouchScreen())}
+            aria-describedby={block === null ? undefined : lineId}
+            placeholder={block === null ? placeholder : "Eva cannot answer yet"}
+            rows={1}
+            disabled={block !== null}
+            // The answer of a text action takes the place of the text, so an edit meanwhile would be lost.
+            readOnly={rewriting !== null}
+            aria-busy={rewriting !== null}
+            value={text}
+            {...mentions.boxProps}
+            onChange={(event) => {
+              setText(event.target.value);
+              setUndoText(null);
+              touched.current = true;
+              mentions.follow();
+            }}
+            onSelect={mentions.follow}
+            onPointerDown={() => {
+              touched.current = true;
+            }}
+            onBlur={(event) => {
+              mentions.boxProps.onBlur();
+              // A press on the menu button takes the focus. The cursor counts only when the person placed it.
+              const field = event.currentTarget;
+              if (touched.current) caret.current = { start: field.selectionStart, end: field.selectionEnd };
+            }}
+            onPaste={(event) => {
+              const pasted = pastedFiles(event.clipboardData);
+              if (!takesFiles || pasted.length === 0) return;
+              event.preventDefault();
+              files.add(pasted);
+            }}
+            onKeyDown={(event) => {
+              touched.current = true;
+              if (mentions.onKeyDown(event)) return;
+              if (event.key === "Escape" && expanded) {
+                event.preventDefault();
+                setExpanded(false);
+                return;
+              }
+              const press = {
+                key: event.key,
+                shiftKey: event.shiftKey,
+                isComposing: event.nativeEvent.isComposing,
+                // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's Enter only with this code.
+                keyCode: event.keyCode,
+              };
+              if (sendsOnEnter(press, isTouchScreen())) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+          />
+          {folded && sendButtons}
+        </div>
         {files.attachments.length > 0 && (
           <ul className="composer-files" aria-label="Attached files">
             {files.attachments.map((attachment) => (
@@ -438,98 +618,40 @@ export function Composer({
         )}
         {uploading && <ProgressBar label="Eva receives the file" />}
         {rewriting !== null && <ProgressBar label={`Eva runs ${rewriting} on the text`} />}
-        <div className="composer-row">
-          <input
-            ref={picker}
-            type="file"
-            multiple
-            hidden
-            onChange={(event) => {
-              files.add([...(event.target.files ?? [])]);
-              // The same file can be picked again after the person removes it.
-              event.target.value = "";
-            }}
-          />
-          {canAttach && (
-            <button
-              className="icon-button"
-              aria-label="Attach a file"
-              data-tooltip="Attach a file"
-              disabled={!takesFiles}
-              onClick={() => picker.current?.click()}
-            >
-              <Icon name="clip" />
-            </button>
-          )}
-          {block === null && menu.textActions.length + menu.savedPrompts.length > 0 && (
-            <MenuButton
-              className="icon-button"
-              name="Text actions and saved prompts"
-              label="Text actions and saved prompts"
-              turnedOff={rewriting !== null}
-              fromStart
-              above
-              items={composerMenuItems(menu, {
-                canRewrite: text.trim() !== "",
-                onAction: (name) => void runAction(name),
-                onPrompt: insertPrompt,
-              })}
-            >
-              <Icon name="command" />
-            </MenuButton>
-          )}
-          <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
-          {undoText !== null && rewriting === null && (
-            <button
-              className="ghost"
-              data-tooltip="Bring back the text from before the text action"
-              onClick={() => {
-                setText(undoText);
-                setUndoText(null);
-              }}
-            >
-              <Icon name="restart" />
-              Undo
-            </button>
-          )}
-          <span className="grow" />
-          {showMic && (
-            <button
-              // Beside Stop it stays quiet; alone it takes the place of Send.
-              className={showStop ? "send voice" : "send"}
-              aria-label={voiceNotes ? "Record a voice note" : "Set up voice notes"}
-              data-tooltip={voiceNotes ? "Record a voice note" : "Set up voice notes"}
-              onClick={() => {
-                // A missing button tells nothing; this one leads to the button that installs voice notes.
-                if (voiceNotes) void voice.start();
-                else goTo(settingsHash({ section: "updates", item: "versions" }));
-              }}
-            >
-              <Icon name="mic" />
-            </button>
-          )}
-          {showStop ? (
-            <button className="send stop" aria-label="Stop" data-tooltip="Stop" onClick={onStop}>
-              <Icon name="stop" />
-            </button>
-          ) : (
-            !showMic && (
+        {folded ? (
+          undoButton !== null && <div className="composer-row">{undoButton}</div>
+        ) : (
+          <div className="composer-row">
+            {canAttach && (
               <button
-                className="send"
-                // The send itself plays its cue, also for the Enter key.
-                data-cue="none"
-                aria-label="Send"
-                data-tooltip="Send"
-                disabled={
-                  sending || uploading || rewriting !== null || messageWithFiles(text, notes) === "" || block !== null
-                }
-                onClick={() => void send()}
+                className="icon-button"
+                aria-label="Attach a file"
+                data-tooltip="Attach a file"
+                disabled={!takesFiles}
+                onClick={() => picker.current?.click()}
               >
-                <Icon name="send" />
+                <Icon name="clip" />
               </button>
-            )
-          )}
-        </div>
+            )}
+            {block === null && menu.textActions.length + menu.savedPrompts.length > 0 && (
+              <MenuButton
+                className="icon-button"
+                name="Text actions and saved prompts"
+                label="Text actions and saved prompts"
+                turnedOff={rewriting !== null}
+                fromStart
+                above
+                items={textActions}
+              >
+                <Icon name="command" />
+              </MenuButton>
+            )}
+            <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
+            {undoButton}
+            <span className="grow" />
+            {sendButtons}
+          </div>
+        )}
       </div>
       {block !== null && (
         <p className="composer-blocked" id={lineId}>
@@ -550,14 +672,29 @@ function EngineChip({
   choices,
   running,
   onChanged,
+  trigger = "chip",
+  actions = [],
+  onOpenChange,
 }: {
   readonly session: ComposerChat;
   readonly choices: ChatChoices;
   readonly running: boolean;
   readonly onChanged: () => Promise<void>;
+  /** "plus" opens the same menu from the + button of a folded box, with the other settings of the row (#943). */
+  readonly trigger?: "chip" | "plus";
+  /** The other settings of the row, such as Attach a file and the text actions, above the engine. */
+  readonly actions?: readonly MenuItem[];
+  readonly onOpenChange?: (open: boolean) => void;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   useBackLayer(open, () => setOpen(false));
+  const tell = useRef(onOpenChange);
+  tell.current = onOpenChange;
+  useEffect(() => {
+    tell.current?.(open);
+    // A menu that unmounts open, such as on a send, must not leave the box folded.
+    return () => tell.current?.(false);
+  }, [open]);
   const [found, setFound] = useState<readonly EngineName[]>([]);
   const [savingCount, setSaving] = useState(0);
   const saving = savingCount > 0;
@@ -649,27 +786,56 @@ function EngineChip({
   const effortShown = takesEffort(session.engine, session.modelAlias);
   return (
     <div className="chip-picker" ref={root}>
-      <button
-        className="chip"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        data-tooltip={
-          lock === null
-            ? "Pick the engine, the model and the effort"
-            : running
-              ? "Pick the effort"
-              : "Pick the model and the effort"
-        }
-        onClick={() => setOpen((isOpen) => !isOpen)}
-      >
-        <Icon name="bolt" />
-        <span className="chip-engine">{engineLabel(session.engine)} · </span>
-        {modelLabel(session.modelAlias, answeredModel(session.turns, session.modelAlias))}
-        {effortShown && <span className="chip-effort">· {effortLabel(session.effort)}</span>}
-        <Icon name="down" />
-      </button>
+      {trigger === "plus" ? (
+        <button
+          className="icon-button composer-plus"
+          aria-label="Attach and settings"
+          data-tooltip="Attach, text actions, engine, model and effort"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          // The tap keeps the focus in the text, so a phone keyboard stays open.
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => setOpen((isOpen) => !isOpen)}
+        >
+          <Icon name="plus" />
+        </button>
+      ) : (
+        <button
+          className="chip"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          data-tooltip={
+            lock === null
+              ? "Pick the engine, the model and the effort"
+              : running
+                ? "Pick the effort"
+                : "Pick the model and the effort"
+          }
+          onClick={() => setOpen((isOpen) => !isOpen)}
+        >
+          <Icon name="bolt" />
+          <span className="chip-engine">{engineLabel(session.engine)} · </span>
+          {modelLabel(session.modelAlias, answeredModel(session.turns, session.modelAlias))}
+          {effortShown && <span className="chip-effort">· {effortLabel(session.effort)}</span>}
+          <Icon name="down" />
+        </button>
+      )}
       {open && (
-        <div className="chip-menu" role="dialog" aria-label="Engine, model and effort">
+        <div
+          className={trigger === "plus" ? "chip-menu composer-menu" : "chip-menu"}
+          role="dialog"
+          aria-label={trigger === "plus" ? "Attach and settings" : "Engine, model and effort"}
+          onPointerDown={(event) => {
+            // A tap on a button keeps the focus in the text, so a phone keyboard stays open. The slider still drags.
+            if (trigger === "plus" && event.target instanceof Element && event.target.closest("button") !== null)
+              event.preventDefault();
+          }}
+        >
+          {actions.length > 0 && (
+            <div className="menu composer-actions" role="group" aria-label="Actions">
+              <MenuItems items={actions} onChosen={() => setOpen(false)} />
+            </div>
+          )}
           {lock !== null ? (
             <p>{lock}</p>
           ) : (
@@ -900,6 +1066,41 @@ function isTouchScreen(): boolean {
   return window.matchMedia("(pointer: coarse)").matches;
 }
 
+/** True on a screen whose short side is a phone's, so a tablet keeps the settings row. */
+function isPhoneSized(): boolean {
+  return Math.min(window.screen.width, window.screen.height) < 600;
+}
+
+/** The height of the part of the page that the person sees. A phone keyboard makes it lower. */
+function useVisibleHeight(): number {
+  // A pinch zoom also makes the visible part smaller, so the scale gives back the window's own height.
+  const read = (): number => {
+    const view = window.visualViewport;
+    return view === null ? window.innerHeight : view.height * view.scale;
+  };
+  const [height, setHeight] = useState(read);
+  useEffect(() => {
+    const follow = (): void => setHeight(read());
+    window.visualViewport?.addEventListener("resize", follow);
+    window.addEventListener("resize", follow);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", follow);
+      window.removeEventListener("resize", follow);
+    };
+  }, []);
+  return height;
+}
+
+/** The height of one line of the text, so the box grows in whole lines. NaN until the box is on the page. */
+function useLineHeight(box: RefObject<HTMLTextAreaElement | null>, changes: readonly unknown[]): number {
+  const [line, setLine] = useState(Number.NaN);
+  useEffect(() => {
+    const element = box.current;
+    if (element !== null) setLine(Number.parseFloat(getComputedStyle(element).lineHeight));
+  }, [box, ...changes]);
+  return line;
+}
+
 /** True for a field that takes text. The box never takes the focus from one, such as a title being renamed. */
 function isTextField(element: Element | null): boolean {
   return (
@@ -935,6 +1136,8 @@ function useComposerMenu(): ComposerMenuItems {
 const tallText = 96;
 /** The handle never makes the text shorter than two lines. */
 const shortestText = 48;
+/** The share of the visible window that the large editor's text takes. */
+const editorShare = 0.6;
 
 /**
  * The tallest height of the text, as a share of the window, and whether the handle shows (issue 660). A box with a
@@ -946,16 +1149,22 @@ function useComposerHeight(
 ): {
   readonly share: number | null;
   readonly tall: boolean;
+  /** True when the text does not fit and scrolls, so the box offers the large editor. */
+  readonly overflows: boolean;
   readonly onHeight: (height: number | null) => void;
   readonly sizeFrom: (grow: boolean) => number;
 } {
   const [share, setShare] = useState(readComposerHeight);
   const [tall, setTall] = useState(false);
+  const [overflows, setOverflows] = useState(false);
   useEffect(() => {
     const element = box.current;
     if (element === null) return;
-    const measure = (): void =>
-      setTall(element.scrollHeight > element.clientHeight + 1 || element.clientHeight >= tallText);
+    const measure = (): void => {
+      const scrolls = element.scrollHeight > element.clientHeight + 1;
+      setOverflows(scrolls);
+      setTall(scrolls || element.clientHeight >= tallText);
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
@@ -976,5 +1185,5 @@ function useComposerHeight(
     const shown = element.getBoundingClientRect().height;
     return grow ? Math.max(shown, Number.parseFloat(getComputedStyle(element).maxHeight) || shown) : shown;
   };
-  return { share, tall, onHeight, sizeFrom };
+  return { share, tall, overflows, onHeight, sizeFrom };
 }

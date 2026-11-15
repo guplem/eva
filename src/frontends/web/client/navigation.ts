@@ -2,6 +2,7 @@
  * The destinations of the nav rail and the tab bar, and their addresses. Each destination
  * has an address, so the back button and a reload work.
  */
+import { currentLifeKindName } from "../../../shared/life-kinds.ts";
 import type { IconName } from "./icons.tsx";
 
 export const destinations = [
@@ -12,7 +13,7 @@ export const destinations = [
   // The Life pages: one for each kind of entity in the vault's `Life/` folder (#911).
   { id: "cases", label: "Cases", icon: "case" },
   { id: "people", label: "People", icon: "people" },
-  { id: "objects", label: "Objects", icon: "box" },
+  { id: "inventory", label: "Inventory", icon: "box" },
   { id: "pets", label: "Pets", icon: "paw" },
   { id: "periods", label: "Periods", icon: "timeline" },
   { id: "settings", label: "Settings", icon: "gear" },
@@ -81,7 +82,8 @@ export function linkedChatIdOf(hash: string): string | null {
  */
 export function destinationOf(hash: string): Destination | null {
   if (linkedChatIdOf(hash) !== null) return null;
-  const name = /^#\/([^/]+)(\/|$)/.exec(hash)?.[1];
+  const found = /^#\/([^/]+)(\/|$)/.exec(hash)?.[1];
+  const name = found === undefined ? undefined : currentLifeKindName(found);
   if (name === notificationCenter) return notificationCenter;
   return destinations.find((destination) => destination.id === name)?.id ?? "chats";
 }

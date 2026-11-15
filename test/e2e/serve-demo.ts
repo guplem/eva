@@ -173,7 +173,7 @@ const lifeSamples: Readonly<Record<string, string>> = {
     "---",
     "# Bumper claim",
     "",
-    "The case is about Life/Objects/Car - Example Model - 1234ABC.",
+    "The case is about Life/Inventory/Car - Example Model - 1234ABC.",
     "",
     "- 2026-09-02: Sent the photos to Example Insurance.",
     "",
@@ -212,12 +212,15 @@ const lifeSamples: Readonly<Record<string, string>> = {
     "---\nrelation: sister of Life/People/Alex Example\nsummary: Plays the piano.\n---\n\nAllergic to cats.\n",
   "Life/People/Jordan Example/Person.md":
     "---\nrelation: colleague at Example Corp\nsummary: Works on the example app.\n---\n\nPrefers short meetings.\n",
-  "Life/Objects/Car - Example Model - 1234ABC/Object.md":
-    "---\nstatus: in-use\ntype: car\nowner:\nids: { plate: 1234ABC, vin: EXAMPLEVIN0000000 }\naliases: [the car]\nsummary: The family car. The insurance ends on 2099-03-01.\n---\n\nThe service is every 15000 km.\n",
-  "Life/Objects/Drill - Example Tools - 2022/Object.md":
-    "---\nstatus: lent\ntype: drill\nowner: Life/People/Sam Example\ntags: [workshop]\nsummary: Sam's drill, lent to Jordan Example.\n---\n\nIt needs a new battery.\n",
-  "Life/Objects/Phone - Example Phone 12 - 4321/Object.md":
-    "---\nstatus: sold\ntype: phone\nowner:\nids: { imei: '4321' }\nsummary: The old phone. Sold on 2026-03-01.\n---\n\nSold with its case.\n",
+  "Life/Inventory/Car - Example Model - 1234ABC/Item.md":
+    "---\nkind: thing\nstatus: in-use\ntype: car\nowner:\nids: { plate: 1234ABC, vin: EXAMPLEVIN0000000 }\naliases: [the car]\nsummary: The family car. The insurance ends on 2099-03-01.\n---\n\nThe service is every 15000 km.\n",
+  "Life/Inventory/Drill - Example Tools - 2022/Item.md":
+    "---\nkind: thing\nstatus: lent\ntype: drill\nowner: Life/People/Sam Example\ntags: [workshop]\nsummary: Sam's drill, lent to Jordan Example.\n---\n\nIt needs a new battery.\n",
+  "Life/Inventory/Phone - Example Phone 12 - 4321/Item.md":
+    "---\nkind: thing\nstatus: sold\ntype: phone\nowner:\nids: { imei: '4321' }\nsummary: The old phone. Sold on 2026-03-01.\n---\n\nSold with its case.\n",
+  // A service is an item too (#940).
+  "Life/Inventory/Streaming - Example Stream - 2024/Item.md":
+    "---\nkind: subscription\nstatus: in-use\ntype: streaming\nprovider: Example Stream\ncost: { amount: 9.99, currency: EUR, every: month }\nrenews: 2099-01-15\nsummary: Shared with Sam Example.\n---\n\nShared with Life/People/Sam Example. Cancel in the app settings.\n",
   "Life/Pets/Luna/Pet.md":
     '---\nspecies: dog\nbreed: Border collie\nbirth: 2020-08-01\ndeath:\nchip: "941000012345678"\nsummary: Border collie. Allergic to chicken.\n---\n\nEats twice a day.\n',
   "Life/Pets/Milo/Pet.md":

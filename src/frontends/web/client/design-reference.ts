@@ -327,7 +327,7 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   archive: "Archive a chat, the archived chats",
   case: "The Cases Life page, a case and its steps",
   people: "The People Life page",
-  box: "The Objects Life page, a thing that the person owns",
+  box: "The Inventory Life page, something that the person has or uses",
   paw: "The Pets Life page",
   timeline: "The Periods Life page, a span of time such as a job",
   bubbles: "The Coin sound palette",

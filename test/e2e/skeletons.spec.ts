@@ -135,12 +135,12 @@ for (const [name, address] of [
   ["Schedules", "#/schedules"],
   ["Settings", "#/settings"],
   ["Cases", "#/cases"],
-  ["Objects", "#/objects"],
+  ["Inventory", "#/inventory"],
   ["Pets", "#/pets"],
   ["Periods", "#/periods"],
   ["People", "#/people"],
   ["a person", "#/people/Sam%20Example"],
-  ["an object", "#/objects/Car%20-%20Example%20Model%20-%201234ABC"],
+  ["an item", "#/inventory/Car%20-%20Example%20Model%20-%201234ABC"],
 ] as const) {
   test(`the first load of ${name} has the shape of the page`, async ({ page }) => {
     await expectSameShape(page, address, firstLoad);
@@ -152,7 +152,7 @@ for (const [name, address, hold] of [
   ["a folder", "#/files", "**/api/files?*"],
   ["the settings", "#/settings", "**/api/settings"],
   ["the cases", "#/cases", "**/api/life/cases"],
-  ["the objects", "#/objects", "**/api/life/objects"],
+  ["the inventory", "#/inventory", "**/api/life/inventory"],
   ["the periods", "#/periods", "**/api/life/periods"],
 ] as const) {
   test(`the skeleton of ${name} has the shape of the list`, async ({ page }) => {

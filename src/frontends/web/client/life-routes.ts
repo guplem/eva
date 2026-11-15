@@ -1,5 +1,5 @@
 /** The addresses of the Life pages (#911): `#/<kind>` for a list and `#/<kind>/<id>` for one entity. */
-import { isLifeKind, type LifeKind } from "../../../shared/life-kinds.ts";
+import { currentLifeKindName, isLifeKind, type LifeKind } from "../../../shared/life-kinds.ts";
 
 export interface LifeRoute {
   readonly kind: LifeKind;
@@ -9,7 +9,7 @@ export interface LifeRoute {
 /** The Life page that the address names: `#/<kind>`, or `#/<kind>/<id>` for one entity. */
 export function lifeRouteOf(hash: string): LifeRoute | null {
   const match = /^#\/([^/]+)(?:\/(.*))?$/.exec(hash);
-  const kind = match?.[1] ?? "";
+  const kind = currentLifeKindName(match?.[1] ?? "");
   if (!isLifeKind(kind)) return null;
   const rest = match?.[2] ?? "";
   // An id is one folder name, so a longer path shows the list.

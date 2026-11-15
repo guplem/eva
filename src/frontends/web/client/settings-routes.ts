@@ -298,7 +298,7 @@ export const searchEntries: readonly SearchEntry[] = [
     section: "personalize",
     title: "Navigation",
     words:
-      "main menu rail tab bar tabs entries buttons pages hide show computer phone life cases people objects pets periods",
+      "main menu rail tab bar tabs entries buttons pages hide show computer phone life cases people inventory items objects pets periods",
   },
   {
     item: "assistant-rules",

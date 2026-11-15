@@ -15,8 +15,7 @@ export const vaultFolders: readonly VaultFolder[] = [
   { path: "Library", purpose: "Explanations that you want to keep." },
   {
     path: "Life",
-    purpose:
-      "Your life: the basics about you, and your cases, objects, people, pets, periods, health, finances and diary.",
+    purpose: "Your life: the basics about you, and your cases, inventory, people, pets, periods, health and diary.",
   },
   { path: "Projects", purpose: "Things you build, such as an app or a book, and Eva's specialists." },
   { path: ".eva", purpose: "Your rules and skills for Eva. Not notes: keep this folder." },

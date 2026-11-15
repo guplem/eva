@@ -30,6 +30,11 @@ function textAt(commit: string, path: string): string | null {
   return result.exitCode === 0 ? result.stdout.toString() : null;
 }
 
+// A shallow clone lacks the old versions, so the record would lose them.
+if (git("rev-parse", "--is-shallow-repository").trim() === "true") {
+  throw new Error("This clone is shallow. Run `git fetch --unshallow` first.");
+}
+
 const commits = git(
   "log",
   "--reverse",

@@ -4,7 +4,13 @@
  * spaces, so only the real names tell where it ends. Any other path under a root folder links to
  * the Files page when its end is sure. Each link comes from a parsed path, never from markup.
  */
-import { lifeKindPlaces, lifeKinds, type LifeKind } from "../../../shared/life-kinds.ts";
+import {
+  lifeKindPlaces,
+  lifeKinds,
+  olderLifeKindPlaces,
+  type LifeKind,
+  type LifeKindPlace,
+} from "../../../shared/life-kinds.ts";
 import { fileAddressOf } from "./file-paths.ts";
 import { lifeAddressOf } from "./life-routes.ts";
 
@@ -21,9 +27,17 @@ export type KnownLifeIds = Partial<Readonly<Record<LifeKind, readonly string[]>>
 /** The root folders of the vault template. A path under another folder is too likely to be code. */
 const rootFolders = ["Life", "Projects", "Principles", "Methods", "Toolbox", "Library"];
 
-const kindByFolder = new Map<string, LifeKind>(
-  lifeKinds.map((kind) => [lifeKindPlaces[kind].folder.slice("Life/".length), kind]),
+/** Each place of a kind, the older one of a vault that waits for its upgrade too (#940). */
+const places: readonly (readonly [LifeKind, LifeKindPlace])[] = lifeKinds.flatMap((kind) =>
+  [lifeKindPlaces[kind], olderLifeKindPlaces[kind]].flatMap((place) =>
+    place === undefined ? [] : [[kind, place] as const],
+  ),
 );
+
+const placeByFolder = new Map<string, readonly [LifeKind, LifeKindPlace]>(
+  places.map((entry) => [entry[1].folder.slice("Life/".length), entry]),
+);
+const kindByFolder = new Map<string, LifeKind>([...placeByFolder].map(([folder, [kind]]) => [folder, kind]));
 
 const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 const kindFolders = [...kindByFolder.keys()].map(escaped).join("|");
@@ -60,13 +74,14 @@ function linkAt(text: string, known: KnownLifeIds): { readonly part: VaultTextPa
     return { part: { text: path, href: fileAddressOf(path.replace(/\/$/, "")), title: path }, length: path.length };
   };
   const folder = kindPattern.exec(text);
-  const kind = kindByFolder.get(folder?.[1] ?? "");
-  if (folder === null || kind === undefined) return file();
+  const place = placeByFolder.get(folder?.[1] ?? "");
+  if (folder === null || place === undefined) return file();
+  const [kind, { mainFile: main }] = place;
   const rest = text.slice(folder[0].length);
   const id = knownIdAt(rest, known[kind] ?? []);
   if (id === null) return null;
   const after = rest.slice(id.length);
-  const mainFile = `/${lifeKindPlaces[kind].mainFile}`;
+  const mainFile = `/${main}`;
   // Another file beside the main file opens in Files.
   if (after.startsWith("/") && !after.startsWith(mainFile)) return file();
   const length = folder[0].length + id.length + (after.startsWith(mainFile) ? mainFile.length : 0);

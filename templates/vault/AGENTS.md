@@ -11,14 +11,13 @@ The vault has three parts: the person's life, what they build, and what they kno
 | Folder | What goes here | Not here |
 | --- | --- | --- |
 | `Life/About me.md` | The basics only: name, birthday, their own phone and email, region, home address, current jobs and studies, languages. | Anything else about them → the folders below. |
-| `Life/Cases/` | Matters the person deals with. A case has a goal and some steps, and it closes when the goal is reached or dropped. It lasts days or months. To tell a case from a project, ask: does something built remain after the work ends? No, it only resolves a matter → a case. A claim, a refund, a dispute, a fine, this year's tax return, a trip (also a work trip), a party, a move, a surgery, a therapy, a job application, buying or selling a home or a car, a short paid job, buying or organizing a gift. | One reminder with a date and nothing else to keep → the task app. Something that already happened and needs no follow-up → one dated line in the note of what it was about, such as a repair in the object's note. |
-| `Life/Objects/` | Things the person has or uses, even when someone else owns them: a car, a home (also one they left), a phone, a laptop, a borrowed bike, a rented parking space. Each thing's contracts and insurance go in its folder: the car insurance, the rent, the mortgage, electricity, internet at home. | A thing of someone else that the person does not use → a line in its owner's `Person.md`. |
+| `Life/Cases/` | Matters the person deals with. A case has a goal and some steps, and it closes when the goal is reached or dropped. It lasts days or months. To tell a case from a project, ask: does something built remain after the work ends? No, it only resolves a matter → a case. A claim, a refund, a dispute, a fine, this year's tax return, a trip (also a work trip), a party, a move, a surgery, a therapy, a job application, buying or selling a home or a car, a short paid job, buying or organizing a gift. | One reminder with a date and nothing else to keep → the task app. Something that already happened and needs no follow-up → one dated line in the note of what it was about, such as a repair in the item's note. |
+| `Life/Inventory/` | Everything the person has or uses, even when someone else owns it: physical or digital, a product or a service. Ask: "do I have it or use it?" A car, a home (also one they left), a phone, a borrowed bike, a passport, a will, a software licence, a streaming subscription, a gym membership, the phone line, a bank account, a card, an investment or pension plan, a loan, health insurance. Each thing's contracts and insurance go in its folder: the car insurance, the rent, the mortgage, electricity, internet at home. | A thing of someone else that the person does not use → a line in its owner's `Person.md`. A plan with steps, such as an investment plan to carry out → `Life/Cases/`. |
 | `Life/People/` | One folder for each person who matters. What the person knows about them: who they are to them, tastes, allergies, gift ideas, history, agreements made with them, such as a rule a couple sets. | Their phone, email and birthday → the contacts app. A day spent together → `Diary/`. The service of a business or a self-employed person → `Life/Providers/`. |
-| `Life/Providers/` | The businesses and self-employed people that serve the person: the car workshop, the plumber, the dentist's clinic, the hair salon, the tax adviser, the vet. What the person knows about the service: how to book, who to ask for, prices paid and whether it went well. | A place to visit some day → the maps app. A company that serves one thing through a contract, such as the car insurer or the electricity company → the folder of that thing. A bank, a subscription or the phone operator → `Life/Finances/`. An employer → `Life/Periods/`. A client → the project. |
+| `Life/Providers/` | The businesses and self-employed people that serve the person: the car workshop, the plumber, the dentist's clinic, the hair salon, the tax adviser, the vet. What the person knows about the service: how to book, who to ask for, prices paid and whether it went well. | A place to visit some day → the maps app. A company that the person deals with only through a contract, such as the car insurer, the electricity company, the bank, the phone operator or a streaming service → the `provider` key of its item in `Life/Inventory/`. An employer → `Life/Periods/`. A client → the project. |
 | `Life/Pets/` | The pets that live with the person, also a foster pet. | A pet of someone else → a line in its owner's `Person.md`. |
 | `Life/Periods/` | What the person spends their days doing, for months or years: each job, full-time studies, volunteering, a sabbatical. A period describes who they were at that time, so it feeds their CV. It has no goal to reach: it ends when they stop. It holds the record: dates, role, enrolment, contract, grades, diploma. | The day-to-day work of a job or of studies, such as meetings, clients or assignments → a project, such as the employer's folder or a study specialist. |
 | `Life/Health/` | Body and mind: allergies, diet, sleep, measurements, conditions, test results, goals, and what stays after a surgery or a treatment, such as an implant or a chronic condition. | The process of a surgery or a treatment (appointments, papers, recovery) → a case. When it closes, add what stays to `Health/`. A training plan or a routine to follow → `Methods/`. |
-| `Life/Finances/` | Money that stays: accounts, cards, loans, investment and pension plans, subscriptions, the phone line, health insurance, a will. | A contract of a thing or a home → that thing's folder. |
 | `Life/Diary/YYYY-MM-DD.md` | What happened on one day and belongs to nothing above: an outing, a dinner, a first time, a decision about life and its reasons. | A fact that stays true → its folder. |
 
 ### What they build: `Projects/`
@@ -73,32 +72,31 @@ Go down this list in order. Stop at the first yes. _What is where_ says what eac
 2. One of the basics → `Life/About me.md`.
 3. Something built remains after the work ends, even when the work has a goal, steps and an end, or a specialist → `Projects/`.
 4. A matter being handled, with steps, that ends and leaves nothing built → `Life/Cases/`.
-5. About a thing or a home → `Life/Objects/`.
-6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A bank, a subscription or an employer is not a provider. About another person → `Life/People/`. About a pet → `Life/Pets/`.
+5. About something the person has or uses: a thing, a home, a document, a licence, a subscription, a membership, a line, an account, a card or another money product → `Life/Inventory/`. A contract of a pet goes in the pet's folder in `Life/Pets/`.
+6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A company that the person deals with only through a contract, such as a bank or a streaming service, is not a provider. An employer is not one either. About another person → `Life/People/`. About a pet → `Life/Pets/`.
 7. About a stage of life → `Life/Periods/`.
 8. About body or mind → `Life/Health/`.
-9. About money that stays → `Life/Finances/`.
-10. What happened on one day → `Life/Diary/`.
-11. Otherwise it is knowledge → `Principles/`, `Methods/`, `Toolbox/` or `Library/`.
+9. What happened on one day → `Life/Diary/`.
+10. Otherwise it is knowledge → `Principles/`, `Methods/`, `Toolbox/` or `Library/`.
 
 Then:
 - **Search by name and by alias before you create anything.**
 - **When it fits two places,** put it where the person will open it, and link to it from the other. Never copy it.
 - **When the meaning is unclear, ask.** Never guess.
 - **Nothing moves when it ends.** Close it as its folder's `AGENTS.md` says: a status, a `closed` or `to` day, or its summary.
-- **A password or a key of something in the vault,** such as the Wi-Fi or a project's API key, goes in a `.secrets` file beside what it opens, which the vault stores encrypted. Never in a note or a notes app.
+- **A password or a key of something in the vault,** such as the Wi-Fi, a software licence key or a project's API key, goes in a `.secrets` file beside what it opens, which the vault stores encrypted. Never in a note or a notes app.
 - **When the person asks for something that breaks a rule,** name the rule and ask once. Their answer wins.
 - **Before deleting anything, confirm,** and offer to close it instead, as its folder's `AGENTS.md` says.
 
 ## Entities
 
-Each project, case, object, person, pet, provider and period is always a folder with one main file of a fixed name. Everything else about it sits beside that file. Create one as soon as there is something to keep about it.
+Each project, case, item, person, pet, provider and period is always a folder with one main file of a fixed name. Everything else about it sits beside that file. Create one as soon as there is something to keep about it.
 
 | Type | Example folder | Main file |
 | --- | --- | --- |
 | Project | `Projects/2026-01-31-0915-example-app/` | `AGENTS.md` |
 | Case | `Life/Cases/2026-05-15-phone-repair/` | `Case.md` |
-| Object | `Life/Objects/Car - Example Model - 1234ABC/` | `Object.md` |
+| Item | `Life/Inventory/Car - Example Model - 1234ABC/` | `Item.md` |
 | Person | `Life/People/Alex Example/` | `Person.md` |
 | Pet | `Life/Pets/Luna/` | `Pet.md` |
 | Provider | `Life/Providers/Example Garage/` | `Provider.md` |

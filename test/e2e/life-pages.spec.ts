@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /**
- * The Life pages (#911): a page for the cases, people, objects, pets and periods of the demo vault
+ * The Life pages (#911): a page for the cases, people, inventory, pets and periods of the demo vault
  * (`serve-demo.ts`). Each test runs on a computer and on a phone.
  */
 
@@ -86,29 +86,30 @@ test("the search filters a list by name, alias and summary, and says when nothin
   await expect(card(page, "Alex Example")).toBeVisible();
 
   // A tag matches with or without its #.
-  await open(page, "#/objects", "Objects");
-  const objects = page.getByRole("searchbox", { name: "Search objects" });
-  await objects.fill("#workshop");
+  await open(page, "#/inventory", "Inventory");
+  const inventory = page.getByRole("searchbox", { name: "Search the inventory" });
+  await inventory.fill("#workshop");
   await expect(page.locator(".life-card")).toHaveCount(1);
   await expect(card(page, "Example Tools")).toBeVisible();
-  await objects.fill("WORKSHOP");
+  await inventory.fill("WORKSHOP");
   await expect(page.locator(".life-card")).toHaveCount(1);
 });
 
-test("the People, Objects, Pets and Periods pages show the facts of each kind", async ({ page }) => {
+test("the People, Inventory, Pets and Periods pages show the facts of each kind", async ({ page }) => {
   await open(page, "#/people", "People");
   await expect(card(page, "Sam Example")).toContainText("sister of Alex Example");
   await expect(card(page, "Jordan Example")).toContainText("colleague at Example Corp");
 
-  await open(page, "#/objects", "Objects");
-  await expect(page.locator(".main-header .sub")).toHaveText("2 kept · 1 gone");
-  // Each type holds one object, so the cards name their type and the list has no group headings.
+  await open(page, "#/inventory", "Inventory");
+  await expect(page.locator(".main-header .sub")).toHaveText("3 kept · 1 gone");
+  // Each type holds one item, so the cards name their type and the list has no group headings.
   await expect(card(page, "Example Model").locator(".life-eyebrow")).toHaveText("Car");
   await expect(page.locator(".life-group-title")).toHaveCount(0);
   await expect(card(page, "Example Model")).toContainText("In use");
   await expect(card(page, "Example Model")).toContainText("Plate 1234ABC");
   await expect(card(page, "Example Tools")).toContainText("Lent");
   await expect(card(page, "Example Tools")).toContainText("Owner: Sam Example");
+  await expect(card(page, "Example Stream")).toContainText("9.99 EUR a month");
   await expect(card(page, "Example Phone 12")).toHaveCount(0);
   await page.getByRole("group", { name: "Show" }).getByRole("button", { name: "Gone" }).click();
   await expect(card(page, "Example Phone 12")).toContainText("Sold");
@@ -186,7 +187,7 @@ test("a path of another entity links to its page, in the text and in the facts",
     .getByRole("region", { name: "Notes" })
     .getByRole("link", { name: "Car - Example Model - 1234ABC" })
     .click();
-  // An object goes by its model, with its type under it.
+  // An item goes by its model, with its type under it.
   await expect(page.getByRole("heading", { level: 1, name: "Example Model" })).toBeVisible();
   await expect(page.locator(".main-header .sub")).toHaveText("Car");
 

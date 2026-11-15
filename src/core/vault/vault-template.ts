@@ -25,13 +25,12 @@ import polishActionFile from "../../../templates/vault/.eva/settings/text-action
 import summaryPromptFile from "../../../templates/vault/.eva/settings/saved-prompts/Summary.md" with { type: "text" };
 import evaGuideFile from "../../../templates/vault/.eva/AGENTS.md" with { type: "text" };
 import casesRulesFile from "../../../templates/vault/Life/Cases/AGENTS.md" with { type: "text" };
-import objectsRulesFile from "../../../templates/vault/Life/Objects/AGENTS.md" with { type: "text" };
+import inventoryRulesFile from "../../../templates/vault/Life/Inventory/AGENTS.md" with { type: "text" };
 import peopleRulesFile from "../../../templates/vault/Life/People/AGENTS.md" with { type: "text" };
 import petsRulesFile from "../../../templates/vault/Life/Pets/AGENTS.md" with { type: "text" };
 import providersRulesFile from "../../../templates/vault/Life/Providers/AGENTS.md" with { type: "text" };
 import periodsRulesFile from "../../../templates/vault/Life/Periods/AGENTS.md" with { type: "text" };
 import healthRulesFile from "../../../templates/vault/Life/Health/AGENTS.md" with { type: "text" };
-import financesRulesFile from "../../../templates/vault/Life/Finances/AGENTS.md" with { type: "text" };
 import diaryRulesFile from "../../../templates/vault/Life/Diary/AGENTS.md" with { type: "text" };
 
 /**
@@ -58,13 +57,12 @@ export const templateParts: Readonly<Record<string, string>> = {
  */
 const lifeRules: Readonly<Record<string, string>> = {
   "Life/Cases/AGENTS.md": casesRulesFile,
-  "Life/Objects/AGENTS.md": objectsRulesFile,
+  "Life/Inventory/AGENTS.md": inventoryRulesFile,
   "Life/People/AGENTS.md": peopleRulesFile,
   "Life/Pets/AGENTS.md": petsRulesFile,
   "Life/Providers/AGENTS.md": providersRulesFile,
   "Life/Periods/AGENTS.md": periodsRulesFile,
   "Life/Health/AGENTS.md": healthRulesFile,
-  "Life/Finances/AGENTS.md": financesRulesFile,
   "Life/Diary/AGENTS.md": diaryRulesFile,
 };
 

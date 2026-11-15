@@ -165,7 +165,7 @@ The visor and the looping waits keep their own timing, which [EVE's expressions]
 
 A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) and inspector (300 px). A page without a list or an inspector drops that column.
 
-- **Nav rail:** EVE's visor at the top, then the entries that the person chose in Settings > Personalize > Navigation (`client/nav-choice.ts`). By default, all of them show: Chats, Projects, Files, Schedules, Cases, People, Objects, Pets and Periods. A computer always shows Settings. It stays at the bottom, outside the part that scrolls. A low window still shows it. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the home page, the new chat page, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news, a setup step that is left, an unread chat whose entry is hidden, or that Eva does not answer. Offline, a crossed wifi in the warn hue takes the place of the eyes, and a tap plays no playful face.
+- **Nav rail:** EVE's visor at the top, then the entries that the person chose in Settings > Personalize > Navigation (`client/nav-choice.ts`). By default, all of them show: Chats, Projects, Files, Schedules, Cases, People, Inventory, Pets and Periods. A computer always shows Settings. It stays at the bottom, outside the part that scrolls. A low window still shows it. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the home page, the new chat page, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news, a setup step that is left, an unread chat whose entry is hidden, or that Eva does not answer. Offline, a crossed wifi in the warn hue takes the place of the eyes, and a tap plays no playful face.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column that fills the free width, and the composer. In a chat, an answer takes at most 86 % of the column, and a message of the person at most 72 %.
 - **Inspector:** the details of the selected item, such as the chat details.
@@ -347,9 +347,9 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 ### Life pages
 
-Cases, People, Objects, Pets and Periods share one page layout (`client/LifeView.tsx`). Their icons are `case`, `people`, `box`, `paw` and `timeline`.
+Cases, People, Inventory, Pets and Periods share one page layout (`client/LifeView.tsx`). Their icons are `case`, `people`, `box`, `paw` and `timeline`.
 
-Cases, a case page, People, Objects, Pets and Periods, on a computer and on a phone:
+Cases, a case page, People, Inventory, Pets and Periods, on a computer and on a phone:
 
 ![Computer](screenshots/cases-computer-light.webp) ![Phone](screenshots/cases-phone-light.webp)
 
@@ -357,7 +357,7 @@ Cases, a case page, People, Objects, Pets and Periods, on a computer and on a ph
 
 ![Computer](screenshots/people-computer-light.webp) ![Phone](screenshots/people-phone-light.webp)
 
-![Computer](screenshots/objects-computer-light.webp) ![Phone](screenshots/objects-phone-light.webp)
+![Computer](screenshots/inventory-computer-light.webp) ![Phone](screenshots/inventory-phone-light.webp)
 
 ![Computer](screenshots/pets-computer-light.webp) ![Phone](screenshots/pets-phone-light.webp)
 

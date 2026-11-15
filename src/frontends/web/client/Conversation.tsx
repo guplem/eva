@@ -30,7 +30,7 @@ import { forkedFromText, historyNotice } from "./branch-choices.ts";
 import { chatKind } from "../../../shared/chat-kind.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { endedProjectWork, tasksOfTurn, tasksStillRun } from "./chat-details.ts";
-import { Composer, storedChoices } from "./Composer.tsx";
+import { Composer, storedChoices, unsentTexts } from "./Composer.tsx";
 import {
   answerFiles,
   wholeMessages,
@@ -51,8 +51,12 @@ import {
   sentTurnCount,
   turnEndNotice,
   undoQuestion,
+  deliveryWords,
+  shownOutbox,
   type PendingMessage,
 } from "./conversation-parts.ts";
+import type { OutboxState } from "./outbox.ts";
+import { outbox, useOutbox } from "./page-outbox.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { DownloadButton } from "./DownloadButton.tsx";
 import { useShowError } from "./error-toast.tsx";
@@ -98,16 +102,6 @@ interface ConversationProps {
   readonly projectTitle?: string | null;
   /** True when Eva's machine can turn a voice note into text. */
   readonly voiceNotes: boolean;
-  /** The message that made a chat on the New chat page. It shows until the chat stores its turn. */
-  readonly firstMessage?: SentMessage | null;
-}
-
-/** A message that the person sent and the chat has not stored yet. */
-export interface SentMessage {
-  readonly sessionId: string;
-  readonly text: string;
-  /** The id that the page sent with the message (#804). */
-  readonly id: string;
 }
 
 export function Conversation({
@@ -119,7 +113,6 @@ export function Conversation({
   approvals,
   blocker,
   voiceNotes,
-  firstMessage = null,
   projectTitle = null,
 }: ConversationProps): ReactElement {
   const tree = chatTree(root, sessions);
@@ -219,7 +212,6 @@ export function Conversation({
         approvals={approvals}
         blocker={blocker}
         voiceNotes={voiceNotes}
-        firstMessage={firstMessage?.sessionId === branch.id ? firstMessage : null}
         projectTitle={projectTitle}
         forkedFrom={forkedFromNote(root, sessions)}
       />
@@ -237,7 +229,6 @@ function Branch({
   approvals,
   blocker,
   voiceNotes,
-  firstMessage,
   projectTitle,
   forkedFrom,
 }: {
@@ -251,7 +242,6 @@ function Branch({
   approvals: ConversationProps["approvals"];
   blocker: ChatBlocker | null;
   voiceNotes: boolean;
-  firstMessage: SentMessage | null;
   projectTitle: string | null;
   /** The note of a chat that came from another clone, with the chat to link, or null. */
   forkedFrom: { readonly text: string; readonly chatId: string | null } | null;
@@ -260,10 +250,8 @@ function Branch({
   const turnCount = session.turns.length;
   // A task of project work ends when its result comes back to this chat or a fork of it.
   const endedWork = useMemo(() => endedProjectWork(tree.flatMap((chat) => chat.turns)), [tree]);
-  // The New chat page sent this message before the chat opened here, so the chat starts with it.
-  const [sent, setSent] = useState<readonly PendingMessage[]>(
-    firstMessage === null ? [] : [{ text: firstMessage.text, turnCount: 0, id: firstMessage.id }],
-  );
+  // The page's outbox keeps each sent message, also the first one of the New chat page (#945).
+  const sent = useOutbox(session.id);
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<PathStep<SessionRecord> | "running" | null>(null);
   /** The question before a retry that would undo file changes (#525), or null. */
@@ -287,9 +275,10 @@ function Branch({
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
   const showError = useShowError();
-  const pending = keptPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
   const turnRuns = useTurnRuns(liveSteps !== undefined, turnCount);
+  const nextTurnCount = sentTurnCount(turnCount, turnRuns);
+  const pending = keptPending(shownOutbox(sent, nextTurnCount), turnCount);
   const working = isWorking({ live: liveSteps !== undefined, turnRuns, pending, turnCount });
   const draft = live.drafts[session.id];
   const ended = live.endedSteps[session.id] ?? null;
@@ -308,27 +297,32 @@ function Branch({
 
   // Only the stored turn of a message clears it. A message sent during a turn outlives that turn.
   useEffect(() => {
-    setSent((current) => {
-      const kept = keptPending(current, turnCount);
-      return kept.length === current.length ? current : kept;
-    });
-  }, [turnCount]);
+    outbox.forget(session.id, turnCount);
+  }, [session.id, turnCount]);
+  // A message that Eva took when the network came back waits beyond the turns that ended meanwhile.
+  useEffect(() => {
+    outbox.noteTurnCount(session.id, nextTurnCount);
+  }, [session.id, nextTurnCount]);
+  // A turn that holds a message's id confirms it, even when the answer of its send got lost.
+  const startedTurns = live.messages[session.id];
+  useEffect(() => {
+    if (startedTurns !== undefined) outbox.confirm(session.id, startedTurns);
+  }, [session.id, startedTurns]);
   // The stored turn shows the answer, or why the turn failed, so the notice waits for it.
   const turnEnd = useTurnEndNotice(turnRuns);
   const usageLimit = live.usageLimits[session.id];
   const notes = live.notes[session.id] ?? [];
 
-  const send = async (message: string): Promise<boolean> => {
-    const entry = { text: message, turnCount: sentTurnCount(turnCount, turnRuns), id: newMessageId() };
-    setSent((current) => [...current, entry]);
-    try {
-      await api.send(session.id, message, entry.id);
-      return true;
-    } catch (caught) {
-      setSent((current) => current.filter((candidate) => candidate !== entry));
-      showError(caught);
-      return false;
-    }
+  // The outbox sends the message, and tries again on a bad connection. So the box clears at once.
+  const send = (message: string): Promise<boolean> => {
+    outbox.add({ sessionId: session.id, text: message, id: newMessageId(), turnCount: nextTurnCount });
+    return Promise.resolve(true);
+  };
+
+  /** Puts the text of an unsent message back in the box, so the person changes it. */
+  const editUnsent = (id: string): void => {
+    const removed = outbox.remove(id);
+    if (removed !== undefined) unsentTexts.restore(session.id, removed.text);
   };
 
   /** Runs an action on an answer, and shows its failure. */
@@ -430,7 +424,11 @@ function Branch({
       {ownPending
         .filter((message) => message.turnCount === turnCount)
         .map((message, index) => (
-          <UserMessage key={`sent-${String(index)}`} text={message.text} />
+          <UserMessage
+            key={message.id ?? `sent-${String(index)}`}
+            text={message.text}
+            delivery={deliveryOf(message, editUnsent)}
+          />
         ))}
       {/* As its stored turn will show it, so nothing changes at the turn end. */}
       {turnMessages.map((message) => (
@@ -448,7 +446,11 @@ function Branch({
       {ownPending
         .filter((message) => message.turnCount > turnCount)
         .map((message, index) => (
-          <UserMessage key={`queued-${String(index)}`} text={message.text} />
+          <UserMessage
+            key={message.id ?? `queued-${String(index)}`}
+            text={message.text}
+            delivery={deliveryOf(message, editUnsent)}
+          />
         ))}
       {waiting.length > 0 && (
         <ApprovalRequests approvals={waiting} place={approvalPlace(session)} onAnswer={approvals.onAnswer} />
@@ -549,26 +551,75 @@ function TurnWordsView({
 }
 
 /** The person's message. A voice note is text too: the person read and fixed it in the box. */
+/** Where a sent message is on its way to Eva, with the person's actions on an unsent one (#945). */
+interface Delivery {
+  readonly state: Exclude<OutboxState, "sent">;
+  readonly reason: string | null;
+  /** True once a try failed. A first try shows its state only when it is slow. */
+  readonly retried: boolean;
+  readonly onRetry: () => void;
+  readonly onEdit: () => void;
+}
+
+function deliveryOf(message: PendingMessage, onEdit: (id: string) => void): Delivery | null {
+  const { id, state } = message;
+  if (id === undefined || state === undefined || state === "sent") return null;
+  return {
+    state,
+    reason: message.reason ?? null,
+    retried: message.retried ?? false,
+    onRetry: () => outbox.retry(id),
+    onEdit: () => onEdit(id),
+  };
+}
+
 export function UserMessage({
   text,
   fromEva = false,
   turnKey,
+  delivery = null,
 }: {
   readonly text: string;
   /** Eva sent it, such as a project work result. */
   readonly fromEva?: boolean;
   /** The key of its turn, so a pick in the branch map can scroll to it. */
   readonly turnKey?: string | undefined;
+  /** The state of a message that Eva does not have yet, or null. */
+  readonly delivery?: Delivery | null;
 }): ReactElement {
   const { props, parts } = useMessageMenu(text, fromEva ? "Actions of Eva's message" : "Actions of your message");
   return (
-    <div className="msg me" data-turn={turnKey}>
+    <div className={`msg me${delivery === null ? "" : ` ${delivery.state}`}`} data-turn={turnKey}>
       {parts}
       {/* The menu key and Shift+F10 open the menu, so a keyboard reaches Copy too. */}
       <div className="message user" tabIndex={0} {...props}>
         <div className="who">{senderName(fromEva)}</div>
         {text}
       </div>
+      {delivery !== null && <DeliveryLine delivery={delivery} />}
+    </div>
+  );
+}
+
+/** The state line under an unsent message. The state shows with an icon and a word, not with colour alone. */
+function DeliveryLine({ delivery }: { readonly delivery: Delivery }): ReactElement {
+  const { state, reason } = delivery;
+  return (
+    <div className={`delivery ${state}${delivery.retried ? "" : " first-try"}`} role="status">
+      <Icon name={state === "sending" ? "clock" : "alert"} />
+      <span>{deliveryWords(state, reason)}</span>
+      {state === "failed" && (
+        <span className="delivery-actions">
+          <button className="ghost" onClick={delivery.onRetry}>
+            <Icon name="restart" />
+            Try again
+          </button>
+          <button className="ghost" onClick={delivery.onEdit}>
+            <Icon name="pen" />
+            Edit
+          </button>
+        </span>
+      )}
     </div>
   );
 }

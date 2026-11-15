@@ -26,6 +26,7 @@ import { cueOfEvent, playCue } from "./cues.ts";
 import { approvalNoticeWords, approvalPlace, approvalsOutside, pendingOf } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { unsentTexts } from "./Composer.tsx";
+import { outbox } from "./page-outbox.ts";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { FilesView } from "./FilesView.tsx";
 import { LifeView } from "./LifeView.tsx";
@@ -431,13 +432,18 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       }
       unsentTexts.sync().catch(() => undefined);
       void recover();
+      // A phone that slept held the waits of the outbox, so a waiting message goes now (#945).
+      outbox.retryNow();
       // After a long hide the socket can read open but be dead. A quick tab switch keeps a good socket.
       if (isLongHide(hiddenAt, Date.now())) events.current?.reconnect();
       else events.current?.retryNow();
       hiddenAt = null;
     };
     // The network changed, such as after flight mode or from Wi-Fi to mobile data: the old socket is dead.
-    const onOnline = (): void => events.current?.reconnect();
+    const onOnline = (): void => {
+      events.current?.reconnect();
+      outbox.retryNow();
+    };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", onOnline);
     return () => {
@@ -467,6 +473,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       setIsConnected(connected);
       // A device that slept missed the changes of the unsent texts. A failed read keeps the copies of the tab.
       if (connected) unsentTexts.sync().catch(() => undefined);
+      // Eva answers again, so a message that waits for the network goes now (#945).
+      if (connected) outbox.retryNow();
       if (connected) void recover();
       // An Eva restart ends the widget tokens: each grid asks for new ones (#691).
       if (connected) noticeReconnect();

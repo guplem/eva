@@ -401,6 +401,7 @@ export function Composer({
       <button
         className="ghost"
         data-tooltip="Bring back the text from before the text action"
+        onPointerDown={keepFocus}
         onClick={() => {
           setText(undoText);
           setUndoText(null);

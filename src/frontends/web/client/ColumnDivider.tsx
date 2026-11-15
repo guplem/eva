@@ -97,6 +97,8 @@ export function ColumnDivider({
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     const element = column();
     if (event.button !== 0 || drag.current !== null || element === null) return;
+    // A widget's frame under the pointer takes its events, so the drag would stop halfway. The capture keeps them here.
+    event.currentTarget.setPointerCapture(event.pointerId);
     const start = {
       pointerId: event.pointerId,
       at: vertical ? event.clientY : event.clientX,

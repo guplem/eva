@@ -6321,6 +6321,14 @@ test("a long chat follows the newest message, unless the person scrolled up", as
   await expect(answer).toContainText("line 59");
   await expect(answer).toBeInViewport();
   await expect(composer).toBeInViewport();
+  // The empty box comes in with an animation after a send (#943). A click on a moving Send retries with a forced
+  // scroll into view, and the sticky box then pulls the chat down, as no person's click does.
+  await page
+    .locator(".composer-box")
+    .first()
+    .evaluate((element) =>
+      Promise.all(element.getAnimations().map((animation) => animation.finished)).then(() => undefined),
+    );
 
   const branches = page.locator(".branches");
   await branches.evaluate((element) => {

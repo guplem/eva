@@ -405,6 +405,22 @@ describe("a conversation", () => {
     expect(started[1]).toMatchObject({ userText: stored?.userText, fromEva: stored?.fromEva });
   });
 
+  test("a message whose client id came already runs once, so a page can send it again (#945)", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await Promise.all([
+      manager.send(sessionId, "lost answer", "api", { clientId: "page-1" }),
+      manager.send(sessionId, "lost answer", "api", { clientId: "page-1" }),
+    ]);
+    // A try after the turn ended is a repeat too.
+    await manager.send(sessionId, "lost answer", "api", { clientId: "page-1" });
+    expect(manager.get(sessionId).turns.map((turn) => turn.userText)).toEqual(["lost answer"]);
+    // Another chat keeps its own ids.
+    const other = newAssistantSession(manager);
+    await manager.send(other, "lost answer", "api", { clientId: "page-1" });
+    expect(manager.get(other).turns).toHaveLength(1);
+  });
+
   test("the turn start keeps a result and the person's words apart, as the stored turn does (#804)", async () => {
     const manager = createManager(new FakeEngine());
     const sessionId = newAssistantSession(manager);

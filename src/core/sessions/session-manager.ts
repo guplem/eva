@@ -320,6 +320,8 @@ interface TurnActivity {
 
 const defaultTitle = "New chat";
 const maxFollowUps = 20;
+/** The client ids that each chat keeps, so a message that a page sends again runs once (#945). */
+const keptClientIds = 100;
 
 export class SessionManager {
   private readonly options: SessionManagerOptions;
@@ -349,6 +351,11 @@ export class SessionManager {
   private readonly lastFailure = new Map<string, string>();
   /** The last message or turn start of each chat, in ms. The record keeps only the turn ends. */
   private readonly lastActivity = new Map<string, number>();
+  /**
+   * The newest client ids of each chat, oldest first, with the promise of their first send. A page
+   * that lost the answer sends a message again with the same id, and Eva must not run it twice (#945).
+   */
+  private readonly clientSends = new Map<string, Map<string, Promise<void>>>();
   /** The running turn of each Project folder, so two chats never edit one clone at once (issue 356). */
   private readonly folderTurns = new Map<string, Promise<void>>();
 
@@ -589,7 +596,17 @@ export class SessionManager {
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
   send(sessionId: string, text: string, origin: MessageOrigin = "eva", options: MessageOptions = {}): Promise<void> {
-    return this.enqueue(sessionId, text, origin, options).done;
+    const { clientId } = options;
+    if (clientId === undefined) return this.enqueue(sessionId, text, origin, options).done;
+    const sent = this.clientSends.get(sessionId) ?? new Map<string, Promise<void>>();
+    const first = sent.get(clientId);
+    if (first !== undefined) return first;
+    const done = this.enqueue(sessionId, text, origin, options).done;
+    sent.set(clientId, done);
+    // A page tries a message for a few minutes at most, so the newest ids are enough.
+    if (sent.size > keptClientIds) sent.delete(sent.keys().next().value ?? "");
+    this.clientSends.set(sessionId, sent);
+    return done;
   }
 
   /** Sends the message of a stored turn again, as a retry does, with the sender that the turn had. */
@@ -801,6 +818,7 @@ export class SessionManager {
     this.runtimes.delete(id);
     this.lastFailure.delete(id);
     this.lastActivity.delete(id);
+    this.clientSends.delete(id);
   }
 
   /**

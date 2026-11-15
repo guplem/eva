@@ -54,3 +54,9 @@ describe("autoTextHeight", () => {
     expect(autoTextHeight(720, 0)).toBe(9 * 21);
   });
 });
+
+describe("autoTextHeight with no window height", () => {
+  test("a window height that the browser did not give still shows 3 lines", () => {
+    expect(autoTextHeight(Number.NaN, 21)).toBe(3 * 21);
+  });
+});

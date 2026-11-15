@@ -35,6 +35,7 @@ export function foldsToOneRow(screen: {
 /** The tallest height of the text before it scrolls, in whole lines: 3 to 10, by the height of the visible window. */
 export function autoTextHeight(visibleHeight: number, lineHeight: number): number {
   const line = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : usualLine;
-  const lines = Math.min(mostLines, Math.max(fewestLines, Math.floor((visibleHeight * textShare) / line)));
+  const fit = Math.floor((visibleHeight * textShare) / line);
+  const lines = Number.isFinite(fit) ? Math.min(mostLines, Math.max(fewestLines, fit)) : fewestLines;
   return lines * line;
 }

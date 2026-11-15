@@ -311,7 +311,6 @@ export function Composer({
   const box = useRef<HTMLTextAreaElement>(null);
   const height = useComposerHeight(box, text);
   const visibleHeight = useVisibleHeight();
-  // The text is gone while a voice note records, so the line is measured again when it comes back.
   // A short screen, such as a phone with its keyboard up, gets one row, and the + button opens the settings (#943).
   // The box stays folded while its + menu is open: a tablet keyboard that closes must not take the menu away.
   const folded = plusOpen || foldsToOneRow({ visibleHeight, touch: isTouchScreen(), phoneSized: isPhoneSized() });

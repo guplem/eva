@@ -956,6 +956,11 @@ button.ghost .icon {
   padding-inline-end: var(--space-8);
 }
 
+/* In a folded box the expand button sits above Send in one column. The text stays tall enough to hold both. */
+.composer-box.folded:has(> .composer-expand) textarea {
+  min-height: calc(2 * var(--touch-target));
+}
+
 .composer-box.expanded textarea {
   height: var(--composer-editor-height);
   min-height: var(--composer-editor-height);

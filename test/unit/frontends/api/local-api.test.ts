@@ -2397,8 +2397,25 @@ describe("web routes", () => {
     expect(await json(await call("/api/life/pets"))).toEqual([]);
   });
 
+  test("life: a page from before #940 asks for objects, and gets each item under that old kind", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    const folder = join(vaultPath, "Life", "Inventory", "Car - Example Model - 1234ABC");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "Item.md"), "---\nkind: thing\n---\n");
+    expect(await json(await call("/api/life/objects"))).toMatchObject([
+      { kind: "objects", id: "Car - Example Model - 1234ABC" },
+    ]);
+    expect(
+      await json(await call(`/api/life/objects/${encodeURIComponent("Car - Example Model - 1234ABC")}`)),
+    ).toMatchObject({
+      kind: "objects",
+    });
+    expect(await json(await call("/api/life/inventory"))).toMatchObject([{ kind: "inventory" }]);
+  });
   test("life: an unknown kind or entity, or an id out of its folder, is not found", async () => {
     expect((await call("/api/life/health")).status).toBe(404);
+    // The kind was objects before #940. An old page in a browser still gets its list.
+    expect((await call("/api/life/objects")).status).toBe(200);
     expect((await call("/api/life/cases/2026-01-01-gone")).status).toBe(404);
     expect((await call(`/api/life/cases/${encodeURIComponent("../People")}`)).status).toBe(404);
     expect((await call(`/api/life/cases/${encodeURIComponent("a/b")}`)).status).toBe(404);

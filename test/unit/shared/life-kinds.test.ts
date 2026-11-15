@@ -6,7 +6,7 @@ describe("life kinds", () => {
     expect(lifeKinds.map((kind) => `${lifeKindPlaces[kind].folder}/*/${lifeKindPlaces[kind].mainFile}`)).toEqual([
       "Life/Cases/*/Case.md",
       "Life/People/*/Person.md",
-      "Life/Objects/*/Object.md",
+      "Life/Inventory/*/Item.md",
       "Life/Pets/*/Pet.md",
       "Life/Periods/*/Period.md",
     ]);

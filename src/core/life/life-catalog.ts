@@ -1,12 +1,12 @@
 /**
- * The entities of `Life/` for the Life pages of the web app (#911): cases, people, objects, pets
+ * The entities of `Life/` for the Life pages of the web app (#911): cases, people, inventory, pets
  * and periods. Each is a folder with a main file of a fixed name. Eva reads them tolerantly: a bad
  * main file gives a warning and never hides the others. Every read is bounded and follows no link.
  */
 import { lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { lifeKindPlaces, type LifeKind } from "../../shared/life-kinds.ts";
+import { lifeKindPlaces, olderLifeKindPlaces, type LifeKind, type LifeKindPlace } from "../../shared/life-kinds.ts";
 import {
   childFolders,
   entriesOf,
@@ -76,16 +76,15 @@ const maxFiles = 500;
 export function discoverLifeEntities(vaultPath: string, kind: LifeKind): LifeEntity[] {
   const root = realRoot(vaultPath);
   if (root === null) return [];
-  const folder = lifeKindPlaces[kind].folder;
-  // A linked `Life/` could point out of the vault (lesson 72).
-  if (!isRealFolder(root, folder)) return [];
+  const place = placeOf(root, kind);
+  if (place === null) return [];
   const secrets = secretMatcherOf(root);
   const budget = { growth: maxGrowthBytes };
-  return childFolders(join(root, folder))
+  return childFolders(join(root, place.folder))
     .sort(byId)
     .slice(0, maxEntities)
     .flatMap((id) => {
-      const read = readEntity(root, kind, id, secrets, budget);
+      const read = readEntity(root, kind, place, id, secrets, budget);
       return read === null ? [] : [read.entity];
     });
 }
@@ -95,18 +94,18 @@ export function readLifeEntity(vaultPath: string, kind: LifeKind, id: string): L
   if (!isFolderName(id)) return null;
   const root = realRoot(vaultPath);
   if (root === null) return null;
-  const folder = lifeKindPlaces[kind].folder;
-  if (!isRealFolder(root, folder)) return null;
+  const place = placeOf(root, kind);
+  if (place === null) return null;
   // The id comes from the address: Eva finds it in the listing, never through a joined path.
-  if (!childFolders(join(root, folder)).includes(id)) return null;
+  if (!childFolders(join(root, place.folder)).includes(id)) return null;
   const secrets = secretMatcherOf(root);
-  const read = readEntity(root, kind, id, secrets);
+  const read = readEntity(root, kind, place, id, secrets);
   if (read === null) return null;
   const files = entriesOf(join(root, read.entity.folder))
     .filter(
       (entry) =>
         !entry.name.startsWith(".") &&
-        entry.name !== lifeKindPlaces[kind].mainFile &&
+        entry.name !== place.mainFile &&
         !secrets.matches(`${read.entity.folder}/${entry.name}`),
     )
     .slice(0, maxFiles)
@@ -131,6 +130,18 @@ function redactValue(value: unknown, redact: (text: string) => string): unknown 
       Object.entries(value).map(([key, item]) => [redact(key), redactValue(item, redact)] as const),
     );
   return value;
+}
+
+/**
+ * The place where the vault keeps a kind, or null when it has none. A vault that waits for its
+ * structure upgrade keeps an older place, which Eva reads until the newer folder exists (#940).
+ * A linked folder could point out of the vault (lesson 72), so it is no place.
+ */
+function placeOf(root: string, kind: LifeKind): LifeKindPlace | null {
+  const place = lifeKindPlaces[kind];
+  if (isRealFolder(root, place.folder)) return place;
+  const older = olderLifeKindPlaces[kind];
+  return older !== undefined && isRealFolder(root, older.folder) ? older : null;
 }
 
 function realRoot(vaultPath: string): string | null {
@@ -180,12 +191,13 @@ function readMainFile(absolutePath: string, budget: { growth: number } | null): 
 function readEntity(
   root: string,
   kind: LifeKind,
+  place: LifeKindPlace,
   id: string,
   secrets: SecretPaths,
   budget: { growth: number } | null = null,
 ): { readonly entity: LifeEntity; readonly body: string } | null {
-  const folder = `${lifeKindPlaces[kind].folder}/${id}`;
-  const path = `${folder}/${lifeKindPlaces[kind].mainFile}`;
+  const folder = `${place.folder}/${id}`;
+  const path = `${folder}/${place.mainFile}`;
   if (secrets.matches(path)) return null;
   const absolutePath = join(root, path);
   try {

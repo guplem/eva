@@ -82,6 +82,13 @@ describe("readNavChoice", () => {
     expect(readNavChoice()).toEqual({ computer: ["chats", "files", "settings"], phone: ["chats", "pets"] });
   });
 
+  test("reads the old Objects entry as Inventory (#940)", () => {
+    useStorage(
+      new FakeStorage({ [navChoiceKey]: JSON.stringify({ computer: ["objects"], phone: ["chats", "objects"] }) }),
+    );
+    expect(readNavChoice()).toEqual({ computer: ["inventory", "settings"], phone: ["chats", "inventory"] });
+  });
+
   test("keeps the default of one form when only the other is bad", () => {
     useStorage(new FakeStorage({ [navChoiceKey]: JSON.stringify({ computer: ["chats"], phone: "files" }) }));
     expect(readNavChoice()).toEqual({ computer: ["chats", "settings"], phone: defaultNavChoice.phone });

@@ -9,10 +9,12 @@ describe("routes", () => {
     expect(lifeRouteOf("#/people/%E0%A4%A")).toEqual({ kind: "people", entityId: null });
     expect(lifeRouteOf("#/people/a/b")).toEqual({ kind: "people", entityId: null });
     expect(lifeRouteOf("#/projects")).toBeNull();
+    // The Objects page became Inventory (#940): an old bookmark still opens it.
+    expect(lifeRouteOf("#/objects/Car")).toEqual({ kind: "inventory", entityId: "Car" });
     expect(lifeRouteOf("")).toBeNull();
     expect(lifeAddressOf("pets")).toBe("#/pets");
     for (const id of ["Alex Example", "Car - Example Model - 1234ABC", "Luna 2020", "50% #1 ?"]) {
-      expect(lifeRouteOf(lifeAddressOf("objects", id))).toEqual({ kind: "objects", entityId: id });
+      expect(lifeRouteOf(lifeAddressOf("inventory", id))).toEqual({ kind: "inventory", entityId: id });
     }
   });
 });

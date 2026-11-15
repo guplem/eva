@@ -3806,7 +3806,7 @@ test("the rail shows the nine destinations, with Settings at its foot (#911)", a
     "Schedules",
     "Cases",
     "People",
-    "Objects",
+    "Inventory",
     "Pets",
     "Periods",
     "Settings",

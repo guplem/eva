@@ -268,9 +268,9 @@ function LifeCardButton({
   const { body } = card;
   const pill = lifeCardPill(body);
   const mark = body.kind === "people" || body.kind === "pets" ? body : null;
-  // A period names its span above the title. An object names its type, unless its group heading does.
-  const eyebrow = body.kind === "periods" ? body.span : body.kind === "objects" && !grouped ? body.type : null;
-  const title = body.kind === "objects" ? (body.model ?? card.title) : card.title;
+  // A period names its span above the title. An item names its type, unless its group heading does.
+  const eyebrow = body.kind === "periods" ? body.span : body.kind === "inventory" && !grouped ? body.type : null;
+  const title = body.kind === "inventory" ? (body.model ?? card.title) : card.title;
   return (
     <button
       className={`card life-card ${kind}`}
@@ -336,8 +336,8 @@ function CardBody({ body }: { readonly body: LifeCardBody }): ReactElement | nul
     }
     case "people":
       return body.relation === null ? null : <span className="life-relation">{body.relation}</span>;
-    case "objects":
-      return body.ids.length === 0 && body.owner === null ? null : (
+    case "inventory":
+      return body.ids.length === 0 && body.owner === null && body.cost === null ? null : (
         <>
           {body.ids.length > 0 && (
             <span className="tags">
@@ -349,6 +349,7 @@ function CardBody({ body }: { readonly body: LifeCardBody }): ReactElement | nul
             </span>
           )}
           {body.owner !== null && <Line icon="user">Owner: {body.owner}</Line>}
+          {body.cost !== null && <span className="life-small">{body.cost}</span>}
         </>
       );
     case "pets": {

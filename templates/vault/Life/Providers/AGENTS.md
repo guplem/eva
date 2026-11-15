@@ -27,7 +27,7 @@ summary: The car's workshop since 2025. Fair prices, slow with parts.
 
 - **Create a folder as soon as the person names a provider, even with only a name and a contact.** The fact "this is my workshop" is already useful. Ask no question to fill the other keys.
 - **The text under the front matter holds the service:** how to book, opening hours, who to ask for and a customer number. Add a verdict when the person says how a visit or a job went.
-- **A repair or a treatment keeps its own dated line, with its price,** in the note of what it was about: the object, the pet or `Life/Health/`. That line names the provider by its path. Do not copy it here.
+- **A repair or a treatment keeps its own dated line, with its price,** in the note of what it was about: the item, the pet or `Life/Health/`. That line names the provider by its path. Do not copy it here.
 - **Beside `Provider.md`:** a price list, a quote or a business card.
 
 **The provider and its people.** One fact lives in one file:
@@ -40,17 +40,17 @@ summary: The car's workshop since 2025. Fair prices, slow with parts.
 | --- | --- | --- |
 | The hair salon Example Salon, where the person always asks for Sam Example | `Life/Providers/Example Salon/Provider.md` and `Life/People/Sam Example/Person.md` | Provider: address, how to book, price of a haircut, verdicts. Person: `relation: hairdresser at Life/Providers/Example Salon`, a nickname, a football team. |
 | The self-employed plumber Joan Example | `Life/Providers/Joan Example - Plumber/Provider.md` and `Life/People/Joan Example/Person.md` | Provider: jobs, prices, "comes within 24 hours", verdicts. Person: `relation: plumber at Life/Providers/Joan Example - Plumber`, "has two kids, likes cycling". |
-| Example Garage repaired the brakes of the car | `Life/Providers/Example Garage/Provider.md` | The repair is a dated line in the car's `Object.md` that names `Life/Providers/Example Garage`. Do not copy the line into `Provider.md`. A search for the path finds every job. |
-| A dispute with the workshop over a repair | A case in `Life/Cases/` | The case links the provider and the object. When the case closes, add one verdict to the provider. |
+| Example Garage repaired the brakes of the car | `Life/Providers/Example Garage/Provider.md` | The repair is a dated line in the car's `Item.md` that names `Life/Providers/Example Garage`. Do not copy the line into `Provider.md`. A search for the path finds every job. |
+| A dispute with the workshop over a repair | A case in `Life/Cases/` | The case links the provider and the item. When the case closes, add one verdict to the provider. |
 | The dentist's clinic Example Dental | `Life/Providers/Example Dental/Provider.md` | The clinic and how to book go here. Treatments and results go to `Life/Health/`, or to a case while they go on. |
+| The gym Example Gym, where the person has a membership | `Life/Providers/Example Gym/Provider.md` and `Life/Inventory/Gym - Example Gym - 2025/Item.md` | Provider: opening hours, classes, who to ask for, verdicts. Item: `kind: membership`, `cost`, `provider: Life/Providers/Example Gym`, how to cancel. The provider's text links the item by its path. |
 
 **Not here:**
 
 - A place to visit some day, such as a restaurant to try → the maps app.
-- A company that serves one thing through a contract, such as the car insurer or the electricity company → the folder of that thing, such as its object or its pet. Health insurance → `Life/Finances/`.
-- A bank, a subscription or the phone operator → `Life/Finances/`.
+- A company that the person deals with only through a contract, such as the car insurer, the electricity company, the bank, the phone operator or a streaming service → the `provider` key of its item in `Life/Inventory/`, as plain text. When the person also visits the company, such as a gym, it is a provider too, and the item's `provider` key holds its path. A pet's insurance goes in the pet's folder.
 - An employer → `Life/Periods/`.
 - A client → the project in `Projects/`.
-- A repair or a treatment → the note of what it was about: the object, the pet, `Life/Health/` or a case.
+- A repair or a treatment → the note of what it was about: the item, the pet, `Life/Health/` or a case.
 
 **Closing:** when the person stops using a provider, set `status: former`, write the reason with its date, and update `summary`. Never move or delete the folder.

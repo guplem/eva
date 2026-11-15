@@ -501,8 +501,8 @@ export function LifeListSkeleton({ kind, label }: { readonly kind: LifeKind; rea
 
 /** A Life page before its list or its entity comes: the header, then the list or the facts of the entity. */
 /**
- * The header of an entity page, as `LifeView.tsx` draws it: a person and a pet have a mark, an object
- * has its status pill, and an object, a pet and a period have a sub line. So the title does not move.
+ * The header of an entity page, as `LifeView.tsx` draws it: a person and a pet have a mark, an item
+ * has its status pill, and an item, a pet and a period have a sub line. So the title does not move.
  */
 function LifeEntityHeaderSkeleton({ kind }: { readonly kind: LifeKind }): ReactElement {
   const { title } = lifePages[kind];
@@ -518,9 +518,9 @@ function LifeEntityHeaderSkeleton({ kind }: { readonly kind: LifeKind }): ReactE
           <h1 {...copies(".life-entity-header h1", "left")}>
             <Text width="160px" />
           </h1>
-          {kind === "objects" && <Ghost className="pill life-pill">In use</Ghost>}
+          {kind === "inventory" && <Ghost className="pill life-pill">In use</Ghost>}
         </div>
-        {(kind === "objects" || kind === "pets" || kind === "periods") && (
+        {(kind === "inventory" || kind === "pets" || kind === "periods") && (
           <div className="sub">
             <Text width="80px" />
           </div>

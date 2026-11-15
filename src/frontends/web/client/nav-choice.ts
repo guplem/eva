@@ -3,6 +3,7 @@
  * Each browser keeps its own choice in `localStorage`, as it keeps its appearance: a phone and a
  * computer need different lists. The order of the entries is fixed.
  */
+import { currentLifeKindName } from "../../../shared/life-kinds.ts";
 import { destinations, type NavEntry, type NavEntryId } from "./navigation.ts";
 
 /** A narrow window of a computer is a phone here: the tab bar shows, with its short list. */
@@ -38,7 +39,9 @@ export const faceFixedReason = "Eva's face always shows. It opens the home page.
 
 /** Keeps the known ids in the fixed order, once each, with the rules of the form. */
 function cleaned(form: NavForm, ids: readonly unknown[]): NavEntryId[] {
-  const kept = everyEntry.filter((id) => ids.includes(id) || isFixedEntry(form, id));
+  // A choice stored before a page was renamed keeps the page (#940).
+  const current = ids.map((id) => (typeof id === "string" ? currentLifeKindName(id) : id));
+  const kept = everyEntry.filter((id) => current.includes(id) || isFixedEntry(form, id));
   return form === "phone" ? kept.slice(0, maxPhoneEntries) : kept;
 }
 

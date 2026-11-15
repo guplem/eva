@@ -199,3 +199,46 @@ The examples are generic: a vault can have any notes.
 
 1. Each provider found in a `Person.md`, an `Object.md` or a `Pet.md`, as one list, with its new folder name and the facts that move. The default is "no", so "yes to all" moves nothing. The person answers "move all" to move every provider in the list.
 2. Each line of _Personal rules_ that sends a provider or a place to visit somewhere else, such as "Restaurants to try go to the task app". The default is "keep it as an exception", with the rule that it overrides.
+
+## v9
+
+- **Version:** 9
+- **Date:** 2026-11-15
+- **Pull request:** https://github.com/guplem/eva/pull/941
+- **Summary:** Everything you have or use, such as a car, a software licence, a subscription or a bank account, gets one folder: Life/Inventory. Life/Objects and Life/Finances merge into it.
+- **Migrations first:**
+
+### What changes, and why
+
+The examples are generic: a vault can have any notes.
+
+1. **`Life/Objects/` becomes `Life/Inventory/`, and each `Object.md` becomes `Item.md`.** `git mv Life/Objects Life/Inventory`, then `git mv` each `Object.md` to `Item.md` in its folder. Give each item the key `kind`: `thing` for a physical thing, or the kind that fits, such as `document` for a passport. Keep every other key. Why: one question, "do I have it or use it?", now decides. A software licence, a subscription or a bank account had no clear home, and two chats could file one in two places.
+2. **Each note of `Life/Finances/` moves to its place:**
+   - An account, a card, an investment, a pension plan, a subscription, the phone line, a will, or a loan or a policy that covers no single thing, such as a personal loan or health insurance → its own item, `Life/Inventory/<Type - Name - ID>/Item.md`. `git mv` the note to that path. Write its facts as the keys of `Life/Inventory/AGENTS.md`: `kind`, `status`, `provider`, `cost` and `renews`. Keep the rest as text. `git mv` each file that belongs to the note, such as its contract, to the item's folder. The old folder was flat, so the person approves the place of each file that is not a note.
+   - A note with one row for each of many small subscriptions, such as `Subscriptions.md` → one item for each row. `git mv` the note to the item of its first row. Copy each other row to its item, then remove it from the moved note, so each fact lives in one file.
+   - A contract of a thing, a home or a pet, such as the home insurance or a car loan → that thing's folder. For a thing or a home, add its cost to the thing's `cost` list, with `for`. For a pet, write the cost as a line in the text of `Pet.md`.
+   - A plan with steps that is not done, such as an investment plan to carry out → a case. `git mv` the note to `Life/Cases/YYYY-MM-DD-name/Case.md`, dated on the day of the note's first commit, and give it `opened` and its steps. When a done plan created a product, such as a fund, the product is an item that links the case.
+   - A goal of one account → a line in its `Item.md`. A goal with steps, such as saving for a home → a case.
+   - A method, such as how the person invests → `Methods/`.
+3. **A secret moves to a `.secrets` file,** after the person approves, and only when the vault has an encryption password. A software licence key, a full card number or a PIN that sits in plain text in a note goes to a `.secrets` file beside its `Item.md`, such as `Licence.secrets`. Write the file, but never `git add` it: `finish` refuses a plain secret on the branch. `finish` commits the file with the notes written meanwhile, and Eva encrypts it then. Remove the secret from the note in the same group as the note's move. A `.secrets` file that already exists moves with `git mv` and stays encrypted.
+4. **The root `AGENTS.md` names the new folder.** Replace these parts with the exact text of `template/`: the `Life/Cases/`, `Life/Objects/` and `Life/Providers/` rows of the _Their life_ table, where `Life/Inventory/` takes the place of `Life/Objects/`; the steps of _Where things go_, where steps 5 and 6 change and the old step 9 goes; the rule "A password or a key of something in the vault"; and the first sentence and the table of _Entities_. Remove the `Life/Finances/` row. Leave the rest of the file as it is.
+5. **`Life/Inventory/AGENTS.md` gets the exact text of `template/`,** and so do `Life/Cases/AGENTS.md`, `Life/Providers/AGENTS.md`, `Life/Health/AGENTS.md` and `Life/Diary/AGENTS.md`. Delete `Life/Finances/AGENTS.md`. Delete the empty `Life/Finances/` folder after you list its git-ignored files and move each one where the person said.
+6. **Each link follows its note.** Search every note, `.eva/widgets.json`, `.eva/schedules.json` and `.eva/secret-files` for `Objects/`, `Object.md` and `Finances/`, with or without `Life/` before them, so a relative link such as `../Finances/` shows too. Write each new path: `Life/Inventory/<folder>`, `Item.md`, or the new place of a Finances note. Replace a pattern of `.eva/secret-files` that names a whole old folder, such as `Life/Finances/**`, with one pattern for each moved secret file. Never change a dated record, such as a diary day, except for the path.
+7. **Each git-ignored file moves where the person said.** `git mv Life/Objects Life/Inventory` also moves the git-ignored files inside, but git keeps no record of them. Write each move of a git-ignored file in the list that `start` named, this one included, so `drop` and `undo` can move it back.
+8. **An account that lives only in the note of another thing,** such as a shared bank account named only in the home's note, can get its own item, after the person approves. The other note then links it by its path.
+9. **Eva reads the old folder until the upgrade ends.** The Inventory page of the web app shows `Life/Objects/` while the vault has no `Life/Inventory/`.
+
+### How to detect a vault that has it
+
+`Life/Inventory/AGENTS.md` exists. `git ls-files Life/Objects Life/Finances` lists nothing. No `Life/Inventory/*/Object.md` exists. The _Entities_ table of the root `AGENTS.md` has an `Item` row, and its _Their life_ table has no `Life/Finances/` row. Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. The place of each note in `Life/Finances/`, as one list: its new item folder and `kind`, a thing's folder, a case or `Methods/`. List each other file of the folder, such as a contract PDF, with the item that it belongs to. Ask for the year of each new item folder that no note gives. The default is the place that you propose.
+2. Each old object whose `kind` is not `thing`, such as a passport, with your proposal as the default.
+3. Each account, subscription or line that lives only in the note of another thing (item 8). The default is "no", so "yes to all" moves nothing.
+4. Each licence key, full card number or PIN in plain text in a note, and its new `.secrets` file. The default is "move it". Ask only when the vault has an encryption password. Otherwise, list them in the report.
+5. Each line of _Personal rules_ that names `Life/Objects/`, `Object.md` or `Life/Finances/`. The default is "update the path". This is the one change to _Personal rules_ that the person can approve, as in v4.
+6. Each other note that tells an agent to write to `Life/Objects/` or `Life/Finances/`, such as a method or a skill in `.eva/skills/`. The default is "update it to the new place".
+7. The edits of `.eva/schedules.json`, `.eva/widgets.json` and `.eva/secret-files` that the moves need, approved once for all.
+8. The git-ignored files of `Life/Objects/` and `Life/Finances/`, and where each one goes.

@@ -56,9 +56,8 @@ The root `AGENTS.md` has the v3 sections, such as _Personal rules_. Each folder 
 5. What to pin.
 6. Each deletion, such as a duplicate, an empty leftover folder or a leftover skill. For a duplicate, which copy stays.
 7. The schedule edits that the moves need, approved once for all.
-8. The git-ignored files of `Life/Objects/` and `Life/Finances/`, and where each one goes.
-9. The git-ignored files of the vault, and where each one goes.
-10. Each other note that mentions `Scratch/` (not a replaced file, not an existing _Personal rules_ section): point it to `.eva/scratch/`. A dated record, such as a diary day, stays as it is.
+8. The git-ignored files of the vault, and where each one goes.
+9. Each other note that mentions `Scratch/` (not a replaced file, not an existing _Personal rules_ section): point it to `.eva/scratch/`. A dated record, such as a diary day, stays as it is.
 
 ## v4
 
@@ -242,3 +241,4 @@ The examples are generic: a vault can have any notes.
 5. Each line of _Personal rules_ that names `Life/Objects/`, `Object.md` or `Life/Finances/`. The default is "update the path". This is the one change to _Personal rules_ that the person can approve, as in v4.
 6. Each other note that tells an agent to write to `Life/Objects/` or `Life/Finances/`, such as a method or a skill in `.eva/skills/`. The default is "update it to the new place".
 7. The schedule edits that the moves need, approved once for all.
+8. The git-ignored files of `Life/Objects/` and `Life/Finances/`, and where each one goes.

@@ -925,6 +925,13 @@ button.ghost .icon {
   }
 }
 
+/* The + menu holds many settings, so it scrolls before it passes the top of a window that a keyboard made low. */
+.chip-menu.composer-menu {
+  max-height: calc(var(--composer-visible-height, 100dvh) * 0.7);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* The settings of the row take the look of a menu inside the + menu. */
 .chip-menu .composer-actions {
   min-width: 0;
@@ -944,7 +951,8 @@ button.ghost .icon {
   color: var(--muted);
 }
 
-.composer-box:has(> .composer-expand) textarea {
+/* In a folded box the button sits above Send, beside the text, so only the full box makes room for it. */
+.composer-box:not(.folded):has(> .composer-expand) textarea {
   padding-inline-end: var(--space-8);
 }
 

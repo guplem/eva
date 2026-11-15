@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { autoTextHeight, foldsToOneRow, shortWindow } from "../../../../../src/frontends/web/client/composer-layout.ts";
+import {
+  autoTextHeight,
+  foldsToOneRow,
+  shortTouchWindow,
+  shortWindow,
+} from "../../../../../src/frontends/web/client/composer-layout.ts";
 
 describe("foldsToOneRow", () => {
   test("a computer with a tall window keeps the settings row", () => {
@@ -9,6 +14,15 @@ describe("foldsToOneRow", () => {
   test("a window lower than the short limit folds the box", () => {
     expect(foldsToOneRow({ visibleHeight: shortWindow - 1, touch: false, phoneSized: false })).toBe(true);
     expect(foldsToOneRow({ visibleHeight: shortWindow, touch: false, phoneSized: false })).toBe(false);
+  });
+
+  test("a laptop at 150 % scaling, about 600 px high under its bars, keeps the row", () => {
+    expect(foldsToOneRow({ visibleHeight: 600, touch: false, phoneSized: false })).toBe(false);
+  });
+
+  test("a touch screen folds below a higher limit, since its keyboard takes half the window", () => {
+    expect(foldsToOneRow({ visibleHeight: shortTouchWindow - 1, touch: true, phoneSized: false })).toBe(true);
+    expect(foldsToOneRow({ visibleHeight: shortTouchWindow, touch: true, phoneSized: false })).toBe(false);
   });
 
   test("a phone folds the box even with the keyboard down, so the row never flashes while it opens", () => {

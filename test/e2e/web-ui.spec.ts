@@ -559,7 +559,7 @@ test("a short window folds the message box to one row, and + opens every setting
 }) => {
   await logIn(page);
   const viewport = page.viewportSize();
-  await page.setViewportSize({ width: viewport?.width ?? 1280, height: 560 });
+  await page.setViewportSize({ width: viewport?.width ?? 1280, height: 440 });
   await newChat(page);
   const box = page.getByRole("textbox", { name: "Message" });
   await expect(page.locator(".composer-box.folded")).toHaveCount(1);
@@ -577,6 +577,14 @@ test("a short window folds the message box to one row, and + opens every setting
   await expect(box).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
+
+  // A saved prompt from the + menu goes at the cursor, not at the end.
+  await box.press("Home");
+  for (const _letter of "Words") await box.press("ArrowRight");
+  await page.getByRole("button", { name: "Attach and settings" }).click();
+  await menu.getByRole("button", { name: "Summary" }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(box).toHaveValue(/^Words.+ for a short window$/s);
 
   // A tall window keeps the row of chips, as before.
   await page.setViewportSize({ width: viewport?.width ?? 1280, height: viewport?.height ?? 720 });

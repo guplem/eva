@@ -42,7 +42,7 @@ function milliseconds(name: string, fallback: number): number {
 /** The page's styles, for the closed shadow root of the copy. Built once for each set of style sheets. */
 let pageStyles: { readonly count: number; readonly sheet: CSSStyleSheet } | null = null;
 
-function pageSheet(): CSSStyleSheet {
+function pageSheet(): CSSStyleSheet | null {
   const sheets = [...document.styleSheets];
   if (pageStyles?.count === sheets.length) return pageStyles.sheet;
   const rules = sheets.flatMap((sheet) => {
@@ -53,10 +53,26 @@ function pageSheet(): CSSStyleSheet {
       return [];
     }
   });
-  const sheet = new CSSStyleSheet();
-  sheet.replaceSync(rules.join("\n"));
-  pageStyles = { count: sheets.length, sheet };
-  return sheet;
+  try {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(rules.join("\n"));
+    pageStyles = { count: sheets.length, sheet };
+    return sheet;
+  } catch {
+    // An older browser builds no style sheet by script, so it plays no morph.
+    return null;
+  }
+}
+
+/** Copies the page's styles while the page rests, so the first send does not spend a frame on it. */
+export function prepareSendMorph(): () => void {
+  // Safari has no idle callback, so it waits a second instead.
+  if (!("requestIdleCallback" in window)) {
+    const timer = setTimeout(pageSheet, 1000);
+    return () => clearTimeout(timer);
+  }
+  const handle = window.requestIdleCallback(() => pageSheet());
+  return () => window.cancelIdleCallback(handle);
 }
 
 function layer(className: string): HTMLDivElement {
@@ -90,7 +106,10 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
   const field = shell.querySelector("textarea");
   const copiedField = copy.querySelector("textarea");
   if (field !== null && copiedField !== null) copiedField.value = field.value;
-  surface.append(copy);
+  // The box's chips take their look from the .composer around it, so the copy gets one too.
+  const holder = layer("composer");
+  holder.append(copy);
+  surface.append(holder);
   let cancelled = false;
   let frame = 0;
   // The finish of this morph only: a cancel must not end the morph of a later send.
@@ -100,17 +119,25 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
     requestAnimationFrame(() => {
       if (cancelled) return;
       const newest = (): HTMLElement | null => {
-        const found = [...chat.querySelectorAll<HTMLElement>(bubbleSelector)].at(-1) ?? null;
+        // The first message of a new chat moves to the chat's own page. The bubble is then in a new branch.
+        const root = chat.isConnected ? chat : document;
+        const found = [...root.querySelectorAll<HTMLElement>(bubbleSelector)].at(-1) ?? null;
         return found === before || found?.isConnected !== true ? null : found;
       };
       const first = newest();
       if (first === null) return;
+      // A bubble out of sight, such as below a chat that the person scrolled up, has no place to land on.
+      const landing = boxOf(first);
+      if (landing.y + landing.height <= 0 || landing.y >= window.innerHeight) return;
+      const styles = pageSheet();
+      if (styles === null) return;
+      let locked: HTMLElement | null = first;
       const ghost = layer("send-morph");
       ghost.setAttribute("aria-hidden", "true");
       // A closed shadow root hides the copy from the page's queries and from the browser tests: the page holds one
       // chip and one bubble, not two, while the copy flies.
       const inside = ghost.attachShadow({ mode: "closed" });
-      inside.adoptedStyleSheets = [pageSheet()];
+      inside.adoptedStyleSheets = [styles];
       const face = layer("send-morph-bubble");
       const bubbleStyle = getComputedStyle(first);
       face.style.background = bubbleStyle.backgroundColor;
@@ -149,7 +176,10 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
       const guard = setTimeout(finish, duration + 500);
       const started = performance.now();
       const step = (now: number): void => {
-        const bubble = newest();
+        // The morph keeps its bubble. It looks again only when React swaps it for the stored one, so a message
+        // from another device that comes meanwhile does not take its place.
+        if (locked?.isConnected !== true) locked = newest();
+        const bubble = locked;
         if (cancelled || bubble === null) {
           finish();
           return;

@@ -11,7 +11,6 @@
  * A text action rewrites the typed text and sends nothing; Undo brings the typed text back.
  */
 import {
-  Fragment,
   useEffect,
   useId,
   useRef,
@@ -53,10 +52,10 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { useMentionPicker } from "./MentionPicker.tsx";
-import { MenuButton, type MenuItem } from "./Menu.tsx";
+import { MenuButton, MenuItems, type MenuItem } from "./Menu.tsx";
 import { composerMenuItems, insertedText } from "./menu-text.ts";
 import { setupBlock } from "./new-chat.ts";
-import { startSendMorph } from "./send-morph-player.ts";
+import { prepareSendMorph, startSendMorph } from "./send-morph-player.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType, withHeardText } from "./voice-notes.ts";
@@ -217,6 +216,12 @@ export function Composer({
   const [undoText, setUndoText] = useState<string | null>(null);
   /** The number of the newest text action run. A run whose number is old ends with no change. */
   const actionRun = useRef(0);
+  /** True while the large editor is open, for a text too long for the box. */
+  const [expanded, setExpanded] = useState(false);
+  /** True while the + menu of a folded box is open. */
+  const [plusOpen, setPlusOpen] = useState(false);
+  // The morph copies the page's styles. Doing it while the page rests keeps the first send smooth.
+  useEffect(prepareSendMorph, []);
   // The box shows another chat now. A late answer belongs to the old chat's text, so it must not land here.
   useEffect(() => {
     actionRun.current += 1;
@@ -224,7 +229,13 @@ export function Composer({
     touched.current = false;
     setRewriting(null);
     setUndoText(null);
+    // The large editor belongs to the old chat's text.
+    setExpanded(false);
   }, [draftKey]);
+  // A locked box takes no text, so it closes the large editor.
+  useEffect(() => {
+    if (blocker !== null) setExpanded(false);
+  }, [blocker]);
   const showError = useShowError();
   const runAction = async (name: string): Promise<void> => {
     const before = text;
@@ -244,8 +255,14 @@ export function Composer({
     }
   };
   const insertPrompt = (inserted: string): void => {
-    // With no cursor from the person, the prompt goes at the end: a browser can put a restored draft's cursor at its start.
-    const selection = caret.current ?? { start: text.length, end: text.length };
+    // The + menu keeps the focus in the text, so the cursor is read there. With no cursor from the person, the prompt goes
+    // at the end: a browser can put a restored draft's cursor at its start.
+    const field = box.current;
+    const live =
+      field !== null && document.activeElement === field && touched.current
+        ? { start: field.selectionStart, end: field.selectionEnd }
+        : null;
+    const selection = live ?? caret.current ?? { start: text.length, end: text.length };
     const next = insertedText(text, selection, inserted);
     setText(next.text);
     setUndoText(null);
@@ -264,8 +281,6 @@ export function Composer({
 
   /** The card of the box, which the send morph copies. */
   const shell = useRef<HTMLDivElement>(null);
-  /** True while the large editor is open, for a text too long for the box. */
-  const [expanded, setExpanded] = useState(false);
 
   const send = async (): Promise<void> => {
     const message = messageWithFiles(text, [...mentions.notes(text), ...notes]);
@@ -296,9 +311,12 @@ export function Composer({
   const box = useRef<HTMLTextAreaElement>(null);
   const height = useComposerHeight(box, text);
   const visibleHeight = useVisibleHeight();
-  const lineHeight = useLineHeight(box);
+  // The text is gone while a voice note records, so the line is measured again when it comes back.
   // A short screen, such as a phone with its keyboard up, gets one row, and the + button opens the settings (#943).
-  const folded = foldsToOneRow({ visibleHeight, touch: isTouchScreen(), phoneSized: isPhoneSized() });
+  // The box stays folded while its + menu is open: a tablet keyboard that closes must not take the menu away.
+  const folded = plusOpen || foldsToOneRow({ visibleHeight, touch: isTouchScreen(), phoneSized: isPhoneSized() });
+  // The text is gone while a voice note records, so the line is measured again when it comes back.
+  const lineHeight = useLineHeight(box, [folded, block === null, voice.state.phase]);
   const locked = block !== null;
   // On a computer the person types into a chat at once. On a touch screen the focus would raise the keyboard over the chat.
   useEffect(() => {
@@ -410,7 +428,7 @@ export function Composer({
         </button>
       )}
       {showStop ? (
-        <button className="send stop" aria-label="Stop" data-tooltip="Stop" onClick={onStop}>
+        <button className="send stop" aria-label="Stop" data-tooltip="Stop" onPointerDown={keepFocus} onClick={onStop}>
           <Icon name="stop" />
         </button>
       ) : (
@@ -419,6 +437,8 @@ export function Composer({
             className="send"
             // The send itself plays its cue, also for the Enter key.
             data-cue="none"
+            // The keyboard of a phone stays open for the next message, as in a messaging app.
+            onPointerDown={keepFocus}
             aria-label="Send"
             data-tooltip="Send"
             disabled={
@@ -447,7 +467,12 @@ export function Composer({
           ...(folded ? ["folded"] : []),
           ...(expanded ? ["expanded"] : []),
         ].join(" ")}
-        style={{ "--composer-editor-height": `${String(Math.round(visibleHeight * editorShare))}px` } as CSSProperties}
+        style={
+          {
+            "--composer-editor-height": `${String(Math.round(visibleHeight * editorShare))}px`,
+            "--composer-visible-height": `${String(Math.round(visibleHeight))}px`,
+          } as CSSProperties
+        }
         onDragOver={(event) => {
           if (!takesFiles || !event.dataTransfer.types.includes("Files")) return;
           // Without this, the browser opens the dropped file in place of Eva.
@@ -478,7 +503,7 @@ export function Composer({
             onWidth={height.onHeight}
           />
         )}
-        {block === null && (height.overflows || expanded) && (
+        {(expanded || (block === null && height.overflows)) && (
           <button
             className="icon-button composer-expand"
             aria-label={expanded ? "Close the large editor" : "Open the large editor"}
@@ -513,6 +538,7 @@ export function Composer({
               onChanged={onChanged}
               trigger="plus"
               actions={plusActions}
+              onOpenChange={setPlusOpen}
             />
           )}
           <textarea
@@ -651,6 +677,7 @@ function EngineChip({
   onChanged,
   trigger = "chip",
   actions = [],
+  onOpenChange,
 }: {
   readonly session: ComposerChat;
   readonly choices: ChatChoices;
@@ -660,9 +687,17 @@ function EngineChip({
   readonly trigger?: "chip" | "plus";
   /** The other settings of the row, such as Attach a file and the text actions, above the engine. */
   readonly actions?: readonly MenuItem[];
+  readonly onOpenChange?: (open: boolean) => void;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   useBackLayer(open, () => setOpen(false));
+  const tell = useRef(onOpenChange);
+  tell.current = onOpenChange;
+  useEffect(() => {
+    tell.current?.(open);
+    // A menu that unmounts open, such as on a send, must not leave the box folded.
+    return () => tell.current?.(false);
+  }, [open]);
   const [found, setFound] = useState<readonly EngineName[]>([]);
   const [savingCount, setSaving] = useState(0);
   const saving = savingCount > 0;
@@ -799,7 +834,11 @@ function EngineChip({
               event.preventDefault();
           }}
         >
-          {actions.length > 0 && <MenuActions items={actions} onChosen={() => setOpen(false)} />}
+          {actions.length > 0 && (
+            <div className="menu composer-actions" role="group" aria-label="Actions">
+              <MenuItems items={actions} onChosen={() => setOpen(false)} />
+            </div>
+          )}
           {lock !== null ? (
             <p>{lock}</p>
           ) : (
@@ -836,41 +875,6 @@ function EngineChip({
           {effortShown && <EffortSlider effort={picked ?? session.effort} busy={saving} onPick={pickEffort} />}
         </div>
       )}
-    </div>
-  );
-}
-
-/** The other settings of the row, in the + menu: a list like a menu's, with a heading for each group. */
-function MenuActions({
-  items,
-  onChosen,
-}: {
-  readonly items: readonly MenuItem[];
-  readonly onChosen: () => void;
-}): ReactElement {
-  return (
-    <div className="menu composer-actions" role="group" aria-label="Actions">
-      {items.map((item, index) => (
-        <Fragment key={`${item.group ?? ""}-${item.label}`}>
-          {item.group !== undefined && item.group !== items[index - 1]?.group && (
-            <span className="menu-group">
-              {item.groupIcon !== undefined && <Icon name={item.groupIcon} />}
-              {item.group}
-            </span>
-          )}
-          <button
-            // Not `disabled`: a turned-off item keeps the focus, as in a menu.
-            aria-disabled={item.disabled === true ? true : undefined}
-            onClick={() => {
-              if (item.disabled === true) return;
-              onChosen();
-              item.onChoose();
-            }}
-          >
-            {item.icon !== undefined && <Icon name={item.icon} />} {item.label}
-          </button>
-        </Fragment>
-      ))}
     </div>
   );
 }
@@ -1072,7 +1076,11 @@ function isPhoneSized(): boolean {
 
 /** The height of the part of the page that the person sees. A phone keyboard makes it lower. */
 function useVisibleHeight(): number {
-  const read = (): number => window.visualViewport?.height ?? window.innerHeight;
+  // A pinch zoom also makes the visible part smaller, so the scale gives back the window's own height.
+  const read = (): number => {
+    const view = window.visualViewport;
+    return view === null ? window.innerHeight : view.height * view.scale;
+  };
   const [height, setHeight] = useState(read);
   useEffect(() => {
     const follow = (): void => setHeight(read());
@@ -1087,12 +1095,12 @@ function useVisibleHeight(): number {
 }
 
 /** The height of one line of the text, so the box grows in whole lines. NaN until the box is on the page. */
-function useLineHeight(box: RefObject<HTMLTextAreaElement | null>): number {
+function useLineHeight(box: RefObject<HTMLTextAreaElement | null>, changes: readonly unknown[]): number {
   const [line, setLine] = useState(Number.NaN);
   useEffect(() => {
     const element = box.current;
     if (element !== null) setLine(Number.parseFloat(getComputedStyle(element).lineHeight));
-  }, [box]);
+  }, [box, ...changes]);
   return line;
 }
 

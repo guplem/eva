@@ -37,7 +37,7 @@ export interface OutboxTimers {
 }
 
 export interface OutboxOptions {
-  /** `repeat`: Eva had the message already, from a try whose answer got lost. */
+  /** `repeat`: a turn already holds the message, from a try whose answer got lost. */
   readonly send: (sessionId: string, text: string, id: string) => Promise<{ readonly repeat: boolean }>;
   readonly timers: OutboxTimers;
 }
@@ -45,10 +45,18 @@ export interface OutboxOptions {
 /** The wait before each new try. A phone often gets its network back within a minute. */
 export const retryWaitsMs: readonly number[] = [2_000, 5_000, 15_000, 30_000, 60_000];
 
+/** Why a message failed that waited behind a message that Eva refused. Its own connection was fine. */
+export const earlierRefused = "An earlier message was not sent.";
+
 /** True for a failure that a later try can fix: no network, no answer in time, or a fault on Eva's side. */
 function canTryAgain(error: unknown): boolean {
   if (!(error instanceof ApiError)) return true;
   return error.status >= 500 || error.status === 408 || error.status === 429;
+}
+
+/** The reason of a message that fails with an earlier one: a refusal of the earlier one is not its own. */
+function followerReason(earlierReason: string | null): string | null {
+  return earlierReason === null ? null : earlierRefused;
 }
 
 interface Slot {
@@ -77,12 +85,18 @@ export class Outbox {
     readonly id: string;
     readonly turnCount: number;
   }): void {
-    this.slots.push({
+    const slot: Slot = {
       entry: { ...message, state: "sending", reason: null, retried: false },
       tries: 0,
       inFlight: false,
       timer: null,
-    });
+    };
+    // Behind a message that waits or failed, the new message waits or fails too, so the order stays.
+    const earlier = this.headOf(message.sessionId);
+    this.slots.push(slot);
+    if (earlier?.entry.state === "waiting") this.set(slot, { state: "waiting" });
+    if (earlier?.entry.state === "failed")
+      this.set(slot, { state: "failed", reason: followerReason(earlier.entry.reason) });
     this.pump(message.sessionId);
     this.changed();
   }
@@ -179,7 +193,7 @@ export class Outbox {
 
   /** Starts a try of the first unsent message of a chat, when nothing holds it. */
   private pump(sessionId: string): void {
-    const head = this.slots.find((slot) => slot.entry.sessionId === sessionId && slot.entry.state !== "sent");
+    const head = this.headOf(sessionId);
     if (head === undefined || head.inFlight) return;
     // A message that only waited behind an earlier one has no timer of its own: it goes now.
     if (head.entry.state === "waiting" && head.timer === null) {
@@ -242,8 +256,13 @@ export class Outbox {
     for (const later of this.laterOf(slot)) {
       if (later.entry.state === "sent") continue;
       this.stopTimer(later);
-      this.set(later, { state: "failed", reason: null });
+      this.set(later, { state: "failed", reason: followerReason(reason) });
     }
+  }
+
+  /** The first message of a chat that Eva does not have yet. */
+  private headOf(sessionId: string): Slot | undefined {
+    return this.slots.find((slot) => slot.entry.sessionId === sessionId && slot.entry.state !== "sent");
   }
 
   private laterOf(slot: Slot): Slot[] {

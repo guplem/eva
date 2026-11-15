@@ -550,7 +550,6 @@ function TurnWordsView({
   );
 }
 
-/** The person's message. A voice note is text too: the person read and fixed it in the box. */
 /** Where a sent message is on its way to Eva, with the person's actions on an unsent one (#945). */
 interface Delivery {
   readonly state: Exclude<OutboxState, "sent">;
@@ -573,6 +572,7 @@ function deliveryOf(message: PendingMessage, onEdit: (id: string) => void): Deli
   };
 }
 
+/** The person's message. A voice note is text too: the person read and fixed it in the box. */
 export function UserMessage({
   text,
   fromEva = false,

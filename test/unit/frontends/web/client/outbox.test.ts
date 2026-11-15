@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Outbox, retryWaitsMs, type OutboxEntry } from "../../../../../src/frontends/web/client/outbox.ts";
+import {
+  earlierRefused,
+  Outbox,
+  retryWaitsMs,
+  type OutboxEntry,
+} from "../../../../../src/frontends/web/client/outbox.ts";
 import { ApiError } from "../../../../../src/frontends/web/client/request.ts";
 
 interface Call {
@@ -133,6 +138,31 @@ describe("Outbox", () => {
     calls[1]?.resolve();
     await settle();
     expect(calls.map((call) => call.id)).toEqual(["m1", "m1", "m2"]);
+  });
+
+  test("a message added behind a failed or waiting one takes its state, so it never shows Sending for nothing", async () => {
+    const { outbox, calls, runTimers, settle } = setup();
+    outbox.add({ sessionId: "s1", text: "one", id: "m1", turnCount: 0 });
+    calls[0]?.reject(offline);
+    await settle();
+    outbox.add({ sessionId: "s1", text: "two", id: "m2", turnCount: 0 });
+    expect(states(outbox.list("s1"))).toEqual(["one:waiting", "two:waiting"]);
+    runTimers();
+    calls[1]?.reject(new ApiError(400, "No."));
+    await settle();
+    outbox.add({ sessionId: "s1", text: "three", id: "m3", turnCount: 0 });
+    expect(states(outbox.list("s1"))).toEqual(["one:failed", "two:failed", "three:failed"]);
+    expect(calls).toHaveLength(2);
+  });
+
+  test("a message that fails behind a refused one says so, not that the connection failed", async () => {
+    const { outbox, calls, settle } = setup();
+    outbox.add({ sessionId: "s1", text: "one", id: "m1", turnCount: 0 });
+    outbox.add({ sessionId: "s1", text: "two", id: "m2", turnCount: 0 });
+    calls[0]?.reject(new ApiError(400, "No."));
+    await settle();
+    outbox.add({ sessionId: "s1", text: "three", id: "m3", turnCount: 0 });
+    expect(outbox.list("s1").map((entry) => entry.reason)).toEqual(["No.", earlierRefused, earlierRefused]);
   });
 
   test("a network that comes back tries each waiting message at once", async () => {

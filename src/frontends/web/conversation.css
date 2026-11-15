@@ -717,7 +717,8 @@ button.ghost .icon {
   border-radius: 0;
   resize: none;
   min-height: 24px;
-  max-height: 40vh;
+  /* The adaptive height of #943 follows the screen. A drag of the handle sets --composer-height instead. */
+  max-height: var(--composer-auto-height, 40vh);
   field-sizing: content;
   outline: none;
 }
@@ -870,6 +871,129 @@ button.ghost .icon {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* The line of the text. A folded box (#943) puts the + button and Send in it too. */
+.composer-line {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.composer-line textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A short screen gets one row: the + button, the text and Send. */
+.composer-box.folded {
+  padding: var(--space-1);
+  gap: var(--space-1);
+}
+
+.composer-box.folded textarea {
+  margin-block: var(--space-2);
+}
+
+.composer-box.folded > .composer-files,
+.composer-box.folded > .composer-row {
+  padding: 0 var(--space-2) var(--space-1);
+}
+
+/* The + menu opens above the whole box, not only above the button. */
+.composer-box.folded .chip-picker {
+  position: static;
+}
+
+/* The + button matches Send, so the row stays balanced around the text. */
+.composer-plus {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--muted);
+}
+
+@media (pointer: coarse) {
+  .composer-plus {
+    width: var(--touch-target);
+    height: var(--touch-target);
+  }
+}
+
+/* The + menu holds many settings, so it scrolls before it passes the top of a window that a keyboard made low. */
+.chip-menu.composer-menu {
+  max-height: calc(var(--composer-visible-height, 100dvh) * 0.7);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The settings of the row take the look of a menu inside the + menu. */
+.chip-menu .composer-actions {
+  min-width: 0;
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+
+/* A text too long for the box offers the large editor from the top corner. */
+.composer-expand {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 1;
+  color: var(--muted);
+}
+
+/* In a folded box the button sits above Send, beside the text, so only the full box makes room for it. */
+.composer-box:not(.folded):has(> .composer-expand) textarea {
+  padding-inline-end: var(--space-8);
+}
+
+/* In a folded box the expand button sits above Send in one column. The text stays tall enough to hold both. */
+.composer-box.folded:has(> .composer-expand) textarea {
+  min-height: calc(2 * var(--touch-target));
+}
+
+.composer-box.expanded textarea {
+  height: var(--composer-editor-height);
+  min-height: var(--composer-editor-height);
+  max-height: none;
+}
+
+/* The send morph (#943): a copy of the box flies to the new bubble. It takes no click. */
+.send-morph {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.send-morph-box,
+.send-morph-bubble {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* The copy lives in a closed shadow root, so these rules name no ancestor. They outweigh the usual box and bubble. */
+.composer-box.send-morph-copy,
+.message.user.send-morph-words {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  max-width: none;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
 }
 
 .composer-row .grow {

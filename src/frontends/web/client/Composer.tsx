@@ -400,7 +400,6 @@ export function Composer({
       <button
         className="ghost"
         data-tooltip="Bring back the text from before the text action"
-        onPointerDown={keepFocus}
         onClick={() => {
           setText(undoText);
           setUndoText(null);
@@ -428,7 +427,7 @@ export function Composer({
         </button>
       )}
       {showStop ? (
-        <button className="send stop" aria-label="Stop" data-tooltip="Stop" onPointerDown={keepFocus} onClick={onStop}>
+        <button className="send stop" aria-label="Stop" data-tooltip="Stop" onClick={onStop}>
           <Icon name="stop" />
         </button>
       ) : (
@@ -437,8 +436,6 @@ export function Composer({
             className="send"
             // The send itself plays its cue, also for the Enter key.
             data-cue="none"
-            // The keyboard of a phone stays open for the next message, as in a messaging app.
-            onPointerDown={keepFocus}
             aria-label="Send"
             data-tooltip="Send"
             disabled={

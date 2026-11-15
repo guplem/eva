@@ -283,6 +283,32 @@ describe("the vault template", () => {
     expect(files["Life/Health/AGENTS.md"]).toContain("Health insurance → `Life/Inventory/`.");
   });
 
+  test("files stay whole by group, small files stay, and a spreadsheet keeps its formulas as text (#949)", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    // A group with one big file goes to the cloud drive whole, so no set ends up split in two places.
+    expect(map).toContain("Decide by group, not by file");
+    expect(map).toContain("the whole group goes to the cloud drive");
+    expect(map).toContain("A big file, or a group of files that holds one, such as");
+    // A file that the web also has can disappear from it, so the vault keeps it.
+    expect(map).toContain("Keep a small file, even when the web has a copy.");
+    expect(map).toContain("Fonts always stay with their design.");
+    // A spreadsheet keeps its logic searchable, and its open export beside it.
+    expect(map).toContain("one section for each tab");
+    expect(map).toContain("ISO/IEC 29500");
+    expect(map).toContain("`__xludf.DUMMYFUNCTION`");
+  });
+
+  test("a period files its records by topic and keeps the work of a short job (#949)", () => {
+    const periods = vaultTemplateFiles(answers)["Life/Periods/AGENTS.md"] ?? "";
+    expect(periods).toContain("`Documents/<topic>/`");
+    expect(periods).toContain("`Documents/Payslips/`");
+    expect(periods).toContain("`2025-01-15 Employment Contract.pdf`");
+    expect(periods).toContain("Never put an ID number in a file name.");
+    expect(periods).toContain("`Work/`");
+    expect(periods).toContain("`## Documents` and `## Work files`");
+  });
+
   test("every vault migration leaves each file of a new vault as the template wrote it (#772)", () => {
     const files = vaultTemplateFiles(answers);
     const vault = join(folder, "migrated");

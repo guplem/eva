@@ -54,6 +54,13 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBeGreaterThanOrEqual(9);
   });
 
+  test("v10 offers the rules for file groups, small files, spreadsheets and job records (#949)", () => {
+    const v10 = structureChanges.find((change) => change.version === 10);
+    expect(v10?.summary).toStartWith("Clearer rules for the files you keep");
+    expect(v10?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(10);
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

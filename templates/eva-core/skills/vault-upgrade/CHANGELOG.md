@@ -242,3 +242,29 @@ The examples are generic: a vault can have any notes.
 6. Each other note that tells an agent to write to `Life/Objects/` or `Life/Finances/`, such as a method or a skill in `.eva/skills/`. The default is "update it to the new place".
 7. The edits of `.eva/schedules.json`, `.eva/widgets.json` and `.eva/secret-files` that the moves need, approved once for all.
 8. The git-ignored files of `Life/Objects/` and `Life/Finances/`, and where each one goes.
+
+## v10
+
+- **Version:** 10
+- **Date:** 2026-11-15
+- **Pull request:** https://github.com/guplem/eva/pull/950
+- **Summary:** Clearer rules for the files you keep: a group of files stays whole, small files stay even when the web has them, a spreadsheet keeps its formulas as text, and each job files its records by topic.
+- **Migrations first:**
+
+### What changes, and why
+
+1. **The root `AGENTS.md` decides by group, not by file.** Add the rules "Decide by group, not by file" and "Keep a small file, even when the web has a copy" of `template/` after the rule "Small files can live in the vault". Replace the cloud drive row of the table of _Outside the vault_ with the exact text of `template/`. Leave the rest of the file as it is. Why: a folder of captures with one big file ended up split between the vault and the cloud drive, and a person who opened the vault saw an incomplete set. Fonts and free kits were left out because the web had them, then had to come back from the trash.
+2. **The root `AGENTS.md` says how to keep a spreadsheet.** Add the two spreadsheet rules of _Writing_ from `template/`, after the rule "Prefer plain text". Why: each chat stored a spreadsheet in its own way. An export loses Google-only functions and scripts, and values alone hide the logic.
+3. **The root `AGENTS.md` keeps the few work files of a job in its period.** Replace the _Not here_ cell of the `Life/Periods/` row of the _Their life_ table with the exact text of `template/`. Leave the rest of the file as it is.
+4. **`Life/Periods/AGENTS.md` gets the exact text of `template/`.** The records of a period go in `Documents/<topic>/`, each named `YYYY-MM-DD Name.ext`. The few work files of a job with little material go in `Work/`. Why: "beside `Period.md`" gave no structure, and a project for one to-do list added a folder that nobody opens.
+5. **Existing periods can follow the new layout,** after the person approves. For each period with records loose beside `Period.md`, `git mv` each record to `Documents/<topic>/YYYY-MM-DD Name.ext`, with the date in the document. Take any ID number out of the name. Add the `## Documents` section to `Period.md`. Fix each link that a move breaks.
+6. **Nothing else moves.** No note leaves the vault, and no file comes back from the cloud drive. `README.md`, `.eva/assistant.md`, `Life/About me.md` and each other `Life/*/AGENTS.md` stay as they are.
+
+### How to detect a vault that has it
+
+The root `AGENTS.md` says "Decide by group, not by file." and "A spreadsheet becomes a note, plus its export." `Life/Periods/AGENTS.md` names `Documents/<topic>/` and `Work/`. Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. Each line of _Personal rules_ that says where a big file, a font, a spreadsheet or a job's record goes. The default is "keep it as an exception", with the rule that it overrides.
+2. Each period with records loose beside `Period.md`, as one list, with the new path of each record (item 5). The default is "no", so "yes to all" moves nothing. The person answers "move all" to move every record in the list.

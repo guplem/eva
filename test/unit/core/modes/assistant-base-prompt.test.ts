@@ -85,7 +85,7 @@ describe("assistantBasePrompt", () => {
       "Toolbox/",
       "Library/",
       "Cases/",
-      "Objects/",
+      "Inventory/",
       "People/",
       "Pets/",
       "Periods/",

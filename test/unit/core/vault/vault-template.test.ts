@@ -72,10 +72,9 @@ describe("the vault template", () => {
       "Life/About me.md",
       "Life/Cases/AGENTS.md",
       "Life/Diary/AGENTS.md",
-      "Life/Finances/AGENTS.md",
       "Life/Health/AGENTS.md",
       "Life/Health/Allergies and Diet.md",
-      "Life/Objects/AGENTS.md",
+      "Life/Inventory/AGENTS.md",
       "Life/People/AGENTS.md",
       "Life/Periods/AGENTS.md",
       "Life/Pets/AGENTS.md",
@@ -165,17 +164,7 @@ describe("the vault template", () => {
     for (const folder of ["Principles/", "Methods/", "Toolbox/", "Library/", "Projects/", ".eva/"]) {
       expect(map).toContain(`\`${folder}`);
     }
-    for (const folder of [
-      "Cases",
-      "Objects",
-      "People",
-      "Pets",
-      "Providers",
-      "Periods",
-      "Health",
-      "Finances",
-      "Diary",
-    ]) {
+    for (const folder of ["Cases", "Inventory", "People", "Pets", "Providers", "Periods", "Health", "Diary"]) {
       expect(map).toContain(`\`Life/${folder}/`);
     }
     for (const heading of ["## What is where", "## Outside the vault", "## Where things go", "## Entities"]) {
@@ -207,7 +196,7 @@ describe("the vault template", () => {
   test("each folder of Life/ has its own rules, and Eva's folder has its guide (#772)", () => {
     const files = vaultTemplateFiles(answers);
     expect(files["Life/Cases/AGENTS.md"]).toContain("Case.md");
-    expect(files["Life/Objects/AGENTS.md"]).toContain("Object.md");
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("Item.md");
     expect(files["Life/People/AGENTS.md"]).toContain("Person.md");
     expect(files["Life/Pets/AGENTS.md"]).toContain("Pet.md");
     expect(files["Life/Periods/AGENTS.md"]).toContain("Period.md");
@@ -218,17 +207,19 @@ describe("the vault template", () => {
     expect(files[".eva/AGENTS.md"]).toContain("`schedules.json`");
     expect(files["README.md"]).not.toContain("Life/");
     // The repository is public: the template keeps neutral examples only.
-    expect(files["Life/Finances/AGENTS.md"]).toContain("Example Bank");
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("Example Bank");
     expect(Object.values(files).join("\n")).not.toMatch(/ES-CT|Barcelona/);
     // Review fixes where two texts disagreed (#772).
     expect(files["AGENTS.md"]).toContain("which win over them");
     expect(files["AGENTS.md"]).toContain("every other `AGENTS.md` in the vault");
     expect(files["AGENTS.md"]).not.toContain("offer status `gone`");
-    expect(files["Life/Objects/AGENTS.md"]).toContain("A finished repair → a dated line here.");
-    expect(files["Life/Finances/AGENTS.md"]).toContain("An online-banking login goes in the password manager.");
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("A finished repair → a dated line here.");
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("An online-banking login goes in the password manager.");
     expect(files[".eva/AGENTS.md"]).toContain("`settings/chat-names.md`");
     expect(files[".eva/AGENTS.md"]).toContain("`eva settings set`");
-    expect(files["Life/Finances/AGENTS.md"]).toContain("**Closing:** When a contract or account ends");
+    expect(files["Life/Inventory/AGENTS.md"]).toContain(
+      "**Closing:** when the person sells it, loses it, throws it away or ends its contract",
+    );
     expect(files["AGENTS.md"]).toContain("any service, except the person's password manager.");
   });
 
@@ -247,13 +238,48 @@ describe("the vault template", () => {
     expect(providers).toContain("even with only a name and a contact");
     expect(files["Life/People/AGENTS.md"]).toContain("hairdresser at Life/Providers/Example Salon");
     expect(files["Life/People/AGENTS.md"]).toContain("`Life/Providers/`");
-    expect(files["Life/Objects/AGENTS.md"]).toContain("names the provider by its path");
-    // The first yes wins, so the provider comes before the person, and a bank stays in Finances.
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("names the provider by its path");
+    // The first yes wins, so the provider comes before the person, and a bank stays in the item.
     expect(map).toContain(
       "6. About a business or a self-employed person that serves them → `Life/Providers/`. A self-employed person also gets a folder in `Life/People/`. A bank, a subscription or an employer is not a provider. About another person",
     );
     expect(files["Life/People/AGENTS.md"]).toContain("A self-employed provider always gets one");
     expect(map).not.toContain("such as a company, stays as plain text");
+  });
+
+  test("everything the person has or uses is an item in Life/Inventory/, with one question to decide (#940)", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    const inventory = files["Life/Inventory/AGENTS.md"] ?? "";
+    expect(
+      Object.keys(files).some((path) => path.startsWith("Life/Objects/") || path.startsWith("Life/Finances/")),
+    ).toBe(false);
+    expect(Object.values(files).join("\n")).not.toMatch(/Life\/Objects|Life\/Finances|Object\.md/);
+    expect(map).toContain("| Item | `Life/Inventory/Car - Example Model - 1234ABC/` | `Item.md` |");
+    expect(map).toContain("5. About something the person has or uses");
+    expect(inventory).toContain('"do I have it or use it?"');
+    // One key says how the person has it, and one recurring cost lets Eva total the spending.
+    expect(inventory).toContain("kind: thing # ");
+    for (const kind of [
+      "licence",
+      "subscription",
+      "membership",
+      "line",
+      "account",
+      "card",
+      "investment",
+      "loan",
+      "insurance",
+    ])
+      expect(inventory).toContain(`\`${kind}\``);
+    expect(inventory).toContain("cost: { amount: 9.99, currency: EUR, every: month }");
+    expect(inventory).toContain("`Licence.secrets`");
+    expect(inventory).toContain("installer");
+    // A plan with steps is a case, and the product it leaves is an item.
+    expect(inventory).toContain("an investment plan to carry out → `Life/Cases/`");
+    // The business stays a provider, and the person's contract with it is an item.
+    expect(files["Life/Providers/AGENTS.md"]).toContain("`Life/Inventory/Gym - Example Gym - 2025/Item.md`");
+    expect(files["Life/Health/AGENTS.md"]).toContain("Health insurance → `Life/Inventory/`.");
   });
 
   test("every vault migration leaves each file of a new vault as the template wrote it (#772)", () => {

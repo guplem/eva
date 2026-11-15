@@ -28,7 +28,7 @@ summary: Claim for a broken bumper. The insurer has the photos.
 - **`deadline` is a date that someone else set, where missing it costs money, a right or the event.** Write only the nearest one, and say what is lost in `cost`. List later deadlines in the text. Leave `deadline` empty when nothing is lost by waiting. Add one task for it in the task app, so the person gets a reminder even if they do not talk to Eva. Only a `deadline` gets a task. A step never does.
 - **The event itself is not a field.** A trip, a surgery or a party goes in the calendar, and its date goes in `summary`. Before the event, the steps prepare it. After it, a step is the follow-up, or the case closes.
 - **After each step,** set its `done-on`, and update `summary` the same day. Never copy a step into the calendar or the task app.
-- **The text under the front matter** links each note that the case is about by its path, such as `Life/Objects/Car - Example Model - 1234ABC`. Then it holds what happened, one dated line for each event: a call, an email, an answer.
+- **The text under the front matter** links each note that the case is about by its path, such as `Life/Inventory/Car - Example Model - 1234ABC`. Then it holds what happened, one dated line for each event: a call, an email, an answer.
 - **Beside `Case.md`:** the evidence, such as photos, emails, forms and receipts.
 
 **Not here:**

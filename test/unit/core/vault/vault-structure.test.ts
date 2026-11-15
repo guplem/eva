@@ -47,6 +47,13 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBeGreaterThanOrEqual(5);
   });
 
+  test("v9 merges Life/Objects/ and Life/Finances/ into Life/Inventory/, links included (#940)", () => {
+    const v9 = structureChanges.find((change) => change.version === 9);
+    expect(v9?.summary).toStartWith("Everything you have or use");
+    expect(v9?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(9);
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

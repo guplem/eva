@@ -214,9 +214,9 @@ The examples are generic: a vault can have any notes.
 
 1. **`Life/Objects/` becomes `Life/Inventory/`, and each `Object.md` becomes `Item.md`.** `git mv Life/Objects Life/Inventory`, then `git mv` each `Object.md` to `Item.md` in its folder. Give each item the key `kind`: `thing` for a physical thing, or the kind that fits, such as `document` for a passport. Keep every other key. Why: one question, "do I have it or use it?", now decides. A software licence, a subscription or a bank account had no clear home, and two chats could file one in two places.
 2. **Each note of `Life/Finances/` moves to its place:**
-   - An account, a card, a loan, an investment, a pension plan, a subscription, the phone line, a policy or a will → its own item, `Life/Inventory/<Type - Name - ID>/Item.md`. `git mv` the note to that path. Write its facts as the keys of `Life/Inventory/AGENTS.md`: `kind`, `status`, `provider`, `cost` and `renews`. Keep the rest as text. `git mv` each file that belongs to the note, such as its contract, to the item's folder. The old folder was flat, so the person approves the place of each file that is not a note.
-   - A note with one row for each of many small subscriptions, such as `Subscriptions.md` → one item for each row. `git mv` the note to the item of its first row.
-   - A contract of a thing, a home or a pet, such as the home insurance or a car loan → that thing's folder. Add its cost to the thing's `cost` list, with `for`.
+   - An account, a card, an investment, a pension plan, a subscription, the phone line, a will, or a loan or a policy that covers no single thing, such as a personal loan or health insurance → its own item, `Life/Inventory/<Type - Name - ID>/Item.md`. `git mv` the note to that path. Write its facts as the keys of `Life/Inventory/AGENTS.md`: `kind`, `status`, `provider`, `cost` and `renews`. Keep the rest as text. `git mv` each file that belongs to the note, such as its contract, to the item's folder. The old folder was flat, so the person approves the place of each file that is not a note.
+   - A note with one row for each of many small subscriptions, such as `Subscriptions.md` → one item for each row. `git mv` the note to the item of its first row. Copy each other row to its item, then remove it from the moved note, so each fact lives in one file.
+   - A contract of a thing, a home or a pet, such as the home insurance or a car loan → that thing's folder. For a thing or a home, add its cost to the thing's `cost` list, with `for`. For a pet, write the cost as a line in the text of `Pet.md`.
    - A plan with steps that is not done, such as an investment plan to carry out → a case, `Life/Cases/YYYY-MM-DD-name/Case.md`, with its steps. When a done plan created a product, such as a fund, the product is an item that links the case.
    - A goal of one account → a line in its `Item.md`. A goal with steps, such as saving for a home → a case.
    - A method, such as how the person invests → `Methods/`.
@@ -240,5 +240,5 @@ The examples are generic: a vault can have any notes.
 4. Each licence key, full card number or PIN in plain text in a note, and its new `.secrets` file. The default is "move it". Ask only when the vault has an encryption password. Otherwise, list them in the report.
 5. Each line of _Personal rules_ that names `Life/Objects/`, `Object.md` or `Life/Finances/`. The default is "update the path". This is the one change to _Personal rules_ that the person can approve, as in v4.
 6. Each other note that tells an agent to write to `Life/Objects/` or `Life/Finances/`, such as a method or a skill in `.eva/skills/`. The default is "update it to the new place".
-7. The schedule edits that the moves need, approved once for all.
+7. The edits of `.eva/schedules.json`, `.eva/widgets.json` and `.eva/secret-files` that the moves need, approved once for all.
 8. The git-ignored files of `Life/Objects/` and `Life/Finances/`, and where each one goes.

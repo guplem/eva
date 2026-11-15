@@ -41,9 +41,10 @@ summary: Streaming service, shared with Life/People/Sam Example. Cancel in the a
   - `line`: a phone line. The internet line of a home goes in the home's folder.
   - `account`, `card`, `investment`, `pension`, `loan` and `insurance`: a money product or a policy. A loan or a policy for one thing, such as a car loan or the home insurance, is a contract of that thing instead.
   - When no kind fits, write a new lowercase word, and use the same word for each item of that kind.
+- **`type`** is the type of the folder name in lowercase, such as `car` or `streaming`.
 - **`status`** is `in-use` while the person has or uses the item. `stored` and `lent` are for a thing that waits. `sold` and `gone` are for a thing that left. `ended` is for a contract, a subscription or an account that ended.
 - **`provider`** is the company behind the item, such as the bank, the insurer, the phone operator or the streaming service. Write it as plain text. When the company has a folder in `Life/Providers/`, such as the gym, write its path.
-- **`cost`** is a cost that repeats. `amount` is a number. `currency` is a three-letter code, such as `EUR` or `USD`. `every` is `day`, `week`, `month` or `year`. Eva adds the `cost` of each item to answer what the person spends, so never keep a separate list of costs.
+- **`cost`** is a cost that repeats. `amount` is a number. `currency` is a three-letter code, such as `EUR` or `USD`. `every` is `day`, `week`, `month` or `year`. Eva adds the `cost` of each item that is not `sold`, `gone` or `ended` to answer what the person spends, so never keep a separate list of costs.
 - **A thing with contracts that cost money,** such as a home with its rent and electricity, has a list in `cost`. Each entry names its contract in `for`, such as `cost: [{ for: rent, amount: 850, currency: EUR, every: month }, { for: electricity, amount: 60, currency: EUR, every: month }]`.
 - **A price paid once** is a dated line in the text, such as `- 2024-03-10: bought for 49 EUR at Example Software.`
 - **`renews`** is the next day when the contract renews or ends. Update it after each renewal.

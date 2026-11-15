@@ -20,9 +20,9 @@ summary: Software engineer at Example Corp, a company that makes example apps.
 - **The `work` list of `Life/About me.md`** has one item for each open job or study, with the path of its period in its `period` key.
 - **The records** go in `Documents/<topic>/` beside `Period.md`, such as `Documents/Contracts/`, `Documents/Payslips/`, `Documents/Taxes/` and `Documents/Certificates/`. A record is a contract, a payslip, a social security form, a certificate, a diploma or a reference.
 - **Name each record `YYYY-MM-DD Name.ext`,** with the date in the document, such as `2025-01-15 Employment Contract.pdf`. Never put an ID number in a file name.
-- **The paperwork of self-employment,** such as invoices and filed tax forms, also goes to its period. A tax return that is still in progress is a case.
-- **The work of a short or old job with little material,** such as a to-do list or a few plans, goes in `Work/` beside `Period.md`.
-- **`Period.md` has short `## Documents` and `## Work` sections** when those folders exist. Each one says what its folder holds.
+- **The paperwork of self-employment,** such as invoices and filed tax forms, also goes to its period. A tax return that is still in progress is a case. Its filed form stays in the case, and the period links the case.
+- **The work of a job with little material,** such as an old job or one of a few months, goes in `Work/` beside `Period.md`. Such work is a to-do list or a few plans, for example.
+- **`Period.md` has short `## Documents` and `## Work files` sections** when those folders exist. Each one says what its folder holds. `## Work files` is not `## Work and achievements`.
 - **Periods can overlap,** such as two jobs at once.
 - **A promotion or a short leave** is a dated line in its period. Update `role` for a promotion.
 - **A file about the whole career,** such as the CV, sits in `Life/Periods/` itself, not in a period.

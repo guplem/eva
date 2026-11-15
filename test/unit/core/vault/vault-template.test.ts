@@ -306,7 +306,7 @@ describe("the vault template", () => {
     expect(periods).toContain("`2025-01-15 Employment Contract.pdf`");
     expect(periods).toContain("Never put an ID number in a file name.");
     expect(periods).toContain("`Work/`");
-    expect(periods).toContain("`## Documents` and `## Work`");
+    expect(periods).toContain("`## Documents` and `## Work files`");
   });
 
   test("every vault migration leaves each file of a new vault as the template wrote it (#772)", () => {

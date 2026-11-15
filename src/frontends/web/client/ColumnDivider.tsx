@@ -97,8 +97,6 @@ export function ColumnDivider({
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     const element = column();
     if (event.button !== 0 || drag.current !== null || element === null) return;
-    // A widget's frame under the pointer takes its events, so the drag would stop halfway. The capture keeps them here.
-    event.currentTarget.setPointerCapture(event.pointerId);
     const start = {
       pointerId: event.pointerId,
       at: vertical ? event.clientY : event.clientX,
@@ -140,6 +138,12 @@ export function ColumnDivider({
     window.addEventListener("pointercancel", onEnd);
     window.addEventListener("dragstart", noNativeDrag);
     drag.current = stop;
+    // A widget's frame under the pointer takes its events, so the drag would stop halfway. The capture keeps them here.
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // A pointer that is already gone has nothing to capture. The window still ends the drag.
+    }
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === "Enter") {

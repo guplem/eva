@@ -288,7 +288,15 @@ describe("inventory", () => {
     expect(cost({ amount: "120", currency: "USD", every: "year" })).toBe("120 USD a year");
     expect(cost({ amount: "5", currency: "EUR" })).toBe("5 EUR");
     expect(cost({ amount: "5", every: "week" })).toBe("5 a week");
-    for (const bad of [undefined, "", "9.99", { currency: "EUR" }, ["9.99"]]) expect(cost(bad)).toBeNull();
+    // A home lists the cost of each of its contracts.
+    expect(
+      cost([
+        { for: "rent", amount: "850", currency: "EUR", every: "month" },
+        { for: "electricity", amount: "60", currency: "EUR", every: "month" },
+        { for: "broken" },
+      ]),
+    ).toBe("Rent 850 EUR a month · Electricity 60 EUR a month");
+    for (const bad of [undefined, "", "9.99", { currency: "EUR" }, ["9.99"], []]) expect(cost(bad)).toBeNull();
   });
 
   test("items group by type, with Other last, and each label keeps the first spelling", () => {
@@ -492,6 +500,8 @@ describe("lifeCardPill", () => {
     expect(pill("cases", { closed: "2025-01-01" })).toEqual({ text: "Closed", tone: "idle" });
     expect(pill("cases", {})).toBeNull();
     expect(pill("inventory", { status: "lent" })).toEqual({ text: "Lent", tone: "warn" });
+    // A status that names a key of every object is still an unknown status.
+    expect(pill("inventory", { status: "constructor" })).toEqual({ text: "Constructor", tone: "idle" });
     expect(pill("pets", { death: "2024" })).toEqual({ text: "Died", tone: "idle" });
     expect(pill("pets", {})).toBeNull();
     expect(pill("periods", { from: "2020" })).toEqual({ text: "Going on", tone: "live" });

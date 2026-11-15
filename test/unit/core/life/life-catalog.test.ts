@@ -263,6 +263,20 @@ describe("a vault that waits for its structure upgrade (#940)", () => {
     ]);
     expect(readLifeEntity(vault, "inventory", "Old - Example - 2020")).toBeNull();
   });
+
+  test("a linked Life/Objects/ that points out of the vault gives nothing (lesson 72)", () => {
+    const outside = mkdtempSync(join(tmpdir(), "eva-life-outside-"));
+    try {
+      mkdirSync(join(outside, "Car - X - 1"));
+      writeFileSync(join(outside, "Car - X - 1", "Object.md"), "---\n---\n");
+      mkdirSync(join(vault, "Life"), { recursive: true });
+      symlinkSync(outside, join(vault, "Life/Objects"), "junction");
+      expect(discoverLifeEntities(vault, "inventory")).toEqual([]);
+      expect(readLifeEntity(vault, "inventory", "Car - X - 1")).toBeNull();
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("readLifeEntity", () => {

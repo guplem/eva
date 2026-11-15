@@ -2399,6 +2399,8 @@ describe("web routes", () => {
 
   test("life: an unknown kind or entity, or an id out of its folder, is not found", async () => {
     expect((await call("/api/life/health")).status).toBe(404);
+    // The kind was objects before #940. An old page in a browser still gets its list.
+    expect(await json(await call("/api/life/objects"))).toEqual([]);
     expect((await call("/api/life/cases/2026-01-01-gone")).status).toBe(404);
     expect((await call(`/api/life/cases/${encodeURIComponent("../People")}`)).status).toBe(404);
     expect((await call(`/api/life/cases/${encodeURIComponent("a/b")}`)).status).toBe(404);

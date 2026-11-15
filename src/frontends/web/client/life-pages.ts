@@ -453,20 +453,36 @@ function itemCard(entity: LifeEntity): LifeCardBody {
     type: wordOf(entity.fields["type"]) ?? (named ? (parts[0] ?? null) : null),
     model: model === "" ? null : model,
     ids: ids.length > 0 ? ids : folderId === null ? [] : [folderId],
-    pill: status === null ? null : (itemStatusPills[status] ?? { text: capitalized(status), tone: "idle" }),
+    pill:
+      status === null
+        ? null
+        : Object.hasOwn(itemStatusPills, status)
+          ? (itemStatusPills[status] ?? null)
+          : { text: capitalized(status), tone: "idle" },
     owner: owner === null ? null : withEntityNames(owner),
     cost: costWords(entity.fields["cost"]),
   };
 }
 
-/** The `cost` key of an item, `{ amount, currency, every }`, in words. Null when it has no amount. */
+/**
+ * The `cost` key of an item in words: one `{ amount, currency, every }`, or a list of them, each
+ * named by `for`, such as the rent of a home. Null when no cost has an amount.
+ */
 function costWords(value: unknown): string | null {
+  const costs = Array.isArray(value) ? value.flatMap((item) => oneCost(item, true) ?? []) : [oneCost(value, false)];
+  const words = costs.filter((cost) => cost !== null);
+  return words.length === 0 ? null : words.join(" · ");
+}
+
+function oneCost(value: unknown, named: boolean): string | null {
   const cost = mapOf(value);
   const amount = textOf(cost?.["amount"]);
   if (cost === null || amount === null) return null;
-  const currency = textOf(cost["currency"]);
   const every = textOf(cost["every"]);
-  return [amount, currency, every === null ? null : `a ${every}`].filter((part) => part !== null).join(" ");
+  const name = named ? wordOf(cost["for"]) : null;
+  return [name, amount, textOf(cost["currency"]), every === null ? null : `a ${every}`]
+    .filter((part) => part !== null)
+    .join(" ");
 }
 
 // Pets and periods: lengths of time

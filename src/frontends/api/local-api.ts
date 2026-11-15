@@ -39,7 +39,7 @@ import iconSvg from "../web/icons/icon.svg" with { type: "file" };
 import { serviceWorkerScript } from "../web/service-worker-script.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
-import { isLifeKind } from "../../shared/life-kinds.ts";
+import { currentLifeKindName, isLifeKind } from "../../shared/life-kinds.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { unlockHeader } from "../../shared/vault-unlock.ts";
 import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
@@ -1100,7 +1100,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     return json(eva.saveFile(path, version, text));
   }
   if (method === "GET" && url.pathname.startsWith("/api/life/") && (parts.length === 3 || parts.length === 4)) {
-    const kind = decodeURIComponent(parts[2] ?? "");
+    // A browser that still runs the page from before #940 asks for the old kind name.
+    const kind = currentLifeKindName(decodeURIComponent(parts[2] ?? ""));
     if (!isLifeKind(kind)) return json({ error: "No such kind of entity." }, 404);
     if (parts[3] === undefined) return json(eva.lifeEntities(kind));
     const entity = eva.lifeEntity(kind, decodeURIComponent(parts[3]));

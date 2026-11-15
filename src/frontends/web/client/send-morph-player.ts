@@ -41,8 +41,11 @@ function milliseconds(name: string, fallback: number): number {
 
 /** The page's styles, for the closed shadow root of the copy. Built once for each set of style sheets. */
 let pageStyles: { readonly count: number; readonly sheet: CSSStyleSheet } | null = null;
+/** True once the browser failed to build a sheet by script. It never can, so the morph stops trying. */
+let noSheets = false;
 
 function pageSheet(): CSSStyleSheet | null {
+  if (noSheets) return null;
   const sheets = [...document.styleSheets];
   if (pageStyles?.count === sheets.length) return pageStyles.sheet;
   const rules = sheets.flatMap((sheet) => {
@@ -60,6 +63,7 @@ function pageSheet(): CSSStyleSheet | null {
     return sheet;
   } catch {
     // An older browser builds no style sheet by script, so it plays no morph.
+    noSheets = true;
     return null;
   }
 }
@@ -119,8 +123,9 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
     requestAnimationFrame(() => {
       if (cancelled) return;
       const newest = (): HTMLElement | null => {
-        // The first message of a new chat moves to the chat's own page. The bubble is then in a new branch.
-        const root = chat.isConnected ? chat : document;
+        // The first message of a new chat moves to the chat's own page, so its bubble is in a new branch. A chat that
+        // had a bubble before is another chat, so the morph looks only in its own branch.
+        const root = chat.isConnected || before !== null ? chat : document;
         const found = [...root.querySelectorAll<HTMLElement>(bubbleSelector)].at(-1) ?? null;
         return found === before || found?.isConnected !== true ? null : found;
       };
@@ -128,7 +133,9 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
       if (first === null) return;
       // A bubble out of sight, such as below a chat that the person scrolled up, has no place to land on.
       const landing = boxOf(first);
-      if (landing.y + landing.height <= 0 || landing.y >= window.innerHeight) return;
+      // The bubble must also land above the empty box: one just below it, behind the box, is out of sight too.
+      const floor = Math.min(window.innerHeight, shell.getBoundingClientRect().top);
+      if (landing.y + landing.height <= 0 || landing.y >= floor) return;
       const styles = pageSheet();
       if (styles === null) return;
       let locked: HTMLElement | null = first;

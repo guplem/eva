@@ -717,7 +717,8 @@ button.ghost .icon {
   border-radius: 0;
   resize: none;
   min-height: 24px;
-  max-height: 40vh;
+  /* The adaptive height of #943 follows the screen. A drag of the handle sets --composer-height instead. */
+  max-height: var(--composer-auto-height, 40vh);
   field-sizing: content;
   outline: none;
 }
@@ -870,6 +871,87 @@ button.ghost .icon {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* The line of the text. A folded box (#943) puts the + button and Send in it too. */
+.composer-line {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.composer-line textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A short screen gets one row: the + button, the text and Send. */
+.composer-box.folded {
+  padding: var(--space-1);
+  gap: var(--space-1);
+}
+
+.composer-box.folded textarea {
+  margin-block: var(--space-2);
+}
+
+.composer-box.folded > .composer-files,
+.composer-box.folded > .composer-row {
+  padding: 0 var(--space-2) var(--space-1);
+}
+
+/* The + menu opens above the whole box, not only above the button. */
+.composer-box.folded .chip-picker {
+  position: static;
+}
+
+/* The + button matches Send, so the row stays balanced around the text. */
+.composer-plus {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--muted);
+}
+
+@media (pointer: coarse) {
+  .composer-plus {
+    width: var(--touch-target);
+    height: var(--touch-target);
+  }
+}
+
+/* The settings of the row take the look of a menu inside the + menu. */
+.chip-menu .composer-actions {
+  min-width: 0;
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+
+/* A text too long for the box offers the large editor from the top corner. */
+.composer-expand {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 1;
+  color: var(--muted);
+}
+
+.composer-box:has(> .composer-expand) textarea {
+  padding-inline-end: var(--space-8);
+}
+
+.composer-box.expanded textarea {
+  height: var(--composer-editor-height);
+  min-height: var(--composer-editor-height);
+  max-height: none;
 }
 
 .composer-row .grow {

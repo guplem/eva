@@ -2457,6 +2457,31 @@ describe("web routes", () => {
     expect(existsSync(join(vaultPath, ".eva", "scratch", "received", "big.bin"))).toBe(false);
   });
 
+  test("a message sent again after its turn moved a file it names is a repeat, not a refusal (#945)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, "Notes"), { recursive: true });
+    writeFileSync(join(vaultPath, "Notes", "Moved.md"), "soon gone");
+    // Only a chat in a clone checks the files that a message names.
+    const cloneFolder = join(vaultPath, "Projects", "2026-01-01-0000-example-app", "repos", "clone-1");
+    mkdirSync(cloneFolder, { recursive: true });
+    const chat = eva.sessions.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: cloneFolder,
+      source: "web",
+      projectId: "2026-01-01-0000-example-app",
+      clone: "clone-1",
+    });
+    const body = { text: "Move @file:Notes/Moved.md", id: "page-moved" };
+    expect((await call(`/api/sessions/${chat.id}/messages`, { method: "POST", body })).status).toBe(202);
+    while (eva.sessions.get(chat.id).turns.length === 0) await Bun.sleep(10);
+    rmSync(join(vaultPath, "Notes", "Moved.md"));
+    const again = await call(`/api/sessions/${chat.id}/messages`, { method: "POST", body });
+    expect(again.status).toBe(202);
+    expect(await json(again)).toEqual({ accepted: true, repeat: true });
+  });
+
   test("a chat in a clone: an attached file lands in the clone, and a gone mention stops the message (#706)", async () => {
     const vaultPath = eva.status().vaultPath ?? "";
     const cloneFolder = join(vaultPath, "Projects", "2026-01-01-0000-example-app", "repos", "clone-0");

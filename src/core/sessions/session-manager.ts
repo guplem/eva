@@ -614,6 +614,16 @@ export class SessionManager {
     return this.clientSends.get(sessionId)?.has(clientId) ?? false;
   }
 
+  /**
+   * True when a turn started with the message of this client id, so that turn shows it. A message
+   * that waits in line behind a running turn is known, but no turn shows it yet.
+   */
+  startedClientId(sessionId: string, clientId: string): boolean {
+    if (!this.knowsClientId(sessionId, clientId)) return false;
+    const waiting = this.runtimes.get(sessionId)?.pending?.messages ?? [];
+    return !waiting.some((message) => message.clientId === clientId);
+  }
+
   /** Sends the message of a stored turn again, as a retry does, with the sender that the turn had. */
   sendAgain(sessionId: string, turn: SessionRecord["turns"][number]): Promise<void> {
     const { fromEva, projectReports, personText } = turn;

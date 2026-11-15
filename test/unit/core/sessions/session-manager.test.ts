@@ -415,12 +415,38 @@ describe("a conversation", () => {
     // A try after the turn ended is a repeat too.
     await manager.send(sessionId, "lost answer", "api", { clientId: "page-1" });
     expect(manager.get(sessionId).turns.map((turn) => turn.userText)).toEqual(["lost answer"]);
-    expect(manager.knowsClientId(sessionId, "page-1")).toBe(true);
-    expect(manager.knowsClientId(sessionId, "page-2")).toBe(false);
+    expect(manager.startedClientId(sessionId, "page-1")).toBe(true);
+    expect(manager.startedClientId(sessionId, "page-2")).toBe(false);
     // Another chat keeps its own ids.
     const other = newAssistantSession(manager);
     await manager.send(other, "lost answer", "api", { clientId: "page-1" });
     expect(manager.get(other).turns).toHaveLength(1);
+  });
+
+  test("a client id that waits in line behind a running turn has started no turn yet (#945)", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        await released;
+        yield* FakeEngine.answer(request, "done");
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const first = manager.send(sessionId, "first", "api", { clientId: "page-1" });
+    await waitUntil(() => events.some((event) => event.kind === "turn_started"));
+    const queued = manager.send(sessionId, "queued", "api", { clientId: "page-2" });
+    try {
+      expect(manager.startedClientId(sessionId, "page-1")).toBe(true);
+      // No turn shows the queued message yet, so a page must keep showing its own copy.
+      expect(manager.startedClientId(sessionId, "page-2")).toBe(false);
+    } finally {
+      release();
+      await Promise.all([first, queued]);
+    }
+    expect(manager.startedClientId(sessionId, "page-2")).toBe(true);
   });
 
   test("the turn start keeps a result and the person's words apart, as the stored turn does (#804)", async () => {

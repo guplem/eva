@@ -74,7 +74,7 @@ describe("discoverLifeEntities", () => {
   test("each kind reads its own folder and main file, sorted by id", () => {
     write("Life/People/Sam Example/Person.md", "---\nrelation: friend\n---\n");
     write("Life/People/Alex Example/Person.md", "---\nrelation: sister of Life/People/Sam Example\n---\n");
-    write("Life/Objects/Car - Example Model - 1234ABC/Object.md", "---\nstatus: in-use\ntype: car\n---\n");
+    write("Life/Inventory/Car - Example Model - 1234ABC/Item.md", "---\nstatus: in-use\ntype: car\n---\n");
     write("Life/Pets/Luna/Pet.md", "---\nspecies: dog\ndeath:\n---\n");
     write("Life/Periods/2024-09-01-example-corp-engineer/Period.md", "---\ntype: job\nfrom: 2024-09-01\nto:\n---\n");
     // The wrong main file for its kind is not an entity.
@@ -83,9 +83,9 @@ describe("discoverLifeEntities", () => {
       ["Alex Example", "Alex Example", { relation: "sister of Life/People/Sam Example" }],
       ["Sam Example", "Sam Example", { relation: "friend" }],
     ]);
-    expect(discoverLifeEntities(vault, "objects")[0]).toMatchObject({
+    expect(discoverLifeEntities(vault, "inventory")[0]).toMatchObject({
       title: "Car - Example Model - 1234ABC",
-      path: "Life/Objects/Car - Example Model - 1234ABC/Object.md",
+      path: "Life/Inventory/Car - Example Model - 1234ABC/Item.md",
       fields: { status: "in-use", type: "car" },
     });
     expect(discoverLifeEntities(vault, "pets").map((entity) => entity.id)).toEqual(["Luna"]);
@@ -242,16 +242,39 @@ describe("discoverLifeEntities", () => {
   });
 });
 
+describe("a vault that waits for its structure upgrade (#940)", () => {
+  test("the inventory reads Life/Objects/ and Object.md while Life/Inventory/ does not exist", () => {
+    write("Life/Objects/Car - Example Model - 1234ABC/Object.md", "---\nstatus: in-use\ntype: car\n---\n");
+    expect(discoverLifeEntities(vault, "inventory")).toMatchObject([
+      {
+        id: "Car - Example Model - 1234ABC",
+        folder: "Life/Objects/Car - Example Model - 1234ABC",
+        path: "Life/Objects/Car - Example Model - 1234ABC/Object.md",
+      },
+    ]);
+    expect(readLifeEntity(vault, "inventory", "Car - Example Model - 1234ABC")?.files).toEqual([]);
+  });
+
+  test("once Life/Inventory/ exists, only it counts", () => {
+    write("Life/Objects/Old - Example - 2020/Object.md", "---\n---\n");
+    write("Life/Inventory/Car - Example Model - 1234ABC/Item.md", "---\nkind: thing\n---\n");
+    expect(discoverLifeEntities(vault, "inventory").map((entity) => entity.path)).toEqual([
+      "Life/Inventory/Car - Example Model - 1234ABC/Item.md",
+    ]);
+    expect(readLifeEntity(vault, "inventory", "Old - Example - 2020")).toBeNull();
+  });
+});
+
 describe("readLifeEntity", () => {
   test("adds the text and the files beside the main file, without secrets", () => {
-    const folder = "Life/Objects/Home - Example Street 1 - 2020";
-    write(`${folder}/Object.md`, "---\nstatus: in-use\n---\n# Home\n\nThe flat.\n");
+    const folder = "Life/Inventory/Home - Example Street 1 - 2020";
+    write(`${folder}/Item.md`, "---\nstatus: in-use\n---\n# Home\n\nThe flat.\n");
     write(`${folder}/Invoice.pdf`, "pdf");
     write(`${folder}/Fixtures.md`, "# Fixtures\n");
     write(`${folder}/Photos/front.jpg`, "jpg");
     write(`${folder}/Wi-Fi.secrets`, "secret");
     write(`${folder}/.env`, "KEY=value");
-    expect(readLifeEntity(vault, "objects", "Home - Example Street 1 - 2020")).toMatchObject({
+    expect(readLifeEntity(vault, "inventory", "Home - Example Street 1 - 2020")).toMatchObject({
       title: "Home",
       body: "# Home\n\nThe flat.\n",
       files: [
@@ -296,9 +319,9 @@ describe("redactLifeEntity", () => {
   });
 
   test("redacts a key of a nested map", () => {
-    write("Life/Objects/Car - Example Model - 1234ABC/Object.md", "---\nids: { SECRET: 1234ABC }\n---\n");
-    const [entity] = discoverLifeEntities(vault, "objects");
-    if (entity === undefined) throw new Error("The object is missing.");
+    write("Life/Inventory/Car - Example Model - 1234ABC/Item.md", "---\nids: { SECRET: 1234ABC }\n---\n");
+    const [entity] = discoverLifeEntities(vault, "inventory");
+    if (entity === undefined) throw new Error("The item is missing.");
     const redacted = redactLifeEntity(entity, (text) => text.replaceAll("SECRET", "[redacted]"));
     expect(redacted.fields).toEqual({ ids: { "[redacted]": "1234ABC" } });
   });

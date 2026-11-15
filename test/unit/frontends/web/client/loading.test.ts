@@ -127,7 +127,7 @@ describe("skeletons", () => {
   });
 
   test("a Life page shows the shape of its list, or the facts of an entity", () => {
-    for (const kind of ["cases", "people", "objects", "pets", "periods"] as const) {
+    for (const kind of ["cases", "people", "inventory", "pets", "periods"] as const) {
       const list = renderToStaticMarkup(createElement(AppSkeleton, { page: kind }));
       expect(list).toContain("life-skeleton");
       expect(list).toContain("life-card");

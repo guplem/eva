@@ -25,6 +25,11 @@ describe("destinationOf", () => {
     for (const destination of destinations) expect(destinationOf(addressOf(destination.id))).toBe(destination.id);
   });
 
+  test("the old address of the Objects page opens Inventory (#940)", () => {
+    expect(destinationOf("#/objects")).toBe("inventory");
+    expect(destinationOf("#/objects/Car%20-%20Example")).toBe("inventory");
+  });
+
   test("an empty or unknown address opens Chats", () => {
     expect(destinationOf("")).toBe("chats");
     expect(destinationOf("#")).toBe("chats");
@@ -63,7 +68,7 @@ describe("addressOf", () => {
       "#/schedules",
       "#/cases",
       "#/people",
-      "#/objects",
+      "#/inventory",
       "#/pets",
       "#/periods",
       "#/settings",
@@ -72,9 +77,9 @@ describe("addressOf", () => {
 
   test("each Life page has a plain name and its own icon", () => {
     const life = destinations.filter((destination) =>
-      ["cases", "people", "objects", "pets", "periods"].includes(destination.id),
+      ["cases", "people", "inventory", "pets", "periods"].includes(destination.id),
     );
-    expect(life.map((destination) => destination.label)).toEqual(["Cases", "People", "Objects", "Pets", "Periods"]);
+    expect(life.map((destination) => destination.label)).toEqual(["Cases", "People", "Inventory", "Pets", "Periods"]);
     expect(new Set(destinations.map((destination) => destination.icon)).size).toBe(destinations.length);
   });
 });

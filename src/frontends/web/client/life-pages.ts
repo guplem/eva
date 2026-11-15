@@ -56,11 +56,12 @@ export const lifePages: Readonly<Record<LifeKind, LifeKindPage>> = {
     filters: [],
     defaultFilter: allFilter,
   },
-  objects: {
-    title: "Objects",
-    description: "The things you own or use, such as a car, a phone or a home.",
-    empty: "An object is a thing you own or use, such as a car, a phone or a home. Ask Eva to add one.",
-    searchLabel: "Search objects",
+  inventory: {
+    title: "Inventory",
+    description: "Everything you have or use, such as a car, a software licence, a subscription or a bank account.",
+    empty:
+      "An item is something you have or use, such as a car, a software licence or a bank account. Ask Eva to add one.",
+    searchLabel: "Search the inventory",
     filters: [
       { id: "kept", label: "Kept" },
       { id: "gone", label: "Gone" },
@@ -299,13 +300,15 @@ export type LifeCardBody =
       readonly contact: FactLink | null;
     }
   | {
-      readonly kind: "objects";
+      readonly kind: "inventory";
       readonly type: string | null;
       readonly model: string | null;
       readonly ids: readonly string[];
       readonly pill: LifePill | null;
       /** Null when the person owns it. */
       readonly owner: string | null;
+      /** What the item costs each period, such as "9.99 EUR a month", or null. */
+      readonly cost: string | null;
     }
   | {
       readonly kind: "pets";
@@ -339,7 +342,7 @@ export function lifeCardPill(body: LifeCardBody): LifePill | null {
   switch (body.kind) {
     case "cases":
       return body.open ? null : { text: "Closed", tone: "idle" };
-    case "objects":
+    case "inventory":
       return body.pill;
     case "pets":
       return body.died ? { text: "Died", tone: "idle" } : null;
@@ -387,7 +390,7 @@ const cardBodies: Readonly<Record<LifeKind, (entity: LifeEntity, now: Date) => L
       contact: contact === null ? null : linkOf(contact),
     };
   },
-  objects: (entity) => objectCard(entity),
+  inventory: (entity) => itemCard(entity),
   pets: (entity, now) => ({
     kind: "pets",
     initials: projectInitials(entity.title),
@@ -406,9 +409,9 @@ function wordOf(value: unknown): string | null {
   return text === null ? null : capitalized(text);
 }
 
-// Objects
+// Inventory
 
-const objectStatusPills: Readonly<Record<string, LifePill>> = {
+const itemStatusPills: Readonly<Record<string, LifePill>> = {
   // The accent of "In use", as on a project.
   "in-use": { text: "In use", tone: "live" },
   stored: { text: "Stored", tone: "idle" },
@@ -416,11 +419,13 @@ const objectStatusPills: Readonly<Record<string, LifePill>> = {
   lent: { text: "Lent", tone: "warn" },
   sold: { text: "Sold", tone: "idle" },
   gone: { text: "Gone", tone: "idle" },
+  // A contract, a subscription or an account that the person ended (#940).
+  ended: { text: "Ended", tone: "idle" },
 };
 
-const goneStatuses: ReadonlySet<string> = new Set(["sold", "gone"]);
+const goneStatuses: ReadonlySet<string> = new Set(["sold", "gone", "ended"]);
 
-function objectStatus(entity: LifeEntity): string | null {
+function itemStatus(entity: LifeEntity): string | null {
   return textOf(entity.fields["status"])?.toLowerCase() ?? null;
 }
 
@@ -431,7 +436,7 @@ function idLabel(key: string): string {
   return idShortForms.has(key.toLowerCase()) ? key.toUpperCase() : capitalized(key);
 }
 
-function objectCard(entity: LifeEntity): LifeCardBody {
+function itemCard(entity: LifeEntity): LifeCardBody {
   // The folder is `Type - Model - ID`.
   const parts = entity.id.split(" - ").map((part) => part.trim());
   const named = parts.length > 1;
@@ -441,16 +446,27 @@ function objectCard(entity: LifeEntity): LifeCardBody {
     const text = textOf(value);
     return text === null ? [] : [`${idLabel(key)} ${text}`];
   });
-  const status = objectStatus(entity);
+  const status = itemStatus(entity);
   const owner = textOf(entity.fields["owner"]);
   return {
-    kind: "objects",
+    kind: "inventory",
     type: wordOf(entity.fields["type"]) ?? (named ? (parts[0] ?? null) : null),
     model: model === "" ? null : model,
     ids: ids.length > 0 ? ids : folderId === null ? [] : [folderId],
-    pill: status === null ? null : (objectStatusPills[status] ?? { text: capitalized(status), tone: "idle" }),
+    pill: status === null ? null : (itemStatusPills[status] ?? { text: capitalized(status), tone: "idle" }),
     owner: owner === null ? null : withEntityNames(owner),
+    cost: costWords(entity.fields["cost"]),
   };
+}
+
+/** The `cost` key of an item, `{ amount, currency, every }`, in words. Null when it has no amount. */
+function costWords(value: unknown): string | null {
+  const cost = mapOf(value);
+  const amount = textOf(cost?.["amount"]);
+  if (cost === null || amount === null) return null;
+  const currency = textOf(cost["currency"]);
+  const every = textOf(cost["every"]);
+  return [amount, currency, every === null ? null : `a ${every}`].filter((part) => part !== null).join(" ");
 }
 
 // Pets and periods: lengths of time
@@ -588,8 +604,8 @@ export function matchesLifeFilter(entity: LifeEntity, filter: string): boolean {
   switch (entity.kind) {
     case "cases":
       return (filter === "closed") === isClosedCase(entity);
-    case "objects": {
-      const gone = goneStatuses.has(objectStatus(entity) ?? "");
+    case "inventory": {
+      const gone = goneStatuses.has(itemStatus(entity) ?? "");
       return (filter === "gone") === gone;
     }
     default:
@@ -666,12 +682,12 @@ export function lifeGroups(kind: LifeKind, entities: readonly LifeEntity[], filt
         { label: "Closed", entities: sorted.filter(isClosedCase) },
       ].filter((group) => group.entities.length > 0);
     }
-    case "objects": {
+    case "inventory": {
       // Each key keeps the first spelling that it sees, so "TV" stays "TV".
       const types = new Map<string, { label: string; entities: LifeEntity[] }>();
       for (const entity of [...kept].sort(byTitle)) {
-        const card = objectCard(entity);
-        const type = card.kind === "objects" ? (card.type ?? "") : "";
+        const card = itemCard(entity);
+        const type = card.kind === "inventory" ? (card.type ?? "") : "";
         const group = types.get(type.toLowerCase()) ?? { label: type === "" ? "Other" : type, entities: [] };
         group.entities.push(entity);
         types.set(type.toLowerCase(), group);
@@ -679,7 +695,7 @@ export function lifeGroups(kind: LifeKind, entities: readonly LifeEntity[], filt
       const groups = [...types.entries()]
         .sort(([first], [second]) => byKey(first === "" ? null : first, second === "" ? null : second, false))
         .map(([, group]) => group);
-      // A heading over each single object would waste the width, so the list then has none.
+      // A heading over each single item would waste the width, so the list then has none.
       if (groups.every((group) => group.entities.length === 1))
         return oneGroup(groups.flatMap((group) => group.entities));
       return groups;
@@ -710,7 +726,7 @@ export function lifeCounts(kind: LifeKind, entities: readonly LifeEntity[], now:
       const closed = count(isClosedCase);
       return pairWords(entities.length - closed, "open", closed, "closed");
     }
-    case "objects": {
+    case "inventory": {
       const gone = count((entity) => matchesLifeFilter(entity, "gone"));
       return pairWords(entities.length - gone, "kept", gone, "gone");
     }
@@ -762,7 +778,7 @@ function shownElsewhere(entity: LifeEntity, key: string): boolean {
       return (
         (key === "steps" && Array.isArray(value)) || (key === "deadline" && deadlineOf(value, new Date(0)) !== null)
       );
-    case "objects":
+    case "inventory":
       return key === "status" || key === "type";
     case "pets":
       return key === "species" || key === "breed";
@@ -788,15 +804,15 @@ export function lifeFacts(entity: LifeEntity, format: FactFormat, known: KnownLi
 
 export interface LifeHeader {
   readonly title: string;
-  /** A short line under the title, such as the type of an object, or null. */
+  /** A short line under the title, such as the type of an item, or null. */
   readonly sub: string | null;
 }
 
-/** The title and the sub line of an entity page. An object goes by its model, as on its card. */
+/** The title and the sub line of an entity page. An item goes by its model, as on its card. */
 export function lifeHeader(entity: LifeEntity, now: Date): LifeHeader {
   const { body } = lifeCardOf(entity, now);
   switch (body.kind) {
-    case "objects":
+    case "inventory":
       return { title: body.model ?? entity.title, sub: body.type };
     case "pets": {
       const sub = [body.species, body.breed].filter((part) => part !== null).join(" · ");

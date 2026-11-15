@@ -8,7 +8,7 @@ import {
 
 const known: KnownLifeIds = {
   people: ["Sam Example", "Sam", "Alex Example", "Marta Example", "A & B"],
-  objects: ["Car - Example - 1234ABC"],
+  inventory: ["Car - Example - 1234ABC"],
   pets: ["Luna"],
   cases: ["2026-05-15-phone-repair"],
 };
@@ -38,18 +38,30 @@ describe("vaultTextParts", () => {
       { text: "Marta Example", href: "#/people/Marta%20Example", title: "Life/People/Marta Example" },
       { text: ", since 2020" },
     ]);
-    expect(vaultTextParts("About Life/Objects/Car - Example - 1234ABC.", known)).toEqual([
+    expect(vaultTextParts("About Life/Inventory/Car - Example - 1234ABC.", known)).toEqual([
       { text: "About " },
       {
         text: "Car - Example - 1234ABC",
-        href: "#/objects/Car%20-%20Example%20-%201234ABC",
-        title: "Life/Objects/Car - Example - 1234ABC",
+        href: "#/inventory/Car%20-%20Example%20-%201234ABC",
+        title: "Life/Inventory/Car - Example - 1234ABC",
       },
       { text: "." },
     ]);
     expect(vaultTextParts("Life/Pets/Luna/Pet.md", known)).toEqual([
       { text: "Luna", href: "#/pets/Luna", title: "Life/Pets/Luna/Pet.md" },
     ]);
+  });
+
+  test("an old path of a vault that waits for its upgrade still opens the item (#940)", () => {
+    expect(vaultTextParts("Life/Objects/Car - Example - 1234ABC/Object.md", known)).toEqual([
+      {
+        text: "Car - Example - 1234ABC",
+        href: "#/inventory/Car%20-%20Example%20-%201234ABC",
+        title: "Life/Objects/Car - Example - 1234ABC/Object.md",
+      },
+    ]);
+    expect(lifeKindsNamed("See Life/Objects/Car - Example - 1234ABC.")).toEqual(["inventory"]);
+    expect(withEntityNames("lent by Life/Objects/Car - Example - 1234ABC")).toBe("lent by Car - Example - 1234ABC");
   });
 
   test("an id must end at a word boundary", () => {

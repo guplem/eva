@@ -56,6 +56,7 @@ import { useMentionPicker } from "./MentionPicker.tsx";
 import { MenuButton, type MenuItem } from "./Menu.tsx";
 import { composerMenuItems, insertedText } from "./menu-text.ts";
 import { setupBlock } from "./new-chat.ts";
+import { startSendMorph } from "./send-morph-player.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType, withHeardText } from "./voice-notes.ts";
@@ -261,6 +262,8 @@ export function Composer({
   const notes = files.attachments.flatMap((attachment) => (attachment.note === null ? [] : [attachment.note]));
   const isEmpty = text.trim() === "" && files.attachments.length === 0;
 
+  /** The card of the box, which the send morph copies. */
+  const shell = useRef<HTMLDivElement>(null);
   /** True while the large editor is open, for a text too long for the box. */
   const [expanded, setExpanded] = useState(false);
 
@@ -268,14 +271,18 @@ export function Composer({
     const message = messageWithFiles(text, [...mentions.notes(text), ...notes]);
     if (message === "" || uploading || sending || rewriting !== null || blocker !== null) return;
     const attached = files.attachments;
+    // The picture of the box is taken before it clears, so the morph starts from what the person saw (#943).
+    const morph = shell.current === null ? null : startSendMorph(shell.current);
     playCue("send");
     setSending(true);
     setText("");
     setUndoText(null);
     setExpanded(false);
     files.set([]);
+    morph?.play();
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
+      morph?.cancel();
       restore(text);
       files.set(attached);
     }
@@ -433,6 +440,7 @@ export function Composer({
     <div className="composer">
       {mentions.menu}
       <div
+        ref={shell}
         className={[
           "composer-box",
           ...(dropping ? ["dropping"] : []),

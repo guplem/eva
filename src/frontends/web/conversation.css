@@ -954,6 +954,35 @@ button.ghost .icon {
   max-height: none;
 }
 
+/* The send morph (#943): a copy of the box flies to the new bubble. It takes no click. */
+.send-morph {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.send-morph-box,
+.send-morph-bubble {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* The copy lives in a closed shadow root, so these rules name no ancestor. They outweigh the usual box and bubble. */
+.composer-box.send-morph-copy,
+.message.user.send-morph-words {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  max-width: none;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+
 .composer-row .grow {
   flex: 1;
 }

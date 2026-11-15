@@ -145,7 +145,7 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Compact den
 
 ## Motion
 
-Motion gives feedback, shows where a thing comes from, or bridges a change that would jump. An action that a person repeats many times a day does not animate. Motion moves `transform` and `opacity`, and a colour may fade. A rule that must move more says why in a comment that starts with `Motion exception:`. Examples are the progress fill, the skeleton shimmer, the card flash and the visor.
+Motion gives feedback, shows where a thing comes from, or bridges a change that would jump. An action that a person repeats many times a day does not animate. The send of a message is the one exception: the message box turns into the new bubble (#943). Motion moves `transform` and `opacity`, and a colour may fade. A rule that must move more says why in a comment that starts with `Motion exception:`. Examples are the progress fill, the skeleton shimmer, the card flash and the visor.
 
 | Token          | Value                            | Use                                       |
 | -------------- | -------------------------------- | ----------------------------------------- |
@@ -153,6 +153,7 @@ Motion gives feedback, shows where a thing comes from, or bridges a change that 
 | `--dur-fast`   | 150 ms                           | Hover colours, menus, tooltips, chevrons  |
 | `--dur-medium` | 220 ms                           | Dialogs, sheets, toasts, the chat details |
 | `--dur-slow`   | 400 ms                           | A fill or a ring that shows progress      |
+| `--dur-morph`  | 560 ms                           | The send morph from the box to the bubble |
 | `--ease-out`   | `cubic-bezier(0.2, 0.8, 0.2, 1)` | Things that come in, and most changes     |
 | `--ease-in`    | `cubic-bezier(0.4, 0, 1, 1)`     | Things that leave                         |
 

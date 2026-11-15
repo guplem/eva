@@ -7,10 +7,11 @@ import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { Composer, unsentTexts, type ChatChoices } from "./Composer.tsx";
-import { UserMessage, type SentMessage } from "./Conversation.tsx";
+import { UserMessage } from "./Conversation.tsx";
 import { newMessageId } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { ShowListButton } from "./MainNav.tsx";
+import { outbox } from "./page-outbox.ts";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { goTo } from "./back-layers.ts";
 import { withFixRequest, withProjectMention } from "./mentions.ts";
@@ -50,8 +51,6 @@ interface NewChatDraftProps {
   readonly listHasUnread: boolean;
   /** The bell and, on a phone, the gear: this page is the home page that the visor opens (#761). */
   readonly homeButtons: ReactNode;
-  /** Gets the first message before it goes, or null when it failed to go. */
-  readonly onSending: (message: SentMessage | null) => void;
   /** Opens the chat that the first message made. */
   readonly onStarted: (chat: SessionRecord) => Promise<void>;
 }
@@ -62,7 +61,6 @@ export function NewChatDraft({
   onShowList,
   listHasUnread,
   homeButtons,
-  onSending,
   onStarted,
 }: NewChatDraftProps): ReactElement {
   // Null until the settings answer: the chip must not name an engine, a model or an effort that Eva does not use.
@@ -118,19 +116,25 @@ export function NewChatDraft({
     setSending(true);
     setSentText(message);
     try {
-      // The chat runs with the choices that the chip shows, even when the settings changed since the read.
-      made.current ??= await api.newAssistantChat(shown?.model, shown?.engine, shown?.effort);
-      const sent = { sessionId: made.current.id, text: message, id: newMessageId() };
-      onSending(sent);
-      await api.send(sent.sessionId, message, sent.id);
-      await onStarted(made.current);
+      let chat: SessionRecord;
+      try {
+        // The chat runs with the choices that the chip shows, even when the settings changed since the read.
+        chat = made.current ??= await api.newAssistantChat(shown?.model, shown?.engine, shown?.effort);
+      } catch (caught) {
+        // No chat holds the message yet, so the message box gets the text back, and the message must not show twice.
+        setSentText(null);
+        showError(caught);
+        return false;
+      }
+      // The outbox sends the message, and tries again on a bad connection (#945).
+      outbox.add({ sessionId: chat.id, text: message, id: newMessageId(), turnCount: 0 });
+      try {
+        await onStarted(chat);
+      } catch (caught) {
+        // The message still goes. The chat shows in the list when the list reads again.
+        showError(caught);
+      }
       return true;
-    } catch (caught) {
-      onSending(null);
-      // The message box gets the text back, so the message must not show twice.
-      setSentText(null);
-      showError(caught);
-      return false;
     } finally {
       busy.current = false;
       setSending(false);

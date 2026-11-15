@@ -5,6 +5,7 @@ import type { TurnMessage } from "../../../shared/events.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { UndoPreview } from "./api.ts";
 import type { IconName } from "./icons.tsx";
+import type { OutboxEntry, OutboxState } from "./outbox.ts";
 import { stateFaces, type Face } from "./visor-faces.ts";
 
 /**
@@ -296,6 +297,28 @@ export interface PendingMessage {
   readonly turnCount: number;
   /** The id that the page sent with the message, so the running turn's message can stand for it (#804). */
   readonly id?: string;
+  /** Where the message is on its way to Eva (#945). None: Eva has it. */
+  readonly state?: OutboxState;
+  /** Why Eva refused the message, or null. */
+  readonly reason?: string | null;
+  /** True once a try failed. */
+  readonly retried?: boolean;
+}
+
+/**
+ * The outbox messages of a chat, as sent messages to show (#945). A message that Eva does not have
+ * yet is the next message of the chat, so a stored turn never hides it. `nextTurnCount` is the
+ * `sentTurnCount` of the chat now.
+ */
+export function shownOutbox(entries: readonly OutboxEntry[], nextTurnCount: number): readonly PendingMessage[] {
+  return entries.map(({ text, id, turnCount, state, reason, retried }) => ({
+    text,
+    id,
+    turnCount: state === "sent" ? turnCount : Math.max(turnCount, nextTurnCount),
+    state,
+    reason,
+    retried,
+  }));
 }
 
 /**
@@ -339,7 +362,9 @@ export function isWorking(chat: {
   readonly turnCount: number;
 }): boolean {
   if (chat.live) return true;
-  return !chat.turnRuns && chat.pending.some((message) => message.turnCount === chat.turnCount);
+  // A message that waits for the network, or that failed, starts no turn yet.
+  const onItsWay = (message: PendingMessage): boolean => message.state !== "waiting" && message.state !== "failed";
+  return !chat.turnRuns && chat.pending.some((message) => message.turnCount === chat.turnCount && onItsWay(message));
 }
 
 /**
@@ -480,4 +505,11 @@ export function notInTurn(
   const shown = new Set(messages.flatMap((message) => message.clientIds));
   if (shown.size === 0) return pending;
   return pending.filter((entry) => entry.id === undefined || !shown.has(entry.id));
+}
+
+/** The words of the state line under a message that Eva does not have yet (#945). */
+export function deliveryWords(state: Exclude<OutboxState, "sent">, reason: string | null): string {
+  if (state === "sending") return "Sending…";
+  if (state === "waiting") return "Not sent, trying again";
+  return reason === null ? "Not sent. Check the connection." : `Not sent: ${reason}`;
 }

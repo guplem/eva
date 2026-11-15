@@ -309,6 +309,59 @@
   margin-bottom: 3px;
 }
 
+/* A message that Eva does not have yet: its state line sits under the bubble (#945). */
+.msg.me.sending,
+.msg.me.waiting,
+.msg.me.failed {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.delivery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1) var(--space-2);
+  max-width: 72%;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.delivery .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.delivery.waiting {
+  color: var(--warn-ink);
+}
+
+.delivery.failed {
+  color: var(--bad);
+}
+
+/* A send on a good connection takes a moment, so its first try says nothing unless it is slow. */
+.delivery.sending.first-try {
+  animation: delivery-late 0s linear calc(var(--dur-slow) * 3) backwards;
+}
+
+@keyframes delivery-late {
+  from {
+    visibility: hidden;
+  }
+}
+
+.delivery-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.delivery-actions button {
+  font-size: var(--text-xs);
+}
+
 /* Only the failure line of a turn. A failed step keeps the size of its list. */
 .message .turn-failure {
   margin-top: 8px;

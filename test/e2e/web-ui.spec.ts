@@ -1068,6 +1068,82 @@ async function newAnsweredChat(page: Page, text: string): Promise<string> {
   return title;
 }
 
+test("a message sent with no network stays in the chat, says so, and goes when the network comes back (#945)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the network drops"));
+  await waitUntilIdle(page, chatId);
+  let online = false;
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    if (online) await route.fallback();
+    else await route.abort("internetdisconnected");
+  });
+  const text = `Sent with no network (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  // The text leaves the box at once, and the bubble says what happens to it.
+  await expect(composer).toHaveValue("");
+  const bubble = page.locator(".msg.me", { hasText: text });
+  await expect(bubble.locator(".delivery")).toContainText("Not sent, trying again");
+  online = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
+  await expect(bubble.locator(".delivery")).toHaveCount(0);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(1);
+  await waitUntilIdle(page, chatId);
+  await waitUntilNewestChatSeen(page);
+});
+
+test("a message whose answer got lost runs once, though the page sends it again (#945)", async ({ page }) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the answer gets lost"));
+  await waitUntilIdle(page, chatId);
+  let lose = true;
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    if (!lose) return route.fallback();
+    lose = false;
+    // Eva takes the message, and the page never hears it.
+    await route.fetch();
+    return route.abort("connectionreset");
+  });
+  const text = `An answer that got lost (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
+  await waitUntilIdle(page, chatId);
+  const sessions = (await (await page.request.get("/api/sessions")).json()) as {
+    id: string;
+    turns: { userText: string }[];
+  }[];
+  const turns = sessions.find((session) => session.id === chatId)?.turns ?? [];
+  expect(turns.filter((turn) => turn.userText === text)).toHaveLength(1);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(1);
+  await waitUntilNewestChatSeen(page);
+});
+
+test("a refused message says why, and Edit puts its text back in the box (#945)", async ({ page }) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before a refusal"));
+  await waitUntilIdle(page, chatId);
+  await page.route("**/api/sessions/*/messages", (route) =>
+    route.fulfill({ status: 409, json: { error: "The chat is closed." } }),
+  );
+  const text = `A refused message (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  const bubble = page.locator(".msg.me", { hasText: text });
+  await expect(bubble.locator(".delivery")).toContainText("Not sent: The chat is closed.");
+  await bubble.getByRole("button", { name: "Edit" }).click();
+  await expect(bubble).toHaveCount(0);
+  await expect(composer).toHaveValue(text);
+  await composer.fill("");
+  await waitUntilNewestChatSeen(page);
+});
+
 test("a retry of an answer that wrote a note asks to undo it, and the undo removes the note (#525)", async ({
   page,
 }) => {
@@ -4544,9 +4620,8 @@ test("an approval and a task from while the connection was down still show after
   await expect(runningTask).toHaveCount(0);
 });
 
-test("a failed send shows the error and keeps the typed text", async ({ page }) => {
+test("a refused first message opens its chat, says why there, and Edit puts its text back (#945)", async ({ page }) => {
   await logIn(page);
-  await newChat(page);
   await page.route("**/api/sessions/*/messages", (route) =>
     route.fulfill({
       status: 409,
@@ -4554,12 +4629,18 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
       body: JSON.stringify({ error: "The chat is busy." }),
     }),
   );
+  const text = `Keep this text (${test.info().project.name})`;
+  await sendFirstMessage(page, text);
+  // The chat exists, so the message stays in it with its state, not in the box of the New chat page.
+  await expect(page).toHaveURL(/#\/chats\/(?!new$)[^/]+$/);
+  const bubble = page.locator(".msg.me", { hasText: text });
+  await expect(bubble.locator(".delivery")).toContainText("Not sent: The chat is busy.");
   const composer = page.getByLabel("Message").first();
-  await composer.fill("Keep this text");
-  await page.getByRole("button", { name: "Send" }).first().click();
-  await expect(page.getByRole("alert")).toContainText("The chat is busy.");
-  await expect(composer).toHaveValue("Keep this text");
-  await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
+  await expect(composer).toHaveValue("");
+  await bubble.getByRole("button", { name: "Edit" }).click();
+  await expect(composer).toHaveValue(text);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(0);
+  await composer.fill("");
 });
 
 test("a voice note puts what Eva heard in the box, and the person sends it as text (issue 658)", async ({ page }) => {

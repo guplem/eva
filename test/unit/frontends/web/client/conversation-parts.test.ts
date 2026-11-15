@@ -21,6 +21,8 @@ import {
   restoredText,
   runningUntil,
   isWorking,
+  shownOutbox,
+  deliveryWords,
   heldSteps,
   sendsOnEnter,
   enterKeyHint,
@@ -667,5 +669,48 @@ describe("heldSteps", () => {
 
   test("keeps nothing while no turn ran", () => {
     expect(heldSteps(null, undefined, false)).toBeNull();
+  });
+});
+
+describe("isWorking with the outbox (#945)", () => {
+  test("a message that waits for the network or failed shows no working card", () => {
+    for (const state of ["waiting", "failed"] as const)
+      expect(
+        isWorking({ live: false, turnRuns: false, pending: [{ text: "Hi", turnCount: 2, state }], turnCount: 2 }),
+      ).toBe(false);
+    expect(
+      isWorking({
+        live: false,
+        turnRuns: false,
+        pending: [{ text: "Hi", turnCount: 2, state: "sending" }],
+        turnCount: 2,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("shownOutbox", () => {
+  const entry = (state: "sending" | "waiting" | "failed" | "sent", turnCount: number) =>
+    ({ sessionId: "s1", text: state, id: state, turnCount, state, reason: null, retried: false }) as const;
+
+  test("a message that Eva does not have yet is the next message of the chat, so no stored turn hides it", () => {
+    const shown = shownOutbox([entry("waiting", 0), entry("failed", 1), entry("sending", 3)], 2);
+    expect(shown.map((message) => message.turnCount)).toEqual([2, 2, 3]);
+    expect(shown.map((message) => message.state)).toEqual(["waiting", "failed", "sending"]);
+  });
+
+  test("a sent message keeps its own turn count, so its stored turn hides it", () => {
+    expect(shownOutbox([entry("sent", 0)], 2)).toEqual([
+      { text: "sent", id: "sent", turnCount: 0, state: "sent", reason: null, retried: false },
+    ]);
+  });
+});
+
+describe("deliveryWords", () => {
+  test("each state of an unsent message has its words, and a refusal says why", () => {
+    expect(deliveryWords("sending", null)).toBe("Sending…");
+    expect(deliveryWords("waiting", null)).toBe("Not sent, trying again");
+    expect(deliveryWords("failed", null)).toBe("Not sent. Check the connection.");
+    expect(deliveryWords("failed", "The chat is closed.")).toBe("Not sent: The chat is closed.");
   });
 });

@@ -42,6 +42,7 @@ summary: Streaming service, shared with Life/People/Sam Example. Cancel in the a
   - `account`, `card`, `investment`, `pension`, `loan` and `insurance`: a money product or a policy. A loan or a policy for one thing, such as a car loan or the home insurance, is a contract of that thing instead.
   - When no kind fits, write a new lowercase word, and use the same word for each item of that kind.
 - **`type`** is the type of the folder name in lowercase, such as `car` or `streaming`.
+- **`owner`** is empty when the person owns the item, also with someone else, such as a joint account. The text then names each co-owner by path.
 - **`status`** is `in-use` while the person has or uses the item. `stored` and `lent` are for a thing that waits. `sold` and `gone` are for a thing that left. `ended` is for a contract, a subscription or an account that ended.
 - **`provider`** is the company behind the item, such as the bank, the insurer, the phone operator or the streaming service. Write it as plain text. When the company has a folder in `Life/Providers/`, such as the gym, write its path.
 - **`cost`** is a cost that repeats. `amount` is a number. `currency` is a three-letter code, such as `EUR` or `USD`. `every` is `day`, `week`, `month` or `year`. Eva adds the `cost` of each item that is not `sold`, `gone` or `ended` to answer what the person spends, so never keep a separate list of costs.

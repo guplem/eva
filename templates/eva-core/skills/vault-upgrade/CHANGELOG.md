@@ -204,7 +204,7 @@ The examples are generic: a vault can have any notes.
 
 - **Version:** 9
 - **Date:** 2026-11-15
-- **Pull request:** https://github.com/guplem/eva/issues/940
+- **Pull request:** https://github.com/guplem/eva/pull/941
 - **Summary:** Everything you have or use, such as a car, a software licence, a subscription or a bank account, gets one folder: Life/Inventory. Life/Objects and Life/Finances merge into it.
 - **Migrations first:**
 

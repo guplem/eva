@@ -75,6 +75,17 @@ If Eva stops by herself, for example because of a bad setting, the icon stays wi
 
 With more than one Eva on the computer, each Eva has her own icon. Her name is in its tooltip and at the top of its menu.
 
+### Find your notes from the Start menu
+
+On Windows, the search of the Start menu finds the files of your vault. Windows Search skips the `AppData` folder, where Eva keeps her copy of the vault, so Eva adds the vault to its index. She does it at each start, after a new or deleted clone, and after a turn in a clone. She needs no administrator rights.
+
+- The search skips each file and folder that git ignores, such as `node_modules`, each `.git` folder and each secret file of the vault.
+- Windows finds a note by its name. It reads the text of some file types, but not of `.md` files.
+- A new file shows up after some minutes. Windows waits while you use the computer.
+- To see the rules, open **Indexing Options** from the Start menu. Your vault is in the list.
+
+If Windows Search does not answer, Eva tells you. The search service of Windows can hang: restart the computer. Eva then tries again.
+
 ## Log in to your AI
 
 Eva does not think by herself. She runs a harness: a program that runs an AI agent with your login. Eva knows two harnesses, Claude Code and pi. Setup installs both. You give the login of the one that you use. Each Eva keeps her logins in her own folder, apart from your own Claude Code and pi.
@@ -246,7 +257,7 @@ irm https://github.com/guplem/eva/releases/latest/download/uninstall.ps1 | iex
 The command asks before each step. Each question shows the safe answer in `[brackets]`: press Enter to keep it. Press Ctrl+C to stop at any question.
 
 1. **Which Eva.** Type a name, or press Enter to remove every Eva on this computer.
-2. **Stop her.** The command stops each Eva that you picked, and removes her start at login. This step asks nothing.
+2. **Stop her.** The command stops each Eva that you picked, and removes her start at login. On Windows, it also takes her vault out of the Windows Search index. This step asks nothing.
 3. **Her folder.** The command asks to delete `eva-<name>`. It holds her settings, logins, logs and copy of your vault. Enter keeps the folder, so a new install finds her again. When the vault copy or a project clone has changes that are not on GitHub yet, the command lists them first.
 4. **The eva program.** When no other Eva uses the computer, the command asks to remove the `eva` program. Enter removes it.
 5. **The shared programs.** The command asks about each program that Eva installed: pi, gh, ffmpeg, whisper.cpp, Tailscale, Claude Code and uv. It also asks about the AppArmor profile for bubblewrap, when Eva added one. Other programs can use them too, so Enter keeps each one.
@@ -264,4 +275,4 @@ Then do these steps outside the computer:
 **By hand.** To read each step before it runs, read [uninstall.sh](../../install/uninstall.sh) or [uninstall.ps1](../../install/uninstall.ps1). Or do the main steps yourself, for each Eva:
 
 - On Linux, run `systemctl --user disable --now eva-<name>`. Then delete `~/.config/systemd/user/eva-<name>.service`, the folder `~/.config/eva-<name>` and the program `~/.local/bin/eva`. Delete the `Added by the Eva installer` lines in `~/.profile` and your other shell start files.
-- On Windows, choose **Quit Eva** in the menu of her tray icon, or end each `eva.exe` task in Task Manager. Then run `Remove-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run Eva-<name>` in PowerShell. Delete the folders `%APPDATA%\eva-<name>` and `%LOCALAPPDATA%\Programs\Eva`, and remove the second one from your `PATH`.
+- On Windows, choose **Quit Eva** in the menu of her tray icon, or end each `eva.exe` task in Task Manager. Then run `Remove-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run Eva-<name>` in PowerShell. Delete the folders `%APPDATA%\eva-<name>` and `%LOCALAPPDATA%\Programs\Eva`, and remove the second one from your `PATH`. In **Indexing Options** of the Start menu, choose **Modify**, and clear the vault folder.

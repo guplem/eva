@@ -232,6 +232,7 @@ import { Widgets } from "./widgets/widgets.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
 import { PreviewGrants } from "./widgets/widget-previews.ts";
 import type { ShellWallGap } from "./shell-wall.ts";
+import { searchIndexProblem, SearchIndexSync, type VaultSearchIndex } from "./files/windows-search.ts";
 
 /** The Vault structure card (#773). */
 export interface VaultStructureView {
@@ -297,6 +298,11 @@ export interface EvaOptions {
    * filter needs (#760). Without it, the filter stays off.
    */
   readonly nestedSandbox?: () => Promise<boolean>;
+  /**
+   * Syncs the vault's rules in the Windows Search index, so the Start menu finds its files (#942).
+   * Only Windows sets it.
+   */
+  readonly searchIndex?: VaultSearchIndex;
   readonly runner: ProcessRunner;
   /** The environment Eva started with. Child processes only get its allowlisted part. */
   readonly processEnvironment: EnvironmentMap;
@@ -570,6 +576,8 @@ export class Eva {
   private readonly gitEnvironmentForReads: Readonly<Record<string, string>>;
   private readonly settings: LiveSettings;
   private readonly projectWork: ProjectWork;
+  /** Null when this computer has no Windows Search index to keep. */
+  private readonly searchIndex: SearchIndexSync | null;
   private readonly chatSummaries: ChatSummarizer;
   private readonly vaultSetup: VaultSetup;
   private readonly trustStore: TrustStore;
@@ -922,10 +930,26 @@ export class Eva {
         this.inBackground(what, task);
       },
       modelCalls: this.modelCalls,
+      onClonesChanged: () => this.requestSearchIndex(),
       ...(options.githubRequest === undefined ? {} : { githubRequest: options.githubRequest }),
       ...(options.githubWrite === undefined ? {} : { githubWrite: options.githubWrite }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
+    const searchIndex = options.searchIndex;
+    this.searchIndex =
+      searchIndex === undefined || vaultPath === null
+        ? null
+        : new SearchIndexSync(async () => {
+            const result = await searchIndex(vaultPath, { runner: options.runner, environment: ownGitEnvironment });
+            options.logger?.log(
+              result.kind === "synced" || result.kind === "unavailable" ? "info" : "warn",
+              "The Windows Search sync ended.",
+              { ...result },
+            );
+            this.alerts.report("windows_search", searchIndexProblem(result));
+            // A save that hangs can hang the whole search service: another one would only wait too.
+            return result.kind === "timeout" ? "stop" : undefined;
+          });
 
     this.widgets =
       vaultPath === null
@@ -1007,6 +1031,9 @@ export class Eva {
         }
       }
       if (event.kind !== "turn_finished") return;
+      // A turn in a clone can make an ignored folder, such as `node_modules`, for the Start menu to skip.
+      if (this.sessions.list().some((session) => session.id === event.sessionId && session.clone !== null))
+        this.requestSearchIndex();
       this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
       // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
       options.logger?.log("info", "A turn finished.", { sessionId: event.sessionId, ...event.usage });
@@ -1548,8 +1575,15 @@ export class Eva {
         this.socketFilter = works;
       });
     }
+    this.requestSearchIndex();
     this.noticeVaultSecrets();
     this.encryptVaultSecrets();
+  }
+
+  /** Syncs the vault's rules in the Windows Search index, in the background (#942). */
+  private requestSearchIndex(): void {
+    const searchIndex = this.searchIndex;
+    if (searchIndex !== null) this.inBackground("The Windows Search sync", () => searchIndex.request());
   }
 
   /**

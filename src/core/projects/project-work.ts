@@ -129,6 +129,8 @@ export interface ProjectWorkOptions {
   /** Writes a commit message when the person leaves the note empty. Without it, a plain message. */
   readonly modelCalls?: Pick<ModelCalls, "ask">;
   readonly logger?: Logger;
+  /** Called after a clone folder appears or goes, such as for the Windows Search rules (#942). */
+  readonly onClonesChanged?: () => void;
 }
 
 /** What a run of direct fixes did. */
@@ -405,6 +407,7 @@ export class ProjectWork {
       await restoreSnapshot(clone.path, snapshot, run);
     } catch (error) {
       rmSync(clone.path, { recursive: true, force: true, maxRetries: 5 });
+      this.options.onClonesChanged?.();
       throw error;
     }
     return clone;
@@ -899,6 +902,7 @@ export class ProjectWork {
       }
       // Retries, because a virus scanner or an indexer on Windows can hold a file for a moment.
       rmSync(clone.path, { recursive: true, force: true, maxRetries: 5 });
+      this.options.onClonesChanged?.();
       return Promise.resolve({ deletedChats });
     });
   }
@@ -978,13 +982,15 @@ export class ProjectWork {
     const repositoryUrls = cloneUrls(project.frontMatter.repos);
     if (repositoryUrls.length === 0)
       throw new EvaError("project_not_found", `Project ${project.id} lists no repository to clone.`);
-    return createClone({
+    const clone = await createClone({
       projectPath: project.path,
       repositoryUrls,
       runner: this.options.runner,
       environment: this.options.gitEnvironment,
       origins: this.options.cloneOrigins,
     });
+    this.options.onClonesChanged?.();
+    return clone;
   }
 
   /**

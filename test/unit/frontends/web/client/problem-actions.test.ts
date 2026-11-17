@@ -48,6 +48,7 @@ describe("problemAction", () => {
 
   test("the shell sandbox gap has no button: no part of Settings fixes it (#825)", () => {
     expect(problemAction("shell_wall", "ok")).toBeNull();
+    expect(problemAction("windows_search", "ok")).toBeNull();
     // The install command removes a leftover AppArmor profile, not Settings (#903).
     expect(problemAction("bwrap_profile_left", "ok")).toBeNull();
   });

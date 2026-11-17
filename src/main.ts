@@ -13,6 +13,7 @@ import { createInterface } from "node:readline/promises";
 import { locateEngineProgram, pathWithOwnGh, pathWithUvFolder } from "./core/engine-install/engine-install.ts";
 import { locateVoiceProgram, ownVoicePrograms } from "./core/engine-install/voice-install.ts";
 import { Eva } from "./core/eva.ts";
+import { vaultSearchIndex } from "./core/files/windows-search.ts";
 import { leftoverBwrapProfile, nestedSandboxWorks, shellWallGap, type ShellWallMachine } from "./core/shell-wall.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
@@ -245,6 +246,16 @@ async function serve(paths: HomePaths): Promise<number> {
     shellWallGap: () => shellWallGap(shellWallMachine()),
     bwrapProfileLeft: () => leftoverBwrapProfile(shellWallMachine()),
     nestedSandbox: () => nestedSandboxWorks(shellWallMachine()),
+    // Windows Search excludes AppData, where the vault lives, so Eva adds it for the Start menu (#942).
+    ...(process.platform === "win32"
+      ? {
+          searchIndex: vaultSearchIndex({
+            runner: systemProcessRunner,
+            environment: buildChildEnvironment(process.env, baseEnvironmentAllowlist),
+            folder: join(paths.stateFolder, "windows-search"),
+          }),
+        }
+      : {}),
     runner: systemProcessRunner,
     processEnvironment: process.env,
     now: () => new Date(),

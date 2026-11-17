@@ -27,6 +27,7 @@ export const helpTargets = {
   "problems-and-alerts": { page: "reference", slug: "problems-and-alerts" },
   "what-a-chat-can-reach": { page: "reference", slug: "what-a-chat-can-reach" },
   "apparmor-and-bubblewrap": { page: "reference", slug: "apparmor-and-bubblewrap" },
+  "find-your-notes-from-the-start-menu": { page: "setup", slug: "find-your-notes-from-the-start-menu" },
 } as const satisfies Readonly<Record<string, HelpTarget>>;
 
 export type HelpTopic = keyof typeof helpTargets;
@@ -76,6 +77,7 @@ export function helpTitle(topic: HelpTopic): string {
 const problemHelp: Readonly<Partial<Record<string, HelpTopic>>> = {
   shell_wall: "what-a-chat-can-reach",
   bwrap_profile_left: "apparmor-and-bubblewrap",
+  windows_search: "find-your-notes-from-the-start-menu",
 };
 
 export function helpOfProblem(key: string): HelpTopic | null {

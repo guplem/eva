@@ -125,6 +125,8 @@ Each instance gives each harness its own config folder (`CLAUDE_CONFIG_DIR` and 
 
 **The vault layout is a contract.** A project is `Projects/YYYY-MM-DD-HHmm-name/`. Its clones are in `repos/clone-<n>/<repo>/`. Eva's own files are in `.eva/`, such as the hub claim, the schedules and the vault settings.
 
+**The Start menu on Windows.** Windows Search reads no `.gitignore`, so Eva gives it one exclude rule for each entry that git ignores, each `.git` folder and each secret file. A PowerShell script, `src/core/files/windows-search.ps1`, changes the rules with no administrator rights. Its save can hang for hours, so it runs in a child process with a one-minute timeout, and saves only after a change.
+
 **The template.** Each new vault gets the files of `templates/vault/`. Some files are template parts, such as the text actions. Eva keeps a template part up to date, but never overwrites a part that you changed. A larger change to the vault's folders is a vault upgrade. See [Vault structure](reference.md#vault-structure).
 
 **Migrations.** A new Eva can change the format of a stored file. A migration in `src/core/migrations/` makes that change once, on each computer or in the vault. Only the hub migrates the vault.

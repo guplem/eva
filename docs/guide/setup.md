@@ -77,12 +77,14 @@ With more than one Eva on the computer, each Eva has her own icon. Her name is i
 
 ### Find your notes from the Start menu
 
-On Windows, the search of the Start menu finds the files of your vault. Windows Search skips the `AppData` folder, where Eva keeps her copy of the vault, so Eva adds the vault to its index. She does it at each start, after a new or deleted clone, and after a turn in a clone. She needs no administrator rights.
+On Windows, the search of the Start menu finds the files of your vault. Windows Search skips the `AppData` folder, where Eva keeps her copy of the vault, so Eva adds the vault to its index. She does it at each start, after a new or deleted clone, and after each turn. She needs no administrator rights.
 
 - The search skips each file and folder that git ignores, such as `node_modules`, each `.git` folder and each secret file of the vault.
 - Windows finds a note by its name. It reads the text of some file types, but not of `.md` files.
 - A new file shows up after some minutes. Windows waits while you use the computer.
 - To see the rules, open **Indexing Options** from the Start menu. Your vault is in the list.
+- Eva owns the rules inside the vault folder. She removes a rule there that she did not add, such as one that you added by hand.
+- A sync after a turn costs little: Eva starts the Windows part only when a rule changes.
 
 If Windows Search does not answer, Eva tells you. The search service of Windows can hang: restart the computer. Eva then tries again.
 

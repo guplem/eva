@@ -10,7 +10,10 @@ import {
   SearchIndexSync,
   syncInputName,
   syncScriptName,
+  vaultSearchIndex,
+  type SearchIndexGit,
   type SearchIndexResult,
+  type VaultSearchIndex,
 } from "../../../../src/core/files/windows-search.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -39,6 +42,23 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
+/** A git that answers each command with `reply`, and records each command. */
+function fakeGit(reply: (command: readonly string[], cwd: string) => ProcessResult): SearchIndexGit & {
+  readonly commands: (readonly string[])[];
+} {
+  const commands: (readonly string[])[] = [];
+  return {
+    commands,
+    environment: {},
+    runner: {
+      run: (command, options) => {
+        commands.push(command);
+        return Promise.resolve(reply(command, options.cwd));
+      },
+    },
+  };
+}
+
 describe("searchExclusions", () => {
   const project = "Projects/2026-01-01-0000-example-app";
   const repository = `${project}/repos/clone-0/example-app`;
@@ -64,11 +84,13 @@ describe("searchExclusions", () => {
       write(`vault/${repository}/lib/sub/node_modules/deep/deep.js`);
       write(`vault/${repository}/dist/out.js`);
 
-      const excludes = await searchExclusions(vault, git);
+      const excludes = [...((await searchExclusions(vault, git))?.excludes ?? [])];
 
       expect(excludes.sort()).toEqual(
         [
           ".git/",
+          "Projects/*/repos/*/*/.git/",
+          "Projects/*/repos/*/*/node_modules/",
           ".env.local",
           ".eva/scratch/",
           "build/",
@@ -82,24 +104,34 @@ describe("searchExclusions", () => {
     gitHookTimeoutMs,
   );
 
-  test("keeps only the .git folder of a vault that git cannot read", async () => {
+  test("returns null when git cannot list the vault, so the old rules stay", async () => {
     mkdirSync(join(root, "plain"));
-    expect(await searchExclusions(join(root, "plain"), git)).toEqual([".git/"]);
+    expect(await searchExclusions(join(root, "plain"), git)).toBeNull();
   });
 
-  test("keeps the .git folders first when the list is too long", async () => {
+  test("returns null when git fails in one clone, and takes no lock in any repository", async () => {
+    mkdirSync(join(root, repository, ".git"), { recursive: true });
+    const fake = fakeGit((_, cwd) => ({ exitCode: cwd === root ? 0 : 128, stdout: "", stderr: "fatal" }));
+    expect(await searchExclusions(root, fake)).toBeNull();
+    expect(fake.commands.every((command) => command[1] === "--no-optional-locks")).toBe(true);
+  });
+
+  test("keeps the .git folders and the secret files when the list is too long", async () => {
     const lines = Array.from({ length: maxSearchRules + 10 }, (_, index) => `!! file-${String(index)}.log`);
-    const runner: ProcessRunner = {
-      run: (command) =>
-        Promise.resolve({
-          exitCode: 0,
-          stdout: command.includes("status") ? lines.join("\0") : "",
-          stderr: "",
-        }),
-    };
-    const excludes = await searchExclusions(root, { runner, environment: {} });
-    expect(excludes).toHaveLength(maxSearchRules);
-    expect(excludes[0]).toBe(".git/");
+    const fake = fakeGit((command) => ({
+      exitCode: 0,
+      stdout: command.includes("status") ? lines.join("\0") : "notes/note.md\0server.pem\0",
+      stderr: "",
+    }));
+    const exclusions = await searchExclusions(root, fake);
+    expect(exclusions?.excludes).toHaveLength(maxSearchRules);
+    expect(exclusions?.excludes.slice(0, 4)).toEqual([
+      ".git/",
+      "Projects/*/repos/*/*/.git/",
+      "Projects/*/repos/*/*/node_modules/",
+      "server.pem",
+    ]);
+    expect(exclusions?.cut).toBe(true);
   });
 });
 
@@ -176,11 +208,66 @@ describe("runSearchScopeSync", () => {
     expect(await run(runner)).toEqual({ kind: "timeout" });
   });
 
+  test("reports a state folder that takes no file as a failure", async () => {
+    write("state", "a file where the folder should be");
+    const result = await run(fakeRunner(() => ({ exitCode: 0, stdout: "", stderr: "" })));
+    expect(result.kind).toBe("failed");
+  });
+
   test("reports a PowerShell that does not start as a failure", async () => {
     const runner = fakeRunner(() => {
       throw new EvaError("process_failed", "Could not start powershell.exe.");
     });
     expect(await run(runner)).toEqual({ kind: "failed", reason: "Could not start powershell.exe." });
+  });
+});
+
+describe("vaultSearchIndex", () => {
+  function powershell(): ProcessRunner & { runs: number } {
+    const runner = {
+      runs: 0,
+      run: () => {
+        runner.runs += 1;
+        return Promise.resolve({ exitCode: 0, stdout: '{"added":["a"],"removed":[]}', stderr: "" });
+      },
+    };
+    return runner;
+  }
+
+  const sync = (runner: ProcessRunner): VaultSearchIndex =>
+    vaultSearchIndex({ runner, environment: {}, folder: join(root, "state", "windows-search") });
+
+  test("keeps the old rules and starts no PowerShell when git fails", async () => {
+    const runner = powershell();
+    const result = await sync(runner)(
+      root,
+      fakeGit(() => ({ exitCode: 128, stdout: "", stderr: "fatal" })),
+    );
+    expect(result.kind).toBe("failed");
+    expect(runner.runs).toBe(0);
+  });
+
+  test("starts no PowerShell again for the same list, and again after a change", async () => {
+    const runner = powershell();
+    const index = sync(runner);
+    let ignored = "!! build/\0";
+    const fake = fakeGit((command) => ({ exitCode: 0, stdout: command.includes("status") ? ignored : "", stderr: "" }));
+    expect(await index(root, fake)).toEqual({ kind: "synced", added: 1, removed: 0 });
+    expect(await index(root, fake)).toEqual({ kind: "synced", added: 0, removed: 0 });
+    expect(runner.runs).toBe(1);
+    ignored = "!! build/\0!! dist/\0";
+    await index(root, fake);
+    expect(runner.runs).toBe(2);
+  });
+
+  test("says when the list was cut", async () => {
+    const lines = Array.from({ length: maxSearchRules + 1 }, (_, index) => `!! file-${String(index)}.log`);
+    const fake = fakeGit((command) => ({
+      exitCode: 0,
+      stdout: command.includes("status") ? lines.join("\0") : "",
+      stderr: "",
+    }));
+    expect(await sync(powershell())(root, fake)).toMatchObject({ kind: "synced", cut: true });
   });
 });
 

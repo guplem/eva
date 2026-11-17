@@ -1064,6 +1064,7 @@ export class ProjectWork {
     for (const url of cloneUrls(project.frontMatter.repos)) {
       if (present.has(folderKey(repositoryName(url)))) continue;
       await cloneRepository(clone.path, url, { runner, environment: gitEnvironment, origins: cloneOrigins });
+      this.options.onClonesChanged?.();
     }
     const current = listClones(project.path).find((candidate) => candidate.path === clone.path);
     if (current === undefined) return null;

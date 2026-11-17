@@ -3,7 +3,7 @@
 # Input: a UTF-8 JSON file with { vaultPath, excludes, remove }. An exclude is a path from the
 # vault root with '/', and a folder ends with '/'.
 # Output: one JSON line { added, removed, saved, error }.
-# Exit codes: 0 ok, 1 bad input, 2 no Search API, 3 a rule call failed, 4 SaveAll failed.
+# Exit codes: 0 ok, 1 bad input, 2 no Search API, 3 the code or a rule call failed, 4 SaveAll failed.
 # Keep this file ASCII: Windows PowerShell 5.1 reads a file with no BOM in the ANSI code page.
 param([Parameter(Mandatory = $true)][string]$InputFile)
 
@@ -130,7 +130,8 @@ namespace EvaSearchScope
 
         private static void Check(string step, int hr)
         {
-            if (hr < 0) throw new Exception(string.Format("{0} failed with HRESULT 0x{1:X8}.", step, hr));
+            // A COMException keeps the HRESULT, so the script can tell a service that is off from a refusal.
+            if (hr < 0) throw new COMException(string.Format("{0} failed with HRESULT 0x{1:X8}.", step, hr), hr);
         }
 
         public List<UserScopeRule> UserRulesUnder(string rootUrl)
@@ -182,6 +183,13 @@ function Stop-Sync([int]$ExitCode, [string]$Reason) {
     exit $ExitCode
 }
 
+function Get-HResult($ErrorRecord) {
+    $exception = $ErrorRecord.Exception
+    while ($null -ne $exception.InnerException) { $exception = $exception.InnerException }
+    # A string: Windows PowerShell reads a hex number above 0x7FFFFFFF as a negative number.
+    return '0x{0:X8}' -f $exception.HResult
+}
+
 function Get-Reason($ErrorRecord) {
     $exception = $ErrorRecord.Exception
     while ($null -ne $exception.InnerException) { $exception = $exception.InnerException }
@@ -200,6 +208,11 @@ if ([string]::IsNullOrWhiteSpace($vaultPath) -or -not [IO.Path]::IsPathRooted($v
 }
 $vaultFullPath = [IO.Path]::GetFullPath($vaultPath).TrimEnd('\')
 $vaultRootUrl = "file:///$vaultFullPath\"
+# The script removes each user rule under the vault that it did not ask for. Under a drive root,
+# that would be every rule of the person on that drive.
+if ($vaultFullPath -eq [IO.Path]::GetPathRoot($vaultFullPath).TrimEnd('\')) {
+    Stop-Sync 1 "The vault must not be the root of a drive: $vaultFullPath"
+}
 
 $wanted = New-Object 'System.Collections.Generic.Dictionary[string,bool]' ([StringComparer]::OrdinalIgnoreCase)
 if (-not $request.remove) {
@@ -214,13 +227,21 @@ if (-not $request.remove) {
     }
 }
 
-# 2. The Search API.
+# 2. The Search API. A code that does not compile is a failure, not a Windows Search that is off.
 try {
     if (-not ('EvaSearchScope.VaultCrawlScope' -as [type])) { Add-Type -TypeDefinition $interopSource }
+} catch {
+    Stop-Sync 3 "The Search API code did not compile: $(Get-Reason $_)"
+}
+try {
     $scope = New-Object EvaSearchScope.VaultCrawlScope
     $existing = $scope.UserRulesUnder($vaultRootUrl)
 } catch {
-    Stop-Sync 2 "Windows Search is not available: $(Get-Reason $_)"
+    # Only a service that is missing, off or not started is no problem. A refusal, such as
+    # E_ACCESSDENIED from a policy, must reach the person.
+    $code = Get-HResult $_
+    $offCodes = @('0x80040154', '0x80070422', '0x80070426', '0x800706BA')
+    Stop-Sync $(if ($offCodes -contains $code) { 2 } else { 3 }) "Windows Search is not available: $(Get-Reason $_)"
 }
 
 # 3. The changes. The service rewrites a URL when it stores it: '*\node_modules\*' becomes

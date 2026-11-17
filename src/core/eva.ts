@@ -941,11 +941,12 @@ export class Eva {
         ? null
         : new SearchIndexSync(async () => {
             const result = await searchIndex(vaultPath, { runner: options.runner, environment: ownGitEnvironment });
-            options.logger?.log(
-              result.kind === "synced" || result.kind === "unavailable" ? "info" : "warn",
-              "The Windows Search sync ended.",
-              { ...result },
-            );
+            // Each turn asks for a sync, so a sync that changed nothing writes no line.
+            const quiet = result.kind === "synced" && result.added + result.removed === 0 && result.cut !== true;
+            if (!quiet) {
+              const fine = (result.kind === "synced" && result.cut !== true) || result.kind === "unavailable";
+              options.logger?.log(fine ? "info" : "warn", "The Windows Search sync ended.", { ...result });
+            }
             this.alerts.report("windows_search", searchIndexProblem(result));
             // A save that hangs can hang the whole search service: another one would only wait too.
             return result.kind === "timeout" ? "stop" : undefined;
@@ -1031,9 +1032,9 @@ export class Eva {
         }
       }
       if (event.kind !== "turn_finished") return;
-      // A turn in a clone can make an ignored folder, such as `node_modules`, for the Start menu to skip.
-      if (this.sessions.list().some((session) => session.id === event.sessionId && session.clone !== null))
-        this.requestSearchIndex();
+      // A turn can make a file for the Start menu to skip, such as `node_modules` in a clone or a secret
+      // file in the vault. A sync with no change starts no PowerShell, so each turn can ask.
+      this.requestSearchIndex();
       this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
       // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
       options.logger?.log("info", "A turn finished.", { sessionId: event.sessionId, ...event.usage });

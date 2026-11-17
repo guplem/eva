@@ -37,50 +37,58 @@ export interface SearchScopeRequest {
 }
 
 export type SearchIndexResult =
-  | { readonly kind: "synced"; readonly added: number; readonly removed: number }
+  | {
+      readonly kind: "synced";
+      readonly added: number;
+      readonly removed: number;
+      /** True when the list passed the limit, so some ignored entries stay in the index. */
+      readonly cut?: boolean;
+    }
   /** The Windows Search service is off or missing: nothing to do. */
   | { readonly kind: "unavailable"; readonly reason: string }
   | { readonly kind: "failed"; readonly reason: string }
   | { readonly kind: "timeout" };
 
-/**
- * Each entry that matches an ignore rule in `folder`: a folder as one entry that ends with `/`. Empty when
- * git fails. Plain `--ignored` would name a parent folder that holds only ignored files, such as `.eva/`.
- */
-async function ignoredEntries(folder: string, git: SearchIndexGit): Promise<string[]> {
+/** The output of one git command, or null when git fails or does not end. */
+async function gitOutput(folder: string, git: SearchIndexGit, args: readonly string[]): Promise<string | null> {
   try {
-    const result = await git.runner.run(
-      ["git", "status", "--porcelain", "-z", "--ignored=matching", "--untracked-files=normal"],
-      {
-        cwd: folder,
-        environment: git.environment,
-        timeoutMs: gitTimeoutMs,
-      },
-    );
-    if (result.exitCode !== 0) return [];
-    return result.stdout
-      .split("\0")
-      .filter((entry) => entry.startsWith("!! "))
-      .map((entry) => entry.slice(3));
-  } catch {
-    return [];
-  }
-}
-
-/** Each secret file of the vault that git does not ignore. Its name alone could tell too much. */
-async function secretFiles(vaultPath: string, git: SearchIndexGit): Promise<string[]> {
-  try {
-    const result = await git.runner.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
-      cwd: vaultPath,
+    // Without --no-optional-locks, a status takes index.lock, and a commit of a turn at the same time fails.
+    const result = await git.runner.run(["git", "--no-optional-locks", ...args], {
+      cwd: folder,
       environment: git.environment,
       timeoutMs: gitTimeoutMs,
     });
-    if (result.exitCode !== 0) return [];
-    const secrets = secretMatcherOf(vaultPath);
-    return result.stdout.split("\0").filter((path) => path !== "" && secrets.matches(path));
+    return result.exitCode === 0 ? result.stdout : null;
   } catch {
-    return [];
+    return null;
   }
+}
+
+/**
+ * Each entry that matches an ignore rule in `folder`: a folder as one entry that ends with `/`. Null when
+ * git fails. Plain `--ignored` would name a parent folder that holds only ignored files, such as `.eva/`.
+ */
+async function ignoredEntries(folder: string, git: SearchIndexGit): Promise<string[] | null> {
+  const output = await gitOutput(folder, git, [
+    "status",
+    "--porcelain",
+    "-z",
+    "--ignored=matching",
+    "--untracked-files=normal",
+  ]);
+  if (output === null) return null;
+  return output
+    .split("\0")
+    .filter((entry) => entry.startsWith("!! "))
+    .map((entry) => entry.slice(3));
+}
+
+/** Each secret file of the vault that git does not ignore. Its name alone could tell too much. Null when git fails. */
+async function secretFiles(vaultPath: string, git: SearchIndexGit): Promise<string[] | null> {
+  const output = await gitOutput(vaultPath, git, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
+  if (output === null) return null;
+  const secrets = secretMatcherOf(vaultPath);
+  return output.split("\0").filter((path) => path !== "" && secrets.matches(path));
 }
 
 function projectFolders(vaultPath: string): string[] {
@@ -93,27 +101,45 @@ function projectFolders(vaultPath: string): string[] {
   }
 }
 
+/** A `*` matches one folder level: `Projects/<project>/repos/clone-<n>/<repository>/`. */
+const clonePatterns = ["Projects/*/repos/*/*/.git/", "Projects/*/repos/*/*/node_modules/"];
+
 /** The vault's `.gitignore` lists the clones, but their tracked files belong in the search. */
 const clonesFolder = /^Projects\/[^/]+\/repos(\/|$)/;
 
+/** The exclude rules of a vault, and whether the limit cut some. */
+export interface SearchExclusions {
+  readonly excludes: readonly string[];
+  readonly cut: boolean;
+}
+
 /**
- * The exclude rules of the vault. A `*` rule of Windows matches one folder level only, so each
- * ignored folder gets its own rule. The `.git` folders come first, so a cut list keeps them.
+ * The exclude rules of the vault, or null when git cannot list them: the sync then keeps the old
+ * rules, so a secret file never enters the index. A `*` rule of Windows matches one folder level
+ * only, so each ignored folder gets its own rule. The `.git` folders and the secret files come
+ * first, so a cut list keeps them.
  */
-export async function searchExclusions(vaultPath: string, git: SearchIndexGit): Promise<string[]> {
-  const gitFolders = [".git/"];
-  const ignored = (await ignoredEntries(vaultPath, git)).filter((entry) => !clonesFolder.test(entry));
+export async function searchExclusions(vaultPath: string, git: SearchIndexGit): Promise<SearchExclusions | null> {
+  // The clone layout has a fixed depth, so these patterns cover a new clone before its first sync,
+  // and a `node_modules` that a turn makes before the turn ends.
+  const gitFolders = [".git/", ...clonePatterns];
+  const vaultIgnored = await ignoredEntries(vaultPath, git);
   const secrets = await secretFiles(vaultPath, git);
+  if (vaultIgnored === null || secrets === null) return null;
+  const ignored = vaultIgnored.filter((entry) => !clonesFolder.test(entry));
   for (const project of projectFolders(vaultPath)) {
     for (const clone of listClones(join(vaultPath, "Projects", project))) {
       for (const repository of clone.repositories) {
         const prefix = `Projects/${project}/repos/${clone.name}/${repository.name}/`;
         gitFolders.push(`${prefix}.git/`);
-        for (const entry of await ignoredEntries(repository.path, git)) ignored.push(prefix + entry);
+        const entries = await ignoredEntries(repository.path, git);
+        if (entries === null) return null;
+        for (const entry of entries) ignored.push(prefix + entry);
       }
     }
   }
-  return [...new Set([...gitFolders, ...ignored, ...secrets])].slice(0, maxSearchRules);
+  const all = [...new Set([...gitFolders, ...secrets, ...ignored])];
+  return { excludes: all.slice(0, maxSearchRules), cut: all.length > maxSearchRules };
 }
 
 export interface SearchScopeRun {
@@ -153,12 +179,8 @@ function countIn(stdout: string, field: "added" | "removed"): number {
 
 /** Writes the script and the request to `run.folder`, and runs the script with a timeout. */
 export async function runSearchScopeSync(run: SearchScopeRun, request: SearchScopeRequest): Promise<SearchIndexResult> {
-  mkdirSync(run.folder, { recursive: true });
   const script = join(run.folder, syncScriptName);
   const input = join(run.folder, syncInputName);
-  writeFileAtomic(script, syncScript);
-  // A file, not the input pipe: Windows PowerShell never reads a line from the pipe that Bun gives it (#457).
-  writeFileAtomic(input, JSON.stringify(request));
   const systemRoot = run.environment["SystemRoot"] ?? run.environment["SYSTEMROOT"] ?? "C:\\Windows";
   const command = [
     `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
@@ -172,6 +194,10 @@ export async function runSearchScopeSync(run: SearchScopeRun, request: SearchSco
     input,
   ];
   try {
+    mkdirSync(run.folder, { recursive: true });
+    writeFileAtomic(script, syncScript);
+    // A file, not the input pipe: Windows PowerShell never reads a line from the pipe that Bun gives it (#457).
+    writeFileAtomic(input, JSON.stringify(request));
     const result = await run.runner.run(command, {
       cwd: run.folder,
       environment: run.environment,
@@ -253,8 +279,22 @@ export class SearchIndexSync {
 /** A sync of the vault's rules: Eva gives the vault path and her git, and gets the result. */
 export type VaultSearchIndex = (vaultPath: string, git: SearchIndexGit) => Promise<SearchIndexResult>;
 
-/** The sync that a Windows computer runs: the exclude list, then the script. */
+/**
+ * The sync that a Windows computer runs: the exclude list, then the script. A list that is the same
+ * as the last one that synced starts no PowerShell: each start of it compiles the C# code again.
+ * The first sync of a run always checks, because Windows can lose rules whose save did not end.
+ */
 export function vaultSearchIndex(run: SearchScopeRun): VaultSearchIndex {
-  return async (vaultPath, git) =>
-    runSearchScopeSync(run, { vaultPath, excludes: await searchExclusions(vaultPath, git), remove: false });
+  let lastSynced: string | null = null;
+  return async (vaultPath, git) => {
+    const exclusions = await searchExclusions(vaultPath, git);
+    if (exclusions === null)
+      return { kind: "failed", reason: "Git could not list the ignored files, so Eva keeps the old rules." };
+    const request = { vaultPath, excludes: exclusions.excludes, remove: false };
+    const key = JSON.stringify(request);
+    if (key === lastSynced) return { kind: "synced", added: 0, removed: 0 };
+    const result = await runSearchScopeSync(run, request);
+    lastSynced = result.kind === "synced" ? key : null;
+    return result.kind === "synced" && exclusions.cut ? { ...result, cut: true } : result;
+  };
 }

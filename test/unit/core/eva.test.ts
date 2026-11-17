@@ -588,6 +588,37 @@ describe("Eva", () => {
     expect((await instance.newClone(projectId)).name).toBe("clone-0");
   });
 
+  test("a new clone, a turn in a clone and a deleted clone each sync the Windows Search rules (#942)", async () => {
+    const projectId = "2025-03-02-1015-example-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    let syncs = 0;
+    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+    const instance = start(
+      new FakeEngine(),
+      {},
+      {
+        searchIndex: () => {
+          syncs += 1;
+          return Promise.resolve({ kind: "synced", added: 0, removed: 0 });
+        },
+      },
+    );
+    await instance.newClone(projectId);
+    await settle();
+    expect(syncs).toBe(1);
+    const chat = await instance.createProjectSession({ projectId, cloneName: "clone-0", source: "cli" });
+    await instance.sessions.send(chat.id, "hello");
+    await settle();
+    expect(syncs).toBe(2);
+    await instance.deleteClone(projectId, "clone-0");
+    await settle();
+    expect(syncs).toBe(3);
+  });
+
   test("a clone where Eva works now, or that does not exist, stays", async () => {
     const projectId = "2025-03-02-1015-example-app";
     sandbox.write(
@@ -3287,6 +3318,43 @@ describe("migrations (#119)", () => {
     await Promise.resolve();
     expect(alerts.filter((alert) => alert.key === "shell_wall").map((alert) => alert.level)).toEqual(["news"]);
     expect(instance.status().problemDetails.some((problem) => problem.key === "shell_wall")).toBe(false);
+  });
+
+  test("at start, Eva syncs the vault in the Windows Search index, and warns when Windows Search hangs (#942)", async () => {
+    const vaults: string[] = [];
+    const instance = start(
+      new FakeEngine(),
+      {},
+      {
+        searchIndex: (vaultPath) => {
+          vaults.push(vaultPath);
+          return Promise.resolve({ kind: "timeout" });
+        },
+      },
+    );
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(vaults).toHaveLength(1);
+    expect(alerts.find((alert) => alert.key === "windows_search")).toMatchObject({ level: "warn" });
+  });
+
+  test("a Windows Search sync that works, or a Windows Search that is off, is no problem (#942)", async () => {
+    for (const result of [
+      { kind: "synced", added: 2, removed: 0 },
+      { kind: "unavailable", reason: "The service is off." },
+    ] as const) {
+      const instance = start(new FakeEngine(), {}, { searchIndex: () => Promise.resolve(result) });
+      instance.reportStartMigrations({
+        machine: { kind: "done", applied: [], later: [] },
+        vault: { kind: "done", applied: [], later: [] },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(instance.status().problemDetails.some((problem) => problem.key === "windows_search")).toBe(false);
+    }
   });
 
   test("a failed migration at start sends an alert with its id and the error", () => {

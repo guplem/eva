@@ -66,6 +66,36 @@ function Uninstall-Eva {
     Write-Host "  [ok] Stopped Eva `"$name`", and removed her start at logon."
   }
 
+  # Eva adds her vault to the Windows Search index (#942). Her own script, in her state folder,
+  # takes it out again. A save can hang, so the script gets one minute.
+  function Remove-SearchRules([string] $name) {
+    $folder = Join-Path $configFolder "eva-$name\state\windows-search"
+    $script = Join-Path $folder 'sync-search-scope.ps1'
+    $request = Join-Path $folder 'sync-search-scope.json'
+    if (-not (Test-Path $script) -or -not (Test-Path $request)) { return }
+    $removal = Join-Path $folder 'remove-search-scope.json'
+    $process = $null
+    try {
+      $vaultPath = (Get-Content -LiteralPath $request -Raw -Encoding UTF8 | ConvertFrom-Json).vaultPath
+      $text = @{ vaultPath = $vaultPath; excludes = @(); remove = $true } | ConvertTo-Json -Compress
+      [IO.File]::WriteAllText($removal, $text, (New-Object Text.UTF8Encoding $false))
+      $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+      $process = Start-Process -FilePath $powershell -WindowStyle Hidden -PassThru -ArgumentList @(
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', "`"$script`"", '-InputFile', "`"$removal`"")
+      # Without a read of the handle, Windows PowerShell 5.1 forgets the exit code.
+      $null = $process.Handle
+    } catch {
+      $process = $null
+    }
+    if ($process -and $process.WaitForExit(60000) -and $process.ExitCode -eq 0) {
+      Write-Host '  [ok] Took her vault out of the Windows Search index.'
+      return
+    }
+    if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+    Write-Host '  Her vault can stay in the Windows Search index. To take it out, open Indexing Options in the Start menu, then Modify.'
+  }
+
   # Each git folder under the Eva folder with changes that are not on its remote yet: the
   # vault copy, and the clones of its projects.
   function Get-UnsavedWork([string] $evaHome) {
@@ -189,6 +219,7 @@ function Uninstall-Eva {
     Write-Host ''
     Write-Host "Eva `"$name`""
     Stop-Eva $name
+    Remove-SearchRules $name
     Remove-EvaFolder $name
   }
 

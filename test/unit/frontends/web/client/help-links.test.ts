@@ -45,6 +45,7 @@ describe("help links", () => {
 describe("the help of a problem (#760)", () => {
   test("the notice of a computer with no sandbox links to what a chat can reach", () => {
     expect(helpOfProblem("shell_wall")).toBe("what-a-chat-can-reach");
+    expect(helpOfProblem("windows_search")).toBe("find-your-notes-from-the-start-menu");
     expect(helpOfProblem("bwrap_profile_left")).toBe("apparmor-and-bubblewrap");
     expect(helpOfProblem("vault_ahead")).toBeNull();
   });

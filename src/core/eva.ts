@@ -942,14 +942,21 @@ export class Eva {
         : new SearchIndexSync(async () => {
             const result = await searchIndex(vaultPath, { runner: options.runner, environment: ownGitEnvironment });
             // Each turn asks for a sync, so a sync that changed nothing writes no line.
-            const quiet = result.kind === "synced" && result.added + result.removed === 0 && result.cut !== true;
+            const quiet =
+              result.kind === "synced" &&
+              result.added + result.removed === 0 &&
+              result.cut !== true &&
+              result.skipped === undefined;
             if (!quiet) {
-              const fine = (result.kind === "synced" && result.cut !== true) || result.kind === "unavailable";
+              const fine =
+                (result.kind === "synced" && result.cut !== true && result.skipped === undefined) ||
+                result.kind === "unavailable";
               options.logger?.log(fine ? "info" : "warn", "The Windows Search sync ended.", { ...result });
             }
             this.alerts.report("windows_search", searchIndexProblem(result));
-            // A save that hangs can hang the whole search service: another one would only wait too.
-            return result.kind === "timeout" ? "stop" : undefined;
+            // A save that hangs can hang the whole search service: another one would only wait too. A
+            // service that is off stays off until the person turns it on, so the next start checks again.
+            return result.kind === "timeout" || result.kind === "unavailable" ? "stop" : undefined;
           });
 
     this.widgets =

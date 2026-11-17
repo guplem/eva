@@ -109,10 +109,10 @@ describe("searchExclusions", () => {
     expect(await searchExclusions(join(root, "plain"), git)).toBeNull();
   });
 
-  test("returns null when git fails in one clone, and takes no lock in any repository", async () => {
+  test("keeps the old rules of a clone where git fails, and takes no lock in any repository", async () => {
     mkdirSync(join(root, repository, ".git"), { recursive: true });
     const fake = fakeGit((_, cwd) => ({ exitCode: cwd === root ? 0 : 128, stdout: "", stderr: "fatal" }));
-    expect(await searchExclusions(root, fake)).toBeNull();
+    expect((await searchExclusions(root, fake))?.keep).toEqual([`${repository}/`]);
     expect(fake.commands.every((command) => command[1] === "--no-optional-locks")).toBe(true);
   });
 
@@ -258,6 +258,37 @@ describe("vaultSearchIndex", () => {
     ignored = "!! build/\0!! dist/\0";
     await index(root, fake);
     expect(runner.runs).toBe(2);
+  });
+
+  test("gives the same refusal again for the same list, with no new PowerShell", async () => {
+    const runner = {
+      runs: 0,
+      run: (): Promise<ProcessResult> => {
+        runner.runs += 1;
+        return Promise.resolve({ exitCode: 3, stdout: '{"error":"Access is denied."}', stderr: "" });
+      },
+    };
+    const index = sync(runner);
+    const fake = fakeGit(() => ({ exitCode: 0, stdout: "", stderr: "" }));
+    const failed = { kind: "failed", reason: "Access is denied." } as const;
+    expect(await index(root, fake)).toEqual(failed);
+    expect(await index(root, fake)).toEqual(failed);
+    expect(runner.runs).toBe(1);
+  });
+
+  test("syncs the rest of the vault when git fails in one clone, and says which", async () => {
+    const repository = "Projects/2026-01-01-0000-example-app/repos/clone-0/example-app";
+    mkdirSync(join(root, repository, ".git"), { recursive: true });
+    const runner = powershell();
+    const fake = fakeGit((_, cwd) => ({ exitCode: cwd === root ? 0 : 128, stdout: "", stderr: "fatal" }));
+    const result = await sync(runner)(root, fake);
+    expect(runner.runs).toBe(1);
+    expect(result).toMatchObject({ kind: "failed" });
+    expect(result.kind === "failed" ? result.reason : "").toContain(repository);
+    const input = JSON.parse(readFileSync(join(root, "state", "windows-search", syncInputName), "utf8")) as {
+      keep: string[];
+    };
+    expect(input.keep).toEqual([`${repository}/`]);
   });
 
   test("says when the list was cut", async () => {

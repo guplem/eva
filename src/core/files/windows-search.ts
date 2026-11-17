@@ -32,6 +32,8 @@ export interface SearchScopeRequest {
   readonly vaultPath: string;
   /** Paths from the vault root, with `/`. A folder ends with `/`. */
   readonly excludes: readonly string[];
+  /** Folders from the vault root, ending with `/`, whose old rules stay as they are. */
+  readonly keep?: readonly string[];
   /** True to remove every rule of the vault, as the uninstall does. */
   readonly remove: boolean;
 }
@@ -43,6 +45,8 @@ export type SearchIndexResult =
       readonly removed: number;
       /** True when the list passed the limit, so some ignored entries stay in the index. */
       readonly cut?: boolean;
+      /** The patterns that Windows refused. Their folders still get their own rules. */
+      readonly skipped?: number;
     }
   /** The Windows Search service is off or missing: nothing to do. */
   | { readonly kind: "unavailable"; readonly reason: string }
@@ -110,36 +114,41 @@ const clonesFolder = /^Projects\/[^/]+\/repos(\/|$)/;
 /** The exclude rules of a vault, and whether the limit cut some. */
 export interface SearchExclusions {
   readonly excludes: readonly string[];
+  /** The repositories where git failed: the sync keeps their old rules. Paths end with `/`. */
+  readonly keep: readonly string[];
   readonly cut: boolean;
 }
 
 /**
- * The exclude rules of the vault, or null when git cannot list them: the sync then keeps the old
- * rules, so a secret file never enters the index. A `*` rule of Windows matches one folder level
- * only, so each ignored folder gets its own rule. The `.git` folders and the secret files come
- * first, so a cut list keeps them.
+ * The exclude rules of the vault, or null when git cannot list the vault's own: the sync then keeps
+ * the old rules, so a secret file never enters the index. A clone repository where git fails keeps
+ * its old rules, and the rest of the vault still syncs. A `*` rule of Windows matches one folder
+ * level only, so each ignored folder gets its own rule. The `.git` folders and the secret files
+ * come first, so a cut list keeps them.
  */
 export async function searchExclusions(vaultPath: string, git: SearchIndexGit): Promise<SearchExclusions | null> {
-  // The clone layout has a fixed depth, so these patterns cover a new clone before its first sync,
-  // and a `node_modules` that a turn makes before the turn ends.
-  const gitFolders = [".git/", ...clonePatterns];
   const vaultIgnored = await ignoredEntries(vaultPath, git);
   const secrets = await secretFiles(vaultPath, git);
   if (vaultIgnored === null || secrets === null) return null;
+  // Each pattern already covers these folders. The folder rules stay for a Windows that refuses a pattern.
+  const repositoryGitFolders: string[] = [];
   const ignored = vaultIgnored.filter((entry) => !clonesFolder.test(entry));
+  const keep: string[] = [];
   for (const project of projectFolders(vaultPath)) {
     for (const clone of listClones(join(vaultPath, "Projects", project))) {
       for (const repository of clone.repositories) {
         const prefix = `Projects/${project}/repos/${clone.name}/${repository.name}/`;
-        gitFolders.push(`${prefix}.git/`);
+        repositoryGitFolders.push(`${prefix}.git/`);
         const entries = await ignoredEntries(repository.path, git);
-        if (entries === null) return null;
-        for (const entry of entries) ignored.push(prefix + entry);
+        if (entries === null) keep.push(prefix);
+        else for (const entry of entries) ignored.push(prefix + entry);
       }
     }
   }
-  const all = [...new Set([...gitFolders, ...secrets, ...ignored])];
-  return { excludes: all.slice(0, maxSearchRules), cut: all.length > maxSearchRules };
+  // The clone layout has a fixed depth, so the patterns cover a new clone before its first sync,
+  // and a `node_modules` that a turn makes before the turn ends.
+  const all = [...new Set([".git/", ...clonePatterns, ...secrets, ...repositoryGitFolders, ...ignored])];
+  return { excludes: all.slice(0, maxSearchRules), keep, cut: all.length > maxSearchRules };
 }
 
 export interface SearchScopeRun {
@@ -165,7 +174,7 @@ function reasonIn(stdout: string): string | null {
   return null;
 }
 
-function countIn(stdout: string, field: "added" | "removed"): number {
+function countIn(stdout: string, field: "added" | "removed" | "skipped"): number {
   try {
     const parsed: unknown = JSON.parse(stdout.trim());
     if (typeof parsed !== "object" || parsed === null || !(field in parsed)) return 0;
@@ -203,8 +212,11 @@ export async function runSearchScopeSync(run: SearchScopeRun, request: SearchSco
       environment: run.environment,
       timeoutMs: syncTimeoutMs,
     });
-    if (result.exitCode === 0)
-      return { kind: "synced", added: countIn(result.stdout, "added"), removed: countIn(result.stdout, "removed") };
+    if (result.exitCode === 0) {
+      const skipped = countIn(result.stdout, "skipped");
+      const counts = { added: countIn(result.stdout, "added"), removed: countIn(result.stdout, "removed") };
+      return skipped === 0 ? { kind: "synced", ...counts } : { kind: "synced", ...counts, skipped };
+    }
     const reason = reasonIn(result.stdout) ?? failureReason(result, "PowerShell");
     return result.exitCode === 2 ? { kind: "unavailable", reason } : { kind: "failed", reason };
   } catch (error) {
@@ -285,16 +297,30 @@ export type VaultSearchIndex = (vaultPath: string, git: SearchIndexGit) => Promi
  * The first sync of a run always checks, because Windows can lose rules whose save did not end.
  */
 export function vaultSearchIndex(run: SearchScopeRun): VaultSearchIndex {
-  let lastSynced: string | null = null;
+  let last: { readonly key: string; readonly result: SearchIndexResult } | null = null;
   return async (vaultPath, git) => {
     const exclusions = await searchExclusions(vaultPath, git);
     if (exclusions === null)
       return { kind: "failed", reason: "Git could not list the ignored files, so Eva keeps the old rules." };
-    const request = { vaultPath, excludes: exclusions.excludes, remove: false };
+    const request = { vaultPath, excludes: exclusions.excludes, keep: exclusions.keep, remove: false };
     const key = JSON.stringify(request);
-    if (key === lastSynced) return { kind: "synced", added: 0, removed: 0 };
-    const result = await runSearchScopeSync(run, request);
-    lastSynced = result.kind === "synced" ? key : null;
-    return result.kind === "synced" && exclusions.cut ? { ...result, cut: true } : result;
+    // The same list gives the same answer: a refusal by Windows would only come again.
+    if (key === last?.key)
+      return last.result.kind === "synced" ? { kind: "synced", added: 0, removed: 0 } : last.result;
+    const synced = await runSearchScopeSync(run, request);
+    const result: SearchIndexResult =
+      synced.kind !== "synced"
+        ? synced
+        : exclusions.keep.length > 0
+          ? {
+              kind: "failed",
+              reason: `Git could not read ${exclusions.keep.join(", ")}, so Eva keeps the old rules there.`,
+            }
+          : exclusions.cut
+            ? { ...synced, cut: true }
+            : synced;
+    // A timeout leaves the rules unknown, so it remembers nothing.
+    last = synced.kind === "timeout" ? null : { key, result };
+    return result;
   };
 }

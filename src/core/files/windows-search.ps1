@@ -2,7 +2,7 @@
 # Eva writes this file and its input, and runs it with a timeout: SaveAll can hang for hours.
 # Input: a UTF-8 JSON file with { vaultPath, excludes, remove }. An exclude is a path from the
 # vault root with '/', and a folder ends with '/'.
-# Output: one JSON line { added, removed, saved, error }.
+# Output: one JSON line { added, removed, skipped, saved, error }. A pattern that Windows refuses is skipped.
 # Exit codes: 0 ok, 1 bad input, 2 no Search API, 3 the code or a rule call failed, 4 SaveAll failed.
 # Keep this file ASCII: Windows PowerShell 5.1 reads a file with no BOM in the ANSI code page.
 param([Parameter(Mandatory = $true)][string]$InputFile)
@@ -175,7 +175,7 @@ namespace EvaSearchScope
 }
 '@
 
-$result = [ordered]@{ added = @(); removed = @(); saved = $false; error = $null }
+$result = [ordered]@{ added = @(); removed = @(); skipped = @(); saved = $false; error = $null }
 
 function Stop-Sync([int]$ExitCode, [string]$Reason) {
     $result.error = $Reason
@@ -226,6 +226,14 @@ if (-not $request.remove) {
         $wanted[$vaultRootUrl + $relative] = $false
     }
 }
+# A folder where git failed keeps its old rules: git could not say which rules it needs now.
+$keepPrefixes = @(@($request.keep) | Where-Object { $_ } | ForEach-Object {
+        ($vaultRootUrl + ([string]$_).Replace('/', '\').TrimStart('\')).ToLowerInvariant()
+    })
+function Test-Kept([string]$Url) {
+    foreach ($prefix in $keepPrefixes) { if ($Url.ToLowerInvariant().StartsWith($prefix)) { return $true } }
+    return $false
+}
 
 # 2. The Search API. A code that does not compile is a failure, not a Windows Search that is off.
 try {
@@ -257,6 +265,8 @@ try {
         [string]$key = Get-RuleKey $rule.Url
         if ($wantedByKey.ContainsKey($key) -and $wantedByKey[$key] -eq $rule.IsIncluded -and -not $kept.Contains($key)) {
             $null = $kept.Add($key)
+        } elseif (Test-Kept $rule.Url) {
+            $null = $kept.Add($key)
         } else {
             $scope.RemoveRule($rule.Url)
             $result.removed += $rule.Url
@@ -265,7 +275,13 @@ try {
     # The include and the excludes go in one SaveAll, so a secret file is never in the index.
     foreach ($rule in $wanted.GetEnumerator()) {
         if (-not $kept.Contains((Get-RuleKey $rule.Key))) {
-            $scope.AddUserRule($rule.Key, $rule.Value)
+            if ($rule.Key.Contains('*')) {
+                # Windows accepts no '*' in some places. A refused pattern must not stop the
+                # folder rules, which cover the same folders at the next sync.
+                try { $scope.AddUserRule($rule.Key, $rule.Value) } catch { $result.skipped += $rule.Key; continue }
+            } else {
+                $scope.AddUserRule($rule.Key, $rule.Value)
+            }
             $result.added += $rule.Key
         }
     }

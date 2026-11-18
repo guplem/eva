@@ -149,6 +149,8 @@ export interface MapRow {
   readonly branchHead: boolean;
   /** The last row of the shown branch. */
   readonly current: boolean;
+  /** The last row of its own branch, shown or not. */
+  readonly tip: boolean;
   /** The line of each lane above and below the middle of the row. */
   readonly lines: readonly { readonly lane: number; readonly up: MapLine; readonly down: MapLine }[];
   /** A fork that leaves this row's answer: a bend from the row's lane down into the fork's lane. */
@@ -238,6 +240,7 @@ export function branchMap(tree: readonly BranchSession[], shownId: string): Bran
       onPath: row.onPath,
       branchHead: position === rowsOf(row.session.id)[0],
       current: row.session.id === shown.id && position === rowsOf(shown.id).at(-1),
+      tip: position === rowsOf(row.session.id).at(-1),
       lines,
       bends,
     };
@@ -311,7 +314,11 @@ export function branchStates(
   );
 }
 
-/** The branch that a pick of a map row shows: a row on the shown path keeps it, and the page only scrolls. */
-export function pickedBranch(shownId: string, row: Pick<MapRow, "sessionId" | "onPath">): string {
-  return row.onPath ? shownId : row.sessionId;
+/**
+ * The branch that a pick of a map row shows: a row on the shown path keeps it, and the page only scrolls.
+ * The last row of a branch is the exception. A fork from that answer shares the row, and the person
+ * who picks it wants the branch that it ends, not the fork.
+ */
+export function pickedBranch(shownId: string, row: Pick<MapRow, "sessionId" | "onPath" | "tip">): string {
+  return row.onPath && !row.tip ? shownId : row.sessionId;
 }

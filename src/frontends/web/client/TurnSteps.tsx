@@ -1,6 +1,6 @@
 /**
- * The steps of an answer, folded into one line: the last step, a count of the messages and an
- * arrow. A tap opens the list. A message shows its whole text, under the face of Eva, and a
+ * The steps of an answer, folded into one line: a count of the steps, the last step, a count of
+ * the messages and an arrow. A tap opens the list. A message shows its whole text, under the face of Eva, and a
  * link can hide every other step. Each other step is one line, where a pill says what the step
  * did, and plain text says what it did it to, such as the file that it read. A tap on a step
  * opens a dialog with all of it: where the tool comes from, its description, and its whole input
@@ -107,6 +107,8 @@ export function StepFold({
         <span className={failed ? "failed" : undefined}>
           <Icon name={failed ? "alert" : live ? "sync" : "check"} />
         </span>
+        {/* The line shows only the last step. This count says that it sums up more, and the list holds the rest. */}
+        {total > 1 && <span className="pill step-pill steps-count">{counted(total, "step")}</span>}
         {last !== undefined && (
           <span className="steps-last">
             <StepParts step={last} />

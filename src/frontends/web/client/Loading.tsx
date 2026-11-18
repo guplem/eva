@@ -286,6 +286,7 @@ function ConversationSkeleton(): ReactElement {
                 <div className="step-fold">
                   <button className="steps-line skeleton-ghost" disabled>
                     <Icon name="check" />
+                    <span className="pill step-pill steps-count">3 steps</span>
                     <span className="steps-last">
                       <span className="pill step-pill">Command</span>
                     </span>

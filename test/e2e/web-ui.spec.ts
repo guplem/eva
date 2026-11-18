@@ -652,6 +652,43 @@ test("a send turns the box into the new bubble, and reduced motion plays no morp
   expect(await morphsSeen()).toBe(0);
 });
 
+test("a send glides the chat down to the new bubble, and the bubble lands above the box", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  const tall = Array.from({ length: 12 }, (_, line) => `Glide row ${String(line + 1)}`).join("\n");
+  // Two tall messages make the chat taller than the screen, so a send must scroll.
+  for (const text of [tall, tall]) {
+    await box.fill(text);
+    await box.press("Enter");
+    await expect(page.locator(".message.user").last()).toContainText("Glide row 12");
+    await page.waitForTimeout(800);
+  }
+  await page.evaluate(() => {
+    const scroller = document.querySelector(".branches");
+    if (scroller === null) throw new Error("no chat");
+    const tops: number[] = [];
+    Object.assign(window, { glideTops: tops });
+    const sample = (): void => {
+      tops.push(scroller.scrollTop);
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await box.fill(tall);
+  await box.press("Enter");
+  await page.waitForTimeout(900);
+  const tops = await page.evaluate(() => (window as unknown as { glideTops: number[] }).glideTops);
+  // The chat moves over many frames, and never back up.
+  expect(new Set(tops).size).toBeGreaterThan(4);
+  for (let index = 1; index < tops.length; index += 1)
+    expect(tops[index] ?? 0).toBeGreaterThanOrEqual((tops[index - 1] ?? 0) - 1);
+  const bubble = await page.locator(".message.user").last().boundingBox();
+  const composer = await page.locator(".composer-box").boundingBox();
+  expect((bubble?.y ?? 0) + (bubble?.height ?? 0)).toBeLessThanOrEqual((composer?.y ?? 0) + 1);
+});
+
 test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
   // The demo engine has a login, so the browser plays a machine without one.
   let blocker: string | null = "engine";

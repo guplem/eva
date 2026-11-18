@@ -3,6 +3,7 @@
  * The math lives in `send-morph.ts`. Each frame measures the newest bubble again, so the morph lands on it even when the
  * chat scrolls, or when React puts the stored message in the place of the sent one.
  */
+import { startGlide } from "./send-glide.ts";
 import { boxAt, cornersAt, crossFade, durationMs, springAt, type Box, type Corners } from "./send-morph.ts";
 
 /** A morph that waits for the new bubble. `cancel` stops it, such as after a send that failed. */
@@ -118,6 +119,10 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
   let frame = 0;
   // The finish of this morph only: a cancel must not end the morph of a later send.
   let own: (() => void) | null = null;
+  // The chat scrolls to the new bubble with the morph, so the bubble never waits behind the box. It starts now, before
+  // the render that adds the bubble: the chat holds its place until the glide takes it down.
+  const scroller = chat.closest<HTMLElement>(".branches");
+  const stopGlide = scroller === null ? null : startGlide(scroller, milliseconds("--dur-morph", 560));
 
   const play = (): void => {
     requestAnimationFrame(() => {
@@ -131,11 +136,10 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
       };
       const first = newest();
       if (first === null) return;
-      // A bubble out of sight, such as below a chat that the person scrolled up, has no place to land on.
+      // A bubble far out of sight, such as below a chat that the person scrolled far up, has no place to land on. A
+      // bubble just below the box is fine: the glide brings it up while the copy flies.
       const landing = boxOf(first);
-      // The bubble must also land above the empty box: one just below it, behind the box, is out of sight too.
-      const floor = Math.min(window.innerHeight, shell.getBoundingClientRect().top);
-      if (landing.y + landing.height <= 0 || landing.y >= floor) return;
+      if (landing.y + landing.height <= 0 || landing.y >= window.innerHeight * 2) return;
       const styles = pageSheet();
       if (styles === null) return;
       let locked: HTMLElement | null = first;
@@ -235,6 +239,7 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
     play,
     cancel: () => {
       cancelled = true;
+      stopGlide?.();
       own?.();
     },
   };

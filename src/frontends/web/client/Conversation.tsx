@@ -788,11 +788,11 @@ function StoredAnswer({
   );
 }
 
-// The tooltips say what each button does. The first line shows in bold (see `Tooltip.tsx`).
+// The first line of a tooltip shows in bold (see `Tooltip.tsx`).
 const retryHint =
-  "Retry\nAsk again for a different answer to the message above. The new answer goes in a new branch, and this one stays.";
+  "Retry\nAsk again for a different answer to the message above. The new answer goes in a new branch, and this answer stays.";
 const forkHint =
-  "Fork\nStart a new chat that copies this one up to this answer. Write a different message there. This chat stays as it is.";
+  "Fork\nStart a new branch from this answer. Write a different message there. The messages above stay as they are.";
 
 /** What an answer card shows: its folded steps, and the last message or, on request, the whole answer. */
 interface ShownAnswer {

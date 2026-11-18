@@ -42,8 +42,7 @@ import { toWebHtml } from "./web-format.ts";
 
 type ShownFile = Extract<BrowsedPath, { kind: "file" }>;
 type Answer =
-  | { readonly state: "shown"; readonly answer: BrowsedPath }
-  | { readonly state: "failed"; readonly reason: string };
+  { readonly state: "shown"; readonly answer: BrowsedPath } | { readonly state: "failed"; readonly reason: string };
 
 export function FilesView(): ReactElement {
   const [path, setPath] = useState(() => filePathOf(window.location.hash) ?? "");

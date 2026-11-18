@@ -30,6 +30,16 @@ export function springAt(time: number): number {
   return 1 - decay * (Math.cos(dampedSpeed * time) + ((damping * speed) / dampedSpeed) * Math.sin(dampedSpeed * time));
 }
 
+/**
+ * How far the chat has scrolled, at a share of the morph's time. It brakes and never passes the end: a chat that
+ * overshoots would show the newest message behind the box for a moment, then pull it back.
+ */
+export function glideAt(time: number): number {
+  if (time <= 0) return 0;
+  if (time >= 1) return 1;
+  return 1 - (1 - time) ** 4;
+}
+
 function mix(from: number, to: number, share: number): number {
   return from + (to - from) * share;
 }

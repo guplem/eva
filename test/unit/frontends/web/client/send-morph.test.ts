@@ -4,8 +4,32 @@ import {
   cornersAt,
   crossFade,
   durationMs,
+  glideAt,
   springAt,
 } from "../../../../../src/frontends/web/client/send-morph.ts";
+
+describe("glideAt", () => {
+  test("starts at the start and ends exactly at the end", () => {
+    expect(glideAt(0)).toBe(0);
+    expect(glideAt(1)).toBe(1);
+  });
+
+  test("clamps a time outside the glide", () => {
+    expect(glideAt(-0.5)).toBe(0);
+    expect(glideAt(1.5)).toBe(1);
+  });
+
+  test("never passes the end, so the chat never scrolls past the newest message and back", () => {
+    for (let step = 0; step <= 100; step += 1) expect(glideAt(step / 100)).toBeLessThanOrEqual(1);
+  });
+
+  test("moves fast at first and brakes, so the chat leaves with the send and settles softly", () => {
+    expect(glideAt(0.25)).toBeGreaterThan(0.5);
+    const early = glideAt(0.1) - glideAt(0);
+    const late = glideAt(1) - glideAt(0.9);
+    expect(early).toBeGreaterThan(late * 5);
+  });
+});
 
 describe("springAt", () => {
   test("starts at the start and ends exactly at the end", () => {

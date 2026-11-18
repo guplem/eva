@@ -31,6 +31,7 @@ import { chatKind } from "../../../shared/chat-kind.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { endedProjectWork, tasksOfTurn, tasksStillRun } from "./chat-details.ts";
 import { Composer, storedChoices, unsentTexts } from "./Composer.tsx";
+import { isGliding, markFollowing } from "./send-glide.ts";
 import {
   answerFiles,
   wholeMessages,
@@ -137,8 +138,12 @@ export function Conversation({
    * content grew again. The base must hold the pulled place, or that event looks like the person's.
    */
   const settle = useCallback((element: HTMLDivElement): void => {
-    if (snapsToBottom(isAtBottom.current, fingerDown.current)) element.scrollTop = element.scrollHeight;
+    // A send's glide takes the chat down smoothly, so a snap here would undo it.
+    if (snapsToBottom(isAtBottom.current, fingerDown.current) && !isGliding(element)) {
+      element.scrollTop = element.scrollHeight;
+    }
     lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
+    markFollowing(element, isAtBottom.current);
   }, []);
 
   useLayoutEffect(() => {
@@ -180,6 +185,7 @@ export function Conversation({
           visible: element.clientHeight,
         });
         lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
+        markFollowing(element, isAtBottom.current);
       }}
       onTouchStart={(event) => {
         // A drag in the message box moves no chat.

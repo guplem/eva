@@ -3,6 +3,7 @@
  * The math lives in `send-morph.ts`. Each frame measures the newest bubble again, so the morph lands on it even when the
  * chat scrolls, or when React puts the stored message in the place of the sent one.
  */
+import { isFollowing, startGlide } from "./send-glide.ts";
 import { boxAt, cornersAt, crossFade, durationMs, springAt, type Box, type Corners } from "./send-morph.ts";
 
 /** A morph that waits for the new bubble. `cancel` stops it, such as after a send that failed. */
@@ -118,6 +119,12 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
   let frame = 0;
   // The finish of this morph only: a cancel must not end the morph of a later send.
   let own: (() => void) | null = null;
+  // The chat scrolls to the new bubble with the morph, so the bubble never waits behind the box. It starts now, before
+  // the render that adds the bubble: the chat holds its place until the glide takes it down.
+  // A person who scrolled up to read keeps the place: the chat does not follow them down (see `followsBottom`).
+  const scroller = chat.closest<HTMLElement>(".branches");
+  const stopGlide =
+    scroller !== null && isFollowing(scroller) ? startGlide(scroller, milliseconds("--dur-morph", 560)) : null;
 
   const play = (): void => {
     requestAnimationFrame(() => {
@@ -131,10 +138,11 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
       };
       const first = newest();
       if (first === null) return;
-      // A bubble out of sight, such as below a chat that the person scrolled up, has no place to land on.
+      // A bubble out of sight, such as below a chat that the person scrolled up, has no place to land on. With a glide,
+      // a bubble below the box is fine: the glide brings it up while the copy flies.
       const landing = boxOf(first);
-      // The bubble must also land above the empty box: one just below it, behind the box, is out of sight too.
-      const floor = Math.min(window.innerHeight, shell.getBoundingClientRect().top);
+      const floor =
+        stopGlide === null ? Math.min(window.innerHeight, shell.getBoundingClientRect().top) : window.innerHeight * 2;
       if (landing.y + landing.height <= 0 || landing.y >= floor) return;
       const styles = pageSheet();
       if (styles === null) return;
@@ -235,6 +243,7 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
     play,
     cancel: () => {
       cancelled = true;
+      stopGlide?.();
       own?.();
     },
   };

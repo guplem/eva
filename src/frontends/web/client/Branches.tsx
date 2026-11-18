@@ -2,7 +2,7 @@
  * The parts that pick the branch of a chat that the page shows: the switcher at a fork point, the
  * branch map, and on a phone the header button that opens the map in a bottom sheet.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { api, type SessionRecord } from "./api.ts";
 import {
@@ -189,8 +189,14 @@ export function BranchMap({
   const lastRows = new Map(map.rows.map((row) => [row.sessionId, row.key]));
   const width = laneX(Math.max(map.lanes - 1, 0)) + 9;
   const names = branchNames(tree);
+  const list = useRef<HTMLOListElement>(null);
+  // The map opens on the end of the shown branch, as the chat does: its first row is old news.
+  useLayoutEffect(() => {
+    const current = list.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (current !== null && current !== undefined) scrollToEnd(current);
+  }, [shownId]);
   return (
-    <ol className="branch-map" aria-label="Branches">
+    <ol className="branch-map" aria-label="Branches" ref={list}>
       {map.rows.map((row) => (
         <BranchRow
           key={row.key}
@@ -204,6 +210,20 @@ export function BranchMap({
       ))}
     </ol>
   );
+}
+
+/**
+ * Scrolls the nearest box that scrolls, so the row ends at its bottom edge. It moves no other box:
+ * `scrollIntoView` would also move the chat behind the map.
+ */
+function scrollToEnd(row: HTMLElement): void {
+  for (let box = row.parentElement; box !== null; box = box.parentElement) {
+    const overflow = getComputedStyle(box).overflowY;
+    if ((overflow === "auto" || overflow === "scroll") && box.scrollHeight > box.clientHeight) {
+      box.scrollTop += row.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom;
+      return;
+    }
+  }
 }
 
 /**

@@ -471,6 +471,22 @@ test("a fork continues under its answer, in the same column, and the switcher go
   await expect(page.getByLabel("Message").first()).toHaveValue("Half a thought");
 });
 
+test("a pick of the last answer of the main line shows it, also under a fork from that answer", async ({ page }) => {
+  test.skip(test.info().project.name === "phone", "A phone opens the map from the header, and other tests cover it.");
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Pick the main tip"));
+  await waitUntilIdle(page, chatId);
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  const point = page.getByRole("group", { name: "Branches after answer 1" });
+  await expect(point).toContainText("Fork 1 · 2 of 2");
+  // The fork has no turn yet, so the main line's only answer is on its path and ends the main line.
+  await page
+    .getByRole("navigation", { name: "Branch map" })
+    .getByRole("button", { name: /Main line · answer 1/ })
+    .click();
+  await expect(point).toContainText("Main line · 1 of 2");
+});
+
 test("on a wide screen, the chat fills the width beside the branch map (issue 828)", async ({ page }) => {
   test.skip(
     test.info().project.name === "phone",

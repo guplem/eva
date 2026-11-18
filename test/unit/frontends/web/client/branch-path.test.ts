@@ -285,7 +285,16 @@ describe("branchStates", () => {
 
 describe("pickedBranch", () => {
   test("a row on the shown path keeps the branch, and another row shows its own", () => {
-    expect(pickedBranch("fork1", { sessionId: "main", onPath: true })).toBe("fork1");
-    expect(pickedBranch("fork1", { sessionId: "fork2", onPath: false })).toBe("fork2");
+    expect(pickedBranch("fork1", { sessionId: "main", onPath: true, tip: false })).toBe("fork1");
+    expect(pickedBranch("fork1", { sessionId: "fork2", onPath: false, tip: false })).toBe("fork2");
+  });
+
+  test("the last row of a branch shows that branch, also when the shown fork shares it", () => {
+    // A fork from the last answer of the main line: that row is on the fork's path, but it ends the main line.
+    expect(pickedBranch("fork1", { sessionId: "main", onPath: true, tip: true })).toBe("main");
+    const fresh = session("fresh", [], { parentId: "main", at: "m3" });
+    const rows = branchMap([main, fresh], "fresh").rows;
+    expect(rows[2]).toMatchObject({ sessionId: "main", onPath: true, tip: true });
+    expect(rows[1]?.tip).toBe(false);
   });
 });

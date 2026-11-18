@@ -228,6 +228,11 @@ export const api = {
   /** The whole input and output of one step of a stored answer. Null when Eva kept none. */
   stepDetail: (sessionId: string, stepId: string): Promise<{ input: string | null; output: string | null }> =>
     request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(stepId)}`),
+  /** A plain-words explanation of one step, from the cheapest model. It costs a model call, so ask only on a tap. */
+  explainStep: (
+    sessionId: string,
+    body: { kind: "command" | "tool"; input: string; output?: string },
+  ): Promise<{ text: string }> => request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/explain-step`, body),
   /** With no engine, model or effort, Eva starts the chat with the ones from her settings. */
   newAssistantChat: (model?: ModelAlias, engine?: EngineName, effort?: EffortLevel): Promise<SessionRecord> =>
     request("POST", "/api/sessions", {

@@ -416,11 +416,6 @@
   color: var(--accent-ink);
 }
 
-/* The count never shrinks. The text of the last step gives way to it with an ellipsis. */
-.steps-line > .steps-count {
-  white-space: nowrap;
-}
-
 .steps-last .step-text {
   min-width: 0;
   overflow: hidden;

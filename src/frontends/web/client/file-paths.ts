@@ -59,6 +59,17 @@ export function childPath(folder: string, name: string): string {
   return folder === "" ? name : `${folder}/${name}`;
 }
 
+/**
+ * The path of an entry on this computer: the vault folder, then the vault path. A vault folder
+ * with a backslash is a Windows path, so the whole result uses backslashes.
+ */
+export function fullPathOf(vaultFolder: string, path: string): string {
+  const separator = vaultFolder.includes("\\") ? "\\" : "/";
+  const folder = vaultFolder.replace(/[\\/]+$/, "");
+  if (path === "") return folder;
+  return `${folder}${separator}${path.split("/").join(separator)}`;
+}
+
 export function sizeWords(bytes: number): string {
   if (bytes < 1_000) return `${String(bytes)} B`;
   if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1)} KB`;

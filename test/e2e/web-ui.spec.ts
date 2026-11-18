@@ -7531,6 +7531,35 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
   await expect(list("Vault").getByRole("link", { name: ".git", exact: true })).toHaveCount(0);
 });
 
+test("Files: a right click on a row copies its real name, its vault path or its path on this computer", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await logIn(page);
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  const list = (name: string): Locator => page.getByRole("list", { name: `Contents of ${name}` });
+  await list("Vault").getByRole("link", { name: "Projects" }).click();
+  const row = list("Projects").getByRole("link", { name: "Example app" });
+  const copied = (): Promise<string> => page.evaluate(() => navigator.clipboard.readText());
+
+  await rightClickInView(row);
+  await page.getByRole("menuitem", { name: "Copy name" }).click();
+  // The row shows a smart name. The copy is the name on disk.
+  expect(await copied()).toBe("2025-03-02-1015-example-app");
+  await expect(page.getByText("Copied.")).toBeVisible();
+
+  await rightClickInView(row);
+  await page.getByRole("menuitem", { name: "Copy path in the vault" }).click();
+  expect(await copied()).toBe("Projects/2025-03-02-1015-example-app");
+
+  await rightClickInView(row);
+  await page.getByRole("menuitem", { name: "Copy full path on this computer" }).click();
+  expect(await copied()).toMatch(/[\\/]Projects[\\/]2025-03-02-1015-example-app$/);
+  // The right click opens no page.
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+});
+
 /** Only a device's own login decrypts, so the browser logs in as a device, with a login link. */
 async function logInAsDevice(page: Page): Promise<void> {
   const link = (await (

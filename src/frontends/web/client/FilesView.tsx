@@ -6,7 +6,7 @@
  * and save it in the vault, and rename a file or a folder (issue 343). A search finds a file or a
  * folder by its name, or by the text inside a file.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry, type SearchResult } from "./api.ts";
 import { readAppearance } from "./appearance.ts";
 import { ColumnDivider } from "./ColumnDivider.tsx";
@@ -18,6 +18,7 @@ import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
 import {
   childPath,
   fileAddressOf,
+  fullPathOf,
   filePathOf,
   isUnder,
   parentOf,
@@ -29,10 +30,11 @@ import { fileBadgeOf, mediaOf, nameEnds } from "./file-kinds.ts";
 import { maxMediaBytes, MediaPreview } from "./FileMedia.tsx";
 import { Icon } from "./icons.tsx";
 import { ListSkeleton } from "./Loading.tsx";
-import { type MenuItem } from "./Menu.tsx";
+import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
+import { Toast } from "./Toast.tsx";
 import { UnlockVaultForm } from "./VaultPasswordForms.tsx";
 import { draftOf, hasEncryptedDraft, keepDraft, moveDrafts, sameText, type Draft } from "./file-drafts.ts";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
@@ -64,6 +66,8 @@ export function FilesView(): ReactElement {
   /** The width that the person dragged each folder column to, by path. A reload forgets it (issue 626). */
   const [widths, setWidths] = useState<ReadonlyMap<string, number>>(new Map());
   /** The answers of the last render, so the read below does not run again for each new answer. */
+  /** The vault folder on this computer, for "Copy full path". Null until known, or when the read fails. */
+  const [vaultFolder, setVaultFolder] = useState<string | null>(null);
   const known = useRef(answers);
   known.current = answers;
 
@@ -75,6 +79,13 @@ export function FilesView(): ReactElement {
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    api.status().then(
+      (status) => setVaultFolder(status.vaultPath),
+      () => undefined,
+    );
   }, []);
 
   // An agent or another device can change the favorites, so each new path reads them again.
@@ -274,6 +285,7 @@ export function FilesView(): ReactElement {
                   onWrap={setWrap}
                   onSaved={onSaved}
                   onTryAgain={() => setAttempt((count) => count + 1)}
+                  vaultFolder={vaultFolder}
                   width={widths.get(crumb.path) ?? null}
                   onWidth={(width) =>
                     setWidths((current) => {
@@ -408,6 +420,7 @@ interface ColumnProps {
   /** The width that the person dragged a folder column to, or null for the usual width. */
   readonly width: number | null;
   readonly onWidth: (width: number | null) => void;
+  readonly vaultFolder: string | null;
 }
 
 /** The narrowest folder column, as the `min-width` of `.files-pane` in `files.css`. */
@@ -429,6 +442,7 @@ function Column({
   onTryAgain,
   width,
   onWidth,
+  vaultFolder,
 }: ColumnProps): ReactElement | null {
   // A folder that reads again keeps its width, so the row does not jump while it loads.
   const place = `${isLast ? "files-pane" : "files-pane files-parent"}${width === null ? "" : " resized"}`;
@@ -452,7 +466,14 @@ function Column({
   if (shown.kind === "folder")
     return (
       <div className={place} style={sized}>
-        <FolderList path={path} name={name} entries={shown.entries} openChild={openChild} smart={smart} />
+        <FolderList
+          path={path}
+          name={name}
+          entries={shown.entries}
+          openChild={openChild}
+          smart={smart}
+          vaultFolder={vaultFolder}
+        />
         <ColumnDivider label={`Resize the column ${name}`} minWidth={columnMinWidth} onWidth={onWidth} />
       </div>
     );
@@ -766,12 +787,14 @@ function FolderList({
   entries,
   openChild,
   smart,
+  vaultFolder,
 }: {
   readonly path: string;
   readonly name: string;
   readonly entries: readonly FileEntry[];
   readonly openChild: string | null;
   readonly smart: boolean;
+  readonly vaultFolder: string | null;
 }): ReactElement {
   const list = useRef<HTMLUListElement>(null);
   // A link from a favorite or another page can open an entry far down a long folder, so its row scrolls into sight.
@@ -803,21 +826,81 @@ function FolderList({
                 <span className="files-size">Does not open</span>
               </span>
             ) : (
-              <a
-                className="files-entry"
-                href={fileAddressOf(childPath(path, entry.name))}
-                aria-current={entry.name === openChild ? "true" : undefined}
-                data-tooltip={realName}
+              <EntryLink
+                entryPath={childPath(path, entry.name)}
+                entryName={entry.name}
+                current={entry.name === openChild}
+                realName={realName}
+                vaultFolder={vaultFolder}
               >
                 {entry.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={entry.name} />}
                 <FileName shown={shown} spoken={spoken} />
                 {entry.size !== null && <span className="files-size">{sizeWords(entry.size)}</span>}
-              </a>
+              </EntryLink>
             )}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * A row of a folder. A right click or a long press opens a menu that copies its real name, its
+ * path in the vault, or its path on this computer. The name is the one on disk, with its extension,
+ * not the smart name that the row shows.
+ */
+function EntryLink({
+  entryPath,
+  entryName,
+  current,
+  realName,
+  vaultFolder,
+  children,
+}: {
+  readonly entryPath: string;
+  readonly entryName: string;
+  readonly current: boolean;
+  readonly realName: string | undefined;
+  readonly vaultFolder: string | null;
+  readonly children: ReactNode;
+}): ReactElement {
+  const showError = useShowError();
+  // A count, so a second copy starts the toast again.
+  const [copies, setCopies] = useState(0);
+  const copy = (text: string): void => {
+    copyText(text)
+      .then(() => setCopies((count) => count + 1))
+      .catch((caught: unknown) => showError(caught));
+  };
+  const items: MenuItem[] = [
+    { label: "Copy name", icon: "copy", onChoose: () => copy(entryName) },
+    { label: "Copy path in the vault", icon: "copy", onChoose: () => copy(entryPath) },
+    ...(vaultFolder === null
+      ? []
+      : [
+          {
+            label: "Copy full path on this computer",
+            icon: "copy" as const,
+            onChoose: () => copy(fullPathOf(vaultFolder, entryPath)),
+          },
+        ]),
+  ];
+  const { props, menu } = useContextMenu(items, `Actions for ${entryName}`);
+  return (
+    <>
+      <a
+        className="files-entry"
+        href={fileAddressOf(entryPath)}
+        aria-current={current ? "true" : undefined}
+        data-tooltip={realName}
+        {...props}
+      >
+        {children}
+      </a>
+      {menu}
+      {copies > 0 && <Toast key={copies} message="Copied." onClose={() => setCopies(0)} />}
+    </>
   );
 }
 

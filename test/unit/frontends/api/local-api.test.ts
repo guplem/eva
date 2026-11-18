@@ -982,6 +982,29 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("explains a step in plain words with the cheapest model, and refuses a bad body (#963)", async () => {
+    turnScript = (request) =>
+      FakeEngine.answer(request, request.mode === "model-call" ? "1. Delete the build folder." : "Sure.");
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "clean up");
+    const response = await call(`/api/sessions/${session.id}/explain-step`, {
+      method: "POST",
+      body: { kind: "command", input: '{"command":"rm -rf build"}', output: "" },
+    });
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ text: "1. Delete the build folder." });
+    expect(
+      (await call(`/api/sessions/${session.id}/explain-step`, { method: "POST", body: { kind: "x" } })).status,
+    ).toBe(400);
+    const missing = await call("/api/sessions/missing/explain-step", {
+      method: "POST",
+      body: { kind: "tool", input: "{}" },
+    });
+    expect(missing.status).toBe(404);
+  });
+
   test("gives the whole input and output of a step, null for an unknown step, and a 404 for an unknown chat", async () => {
     turnScript = (request) => [
       { kind: "tool_started", toolUseId: "t1", name: "Read", category: "tool", summary: "Read x", input: "{}" },

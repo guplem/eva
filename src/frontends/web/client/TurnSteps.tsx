@@ -4,15 +4,17 @@
  * link can hide every other step. Each other step is one line, where a pill says what the step
  * did, and plain text says what it did it to, such as the file that it read. A tap on a step
  * opens a dialog with all of it: where the tool comes from, its description, and its whole input
- * and output, each in a fold.
+ * and output, each in a fold. A second tab explains the step in plain words, asked from a model on its first tap.
  */
-import { useEffect, useId, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from "react";
 import { shownAnswerText } from "../../../shared/file-markers.ts";
 import type { StepDetail, TurnStep } from "../../../shared/turn-steps.ts";
 import { api } from "./api.ts";
 import { Dialog } from "./Dialog.tsx";
 import {
   commandFailure,
+  explainBody,
+  explanationRows,
   hasToolDetails,
   inputFields,
   missingDetail,
@@ -25,6 +27,7 @@ import {
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
+import { Tabs } from "./Tabs.tsx";
 import { errorText } from "./SettingsParts.tsx";
 import { toWebHtml } from "./web-format.ts";
 
@@ -192,6 +195,7 @@ function WholeMessage({
 }
 
 type Details = StepDetail | "loading" | { readonly failed: string };
+type Explanation = "idle" | "loading" | { readonly text: string } | { readonly failed: string };
 
 /**
  * Everything about one step. A live step carries its input and output. A stored one does not,
@@ -238,6 +242,63 @@ function StepDialog({
   const origin = stepOrigin(step);
   const tool = origin?.tool ?? null;
   const description = fields?.description ?? null;
+
+  // The explanation costs a model call, so it starts on the first tap of its tab. The dialog keeps the
+  // answer while it stays open, so going back and forth sends one request. A new dialog asks again.
+  const [tab, setTab] = useState("details");
+  const [explanation, setExplanation] = useState<Explanation>("idle");
+  const asked = useRef(false);
+  const open = useRef(true);
+  useEffect(() => {
+    open.current = true;
+    return () => {
+      open.current = false;
+    };
+  }, []);
+  const body = explainBody(step, read?.input, read?.output);
+  const explain = (again = false): void => {
+    if (body === null || sessionId === undefined || (asked.current && !again)) return;
+    asked.current = true;
+    setExplanation("loading");
+    api.explainStep(sessionId, body).then(
+      ({ text }) => {
+        if (open.current) setExplanation({ text });
+      },
+      (error: unknown) => {
+        if (open.current) setExplanation({ failed: errorText(error) });
+      },
+    );
+  };
+  const chooseTab = (id: string): void => {
+    setTab(id);
+    if (id === "explanation") explain();
+  };
+  const raw = (
+    <>
+      {fields === null ? (
+        <DetailFold title="Input" text={read?.input} missing={missingDetail("input", live)} />
+      ) : (
+        <details className="step-detail" open>
+          <summary>Input</summary>
+          {fields.fields.length === 0 ? (
+            <p className="muted">Empty.</p>
+          ) : (
+            <dl className="step-fields">
+              {fields.fields.map(({ key, value }) => (
+                <div key={key}>
+                  <dt>{key}</dt>
+                  <dd>
+                    <pre>{value}</pre>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </details>
+      )}
+      <DetailFold title="Output" text={read?.output} missing={missingDetail("output", live)} open />
+    </>
+  );
   return (
     <Dialog label={`Step: ${action}`} onClose={onClose} scrimCloses wide>
       <div className="step-dialog-title">
@@ -295,31 +356,65 @@ function StepDialog({
                 )}
               </div>
             )}
-            {fields === null ? (
-              <DetailFold title="Input" text={details.input} missing={missingDetail("input", live)} />
+            {body === null ? (
+              raw
             ) : (
-              <details className="step-detail" open>
-                <summary>Input</summary>
-                {fields.fields.length === 0 ? (
-                  <p className="muted">Empty.</p>
-                ) : (
-                  <dl className="step-fields">
-                    {fields.fields.map(({ key, value }) => (
-                      <div key={key}>
-                        <dt>{key}</dt>
-                        <dd>
-                          <pre>{value}</pre>
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-              </details>
+              <Tabs
+                selected={tab}
+                onSelect={chooseTab}
+                tabs={[
+                  { id: "details", label: "Details", content: raw },
+                  {
+                    id: "explanation",
+                    label: "Explanation",
+                    content: (
+                      <ExplanationPanel
+                        state={explanation}
+                        rows={explanationRows(read?.input)}
+                        onRetry={() => explain(true)}
+                      />
+                    ),
+                  },
+                ]}
+              />
             )}
-            <DetailFold title="Output" text={details.output} missing={missingDetail("output", live)} open />
           </>
         ))}
     </Dialog>
+  );
+}
+
+/** The explanation of a step: a placeholder while the model works, then the text, or the reason it failed. */
+function ExplanationPanel({
+  state,
+  rows,
+  onRetry,
+}: {
+  readonly state: Explanation;
+  readonly rows: number;
+  readonly onRetry: () => void;
+}): ReactElement {
+  const html = useMemo(() => (typeof state === "object" && "text" in state ? toWebHtml(state.text) : ""), [state]);
+  if (typeof state === "object" && "text" in state) {
+    return <MarkdownBody html={html} className="answer-body step-explanation" copy={false} />;
+  }
+  if (typeof state === "object") {
+    return (
+      <div role="status" className="callout warning">
+        <p>Eva could not explain the step: {state.failed}</p>
+        <button className="ghost" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+  // As many lines as the input has, so the dialog keeps its size when the text comes.
+  return (
+    <div className="explanation-skeleton" role="status" aria-label="Eva explains the step.">
+      {Array.from({ length: rows }, (_, index) => (
+        <span key={index} className="skeleton-line" />
+      ))}
+    </div>
   );
 }
 

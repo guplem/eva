@@ -159,10 +159,11 @@ import type { RepositoryTypeName } from "./projects/repository-types.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
+import { StepExplainer } from "./sessions/step-explainer.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type AnswerTimeouts, type FirstTurn } from "./sessions/session-manager.ts";
 import { answersToUndo, refsStillNamed } from "./sessions/retry-undo.ts";
-import { ModelCalls } from "./model-calls/model-calls.ts";
+import { ModelCalls, type ModelCallResult } from "./model-calls/model-calls.ts";
 import { ComposerMenu } from "./composer-menu/composer-menu.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { StepDetailsStore } from "./sessions/step-details-store.ts";
@@ -579,6 +580,7 @@ export class Eva {
   /** Null when this computer has no Windows Search index to keep. */
   private readonly searchIndex: SearchIndexSync | null;
   private readonly chatSummaries: ChatSummarizer;
+  private readonly stepExplainer: StepExplainer;
   private readonly vaultSetup: VaultSetup;
   private readonly trustStore: TrustStore;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -815,6 +817,10 @@ export class Eva {
     this.chatNames = chatNamer;
     this.composerMenu = vaultPath === null ? null : new ComposerMenu({ vaultPath, modelCalls: this.modelCalls });
     this.chatSummaries = new ChatSummarizer({
+      modelCalls: this.modelCalls,
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    });
+    this.stepExplainer = new StepExplainer({
       modelCalls: this.modelCalls,
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -2077,6 +2083,26 @@ export class Eva {
   /** A Project chat in the named clone, or in a free clone, or in a new clone. */
   createProjectSession(input: NewProjectChatInput): Promise<SessionRecord> {
     return this.projectWork.createSession(input);
+  }
+
+  /**
+   * A plain-words explanation of one step (issue 963). The page sends the step, because a live step is
+   * not stored yet. The text goes through the redactor again before it reaches a model.
+   */
+  async explainStep(
+    sessionId: string,
+    step: { readonly kind: "command" | "tool"; readonly input: string; readonly output?: string | undefined },
+  ): Promise<ModelCallResult> {
+    const chat = this.sessions.get(sessionId);
+    const lastText = chat.turns.at(-1)?.userText;
+    return this.stepExplainer.explain({
+      engine: chat.engine,
+      model: chat.modelAlias,
+      kind: step.kind,
+      input: this.redactor.redact(step.input),
+      ...(step.output === undefined ? {} : { output: this.redactor.redact(step.output) }),
+      ...(lastText === undefined ? {} : { chatText: this.redactor.redact(lastText) }),
+    });
   }
 
   /**

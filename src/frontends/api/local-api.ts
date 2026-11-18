@@ -111,6 +111,12 @@ const forkSchema = z.object({
   files: z.enum(["snapshot-clone", "clean-clone", "same-clone"]).optional(),
 });
 /** `undo` restores the vault files of an Assistant chat (#525). `files` chooses the clone files of a Project chat (#523). */
+/** A step to explain (#963). The page sends it, because a live step is not stored yet. */
+const explainStepSchema = z.object({
+  kind: z.enum(["command", "tool"]),
+  input: z.string().max(200_000),
+  output: z.string().max(200_000).optional(),
+});
 const retrySchema = z.object({
   turnIndex: z.number().int().min(0),
   undo: z.boolean().default(false),
@@ -474,6 +480,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         url.pathname.startsWith("/api/github/") ||
         // A summary waits for a model, and a Project chat may wait for a new clone.
         url.pathname.endsWith("/summary-chat") ||
+        url.pathname.endsWith("/explain-step") ||
         // A new repository's setup and the direct fixes run many GitHub calls, and the setup a clone (#681).
         (url.pathname === "/api/projects" && request.method === "POST") ||
         url.pathname.endsWith("/setup/fix") ||
@@ -923,6 +930,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     if (action === "fork") {
       const { atMessageId, files } = forkSchema.parse(await request.json());
       return json(await eva.forkChat(sessionId, atMessageId, files), 201);
+    }
+    if (action === "explain-step") {
+      const result = await eva.explainStep(sessionId, explainStepSchema.parse(await request.json()));
+      return result.ok ? json({ text: result.text }) : json({ error: result.reason }, 502);
     }
     if (action === "summary-chat") return json(await eva.continueFromSummary(sessionId, "web"), 201);
     if (action === "stop") {

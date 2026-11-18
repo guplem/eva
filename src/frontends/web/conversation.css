@@ -1493,6 +1493,63 @@ button.ghost .icon {
   max-height: 30dvh;
 }
 
+/* Tabs (#963). Every panel shares one cell, so the box keeps the height of the tallest panel. */
+.tab-list {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.tab {
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font: 600 var(--text-sm) / 1.4 inherit;
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--chip);
+  color: var(--accent-ink);
+}
+
+.tab-panels {
+  display: grid;
+}
+
+.tab-panel {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.tab-panel.hidden {
+  visibility: hidden;
+  /* It keeps its height in the shared cell, so the box never changes size. */
+  overflow: hidden;
+}
+
+/* The placeholder of the explanation: grey lines of different widths, as many as the input has lines. */
+.explanation-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.explanation-skeleton .skeleton-line:nth-child(3n + 1) {
+  width: 92%;
+}
+
+.explanation-skeleton .skeleton-line:nth-child(3n + 2) {
+  width: 76%;
+}
+
+.explanation-skeleton .skeleton-line:nth-child(3n) {
+  width: 58%;
+}
+
 /* The choices of a retry or a fork of a Project chat (issue 523): one button for each, with a line under its name. */
 .branch-choices {
   display: flex;

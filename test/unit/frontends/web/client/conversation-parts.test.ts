@@ -38,6 +38,8 @@ import {
   runningMessages,
   notInTurn,
   newMessageId,
+  explainBody,
+  explanationRows,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
 
@@ -712,5 +714,21 @@ describe("deliveryWords", () => {
     expect(deliveryWords("waiting", null)).toBe("Not sent, trying again");
     expect(deliveryWords("failed", null)).toBe("Not sent. Check the connection.");
     expect(deliveryWords("failed", "The chat is closed.")).toBe("Not sent: The chat is closed.");
+  });
+});
+
+describe("explainBody and explanationRows (#963)", () => {
+  test("a command or a tool with an input gives a body, and anything else gives null", () => {
+    expect(explainBody(step("command", "ls"), "{}", "ok")).toEqual({ kind: "command", input: "{}", output: "ok" });
+    expect(explainBody(step("tool", "Read x"), "{}", undefined)).toEqual({ kind: "tool", input: "{}" });
+    expect(explainBody(step("tool", "Read x"), "  ", "ok")).toBeNull();
+    expect(explainBody(step("tool", "Read x"), undefined, "ok")).toBeNull();
+    expect(explainBody(step("message", "hi"), "{}", "ok")).toBeNull();
+  });
+
+  test("the placeholder has as many rows as the input has lines, between 4 and 10", () => {
+    expect(explanationRows("one line")).toBe(4);
+    expect(explanationRows("a\nb\nc\nd\ne\nf")).toBe(6);
+    expect(explanationRows("x\n".repeat(50))).toBe(10);
   });
 });

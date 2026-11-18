@@ -513,3 +513,19 @@ export function deliveryWords(state: Exclude<OutboxState, "sent">, reason: strin
   if (state === "waiting") return "Not sent, trying again";
   return reason === null ? "Not sent. Check the connection." : `Not sent: ${reason}`;
 }
+
+/** The body of an explain request, or null when the step has nothing to explain (#963). */
+export function explainBody(
+  step: TurnStep,
+  input: string | undefined,
+  output: string | undefined,
+): { kind: "command" | "tool"; input: string; output?: string } | null {
+  if ((step.kind !== "command" && step.kind !== "tool") || input === undefined || input.trim() === "") return null;
+  return { kind: step.kind, input, ...(output === undefined ? {} : { output }) };
+}
+
+/** The lines of the placeholder: about as tall as the input, so the dialog does not jump when the text comes (#963). */
+export function explanationRows(input: string | undefined): number {
+  const lines = (input ?? "").split("\n").length;
+  return Math.min(10, Math.max(4, lines));
+}

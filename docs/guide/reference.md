@@ -303,8 +303,8 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Rename or archive a chat:** pick **Rename** or **Archive** in the "More actions" menu (•••) of the chat, or right-click the chat in the list. **Unarchive** brings an archived chat back.
 - **Start over from a summary:** a long chat can confuse the model. Pick **Start a new chat from a summary** in the "More actions" menu. Eva writes a short summary, and a new chat starts from it.
 - **See what a chat knows:** the details of a chat show its **Context**: Eva's prompt, your rules, the pinned files, the instruction files, the skills and the text that each turn adds. Tap a part to read it. Eva shows each part as it is now, so a running chat can still use an older copy. **Context used** shows how full the model's memory of the chat is.
-- **Fork a chat:** press **Fork** under an answer on the web page. The fork copies the chat up to that answer, then continues on its own. For a project chat, see the choices in [Projects](#projects).
-- **Retry an answer:** press **Retry** under it on the web page. The new answer goes in a new branch, and the old answer stays. When the answer, or a later one, changed vault files, Eva asks first:
+- **Fork a chat:** press **Fork** under an answer on the web page. The fork copies the chat up to that answer, then continues on its own. Hover over the button to read this. For a project chat, see the choices in [Projects](#projects).
+- **Retry an answer:** press **Retry** under it on the web page. The new answer goes in a new branch, and the old answer stays. Hover over the button to read this. When the answer, or a later one, changed vault files, Eva asks first:
   - **Undo and retry** puts those files back as they were before the answer, and saves that as a new commit.
   - **Keep and retry** does not change them.
 

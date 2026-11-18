@@ -760,13 +760,13 @@ function StoredAnswer({
           actions={
             <div className="answer-actions">
               {canRetry && (
-                <button className="ghost" onClick={onRetry}>
+                <button className="ghost" onClick={onRetry} data-tooltip={retryHint}>
                   <Icon name="restart" />
                   Retry
                 </button>
               )}
               {canFork && (
-                <button className="ghost" onClick={onFork}>
+                <button className="ghost" onClick={onFork} data-tooltip={forkHint}>
                   <Icon name="fork" />
                   Fork
                 </button>
@@ -787,6 +787,12 @@ function StoredAnswer({
     </>
   );
 }
+
+// The first line of a tooltip shows in bold (see `Tooltip.tsx`).
+const retryHint =
+  "Retry\nAsk again for a different answer to the message above. The new answer goes in a new branch, and this answer stays.";
+const forkHint =
+  "Fork\nStart a new branch from this answer. Write a different message there. The messages above stay as they are.";
 
 /** What an answer card shows: its folded steps, and the last message or, on request, the whole answer. */
 interface ShownAnswer {

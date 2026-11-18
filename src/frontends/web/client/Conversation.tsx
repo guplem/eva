@@ -31,7 +31,7 @@ import { chatKind } from "../../../shared/chat-kind.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { endedProjectWork, tasksOfTurn, tasksStillRun } from "./chat-details.ts";
 import { Composer, storedChoices, unsentTexts } from "./Composer.tsx";
-import { isGliding } from "./send-glide.ts";
+import { isGliding, markFollowing } from "./send-glide.ts";
 import {
   answerFiles,
   wholeMessages,
@@ -143,6 +143,7 @@ export function Conversation({
       element.scrollTop = element.scrollHeight;
     }
     lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
+    markFollowing(element, isAtBottom.current);
   }, []);
 
   useLayoutEffect(() => {
@@ -184,6 +185,7 @@ export function Conversation({
           visible: element.clientHeight,
         });
         lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
+        markFollowing(element, isAtBottom.current);
       }}
       onTouchStart={(event) => {
         // A drag in the message box moves no chat.

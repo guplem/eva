@@ -11,6 +11,19 @@ const running = new WeakMap<Element, () => void>();
 /** The person's own scroll ends the glide, so Eva never fights the person. A key press does not: the person types the next message. */
 const personEvents = ["wheel", "touchstart", "pointerdown"] as const;
 
+/** Whether each chat view follows its newest message. The view tells it, so a glide never drags a person who reads up. */
+const following = new WeakMap<Element, boolean>();
+
+/** Records whether the view `box` follows its newest message. */
+export function markFollowing(box: Element, follows: boolean): void {
+  following.set(box, follows);
+}
+
+/** True when the view follows its newest message. A view that never said so counts as following. */
+export function isFollowing(box: Element): boolean {
+  return following.get(box) ?? true;
+}
+
 /** True while a glide owns the scroll of `box`. The chat must not snap to its end then: the glide gets there. */
 export function isGliding(box: Element): boolean {
   return running.has(box);

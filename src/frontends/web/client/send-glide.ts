@@ -28,8 +28,13 @@ export function startGlide(box: HTMLElement, duration: number): () => void {
   let from = box.scrollTop;
   const end = (): void => {
     cancelAnimationFrame(frame);
-    for (const name of personEvents) window.removeEventListener(name, end, true);
+    for (const name of personEvents) window.removeEventListener(name, byPerson, true);
     if (running.get(box) === end) running.delete(box);
+  };
+  // A tap in the message box moves no chat: the person may click back into it to type the next message.
+  const byPerson = (event: Event): void => {
+    if (event.target instanceof Element && event.target.closest(".composer") !== null) return;
+    end();
   };
   const step = (now: number): void => {
     if (!box.isConnected) {
@@ -54,7 +59,7 @@ export function startGlide(box: HTMLElement, duration: number): () => void {
     end();
   };
   running.set(box, end);
-  for (const name of personEvents) window.addEventListener(name, end, { capture: true, passive: true });
+  for (const name of personEvents) window.addEventListener(name, byPerson, { capture: true, passive: true });
   frame = requestAnimationFrame(step);
   return end;
 }

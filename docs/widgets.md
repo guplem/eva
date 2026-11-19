@@ -127,7 +127,7 @@ An `eva-google-calendar` input gives the widget the person's Google Calendar. Ev
 - `eva/google-calendar/events.json?from=2026-11-16&to=2026-11-22` answers `null` for the same reasons, or the events of each of these calendars, sorted by start. `to` is inclusive. The days are in the time zone of the person's main calendar. Eva refuses a window over 62 days, a missing day, or a day that is not `YYYY-MM-DD`, with `400`.
 - A timed event: `{ "id", "calendarId", "title", "startAt": "2026-11-18T09:00:00+01:00", "endAt", "place": "Room B", "link": "https://…" }`.
 - An all-day event: `{ "id", "calendarId", "title", "date": "2026-11-21", "endDate": "2026-11-21", "place", "link" }`. `endDate` is inclusive.
-- `place` and `link` can be `null`. `title` is `""` for an event with no title. Eva leaves out an event that the person declined, and a cancelled event.
+- `place` and `link` can be `null`. `title` is `""` for an event with no title. Eva leaves out an event that the person declined, a cancelled event, and the place where the person works each day.
 - Eva keeps each answer for 1 minute, so a new event can take a minute to show.
 - Eva answers `502` when Google fails or refuses. Show that the calendar is not available now, and try again later.
 - The calendar is read only in this version: each other method answers `405`.

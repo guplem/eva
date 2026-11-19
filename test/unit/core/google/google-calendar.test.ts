@@ -122,6 +122,7 @@ describe("the events", () => {
         attendees: [{ email: "person@example.com", self: true, responseStatus: "accepted" }],
       },
       { id: "gone", status: "cancelled", start: { dateTime: "2026-11-18T10:00:00+01:00" } },
+      { id: "office", eventType: "workingLocation", summary: "Office", start: { date: "2026-11-18" } },
       {
         id: "declined",
         summary: "Declined",

@@ -122,7 +122,9 @@ export class GoogleCalendar implements CalendarSource {
     const value = read();
     this.cache.set(key, { at: now, value });
     // A failure is not kept: the next draw asks Google again.
-    value.catch(() => this.cache.delete(key));
+    value.catch(() => {
+      if (this.cache.get(key)?.value === value) this.cache.delete(key);
+    });
     const oldest = this.cache.keys().next().value;
     if (this.cache.size > maxCacheEntries && oldest !== undefined) this.cache.delete(oldest);
     return value;
@@ -172,6 +174,7 @@ async function readCalendarList(inputs: GoogleCalendarInputs, accessToken: strin
 interface GoogleEvent {
   readonly id?: unknown;
   readonly status?: unknown;
+  readonly eventType?: unknown;
   readonly summary?: unknown;
   readonly location?: unknown;
   readonly htmlLink?: unknown;
@@ -207,9 +210,14 @@ async function readEvents(
   });
 }
 
-/** The event in the contract's shape, or null for a cancelled or declined event, or one that Eva cannot read. */
+/**
+ * The event in the contract's shape, or null for a cancelled or declined event, a working place,
+ * or one that Eva cannot read.
+ */
 function contractEvent(item: GoogleEvent, calendarId: string): WidgetCalendarEvent | null {
   if (typeof item.id !== "string" || item.status === "cancelled" || isDeclined(item.attendees)) return null;
+  // Google Calendar shows where the person works each day apart from the events, not as one.
+  if (item.eventType === "workingLocation") return null;
   const base = {
     id: item.id,
     calendarId,

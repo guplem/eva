@@ -6424,7 +6424,18 @@ test("a long chat follows the newest message, unless the person scrolled up", as
   await expect(answer).toContainText("line 59");
   await expect(answer).toBeInViewport();
   await expect(composer).toBeInViewport();
-  // The empty box comes in with an animation after a send (#943). A click on a moving Send retries with a forced
+
+  // The person scrolls up with the wheel while the glide of the send may still run (#943, #981). A wheel ends the
+  // glide; a scrollTop set by code would not, and the glide would pull the chat down again.
+  const branches = page.locator(".branches");
+  const chatBox = await branches.boundingBox();
+  if (chatBox === null) throw new Error("The chat must show.");
+  await page.mouse.move(chatBox.x + chatBox.width / 2, chatBox.y + 40);
+  await page.mouse.wheel(0, -100_000);
+  // A wheel scroll can stop a few pixels short of the top, so the checks allow a small distance.
+  const nearTop = 50;
+  await expect.poll(() => branches.evaluate((element) => element.scrollTop)).toBeLessThan(nearTop);
+  // The empty box comes in with an animation after a send. A click on a moving Send retries with a forced
   // scroll into view, and the sticky box then pulls the chat down, as no person's click does.
   await page
     .locator(".composer-box")
@@ -6432,15 +6443,11 @@ test("a long chat follows the newest message, unless the person scrolled up", as
     .evaluate((element) =>
       Promise.all(element.getAnimations().map((animation) => animation.finished)).then(() => undefined),
     );
-
-  const branches = page.locator(".branches");
-  await branches.evaluate((element) => {
-    element.scrollTop = 0;
-  });
+  expect(await branches.evaluate((element) => element.scrollTop)).toBeLessThan(nearTop);
   await composer.fill("one more");
   await page.getByRole("button", { name: "Send" }).first().click();
   await expect(page.locator(".message.answer").nth(1)).toContainText("one more");
-  expect(await branches.evaluate((element) => element.scrollTop)).toBe(0);
+  expect(await branches.evaluate((element) => element.scrollTop)).toBeLessThan(nearTop);
 });
 
 test.describe("on a phone", () => {

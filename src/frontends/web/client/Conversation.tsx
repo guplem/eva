@@ -31,6 +31,7 @@ import { chatKind } from "../../../shared/chat-kind.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { endedProjectWork, tasksOfTurn, tasksStillRun } from "./chat-details.ts";
 import { Composer, storedChoices, unsentTexts } from "./Composer.tsx";
+import { FullChatNotice } from "./FullChatNotice.tsx";
 import { isGliding, markFollowing } from "./send-glide.ts";
 import {
   answerFiles,
@@ -505,6 +506,8 @@ function Branch({
           // The suggestions are Assistant work; a project chat stays a plain harness (AGENTS.md).
           session.mode === "assistant" && <NewChatGreeting onPick={(text) => void send(text)} />
         ))}
+      {/* A closed chat takes no message, and its own callout already says what to do. */}
+      {!session.closed && <FullChatNotice session={session} onChanged={onChanged} />}
       {session.closed ? (
         // Eva reused the clone of this chat for a new chat (issue 521), so a message here would run on other work.
         <div className="callout" role="status">

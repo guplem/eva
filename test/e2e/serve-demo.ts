@@ -405,6 +405,11 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}\n\nThe tests pass.`);
     return;
   }
+  // A chat that nearly fills its window, so the page offers to compact it (#969).
+  if (lastLine.includes("crowded")) {
+    yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`, 164_000);
+    return;
+  }
   // Long enough for the person to open another chat before the answer comes.
   if (lastLine.includes("slow")) await Bun.sleep(2_000);
   yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`);

@@ -1,5 +1,29 @@
-import { describe, expect, test } from "bun:test";
-import { hiddenShare, offerAgainStep, offerShows } from "../../../../../src/frontends/web/client/summary-offer.ts";
+import { afterEach, describe, expect, test } from "bun:test";
+import {
+  hiddenShare,
+  hideOffer,
+  offerAgainStep,
+  offerShows,
+  readHiddenShare,
+} from "../../../../../src/frontends/web/client/summary-offer.ts";
+
+function useStorage(storage: unknown): void {
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+}
+
+/** A storage that keeps its items in a map, as a browser does. */
+function mapStorage(): Storage {
+  const items = new Map<string, string>();
+  return {
+    getItem: (key: string) => items.get(key) ?? null,
+    setItem: (key: string, value: string) => items.set(key, value),
+    removeItem: (key: string) => items.delete(key),
+  } as unknown as Storage;
+}
+
+const blocked = (): never => {
+  throw new Error("blocked");
+};
 
 describe("hiddenShare", () => {
   test("a whole number comes back, and anything else hides nothing", () => {
@@ -27,5 +51,25 @@ describe("offerShows", () => {
 
   test("a share that fell after the engine compacted the chat stays quiet", () => {
     expect(offerShows(90, 40)).toBe(false);
+  });
+});
+
+describe("the browser's own choice", () => {
+  afterEach(() => Reflect.deleteProperty(globalThis, "localStorage"));
+
+  test("each chat keeps its own share, and another chat stays untouched", () => {
+    useStorage(mapStorage());
+    expect(readHiddenShare("chat-1")).toBeNull();
+    hideOffer("chat-1", 78);
+    expect(readHiddenShare("chat-1")).toBe(78);
+    expect(readHiddenShare("chat-2")).toBeNull();
+  });
+
+  test("a blocked storage offers the chat and loses only the choice", () => {
+    useStorage({ getItem: blocked, setItem: blocked });
+    expect(readHiddenShare("chat-1")).toBeNull();
+    expect(() => {
+      hideOffer("chat-1", 78);
+    }).not.toThrow();
   });
 });

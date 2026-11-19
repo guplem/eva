@@ -1,7 +1,7 @@
 /**
  * The question before a new chat that goes on from a summary of one branch (issue 522). The chat
- * header asks it from its menu. The page then opens the new chat, where the person reads the
- * summary before it goes.
+ * header asks it from its menu, and the conversation asks it from the notice of a full chat (#969).
+ * The page then opens the new chat, where the person reads the summary before it goes.
  */
 import { useState, type ReactElement } from "react";
 import { api } from "./api.ts";
@@ -11,7 +11,12 @@ import { goTo } from "./back-layers.ts";
 import { useShowError } from "./error-toast.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 
-const heading = "Start a new chat from a summary";
+/**
+ * The one name of the action. People look for "compact", the word that Claude Code and pi use for
+ * the same need, so the menu and this question lead with it. The rest says what Eva does instead:
+ * those engines shrink the chat, and Eva opens a new one.
+ */
+export const compactLabel = "Compact: start a new chat from a summary";
 
 export function SummaryChatQuestion({
   sessionId,
@@ -46,8 +51,8 @@ export function SummaryChatQuestion({
       className={dialogBackdropClass("schedule-backdrop")}
       onClick={(event) => event.target === event.currentTarget && !working && onKeep()}
     >
-      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={`${heading}?`}>
-        <h2>{heading}?</h2>
+      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={`${compactLabel}?`}>
+        <h2>{compactLabel}?</h2>
         <p>
           Eva writes a short summary of this chat and opens a new chat with it. You can read and change the summary
           before you send it.

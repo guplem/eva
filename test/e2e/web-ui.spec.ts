@@ -1229,12 +1229,12 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   await logIn(page);
   const title = await newAnsweredChat(page, "A chat to summarize");
   await waitUntilIdle(page, await chatIdNamed(page, title));
-  const question = page.getByRole("dialog", { name: "Start a new chat from a summary?" });
-  await chooseFromMore(page, "Start a new chat from a summary");
+  const question = page.getByRole("dialog", { name: "Compact: start a new chat from a summary?" });
+  await chooseFromMore(page, "Compact: start a new chat from a summary");
   await question.getByRole("button", { name: "Cancel" }).click();
   await expect(question).toHaveCount(0);
 
-  await chooseFromMore(page, "Start a new chat from a summary");
+  await chooseFromMore(page, "Compact: start a new chat from a summary");
   await question.getByRole("button", { name: "Start" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${title} (continued)`);
   // The summary waits in the box: nothing runs until the person sends it.
@@ -1254,6 +1254,29 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   await (await details()).getByRole("link", { name: `${title} (continued)` }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${title} (continued)`);
   await expect(page.getByLabel("Message").first()).toHaveValue("");
+});
+
+test("a chat that nearly fills its window offers to compact itself, and Not now keeps it quiet (#969)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const title = await newAnsweredChat(page, "A crowded chat");
+  await waitUntilIdle(page, await chatIdNamed(page, title));
+  const notice = page.getByText("This chat is 82% full.");
+  await expect(notice).toBeVisible();
+
+  // The button asks the same question as the menu item.
+  await page.getByRole("button", { name: "Compact", exact: true }).click();
+  const question = page.getByRole("dialog", { name: "Compact: start a new chat from a summary?" });
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(question).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Not now" }).click();
+  await expect(notice).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+  await expect(notice).toHaveCount(0);
 });
 
 test("the chat details list the context, and a tap shows a part's whole text (issue 700)", async ({ page }) => {

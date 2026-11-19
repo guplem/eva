@@ -26,8 +26,11 @@ export class FakeEngine implements EnginePort {
     yield* events;
   }
 
-  /** A text answer and a clean finish, with message ids that tell turns apart. */
-  static answer(request: TurnRequest, text: string): EngineEventPayload[] {
+  /**
+   * A text answer and a clean finish, with message ids that tell turns apart. `contextTokens` plays
+   * a chat that fills its window, such as one that offers to compact itself (#969).
+   */
+  static answer(request: TurnRequest, text: string, contextTokens = 15): EngineEventPayload[] {
     const engineSessionId = sessionIdOf(request);
     const messageId = `${engineSessionId}:${text}`;
     return [
@@ -38,7 +41,7 @@ export class FakeEngine implements EnginePort {
         lastMessageId: messageId,
         usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: null,
-        contextTokens: 15,
+        contextTokens,
         contextWindow: 200_000,
         // Like Claude Code, a tier answers as a real model with its own id.
         model: `claude-${request.model}-5-5`,

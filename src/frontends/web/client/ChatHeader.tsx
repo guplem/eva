@@ -1,8 +1,8 @@
 /**
  * The header of an open chat: one row with the title, one subtitle, and a "More actions" menu with Rename,
- * Chat info, Start a new chat from a summary, Archive and Delete chat. Rename, the summary and Delete chat
- * ask in a dialog. One row leaves the chat its height. A computer also has a button that hides or shows
- * the chat details column. On a phone, a tap on the title opens the chat details.
+ * Chat info, Compact, Archive and Delete chat. Rename, Compact and Delete chat ask in a dialog. One
+ * row leaves the chat its height. A computer also has a button that hides or shows the chat details
+ * column. On a phone, a tap on the title opens the chat details.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { api, type SessionRecord } from "./api.ts";
@@ -13,7 +13,7 @@ import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { BackButton, ShowListButton } from "./MainNav.tsx";
 import { MoreMenu, type MenuItem } from "./Menu.tsx";
-import { SummaryChatQuestion } from "./SummaryChatQuestion.tsx";
+import { compactLabel, SummaryChatQuestion } from "./SummaryChatQuestion.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { useEscape } from "./back-layer-hook.ts";
 import { dialogBackdropClass } from "./Dialog.tsx";
@@ -165,7 +165,7 @@ export function ChatHeader({
   // A computer shows the details in the inspector column.
   if (isPhone) items.push({ label: "Chat info", icon: "chat", onChoose: () => openInfo(moreButton.current) });
   // Every chat has it, open or closed: a long chat can also confuse the model (issue 522).
-  items.push({ label: "Start a new chat from a summary", icon: "chat", onChoose: () => setSummarizing(true) });
+  items.push({ label: compactLabel, icon: "chat", onChoose: () => setSummarizing(true) });
   if (onArchived !== undefined) items.push(archiveItem(chat));
   items.push({ label: "Delete chat", icon: "trash", danger: true, onChoose: () => setAsking(true) });
 

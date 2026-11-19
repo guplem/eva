@@ -149,6 +149,33 @@ describe("the preview of a clone", () => {
     expect(readFileSync(join(vault, "Life/Habits/walk.json"), "utf-8")).toContain('"Walk"');
   });
 
+  test("the calendar and the cases answer 404 with example data, and null with My data", async () => {
+    const calendar = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      access: "read",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+    };
+    const { access: _access, ...noAccess } = calendar;
+    const cases = { ...noAccess, id: "cases", type: "eva-cases", label: "Cases" };
+    write(clone, "eva-widget.json", JSON.stringify({ ...manifest, contract: 2, inputs: [habits, calendar, cases] }));
+    write(clone, "example/cases.json", "[]");
+    const paths = ["eva/google-calendar/calendars.json", "eva/google-calendar/events.json", "eva/cases.json"];
+    const example = (await widgets.preview(place, "example", theme, ownHosts)).token ?? "";
+    for (const path of paths)
+      expect({ path, status: (await get(example, path)).status }).toEqual({ path, status: 404 });
+    expect((await get(example, "example/cases.json")).body).toBe("[]");
+    const asked = await widgets.preview(place, "mine", theme, ownHosts);
+    expect(asked.ask?.added).toEqual(["Read your Google Calendar.", "Read your open cases."]);
+    const mine =
+      (await widgets.approvePreview(place, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
+        .token ?? "";
+    for (const path of paths) expect({ path, ...(await get(mine, path)) }).toEqual({ path, status: 200, body: "null" });
+  });
+
   test("never serves git data, a hidden name, an ignored file or a link", async () => {
     write(clone, "secret.txt", "token");
     const token = (await widgets.preview(place, "example", theme, ownHosts)).token ?? "";

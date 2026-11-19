@@ -103,9 +103,10 @@ body {
   font-size: clamp(16px, 9vmin, 48px);
 }
 
-/* Large and full: the list takes two columns when the space is wide. */
+/* Large, xlarge and full: the list takes two columns when the space is wide. */
 @media (min-aspect-ratio: 3/2) {
   .widget[data-size="large"] .habit-list,
+  .widget[data-size="xlarge"] .habit-list,
   .widget[data-size="full"] .habit-list {
     grid-template-columns: repeat(2, 1fr);
   }

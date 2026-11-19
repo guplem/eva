@@ -16,6 +16,7 @@ import { configOf, matches, type ApprovedPath, type WidgetApproval, type WidgetA
 import { checkManifest, manifestPath, type WidgetInput, type WidgetManifest } from "./widget-contract.ts";
 import type { WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
+import { evaDataAnswer } from "./widget-eva-data.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
 import { checkValues, inspectFiles } from "./widget-values.ts";
@@ -917,6 +918,8 @@ export class Widgets {
     if (path === "config.json") return jsonAnswer(configOf(record, entry));
     if (path === "eva/location.json")
       return jsonAnswer(record.location ? contractLocation(this.options.location()) : null);
+    const evaData = evaDataAnswer(path, record);
+    if (evaData !== null) return evaData;
     if (path === "eva/theme.css")
       return { status: 200, contentType: "text/css; charset=utf-8", body: themeCss(session.theme) };
     if (contract === "eva" || contract === "data" || path.toLowerCase() === "config.json" || path === "")

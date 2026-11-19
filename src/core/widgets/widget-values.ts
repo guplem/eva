@@ -6,6 +6,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { ownValue } from "./widget-approvals.ts";
 import { checkManifest, checkWidget, manifestPath, type WidgetInput, type WidgetManifest } from "./widget-contract.ts";
 import { placeOf } from "./widget-data.ts";
+import { evaDataInputTypes } from "./widget-kinds.ts";
 import { checkHost } from "./widget-hosts.ts";
 import type { WidgetInputValue } from "./widget-list.ts";
 import { isPlainName, isWritableName } from "./widget-places.ts";
@@ -18,7 +19,8 @@ export function checkValues(
 ): Record<string, WidgetInputValue> {
   const kept: Record<string, WidgetInputValue> = {};
   for (const input of inputs) {
-    if (input.type === "eva-location") continue;
+    // An input of Eva's data, such as the location, is a permission with no value.
+    if (evaDataInputTypes.has(input.type)) continue;
     const value = ownValue(values, input.id);
     const empty = value === undefined || (typeof value === "string" && value.trim() === "");
     if (empty) {

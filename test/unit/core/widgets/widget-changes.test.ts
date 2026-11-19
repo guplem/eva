@@ -30,6 +30,8 @@ const approved: WidgetGrant = {
     },
   ],
   location: false,
+  googleCalendar: null,
+  cases: false,
   hosts: [],
   prompt: null,
 };
@@ -104,5 +106,34 @@ describe("grantChange", () => {
     expect(grantChange(null, manifest(), values, none, none).added).toEqual([
       "Read and change the folder Life/Habits (*.json).",
     ]);
+  });
+
+  test("the calendar, more calendar access and the cases are new permissions", () => {
+    const calendar: WidgetInput = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+      access: "read",
+    };
+    const { access: _access, ...noAccess } = calendar;
+    const cases: WidgetInput = { ...noAccess, id: "cases", type: "eva-cases", label: "Cases" };
+    const both = manifest({ contract: 2, inputs: [habits, calendar, cases] });
+    const change = grantChange(approved, both, values, none, none);
+    expect(change.added).toEqual(["Read your Google Calendar.", "Read your open cases."]);
+    expect(change.grant).toMatchObject({ googleCalendar: "read", cases: true });
+    expect(grantChange(change.grant, both, values, none, none).added).toEqual([]);
+    const write = manifest({ contract: 2, inputs: [habits, { ...calendar, access: "write" }, cases] });
+    expect(grantChange(change.grant, write, values, none, none).added).toEqual([
+      "Change your Google Calendar, not only read it.",
+    ]);
+    expect(grantChange(approved, write, values, none, none).added).toEqual([
+      "Read and change your Google Calendar.",
+      "Read your open cases.",
+    ]);
+    // Less access asks for nothing.
+    expect(grantChange({ ...change.grant, googleCalendar: "write" }, both, values, none, none).added).toEqual([]);
   });
 });

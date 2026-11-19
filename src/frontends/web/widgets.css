@@ -24,7 +24,10 @@
   grid-column: span 2;
 }
 
-.widget-card.size-large {
+/* Contract 2's tall and xlarge take the span of large until the home layout gives them their own. */
+.widget-card.size-large,
+.widget-card.size-tall,
+.widget-card.size-xlarge {
   grid-column: 1 / -1;
   grid-row: span 2;
 }
@@ -34,7 +37,9 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .widget-card.size-large {
+  .widget-card.size-large,
+  .widget-card.size-tall,
+  .widget-card.size-xlarge {
     grid-row: span 1;
   }
 }

@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { widgetAddress } from "./widget-address.ts";
+import { widgetSizes } from "./widget-kinds.ts";
 import type { WidgetEntry, WidgetInputValue } from "./widget-list.ts";
 
 export const approvalsVersion = 1;
@@ -30,10 +31,14 @@ export const approvalSchema = z.object({
   repository: z.string(),
   commit: z.string().regex(commitPattern),
   name: z.string(),
-  size: z.enum(["small", "medium", "large"]),
+  size: z.enum(widgetSizes),
   entry: z.string(),
   paths: z.array(approvedPathSchema),
   location: z.boolean(),
+  /** The access of an `eva-google-calendar` input, or null. A record from before the field reads as "no calendar". */
+  googleCalendar: z.enum(["read", "write"]).nullable().default(null),
+  /** True for an `eva-cases` input. A record from before the field reads as "no cases". */
+  cases: z.boolean().default(false),
   /** The approved origins, such as `https://api.example.com`. */
   hosts: z.array(z.string()),
   /**

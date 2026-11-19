@@ -24,6 +24,8 @@ const record: WidgetApproval = {
     },
   ],
   location: false,
+  googleCalendar: null,
+  cases: false,
   hosts: [],
   prompt: "Habits live in {habits}.",
   approvedAt: "2026-01-01T09:00:00.000Z",
@@ -76,5 +78,21 @@ describe("the prompt line of a record", () => {
     const read = new WidgetApprovals(join(folder, "old.json")).get("example-owner/habits");
     expect(read?.prompt).toBeNull();
     expect(read?.name).toBe("Habits");
+  });
+});
+
+describe("the inputs of Eva's data in a record", () => {
+  test("a record from before them reads as no calendar and no cases", () => {
+    const { googleCalendar: _calendar, cases: _cases, ...old } = record;
+    writeFileSync(join(folder, "old.json"), JSON.stringify({ version: 1, approvals: [old] }));
+    const read = new WidgetApprovals(join(folder, "old.json")).get("example-owner/habits");
+    expect(read?.googleCalendar).toBeNull();
+    expect(read?.cases).toBe(false);
+  });
+
+  test("keeps the calendar access, the cases and a size of contract 2", () => {
+    const wide: WidgetApproval = { ...record, size: "xlarge", googleCalendar: "read", cases: true };
+    new WidgetApprovals(path).save("example-owner/habits", wide);
+    expect(new WidgetApprovals(path).get("example-owner/habits")).toEqual(wide);
   });
 });

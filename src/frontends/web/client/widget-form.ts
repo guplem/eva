@@ -3,6 +3,7 @@
  * of what the person approves. The core checks each value again: this only guides the person.
  */
 import type { WidgetInput, WidgetManifest } from "../../../core/widgets/widget-contract.ts";
+import { evaDataInputTypes } from "../../../core/widgets/widget-kinds.ts";
 import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
 import { isClosedPlace, isPlainName } from "../../../core/widgets/widget-places.ts";
 import { defaultPrompt, filledPrompt, type PromptPlace } from "../../../core/widgets/widget-prompt.ts";
@@ -11,9 +12,9 @@ import { minuteChoices } from "./minute-choices.ts";
 
 export type FormValues = Readonly<Record<string, WidgetInputValue | undefined>>;
 
-/** The inputs that the form shows: the location is a permission, not a value. */
+/** The inputs that the form shows: an input of Eva's data, such as the location, is a permission, not a value. */
 export function formInputs(manifest: WidgetManifest): WidgetInput[] {
-  return manifest.inputs.filter((input) => input.type !== "eva-location");
+  return manifest.inputs.filter((input) => !evaDataInputTypes.has(input.type));
 }
 
 /** The value of each input: the one in the vault, or else the manifest's default. */
@@ -56,7 +57,7 @@ export interface PermissionLine {
   readonly why: string;
 }
 
-/** What the person approves, in words, each with its reason: the places, the location and the hosts. */
+/** What the person approves, in words, each with its reason: the places, Eva's data and the hosts. */
 export function permissionLines(manifest: WidgetManifest, values: FormValues): PermissionLine[] {
   const places = manifest.inputs.flatMap((input): PermissionLine[] => {
     if (input.type !== "folder" && input.type !== "file") return [];
@@ -68,15 +69,21 @@ export function permissionLines(manifest: WidgetManifest, values: FormValues): P
       { icon: input.type === "folder" ? "folder" : "file", text: `${verb} ${what} ${value.trim()}`, why: input.why },
     ];
   });
-  const location = manifest.inputs
-    .filter((input) => input.type === "eva-location")
-    .map((input): PermissionLine => ({ icon: "globe", text: "Reads your last location", why: input.why }));
+  const evaData = manifest.inputs.flatMap((input): PermissionLine[] => {
+    if (input.type === "eva-location") return [{ icon: "globe", text: "Reads your last location", why: input.why }];
+    if (input.type === "eva-google-calendar") {
+      const text = input.access === "write" ? "Reads and changes your Google Calendar" : "Reads your Google Calendar";
+      return [{ icon: "calendar", text, why: input.why }];
+    }
+    if (input.type === "eva-cases") return [{ icon: "case", text: "Reads your open cases", why: input.why }];
+    return [];
+  });
   const hosts = manifest.hosts.map((host): PermissionLine => ({
     icon: "external",
     text: `Calls ${host.url}`,
     why: host.why,
   }));
-  return [...places, ...location, ...hosts];
+  return [...places, ...evaData, ...hosts];
 }
 
 /**

@@ -82,6 +82,26 @@ describe("the activation form", () => {
     ]);
   });
 
+  test("shows the calendar and the cases as permissions, not as fields", () => {
+    const day: WidgetManifest = {
+      ...manifest,
+      contract: 2,
+      hosts: [],
+      inputs: [
+        { ...base, id: "calendar", type: "eva-google-calendar", label: "Calendar", required: true, access: "read" },
+        { ...base, id: "plan", type: "eva-google-calendar", label: "Plan", required: false, access: "write" },
+        { ...base, id: "cases", type: "eva-cases", label: "Cases", required: true, why: "Shows your cases." },
+      ],
+    };
+    expect(formInputs(day)).toEqual([]);
+    expect(missingInputs(day, {})).toEqual([]);
+    expect(permissionLines(day, {})).toEqual([
+      { icon: "calendar", text: "Reads your Google Calendar", why: "w" },
+      { icon: "calendar", text: "Reads and changes your Google Calendar", why: "w" },
+      { icon: "case", text: "Reads your open cases", why: "Shows your cases." },
+    ]);
+  });
+
   test("the vault picker hides each place that a widget never reaches", () => {
     expect(isPickable("Life/Habits")).toBe(true);
     for (const path of [".eva", "Scratch", "Life/About me.md", "Projects/2026-01-01-0900-app/repos", "Notes/.git"]) {

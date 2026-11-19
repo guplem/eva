@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   checkData,
   checkDataSchema,
@@ -55,11 +56,76 @@ describe("checkManifest", () => {
   });
 
   test("refuses a contract that Eva does not know, and asks for an update", () => {
-    const result = checkManifest(JSON.stringify({ ...manifest, contract: 2 }));
+    const result = checkManifest(JSON.stringify({ ...manifest, contract: 3 }));
     expect(result.manifest).toBeNull();
-    expect(result.problems).toEqual(["This widget follows contract 2. Update Eva to use this widget."]);
+    expect(result.problems).toEqual(["This widget follows contract 3. Update Eva to use this widget."]);
     expect(result.newerContract).toBe(true);
-    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 2 })).newerContract).toBe(true);
+    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 3 })).newerContract).toBe(true);
+  });
+
+  test("accepts contract 2, with its sizes and its inputs of Eva's data", () => {
+    const calendar = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      access: "read",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+    };
+    const cases = {
+      id: "cases",
+      type: "eva-cases",
+      label: "Cases",
+      description: "Your open cases.",
+      why: "The widget shows the next step of each case.",
+      required: false,
+    };
+    for (const size of ["tall", "xlarge"] as const) {
+      const result = checkManifest(
+        JSON.stringify({ ...manifest, contract: 2, size, inputs: [...manifest.inputs, calendar, cases] }),
+      );
+      expect(result.problems).toEqual([]);
+      expect(result.manifest?.size).toBe(size);
+    }
+    const write = { ...calendar, access: "write" };
+    expect(checkManifest(JSON.stringify({ ...manifest, contract: 2, inputs: [write] })).problems).toEqual([]);
+  });
+
+  test("keeps the rules of each new input of contract 2", () => {
+    const calendar = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      access: "read",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+    };
+    const cases = { ...calendar, id: "cases", type: "eva-cases" };
+    const { access: _access, ...noAccess } = calendar;
+    const fails = (input: object): boolean =>
+      checkManifest(JSON.stringify({ ...manifest, contract: 2, inputs: [input] })).problems.length > 0;
+    expect(fails(noAccess)).toBe(true);
+    expect(fails({ ...calendar, default: "x" })).toBe(true);
+    expect(fails({ ...calendar, schema: "schemas/calendar.json" })).toBe(true);
+    expect(fails(cases)).toBe(true);
+    const { access: _caseAccess, ...readCases } = cases;
+    expect(fails(readCases)).toBe(false);
+    expect(fails({ ...readCases, default: true })).toBe(true);
+  });
+
+  test("keeps contract 1 as it was: no new size and no new input type", () => {
+    expect(checkManifest(JSON.stringify({ ...manifest, size: "tall" })).problems.length).toBeGreaterThan(0);
+    const cases = {
+      id: "cases",
+      type: "eva-cases",
+      label: "Cases",
+      description: "Your open cases.",
+      why: "The widget shows them.",
+      required: false,
+    };
+    expect(checkManifest(JSON.stringify({ ...manifest, inputs: [cases] })).problems.length).toBeGreaterThan(0);
   });
 
   test("a contract below 1 is a mistake of the manifest, not a newer widget", () => {
@@ -217,5 +283,23 @@ describe("checkData", () => {
   test("passes any file for a schema that does not compile", () => {
     expect(checkData({}, { type: "object", properties: { name: { type: "nothing" } } })).toEqual([]);
     expect(checkData({}, null)).toEqual([]);
+  });
+});
+
+describe("the meta-schemas", () => {
+  test("contract 2 keeps the data rules of contract 1, so a data schema passes or fails the same", async () => {
+    const rules = async (contract: number): Promise<unknown> => {
+      const text = await Bun.file(
+        join(import.meta.dir, `../../../../docs/widgets/meta-schema-v${String(contract)}.json`),
+      ).text();
+      const {
+        $id: _id,
+        title: _title,
+        description: _description,
+        ...rest
+      } = JSON.parse(text) as Record<string, unknown>;
+      return rest;
+    };
+    expect(await rules(2)).toEqual(await rules(1));
   });
 });

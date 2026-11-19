@@ -5,16 +5,20 @@
  */
 import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
-import manifestSchemaText from "../../../docs/widgets/manifest-v1.json" with { type: "text" };
-import metaSchemaText from "../../../docs/widgets/meta-schema-v1.json" with { type: "text" };
+import manifestV1Text from "../../../docs/widgets/manifest-v1.json" with { type: "text" };
+import manifestV2Text from "../../../docs/widgets/manifest-v2.json" with { type: "text" };
+// Contract 2 keeps the data rules of contract 1 (a test pins it), so one meta-schema checks both.
+import metaSchemaText from "../../../docs/widgets/meta-schema-v2.json" with { type: "text" };
 // TypeScript types a JSON import as its value, but Bun gives a text import as a string.
+import type { WidgetInputType, WidgetSize } from "./widget-kinds.ts";
 
-/** The contract versions that Eva reads. A widget with another one waits for an update of Eva. */
-const knownContracts: ReadonlySet<number> = new Set([1]);
+/** The manifest schema of each contract that Eva reads. A widget with another one waits for an update of Eva. */
+const manifestSchemas: ReadonlyMap<number, unknown> = new Map<number, unknown>([
+  [1, manifestV1Text],
+  [2, manifestV2Text],
+]);
 
 export const manifestPath = "eva-widget.json";
-
-export type WidgetInputType = "folder" | "file" | "text" | "url" | "number" | "boolean" | "choice" | "eva-location";
 
 export interface WidgetInput {
   readonly id: string;
@@ -34,7 +38,7 @@ export interface WidgetManifest {
   readonly contract: number;
   readonly name: string;
   readonly entry: string;
-  readonly size: "small" | "medium" | "large";
+  readonly size: WidgetSize;
   readonly inputs: readonly WidgetInput[];
   readonly hosts: readonly { readonly url: string; readonly why: string }[];
   readonly prompt?: string;
@@ -62,14 +66,22 @@ const addFormats = ((addFormatsModule as unknown as { default?: unknown }).defau
   addFormatsModule) as typeof addFormatsModule;
 
 /** Built once, on the first check: compiling the schemas takes a few milliseconds. */
-let validators: { readonly manifest: ValidateFunction; readonly meta: ValidateFunction } | null = null;
+let validators: {
+  readonly manifests: ReadonlyMap<number, ValidateFunction>;
+  readonly meta: ValidateFunction;
+} | null = null;
 
-function contractValidators(): { readonly manifest: ValidateFunction; readonly meta: ValidateFunction } {
+function contractValidators(): {
+  readonly manifests: ReadonlyMap<number, ValidateFunction>;
+  readonly meta: ValidateFunction;
+} {
   if (validators !== null) return validators;
   // `verbose` puts the failing value in each error, so a problem can name the field.
   const ajv = new Ajv2020({ allErrors: true, verbose: true, strict: false });
   validators = {
-    manifest: ajv.compile(JSON.parse(manifestSchemaText as unknown as string) as object),
+    manifests: new Map(
+      [...manifestSchemas].map(([contract, text]) => [contract, ajv.compile(JSON.parse(text as string) as object)]),
+    ),
     meta: ajv.compile(JSON.parse(metaSchemaText as unknown as string) as object),
   };
   return validators;
@@ -84,13 +96,13 @@ export function checkManifest(text: string): ManifestCheck {
     return failed(`${manifestPath} has no contract number.`);
   // Contract 1 is the first: a smaller number is a mistake in the manifest, not a newer widget.
   if (contract < 1) return failed(`${manifestPath} has the contract ${String(contract)}, which does not exist. Use 1.`);
-  if (!knownContracts.has(contract)) {
+  const validate = contractValidators().manifests.get(contract);
+  if (validate === undefined) {
     return {
       ...failed(`This widget follows contract ${String(contract)}. Update Eva to use this widget.`),
       newerContract: true,
     };
   }
-  const validate = contractValidators().manifest;
   if (validate(value)) {
     const manifest = value as Omit<WidgetManifest, "entry" | "inputs" | "hosts"> & Partial<WidgetManifest>;
     return {

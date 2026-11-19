@@ -26,6 +26,7 @@ import { grantChange, readOnlyFallbacks, type WidgetGrant } from "./widget-chang
 import { checkManifest, manifestPath, type WidgetManifest } from "./widget-contract.ts";
 import { answerText, serveFolderFile, type WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
+import { evaDataAnswer } from "./widget-eva-data.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, widgetInputValueSchema, type WidgetInputValue } from "./widget-list.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
@@ -71,6 +72,8 @@ export const previewGrantSchema = z.object({
   repository: z.string(),
   paths: approvalSchema.shape.paths,
   location: z.boolean(),
+  googleCalendar: approvalSchema.shape.googleCalendar,
+  cases: approvalSchema.shape.cases,
   hosts: z.array(z.string()),
   prompt: z.string().nullable(),
   values: z.record(z.string(), widgetInputValueSchema),
@@ -304,6 +307,9 @@ export class WidgetPreviews {
       if (grant !== null) return jsonAnswer(grant.location ? contractLocation(this.options.location()) : null);
       return location ? await this.file(session, "example/location.json") : jsonAnswer(null);
     }
+    // Example data answers 404, so the widget reads its mock files under `example/` (#778).
+    const evaData = grant === null ? null : evaDataAnswer(path, grant);
+    if (evaData !== null) return evaData;
     if (contract === "eva" || path === "") return { status: 404 };
     if (grant !== null) {
       if (path === "config.json") return jsonAnswer(configOf(grant, { inputs: session.values }));

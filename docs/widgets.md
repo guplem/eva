@@ -177,6 +177,7 @@ The grid is the day panel of Eva's home page:
 - On a phone, each row is 168 px high, and the page scrolls. An `xlarge` card shows after the smaller cards, so a long calendar does not push them out of view. Two `small` cards share a row. A `small` card with no partner, such as the last of an odd number, takes the full width.
 
 - The widget always fills the space that it gets, at every screen size. It has no empty border.
+- Keep the top right corner free of text and buttons: 56 px wide and 56 px high, at every size. Eva puts her full-screen button there, over the widget, and her close button in full screen.
 - Opened in full screen in a browser, the widget fills the whole window with content, even if it looks stretched.
 - Show less in a small size, and more in a large one. Do not scroll the page sideways.
 

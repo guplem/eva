@@ -103,7 +103,7 @@ A widget talks to its host only through `fetch` to relative paths. The host deci
 | `data/<input>/<file>`                                           | `GET`, `PUT`, `DELETE` | `GET` reads the file. `PUT` writes the whole file with the body. `DELETE` removes it. |
 | `eva/location.json`                                             | `GET`                  | The last location, or `null` when Eva has none yet.                                   |
 | `eva/google-calendar/calendars.json`                            | `GET`                  | The person's calendars, or `null`. See [The calendar](#the-calendar).                 |
-| `eva/google-calendar/events.json?from=YYYY-MM-DD&to=YYYY-MM-DD` | `GET`                  | The events of every calendar in the window, or `null`.                                |
+| `eva/google-calendar/events.json?from=YYYY-MM-DD&to=YYYY-MM-DD` | `GET`                  | The events of each shown calendar in the window, or `null`.                           |
 | `eva/cases.json`                                                | `GET`                  | The person's open cases, or `null`. See [The cases](#the-cases).                      |
 | `eva/theme.css`                                                 | `GET`                  | The EVE colour variables. See [Theme](#theme).                                        |
 
@@ -123,11 +123,14 @@ Eva gives the size in the address, as `?size=small`, `medium`, `large`, `tall`, 
 
 An `eva-google-calendar` input gives the widget the person's Google Calendar. Eva calls Google with her own login. The widget never sees a token.
 
-- `eva/google-calendar/calendars.json` answers `null` when Eva has no Google login or Calendar is off. Otherwise it answers a list: `[{ "id": "…", "name": "Work", "color": "#3f51b5", "primary": true }]`.
-- `eva/google-calendar/events.json?from=2026-11-16&to=2026-11-22` answers `null` for the same reasons, or a list of events, sorted by start. `to` is inclusive. The days are in the person's calendar time zone. Eva refuses a window over 62 days with `400`.
+- `eva/google-calendar/calendars.json` answers `null` when Eva has no working Google login or Calendar is off in Settings. Otherwise it answers a list of the calendars that the person shows in Google Calendar: `[{ "id": "…", "name": "Work", "color": "#3f51b5", "primary": true }]`.
+- `eva/google-calendar/events.json?from=2026-11-16&to=2026-11-22` answers `null` for the same reasons, or the events of each of these calendars, sorted by start. `to` is inclusive. The days are in the time zone of the person's main calendar. Eva refuses a window over 62 days, a missing day, or a day that is not `YYYY-MM-DD`, with `400`.
 - A timed event: `{ "id", "calendarId", "title", "startAt": "2026-11-18T09:00:00+01:00", "endAt", "place": "Room B", "link": "https://…" }`.
 - An all-day event: `{ "id", "calendarId", "title", "date": "2026-11-21", "endDate": "2026-11-21", "place", "link" }`. `endDate` is inclusive.
-- `place` and `link` can be `null`. Eva leaves out an event that the person declined, and a cancelled event.
+- `place` and `link` can be `null`. `title` is `""` for an event with no title. Eva leaves out an event that the person declined, and a cancelled event.
+- Eva keeps each answer for 1 minute, so a new event can take a minute to show.
+- Eva answers `502` when Google fails or refuses. Show that the calendar is not available now, and try again later.
+- The calendar is read only in this version: each other method answers `405`.
 
 ### The cases
 
@@ -152,7 +155,7 @@ An `eva-cases` input gives the widget the person's open cases. Eva reads them fr
 - The order: a passed deadline or due day first, then the nearest of `nextStep.dueDate` and `deadline.date`, then the cases with no date, by title.
 - The widget works out "overdue" or "in 5 days" from the dates and today's date.
 
-This version of Eva does not serve the calendar and the cases yet: each of their paths answers `null` to a widget that has the input.
+This version of Eva does not serve the cases yet: `eva/cases.json` answers `null` to a widget that has the input.
 
 ## Sizes
 

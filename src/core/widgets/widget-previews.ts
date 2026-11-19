@@ -308,7 +308,7 @@ export class WidgetPreviews {
       return location ? await this.file(session, "example/location.json") : jsonAnswer(null);
     }
     // Example data answers 404, so the widget reads its mock files under `example/` (#778).
-    const evaData = grant === null ? null : evaDataAnswer(path, grant);
+    const evaData = grant === null ? null : evaDataAnswer(path, grant, { vaultPath: this.options.vaultPath });
     if (evaData !== null) return evaData;
     if (contract === "eva" || path === "") return { status: 404 };
     if (grant !== null) {

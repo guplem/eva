@@ -148,11 +148,14 @@ An `eva-cases` input gives the widget the person's open cases. Eva reads them fr
   ]
   ```
 
-- `nextStep`, `deadline`, `waitingFor`, `dueDate` and `cost` can be `null`. `stepsDone` and `stepsTotal` are `null` together.
-- The order: a passed deadline or due day first, then the nearest of `nextStep.dueDate` and `deadline.date`, then the cases with no date, by title.
+- `id` is the folder name of the case. A case is open until its `closed` key has a date.
+- `nextStep`, `deadline`, `waitingFor`, `dueDate` and `cost` can be `null`. `stepsDone` and `stepsTotal` are `null` together, for a case with no list of steps.
+- A date is as the person wrote it: usually `YYYY-MM-DD`, but a month such as `2026-12` or a free text can come too. Show such a date as text.
+- The order: the earliest of `nextStep.dueDate` and `deadline.date` first, so a passed day comes before a day to come. A month counts as its first day. The cases with no date come last, by title.
 - The widget works out "overdue" or "in 5 days" from the dates and today's date.
+- A case with a broken file still comes, with `null` for each part that Eva cannot read.
 
-This version of Eva does not serve the calendar and the cases yet: each of their paths answers `null` to a widget that has the input.
+This version of Eva does not serve the calendar yet: each of its paths answers `null` to a widget that has the input.
 
 ## Sizes
 

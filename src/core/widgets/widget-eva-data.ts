@@ -1,22 +1,16 @@
 /**
- * The contract paths of Eva's own data that contract 2 adds (#966): the Google Calendar (#778) and
- * the open cases. A widget gets a path only when its approval holds the input. Without it, the path
- * answers 404, so the widget gets nothing. Eva serves no data yet: each approved path answers null,
- * as "no data", until the issues that serve the data fill it.
+ * The contract path of the open cases that contract 2 adds (#966). A widget gets it only when its
+ * approval holds the input. Without it, the path answers 404, so the widget gets nothing. Eva serves
+ * no data yet: the approved path answers null, as "no data", until the issue that serves the data
+ * fills it. The Google Calendar paths have their own file, `widget-google-calendar.ts`.
  */
 import type { WidgetGrant } from "./widget-changes.ts";
 import { jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 
-const calendarPaths: ReadonlySet<string> = new Set([
-  "eva/google-calendar/calendars.json",
-  "eva/google-calendar/events.json",
-]);
-
 const casesPath = "eva/cases.json";
 
 /** The answer to a path of Eva's data, or null when the path is not one of them. */
-export function evaDataAnswer(path: string, grant: Pick<WidgetGrant, "googleCalendar" | "cases">): WidgetAnswer | null {
-  if (calendarPaths.has(path)) return grant.googleCalendar === null ? { status: 404 } : jsonAnswer(null);
+export function evaDataAnswer(path: string, grant: Pick<WidgetGrant, "cases">): WidgetAnswer | null {
   if (path === casesPath) return grant.cases ? jsonAnswer(null) : { status: 404 };
   return null;
 }

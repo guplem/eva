@@ -7,6 +7,7 @@ import { WidgetApprovals } from "../../../../src/core/widgets/widget-approvals.t
 import { WidgetCopies } from "../../../../src/core/widgets/widget-copies.ts";
 import { readWidgetList } from "../../../../src/core/widgets/widget-list.ts";
 import { widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
+import type { CalendarSource } from "../../../../src/core/google/google-calendar.ts";
 import { PreviewGrants } from "../../../../src/core/widgets/widget-previews.ts";
 import { Widgets, type WidgetsOptions } from "../../../../src/core/widgets/widgets.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -126,8 +127,10 @@ afterEach(() => {
   rmSync(folder, { recursive: true, force: true });
 });
 
+/** A read of the widget. A query after `?` goes to Eva as the query of the request. */
 async function get(token: string, path: string): Promise<{ status: number | null; body: string }> {
-  const answer = await widgets.serve(token, path, "GET", null);
+  const [file = "", query] = path.split("?");
+  const answer = await widgets.serve(token, file, "GET", null, new URLSearchParams(query));
   return { status: answer?.status ?? null, body: text(answer?.body) };
 }
 
@@ -163,7 +166,11 @@ describe("the preview of a clone", () => {
     const cases = { ...noAccess, id: "cases", type: "eva-cases", label: "Cases" };
     write(clone, "eva-widget.json", JSON.stringify({ ...manifest, contract: 2, inputs: [habits, calendar, cases] }));
     write(clone, "example/cases.json", "[]");
-    const paths = ["eva/google-calendar/calendars.json", "eva/google-calendar/events.json", "eva/cases.json"];
+    const paths = [
+      "eva/google-calendar/calendars.json",
+      "eva/google-calendar/events.json?from=2026-01-01&to=2026-01-31",
+      "eva/cases.json",
+    ];
     const example = (await widgets.preview(place, "example", theme, ownHosts)).token ?? "";
     for (const path of paths)
       expect({ path, status: (await get(example, path)).status }).toEqual({ path, status: 404 });
@@ -174,6 +181,35 @@ describe("the preview of a clone", () => {
       (await widgets.approvePreview(place, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
         .token ?? "";
     for (const path of paths) expect({ path, ...(await get(mine, path)) }).toEqual({ path, status: 200, body: "null" });
+  });
+
+  test("My data reads the person's calendar with the grant of the preview", async () => {
+    const source: CalendarSource = {
+      calendars: () => Promise.resolve([{ id: "work", name: "Work", color: "#3f51b5", primary: true }]),
+      events: () => Promise.resolve([]),
+    };
+    widgets = new Widgets({ ...options, calendar: source });
+    const calendar = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      access: "read",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+    };
+    write(clone, "eva-widget.json", JSON.stringify({ ...manifest, contract: 2, inputs: [habits, calendar] }));
+    const example = (await widgets.preview(place, "example", theme, ownHosts)).token ?? "";
+    expect((await get(example, "eva/google-calendar/calendars.json")).status).toBe(404);
+    const asked = await widgets.preview(place, "mine", theme, ownHosts);
+    const mine =
+      (await widgets.approvePreview(place, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
+        .token ?? "";
+    expect((await get(mine, "eva/google-calendar/calendars.json")).body).toContain('"name":"Work"');
+    expect(await get(mine, "eva/google-calendar/events.json?from=2026-01-01&to=2026-01-31")).toEqual({
+      status: 200,
+      body: "[]",
+    });
   });
 
   test("never serves git data, a hidden name, an ignored file or a link", async () => {

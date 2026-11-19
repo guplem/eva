@@ -734,7 +734,7 @@ async function widgetRoute(request: Request, url: URL, options: LocalApiOptions)
       body = await cappedBody(request, maxWidgetWriteBytes);
       if (body === null) return answer(413);
     }
-    const served = await widgets.serve(token, path, request.method, body);
+    const served = await widgets.serve(token, path, request.method, body, url.searchParams);
     if (served === null) return answer(404);
     // A file read gives a Buffer, which a Response takes as it is.
     const content = served.body === undefined ? null : (served.body as string | Uint8Array<ArrayBuffer>);

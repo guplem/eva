@@ -27,6 +27,8 @@ import { checkManifest, manifestPath, type WidgetManifest } from "./widget-contr
 import { answerText, serveFolderFile, type WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { evaDataAnswer } from "./widget-eva-data.ts";
+import { calendarAnswer } from "./widget-google-calendar.ts";
+import type { CalendarSource } from "../google/google-calendar.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, widgetInputValueSchema, type WidgetInputValue } from "./widget-list.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
@@ -136,6 +138,7 @@ export interface WidgetPreviewsOptions {
   readonly grants: PreviewGrants;
   readonly projects: () => readonly Project[];
   readonly location: () => LastLocation | null;
+  readonly calendar: CalendarSource;
   readonly exclusive: <Result>(work: () => Result) => Promise<Result>;
   readonly redact: (text: string) => string;
   readonly now: () => Date;
@@ -279,7 +282,13 @@ export class WidgetPreviews {
   }
 
   /** Answers one request of a preview, or null for a token that does not work. */
-  async serve(token: string, path: string, method: string, body: Uint8Array | null): Promise<WidgetAnswer | null> {
+  async serve(
+    token: string,
+    path: string,
+    method: string,
+    body: Uint8Array | null,
+    query: URLSearchParams,
+  ): Promise<WidgetAnswer | null> {
     const session = this.live(token);
     if (session === null) return null;
     const [first = ""] = path.split("/");
@@ -308,6 +317,10 @@ export class WidgetPreviews {
       return location ? await this.file(session, "example/location.json") : jsonAnswer(null);
     }
     // Example data answers 404, so the widget reads its mock files under `example/` (#778).
+    if (grant !== null) {
+      const calendar = await calendarAnswer(path, query, grant.googleCalendar, this.options.calendar);
+      if (calendar !== null) return calendar;
+    }
     const evaData = grant === null ? null : evaDataAnswer(path, grant);
     if (evaData !== null) return evaData;
     if (contract === "eva" || path === "") return { status: 404 };

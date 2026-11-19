@@ -17,6 +17,8 @@ import { checkManifest, manifestPath, type WidgetInput, type WidgetManifest } fr
 import type { WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { evaDataAnswer } from "./widget-eva-data.ts";
+import { calendarAnswer } from "./widget-google-calendar.ts";
+import { noCalendar, type CalendarSource } from "../google/google-calendar.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
 import { checkValues, inspectFiles } from "./widget-values.ts";
@@ -52,6 +54,8 @@ export interface WidgetsOptions {
   readonly exclusive: <Result>(work: () => Result) => Promise<Result>;
   readonly redact: (text: string) => string;
   readonly now: () => Date;
+  /** The person's Google Calendar (#778). Without it, the calendar paths answer null, as with no Google login. */
+  readonly calendar?: CalendarSource;
   /** The data formats (#692). Without them, this Eva writes no `DATA_FORMAT.md`. */
   readonly formats?: {
     readonly record: DataFormatRecord;
@@ -208,6 +212,7 @@ export class Widgets {
       grants: options.previewGrants ?? new PreviewGrants(null),
       projects: options.projects,
       location: options.location,
+      calendar: options.calendar ?? noCalendar,
       exclusive: options.exclusive,
       redact: options.redact,
       now: options.now,
@@ -894,8 +899,14 @@ export class Widgets {
    * Answers one request of a widget, or null for a token that does not work. `path` is the
    * decoded part after the token. A contract path never falls through to the copy's mock files.
    */
-  async serve(token: string, path: string, method: string, body: Uint8Array | null): Promise<WidgetAnswer | null> {
-    if (this.previews.has(token)) return this.previews.serve(token, path, method, body);
+  async serve(
+    token: string,
+    path: string,
+    method: string,
+    body: Uint8Array | null,
+    query: URLSearchParams = new URLSearchParams(),
+  ): Promise<WidgetAnswer | null> {
+    if (this.previews.has(token)) return this.previews.serve(token, path, method, body, query);
     const live = this.liveSession(token);
     if (live === null) return null;
     const { session, record, entry, address } = live;
@@ -918,6 +929,8 @@ export class Widgets {
     if (path === "config.json") return jsonAnswer(configOf(record, entry));
     if (path === "eva/location.json")
       return jsonAnswer(record.location ? contractLocation(this.options.location()) : null);
+    const calendar = await calendarAnswer(path, query, record.googleCalendar, this.options.calendar ?? noCalendar);
+    if (calendar !== null) return calendar;
     const evaData = evaDataAnswer(path, record);
     if (evaData !== null) return evaData;
     if (path === "eva/theme.css")

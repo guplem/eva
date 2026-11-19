@@ -1,6 +1,6 @@
 /**
- * A fake Google for tests: the token endpoint, one cheap read of each service and a Drive folder, at
- * `baseUrl`. A test sets an error to see how Eva names the step to fix.
+ * A fake Google for tests: the token endpoint, one cheap read of each service, a Drive folder, and
+ * the calendar list and events of Google Calendar, at `baseUrl`. A test sets an error to see how Eva names the step to fix.
  */
 import type { Server } from "bun";
 
@@ -12,6 +12,13 @@ export interface FakeGoogle {
   readonly revokeRequests: URLSearchParams[];
   /** The path of each API request. */
   readonly apiRequests: string[];
+  /** The query of each API request, by its path. */
+  readonly apiQueries: { readonly path: string; readonly query: URLSearchParams }[];
+  /** The entries of the calendar list, in Google's format. */
+  calendarList: unknown[];
+  /** The events of each calendar, by its id, in Google's format. One page holds at most `eventPageSize`. */
+  readonly calendarEvents: Map<string, unknown[]>;
+  eventPageSize: number;
   /** The name of each Drive folder that Eva created. */
   readonly driveFolders: string[];
   /** A broken answer to a new Drive folder: a dropped connection, or a body that is not JSON. */
@@ -44,6 +51,10 @@ export function fakeGoogle(): FakeGoogle {
     tokenRequests: [],
     revokeRequests: [],
     apiRequests: [],
+    apiQueries: [],
+    calendarList: [],
+    calendarEvents: new Map(),
+    eventPageSize: 2500,
     driveFolders: [],
     driveFailure: null,
     email: "person@example.com",
@@ -78,6 +89,7 @@ export function fakeGoogle(): FakeGoogle {
         });
       }
       fake.apiRequests.push(url.pathname);
+      fake.apiQueries.push({ path: url.pathname, query: url.searchParams });
       const service = servicePaths.find(([prefix]) => url.pathname.startsWith(prefix))?.[1];
       if (service === undefined) return Response.json({ error: { code: 404 } }, { status: 404 });
       if (request.headers.get("authorization") !== "Bearer the-access-token")
@@ -98,6 +110,17 @@ export function fakeGoogle(): FakeGoogle {
         fake.driveFolders.push(name);
         const id = `folder-${String(fake.driveFolders.length)}`;
         return Response.json({ id, webViewLink: `https://drive.google.com/drive/folders/${id}` });
+      }
+      if (url.pathname === "/calendar/v3/users/me/calendarList") return Response.json({ items: fake.calendarList });
+      const events = /^\/calendar\/v3\/calendars\/([^/]+)\/events$/.exec(url.pathname);
+      if (events !== null) {
+        const all = fake.calendarEvents.get(decodeURIComponent(events[1] ?? "")) ?? [];
+        const start = Number(url.searchParams.get("pageToken") ?? "0");
+        const end = start + fake.eventPageSize;
+        return Response.json({
+          items: all.slice(start, end),
+          ...(end < all.length ? { nextPageToken: String(end) } : {}),
+        });
       }
       return Response.json({ items: [] });
     },

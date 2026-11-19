@@ -152,6 +152,7 @@ import {
 import { createProject, type NewProjectInput, type NewProjectResult } from "./projects/new-project.ts";
 import { projectCreatedAt } from "./projects/project-id.ts";
 import { createDriveFolder } from "./google/google-drive.ts";
+import { GoogleCalendar } from "./google/google-calendar.ts";
 import { ghApiRequest, type GithubRequest } from "./projects/repository-facts.ts";
 import type { GithubWrite } from "./projects/repository-fixes.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
@@ -980,6 +981,15 @@ export class Eva {
             projects: () => this.projects(),
             baseWidgets: options.baseWidgets ?? baseWidgets,
             location: () => this.locations.newest(),
+            calendar: new GoogleCalendar({
+              inputs: () => ({
+                config: this.settings.config.google,
+                client: this.googleClient(),
+                credentialsFolder: googleCredentialsFolder(options.paths),
+                ...(options.googleBaseUrl === undefined ? {} : { baseUrl: options.googleBaseUrl }),
+              }),
+              now: options.now,
+            }),
             exclusive: (work) => this.vault.exclusive(work),
             redact: (text) => redactor.redact(text),
             now: options.now,

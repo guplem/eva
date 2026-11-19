@@ -7,10 +7,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
+import { googleCredentialsFolder } from "../../../../src/core/google/google-login.ts";
+import { googleScopes } from "../../../../src/core/google/google-scopes.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
+import { fakeGoogle } from "../../../support/fake-google.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
 
 const token = "widget-routes-token-for-tests";
@@ -388,6 +391,94 @@ describe("the widget files", () => {
     expect((await frameCall(next)).status).toBe(200);
     await call(`/api/widgets/${id}/enabled`, { method: "PUT", body: { enabled: false } });
     expect((await frameCall(next)).status).toBe(404);
+  });
+
+  test("a calendar widget reads the person's events through Eva's own Google login, with no token in the answer", async () => {
+    const google = fakeGoogle();
+    try {
+      const client = { clientId: "123456789012-clientid.apps.googleusercontent.com", clientSecret: "GOCSPX-secret" };
+      const googleConfig = { ...defaultConfig.google, email: "person@example.com", services: ["calendar" as const] };
+      const credentials = googleCredentialsFolder(homePaths(home));
+      mkdirSync(credentials, { recursive: true });
+      writeFileSync(
+        join(credentials, "person@example.com.json"),
+        JSON.stringify({
+          refresh_token: "the-refresh-token",
+          client_id: client.clientId,
+          client_secret: client.clientSecret,
+          scopes: googleScopes(googleConfig),
+        }),
+      );
+      google.calendarList = [{ id: "work", summary: "Work", primary: true, selected: true, timeZone: "UTC" }];
+      google.calendarEvents.set("work", [
+        {
+          id: "standup",
+          summary: "Standup",
+          start: { dateTime: "2026-10-14T09:00:00Z" },
+          end: { dateTime: "2026-10-14T09:15:00Z" },
+        },
+      ]);
+      api.stop();
+      eva.stop();
+      eva = new Eva({
+        paths: homePaths(home),
+        config: {
+          ...defaultConfig,
+          vaultPath: vault,
+          timeZone: "UTC",
+          sync: { ...defaultConfig.sync, enabled: false },
+          google: googleConfig,
+        },
+        secrets: { googleOauthClientId: client.clientId, googleOauthClientSecret: client.clientSecret },
+        engines: [new FakeEngine((request) => FakeEngine.answer(request, "answer"))],
+        runner: systemProcessRunner,
+        processEnvironment: gitEnvironment,
+        now: () => new Date("2026-10-14T10:30:00Z"),
+        basePrompt: "Base.",
+        widgetRemote: () => sandbox.remote,
+        baseWidgets: [],
+        githubRequest: () => Promise.resolve({ status: 404, body: "" }),
+        googleBaseUrl: google.url,
+      });
+      api = startLocalApi({ eva, port: 0, token, extraHosts: [], allowedTailscaleIdentities: [] });
+      const work = sandbox.clone("calendar");
+      const calendar = {
+        id: "calendar",
+        type: "eva-google-calendar",
+        access: "read",
+        label: "Calendar",
+        description: "Your Google Calendar.",
+        why: "The widget shows your events.",
+        required: true,
+      };
+      sandbox.write(
+        work,
+        "eva-widget.json",
+        JSON.stringify({ ...manifest, contract: 2, inputs: [...manifest.inputs, calendar] }),
+      );
+      sandbox.git(work, "commit", "-q", "-am", "feat: calendar");
+      sandbox.git(work, "push", "-q", "origin", "main");
+      const base = (await approvedSrc()).replace(/index\.html$/, "");
+
+      const events = await frameCall(`${base}eva/google-calendar/events.json?from=2026-10-14&to=2026-10-14`);
+      const body = await events.text();
+      expect(events.status).toBe(200);
+      expect(JSON.parse(body)).toEqual([
+        {
+          id: "standup",
+          calendarId: "work",
+          title: "Standup",
+          startAt: "2026-10-14T09:00:00Z",
+          endAt: "2026-10-14T09:15:00Z",
+          place: null,
+          link: null,
+        },
+      ]);
+      expect(body).not.toContain("the-access-token");
+      expect((await frameCall(`${base}eva/google-calendar/events.json`)).status).toBe(400);
+    } finally {
+      google.stop();
+    }
   });
 });
 

@@ -11,7 +11,8 @@ import type { GithubRequest } from "../../../../src/core/projects/repository-fac
 import { readWidgetList, widgetListPath, writeWidgetList } from "../../../../src/core/widgets/widget-list.ts";
 import { widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
 import { Widgets, type WidgetsOptions } from "../../../../src/core/widgets/widgets.ts";
-import { isEvaError } from "../../../../src/shared/errors.ts";
+import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
+import type { CalendarSource } from "../../../../src/core/google/google-calendar.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
 
@@ -518,7 +519,11 @@ describe("the widget routes", () => {
       why: "The widget shows your cases.",
       required: true,
     };
-    const paths = ["eva/google-calendar/calendars.json", "eva/google-calendar/events.json", "eva/cases.json"];
+    const paths = [
+      "eva/google-calendar/calendars.json",
+      "eva/google-calendar/events.json?from=2026-01-01&to=2026-01-31",
+      "eva/cases.json",
+    ];
     commit({
       "eva-widget.json": JSON.stringify({
         ...manifest,
@@ -530,7 +535,8 @@ describe("the widget routes", () => {
     const token = await approveHabits();
     expect(widgets.frames(theme, [])[0]?.size).toBe("xlarge");
     for (const path of paths) {
-      const answer = await widgets.serve(token, path, "GET", null);
+      const [file = "", query] = path.split("?");
+      const answer = await widgets.serve(token, file, "GET", null, new URLSearchParams(query));
       expect({ path, status: answer?.status, body: text(answer?.body) }).toEqual({ path, status: 200, body: "null" });
     }
     expect((await widgets.serve(token, "eva/google-calendar/other.json", "GET", null))?.status).toBe(404);
@@ -548,6 +554,47 @@ describe("the widget routes", () => {
         stepsTotal: null,
       },
     ]);
+  });
+
+  test("a widget with the calendar input reads the calendar through Eva, in a window of at most 62 days", async () => {
+    const windows: string[] = [];
+    let broken = false;
+    const source: CalendarSource = {
+      calendars: () => Promise.resolve([{ id: "work", name: "Work", color: "#3f51b5", primary: true }]),
+      events: (from, to) => {
+        if (broken) return Promise.reject(new EvaError("google_failed", "Google refused to show the calendar."));
+        windows.push(`${from}..${to}`);
+        return Promise.resolve([]);
+      },
+    };
+    widgets = new Widgets({ ...options, calendar: source });
+    const calendar = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      access: "read",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+    };
+    commit({ "eva-widget.json": JSON.stringify({ ...manifest, contract: 2, inputs: [...manifest.inputs, calendar] }) });
+    const token = await approveHabits();
+    const events = (query: string): Promise<{ status: number | undefined; body: string }> =>
+      widgets
+        .serve(token, "eva/google-calendar/events.json", "GET", null, new URLSearchParams(query))
+        .then((answer) => ({ status: answer?.status, body: text(answer?.body) }));
+
+    expect(text((await widgets.serve(token, "eva/google-calendar/calendars.json", "GET", null))?.body)).toBe(
+      '[{"id":"work","name":"Work","color":"#3f51b5","primary":true}]',
+    );
+    expect(await events("from=2026-11-01&to=2027-01-01")).toEqual({ status: 200, body: "[]" });
+    for (const query of ["", "from=2026-11-01", "from=2026-11-02&to=2026-11-01", "from=2026-02-30&to=2026-03-01"])
+      expect({ query, status: (await events(query)).status }).toEqual({ query, status: 400 });
+    expect((await events("from=2026-11-01&to=2027-01-02")).status).toBe(400);
+    expect(windows).toEqual(["2026-11-01..2027-01-01"]);
+    broken = true;
+    expect((await events("from=2026-11-01&to=2026-11-01")).status).toBe(502);
+    expect((await widgets.serve(token, "eva/google-calendar/events.json", "POST", new Uint8Array()))?.status).toBe(405);
   });
 
   test("a widget with no calendar or cases input gets nothing at their paths", async () => {

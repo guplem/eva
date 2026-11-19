@@ -2,7 +2,7 @@
 // with the person's data. On GitHub Pages, the mock files of this repository answer. See the
 // contract: https://github.com/guplem/eva/blob/main/docs/widgets.md
 
-const sizes = ["small", "medium", "large", "full"];
+const sizes = ["small", "medium", "large", "tall", "xlarge", "full"];
 const habitFile = /^[a-z0-9-]+\.json$/;
 const demoNote = "This is a demo: the change shows on this screen only.";
 const locationTimeoutMs = 5000;

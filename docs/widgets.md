@@ -6,7 +6,7 @@ A widget is plain, standard web code: HTML, JavaScript and CSS, with no framewor
 
 The template of a new widget is [`templates/widget/`](../templates/widget/). Eva copies it to each new widget repository. Each Eva release updates the template and this document together.
 
-The two widgets that ship with Eva are full examples: [`guplem/eva-widget-habits`](https://github.com/guplem/eva-widget-habits) writes vault data, and [`guplem/eva-widget-weather`](https://github.com/guplem/eva-widget-weather) reads the location and calls a host.
+The four widgets that ship with Eva are full examples: [`guplem/eva-widget-calendar`](https://github.com/guplem/eva-widget-calendar) reads the Google Calendar and calls a host, [`guplem/eva-widget-habits`](https://github.com/guplem/eva-widget-habits) writes vault data, [`guplem/eva-widget-cases`](https://github.com/guplem/eva-widget-cases) reads the cases, and [`guplem/eva-widget-weather`](https://github.com/guplem/eva-widget-weather) reads the location and calls a host.
 
 ## Contents
 

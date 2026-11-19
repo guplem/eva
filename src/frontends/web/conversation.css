@@ -689,6 +689,32 @@ button.ghost .icon {
   color: var(--muted);
 }
 
+/* The day panel (#972): the home page with widgets. The greeting takes one row, and the widget grid the rest. */
+.new-chat.day-panel {
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-5);
+  padding: var(--space-2) 0 var(--space-4);
+  text-align: left;
+}
+
+.day-greeting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.day-greeting-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.new-chat.day-panel h2 {
+  font-size: 30px;
+  line-height: 1.1;
+}
+
 .suggestions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1362,8 +1388,13 @@ button.ghost .icon {
     font-size: 76px;
   }
 
-  .new-chat h2 {
+  .new-chat h2,
+  .new-chat.day-panel h2 {
     font-size: 26px;
+  }
+
+  .new-chat.day-panel {
+    padding: 0 0 var(--space-4);
   }
 
   /* One column, as in the reference, so the composer stays in reach. */

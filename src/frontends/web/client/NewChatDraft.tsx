@@ -16,6 +16,7 @@ import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { goTo } from "./back-layers.ts";
 import { withFixRequest, withProjectMention } from "./mentions.ts";
 import { assistantChatAddressOf, newChatPageId } from "./navigation.ts";
+import { useWidgetFrames } from "./WidgetGrid.tsx";
 
 /** The key of the unsent text of this page, which has no chat yet. A chat id never takes it. */
 const newChatTextKey = "new-chat";
@@ -77,6 +78,8 @@ export function NewChatDraft({
   // The chat of a first message that failed to send. A retry sends into it, so no empty chat stays behind.
   const made = useRef<SessionRecord | null>(null);
   const showError = useShowError();
+  // The setup step and the greeting both show the widgets, so the page asks for them once.
+  const widgets = useWidgetFrames();
 
   useEffect(() => {
     let current = true;
@@ -173,9 +176,9 @@ export function NewChatDraft({
       <div className="branches">
         <section className="branch" aria-label="New chat">
           {blocker !== null ? (
-            <NewChatSetup blocker={blocker} />
+            <NewChatSetup blocker={blocker} widgets={widgets} />
           ) : (
-            !sending && <NewChatGreeting onPick={(text) => void send(text)} />
+            !sending && <NewChatGreeting onPick={(text) => void send(text)} widgets={widgets} />
           )}
           {sentText !== null && <UserMessage text={sentText} />}
           {draft !== null && (

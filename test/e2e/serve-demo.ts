@@ -27,6 +27,7 @@ import { FakeTailscale, runningStatus } from "../support/fake-tailscale.ts";
 import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
 import visorGallery from "./visor-gallery.html";
 import { e2ePorts } from "./e2e-ports.ts";
+import { demoWidgets } from "./demo-widgets.ts";
 
 const { demo: demoPort, gallery: galleryPort } = e2ePorts();
 export const demoToken = "e2e-demo-token";
@@ -118,15 +119,27 @@ sandbox.write(
   "Notes/Benachrichtigungseinstellungen-Datenschutzrichtlinien-Zusammenfassung.md",
   "# Zusammenfassung\n",
 );
+/** A local remote with one commit of these files. The demo never reaches the real GitHub. */
+function widgetRemoteOf(files: Readonly<Record<string, string>>): ReturnType<typeof createGitSandbox> {
+  const remote = createGitSandbox();
+  const work = remote.clone("work");
+  for (const [path, text] of Object.entries(files)) remote.write(work, path, text);
+  remote.git(work, "add", "-A");
+  remote.git(work, "commit", "-q", "-m", "widget");
+  remote.git(work, "push", "-q", "origin", "main");
+  return remote;
+}
 // The habits widget of the template, approved for `Life/Health/Habits`, so the home page shows a widget (#691).
-// The demo never reaches the real GitHub: its copy comes from a local remote.
-const habitsWidget = createGitSandbox();
+// It is small here, so the day panel shows three sizes beside the demo Calendar and Cases (#972).
 const habitsWidgetFiles = widgetTemplate({ owner: "example-owner", repository: "habits-widget", title: "Habits" });
-const habitsWidgetWork = habitsWidget.clone("work");
-for (const [path, text] of Object.entries(habitsWidgetFiles)) habitsWidget.write(habitsWidgetWork, path, text);
-habitsWidget.git(habitsWidgetWork, "add", "-A");
-habitsWidget.git(habitsWidgetWork, "commit", "-q", "-m", "widget");
-habitsWidget.git(habitsWidgetWork, "push", "-q", "origin", "main");
+const smallHabits = {
+  ...habitsWidgetFiles,
+  "eva-widget.json": (habitsWidgetFiles["eva-widget.json"] ?? "").replace('"size": "medium"', '"size": "small"'),
+};
+const habitsWidget = widgetRemoteOf(smallHabits);
+const demoWidgetRemotes = new Map(
+  Object.entries(demoWidgets).map(([name, files]) => [name, widgetRemoteOf(files).remote] as const),
+);
 for (const [path, text] of Object.entries(habitsWidgetFiles)) {
   if (path.startsWith("data/habits/") && path !== "data/habits/index.json")
     sandbox.write(vault, `Life/Health/Habits/${path.slice("data/habits/".length)}`, text);
@@ -493,16 +506,23 @@ const eva = new Eva({
   }),
   // The demo branch requires checks, so a file fix shows its pull request (#717).
   githubWrite: fakeGithubWrite({ requiredChecks: true }),
-  widgetRemote: () => habitsWidget.remote,
-  // Every widget address leads to the one local remote, so a base widget would show the habits template.
+  // The demo Calendar and Cases have their own remotes. Every other address leads to the habits remote,
+  // so a base widget would show the habits template.
+  widgetRemote: (address) => demoWidgetRemotes.get(address.name) ?? habitsWidget.remote,
   baseWidgets: [],
 });
 const habitsWidgetId = "example-owner/habits-widget";
 const demoHosts = ["127.0.0.1", "localhost"];
-eva.widgets?.add(`https://github.com/${habitsWidgetId}`);
-const habitsReview = await eva.widgets?.review(habitsWidgetId, demoHosts);
-if (habitsReview !== undefined)
-  await eva.widgets?.approve(habitsWidgetId, habitsReview.commit, { habits: "Life/Health/Habits" }, demoHosts);
+/** Adds a widget and approves it, so its frame shows on the home page. The list keeps this order. */
+async function approveWidget(id: string, values: Readonly<Record<string, string>>): Promise<void> {
+  eva.widgets?.add(`https://github.com/${id}`);
+  const review = await eva.widgets?.review(id, demoHosts);
+  if (review !== undefined) await eva.widgets?.approve(id, review.commit, values, demoHosts);
+}
+// The order of the design (#972): Calendar, Habits, Cases.
+await approveWidget("example-owner/calendar-widget", {});
+await approveWidget(habitsWidgetId, { habits: "Life/Health/Habits" });
+await approveWidget("example-owner/cases-widget", {});
 // No front end confirms a card here, so each new schedule's card waits for the web UI. A short
 // check keeps the browser tests fast; Eva itself checks every 30 seconds.
 setInterval(() => void eva.schedules?.tick(), 300);

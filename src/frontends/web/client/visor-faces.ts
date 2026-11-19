@@ -23,8 +23,8 @@ export const faces = [
 
 export type Face = (typeof faces)[number];
 
-/** The pixel sizes of the guide: messages, nav rail, empty states, login. */
-export type VisorSize = 28 | 36 | 76 | 128;
+/** The pixel sizes of the guide: messages, nav rail, the day panel greeting, empty states, login. */
+export type VisorSize = 28 | 36 | 56 | 76 | 128;
 
 // The class names are those of the reference, so its CSS stays a copy that one can compare.
 const faceClasses: Record<Face, string> = {
@@ -45,7 +45,7 @@ const faceClasses: Record<Face, string> = {
   asleep: "e-sleep",
 };
 
-const sizeClasses: Record<VisorSize, string> = { 28: "s", 36: "", 76: "l", 128: "xl" };
+const sizeClasses: Record<VisorSize, string> = { 28: "s", 36: "", 56: "m", 76: "l", 128: "xl" };
 
 export function visorClassName(face: Face, size: VisorSize): string {
   return ["mk", sizeClasses[size], faceClasses[face]].filter((part) => part !== "").join(" ");

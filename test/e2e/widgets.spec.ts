@@ -1,8 +1,9 @@
 import { expect, test, type Frame, type Page } from "@playwright/test";
 
 /**
- * The widgets of the home page in a real browser (#691). The demo server approved the habits
- * widget of the template for `Life/Health/Habits`.
+ * The widgets of the home page in a real browser (#691). The demo server approved, in this order,
+ * a static Calendar (xlarge), the habits widget of the template for `Life/Health/Habits` (small)
+ * and a static Cases (tall).
  */
 
 /** The Projects button. A Project chat of another test can add its unread count to the name. */
@@ -15,26 +16,86 @@ async function logIn(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
 }
 
+const habitsInGrid = '.widget-grid iframe[aria-label="Habits"]';
+
 /** The frame of the habits widget in the grid, once the widget has its content. */
 async function habitsFrame(page: Page): Promise<Frame> {
   await page.goto("/#/chats/new");
   const grid = page.getByRole("group", { name: "Widgets" });
   await expect(grid).toBeVisible();
-  await expect(page.frameLocator(".widget-grid iframe").locator('.widget[data-ready="true"]')).toBeVisible();
-  const frame = page.frames().find((candidate) => candidate.url().includes("/widgets/"));
-  if (frame === undefined) throw new Error("The grid must show the widget's frame.");
+  await expect(page.frameLocator(habitsInGrid).locator('.widget[data-ready="true"]')).toBeVisible();
+  const frame = await (await page.locator(habitsInGrid).elementHandle()).contentFrame();
+  if (frame === null) throw new Error("The grid must show the widget's frame.");
   return frame;
 }
 
-test("the home page shows the widget below the greeting, and a tap marks a habit", async ({ page }) => {
+/** The box of each card of the grid, by the widget's name. */
+async function cardBoxes(page: Page): Promise<Record<string, { x: number; y: number; width: number; height: number }>> {
+  const boxes: Record<string, { x: number; y: number; width: number; height: number }> = {};
+  for (const name of ["Calendar", "Habits", "Cases"]) {
+    const box = await page.locator(`.widget-card:has(iframe[aria-label="${name}"])`).boundingBox();
+    if (box === null) throw new Error(`The grid must show ${name}.`);
+    boxes[name] = box;
+  }
+  return boxes;
+}
+
+test("with a widget on, the home page is a day panel: a one-line greeting, the widgets, no suggestions", async ({
+  page,
+}) => {
   await logIn(page);
   await habitsFrame(page);
-  const order = await page
-    .locator(".new-chat > *")
-    .evaluateAll((parts): string[] => parts.map((part) => part.getAttribute("class") ?? ""));
-  expect(order.indexOf("widget-grid")).toBeGreaterThan(0);
-  expect(order.indexOf("widget-grid")).toBeLessThan(order.indexOf("suggestions"));
-  const widget = page.frameLocator(".widget-grid iframe");
+  const panel = page.locator(".new-chat.day-panel");
+  await expect(panel.locator(".day-greeting h2")).toBeVisible();
+  await expect(panel.locator(".day-greeting .mk")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
+  await expect(page.locator(".fact-question")).toHaveCount(0);
+  // The grid takes the whole width of the column of the page.
+  const grid = await page.locator(".widget-grid").boundingBox();
+  const column = await page.locator(".branch").boundingBox();
+  expect(Math.abs((grid?.width ?? 0) - (column?.width ?? 0))).toBeLessThan(2);
+  const { Calendar: calendar, Habits: habits, Cases: cases } = await cardBoxes(page);
+  if (calendar === undefined || habits === undefined || cases === undefined) throw new Error("three cards");
+  const composer = await page.locator(".composer-box").boundingBox();
+  if (test.info().project.name === "phone") {
+    // A phone stacks Habits, Cases, then Calendar at the full width, and the page scrolls.
+    expect(habits.y).toBeLessThan(cases.y);
+    expect(cases.y).toBeLessThan(calendar.y);
+    expect(Math.abs(calendar.width - (grid?.width ?? 0))).toBeLessThan(2);
+    expect(Math.abs(cases.width - (grid?.width ?? 0))).toBeLessThan(2);
+    expect(calendar.height).toBeGreaterThan(cases.height);
+  } else {
+    // A computer: Calendar at the left, three columns wide, and Habits above Cases in the fourth column.
+    expect(calendar.x).toBeLessThan(habits.x);
+    expect(Math.abs(habits.x - cases.x)).toBeLessThan(2);
+    expect(habits.y).toBeLessThan(cases.y);
+    expect(Math.abs(calendar.y - habits.y)).toBeLessThan(2);
+    expect(calendar.width).toBeGreaterThan(habits.width * 2.5);
+    // The three rows fill the height above the message box.
+    expect(Math.abs(calendar.y + calendar.height - (cases.y + cases.height))).toBeLessThan(2);
+    expect((composer?.y ?? 0) - (calendar.y + calendar.height)).toBeLessThan(80);
+    expect(calendar.height).toBeGreaterThan(3 * 140);
+  }
+});
+
+test("with no widget on, the home page keeps the large visor and the suggestions", async ({ page }) => {
+  await page.route("**/api/widgets/frames", async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await logIn(page);
+  await page.goto("/#/chats/new");
+  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  await expect(page.locator(".new-chat .mk.xl")).toBeVisible();
+  await expect(page.locator(".day-panel")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Widgets" })).toHaveCount(0);
+});
+
+test("a tap in the habits widget in full screen marks a habit", async ({ page }) => {
+  await logIn(page);
+  await habitsFrame(page);
+  // The small card shows only the count, so the tap happens in full screen.
+  await page.getByRole("button", { name: "Open Habits in full screen" }).click();
+  const widget = page.frameLocator(".widget-full iframe");
   const first = widget.locator(".habit-check").first();
   const before = await first.getAttribute("aria-pressed");
   await first.click();
@@ -129,6 +190,8 @@ test("the corner button opens the widget in full screen inside Eva, and its clos
   const full = page.getByRole("dialog", { name: "Habits" });
   await expect(full).toBeVisible();
   await expect(page.frameLocator(".widget-full iframe").locator('.widget[data-size="full"]')).toBeVisible();
+  // The grid's frame got the size of the manifest.
+  expect(await page.locator(habitsInGrid).getAttribute("src")).toMatch(/\?size=small$/);
   await page.getByRole("button", { name: "Close full screen" }).click();
   await expect(full).toHaveCount(0);
 });

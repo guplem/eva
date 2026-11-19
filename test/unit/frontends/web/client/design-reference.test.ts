@@ -62,7 +62,7 @@ describe("the design reference", () => {
   });
 
   test("a visor size has the shell ring exactly when its rule draws one", () => {
-    expect(visorSizes.map((entry) => entry.size)).toEqual([28, 36, 76, 128]);
+    expect(visorSizes.map((entry) => entry.size)).toEqual([28, 36, 56, 76, 128]);
     for (const entry of visorSizes) {
       const sizeClass = visorClassName("neutral", entry.size).split(" ")[1];
       const rule =

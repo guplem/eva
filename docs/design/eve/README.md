@@ -208,12 +208,13 @@ All of them are in `reference.html`. The class names there are short; pick clear
 
 Icons are simple line icons on a 24 px grid, 1.8 px stroke, round caps (`client/icons.tsx`). Eva draws her own icons: they come from no icon library. The design reference page of the web app (Settings, Development) shows each icon with its use. Give each icon one meaning on every page.
 
-The visor has four sizes. A large visor stands alone on a page, so a white shell ring separates it from the background. A small visor sits next to text, so it has no ring.
+The visor has five sizes. A large visor stands alone on a page, so a white shell ring separates it from the background. A small visor sits next to text, so it has no ring.
 
 | Size   | Class  | Shell ring | Use                                 |
 | ------ | ------ | ---------- | ----------------------------------- |
 | 28 px  | `s`    | No         | Next to a message or a dialog title |
 | 36 px  | (none) | No         | Nav rail, a card or a notice        |
+| 56 px  | `m`    | Yes        | The greeting of the day panel       |
 | 76 px  | `l`    | Yes        | An empty page or a page-wide notice |
 | 128 px | `xl`   | Yes        | Login and the new chat greeting     |
 
@@ -275,9 +276,9 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - This is the home page: a tap on the visor opens it from any page.
 - A bell at the top right opens the notification center. It shows the same count and dot as the visor. On a phone, a gear beside it opens Settings.
 - EVE greets with happy eyes instead of a blank page.
-- The widgets that the person turned on show in a grid below the greeting, in sandboxed frames. A corner button opens one in full screen.
-- Suggestions show what Eva does well: notes, calendar, projects and reminders. The calendar shows only when Google is set up.
-- With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks.
+- With a widget on, the page is the day panel. The 56 px visor, the greeting and its line take one row at the top left. The widgets fill the rest of the page above the message box, in sandboxed frames. A corner button opens one in full screen. The panel shows no suggestions. [docs/widgets.md](../../widgets.md#sizes) gives the place of each size on a computer and on a phone.
+- With no widget on, the large visor greets in the centre. Suggestions show what Eva does well: notes, calendar, projects and reminders. The calendar shows only when Google is set up.
+- With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks. With a widget on, the step takes the row of the greeting, and the widgets stay below it.
 - The engine and the model show in the composer, and change there. The header shows the mode.
 
 ### A conversation at work

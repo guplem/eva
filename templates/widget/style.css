@@ -51,6 +51,11 @@ body {
   color: var(--warn, #9a6b00);
 }
 
+.widget-link {
+  color: var(--accent, #3b82f6);
+  font-size: clamp(12px, 3.5vmin, 22px);
+}
+
 .habit-list {
   display: grid;
   flex: 1;

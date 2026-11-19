@@ -234,7 +234,8 @@ The machine check is a meta-schema: [`widgets/meta-schema-v1.json`](widgets/meta
 
 - Eva keeps a read-only copy of the newest commit of the default branch, on the computer, never in the vault. Before the person approves it, she reads only `eva-widget.json` and the schemas. The approval installs exactly that commit.
 - The person approves the inputs and the permissions on each computer. Eva checks each request against this approval, never against the manifest or `.eva/widgets.json`.
-- Each widget runs in a frame with `sandbox="allow-scripts"`, so it has no origin of its own. It sends no cookie, and it cannot read Eva's page, Eva's API or another widget.
+- Each widget runs in a frame with `sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"`, so it has no origin of its own. It sends no cookie, and it cannot read Eva's page, Eva's API or another widget.
+- A widget can open a link in a new tab, after a tap. The new tab is a normal page, with no sandbox. The widget cannot change Eva's own page. Use `<a href="https://…" target="_blank" rel="noopener noreferrer">`, or `window.open(url, "_blank", "noopener")`.
 - Eva serves the widget from a path with a random token. Each answer carries a Content Security Policy: the widget loads its scripts, styles and fonts only from its own files, and calls only the approved hosts.
 - A host must be a public `https` address. Eva refuses her own names, this computer, the local network and the tailnet.
 - A sandbox and a policy do not block every channel, such as WebRTC. A check by name also cannot see a public name that points to a private address. So a widget is code from its author: turn on only a widget whose author you trust.

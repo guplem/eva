@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { themeCss, widgetPolicy, widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
+import { widgetSandbox } from "../../../../src/shared/widget-sandbox.ts";
 
 describe("widgetTheme and themeCss", () => {
   test("keep the plain colours of the contract and set the mode", () => {
@@ -53,7 +54,7 @@ describe("widgetPolicy", () => {
         .map((part): [string, string] => [part.split(" ")[0] ?? "", part.split(" ").slice(1).join(" ")]),
     );
     expect(directives).toEqual({
-      sandbox: "allow-scripts",
+      sandbox: "allow-scripts allow-popups allow-popups-to-escape-sandbox",
       "default-src": base,
       "script-src": base,
       "style-src": base,
@@ -69,5 +70,12 @@ describe("widgetPolicy", () => {
       "frame-ancestors": "http://127.0.0.1:7420",
     });
     expect(widgetPolicy(base, "http://127.0.0.1:7420", [])).toContain(`connect-src ${base};`);
+  });
+
+  test("let a widget open a link in a new tab, and give it no other sandbox right (#780)", () => {
+    // The frame and the policy share one list, so the grid and a page opened in its own tab agree.
+    expect(widgetSandbox).toBe("allow-scripts allow-popups allow-popups-to-escape-sandbox");
+    expect(widgetSandbox).not.toContain("allow-top-navigation");
+    expect(widgetSandbox).not.toContain("allow-same-origin");
   });
 });

@@ -3,6 +3,7 @@ import {
   chatSubtitle,
   contextSections,
   partIcon,
+  contextIsFull,
   contextShare,
   contextFigure,
   engineLabel,
@@ -326,5 +327,18 @@ describe("partIcon (issue 700)", () => {
     expect(partIcon(part({ source: "/vault/.eva/assistant.md" }))).toBe("file");
     expect(partIcon(part({ text: "Base rules." }))).toBe("file");
     expect(partIcon(part({ group: "skills", text: "A skill." }))).toBe("command");
+  });
+});
+
+describe("contextIsFull", () => {
+  test("a share at the limit or over it is full, and a lower one is not", () => {
+    expect(contextIsFull({ tokens: 150_000, window: 200_000 })).toBe(true);
+    expect(contextIsFull({ tokens: 198_000, window: 200_000 })).toBe(true);
+    expect(contextIsFull({ tokens: 148_000, window: 200_000 })).toBe(false);
+  });
+
+  test("no context and an unknown window are never full, because Eva would have to guess", () => {
+    expect(contextIsFull(null)).toBe(false);
+    expect(contextIsFull({ tokens: 900_000, window: null })).toBe(false);
   });
 });

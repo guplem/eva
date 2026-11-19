@@ -61,6 +61,18 @@ export function contextShare(context: ContextUse): number | null {
   return Math.min(100, Math.round((context.tokens / context.window) * 100));
 }
 
+/**
+ * The share at which Eva offers a new chat from a summary (issue 969). Both engines compact a chat
+ * by themselves nearer their own limit, so this share leaves the person a window to choose first.
+ */
+export const fullContextShare = 75;
+
+/** Whether the chat is full enough that a new chat from a summary helps. An unknown share is not full. */
+export function contextIsFull(context: ContextUse | null): boolean {
+  const share = context === null ? null : contextShare(context);
+  return share !== null && share >= fullContextShare;
+}
+
 /** "76k of 200k", or "25.4k" when the window is not known. The panel adds the word "tokens". */
 export function contextFigure(context: ContextUse): string {
   const count = formatTokenCount(context.tokens);

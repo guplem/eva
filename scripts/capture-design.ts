@@ -236,8 +236,12 @@ const scenes: readonly Scene[] = [
       await openAddress(page, homeAddress, "New chat");
       await page.locator(".home-buttons").waitFor();
       await page.locator(".new-chat").waitFor();
-      // The demo approved the habits widget: its frame shows its habits once it is ready (#691).
-      await page.frameLocator(".widget-grid iframe").locator('.widget[data-ready="true"]').waitFor();
+      // The demo approved a Calendar, the habits widget and a Cases widget: the day panel (#972).
+      // The habits frame shows its habits once it is ready (#691).
+      await page
+        .frameLocator('.widget-grid iframe[aria-label="Habits"]')
+        .locator('.widget[data-ready="true"]')
+        .waitFor();
     },
   },
   { name: "chat", show: (page, _view, demo) => openChat(page, demo.weekChat) },

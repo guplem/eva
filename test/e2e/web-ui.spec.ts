@@ -35,6 +35,16 @@ async function openList(page: Page): Promise<void> {
   }).toPass();
 }
 
+/**
+ * Plays a person with no widget on. The demo has widgets on, so its home page is the day panel,
+ * which shows no suggestions (#972).
+ */
+async function showNoWidgets(page: Page): Promise<void> {
+  await page.route("**/api/widgets/frames", async (route) => {
+    await route.fulfill({ json: [] });
+  });
+}
+
 /** Opens the New chat page with the New chat button. The first message makes the chat. */
 async function clickNewChat(page: Page): Promise<void> {
   await openList(page);
@@ -719,6 +729,9 @@ test("a new chat with no engine says what is missing, locks the box, and unlocks
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
   await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
+  // The demo has widgets on, so the step shows in the one-line form of the day panel, above them (#972).
+  await expect(page.locator(".day-panel .day-greeting")).toContainText("Not ready yet");
+  await expect(page.getByRole("group", { name: "Widgets" })).toBeVisible();
   await expect(page.getByLabel("Message").first()).toBeDisabled();
   await expect(page.getByText("Set up an AI engine to send a message.")).toBeVisible();
 
@@ -729,7 +742,7 @@ test("a new chat with no engine says what is missing, locks the box, and unlocks
 
   // The step is done elsewhere: the next status read unlocks the chat.
   blocker = null;
-  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  await expect(page.locator(".day-panel .day-greeting")).not.toContainText("Not ready yet");
   await expect(page.getByLabel("Message").first()).toBeEnabled();
   await expect(page.getByText("Set up an AI engine to send a message.")).toHaveCount(0);
 });
@@ -756,6 +769,7 @@ async function hideOldChats(page: Page): Promise<() => number> {
 
 test("with no chat yet, the page greets the person, and the first message makes the chat", async ({ page }) => {
   const made = await hideOldChats(page);
+  await showNoWidgets(page);
   await logIn(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
@@ -4253,6 +4267,7 @@ test("a tap on Chats while a chat is open shows the list on a phone and a new ch
 });
 
 test("the New chat button opens the New chat page, and only the first message makes the chat", async ({ page }) => {
+  await showNoWidgets(page);
   await logIn(page);
   await newChat(page);
   let made = 0;
@@ -4314,6 +4329,7 @@ test("the chat list shows each chat's time and last answer, and the search filte
 test("a new chat greets with EVE and suggestions, and a tap on one starts the chat", async ({ page }) => {
   // An ordinary day: a special day shows festive eyes and greeting instead.
   await page.clock.setFixedTime(ordinaryDay);
+  await showNoWidgets(page);
   await logIn(page);
   await newChat(page);
   const greeting = page.locator(".new-chat");
@@ -8462,6 +8478,7 @@ test("on a special day, EVE greets with that day's eyes, and the tab icon wears 
 
 test("a fact that Eva still needs shows as one special suggestion, and the answer goes to Eva", async ({ page }) => {
   await page.clock.setFixedTime(ordinaryDay);
+  await showNoWidgets(page);
   await logIn(page);
   await newChat(page);
   // The demo vault has no birthday yet, so Eva asks for it first.

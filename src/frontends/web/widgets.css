@@ -1,15 +1,16 @@
 /*
- * The widgets of the home page and their list in Personalize (#691). The grid has four columns
- * on a computer and two on a phone: a small widget takes one, a medium widget two, and a large
- * widget the whole row. On a phone a large widget is twice as high.
+ * The widgets of the home page and their list in Personalize (#691). The grid of the day panel
+ * (#972) has two columns on a phone and four on a computer. docs/widgets.md gives the place of
+ * each size. The cards keep the order of .eva/widgets.json, and dense placement fills each hole
+ * that a large card leaves, so no order makes cards overlap.
  */
 .widget-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: 168px;
+  grid-auto-flow: row dense;
   gap: var(--space-3);
   width: 100%;
-  max-width: 800px;
 }
 
 .widget-card.card {
@@ -24,23 +25,40 @@
   grid-column: span 2;
 }
 
-/* Contract 2's tall and xlarge take the span of large until the home layout gives them their own. */
 .widget-card.size-large,
-.widget-card.size-tall,
-.widget-card.size-xlarge {
-  grid-column: 1 / -1;
+.widget-card.size-tall {
+  grid-column: span 2;
   grid-row: span 2;
 }
 
+/* On a phone the cards stack, so the smaller cards come first, and the long xlarge card after them. */
+.widget-card.size-xlarge {
+  grid-column: span 2;
+  grid-row: span 3;
+  order: 1;
+}
+
 @media (min-width: 761px) {
+  /* At least three rows share the height above the message box, so an xlarge card fills it. More cards add rows. */
   .widget-grid {
+    flex: 1;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(140px, 1fr));
+    grid-auto-rows: minmax(140px, 1fr);
   }
 
-  .widget-card.size-large,
-  .widget-card.size-tall,
-  .widget-card.size-xlarge {
+  .widget-card.size-large {
+    grid-column: span 4;
     grid-row: span 1;
+  }
+
+  .widget-card.size-tall {
+    grid-column: span 1;
+  }
+
+  .widget-card.size-xlarge {
+    grid-column: span 3;
+    order: 0;
   }
 }
 

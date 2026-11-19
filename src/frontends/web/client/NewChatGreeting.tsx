@@ -1,21 +1,39 @@
 /**
  * The empty state of a new chat: EVE with happy eyes, a greeting for the time of day, and the
  * suggestions. A tap on a suggestion sends it as the first message. A chat that cannot answer
- * yet shows the missing setup step instead.
+ * yet shows the missing setup step instead. With a widget on, the page is the day panel (#972):
+ * the greeting in one row, then the widgets, and no suggestions.
  */
-import { useCallback, useEffect, useId, useRef, useState, type ReactElement, type SyntheticEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
 import { api, type ChatBlocker } from "./api.ts";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import { factQuestion, greeting, setupBlock, suggestions, type FactQuestion, type Suggestion } from "./new-chat.ts";
 import { usePersonalFacts, useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
-import { WidgetGrid } from "./WidgetGrid.tsx";
-import { stateFaces } from "./visor-faces.ts";
+import { WidgetGrid, type WidgetFrames } from "./WidgetGrid.tsx";
+import { stateFaces, type Face } from "./visor-faces.ts";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { goTo } from "./back-layers.ts";
+import type { SpecialDayId } from "./special-days.ts";
 
-export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) => void }): ReactElement {
+export function NewChatGreeting({
+  onPick,
+  widgets,
+}: {
+  readonly onPick: (text: string) => void;
+  /** The home page's widgets. An empty chat that is not the home page shows none. */
+  readonly widgets?: WidgetFrames;
+}): ReactElement {
   // Null until the settings answer, so the cards do not jump from three to four.
   const [shown, setShown] = useState<readonly Suggestion[] | null>(null);
   // On a special day, EVE shows that day's eyes and greeting instead.
@@ -40,15 +58,20 @@ export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) =>
     };
   }, []);
 
+  const title = day?.greeting ?? greeting(new Date().getHours());
+  const line = day?.line ?? "How can I help today?";
+  if (widgets !== undefined && widgets.frames.length > 0)
+    return (
+      <DayPanel face={stateFaces.greeting} festive={day?.id ?? null} title={title} line={line} widgets={widgets} />
+    );
   return (
     <div className="new-chat">
       <Visor size={128} face={stateFaces.greeting} festive={day?.id ?? null} followPointer />
       <div>
         {/* The chat's title is the page's h1. */}
-        <h2>{day?.greeting ?? greeting(new Date().getHours())}</h2>
-        <p>{day?.line ?? "How can I help today?"}</p>
+        <h2>{title}</h2>
+        <p>{line}</p>
       </div>
-      <WidgetGrid />
       {question !== null && <FactQuestionCard question={question} onPick={onPick} />}
       {shown !== null && (
         <div className="suggestions" role="group" aria-label="Suggestions">
@@ -62,8 +85,32 @@ export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) =>
 }
 
 /** An empty chat that cannot answer yet: EVE asleep, what is missing, and a button to that step. */
-export function NewChatSetup({ blocker }: { readonly blocker: ChatBlocker }): ReactElement {
+export function NewChatSetup({
+  blocker,
+  widgets,
+}: {
+  readonly blocker: ChatBlocker;
+  /** The home page's widgets. An empty chat that is not the home page shows none. */
+  readonly widgets?: WidgetFrames;
+}): ReactElement {
   const block = setupBlock(blocker);
+  const button = (
+    <button
+      className="primary large"
+      onClick={() => {
+        goTo(block.address);
+      }}
+    >
+      {block.action}
+    </button>
+  );
+  // The widgets need no engine, so the day panel keeps them below the missing step.
+  if (widgets !== undefined && widgets.frames.length > 0)
+    return (
+      <DayPanel face={stateFaces.notSetUp} festive={null} title="Not ready yet" line={block.sentence} widgets={widgets}>
+        {button}
+      </DayPanel>
+    );
   return (
     <div className="new-chat">
       <Visor size={128} face={stateFaces.notSetUp} />
@@ -71,14 +118,43 @@ export function NewChatSetup({ blocker }: { readonly blocker: ChatBlocker }): Re
         <h2>Not ready yet</h2>
         <p>{block.sentence}</p>
       </div>
-      <button
-        className="primary large"
-        onClick={() => {
-          goTo(block.address);
-        }}
-      >
-        {block.action}
-      </button>
+      {button}
+    </div>
+  );
+}
+
+/**
+ * The home page with widgets (#972): EVE, the greeting and its line in one row, then the grid at
+ * the full width. On a computer the grid fills the height above the message box.
+ */
+function DayPanel({
+  face,
+  festive,
+  title,
+  line,
+  widgets,
+  children,
+}: {
+  readonly face: Face;
+  readonly festive: SpecialDayId | null;
+  readonly title: string;
+  readonly line: string;
+  readonly widgets: WidgetFrames;
+  /** An action of the row, such as the button to a missing setup step. */
+  readonly children?: ReactNode;
+}): ReactElement {
+  return (
+    <div className="new-chat day-panel">
+      <div className="day-greeting">
+        <Visor size={56} face={face} festive={festive} followPointer={face === stateFaces.greeting} />
+        <div className="day-greeting-text">
+          {/* The chat's title is the page's h1. */}
+          <h2>{title}</h2>
+          <p>{line}</p>
+        </div>
+        {children}
+      </div>
+      <WidgetGrid widgets={widgets} />
     </div>
   );
 }

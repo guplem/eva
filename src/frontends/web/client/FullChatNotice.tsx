@@ -1,60 +1,77 @@
 /**
  * The offer of a new chat from a summary, when the branch in view nearly fills its context window
- * (issue 969). A person looks for this step only once the chat is long, so Eva names it there.
+ * (issue 969). A person looks for this step only when the chat is long, so Eva shows it then.
  *
- * The notice reads this branch alone. The chat details ring reads the whole tree, but the summary
- * works on one branch, so a full fork must not offer to compact a short one.
+ * The notice reads the path of this branch alone: the turns that it shares with its parents, then
+ * its own. The chat details ring reads the whole tree, but the summary works on one branch, so a
+ * full fork must not offer to compact a short one.
  */
-import { useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { SessionRecord } from "./api.ts";
 import { contextIsFull, contextShare, latestContext } from "./chat-details.ts";
 import { SummaryChatQuestion } from "./SummaryChatQuestion.tsx";
-import { hideOffer, offerShows, readHiddenShare } from "./summary-offer.ts";
+import { forgetOffer, hideOffer, offerShows, readHiddenShare } from "./summary-offer.ts";
 
 export function FullChatNotice({
-  session,
+  sessionId,
+  turns,
   onChanged,
 }: {
-  readonly session: SessionRecord;
+  readonly sessionId: string;
+  /** The turns of the branch in view, oldest first: those it shares with its parents, then its own. */
+  readonly turns: SessionRecord["turns"];
   readonly onChanged: () => Promise<void>;
 }): ReactElement | null {
   const [asking, setAsking] = useState(false);
-  const button = useRef<HTMLButtonElement>(null);
-  /** The share at which the person put this chat off. A switch of branch reads the new chat's own. */
-  const [hidden, setHidden] = useState<{ readonly chatId: string; readonly share: number | null }>(() => ({
-    chatId: session.id,
-    share: readHiddenShare(session.id),
-  }));
-  if (hidden.chatId !== session.id) setHidden({ chatId: session.id, share: readHiddenShare(session.id) });
+  const compact = useRef<HTMLButtonElement>(null);
+  const later = useRef<HTMLButtonElement>(null);
+  /** The share at which the person put this chat off. A switch of branch makes a new notice. */
+  const [hidden, setHidden] = useState<number | null>(() => readHiddenShare(sessionId));
 
-  const context = latestContext([session]);
+  const context = latestContext([{ turns }]);
   const share = context === null ? null : contextShare(context);
-  if (share === null || !contextIsFull(context)) return null;
-  if (hidden.chatId === session.id && !offerShows(hidden.share, share)) return null;
+  // A chat that the engine compacted itself forgets a "Not now", so it offers again when it fills.
+  // An unknown share is no fall: a failed answer must not undo the choice.
+  const fell = share !== null && !contextIsFull(context);
+  useEffect(() => {
+    if (!fell) return;
+    forgetOffer(sessionId);
+    setHidden(null);
+  }, [fell, sessionId]);
+
+  const shownShare = share !== null && contextIsFull(context) && offerShows(hidden, share) ? share : null;
+  // The question stays mounted while it runs: a turn that ends mid-request must not tear it down.
+  if (shownShare === null && !asking) return null;
   return (
     <>
-      <div className="callout warning callout-action" role="status">
-        <span>
-          This chat is {share}% full. A full chat confuses the model. Compact it into a new chat with a summary.
-        </span>
-        <button ref={button} className="primary" onClick={() => setAsking(true)}>
-          Compact
-        </button>
-        <button
-          onClick={() => {
-            hideOffer(session.id, share);
-            setHidden({ chatId: session.id, share });
-          }}
-        >
-          Not now
-        </button>
-      </div>
+      {shownShare !== null && (
+        <div className="callout warning callout-action" role="status">
+          <span>
+            This chat is {shownShare}% full. A full chat can confuse the model. Compact it: Eva writes a summary and
+            opens a new chat.
+          </span>
+          <button ref={compact} className="primary" onClick={() => setAsking(true)}>
+            Compact
+          </button>
+          <button
+            ref={later}
+            onClick={() => {
+              hideOffer(sessionId, shownShare);
+              setHidden(shownShare);
+              // The notice goes away, so the keyboard goes where the person works: the message box.
+              later.current?.closest("section")?.querySelector<HTMLElement>("textarea")?.focus();
+            }}
+          >
+            Not now
+          </button>
+        </div>
+      )}
       {asking && (
         <SummaryChatQuestion
-          sessionId={session.id}
+          sessionId={sessionId}
           onKeep={() => {
             setAsking(false);
-            button.current?.focus();
+            compact.current?.focus();
           }}
           onChanged={onChanged}
         />

@@ -13,8 +13,8 @@ import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 
 /**
  * The one name of the action. People look for "compact", the word that Claude Code and pi use for
- * the same need, so the menu and this question lead with it. The rest says what Eva does instead:
- * those engines shrink the chat, and Eva opens a new one.
+ * the same need. Those two shrink the chat in place. The rest of the label says that Eva opens a
+ * new chat instead.
  */
 export const compactLabel = "Compact: start a new chat from a summary";
 

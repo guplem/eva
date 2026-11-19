@@ -1275,8 +1275,17 @@ test("a chat that nearly fills its window offers to compact itself, and Not now 
   await page.getByRole("button", { name: "Not now" }).click();
   await expect(notice).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+  // The answer first: the notice reads the turns, so an empty page would hide it for the wrong reason.
+  await expect(page.locator(".message.answer").first()).toContainText(title);
   await expect(notice).toHaveCount(0);
+
+  // A fork of a full chat is just as full: it carries the turns of its parent on its path.
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  await expect(notice).toBeVisible();
+
+  // A chat that uses almost none of its window never offers.
+  await newAnsweredChat(page, "A roomy chat");
+  await expect(page.getByText("% full.")).toHaveCount(0);
 });
 
 test("the chat details list the context, and a tap shows a part's whole text (issue 700)", async ({ page }) => {

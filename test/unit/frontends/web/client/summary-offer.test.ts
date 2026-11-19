@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  forgetOffer,
   hiddenShare,
   hideOffer,
   offerAgainStep,
@@ -34,6 +35,9 @@ describe("hiddenShare", () => {
     expect(hiddenShare("later")).toBe(null);
     expect(hiddenShare("-5")).toBe(null);
     expect(hiddenShare("120")).toBe(null);
+    expect(hiddenShare(" ")).toBe(null);
+    expect(hiddenShare("0x50")).toBe(null);
+    expect(hiddenShare("12.5")).toBe(null);
   });
 });
 
@@ -52,6 +56,11 @@ describe("offerShows", () => {
   test("a share that fell after the engine compacted the chat stays quiet", () => {
     expect(offerShows(90, 40)).toBe(false);
   });
+
+  test("a chat put off near the top has no room left to grow, so only the forget frees it", () => {
+    expect(offerShows(95, 100)).toBe(false);
+    expect(offerShows(null, 100)).toBe(true);
+  });
 });
 
 describe("the browser's own choice", () => {
@@ -65,11 +74,22 @@ describe("the browser's own choice", () => {
     expect(readHiddenShare("chat-2")).toBeNull();
   });
 
+  test("a chat that is no longer full forgets the choice, so it offers again when it fills", () => {
+    useStorage(mapStorage());
+    hideOffer("chat-1", 95);
+    forgetOffer("chat-1");
+    expect(readHiddenShare("chat-1")).toBeNull();
+    expect(offerShows(readHiddenShare("chat-1"), 80)).toBe(true);
+  });
+
   test("a blocked storage offers the chat and loses only the choice", () => {
-    useStorage({ getItem: blocked, setItem: blocked });
+    useStorage({ getItem: blocked, setItem: blocked, removeItem: blocked });
     expect(readHiddenShare("chat-1")).toBeNull();
     expect(() => {
       hideOffer("chat-1", 78);
+    }).not.toThrow();
+    expect(() => {
+      forgetOffer("chat-1");
     }).not.toThrow();
   });
 });

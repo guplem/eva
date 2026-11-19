@@ -2416,6 +2416,16 @@ button.link-button {
 
 .callout-action span {
   flex: 1;
+  /* Without a floor, the text shrinks to its longest word and runs down a thin column beside the
+     buttons. With one, a narrow box puts the buttons on their own row. */
+  min-width: min(100%, 14em);
+}
+
+/* A phone has room for one thing per row: the text, then the buttons together under it. */
+@media (max-width: 760px) {
+  .callout-action span {
+    flex-basis: 100%;
+  }
 }
 
 .field {

@@ -335,6 +335,8 @@ describe("contextIsFull", () => {
     expect(contextIsFull({ tokens: 150_000, window: 200_000 })).toBe(true);
     expect(contextIsFull({ tokens: 198_000, window: 200_000 })).toBe(true);
     expect(contextIsFull({ tokens: 148_000, window: 200_000 })).toBe(false);
+    // 74.5% rounds to 75, as the ring of the chat details shows it.
+    expect(contextIsFull({ tokens: 149_000, window: 200_000 })).toBe(true);
   });
 
   test("no context and an unknown window are never full, because Eva would have to guess", () => {

@@ -63,7 +63,7 @@ export function contextShare(context: ContextUse): number | null {
 
 /**
  * The share at which Eva offers a new chat from a summary (issue 969). Both engines compact a chat
- * by themselves nearer their own limit, so this share leaves the person a window to choose first.
+ * themselves nearer their own limit. This share gives the person time to choose first.
  */
 export const fullContextShare = 75;
 

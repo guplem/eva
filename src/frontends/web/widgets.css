@@ -38,6 +38,16 @@
   order: 1;
 }
 
+@media (max-width: 760px) {
+  /*
+   * Every other card spans both columns, so dense placement pairs the small cards in order. Only
+   * the last of an odd number has no partner: it takes the whole row instead of half of it.
+   */
+  .widget-card.size-small:nth-child(odd of .size-small):nth-last-child(1 of .size-small) {
+    grid-column: span 2;
+  }
+}
+
 @media (min-width: 761px) {
   /* At least three rows share the height above the message box, so an xlarge card fills it. More cards add rows. */
   .widget-grid {

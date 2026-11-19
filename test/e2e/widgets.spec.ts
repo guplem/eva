@@ -63,6 +63,8 @@ test("with a widget on, the home page is a day panel: a one-line greeting, the w
     expect(cases.y).toBeLessThan(calendar.y);
     expect(Math.abs(calendar.width - (grid?.width ?? 0))).toBeLessThan(2);
     expect(Math.abs(cases.width - (grid?.width ?? 0))).toBeLessThan(2);
+    // Habits is the only small card, so it takes the whole row, not half of it.
+    expect(Math.abs(habits.width - (grid?.width ?? 0))).toBeLessThan(2);
     expect(calendar.height).toBeGreaterThan(cases.height);
   } else {
     // A computer: Calendar at the left, three columns wide, and Habits above Cases in the fourth column.
@@ -76,6 +78,40 @@ test("with a widget on, the home page is a day panel: a one-line greeting, the w
     expect((composer?.y ?? 0) - (calendar.y + calendar.height)).toBeLessThan(80);
     expect(calendar.height).toBeGreaterThan(3 * 140);
   }
+});
+
+test("on a phone two small cards share a row, and a small card with no partner takes the whole row", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name !== "phone", "The phone grid only.");
+  // Cards to approve need no frame, so the grid shows them at once, at their sizes.
+  const card = (id: string, size: string): Record<string, unknown> => ({ id, name: id, size, src: null, token: null });
+  await page.route("**/api/widgets/frames", async (route) => {
+    await route.fulfill({
+      json: [
+        card("Small one", "small"),
+        card("Tall card", "tall"),
+        card("Small two", "small"),
+        card("Small three", "small"),
+      ],
+    });
+  });
+  await logIn(page);
+  await page.goto("/#/chats/new");
+  const grid = await page.locator(".widget-grid").boundingBox();
+  const box = async (name: string): Promise<{ x: number; y: number; width: number }> => {
+    const found = await page
+      .locator(".widget-card")
+      .filter({ has: page.getByText(name, { exact: true }) })
+      .boundingBox();
+    if (found === null) throw new Error(`The grid must show ${name}.`);
+    return found;
+  };
+  await expect(page.locator(".widget-card")).toHaveCount(4);
+  const [a, c, d] = [await box("Small one"), await box("Small two"), await box("Small three")];
+  expect(Math.abs(a.y - c.y)).toBeLessThan(2);
+  expect(a.width).toBeLessThan((grid?.width ?? 0) / 2);
+  expect(Math.abs(d.width - (grid?.width ?? 0))).toBeLessThan(2);
 });
 
 test("with no widget on, the home page keeps the large visor and the suggestions", async ({ page }) => {

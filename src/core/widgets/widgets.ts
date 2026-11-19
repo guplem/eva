@@ -918,7 +918,7 @@ export class Widgets {
     if (path === "config.json") return jsonAnswer(configOf(record, entry));
     if (path === "eva/location.json")
       return jsonAnswer(record.location ? contractLocation(this.options.location()) : null);
-    const evaData = evaDataAnswer(path, record);
+    const evaData = evaDataAnswer(path, record, { vaultPath: this.options.vaultPath });
     if (evaData !== null) return evaData;
     if (path === "eva/theme.css")
       return { status: 200, contentType: "text/css; charset=utf-8", body: themeCss(session.theme) };

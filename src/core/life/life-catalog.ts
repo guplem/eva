@@ -89,6 +89,12 @@ export function discoverLifeEntities(vaultPath: string, kind: LifeKind): LifeEnt
     });
 }
 
+/** True when the vault has a folder for the kind, even an empty one. */
+export function hasLifeKindFolder(vaultPath: string, kind: LifeKind): boolean {
+  const root = realRoot(vaultPath);
+  return root !== null && placeOf(root, kind) !== null;
+}
+
 /** One entity with its text and the files beside it, or null when the id names no entity. */
 export function readLifeEntity(vaultPath: string, kind: LifeKind, id: string): LifeEntityDetail | null {
   if (!isFolderName(id)) return null;

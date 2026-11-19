@@ -3,6 +3,7 @@
  * Eva builds the policy from the approved record, never from the manifest, so a manifest that
  * changed after the approval gives the widget no new host.
  */
+import { widgetSandbox } from "../../shared/widget-sandbox.ts";
 
 /** The colour variables of the contract (`docs/widgets.md`). A later contract keeps them. */
 export const themeVariables = [
@@ -95,7 +96,7 @@ export function widgetPolicy(base: string, frameAncestor: string, hosts: readonl
   const outside = hosts.join(" ");
   const withHosts = (sources: string): string => (outside === "" ? sources : `${sources} ${outside}`);
   return [
-    "sandbox allow-scripts",
+    `sandbox ${widgetSandbox}`,
     `default-src ${base}`,
     `script-src ${base}`,
     `style-src ${base}`,

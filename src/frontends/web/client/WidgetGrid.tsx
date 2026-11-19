@@ -5,6 +5,7 @@
  * opens full screen. With no widget on, the grid shows nothing, and the page looks as before.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { widgetSandbox } from "../../../shared/widget-sandbox.ts";
 import { api, type WidgetFrame } from "./api.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { goTo } from "./back-layers.ts";
@@ -153,8 +154,7 @@ export function WidgetGrid(): ReactElement | null {
 }
 
 /**
- * One frame. `sandbox` with no `allow-same-origin` gives the widget no origin of its own. The
- * frame takes the page's `color-scheme`, so a widget that follows `prefers-color-scheme` follows Eva.
+ * One frame, with the sandbox of `widgetSandbox`. The clone preview (#693) uses it too. The frame takes the page's `color-scheme`, so a widget that follows `prefers-color-scheme` follows Eva.
  */
 export function WidgetFrameView({
   frame,
@@ -171,7 +171,7 @@ export function WidgetFrameView({
       className="widget-frame"
       aria-label={frame.name}
       src={frameAddress(frame.src, size)}
-      sandbox="allow-scripts"
+      sandbox={widgetSandbox}
       referrerPolicy="no-referrer"
       style={{ colorScheme: scheme }}
     />

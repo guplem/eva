@@ -931,7 +931,7 @@ export class Widgets {
       return jsonAnswer(record.location ? contractLocation(this.options.location()) : null);
     const calendar = await calendarAnswer(path, query, record.googleCalendar, this.options.calendar ?? noCalendar);
     if (calendar !== null) return calendar;
-    const evaData = evaDataAnswer(path, record);
+    const evaData = evaDataAnswer(path, record, { vaultPath: this.options.vaultPath });
     if (evaData !== null) return evaData;
     if (path === "eva/theme.css")
       return { status: 200, contentType: "text/css; charset=utf-8", body: themeCss(session.theme) };

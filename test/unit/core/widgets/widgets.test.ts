@@ -541,6 +541,19 @@ describe("the widget routes", () => {
     }
     expect((await widgets.serve(token, "eva/google-calendar/other.json", "GET", null))?.status).toBe(404);
     expect((await widgets.serve(token, "eva/cases.json", "PUT", null))?.status).toBe(405);
+    // With a cases folder, the approved widget reads the open cases, with the text as the person wrote it.
+    vaultFile("Life/Cases/2026-11-01-leak/Case.md", "---\nnext: Call the plumber\n---\n# Fix the leak\n");
+    vaultFile("Life/Cases/2026-01-01-old/Case.md", "---\nclosed: 2026-02-01\n---\n# Old\n");
+    expect(JSON.parse(text((await widgets.serve(token, "eva/cases.json", "GET", null))?.body))).toEqual([
+      {
+        id: "2026-11-01-leak",
+        title: "Fix the leak",
+        nextStep: { text: "Call the plumber", waitingFor: null, dueDate: null },
+        deadline: null,
+        stepsDone: null,
+        stepsTotal: null,
+      },
+    ]);
   });
 
   test("a widget with the calendar input reads the calendar through Eva, in a window of at most 62 days", async () => {

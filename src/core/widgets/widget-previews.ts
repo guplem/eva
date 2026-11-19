@@ -321,7 +321,7 @@ export class WidgetPreviews {
       const calendar = await calendarAnswer(path, query, grant.googleCalendar, this.options.calendar);
       if (calendar !== null) return calendar;
     }
-    const evaData = grant === null ? null : evaDataAnswer(path, grant);
+    const evaData = grant === null ? null : evaDataAnswer(path, grant, { vaultPath: this.options.vaultPath });
     if (evaData !== null) return evaData;
     if (contract === "eva" || path === "") return { status: 404 };
     if (grant !== null) {

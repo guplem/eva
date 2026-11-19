@@ -9,6 +9,18 @@ import { daysBefore, months } from "./chat-list.ts";
 import { factsOf, linkOf, type Fact, type FactFormat, type FactLink, type FactValue } from "./front-matter-facts.ts";
 import { projectColor, projectInitials } from "./projects-home.ts";
 import { countOf } from "./project-format.ts";
+import {
+  caseDeadline,
+  caseStepRules,
+  currentCaseStep,
+  daySortKey,
+  dayOf,
+  isClosedCase as isClosedCaseFields,
+  mapOf,
+  sortKey,
+  textOf,
+  type PartialDay,
+} from "../../../shared/case-rules.ts";
 import type { LifeKind } from "../../../shared/life-kinds.ts";
 import { vaultTextParts, withEntityNames, type KnownLifeIds } from "./vault-text-links.ts";
 
@@ -89,49 +101,8 @@ export const lifePages: Readonly<Record<LifeKind, LifeKindPage>> = {
 
 // Reading the fields
 
-/** A text value, or null for an empty or missing one. */
-function textOf(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const text = value.trim();
-  return text === "" ? null : text;
-}
-
-function mapOf(value: unknown): Readonly<Record<string, unknown>> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 function capitalized(text: string): string {
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
-}
-
-/** A date of the front matter: a whole day, a month or a year. */
-interface PartialDay {
-  readonly year: number;
-  readonly month: number | null;
-  readonly day: number | null;
-}
-
-function dayOf(text: string | null): PartialDay | null {
-  if (text === null) return null;
-  const match = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(text);
-  if (match === null) return null;
-  const year = Number(match[1]);
-  const month = match[2] === undefined ? null : Number(match[2]);
-  const day = match[3] === undefined ? null : Number(match[3]);
-  if (month !== null && (month < 1 || month > 12)) return null;
-  if (month !== null && day !== null) {
-    const date = new Date(year, month - 1, day);
-    if (date.getMonth() !== month - 1 || date.getDate() !== day) return null;
-  }
-  return { year, month, day };
-}
-
-/** A key that sorts by time as text: a month or a year sorts at its start. */
-function sortKey(day: PartialDay): string {
-  const pad = (value: number | null): string => String(value ?? 1).padStart(2, "0");
-  return `${String(day.year)}-${pad(day.month)}-${pad(day.day)}`;
 }
 
 function monthWords(day: PartialDay): string {
@@ -221,31 +192,17 @@ export interface CaseStep {
 
 /** The steps of a case. The current step is the first step without `done-on`. */
 export function caseSteps(fields: LifeEntity["fields"], now: Date): CaseStep[] {
-  const steps = fields["steps"];
-  if (!Array.isArray(steps)) return [];
-  let currentFound = false;
-  return steps.flatMap((step): CaseStep[] => {
-    const plain = textOf(step);
-    const map = mapOf(step);
-    if (plain === null && map === null) return [];
-    const doneOn = textOf(map?.["done-on"]);
-    const state = doneOn !== null ? "done" : currentFound ? "todo" : "current";
-    if (state === "current") currentFound = true;
-    return [
-      {
-        text: plain ?? textOf(map?.["step"]) ?? "A step",
-        doneOn: doneOn === null ? null : dayWords(doneOn),
-        waitingFor: textOf(map?.["waiting-for"]),
-        due: dayState(map?.["due-by"], now, dueWording),
-        state,
-      },
-    ];
-  });
+  return caseStepRules(fields).map((step) => ({
+    text: step.text,
+    doneOn: step.doneOn === null ? null : dayWords(step.doneOn),
+    waitingFor: step.waitingFor,
+    due: dayState(step.dueBy, now, dueWording),
+    state: step.state,
+  }));
 }
 
 function isClosedCase(entity: LifeEntity): boolean {
-  // An old vault may have a status key: only a date in `closed` ends a case.
-  return textOf(entity.fields["closed"]) !== null;
+  return isClosedCaseFields(entity.fields);
 }
 
 interface CurrentStep {
@@ -255,30 +212,15 @@ interface CurrentStep {
 }
 
 function currentStepOf(entity: LifeEntity, now: Date): CurrentStep | null {
-  if (isClosedCase(entity)) return null;
-  const { fields } = entity;
-  if (!Array.isArray(fields["steps"])) {
-    // An old-form case keeps its next step in `next`: a text, or a map of `step` and `date`.
-    const nextMap = mapOf(fields["next"]);
-    const next = nextMap === null ? textOf(fields["next"]) : textOf(nextMap["step"]);
-    return next === null
-      ? null
-      : {
-          text: next,
-          waitingFor: textOf(nextMap?.["waiting-for"] ?? fields["waiting-for"]),
-          due: dayState(nextMap?.["date"] ?? fields["due-by"] ?? fields["due"], now, dueWording),
-        };
-  }
-  const step = caseSteps(fields, now).find((each) => each.state === "current");
-  return step === undefined ? null : { text: step.text, waitingFor: step.waitingFor, due: step.due };
+  const step = currentCaseStep(entity.fields);
+  return step === null
+    ? null
+    : { text: step.text, waitingFor: step.waitingFor, due: dayState(step.dueBy, now, dueWording) };
 }
 
 function deadlineOf(value: unknown, now: Date): { readonly due: DayState | null; readonly cost: string | null } | null {
-  const map = mapOf(value);
-  // An older form writes the day alone.
-  const due = dayState(map === null ? value : map["date"], now, deadlineWording);
-  const cost = textOf(map?.["cost"]);
-  return due === null && cost === null ? null : { due, cost };
+  const deadline = caseDeadline({ deadline: value });
+  return deadline === null ? null : { due: dayState(deadline.date, now, deadlineWording), cost: deadline.cost };
 }
 
 // The card of each kind
@@ -648,9 +590,7 @@ function byTitle(first: LifeEntity, second: LifeEntity): number {
 
 /** The day of the current step of an open case, as a key that sorts by time. */
 function caseDueKey(entity: LifeEntity, now: Date): string | null {
-  const due = currentStepOf(entity, now)?.due;
-  const day = dayOf(due?.raw ?? null);
-  return day === null ? null : sortKey(day);
+  return daySortKey(currentStepOf(entity, now)?.due?.raw ?? null);
 }
 
 /** Text keys, newest or soonest as asked. A missing key goes last either way. */

@@ -843,7 +843,8 @@ describe("Eva", () => {
       expect(writes).toContain("DELETE repos/you/example-app/labels/bug");
       const sessionId = result.setup?.sessionId ?? "";
       expect(instance.sessions.get(sessionId)).toMatchObject({ mode: "project", projectId: result.projectId });
-      await waitFor(() => engine.requests.length > 0);
+      // The first turn of a Project chat syncs the vault with git first, which takes seconds on a Windows runner.
+      await waitFor(() => engine.requests.length > 0, 20_000);
       const request = JSON.stringify(engine.requests[0]);
       expect(request).toContain("AGENTS.md");
       expect(request).toContain("Turn on auto-merge for the pull request");
@@ -923,7 +924,7 @@ describe("Eva", () => {
       );
       const sessionId = result.setup?.sessionId ?? "";
       expect(instance.sessions.get(sessionId)).toMatchObject({ mode: "project", projectId: result.projectId });
-      await waitFor(() => engine.requests.length > 0);
+      await waitFor(() => engine.requests.length > 0, 20_000);
       const request = JSON.stringify(engine.requests[0]);
       expect(request).toContain("ask the person what the widget must do");
       expect(request).not.toContain("The setup also left these items");

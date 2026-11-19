@@ -181,6 +181,12 @@ describe("the preview of a clone", () => {
       (await widgets.approvePreview(place, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
         .token ?? "";
     for (const path of paths) expect({ path, ...(await get(mine, path)) }).toEqual({ path, status: 200, body: "null" });
+    // My data answers the real open cases; Example data still answers 404.
+    write(vault, "Life/Cases/2026-11-01-leak/Case.md", "---\nnext: Call the plumber\n---\n# Fix the leak\n");
+    expect(JSON.parse((await get(mine, "eva/cases.json")).body)).toEqual([
+      expect.objectContaining({ id: "2026-11-01-leak", title: "Fix the leak" }),
+    ]);
+    expect((await get(example, "eva/cases.json")).status).toBe(404);
   });
 
   test("My data reads the person's calendar with the grant of the preview", async () => {

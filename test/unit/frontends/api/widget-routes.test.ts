@@ -308,7 +308,7 @@ describe("the widget files", () => {
     expect(await page.text()).toBe("<p>habits</p>");
     const policy = page.headers.get("content-security-policy") ?? "";
     const base = `${api.url}${src.replace(/index\.html$/, "")}`;
-    expect(policy).toContain("sandbox allow-scripts");
+    expect(policy).toContain("sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox;");
     expect(policy).toContain(`connect-src ${base} https://api.example.com`);
     expect(policy).toContain(`frame-ancestors ${api.url}`);
     expect(page.headers.get("referrer-policy")).toBe("no-referrer");

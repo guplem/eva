@@ -153,14 +153,16 @@ describe("the widget list", () => {
     expect((await call("/api/widgets", { headers: {} })).status).toBe(401);
   });
 
-  test("a new Eva lists the habits and weather widgets that ship with her, off", () => {
+  test("a new Eva lists the widgets that ship with her, off, in the order of the day panel", () => {
     // A home and a vault of its own: one core for each home.
     const own = join(home, "shipped");
     mkdirSync(join(own, "vault", ".eva"), { recursive: true });
     const shipped = evaWith(join(own, "vault"), true, own);
     try {
       expect(shipped.widgets?.list().map((item) => [item.name, item.state, item.sources])).toEqual([
+        ["Calendar", "off", ["base"]],
         ["Habits", "off", ["base"]],
+        ["Cases", "off", ["base"]],
         ["Weather", "off", ["base"]],
       ]);
     } finally {

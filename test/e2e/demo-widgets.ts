@@ -8,7 +8,7 @@
 const style = `html, body { margin: 0; height: 100%; }
 body { background: var(--panel, #fff); color: var(--ink, #1f2430); font: 13px system-ui, sans-serif; }
 .widget { box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; height: 100vh; padding: 14px 16px; overflow: hidden; }
-h1 { margin: 0; padding-right: 40px; font-size: 15px; }
+h1 { margin: 0; padding-right: 56px; font-size: 15px; }
 .muted { color: var(--muted, #5d6475); }
 .week { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; min-height: 0; }
 .day { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

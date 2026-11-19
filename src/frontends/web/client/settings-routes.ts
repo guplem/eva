@@ -326,7 +326,7 @@ export const searchEntries: readonly SearchEntry[] = [
     item: "widgets",
     section: "personalize",
     title: "Widgets",
-    words: "home page grid habits weather add approve permissions repository turn on off",
+    words: "home page grid calendar habits cases weather add approve permissions repository turn on off",
   },
   {
     item: "widget-updates",

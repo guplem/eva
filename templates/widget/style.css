@@ -32,6 +32,8 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 4px 12px;
+  /* Eva puts her full-screen button over the top right corner (docs/widgets.md, "Sizes"). */
+  padding-right: 56px;
 }
 
 .widget-title {

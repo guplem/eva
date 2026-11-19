@@ -6,7 +6,7 @@ A widget is plain, standard web code: HTML, JavaScript and CSS, with no framewor
 
 The template of a new widget is [`templates/widget/`](../templates/widget/). Eva copies it to each new widget repository. Each Eva release updates the template and this document together.
 
-The two widgets that ship with Eva are full examples: [`guplem/eva-widget-habits`](https://github.com/guplem/eva-widget-habits) writes vault data, and [`guplem/eva-widget-weather`](https://github.com/guplem/eva-widget-weather) reads the location and calls a host.
+The four widgets that ship with Eva are full examples: [`guplem/eva-widget-calendar`](https://github.com/guplem/eva-widget-calendar) reads the Google Calendar and calls a host, [`guplem/eva-widget-habits`](https://github.com/guplem/eva-widget-habits) writes vault data, [`guplem/eva-widget-cases`](https://github.com/guplem/eva-widget-cases) reads the cases, and [`guplem/eva-widget-weather`](https://github.com/guplem/eva-widget-weather) reads the location and calls a host.
 
 ## Contents
 
@@ -162,21 +162,22 @@ An `eva-cases` input gives the widget the person's open cases. Eva reads them fr
 
 A widget has five sizes for a fixed grid, and a full-screen view, `full`. The manifest's `size` is the size of its card in the grid. Eva can change the sizes later. `tall` and `xlarge` come with contract 2.
 
-| Size     | On a computer (4 columns) | On a phone (2 columns) |
-| -------- | ------------------------- | ---------------------- |
-| `small`  | 1 column, 1 row           | Half the width, 1 row  |
-| `medium` | 2 columns, 1 row          | The full width, 1 row  |
-| `large`  | The full width, 1 row     | The full width, 2 rows |
-| `tall`   | 1 column, 2 rows          | The full width, 2 rows |
-| `xlarge` | 3 columns, 3 rows         | The full width, 3 rows |
+| Size     | On a computer (4 columns) | On a phone (2 columns)                                 |
+| -------- | ------------------------- | ------------------------------------------------------ |
+| `small`  | 1 column, 1 row           | Half the width, 1 row; the full width alone in its row |
+| `medium` | 2 columns, 1 row          | The full width, 1 row                                  |
+| `large`  | The full width, 1 row     | The full width, 2 rows                                 |
+| `tall`   | 1 column, 2 rows          | The full width, 2 rows                                 |
+| `xlarge` | 3 columns, 3 rows         | The full width, 3 rows                                 |
 
 The grid is the day panel of Eva's home page:
 
 - The cards follow the order of the list in `.eva/widgets.json`. A card fills the first hole where it fits, so no order makes cards overlap.
 - On a computer, at least three rows share the height above the message box. Each row is at least 140 px high. More cards add rows, and the page scrolls.
-- On a phone, each row is 168 px high, and the page scrolls. An `xlarge` card shows after the smaller cards, so a long calendar does not push them out of view.
+- On a phone, each row is 168 px high, and the page scrolls. An `xlarge` card shows after the smaller cards, so a long calendar does not push them out of view. Two `small` cards share a row. A `small` card with no partner, such as the last of an odd number, takes the full width.
 
 - The widget always fills the space that it gets, at every screen size. It has no empty border.
+- Keep the top right corner free of text and buttons: 56 px wide and 56 px high, at every size. Eva puts her full-screen button there, over the widget, and her close button in full screen.
 - Opened in full screen in a browser, the widget fills the whole window with content, even if it looks stretched.
 - Show less in a small size, and more in a large one. Do not scroll the page sideways.
 

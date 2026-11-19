@@ -206,6 +206,30 @@ describe("the list", () => {
     );
   });
 
+  test("a base widget that turns on takes its place among the base widgets of the vault list", async () => {
+    const base = (name: string): string => `https://github.com/example-owner/${name}`;
+    widgets = new Widgets({
+      ...options,
+      baseWidgets: [
+        { url: base("first"), name: "First" },
+        { url: base("second"), name: "Second" },
+        { url: base("third"), name: "Third" },
+      ],
+    });
+    for (const name of ["third", "first", "second"]) {
+      const id = `example-owner/${name}`;
+      const review = await widgets.review(id, ownHosts);
+      await widgets.approve(id, review.commit, { habits: "Life/Habits" }, ownHosts);
+    }
+    // The person's own widget keeps its place; the base widgets keep the order of the base list.
+    expect(readWidgetList(vault).map((entry) => entry.id)).toEqual([
+      habitsId,
+      "example-owner/first",
+      "example-owner/second",
+      "example-owner/third",
+    ]);
+  });
+
   test("moves a widget, and writes the whole order into the vault", () => {
     widgets.move("example-owner/base-widget", "up");
     expect(widgets.list().map((item) => item.id)).toEqual(["example-owner/base-widget", habitsId]);

@@ -1,5 +1,5 @@
 /**
- * The widgets of the home page (#691), below EVE's face and the greeting. Each widget runs in a
+ * The widgets of the home page (#691): the grid of the day panel (#972). Each widget runs in a
  * sandboxed frame with no origin, from its own token path, so it cannot read Eva's API, the login
  * cookie or another widget. A tap inside a frame goes to the widget; the corner button outside it
  * opens full screen. With no widget on, the grid shows nothing, and the page looks as before.
@@ -20,11 +20,20 @@ export function currentScheme(): "light" | "dark" {
   );
 }
 
-export function WidgetGrid(): ReactElement | null {
+/** The cards of the home grid, and the mode that their tokens carry. */
+export interface WidgetFrames {
+  readonly frames: readonly WidgetFrame[];
+  readonly scheme: "light" | "dark";
+}
+
+/**
+ * Asks Eva for the cards of the home grid, and keeps their tokens fresh: after a reconnect, after a
+ * change of the theme, and each minute while the page is in view. The page above the grid reads the
+ * cards too: with at least one, it becomes the day panel (#972). It releases the tokens as it goes.
+ */
+export function useWidgetFrames(): WidgetFrames {
   const [frames, setFrames] = useState<readonly WidgetFrame[]>([]);
   const [scheme, setScheme] = useState(currentScheme);
-  // By id, so the full-screen frame takes the new token after each ask, as the grid does.
-  const [fullId, setFullId] = useState<string | null>(null);
   const tokens = useRef<readonly string[]>([]);
   const askedAt = useRef<number | null>(null);
   // The number of the newest ask, so an older answer that comes late changes nothing.
@@ -98,6 +107,13 @@ export function WidgetGrid(): ReactElement | null {
     };
   }, [ask]);
 
+  return { frames, scheme };
+}
+
+export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): ReactElement | null {
+  const { frames, scheme } = widgets;
+  // By id, so the full-screen frame takes the new token after each ask, as the grid does.
+  const [fullId, setFullId] = useState<string | null>(null);
   const full = frames.find((frame) => frame.id === fullId && frame.src !== null) ?? null;
   const closeFull = useCallback(() => setFullId(null), []);
   useBackLayer(full !== null, closeFull, "widget-full");

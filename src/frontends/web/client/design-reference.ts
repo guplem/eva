@@ -258,6 +258,7 @@ export interface VisorSizeUse {
 export const visorSizes: readonly VisorSizeUse[] = [
   { size: 28, shell: false, use: "Next to a message or a dialog title" },
   { size: 36, shell: false, use: "Nav rail, a card or a notice" },
+  { size: 56, shell: true, use: "The one-line greeting of the day panel" },
   { size: 76, shell: true, use: "An empty page or a page-wide notice" },
   { size: 128, shell: true, use: "Login and the new chat greeting" },
 ];

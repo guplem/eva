@@ -117,6 +117,13 @@
     0 0.3em 0.5em -0.1em oklch(0.3 0.06 var(--h) / 0.35);
 }
 
+.mk.m {
+  font-size: 56px;
+  box-shadow:
+    0 0 0 0.1em var(--shell),
+    0 0.25em 0.5em -0.1em oklch(0.3 0.06 var(--h) / 0.3);
+}
+
 .mk.l {
   font-size: 76px;
   box-shadow:

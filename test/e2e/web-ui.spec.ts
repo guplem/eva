@@ -1245,12 +1245,12 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   await logIn(page);
   const title = await newAnsweredChat(page, "A chat to summarize");
   await waitUntilIdle(page, await chatIdNamed(page, title));
-  const question = page.getByRole("dialog", { name: "Start a new chat from a summary?" });
-  await chooseFromMore(page, "Start a new chat from a summary");
+  const question = page.getByRole("dialog", { name: "Compact: start a new chat from a summary?" });
+  await chooseFromMore(page, "Compact: start a new chat from a summary");
   await question.getByRole("button", { name: "Cancel" }).click();
   await expect(question).toHaveCount(0);
 
-  await chooseFromMore(page, "Start a new chat from a summary");
+  await chooseFromMore(page, "Compact: start a new chat from a summary");
   await question.getByRole("button", { name: "Start" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${title} (continued)`);
   // The summary waits in the box: nothing runs until the person sends it.
@@ -1270,6 +1270,38 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   await (await details()).getByRole("link", { name: `${title} (continued)` }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${title} (continued)`);
   await expect(page.getByLabel("Message").first()).toHaveValue("");
+});
+
+test("a chat that nearly fills its window offers to compact itself, and Not now keeps it quiet (#969)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const title = await newAnsweredChat(page, "A crowded chat");
+  await waitUntilIdle(page, await chatIdNamed(page, title));
+  const notice = page.getByText("This chat is 82% full.");
+  await expect(notice).toBeVisible();
+
+  // The button asks the same question as the menu item.
+  await page.getByRole("button", { name: "Compact", exact: true }).click();
+  const question = page.getByRole("dialog", { name: "Compact: start a new chat from a summary?" });
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(question).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Not now" }).click();
+  await expect(notice).toHaveCount(0);
+  await page.reload();
+  // The answer first: the notice reads the turns, so an empty page would hide it for the wrong reason.
+  await expect(page.locator(".message.answer").first()).toContainText(title);
+  await expect(notice).toHaveCount(0);
+
+  // A fork of a full chat is just as full: it carries the turns of its parent on its path.
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  await expect(notice).toBeVisible();
+
+  // A chat that uses almost none of its window never offers.
+  await newAnsweredChat(page, "A roomy chat");
+  await expect(page.getByText("% full.")).toHaveCount(0);
 });
 
 test("the chat details list the context, and a tap shows a part's whole text (issue 700)", async ({ page }) => {

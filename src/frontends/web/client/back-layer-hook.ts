@@ -31,3 +31,17 @@ export function useBackLayer(open: boolean, onBack: () => void, key = "layer", r
     });
   }, [key, canRestore]);
 }
+
+/** Closes a dialog on Escape or the Back button, unless it waits for a request. */
+export function useEscape(onEscape: () => void, busy: boolean): void {
+  useBackLayer(true, () => {
+    if (!busy) onEscape();
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && !busy) onEscape();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onEscape, busy]);
+}

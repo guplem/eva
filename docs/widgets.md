@@ -156,17 +156,21 @@ This version of Eva does not serve the calendar and the cases yet: each of their
 
 ## Sizes
 
-A widget has five sizes for a fixed grid, and a full-screen view, `full`. The manifest's `size` is the size of its card in the grid. Eva can change the sizes later.
+A widget has five sizes for a fixed grid, and a full-screen view, `full`. The manifest's `size` is the size of its card in the grid. Eva can change the sizes later. `tall` and `xlarge` come with contract 2.
 
 | Size     | On a computer (4 columns) | On a phone (2 columns) |
 | -------- | ------------------------- | ---------------------- |
-| `small`  | 1 column, 1 row           | 1 column, 1 row        |
+| `small`  | 1 column, 1 row           | Half the width, 1 row  |
 | `medium` | 2 columns, 1 row          | The full width, 1 row  |
 | `large`  | The full width, 1 row     | The full width, 2 rows |
-| `tall`   | 1 column, 2 rows          | 1 column, 2 rows       |
+| `tall`   | 1 column, 2 rows          | The full width, 2 rows |
 | `xlarge` | 3 columns, 3 rows         | The full width, 3 rows |
 
-`tall` and `xlarge` come with contract 2. Until the new home layout ships, Eva shows them as `large`.
+The grid is the day panel of Eva's home page:
+
+- The cards follow the order of the list in `.eva/widgets.json`. A card fills the first hole where it fits, so no order makes cards overlap.
+- On a computer, at least three rows share the height above the message box. Each row is at least 140 px high. More cards add rows, and the page scrolls.
+- On a phone, each row is 168 px high, and the page scrolls. An `xlarge` card shows after the smaller cards, so a long calendar does not push them out of view.
 
 - The widget always fills the space that it gets, at every screen size. It has no empty border.
 - Opened in full screen in a browser, the widget fills the whole window with content, even if it looks stretched.

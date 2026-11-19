@@ -51,6 +51,11 @@ body {
   color: var(--warn, #9a6b00);
 }
 
+.widget-link {
+  color: var(--accent, #3b82f6);
+  font-size: clamp(12px, 3.5vmin, 22px);
+}
+
 .habit-list {
   display: grid;
   flex: 1;
@@ -103,9 +108,10 @@ body {
   font-size: clamp(16px, 9vmin, 48px);
 }
 
-/* Large and full: the list takes two columns when the space is wide. */
+/* Large, xlarge and full: the list takes two columns when the space is wide. */
 @media (min-aspect-ratio: 3/2) {
   .widget[data-size="large"] .habit-list,
+  .widget[data-size="xlarge"] .habit-list,
   .widget[data-size="full"] .habit-list {
     grid-template-columns: repeat(2, 1fr);
   }

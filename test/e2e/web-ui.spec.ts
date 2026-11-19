@@ -4,6 +4,8 @@ const token = "e2e-demo-token";
 const vaultPassword = "a long demo password";
 /** The Projects button. A Project chat of another test can add its unread count to the name. */
 const projectsButton = /^Projects(?: \d+ unread chats?)?$/;
+/** The Chats button. A chat of another test can add its unread count to the name. */
+const chatsButton = /^Chats(?: \d+ unread chats?)?$/;
 
 // A route handler can still run as its test ends, and its error then fails the next test.
 test.afterEach(async ({ page }) => {
@@ -4205,7 +4207,7 @@ test("the nav visor wears the Project eyes in Projects on a phone only, even on 
   } else {
     await expect(visor).not.toHaveClass(/project-eyes/);
   }
-  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await page.getByRole("button", { name: chatsButton }).click();
   await expect(visor).not.toHaveClass(/project-eyes/);
   await expect(visor).toHaveClass(/festive/);
 });
@@ -4271,7 +4273,7 @@ test("the New chat button sits in the list header on a computer and at its foot 
 test("a tap on Chats while a chat is open shows the list on a phone and a new chat on a computer", async ({ page }) => {
   await logIn(page);
   await newChat(page);
-  const chats = page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Chats", exact: true });
+  const chats = page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: chatsButton });
   await chats.click();
   if (test.info().project.name === "phone") {
     await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible();
@@ -8126,7 +8128,7 @@ test("Files: an edit stays while the person goes to another folder or page, and 
   await file.getByRole("button", { name: "Edit" }).click();
   await file.getByRole("textbox").fill('{"theme":"light"}');
   await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Notes" }).click();
-  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await page.getByRole("button", { name: chatsButton }).click();
   await page.getByRole("button", { name: "Files", exact: true }).click();
   await page.getByRole("list", { name: "Contents of Vault" }).getByRole("link", { name: "Notes" }).click();
   await page

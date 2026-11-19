@@ -500,6 +500,50 @@ describe("the widget routes", () => {
     expect(await widgets.serve("unknown", "index.html", "GET", null)).toBeNull();
   });
 
+  test("a widget of contract 2 gets null for the calendar and the cases that it was approved, and nothing else", async () => {
+    const calendar = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      access: "read",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+    };
+    const cases = {
+      id: "cases",
+      type: "eva-cases",
+      label: "Cases",
+      description: "Your open cases.",
+      why: "The widget shows your cases.",
+      required: true,
+    };
+    const paths = ["eva/google-calendar/calendars.json", "eva/google-calendar/events.json", "eva/cases.json"];
+    commit({
+      "eva-widget.json": JSON.stringify({
+        ...manifest,
+        contract: 2,
+        size: "xlarge",
+        inputs: [...manifest.inputs, calendar, cases],
+      }),
+    });
+    const token = await approveHabits();
+    expect(widgets.frames(theme, [])[0]?.size).toBe("xlarge");
+    for (const path of paths) {
+      const answer = await widgets.serve(token, path, "GET", null);
+      expect({ path, status: answer?.status, body: text(answer?.body) }).toEqual({ path, status: 200, body: "null" });
+    }
+    expect((await widgets.serve(token, "eva/google-calendar/other.json", "GET", null))?.status).toBe(404);
+    expect((await widgets.serve(token, "eva/cases.json", "PUT", null))?.status).toBe(405);
+  });
+
+  test("a widget with no calendar or cases input gets nothing at their paths", async () => {
+    const token = await approveHabits();
+    for (const path of ["eva/google-calendar/calendars.json", "eva/google-calendar/events.json", "eva/cases.json"]) {
+      expect({ path, status: (await widgets.serve(token, path, "GET", null))?.status }).toEqual({ path, status: 404 });
+    }
+  });
+
   test("a widget with no location permission gets null", async () => {
     commit({ "eva-widget.json": JSON.stringify({ ...manifest, inputs: manifest.inputs.slice(0, 2) }) });
     const token = await approveHabits();
@@ -689,7 +733,7 @@ describe("the updates", () => {
     commit({ "eva-widget.json": JSON.stringify({ ...manifest, inputs: [...manifest.inputs, extra] }) });
     await widgets.checkUpdates(true);
     expect(widgets.list()[0]?.update).toMatchObject({ permissions: [], reasons: ["Daily goal needs a value."] });
-    commit({ "eva-widget.json": JSON.stringify({ ...manifest, contract: 2 }) });
+    commit({ "eva-widget.json": JSON.stringify({ ...manifest, contract: 3 }) });
     await widgets.checkUpdates(true);
     expect(widgets.list()[0]?.update?.reasons.join(" ")).toContain("Update Eva");
   });

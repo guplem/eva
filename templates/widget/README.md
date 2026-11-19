@@ -19,7 +19,7 @@ npm install
 npm start
 ```
 
-Then open http://localhost:3000/. Add `?size=small`, `medium`, `large` or `full` to the address to see each size.
+Then open http://localhost:3000/. Add `?size=small`, `medium`, `large`, `tall`, `xlarge` or `full` to the address to see each size.
 
 ## Change it
 

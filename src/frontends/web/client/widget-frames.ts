@@ -2,9 +2,8 @@
  * The home grid's side of the widget tokens (#691): the theme that the page sends, the tokens that
  * it keeps across a reconnect, and when it asks again.
  */
+import type { WidgetSize } from "../../../core/widgets/widget-kinds.ts";
 import { themeVariables } from "../../../core/widgets/widget-policy.ts";
-
-export type WidgetSize = "small" | "medium" | "large";
 
 /**
  * The page asks for its tokens again this often while it is in view. A token lives 6 hours. The

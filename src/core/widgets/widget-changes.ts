@@ -4,7 +4,7 @@
  * person. The preview of a clone uses the same rule, so the person approves only what the clone adds.
  *
  * A permission is each folder or file input with its access, type and file pattern, the location,
- * each host, the prompt line, and the text of each written schema.
+ * the calendar with its access, the cases, each host, the prompt line, and the text of each written schema.
  */
 import type { ApprovedPath, WidgetApproval } from "./widget-approvals.ts";
 import { ownValue } from "./widget-approvals.ts";
@@ -13,7 +13,7 @@ import type { WidgetInputValue } from "./widget-list.ts";
 import { oneLine } from "./widget-prompt.ts";
 
 /** What the approval grants, without the facts that grant nothing, such as the name. */
-export type WidgetGrant = Pick<WidgetApproval, "paths" | "location" | "hosts" | "prompt">;
+export type WidgetGrant = Pick<WidgetApproval, "paths" | "location" | "googleCalendar" | "cases" | "hosts" | "prompt">;
 
 export interface GrantChange {
   /** The grant that the new manifest asks for, with the person's values. */
@@ -50,9 +50,12 @@ export function grantChange(
       },
     ];
   });
+  const calendar = manifest.inputs.find((input) => input.type === "eva-google-calendar");
   const grant: WidgetGrant = {
     paths,
     location: manifest.inputs.some((input) => input.type === "eva-location"),
+    googleCalendar: calendar === undefined ? null : (calendar.access ?? "read"),
+    cases: manifest.inputs.some((input) => input.type === "eva-cases"),
     hosts: manifest.hosts.map((host) => origin(host.url)),
     prompt: manifest.prompt ?? null,
   };
@@ -71,6 +74,14 @@ export function grantChange(
     }
   }
   if (grant.location && approved?.location !== true) added.push("Read your last location.");
+  const oldCalendar = approved?.googleCalendar ?? null;
+  if (grant.googleCalendar === "write" && oldCalendar === "read")
+    added.push("Change your Google Calendar, not only read it.");
+  else if (grant.googleCalendar !== null && oldCalendar === null)
+    added.push(
+      grant.googleCalendar === "write" ? "Read and change your Google Calendar." : "Read your Google Calendar.",
+    );
+  if (grant.cases && approved?.cases !== true) added.push("Read your open cases.");
   for (const host of grant.hosts) if (!(approved?.hosts ?? []).includes(host)) added.push(`Send requests to ${host}.`);
   if (grant.prompt !== null && grant.prompt !== (approved?.prompt ?? null))
     added.push(`Tell Eva in each new chat: "${oneLine(grant.prompt)}"`);

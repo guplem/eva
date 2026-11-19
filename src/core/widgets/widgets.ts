@@ -976,8 +976,25 @@ export class Widgets {
     const next: WidgetEntry = { id: address.id, repository: address.url, ...change };
     writeWidgetList(
       this.options.vaultPath,
-      index === -1 ? [...entries, next] : entries.map((entry, at) => (at === index ? next : entry)),
+      index === -1 ? this.withNewEntry(entries, next) : entries.map((entry, at) => (at === index ? next : entry)),
     );
+  }
+
+  /**
+   * Adds an entry at the end, or a base widget before the first listed base widget that comes after it.
+   * So the grid shows the base widgets in the order of `baseWidgets`, whatever order the person turns them on.
+   */
+  private withNewEntry(entries: readonly WidgetEntry[], next: WidgetEntry): WidgetEntry[] {
+    const order = [...this.base.keys()];
+    const place = order.indexOf(next.id);
+    const before =
+      place === -1
+        ? -1
+        : entries.findIndex((entry) => {
+            const other = order.indexOf(entry.id);
+            return other > place;
+          });
+    return before === -1 ? [...entries, next] : [...entries.slice(0, before), next, ...entries.slice(before)];
   }
 
   private revoke(id: string): void {

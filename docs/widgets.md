@@ -70,7 +70,7 @@ Each input has these keys:
 - `description`: what the person gives.
 - `why`: why the widget needs it.
 - `required`: `true` or `false`.
-- `default`: a value for the form, as needed.
+- `default`: a value for the form, as needed. For a `folder` or a `file`, see [Default places](#default-places).
 
 | Type                  | What the person gives                              | Extra keys                                   |
 | --------------------- | -------------------------------------------------- | -------------------------------------------- |
@@ -90,7 +90,17 @@ Each input has these keys:
 - `schema` is the path of the JSON Schema of each file that the widget writes, such as `schemas/habits.json`.
 - `files` is a glob pattern of the file names of a folder, such as `*.json` or `????-??-??.json`. `*` matches any text, and `?` matches one character. Neither matches a `/`.
 
-A widget gets only what its inputs give. A widget with no `eva-location` input gets nothing at `eva/location.json`. A widget with no `eva-google-calendar` input gets nothing from `eva/google-calendar/`, and a widget with no `eva-cases` input gets nothing at `eva/cases.json`.
+A widget gets only what its inputs give. A widget with no `eva-location` input gets nothing at `eva/location.json`.
+
+### Default places
+
+A `folder` or a `file` input can give a `default`: a path of the vault, from the vault root, such as `Life/Health/Habits`. Write no `/` at the start. This needs no new contract: contract 1 allows a `default` on each input.
+
+- Eva never fills the input with the default by herself. The form offers it with one tap next to **Pick a folder**, and shows the path as text.
+- **Use the default folder** shows when the folder exists. **Use the default file** shows when the file exists.
+- **Create the default folder** shows when the folder does not exist. The tap creates the folder and each missing parent, with an empty `.gitkeep`, so the vault sync keeps the empty folder. Eva creates no file.
+- A default in a place that no widget reaches, such as `.eva/` or `Scratch/`, shows no button.
+- A default is not a permission. A new or changed default asks for no new approval, and changes no value that the person picked. A widget with no `eva-google-calendar` input gets nothing from `eva/google-calendar/`, and a widget with no `eva-cases` input gets nothing at `eva/cases.json`.
 
 ## How a widget talks to Eva
 

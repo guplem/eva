@@ -171,12 +171,27 @@
   gap: var(--space-4);
 }
 
+/* A basis, so on a phone the buttons wrap under the text instead of squeezing it. */
 .widget-picked {
-  flex: 1;
+  flex: 1 1 9em;
   min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--ink);
   font-family: var(--mono);
   font-size: var(--text-sm);
+}
+
+.widget-place > .button-row {
+  margin-left: auto;
+}
+
+/* On a phone sheet the buttons go under the text, side by side: they are small, and the owner asked for them next to each other. */
+@media (max-width: 760px) {
+  .phone-sheet .widget-place > .button-row {
+    flex-basis: 100%;
+    flex-direction: row;
+    align-items: center;
+  }
 }
 
 .widget-permissions {

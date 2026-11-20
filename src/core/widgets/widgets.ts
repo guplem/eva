@@ -31,6 +31,7 @@ import type { AlertProblem } from "../alerts/alert-center.ts";
 import type { GithubRequest } from "../projects/repository-facts.ts";
 import { grantChange, readOnlyFallbacks, type GrantChange, type WidgetGrant } from "./widget-changes.ts";
 import { releaseNotes } from "./widget-notes.ts";
+import { createDefaultFolder, defaultPlace, type DefaultPlace } from "./widget-defaults.ts";
 import type { WaitingUpdate, WidgetUpdates } from "./widget-updates.ts";
 import type { BaseWidget } from "./base-widgets.ts";
 import {
@@ -461,6 +462,16 @@ export class Widgets {
     } catch (error) {
       this.options.formats?.log(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  /** What each default place of a form is on the disk (#984), by its path: the form offers only a place that fits. */
+  defaultPlaces(paths: readonly string[]): Record<string, DefaultPlace> {
+    return Object.fromEntries(paths.map((path) => [path, defaultPlace(this.options.vaultPath, path)]));
+  }
+
+  /** Creates a default folder of a form after the person's tap (#984), between two sync steps. */
+  async createFolder(path: string): Promise<void> {
+    await this.options.exclusive(() => createDefaultFolder(this.options.vaultPath, path));
   }
 
   /**

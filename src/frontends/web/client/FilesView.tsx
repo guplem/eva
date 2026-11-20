@@ -7,7 +7,17 @@
  * folder by its name, or by the text inside a file.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
-import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry, type SearchResult } from "./api.ts";
+import {
+  api,
+  ApiError,
+  type BacklinksResult,
+  type BrowsedPath,
+  type Favorite,
+  type FileEntry,
+  type SearchResult,
+} from "./api.ts";
+import { goTo } from "./back-layers.ts";
+import { Dialog } from "./Dialog.tsx";
 import { readAppearance } from "./appearance.ts";
 import { ColumnDivider } from "./ColumnDivider.tsx";
 import { copyText } from "./CopyButton.tsx";
@@ -29,7 +39,7 @@ import {
 import { fileBadgeOf, mediaOf, nameEnds } from "./file-kinds.ts";
 import { maxMediaBytes, MediaPreview } from "./FileMedia.tsx";
 import { Icon } from "./icons.tsx";
-import { ListSkeleton } from "./Loading.tsx";
+import { ButtonSpinner, ListSkeleton } from "./Loading.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
@@ -41,6 +51,7 @@ import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
 
 type ShownFile = Extract<BrowsedPath, { kind: "file" }>;
+type SearchMatch = SearchResult["matches"][number];
 type Answer =
   { readonly state: "shown"; readonly answer: BrowsedPath } | { readonly state: "failed"; readonly reason: string };
 
@@ -369,30 +380,9 @@ function SearchResults({
         </div>
       ) : (
         <ul className="files-list" aria-label="Search results">
-          {matches.map((match) => {
-            const shown = shownNameOf(match.name, smart, { title: match.title, badge: match.kind === "file" });
-            const spoken = shownNameOf(match.name, smart, { title: match.title }).name;
-            const folder = parentOf(match.path) ?? "";
-            return (
-              <li key={match.path}>
-                <a className="files-entry" href={fileAddressOf(match.path)} data-tooltip={match.path}>
-                  {match.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={match.name} />}
-                  <span className="files-search-match">
-                    <span className="files-search-name">
-                      <FileName shown={shown} spoken={spoken} />
-                    </span>
-                    {folder !== "" && <span className="files-search-path">{folder}</span>}
-                    {match.line !== undefined && (
-                      <span className="files-search-line">
-                        <span className="visually-hidden">Line {match.line.number}: </span>
-                        {match.line.text}
-                      </span>
-                    )}
-                  </span>
-                </a>
-              </li>
-            );
-          })}
+          {matches.map((match) => (
+            <MatchRow key={match.path} match={match} smart={smart} />
+          ))}
         </ul>
       )}
       {!complete && (
@@ -401,6 +391,139 @@ function SearchResults({
         </div>
       )}
     </div>
+  );
+}
+
+/** One found file or folder: its name, its folder and the line that matched, as a link that opens it. */
+function MatchRow({
+  match,
+  smart,
+  onOpen,
+}: {
+  readonly match: SearchMatch;
+  readonly smart: boolean;
+  /** Opens the match instead of the plain link, such as from a dialog that must close first. */
+  readonly onOpen?: () => void;
+}): ReactElement {
+  const shown = shownNameOf(match.name, smart, { title: match.title, badge: match.kind === "file" });
+  const spoken = shownNameOf(match.name, smart, { title: match.title }).name;
+  const folder = parentOf(match.path) ?? "";
+  return (
+    <li>
+      <a
+        className="files-entry"
+        href={fileAddressOf(match.path)}
+        data-tooltip={match.path}
+        onClick={
+          onOpen === undefined
+            ? undefined
+            : (event) => {
+                event.preventDefault();
+                onOpen();
+              }
+        }
+      >
+        {match.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={match.name} />}
+        <span className="files-search-match">
+          <span className="files-search-name">
+            <FileName shown={shown} spoken={spoken} />
+          </span>
+          {folder !== "" && <span className="files-search-path">{folder}</span>}
+          {match.line !== undefined && (
+            <span className="files-search-line">
+              <span className="visually-hidden">Line {match.line.number}: </span>
+              {match.line.text}
+            </span>
+          )}
+        </span>
+      </a>
+    </li>
+  );
+}
+
+type Backlinks =
+  | { readonly state: "waiting" }
+  | { readonly state: "shown"; readonly result: BacklinksResult }
+  | { readonly state: "failed"; readonly reason: string };
+
+/**
+ * The button with the number of notes that link to the open file (#992). A press lists them in a
+ * dialog, which a phone shows as a sheet. A press on a note opens it.
+ */
+function BacklinksButton({ path, smart }: { readonly path: string; readonly smart: boolean }): ReactElement {
+  const [backlinks, setBacklinks] = useState<Backlinks>({ state: "waiting" });
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    // A slow answer for a file that the person left never shows.
+    let current = true;
+    api.fileBacklinks(path).then(
+      (result) => current && setBacklinks({ state: "shown", result }),
+      (error: unknown) =>
+        current && setBacklinks({ state: "failed", reason: error instanceof Error ? error.message : String(error) }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [path]);
+  const count =
+    backlinks.state === "shown"
+      ? `${String(backlinks.result.links.length)}${backlinks.result.complete ? "" : "+"}`
+      : backlinks.state === "failed"
+        ? "!"
+        : "";
+  const label =
+    backlinks.state === "shown"
+      ? `Notes that link here: ${count}`
+      : backlinks.state === "failed"
+        ? "Notes that link here: Eva could not find them"
+        : "Finding the notes that link here";
+  return (
+    <>
+      <button
+        className="files-backlinks"
+        aria-label={label}
+        data-tooltip={label}
+        aria-busy={backlinks.state === "waiting"}
+        onClick={() => setOpen(true)}
+      >
+        {backlinks.state === "waiting" ? <ButtonSpinner /> : <Icon name="link" />}
+        {count}
+      </button>
+      {open && (
+        <Dialog label="Linked from" onClose={() => setOpen(false)} scrimCloses={true}>
+          <h2>Linked from</h2>
+          {backlinks.state === "waiting" && <ListSkeleton label="Finding the notes that link here…" rows={3} />}
+          {backlinks.state === "failed" && (
+            <div role="alert" className="callout danger">
+              {backlinks.reason}
+            </div>
+          )}
+          {backlinks.state === "shown" &&
+            (backlinks.result.links.length === 0 ? (
+              <p className="empty">No note links to this file.</p>
+            ) : (
+              <ul className="files-list files-backlinks-list" aria-label="Notes that link here">
+                {backlinks.result.links.map((link) => (
+                  <MatchRow
+                    key={link.path}
+                    match={{ ...link, kind: "file" }}
+                    smart={smart}
+                    onOpen={() => {
+                      setOpen(false);
+                      goTo(fileAddressOf(link.path));
+                    }}
+                  />
+                ))}
+              </ul>
+            ))}
+          {backlinks.state === "shown" && !backlinks.result.complete && (
+            <div role="status" className="callout">
+              Eva stopped at the first notes. More notes can link here.
+            </div>
+          )}
+        </Dialog>
+      )}
+    </>
   );
 }
 
@@ -502,6 +625,7 @@ function Column({
         onLarge={onLarge}
         wrap={wrap}
         onWrap={onWrap}
+        smart={smart}
       />
     );
   if (shown.kind === "unreadable")
@@ -523,6 +647,7 @@ function Column({
       wrap={wrap}
       onWrap={onWrap}
       onSaved={onSaved}
+      smart={smart}
     />
   );
 }
@@ -545,6 +670,7 @@ function EncryptedFile({
   onLarge,
   wrap,
   onWrap,
+  smart,
 }: {
   readonly path: string;
   readonly size: number;
@@ -552,6 +678,7 @@ function EncryptedFile({
   readonly onLarge: (large: boolean) => void;
   readonly wrap: boolean;
   readonly onWrap: (wrap: boolean) => void;
+  readonly smart: boolean;
 }): ReactElement {
   const [opened, setOpened] = useState<Opened>({ state: "loading" });
   const name = path.split("/").pop() ?? "file";
@@ -673,6 +800,7 @@ function EncryptedFile({
         if (saved.kind === "file") setOpened({ state: "text", file: saved });
       }}
       source={source}
+      smart={smart}
     />
   );
 }
@@ -951,6 +1079,8 @@ interface FilePreviewProps {
   readonly onSaved: (saved: BrowsedPath) => void;
   /** Where the text comes from and goes to, for a file that is not a plain vault file. */
   readonly source?: FileSource;
+  /** True when the person picked the smart file names, for the list of notes that link here. */
+  readonly smart: boolean;
 }
 
 /** The routes of a file that the vault keeps encrypted (#707). Each one needs this tab's unlock. */
@@ -968,7 +1098,7 @@ const plainSource = (path: string): FileSource => ({
   download: (onShare) => api.downloadFile(path, onShare),
 });
 
-function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: FilePreviewProps): ReactElement {
+function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source, smart }: FilePreviewProps): ReactElement {
   const files = source ?? plainSource(file.path);
   const [plain, setPlain] = useState(false);
   /** The edit, or null outside the editor. */
@@ -1056,6 +1186,7 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source }: Fi
       >
         {draft === null ? (
           <>
+            <BacklinksButton path={file.path} smart={smart} />
             {saved && (
               <span role="status" className="files-size">
                 <Icon name="check" /> Saved

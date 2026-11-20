@@ -781,3 +781,14 @@ a.files-entry[aria-current="true"] {
 .files-media > .progress {
   flex: 1;
 }
+
+/* The number of notes that link here lines up when it changes. */
+.files-backlinks {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The dialog is the card already, so its list needs no card of its own. */
+.files-backlinks-list {
+  padding: 0;
+  box-shadow: none;
+}

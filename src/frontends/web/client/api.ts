@@ -121,6 +121,7 @@ export type {
   EvaStatus,
   Favorite,
   SearchResult,
+  BacklinksResult,
   FileEntry,
   InstallableTool,
   EvaVersions,

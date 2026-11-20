@@ -126,11 +126,19 @@ describe("the layout of each entry", () => {
           layout: { computer: { column: 4, row: 1, size: "tall" }, phone: { column: "two" } },
         },
         { repository: "example-owner/weather", enabled: true, inputs: {}, layout: "left" },
+        {
+          repository: "example-owner/cases",
+          enabled: true,
+          inputs: {},
+          layout: { phone: { column: 1, row: 2, columns: 2, rows: 3 } },
+        },
       ],
     });
-    const [habits, weather] = readWidgetList(vault);
+    const [habits, weather, cases] = readWidgetList(vault);
+    // A layout saved with a size (#985) still reads.
     expect(habits?.layout).toEqual({ computer: { column: 4, row: 1, size: "tall" } });
     expect(weather?.layout).toBeUndefined();
+    expect(cases?.layout).toEqual({ phone: { column: 1, row: 2, columns: 2, rows: 3 } });
   });
 
   test("writes a new layout, clears an empty one, and keeps the layout of each other entry", () => {

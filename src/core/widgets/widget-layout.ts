@@ -1,7 +1,7 @@
 /**
- * The layout of the home grid (#698, #985): where each widget that is on goes, and its size, on a
- * computer and on a phone. The real grid and the preview of Settings both place the cards with
- * `placeWidgets`, so the two never differ. Pure, so the web page can use it, and a test covers it.
+ * The layout of the home grid (#698, #985, #995): where each widget that is on goes, and its shape in
+ * columns and rows, on a computer and on a phone. The real grid and the preview of Settings both place
+ * the cards with `placeWidgets`, so the two never differ. Pure, so the web page can use it, and a test covers it.
  *
  * A widget can have a saved slot for each form in `.eva/widgets.json`. A saved place wins, and a
  * gap that the person left stays. Every other card fills the first hole where it fits, in order,
@@ -13,10 +13,15 @@ export type LayoutForm = "computer" | "phone";
 
 export const layoutForms: readonly LayoutForm[] = ["computer", "phone"];
 
-/** A saved place and size of one widget in one form. Each key is optional, and a bad value is ignored. */
+/**
+ * A saved place and shape of one widget in one form. Each key is optional, and a bad value is ignored.
+ * `size` is the older form of the shape (#985): Eva reads it, and writes `columns` and `rows` instead.
+ */
 export interface LayoutSlot {
   readonly column?: number | undefined;
   readonly row?: number | undefined;
+  readonly columns?: number | undefined;
+  readonly rows?: number | undefined;
   readonly size?: WidgetSize | undefined;
 }
 
@@ -29,19 +34,26 @@ export interface LayoutWidget {
   readonly id: string;
   /** The size of its approved manifest. */
   readonly size: WidgetSize;
-  /** False for a widget that waits for approval: it stays small. */
+  /** False for a widget that waits for approval: it stays 1 x 1. */
   readonly resizable: boolean;
   readonly layout: WidgetLayout;
 }
 
-/** One card at its place. `column` and `row` start at 1. */
-export interface PlacedWidget {
-  readonly id: string;
-  readonly size: WidgetSize;
-  readonly column: number;
-  readonly row: number;
+export interface LayoutShape {
   readonly columns: number;
   readonly rows: number;
+}
+
+/** One box of the grid at its place. `column` and `row` start at 1. */
+export interface LayoutBox extends LayoutShape {
+  readonly id: string;
+  readonly column: number;
+  readonly row: number;
+}
+
+/** One card at its place, with the size name that its frame gets in `?size=`. */
+export interface PlacedWidget extends LayoutBox {
+  readonly size: WidgetSize;
 }
 
 /** The new slots of one form, by widget id. */
@@ -49,15 +61,11 @@ export type LayoutSlots = Readonly<Record<string, LayoutSlot>>;
 
 export type LayoutDirection = "up" | "down" | "left" | "right";
 
-/** A one-tap arrangement of the widgets that are on. */
-export interface LayoutArrangement {
-  readonly id: "big-left" | "big-right" | "small-top" | "big-last" | "big-first";
-  readonly label: string;
-  readonly slots: LayoutSlots;
-}
-
 /** A saved row past this is a typo, not a place: it would make the grid very long. */
 const maxRow = 60;
+
+/** The most rows of one card: more is a typo, and would push every other card out of view. */
+export const maxCardRows = 8;
 
 const spans: Readonly<Record<LayoutForm, Readonly<Record<WidgetSize, readonly [number, number]>>>> = {
   computer: { small: [1, 1], medium: [2, 1], large: [4, 1], tall: [1, 2], xlarge: [3, 3] },
@@ -68,33 +76,80 @@ export function columnsOf(form: LayoutForm): number {
   return form === "computer" ? 4 : 2;
 }
 
-export function spanOf(size: WidgetSize, form: LayoutForm): { readonly columns: number; readonly rows: number } {
+/** The default shape of a size of the contract in a form. */
+export function spanOf(size: WidgetSize, form: LayoutForm): LayoutShape {
   const [columns, rows] = spans[form][size];
   return { columns, rows };
 }
 
-/** The size with no own slot in this form: a phone takes the computer's size. */
-function defaultSizeIn(widget: LayoutWidget, form: LayoutForm): WidgetSize {
-  if (!widget.resizable) return "small";
-  return form === "phone" ? (widget.layout.computer?.size ?? widget.size) : widget.size;
+/**
+ * The size name of the contract that is nearest to a shape, for the `?size=` of a frame. One cell
+ * is small. One column is tall. One row is medium at two columns, and large from three. Two or more
+ * columns and rows are xlarge from six cells, and large below that: a square of four, as on a phone.
+ */
+export function sizeOfShape({ columns, rows }: LayoutShape): WidgetSize {
+  if (columns <= 1 && rows <= 1) return "small";
+  if (columns <= 1) return "tall";
+  if (rows <= 1) return columns === 2 ? "medium" : "large";
+  return columns * rows >= 6 ? "xlarge" : "large";
 }
 
+function sameShape(a: LayoutShape, b: LayoutShape): boolean {
+  return a.columns === b.columns && a.rows === b.rows;
+}
+
+/** The shape that a slot saves for this form, or null when it saves none that fits. */
+function ownShape(slot: LayoutSlot | undefined, form: LayoutForm): LayoutShape | null {
+  if (slot === undefined) return null;
+  if (slot.columns !== undefined && slot.rows !== undefined && slot.columns <= columnsOf(form))
+    return { columns: slot.columns, rows: slot.rows };
+  return slot.size === undefined ? null : spanOf(slot.size, form);
+}
+
+/** The size with no own shape in this form: a phone takes the size of the computer's shape. */
+function baseSize(widget: LayoutWidget, form: LayoutForm): WidgetSize {
+  if (form === "phone" && ownShape(widget.layout.computer, "computer") !== null) return sizeIn(widget, "computer");
+  return widget.size;
+}
+
+/** The columns and rows of a widget's card in a form. */
+export function shapeIn(widget: LayoutWidget, form: LayoutForm): LayoutShape {
+  if (!widget.resizable) return { columns: 1, rows: 1 };
+  return ownShape(widget.layout[form], form) ?? spanOf(baseSize(widget, form), form);
+}
+
+/**
+ * The size name that a widget's frame gets in a form. At the default span of its own size, the card
+ * keeps that size, so a card with no saved shape gets the size of its manifest, as before (#995).
+ * Any other shape gets the nearest size of `sizeOfShape`.
+ */
 export function sizeIn(widget: LayoutWidget, form: LayoutForm): WidgetSize {
   if (!widget.resizable) return "small";
-  return widget.layout[form]?.size ?? defaultSizeIn(widget, form);
+  const shape = shapeIn(widget, form);
+  const base = widget.layout[form]?.size ?? baseSize(widget, form);
+  return sameShape(shape, spanOf(base, form)) ? base : sizeOfShape(shape);
 }
 
 /** The rows that the grid shows: three at least on a computer, so a large card fills the height. */
-export function rowsOf(placed: readonly PlacedWidget[], form: LayoutForm): number {
-  return Math.max(form === "computer" ? 3 : 1, ...placed.map((card) => card.row + card.rows - 1));
+export function rowsOf(placed: readonly LayoutBox[], form: LayoutForm): number {
+  return Math.max(minRows(form), bottomOf(placed));
+}
+
+function minRows(form: LayoutForm): number {
+  return form === "computer" ? 3 : 1;
+}
+
+function bottomOf(boxes: readonly LayoutBox[]): number {
+  return Math.max(0, ...boxes.map((box) => box.row + box.rows - 1));
 }
 
 /**
  * Places each widget. Saved places come first, in list order; a place that does not fit, or that
  * overlaps an earlier card, is ignored. The other cards follow, after the last saved row, so they
  * never fill a gap that the person left. A phone with no saved place follows the computer's order,
- * and shows an `xlarge` card after the smaller cards. With `widen`, a small phone card alone in its
- * row takes the whole row. The answer is in reading order.
+ * and shows an `xlarge` card after the smaller cards. With `widen`, a small phone card that Eva
+ * placed by herself, alone in its row, takes the whole row; a card that the person placed keeps its
+ * shape. The answer is in reading order.
  */
 export function placeWidgets(
   widgets: readonly LayoutWidget[],
@@ -105,26 +160,29 @@ export function placeWidgets(
   const placed: PlacedWidget[] = [];
   const auto: LayoutWidget[] = [];
   for (const widget of widgets) {
-    const size = sizeIn(widget, form);
-    const { columns, rows } = spanOf(size, form);
+    const { columns, rows } = shapeIn(widget, form);
     const slot = widget.layout[form];
     if (slot?.column !== undefined && slot.row !== undefined && grid.fits(slot.column, slot.row, columns, rows)) {
       grid.take(slot.column, slot.row, columns, rows);
-      placed.push({ id: widget.id, size, column: slot.column, row: slot.row, columns, rows });
+      placed.push({ id: widget.id, size: sizeIn(widget, form), column: slot.column, row: slot.row, columns, rows });
     } else auto.push(widget);
   }
-  const start = placed.length === 0 ? 1 : rowsOf(placed, "phone") + 1;
+  const start = placed.length === 0 ? 1 : bottomOf(placed) + 1;
+  const autoPlaced = new Set<string>();
   for (const widget of autoOrder(auto, widgets, form)) {
-    const size = sizeIn(widget, form);
-    const { columns, rows } = spanOf(size, form);
+    const { columns, rows } = shapeIn(widget, form);
     const { column, row } = grid.firstHole(columns, rows, start);
     grid.take(column, row, columns, rows);
-    placed.push({ id: widget.id, size, column, row, columns, rows });
+    placed.push({ id: widget.id, size: sizeIn(widget, form), column, row, columns, rows });
+    autoPlaced.add(widget.id);
   }
   const shown =
     form === "phone" && options.widen !== false
       ? placed.map((card) =>
-          card.size === "small" && grid.free(card.column === 1 ? 2 : 1, card.row)
+          autoPlaced.has(card.id) &&
+          card.columns === 1 &&
+          card.rows === 1 &&
+          grid.free(card.column === 1 ? 2 : 1, card.row)
             ? { ...card, column: 1, columns: 2 }
             : card,
         )
@@ -143,7 +201,7 @@ function autoOrder(auto: readonly LayoutWidget[], all: readonly LayoutWidget[], 
   ];
 }
 
-function readingOrder(cards: readonly PlacedWidget[]): PlacedWidget[] {
+function readingOrder<T extends LayoutBox>(cards: readonly T[]): T[] {
   return [...cards].sort((a, b) => a.row - b.row || a.column - b.column);
 }
 
@@ -160,9 +218,7 @@ class Grid {
   fits(column: number, row: number, columns: number, rows: number): boolean {
     if (!Number.isInteger(column) || !Number.isInteger(row)) return false;
     if (column < 1 || row < 1 || row > maxRow || column + columns - 1 > this.columns) return false;
-    for (let x = column; x < column + columns; x += 1)
-      for (let y = row; y < row + rows; y += 1) if (!this.free(x, y)) return false;
-    return true;
+    return this.fitsAnyRow(column, row, columns, rows);
   }
 
   take(column: number, row: number, columns: number, rows: number): void {
@@ -197,16 +253,18 @@ export function readLayout(raw: unknown): WidgetLayout {
 
 function readSlot(raw: unknown): LayoutSlot | null {
   if (!isObject(raw)) return null;
-  const slot: { column?: number; row?: number; size?: WidgetSize } = {};
-  const { column, row, size } = raw;
-  if (isPlace(column)) slot.column = column;
-  if (isPlace(row)) slot.row = row;
+  const slot: { -readonly [key in keyof LayoutSlot]: LayoutSlot[key] } = {};
+  const { column, row, columns, rows, size } = raw;
+  if (isWhole(column, maxRow)) slot.column = column;
+  if (isWhole(row, maxRow)) slot.row = row;
+  if (isWhole(columns, columnsOf("computer"))) slot.columns = columns;
+  if (isWhole(rows, maxCardRows)) slot.rows = rows;
   if (typeof size === "string" && (widgetSizes as readonly string[]).includes(size)) slot.size = size as WidgetSize;
   return Object.keys(slot).length === 0 ? null : slot;
 }
 
-function isPlace(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= maxRow;
+function isWhole(value: unknown, max: number): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= max;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -226,125 +284,120 @@ export function withSlots(
   });
 }
 
-/** The slot of each card, with its size only when it differs from the default, so a later manifest size still counts. */
-function slotsOf(cards: readonly PlacedWidget[], widgets: readonly LayoutWidget[], form: LayoutForm): LayoutSlots {
+/** The slots that the editor saves: the place and the shape of each box, so what the person saw is what shows. */
+export function slotsOfBoxes(boxes: readonly LayoutBox[]): LayoutSlots {
   return Object.fromEntries(
-    cards.map((card) => {
-      const widget = widgets.find((each) => each.id === card.id);
-      const own = widget !== undefined && widget.resizable && card.size !== defaultSizeIn(widget, form);
-      return [
-        card.id,
-        own ? { column: card.column, row: card.row, size: card.size } : { column: card.column, row: card.row },
-      ];
-    }),
+    boxes.map((box) => [box.id, { column: box.column, row: box.row, columns: box.columns, rows: box.rows }]),
   );
 }
 
-/** The grid with each card but one: the cards that an edit keeps where they are. */
-function others(cards: readonly PlacedWidget[], form: LayoutForm, ...ids: string[]): Grid {
-  const grid = new Grid(columnsOf(form));
-  for (const card of cards) if (!ids.includes(card.id)) grid.take(card.column, card.row, card.columns, card.rows);
-  return grid;
+/** The rows of the grid while the person edits it: one spare row below the last used row. */
+export function editRows(boxes: readonly LayoutBox[], form: LayoutForm): number {
+  return Math.max(minRows(form), bottomOf(boxes) + 1);
 }
 
-/** The last row that an edit may use: one row below the other cards. */
-function lastRow(cards: readonly PlacedWidget[], id: string): number {
-  return Math.max(0, ...cards.filter((card) => card.id !== id).map((card) => card.row + card.rows - 1)) + 1;
+/** The lowest row that a box may reach: the spare row below the other boxes, or the rows that the grid always shows. */
+function lowestRow(others: readonly LayoutBox[], form: LayoutForm): number {
+  return Math.min(maxRow, Math.max(minRows(form), bottomOf(others) + 1));
 }
 
-function edited(
-  cards: readonly PlacedWidget[],
-  widgets: readonly LayoutWidget[],
-  form: LayoutForm,
-  changes: Readonly<Record<string, Partial<PlacedWidget>>>,
-): LayoutSlots {
-  return slotsOf(
-    cards.map((card) => ({ ...card, ...changes[card.id] })),
-    widgets,
-    form,
-  );
-}
-
-/** The places where a card's top left corner can go, in reading order, apart from where it is now. */
-export function layoutTargets(
-  widgets: readonly LayoutWidget[],
-  form: LayoutForm,
-  id: string,
-): { column: number; row: number }[] {
-  const cards = placeWidgets(widgets, form, { widen: false });
-  const card = cards.find((each) => each.id === id);
-  if (card === undefined) return [];
-  const grid = others(cards, form, id);
-  const targets: { column: number; row: number }[] = [];
-  for (let row = 1; row <= lastRow(cards, id); row += 1)
-    for (let column = 1; column <= columnsOf(form); column += 1)
-      if ((column !== card.column || row !== card.row) && grid.fits(column, row, card.columns, card.rows))
-        targets.push({ column, row });
-  return targets;
-}
-
-/** Moves a card to a free place. Null when it does not fit there. */
-export function moveWidget(
-  widgets: readonly LayoutWidget[],
-  form: LayoutForm,
-  id: string,
-  column: number,
-  row: number,
-): LayoutSlots | null {
-  const cards = placeWidgets(widgets, form, { widen: false });
-  const card = cards.find((each) => each.id === id);
-  if (card === undefined || row > lastRow(cards, id)) return null;
-  if (!others(cards, form, id).fits(column, row, card.columns, card.rows)) return null;
-  return edited(cards, widgets, form, { [id]: { column, row } });
-}
-
-/**
- * Swaps two cards: each takes the other's place. When the two would overlap, as two cards of one
- * column of different heights do, the second one goes right after the first. Null when they do not fit.
- */
-export function swapWidgets(
-  widgets: readonly LayoutWidget[],
-  form: LayoutForm,
-  a: string,
-  b: string,
-): LayoutSlots | null {
-  const cards = placeWidgets(widgets, form, { widen: false });
-  const first = cards.find((each) => each.id === a);
-  const second = cards.find((each) => each.id === b);
-  if (first === undefined || second === undefined || a === b) return null;
-  const columns = columnsOf(form);
-  const clamp = (card: PlacedWidget, column: number): number => Math.min(column, columns - card.columns + 1);
-  let movedA = { ...first, column: clamp(first, second.column), row: second.row };
-  let movedB = { ...second, column: clamp(second, first.column), row: first.row };
-  if (overlap(movedA, movedB)) {
-    const [early, late] =
-      movedA.row < movedB.row || (movedA.row === movedB.row && movedA.column < movedB.column)
-        ? [movedA, movedB]
-        : [movedB, movedA];
-    const next =
-      early.column === late.column
-        ? { ...late, row: early.row + early.rows }
-        : { ...late, column: early.column + early.columns };
-    if (late === movedA) movedA = next;
-    else movedB = next;
-  }
-  const grid = others(cards, form, a, b);
-  if (!grid.fits(movedA.column, movedA.row, movedA.columns, movedA.rows)) return null;
-  grid.take(movedA.column, movedA.row, movedA.columns, movedA.rows);
-  if (!grid.fits(movedB.column, movedB.row, movedB.columns, movedB.rows)) return null;
-  return edited(cards, widgets, form, {
-    [a]: { column: movedA.column, row: movedA.row },
-    [b]: { column: movedB.column, row: movedB.row },
-  });
-}
-
-function overlap(a: PlacedWidget, b: PlacedWidget): boolean {
+function overlaps(a: LayoutBox, b: LayoutBox): boolean {
   return (
     a.column < b.column + b.columns &&
     b.column < a.column + a.columns &&
     a.row < b.row + b.rows &&
     b.row < a.row + a.rows
   );
+}
+
+/** True when a box fits the grid: inside the columns, and no lower than one row below the other boxes. */
+function inGrid(box: LayoutBox, others: readonly LayoutBox[], form: LayoutForm): boolean {
+  return (
+    Number.isInteger(box.column) &&
+    Number.isInteger(box.row) &&
+    box.column >= 1 &&
+    box.row >= 1 &&
+    box.columns >= 1 &&
+    box.rows >= 1 &&
+    box.rows <= maxCardRows &&
+    box.column + box.columns - 1 <= columnsOf(form) &&
+    box.row <= lowestRow(others, form)
+  );
+}
+
+function replaced(boxes: readonly LayoutBox[], ...next: LayoutBox[]): LayoutBox[] {
+  return boxes.map((box) => next.find((each) => each.id === box.id) ?? box);
+}
+
+/**
+ * Moves a box so its top left corner is at a cell. A free place takes it. A box of the same shape
+ * exactly at that place swaps places with it. Any other taken place gives null: nothing moves.
+ */
+export function moveBox(
+  boxes: readonly LayoutBox[],
+  form: LayoutForm,
+  id: string,
+  column: number,
+  row: number,
+): LayoutBox[] | null {
+  const box = boxes.find((each) => each.id === id);
+  if (box === undefined || (box.column === column && box.row === row)) return null;
+  const moved = { ...box, column, row };
+  const others = boxes.filter((each) => each.id !== id);
+  if (!inGrid(moved, others, form)) return null;
+  const hit = others.filter((other) => overlaps(moved, other));
+  if (hit.length === 0) return replaced(boxes, moved);
+  const other = hit.length === 1 ? hit[0] : undefined;
+  if (other?.column !== column || other.row !== row || !sameShape(other, box)) return null;
+  return replaced(boxes, moved, { ...other, column: box.column, row: box.row });
+}
+
+/** Gives a box a new shape from its top left corner. Null when it does not fit, or when one row more than now is not enough. */
+export function resizeBox(
+  boxes: readonly LayoutBox[],
+  form: LayoutForm,
+  id: string,
+  columns: number,
+  rows: number,
+): LayoutBox[] | null {
+  const box = boxes.find((each) => each.id === id);
+  if (box === undefined || (box.columns === columns && box.rows === rows)) return null;
+  const resized = { ...box, columns, rows };
+  const others = boxes.filter((each) => each.id !== id);
+  // The bottom grows by one row at a time, into the spare row of the grid.
+  const lowest = Math.max(lowestRow(others, form), box.row + box.rows);
+  if (!inGrid(resized, others, form) || box.row + rows - 1 > lowest) return null;
+  if (others.some((other) => overlaps(resized, other))) return null;
+  return replaced(boxes, resized);
+}
+
+/**
+ * The largest shape that fits, no wider and no higher than the one that the pointer asks, for a
+ * drag of the corner handle. Null when the box keeps its shape.
+ */
+export function resizeBoxToward(
+  boxes: readonly LayoutBox[],
+  form: LayoutForm,
+  id: string,
+  columns: number,
+  rows: number,
+): LayoutBox[] | null {
+  const box = boxes.find((each) => each.id === id);
+  if (box === undefined) return null;
+  let best: { area: number; boxes: LayoutBox[] } | null = null;
+  for (let width = Math.min(columns, columnsOf(form)); width >= 1; width -= 1)
+    for (let height = Math.min(rows, maxCardRows); height >= 1; height -= 1) {
+      if (best !== null && width * height <= best.area) continue;
+      if (width === box.columns && height === box.rows) {
+        best = { area: width * height, boxes: [...boxes] };
+        continue;
+      }
+      const next = resizeBox(boxes, form, id, width, height);
+      if (next !== null) best = { area: width * height, boxes: next };
+    }
+  if (best === null) return null;
+  const shaped = best.boxes.find((each) => each.id === id);
+  return shaped === undefined || sameShape(shaped, box) ? null : best.boxes;
 }
 
 const steps: Readonly<Record<LayoutDirection, readonly [number, number]>> = {
@@ -354,109 +407,29 @@ const steps: Readonly<Record<LayoutDirection, readonly [number, number]>> = {
   right: [1, 0],
 };
 
-/** Moves a card to the next free place in a direction, past the cards in the way. Null at the edge. */
-export function nudgeWidget(
-  widgets: readonly LayoutWidget[],
+/**
+ * Moves a box one cell in a direction, for an arrow key. A box of the same shape there swaps places
+ * with it. Another box in the way is passed: the box goes to the next free place. Null at the edge.
+ */
+export function stepBox(
+  boxes: readonly LayoutBox[],
   form: LayoutForm,
   id: string,
   direction: LayoutDirection,
-): LayoutSlots | null {
-  const cards = placeWidgets(widgets, form, { widen: false });
-  const card = cards.find((each) => each.id === id);
-  if (card === undefined) return null;
-  const grid = others(cards, form, id);
+): LayoutBox[] | null {
+  const box = boxes.find((each) => each.id === id);
+  if (box === undefined) return null;
   const [dx, dy] = steps[direction];
-  const last = lastRow(cards, id);
+  const next = moveBox(boxes, form, id, box.column + dx, box.row + dy);
+  if (next !== null) return next;
+  const others = boxes.filter((each) => each.id !== id);
   for (
-    let column = card.column + dx, row = card.row + dy;
-    row >= 1 && row <= last && column >= 1 && column <= columnsOf(form);
+    let column = box.column + 2 * dx, row = box.row + 2 * dy;
+    inGrid({ ...box, column, row }, others, form);
     column += dx, row += dy
-  )
-    if (grid.fits(column, row, card.columns, card.rows)) return edited(cards, widgets, form, { [id]: { column, row } });
+  ) {
+    const moved = { ...box, column, row };
+    if (!others.some((other) => overlaps(moved, other))) return replaced(boxes, moved);
+  }
   return null;
-}
-
-/** Gives a card a new size. It keeps its place when it fits there, or goes to the first hole where it fits. */
-export function resizeWidget(
-  widgets: readonly LayoutWidget[],
-  form: LayoutForm,
-  id: string,
-  size: WidgetSize,
-): LayoutSlots {
-  const cards = placeWidgets(widgets, form, { widen: false });
-  const card = cards.find((each) => each.id === id);
-  if (card === undefined) return slotsOf(cards, widgets, form);
-  const { columns, rows } = spanOf(size, form);
-  const grid = others(cards, form, id);
-  const column = Math.min(card.column, columnsOf(form) - columns + 1);
-  const place = grid.fits(column, card.row, columns, rows)
-    ? { column, row: card.row }
-    : grid.firstHole(columns, rows, 1);
-  return edited(cards, widgets, form, { [id]: { ...place, size, columns, rows } });
-}
-
-/**
- * A few one-tap arrangements of the widgets that are on, in list order. Each needs one widget that
- * is bigger than all the others, or widgets of more than one size. One that gives the same places
- * as an earlier one shows once.
- */
-export function arrangements(widgets: readonly LayoutWidget[], form: LayoutForm): LayoutArrangement[] {
-  if (widgets.length < 2) return [];
-  const area = (widget: LayoutWidget): number => {
-    const { columns, rows } = spanOf(sizeIn(widget, form), form);
-    return columns * rows;
-  };
-  const areas = widgets.map(area);
-  const top = Math.max(...areas);
-  const big = areas.filter((each) => each === top).length === 1 ? widgets[areas.indexOf(top)] : undefined;
-  const rest = widgets.filter((widget) => widget !== big);
-  const mixed = new Set(areas).size > 1;
-  const candidates: { id: LayoutArrangement["id"]; label: string; order: LayoutWidget[]; fixed?: LayoutWidget }[] = [];
-  if (form === "computer") {
-    if (big !== undefined) {
-      candidates.push({ id: "big-left", label: "Big widget left", order: [big, ...rest] });
-      candidates.push({ id: "big-right", label: "Big widget right", order: rest, fixed: big });
-    }
-    if (mixed)
-      candidates.push({
-        id: "small-top",
-        label: "Smaller widgets on top",
-        order: [...widgets].sort((a, b) => area(a) - area(b)),
-      });
-  } else if (big !== undefined) {
-    candidates.push({ id: "big-last", label: "Big widget last", order: [...rest, big] });
-    candidates.push({ id: "big-first", label: "Big widget first", order: [big, ...rest] });
-  }
-  const seen = new Set<string>();
-  return candidates.flatMap(({ id, label, order, fixed }) => {
-    const slots = arranged(widgets, form, order, fixed);
-    const key = JSON.stringify(Object.entries(slots).sort(([x], [y]) => x.localeCompare(y)));
-    if (seen.has(key)) return [];
-    seen.add(key);
-    return [{ id, label, slots }];
-  });
-}
-
-/** Places `order` in the first holes, after `fixed` at the top right. */
-function arranged(
-  widgets: readonly LayoutWidget[],
-  form: LayoutForm,
-  order: readonly LayoutWidget[],
-  fixed: LayoutWidget | undefined,
-): LayoutSlots {
-  const grid = new Grid(columnsOf(form));
-  const cards: PlacedWidget[] = [];
-  const put = (widget: LayoutWidget, column: number, row: number): void => {
-    const size = sizeIn(widget, form);
-    const { columns, rows } = spanOf(size, form);
-    grid.take(column, row, columns, rows);
-    cards.push({ id: widget.id, size, column, row, columns, rows });
-  };
-  if (fixed !== undefined) put(fixed, columnsOf(form) - spanOf(sizeIn(fixed, form), form).columns + 1, 1);
-  for (const widget of order) {
-    const { columns, rows } = spanOf(sizeIn(widget, form), form);
-    const { column, row } = grid.firstHole(columns, rows, 1);
-    put(widget, column, row);
-  }
-  return slotsOf(cards, widgets, form);
 }

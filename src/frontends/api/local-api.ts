@@ -31,6 +31,7 @@ import type {
 import type { TailnetSnapshot } from "../../core/remote-access/remote-access.ts";
 import { maxWriteBytes } from "../../core/widgets/widget-data.ts";
 import { widgetSizes } from "../../core/widgets/widget-kinds.ts";
+import { maxCardRows } from "../../core/widgets/widget-layout.ts";
 import { widgetInputValueSchema } from "../../core/widgets/widget-list.ts";
 import { widgetPolicy, widgetTheme } from "../../core/widgets/widget-policy.ts";
 import webPage from "../web/index.html";
@@ -388,12 +389,19 @@ const widgetPreviewApproveSchema = widgetPreviewSchema.omit({ mode: true }).exte
   values: z.record(z.string().max(100), widgetInputValueSchema),
 });
 const widgetEnabledSchema = z.object({ enabled: z.boolean() });
-/** One slot of the layout editor: a place inside the grid, and a size of the contract. */
-const layoutSlotSchema = z.object({
-  column: z.number().int().min(1).max(4),
-  row: z.number().int().min(1).max(60),
-  size: z.enum(widgetSizes).optional(),
-});
+/**
+ * One slot of the layout editor: a place inside the grid, and a shape in columns and rows. A page
+ * that an older Eva served can still send a `size` (#985).
+ */
+const layoutSlotSchema = z
+  .object({
+    column: z.number().int().min(1).max(4),
+    row: z.number().int().min(1).max(60),
+    columns: z.number().int().min(1).max(4).optional(),
+    rows: z.number().int().min(1).max(maxCardRows).optional(),
+    size: z.enum(widgetSizes).optional(),
+  })
+  .refine((slot) => slot.column + (slot.columns ?? 1) - 1 <= 4, "The card does not fit in four columns.");
 const layoutSlotsSchema = z.record(z.string().max(200), layoutSlotSchema).nullable().optional();
 const widgetLayoutSchema = z.object({ computer: layoutSlotsSchema, phone: layoutSlotsSchema });
 /** The core refuses a larger write too; this check stops it before Eva reads the body. */

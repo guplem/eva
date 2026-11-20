@@ -30,8 +30,8 @@ export interface SearchResult {
 /** A phone list of more matches is no help: the person types more words instead. */
 export const maxSearchMatches = 100;
 /** A clone can hold a very large dependency folder, and the walk blocks the core while it runs. */
-const maxVisitedEntries = 20_000;
-const maxReadBytes = 50_000_000;
+export const maxVisitedEntries = 20_000;
+export const maxReadBytes = 50_000_000;
 /** The characters that a shown line keeps at each side of the match. */
 const lineContext = 60;
 const hiddenName = ".git";
@@ -82,7 +82,7 @@ export function searchVault(
 }
 
 /** Folders first, then files, each by name, as the folder list shows them. Links and special files are left out. */
-function sortedEntries(folder: string): { readonly name: string; readonly kind: "folder" | "file" }[] {
+export function sortedEntries(folder: string): { readonly name: string; readonly kind: "folder" | "file" }[] {
   let entries;
   try {
     entries = readdirSync(folder, { withFileTypes: true });
@@ -107,7 +107,7 @@ function folderMatch(root: string, path: string, name: string, needle: string): 
 
 /**
  * The first line of the file that holds the needle after the redactor ran, so a search never
- * tells which file holds a secret. The read goes through the open file, so a pipe never blocks.
+ * tells which file holds a secret.
  */
 function textMatch(
   file: string,
@@ -117,6 +117,22 @@ function textMatch(
   budget: { bytes: number },
   redact: (text: string) => string,
 ): SearchMatch | null {
+  const lines = plainLinesOf(file, budget);
+  if (!lines?.some((line) => line.toLowerCase().includes(needle))) return null;
+  for (const [index, line] of lines.entries()) {
+    const shown = redact(line);
+    const at = shown.toLowerCase().indexOf(needle);
+    if (at >= 0)
+      return { path, name, kind: "file", line: { number: index + 1, text: cutAround(shown, at, needle.length) } };
+  }
+  return null;
+}
+
+/**
+ * The lines of a plain text file, or null for a file that is too large for the budget, binary or
+ * encrypted. The read goes through the open file, so a pipe never blocks.
+ */
+export function plainLinesOf(file: string, budget: { bytes: number }): string[] | null {
   let text: string | null;
   try {
     const handle = openSync(file, constants.O_RDONLY | noWait);
@@ -135,19 +151,11 @@ function textMatch(
   } catch {
     return null;
   }
-  if (!text?.toLowerCase().includes(needle)) return null;
-  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
-  for (const [index, line] of lines.entries()) {
-    const shown = redact(line);
-    const at = shown.toLowerCase().indexOf(needle);
-    if (at >= 0)
-      return { path, name, kind: "file", line: { number: index + 1, text: cutAround(shown, at, needle.length) } };
-  }
-  return null;
+  return text === null ? null : text.replace(/^\uFEFF/, "").split(/\r?\n/);
 }
 
 /** The line, trimmed, with at most `lineContext` characters at each side of the match. */
-function cutAround(line: string, at: number, length: number): string {
+export function cutAround(line: string, at: number, length: number): string {
   const start = Math.max(0, at - lineContext);
   const end = Math.min(line.length, at + length + lineContext);
   const cut = line.slice(start, end).trim();

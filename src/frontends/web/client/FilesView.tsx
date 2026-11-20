@@ -44,6 +44,7 @@ import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
+import { opensNewTab } from "./new-tab.ts";
 import { Toast } from "./Toast.tsx";
 import { UnlockVaultForm } from "./VaultPasswordForms.tsx";
 import { draftOf, hasEncryptedDraft, keepDraft, moveDrafts, sameText, type Draft } from "./file-drafts.ts";
@@ -418,6 +419,8 @@ function MatchRow({
           onOpen === undefined
             ? undefined
             : (event) => {
+                // A Ctrl click keeps the link of the browser, so the note opens in a new tab.
+                if (opensNewTab(event)) return;
                 event.preventDefault();
                 onOpen();
               }
@@ -1184,9 +1187,10 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source, smar
         // The text area of the editor copies by itself.
         copy={draft === null ? () => copyText(file.text) : null}
       >
+        {/* It stays while the person edits, so a Cancel or a Save does not walk the vault again. */}
+        <BacklinksButton path={file.path} smart={smart} />
         {draft === null ? (
           <>
-            <BacklinksButton path={file.path} smart={smart} />
             {saved && (
               <span role="status" className="files-size">
                 <Icon name="check" /> Saved

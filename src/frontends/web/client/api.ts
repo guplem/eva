@@ -28,6 +28,7 @@ import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts"
 import type { ComputerSummary } from "../../../core/instance/computers.ts";
 import type { BrowsedPath, FileEntry } from "../../../core/files/file-browser.ts";
 import type { Favorite } from "../../../core/files/vault-favorites.ts";
+import type { BacklinksResult } from "../../../core/files/vault-backlinks.ts";
 import type { SearchResult } from "../../../core/files/vault-search.ts";
 import type { Clone, CloneDetails, RepositoryDetails } from "../../../core/projects/clones.ts";
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
@@ -120,6 +121,7 @@ export type {
   EvaStatus,
   Favorite,
   SearchResult,
+  BacklinksResult,
   FileEntry,
   InstallableTool,
   EvaVersions,
@@ -404,6 +406,9 @@ export const api = {
       "GET",
       `/api/files/search?query=${encodeURIComponent(query)}${contents ? "&contents=true" : ""}${shareable ? "&shareable=true" : ""}`,
     ),
+  /** The vault notes that link to the file at `path` (#992). */
+  fileBacklinks: (path: string): Promise<BacklinksResult> =>
+    request("GET", `/api/files/backlinks?path=${encodeURIComponent(path)}`),
   downloadFile: download,
   /** The vault's encryption: its key, this tab's unlock and the list of secret files (#707). */
   vaultSecrets: (): Promise<VaultSecretsStatus> =>

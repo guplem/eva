@@ -51,6 +51,7 @@ const designIcons: readonly IconName[] = [
   "lock",
   "eye",
   "external",
+  "link",
   "forward",
   "play",
   "stop",

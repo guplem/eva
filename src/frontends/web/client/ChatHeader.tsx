@@ -1,7 +1,7 @@
 /**
  * The header of an open chat: one row with the title, one subtitle, and a "More actions" menu with Rename,
- * Chat info, Compact, Archive and Delete chat. Rename, Compact and Delete chat ask in a dialog. One
- * row leaves the chat its height. A computer also has a button that hides or shows the chat details
+ * Rename automatically, Chat info, Compact, Archive and Delete chat. Rename, Compact and Delete chat ask
+ * in a dialog. One row leaves the chat its height. A computer also has a button that hides or shows the chat details
  * column. On a phone, a tap on the title opens the chat details.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
@@ -11,6 +11,7 @@ import { ChatInfoSheet, chatPanelId, type ChatProps } from "./ChatPanel.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
+import { Toast } from "./Toast.tsx";
 import { BackButton, ShowListButton } from "./MainNav.tsx";
 import { MoreMenu, type MenuItem } from "./Menu.tsx";
 import { compactLabel, SummaryChatQuestion } from "./SummaryChatQuestion.tsx";
@@ -161,7 +162,12 @@ export function ChatHeader({
     setInfoChat(chat.id);
   };
 
-  const items: MenuItem[] = [{ label: "Rename", icon: "pen", onChoose: () => setRenaming(true) }];
+  const autoRename = useAutoRename(onChanged);
+  const items: MenuItem[] = [
+    { label: "Rename", icon: "pen", onChoose: () => setRenaming(true) },
+    // The branch on screen, as for Compact: a chat often ends far from where it began.
+    autoRename.item(details.shownId ?? chat.id, "chat"),
+  ];
   // A computer shows the details in the inspector column.
   if (isPhone) items.push({ label: "Chat info", icon: "chat", onChoose: () => openInfo(moreButton.current) });
   // Every chat has it, open or closed: a long chat can also confuse the model (issue 522).
@@ -241,8 +247,46 @@ export function ChatHeader({
         />
       )}
       {infoOpen && <ChatInfoSheet {...details} onClose={closeInfo} />}
+      {autoRename.wait}
     </div>
   );
+}
+
+/**
+ * "Rename automatically" for the chat header and the fork menu (#996). A model names the chat, or the
+ * fork, from the turns of the branch, by the person's chat name rules. It asks nothing first: a
+ * rename is easy to undo. A toast shows the wait, and a failure shows its reason.
+ */
+export function useAutoRename(onDone: () => Promise<void>): {
+  readonly item: (branchId: string, target: "chat" | "fork") => MenuItem;
+  readonly wait: ReactElement | null;
+} {
+  const [working, setWorking] = useState<"chat" | "fork" | null>(null);
+  const showError = useShowError();
+  const label = `Eva names the ${working ?? "chat"}.`;
+  return {
+    item: (branchId, target) => ({
+      label: "Rename automatically",
+      icon: "wand",
+      // A second name while one waits would only race the first.
+      disabled: working !== null,
+      onChoose: () => {
+        if (working !== null) return;
+        setWorking(target);
+        api
+          .autoRename(branchId, target)
+          .then(onDone)
+          .catch((caught: unknown) => showError(caught))
+          .finally(() => setWorking(null));
+      },
+    }),
+    wait:
+      working !== null ? (
+        <Toast message={label} role={null}>
+          <ProgressBar label={label} />
+        </Toast>
+      ) : null,
+  };
 }
 
 /**

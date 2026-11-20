@@ -425,7 +425,7 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
   await branches.getByRole("button", { name: /^Fork 1/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const rename = page.getByRole("dialog", { name: "Rename Fork 1" });
   await rename.getByLabel("Fork name").fill("Second try");
   await rename.getByRole("button", { name: "Save" }).click();
@@ -527,6 +527,7 @@ test("a right click on any row of the branch map gives the actions of its turn a
     "Retry",
     "Fork",
     "Rename",
+    "Rename automatically",
     "Delete fork",
   ]);
 
@@ -1004,7 +1005,7 @@ test("a link to an archived chat opens it, with the archived list (issue 388)", 
 /** Opens the "More actions" menu of the chat header and picks an item. */
 async function chooseFromMore(page: Page, item: string): Promise<void> {
   await page.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menu", { name: "Chat actions" }).getByRole("menuitem", { name: item }).click();
+  await page.getByRole("menu", { name: "Chat actions" }).getByRole("menuitem", { name: item, exact: true }).click();
 }
 
 test("the More actions menu works from the keyboard, and the focus never gets lost", async ({ page }) => {
@@ -1013,11 +1014,11 @@ test("the More actions menu works from the keyboard, and the focus never gets lo
   const more = page.getByRole("button", { name: "More actions" });
   const menu = page.getByRole("menu", { name: "Chat actions" });
   await more.click();
-  await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeFocused();
+  await expect(menu.getByRole("menuitem", { name: "Rename", exact: true })).toBeFocused();
   await page.keyboard.press("End");
   await expect(menu.getByRole("menuitem", { name: "Delete chat" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeFocused();
+  await expect(menu.getByRole("menuitem", { name: "Rename", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await expect(more).toBeFocused();
@@ -1061,7 +1062,7 @@ test("a right click on a chat in the list shows its actions instead of the brows
   await expect(item).toBeFocused();
 
   await item.click({ button: "right" });
-  await menu.getByRole("menuitem", { name: "Rename" }).click();
+  await menu.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const field = page.getByLabel("Chat title");
   await expect(field).toBeFocused();
   await field.fill(title);
@@ -1348,6 +1349,26 @@ test("a new chat from a summary starts with the summary to edit, and each chat l
   await (await details()).getByRole("link", { name: `${title} (continued)` }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${title} (continued)`);
   await expect(page.getByLabel("Message").first()).toHaveValue("");
+});
+
+test("Rename automatically names the chat and a fork from their turns (#996)", async ({ page }) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Quokka habitat survey"));
+  await waitUntilIdle(page, chatId);
+  await chooseFromMore(page, "Rename automatically");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kestrel field notes");
+
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  const switcher = page.getByRole("group", { name: "Branches after answer 1" });
+  await expect(switcher).toContainText("Fork 1 · 2 of 2");
+  // A fork with no turn of its own has no row in the branch map, so its menu opens from the chat list.
+  await openList(page);
+  const list = page.getByRole("navigation", { name: "Chats" });
+  await list.locator('.chat-item[aria-current="true"] + .chat-forks-toggle').click();
+  const branches = list.locator('.chat-item[aria-current="true"] + .chat-forks-toggle + .chat-forks');
+  await branches.getByRole("button", { name: /^Fork 1/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename automatically" }).click();
+  await expect(branches.getByRole("button", { name: /^Kestrel field notes/ })).toBeVisible();
 });
 
 test("a chat that nearly fills its window offers to compact itself, and Not now keeps it quiet (#969)", async ({
@@ -4686,7 +4707,7 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
     await expect(panel.getByRole("img", { name: "0% of the context window in use" })).toBeVisible();
     // The inspector shows the details, so the menu does not offer them, and the title is no button.
     await page.getByRole("button", { name: "More actions" }).click();
-    await expect(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Rename", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Chat info" })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("heading", { level: 1 }).getByRole("button")).toHaveCount(0);

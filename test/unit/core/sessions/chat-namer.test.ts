@@ -143,3 +143,42 @@ describe("the chat name rules in the settings folder (#662)", () => {
     expect(rulesNamer.rules()).toBe("");
   });
 });
+
+describe("a name from the whole chat (#996)", () => {
+  const chat = {
+    engine: "claude-code",
+    model: "opus",
+    turns: [
+      { userText: "Plan a trip to Rome", answerText: "Sure.", failure: null },
+      { userText: "Now book the hotel", answerText: "Booked.", failure: null },
+    ],
+  } as const;
+
+  test("it gives the model the rules and every turn, on the cheapest model", async () => {
+    writeRules("Lead with an emoji.");
+    const { namer: withRules, engine } = namer((request) => FakeEngine.answer(request, "**🏨 Rome hotel**"));
+    expect(await withRules.nameFromChat(chat)).toEqual({ ok: true, text: "🏨 Rome hotel" });
+    const request = engine.requests[0];
+    expect(request?.model).toBe("haiku");
+    expect(request?.prompt).toContain("<rules>\nLead with an emoji.\n</rules>");
+    expect(request?.prompt).toContain("Person: Plan a trip to Rome\n\nAgent: Sure.");
+    expect(request?.prompt).toContain("Person: Now book the hotel\n\nAgent: Booked.");
+  });
+
+  test("without rules, it follows hidden default rules", async () => {
+    const { namer: withoutRules, engine } = namer((request) => FakeEngine.answer(request, "Rome trip"));
+    expect(await withoutRules.nameFromChat(chat)).toEqual({ ok: true, text: "Rome trip" });
+    expect(engine.requests[0]?.prompt).toMatch(/<rules>\n\S[^]*\n<\/rules>/);
+  });
+
+  test("an empty chat, a failed call or an empty answer gives a reason", async () => {
+    const { namer: empty, engine } = namer();
+    expect(await empty.nameFromChat({ ...chat, turns: [] })).toMatchObject({ ok: false });
+    expect(engine.requests).toHaveLength(0);
+    const { namer: failing } = namer(() => [{ kind: "turn_failed", reason: "Not logged in" }]);
+    expect(await failing.nameFromChat(chat)).toMatchObject({ ok: false, reason: "Not logged in" });
+    expect(logs).toEqual([{ level: "warn", message: "A chat name failed: Not logged in" }]);
+    const { namer: blank } = namer((request) => FakeEngine.answer(request, ' "" '));
+    expect(await blank.nameFromChat(chat)).toMatchObject({ ok: false });
+  });
+});

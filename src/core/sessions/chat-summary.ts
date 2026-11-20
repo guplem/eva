@@ -59,7 +59,7 @@ export class ChatSummarizer {
       systemPrompt,
       prompt: "Summarize this chat.",
       context: {
-        chat: transcript(input.turns),
+        chat: chatTranscript(input.turns),
         ...(input.gitState === null ? {} : { "git-state": input.gitState }),
       },
       timeoutMs: summaryTimeoutMs,
@@ -74,8 +74,11 @@ export class ChatSummarizer {
   }
 }
 
-/** The newest turns that fit, oldest first. A note says when older turns are left out. */
-function transcript(turns: ChatSummaryInput["turns"]): string {
+/**
+ * The newest turns that fit, oldest first. A note says when older turns are left out. The chat
+ * namer uses it too, with a smaller length: a name needs less text (#996).
+ */
+export function chatTranscript(turns: ChatSummaryInput["turns"], maxLength = historyLength): string {
   const parts: string[] = [];
   let length = 0;
   for (let index = turns.length - 1; index >= 0; index -= 1) {
@@ -85,7 +88,7 @@ function transcript(turns: ChatSummaryInput["turns"]): string {
     // Eva sends some messages herself, such as a project work result. The person did not write them.
     const part = `${turn.fromEva === true ? "Eva" : "Person"}: ${cut(turn.userText)}\n\nAgent: ${answer}`;
     // The newest turn always goes, even when it is long: it holds the open work.
-    if (parts.length > 0 && length + part.length > historyLength) {
+    if (parts.length > 0 && length + part.length > maxLength) {
       parts.push(`(${String(index + 1)} older turns are left out.)`);
       break;
     }

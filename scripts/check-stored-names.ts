@@ -48,7 +48,7 @@ import { approvalsFileSchema } from "../src/core/widgets/widget-approvals.ts";
 import { dataFormatRecordSchema } from "../src/core/widgets/data-format-writer.ts";
 import { widgetUpdatesFileSchema } from "../src/core/widgets/widget-updates.ts";
 import { previewGrantSchema, widgetPreviewsVersion } from "../src/core/widgets/widget-previews.ts";
-import { widgetListVersion, type widgetEntrySchema } from "../src/core/widgets/widget-list.ts";
+import { widgetEntrySchema, widgetListVersion } from "../src/core/widgets/widget-list.ts";
 
 const snapshotPath = join(import.meta.dir, "stored-names.txt");
 const snapshotFile = "scripts/stored-names.txt";
@@ -148,10 +148,7 @@ const deviceFields = Object.keys({ hash: true, label: true, createdAt: true } sa
 >);
 
 // The inputs of an entry are a record of the person's values, which the zod walk cannot list.
-const widgetEntryFields = Object.keys({ repository: true, enabled: true, inputs: true } satisfies Record<
-  keyof z.infer<typeof widgetEntrySchema>,
-  true
->);
+const widgetEntryFields = ["inputs", ...schemaNames(widgetEntrySchema.omit({ inputs: true }))];
 /** The key of a name, without its value and its array marks, as the settings name it. */
 function settingKeyOf(name: string): string {
   return name.split("=")[0]?.replaceAll("[]", "") ?? name;

@@ -113,3 +113,59 @@ describe("writeWidgetList", () => {
     expect(readWidgetList(vault)).toEqual([]);
   });
 });
+
+describe("the layout of each entry", () => {
+  test("reads a good layout, and leaves out a bad one", () => {
+    writeRaw({
+      version: 1,
+      widgets: [
+        {
+          repository: "example-owner/habits",
+          enabled: true,
+          inputs: {},
+          layout: { computer: { column: 4, row: 1, size: "tall" }, phone: { column: "two" } },
+        },
+        { repository: "example-owner/weather", enabled: true, inputs: {}, layout: "left" },
+      ],
+    });
+    const [habits, weather] = readWidgetList(vault);
+    expect(habits?.layout).toEqual({ computer: { column: 4, row: 1, size: "tall" } });
+    expect(weather?.layout).toBeUndefined();
+  });
+
+  test("writes a new layout, clears an empty one, and keeps the layout of each other entry", () => {
+    writeRaw({
+      version: 1,
+      widgets: [
+        { repository: "example-owner/habits", enabled: true, inputs: {}, layout: { phone: { column: 2, row: 1 } } },
+        { repository: "example-owner/weather", enabled: true, inputs: {}, layout: { computer: { column: 1, row: 1 } } },
+        { repository: "example-owner/cases", enabled: true, inputs: {}, layout: { computer: { column: 2, row: 1 } } },
+      ],
+    });
+    const entries = readWidgetList(vault);
+    writeWidgetList(
+      vault,
+      entries,
+      new Map([
+        ["example-owner/habits", { computer: { column: 3, row: 2 } }],
+        ["example-owner/weather", {}],
+      ]),
+    );
+    const widgets = (JSON.parse(readFileSync(widgetListPath(vault), "utf-8")) as { widgets: unknown[] }).widgets;
+    expect(widgets).toEqual([
+      {
+        repository: "https://github.com/example-owner/habits",
+        enabled: true,
+        inputs: {},
+        layout: { computer: { column: 3, row: 2 } },
+      },
+      { repository: "https://github.com/example-owner/weather", enabled: true, inputs: {} },
+      {
+        repository: "https://github.com/example-owner/cases",
+        enabled: true,
+        inputs: {},
+        layout: { computer: { column: 2, row: 1 } },
+      },
+    ]);
+  });
+});

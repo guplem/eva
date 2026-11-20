@@ -185,6 +185,7 @@ describe("the list", () => {
         sources: ["list", "project"],
         state: "off",
         size: null,
+        layout: {},
         problems: null,
         update: null,
         checkProblem: null,
@@ -230,14 +231,19 @@ describe("the list", () => {
     ]);
   });
 
-  test("moves a widget, and writes the whole order into the vault", () => {
-    widgets.move("example-owner/base-widget", "up");
-    expect(widgets.list().map((item) => item.id)).toEqual(["example-owner/base-widget", habitsId]);
-    expect(readWidgetList(vault).map((entry) => entry.id)).toEqual(["example-owner/base-widget", habitsId]);
-    widgets.move("example-owner/base-widget", "up");
-    widgets.move(habitsId, "down");
-    expect(widgets.list().map((item) => item.id)).toEqual(["example-owner/base-widget", habitsId]);
-    expect(() => widgets.move("example-owner/unknown", "up")).toThrow("No widget");
+  test("saves the layout of each form apart, and a reset clears one form", () => {
+    let items = widgets.saveLayout({
+      computer: { [habitsId]: { column: 2, row: 1, size: "tall" }, "example-owner/unknown": { column: 1, row: 1 } },
+    });
+    expect(items[0]?.layout).toEqual({ computer: { column: 2, row: 1, size: "tall" } });
+    items = widgets.saveLayout({ phone: { [habitsId]: { column: 1, row: 2 } } });
+    expect(items[0]?.layout).toEqual({ computer: { column: 2, row: 1, size: "tall" }, phone: { column: 1, row: 2 } });
+    // The layout stays when the widget turns off and on: only a remove drops it.
+    widgets.setEnabled(habitsId, false);
+    expect(readWidgetList(vault)[0]?.layout).toEqual(items[0]?.layout);
+    items = widgets.saveLayout({ computer: null });
+    expect(items[0]?.layout).toEqual({ phone: { column: 1, row: 2 } });
+    expect(readWidgetList(vault).map((entry) => entry.id)).toEqual([habitsId]);
   });
 });
 
@@ -455,7 +461,7 @@ describe("the grid", () => {
   test("a widget on in the vault with no approval here shows a card to approve", () => {
     writeWidgetList(vault, [{ ...(readWidgetList(vault)[0] ?? ({} as never)), enabled: true }]);
     expect(widgets.frames(theme, [])).toEqual([
-      { id: habitsId, name: "Habits", size: "small", src: null, token: null },
+      { id: habitsId, name: "Habits", size: "small", layout: {}, src: null, token: null },
     ]);
     expect(widgets.list()[0]?.state).toBe("approve");
   });
@@ -475,7 +481,14 @@ describe("the grid", () => {
   test("keeps a working token, renews an old one, and releases tokens", async () => {
     const token = await approveHabits();
     const [frame] = widgets.frames(theme, [token]);
-    expect(frame).toEqual({ id: habitsId, name: "Habits", size: "medium", src: `/widgets/${token}/index.html`, token });
+    expect(frame).toEqual({
+      id: habitsId,
+      name: "Habits",
+      size: "medium",
+      layout: {},
+      src: `/widgets/${token}/index.html`,
+      token,
+    });
     expect(widgets.frames(theme, ["unknown"])[0]?.token).not.toBe(token);
     now = new Date(now.getTime() + 5.5 * 60 * 60_000);
     expect(widgets.frames(theme, [token])[0]?.token).not.toBe(token);

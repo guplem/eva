@@ -715,6 +715,19 @@ textarea {
   margin-left: auto;
 }
 
+/* The home page puts its button to the widget layout before the bell (#985). */
+.home-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.home-actions .home-buttons {
+  margin-left: 0;
+}
+
 /* The bell holds the count and the dot of the visor. The gear holds the count of the Settings badge. */
 .home-bell,
 .home-gear {

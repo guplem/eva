@@ -170,13 +170,29 @@ describe("the widget list", () => {
     }
   });
 
-  test("adds, checks, approves, moves, turns off and removes a widget", async () => {
+  test("adds, checks, approves, places, turns off and removes a widget", async () => {
     await approvedSrc();
     const listed = (await (await call("/api/widgets")).json()) as { id: string; state: string }[];
     expect(listed.map((item) => [item.id, item.state])).toEqual([[id, "on"]]);
     const checked = (await (await call("/api/widgets/check", { method: "POST" })).json()) as { problems: unknown }[];
     expect(checked[0]?.problems).toEqual([]);
-    expect((await call(`/api/widgets/${id}/move`, { method: "POST", body: { direction: "up" } })).status).toBe(200);
+    const placed = await call("/api/widgets/layout", {
+      method: "PUT",
+      body: { computer: { [id]: { column: 2, row: 1, size: "tall" } }, phone: null },
+    });
+    expect(((await placed.json()) as { layout: unknown }[])[0]?.layout).toEqual({
+      computer: { column: 2, row: 1, size: "tall" },
+    });
+    // A place out of the grid or an unknown size is refused, and nothing changes.
+    const refused = await call("/api/widgets/layout", {
+      method: "PUT",
+      body: { computer: { [id]: { column: 9, row: 1 } } },
+    });
+    expect(refused.status).toBe(400);
+    expect(
+      (await call("/api/widgets/layout", { method: "PUT", body: { phone: { [id]: { size: "huge" } } } })).status,
+    ).toBe(400);
+    expect((await call(`/api/widgets/${id}/move`, { method: "POST", body: { direction: "up" } })).status).toBe(404);
     expect((await call(`/api/widgets/${id}/enabled`, { method: "PUT", body: { enabled: false } })).status).toBe(200);
     expect((await call(`/api/widgets/${id}`, { method: "DELETE" })).status).toBe(200);
     expect(JSON.parse(readFileSync(join(vault, ".eva/widgets.json"), "utf-8"))).toEqual({ version: 1, widgets: [] });
@@ -264,6 +280,27 @@ describe("the widget list", () => {
       });
       expect({ path, status: response.status }).toEqual({ path, status: 403 });
     }
+  });
+});
+
+describe("the default places of a form", () => {
+  test("says what each default is, and creates a missing default folder only in a place that a widget reaches", async () => {
+    const places = await call("/api/widgets/places", {
+      method: "POST",
+      body: { paths: ["Life/Habits", "Life/Habits/walk.json", "Life/Health/Habits", ".eva/data"] },
+    });
+    expect(await places.json()).toEqual({
+      "Life/Habits": "folder",
+      "Life/Habits/walk.json": "file",
+      "Life/Health/Habits": "missing",
+      ".eva/data": null,
+    });
+    const created = await call("/api/widgets/folders", { method: "POST", body: { path: "Life/Health/Habits" } });
+    expect(created.status).toBe(201);
+    expect(existsSync(join(vault, "Life/Health/Habits/.gitkeep"))).toBe(true);
+    const refused = await call("/api/widgets/folders", { method: "POST", body: { path: ".eva/data" } });
+    expect(refused.status).toBe(400);
+    expect(existsSync(join(vault, ".eva/data"))).toBe(false);
   });
 });
 

@@ -329,6 +329,13 @@ export const searchEntries: readonly SearchEntry[] = [
     words: "home page grid calendar habits cases weather add approve permissions repository turn on off",
   },
   {
+    item: "widget-layout",
+    section: "personalize",
+    title: "Widget layout",
+    words:
+      "widgets home page grid place position order move arrange size small medium large tall extra large xlarge preview computer phone gap reset",
+  },
+  {
     item: "widget-updates",
     section: "personalize",
     title: "Widget updates",
@@ -432,10 +439,16 @@ export const settingPlaces: readonly SettingPlace[] = [
     link: { section: "personalize", item: "composer-menu" },
   },
   {
-    title: "Widgets, their order and inputs",
+    title: "Widgets and their inputs",
     home: "vault",
     keys: [],
     link: { section: "personalize", item: "widgets" },
+  },
+  {
+    title: "Widget layout",
+    home: "vault",
+    keys: [],
+    link: { section: "personalize", item: "widget-layout" },
   },
   { title: "Widget permissions", home: "machine", keys: [], link: { section: "personalize", item: "widgets" } },
   {

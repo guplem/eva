@@ -21,6 +21,7 @@ import { calendarAnswer } from "./widget-google-calendar.ts";
 import { noCalendar, type CalendarSource } from "../google/google-calendar.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
+import { layoutForms, type LayoutForm, type LayoutSlots, type WidgetLayout } from "./widget-layout.ts";
 import { checkValues, inspectFiles } from "./widget-values.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
 import type { DataFormatRecord } from "./data-format-writer.ts";
@@ -31,6 +32,7 @@ import type { AlertProblem } from "../alerts/alert-center.ts";
 import type { GithubRequest } from "../projects/repository-facts.ts";
 import { grantChange, readOnlyFallbacks, type GrantChange, type WidgetGrant } from "./widget-changes.ts";
 import { releaseNotes } from "./widget-notes.ts";
+import { createDefaultFolder, defaultPlace, type DefaultPlace } from "./widget-defaults.ts";
 import type { WaitingUpdate, WidgetUpdates } from "./widget-updates.ts";
 import type { BaseWidget } from "./base-widgets.ts";
 import {
@@ -97,6 +99,8 @@ export interface WidgetItem {
   /** "approve": on in the vault, with no matching approval on this computer. */
   readonly state: "off" | "on" | "approve";
   readonly size: WidgetManifest["size"] | null;
+  /** The saved place and size on the home grid, for each form. */
+  readonly layout: WidgetLayout;
   /** The manifest problems of the last review, or an empty list when it was fine. Null before a review. */
   readonly problems: readonly string[] | null;
   /** The update that waits for the person on this computer, or null. */
@@ -137,6 +141,8 @@ export interface WidgetFrame {
   readonly id: string;
   readonly name: string;
   readonly size: WidgetManifest["size"];
+  /** The saved place and size, for each form. The page places the card with `placeWidgets`. */
+  readonly layout: WidgetLayout;
   /** The token path of the entry page, or null for a widget to approve on this computer. */
   readonly src: string | null;
   readonly token: string | null;
@@ -263,6 +269,7 @@ export class Widgets {
         sources,
         state: entry?.enabled !== true ? "off" : matches(record, entry) ? "on" : "approve",
         size: record?.size ?? reviewed?.manifest?.size ?? null,
+        layout: entry?.layout ?? {},
         problems: reviewed === undefined ? null : reviewed.problems.map((problem) => this.options.redact(problem)),
         update: this.waitingOf(address.id),
         checkProblem: this.failures.get(address.id)?.reason ?? null,
@@ -461,6 +468,16 @@ export class Widgets {
     } catch (error) {
       this.options.formats?.log(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  /** What each default place of a form is on the disk (#984), by its path: the form offers only a place that fits. */
+  defaultPlaces(paths: readonly string[]): Record<string, DefaultPlace> {
+    return Object.fromEntries(paths.map((path) => [path, defaultPlace(this.options.vaultPath, path)]));
+  }
+
+  /** Creates a default folder of a form after the person's tap (#984), between two sync steps. */
+  async createFolder(path: string): Promise<void> {
+    await this.options.exclusive(() => createDefaultFolder(this.options.vaultPath, path));
   }
 
   /**
@@ -815,20 +832,34 @@ export class Widgets {
     return this.list();
   }
 
-  /** Moves a widget one place up or down. The whole list goes into the vault, so each computer has the same order. */
-  move(id: string, direction: "up" | "down"): WidgetItem[] {
+  /**
+   * Saves the layout of the home grid in one write, so the editor makes one vault commit. A form
+   * with slots gives each named widget its new slot; a widget that is off keeps its own. A null form
+   * clears that form for every widget, so its default comes back. An unknown id changes nothing.
+   */
+  saveLayout(change: Partial<Record<LayoutForm, LayoutSlots | null | undefined>>): WidgetItem[] {
     const entries = readWidgetList(this.options.vaultPath);
-    const all = this.allAddresses(entries).map(
-      ({ address, entry }): WidgetEntry =>
-        entry ?? { id: address.id, repository: address.url, enabled: false, inputs: {} },
-    );
-    const from = all.findIndex((entry) => entry.id === id);
-    if (from === -1) throw new EvaError("widget_not_found", "No widget of the list has this id.");
-    const to = direction === "up" ? from - 1 : from + 1;
-    if (to < 0 || to >= all.length) return this.list();
-    const moved = all.filter((entry) => entry.id !== id);
-    moved.splice(to, 0, ...all.slice(from, from + 1));
-    writeWidgetList(this.options.vaultPath, moved);
+    const layouts = new Map<string, WidgetLayout>();
+    for (const entry of entries) {
+      let layout: { -readonly [form in LayoutForm]?: WidgetLayout[form] } = { ...entry.layout };
+      let changed = false;
+      for (const form of layoutForms) {
+        const slots = change[form];
+        if (slots === undefined) continue;
+        const slot = slots?.[entry.id];
+        if (slots === null) {
+          const { [form]: _cleared, ...rest } = layout;
+          layout = rest;
+          changed = true;
+        } else if (slot !== undefined) {
+          layout = { ...layout, [form]: slot };
+          changed = true;
+        }
+      }
+      // An entry that does not change keeps its raw key as it is, with any key of a later Eva.
+      if (changed) layouts.set(entry.id, layout);
+    }
+    writeWidgetList(this.options.vaultPath, entries, layouts);
     return this.list();
   }
 
@@ -855,6 +886,7 @@ export class Widgets {
             id: entry.id,
             name: this.options.redact(name),
             size: record?.size ?? "small",
+            layout: entry.layout ?? {},
             src: null,
             token: null,
           };
@@ -870,6 +902,7 @@ export class Widgets {
           id: entry.id,
           name: this.options.redact(record.name),
           size: record.size,
+          layout: entry.layout ?? {},
           src: `/widgets/${token}/${record.entry}`,
           token,
         };

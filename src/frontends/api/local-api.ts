@@ -30,6 +30,7 @@ import type {
 } from "../../core/remote-access/device-logins.ts";
 import type { TailnetSnapshot } from "../../core/remote-access/remote-access.ts";
 import { maxWriteBytes } from "../../core/widgets/widget-data.ts";
+import { widgetSizes } from "../../core/widgets/widget-kinds.ts";
 import { widgetInputValueSchema } from "../../core/widgets/widget-list.ts";
 import { widgetPolicy, widgetTheme } from "../../core/widgets/widget-policy.ts";
 import webPage from "../web/index.html";
@@ -364,6 +365,9 @@ const widgetFramesSchema = z.object({
   keep: z.array(z.string().max(100)).max(100).default([]),
 });
 const widgetReleaseSchema = z.object({ tokens: z.array(z.string().max(100)).max(100) });
+/** The default places of a form (#984), by their path from the vault root. */
+const widgetPlacesSchema = z.object({ paths: z.array(z.string().max(1_000)).max(100) });
+const widgetFolderSchema = z.object({ path: z.string().min(1).max(1_000) });
 const widgetApproveSchema = z.object({
   commit: z.string().min(1).max(100),
   values: z.record(z.string().max(100), widgetInputValueSchema),
@@ -384,7 +388,14 @@ const widgetPreviewApproveSchema = widgetPreviewSchema.omit({ mode: true }).exte
   values: z.record(z.string().max(100), widgetInputValueSchema),
 });
 const widgetEnabledSchema = z.object({ enabled: z.boolean() });
-const widgetMoveSchema = z.object({ direction: z.enum(["up", "down"]) });
+/** One slot of the layout editor: a place inside the grid, and a size of the contract. */
+const layoutSlotSchema = z.object({
+  column: z.number().int().min(1).max(4),
+  row: z.number().int().min(1).max(60),
+  size: z.enum(widgetSizes).optional(),
+});
+const layoutSlotsSchema = z.record(z.string().max(200), layoutSlotSchema).nullable().optional();
+const widgetLayoutSchema = z.object({ computer: layoutSlotsSchema, phone: layoutSlotsSchema });
 /** The core refuses a larger write too; this check stops it before Eva reads the body. */
 const maxWidgetWriteBytes = maxWriteBytes;
 /** The login cookies live a year; the person logs out to end them. */
@@ -788,6 +799,8 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
     await widgets.checkUpdates(true, ownHosts);
     return json(widgets.list());
   }
+  if (parts.length === 3 && parts[2] === "layout" && method === "PUT")
+    return json(widgets.saveLayout(widgetLayoutSchema.parse(await request.json())));
   if (parts.length === 3 && parts[2] === "frames" && method === "POST") {
     const { scheme, colors, keep } = widgetFramesSchema.parse(await request.json());
     return json(widgets.frames(widgetTheme(scheme, colors), keep));
@@ -795,6 +808,13 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
   if (parts.length === 3 && parts[2] === "preview" && method === "POST") {
     const { mode, scheme, colors, ...place } = widgetPreviewSchema.parse(await request.json());
     return json(await widgets.preview(place, mode, widgetTheme(scheme, colors), ownHosts));
+  }
+  if (parts.length === 3 && parts[2] === "places" && method === "POST")
+    return json(widgets.defaultPlaces(widgetPlacesSchema.parse(await request.json()).paths));
+  if (parts.length === 3 && parts[2] === "folders" && method === "POST") {
+    const { path } = widgetFolderSchema.parse(await request.json());
+    await widgets.createFolder(path);
+    return json({ path }, 201);
   }
   // A POST of four parts is no widget route of its own: the widget id routes take DELETE only.
   if (parts.length === 4 && parts[2] === "preview" && parts[3] === "approve" && method === "POST") {
@@ -817,8 +837,6 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
   if (action === "refuse" && method === "POST") return json(widgets.refuseUpdate(id));
   if (action === "enabled" && method === "PUT")
     return json(widgets.setEnabled(id, widgetEnabledSchema.parse(await request.json()).enabled));
-  if (action === "move" && method === "POST")
-    return json(widgets.move(id, widgetMoveSchema.parse(await request.json()).direction));
   return json({ error: "Not found." }, 404);
 }
 

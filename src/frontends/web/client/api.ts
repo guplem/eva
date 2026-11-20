@@ -67,7 +67,9 @@ import type {
 import type { UndoPreview } from "../../../core/vault/vault-snapshots.ts";
 import type { VaultSecretsStatus } from "../../../core/vault/vault-encryption.ts";
 import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
+import type { DefaultPlace } from "../../../core/widgets/widget-defaults.ts";
 import type { WidgetFrame, WidgetItem, WidgetReview } from "../../../core/widgets/widgets.ts";
+import type { LayoutForm, LayoutSlots } from "../../../core/widgets/widget-layout.ts";
 import type { PreviewMode, PreviewPlace, WidgetPreview } from "../../../core/widgets/widget-previews.ts";
 import type { ContextPart } from "../../../shared/chat-context.ts";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
@@ -603,6 +605,11 @@ export const api = {
     request("POST", "/api/widgets/preview/approve", { ...place, digest, values, scheme, colors }),
   /** Keeps the installed version of a widget whose update waits. */
   refuseWidgetUpdate: (id: string): Promise<WidgetItem[]> => request("POST", `/api/widgets/${widgetPath(id)}/refuse`),
+  /** What each default place of a widget form is in the vault (#984), by its path. */
+  widgetPlaces: (paths: readonly string[]): Promise<Record<string, DefaultPlace>> =>
+    request("POST", "/api/widgets/places", { paths }),
+  /** Creates the default folder of a widget form, after the person's tap (#984). */
+  createWidgetFolder: (path: string): Promise<{ path: string }> => request("POST", "/api/widgets/folders", { path }),
   addWidget: (repository: string): Promise<WidgetItem[]> => request("POST", "/api/widgets", { repository }),
   reviewWidget: (id: string): Promise<WidgetReview> => request("GET", `/api/widgets/${widgetPath(id)}/review`),
   approveWidget: (
@@ -614,8 +621,9 @@ export const api = {
     request("POST", `/api/widgets/${widgetPath(id)}/approve`, { commit, values, ...(readOnly ? { readOnly } : {}) }),
   setWidgetEnabled: (id: string, enabled: boolean): Promise<WidgetItem[]> =>
     request("PUT", `/api/widgets/${widgetPath(id)}/enabled`, { enabled }),
-  moveWidget: (id: string, direction: "up" | "down"): Promise<WidgetItem[]> =>
-    request("POST", `/api/widgets/${widgetPath(id)}/move`, { direction }),
+  /** Saves the layout of the home grid in one write. A null form goes back to its default. */
+  saveWidgetLayout: (change: Partial<Record<LayoutForm, LayoutSlots | null>>): Promise<WidgetItem[]> =>
+    request("PUT", "/api/widgets/layout", change),
   removeWidget: (id: string): Promise<WidgetItem[]> => request("DELETE", `/api/widgets/${widgetPath(id)}`),
   /** The cards of the home grid, each with a token. A token in `keep` that still works stays. */
   widgetFrames: (

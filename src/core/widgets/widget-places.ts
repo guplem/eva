@@ -6,6 +6,7 @@
  * A path here is a forward-slash path from the vault root, such as `Life/Health/Habits/walk.json`.
  */
 import { isScratchPath } from "../files/scratch-folders.ts";
+import type { WidgetInput } from "./widget-contract.ts";
 
 /** The file names that an agent reads as its rules, or that a later issue reads as a data format (#692). */
 const ruleFiles: ReadonlySet<string> = new Set(["agents.md", "claude.md", "readme.md", "data_format.md"]);
@@ -69,6 +70,16 @@ export function isClosedPlace(segments: readonly string[]): boolean {
 export function openPath(path: string): string[] | null {
   const segments = pathSegments(path);
   return segments === null || isClosedPlace(segments) ? null : segments;
+}
+
+/**
+ * The `default` of a folder or a file input as a path from the vault root, or null when no widget
+ * may reach it (#984). The form offers it with one tap, so a bad default only shows no button.
+ */
+export function defaultPath(input: WidgetInput): string | null {
+  if ((input.type !== "folder" && input.type !== "file") || typeof input.default !== "string") return null;
+  const path = input.default.trim().replace(/\/+$/, "");
+  return openPath(path) === null ? null : path;
 }
 
 /** True for a file name that a widget may write: a JSON or YAML file that no agent reads as rules. */

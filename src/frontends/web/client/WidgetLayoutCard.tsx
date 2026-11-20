@@ -1,50 +1,43 @@
 /**
- * The layout editor of the home grid (#985, #698): a true-to-scale preview of the grid for a computer or
- * a phone, with one box for each widget that is on. The person selects a box, then taps a free place
- * or another box, drags the box, or uses the arrows. `placeWidgets` places the preview and the home grid,
- * so the two never differ. Each change waits for Save, which writes the layout into the vault once.
+ * The layout editor of the home grid (#985, #995): a true-to-scale preview of the grid for a computer
+ * or a phone, with one box for each widget that is on. Edit turns on the edit mode: the person drags
+ * a box to move it, and its corner handle to change its columns and rows. The arrow keys do the
+ * same. `placeWidgets` places the preview and the home grid, so the two never differ. Done writes
+ * the changes of both forms into the vault once; Cancel drops them.
  */
-import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from "react";
-import type { WidgetSize } from "../../../core/widgets/widget-kinds.ts";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from "react";
 import {
-  arrangements,
   columnsOf,
-  layoutTargets,
-  moveWidget,
-  nudgeWidget,
+  editRows,
+  moveBox,
   placeWidgets,
-  resizeWidget,
+  resizeBox,
+  resizeBoxToward,
   rowsOf,
-  sizeIn,
-  swapWidgets,
+  stepBox,
+  type LayoutBox,
   type LayoutDirection,
   type LayoutForm,
-  type LayoutSlots,
-  type PlacedWidget,
 } from "../../../core/widgets/widget-layout.ts";
 import { api, type WidgetItem } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { SaveButton } from "./SaveButton.tsx";
-import { Card, ChoiceChips, errorText } from "./SettingsParts.tsx";
+import { Card, errorText } from "./SettingsParts.tsx";
+import { Tabs } from "./Tabs.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { gridPlace } from "./WidgetGrid.tsx";
 import {
   boxName,
+  canReset,
   draftChange,
   draftChanged,
-  drafted,
-  hasOwnLayout,
   layoutWidgetsOfItems,
-  placeWords,
-  sizeChoices,
-  sizeLabel,
+  moveWords,
+  shapeWords,
+  shownBoxes,
+  sizeWords,
   type LayoutDraft,
 } from "./widget-layout-draft.ts";
-
-const formChoices: readonly { value: LayoutForm; label: string; icon: "laptop" | "phone" }[] = [
-  { value: "computer", label: "Computer", icon: "laptop" },
-  { value: "phone", label: "Phone", icon: "phone" },
-];
 
 const arrowKeys: Readonly<Record<string, LayoutDirection>> = {
   ArrowUp: "up",
@@ -53,24 +46,15 @@ const arrowKeys: Readonly<Record<string, LayoutDirection>> = {
   ArrowRight: "right",
 };
 
-const moveButtons: readonly { direction: LayoutDirection; label: string; className: string }[] = [
-  { direction: "left", label: "left", className: "" },
-  { direction: "up", label: "up", className: "layout-arrow-up" },
-  { direction: "down", label: "down", className: "layout-arrow-down" },
-  { direction: "right", label: "right", className: "layout-arrow-right" },
-];
-
-/** A pointer must move this far before a press becomes a drag, so a tap stays a tap. */
-const dragStartPx = 6;
-
 interface Drag {
   readonly id: string;
   readonly pointerId: number;
-  readonly x: number;
-  readonly y: number;
+  readonly mode: "move" | "resize";
   /** The cell of the box that the pointer holds, from its top left corner. */
   readonly grab: { readonly column: number; readonly row: number };
-  moving: boolean;
+  /** The draft before the drag, for Escape. */
+  readonly before: LayoutDraft;
+  readonly element: HTMLElement;
 }
 
 export function WidgetLayoutCard({
@@ -83,39 +67,45 @@ export function WidgetLayoutCard({
   readonly notify: (text: string) => void;
 }): ReactElement {
   const [form, setForm] = useState<LayoutForm>("computer");
-  const [draft, setDraft] = useState<LayoutDraft>({});
-  const [selected, setSelected] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraftState] = useState<LayoutDraft>({});
   const [status, setStatus] = useState("");
-  // The top left corner where a drag would drop the selected box.
-  const [hover, setHover] = useState<{ column: number; row: number } | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
   const grid = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
-  const dragged = useRef(false);
+  // The newest draft and rows, for the pointer events that come before React draws again.
+  const latest = useRef<{ draft: LayoutDraft; rows: number }>({ draft, rows: 1 });
+  const helpId = useId();
 
   const names = new Map(items.map((item) => [item.id, item.name]));
   const nameOf = (id: string): string => names.get(id) ?? id;
-  const saved = layoutWidgetsOfItems(items);
-  const widgets = drafted(saved, draft);
-  const changed = draftChanged(draft);
-  const chosen = selected !== null && widgets.some((widget) => widget.id === selected) ? selected : null;
-  // A selected box shows the free half of each phone row, so the person can put a small card there.
-  const cards = placeWidgets(widgets, form, { widen: chosen === null });
+  const widgets = layoutWidgetsOfItems(items);
+  const resizable = new Set(widgets.flatMap((widget) => (widget.resizable ? [widget.id] : [])));
+  const changed = editing && draftChanged(draft);
+  const boxes: readonly LayoutBox[] = editing ? shownBoxes(widgets, draft, form) : placeWidgets(widgets, form);
   const columns = columnsOf(form);
-  const targets = chosen === null ? [] : layoutTargets(widgets, form, chosen);
-  const selectedCard = cards.find((card) => card.id === chosen) ?? null;
-  const rows = Math.max(rowsOf(cards, form), ...targets.map((target) => target.row + (selectedCard?.rows ?? 1) - 1));
-  const offered = arrangements(widgets, form);
-  const shownKey = slotsKey(placeWidgets(widgets, form));
-  const current = offered.find(
-    (each) => slotsKey(placeWidgets(withForm(widgets, form, each.slots), form)) === shownKey,
-  );
+  const rows = editing ? editRows(boxes, form) : rowsOf(boxes, form);
+  latest.current = { draft, rows };
+
+  const setDraft = (next: LayoutDraft): void => {
+    latest.current = { ...latest.current, draft: next };
+    setDraftState(next);
+  };
+
+  const leave = (): void => {
+    setEditing(false);
+    setDraft({});
+    setStatus("");
+  };
 
   const save = async (): Promise<boolean> => {
-    if (!changed) return true;
+    if (!draftChanged(latest.current.draft)) {
+      leave();
+      return true;
+    }
     try {
-      onSaved(await api.saveWidgetLayout(draftChange(draft)));
-      setDraft({});
-      setSelected(null);
+      onSaved(await api.saveWidgetLayout(draftChange(latest.current.draft)));
+      leave();
       return true;
     } catch (error) {
       notify(errorText(error));
@@ -124,347 +114,285 @@ export function WidgetLayoutCard({
   };
   useLeaveGuard(changed, save);
 
-  const apply = (slots: LayoutSlots | null, words: string): void => {
-    setDraft((old) => ({ ...old, [form]: slots }));
-    setStatus(words);
-  };
-
-  const moveTo = (id: string, column: number, row: number): boolean => {
-    const slots = moveWidget(widgets, form, id, column, row);
-    if (slots === null) return false;
-    apply(slots, `${nameOf(id)} moved to ${placeWords(column, row)}.`);
-    return true;
-  };
-
-  const swapWith = (id: string, other: string): boolean => {
-    const slots = swapWidgets(widgets, form, id, other);
-    if (slots === null) return false;
-    apply(slots, `${nameOf(id)} and ${nameOf(other)} swapped places.`);
-    return true;
-  };
-
-  const nudge = (id: string, direction: LayoutDirection): void => {
-    const slots = nudgeWidget(widgets, form, id, direction);
-    if (slots === null) {
-      setStatus(`${nameOf(id)} cannot move ${direction}.`);
-      return;
-    }
-    const place = slots[id];
-    apply(slots, `${nameOf(id)} moved to ${placeWords(place?.column ?? 1, place?.row ?? 1)}.`);
-  };
-
-  const pressBox = (card: PlacedWidget): void => {
-    if (dragged.current) {
-      dragged.current = false;
-      return;
-    }
-    if (chosen === null || chosen === card.id) {
-      const next = chosen === card.id ? null : card.id;
-      setSelected(next);
-      setStatus(
-        next === null ? "" : `${nameOf(card.id)} selected. Tap a free place to move it, or another widget to swap.`,
-      );
-      return;
-    }
-    if (!swapWith(chosen, card.id)) {
-      setSelected(card.id);
-      setStatus(
-        `${nameOf(chosen)} and ${nameOf(card.id)} do not fit in each other's place. ${nameOf(card.id)} is selected now.`,
-      );
-    }
-  };
+  /** Puts new boxes of the shown form in the draft. */
+  const apply = (next: readonly LayoutBox[]): void => setDraft({ ...latest.current.draft, [form]: next });
+  const current = (): LayoutBox[] => shownBoxes(widgets, latest.current.draft, form);
 
   const cellAt = (x: number, y: number): { column: number; row: number } | null => {
-    const box = grid.current?.getBoundingClientRect();
-    if (box === undefined || box.width === 0 || box.height === 0) return null;
-    const column = Math.floor(((x - box.left) / box.width) * columns) + 1;
-    const row = Math.floor(((y - box.top) / box.height) * rows) + 1;
-    return column < 1 || column > columns || row < 1 ? null : { column, row };
-  };
-
-  const startDrag = (event: PointerEvent<HTMLButtonElement>, card: PlacedWidget): void => {
-    // A finger drags only the selected box, so a swipe over the preview still scrolls the page.
-    if (event.pointerType !== "mouse" && card.id !== chosen) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    const cell = cellAt(event.clientX, event.clientY);
-    if (cell === null) return;
-    drag.current = {
-      id: card.id,
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      grab: { column: cell.column - card.column, row: cell.row - card.row },
-      moving: false,
+    const element = grid.current;
+    if (element === null) return null;
+    const box = element.getBoundingClientRect();
+    const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
+    const shownRows = latest.current.rows;
+    const width = (box.width - gap * (columns - 1)) / columns;
+    const height = (box.height - gap * (shownRows - 1)) / shownRows;
+    if (width <= 0 || height <= 0) return null;
+    return {
+      column: Math.floor((x - box.left) / (width + gap)) + 1,
+      row: Math.floor((y - box.top) / (height + gap)) + 1,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const moveDrag = (event: PointerEvent<HTMLButtonElement>): void => {
+  const endDrag = (): void => {
     const held = drag.current;
-    if (held?.pointerId !== event.pointerId) return;
-    if (!held.moving && Math.hypot(event.clientX - held.x, event.clientY - held.y) < dragStartPx) return;
-    held.moving = true;
-    if (chosen !== held.id) setSelected(held.id);
-    const cell = cellAt(event.clientX, event.clientY);
-    setHover(cell === null ? null : { column: cell.column - held.grab.column, row: cell.row - held.grab.row });
-  };
-
-  const endDrag = (event: PointerEvent<HTMLButtonElement>): void => {
-    const held = drag.current;
-    if (held?.pointerId !== event.pointerId) return;
+    if (held === null) return;
     drag.current = null;
-    setHover(null);
-    if (!held.moving) return;
-    // The click that follows the drop must not select or swap.
-    dragged.current = true;
+    setDragging(null);
+    if (held.element.hasPointerCapture(held.pointerId)) held.element.releasePointerCapture(held.pointerId);
+  };
+
+  // Escape puts the box back where the drag found it.
+  useEffect(() => {
+    if (dragging === null) return undefined;
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      const held = drag.current;
+      if (event.key !== "Escape" || held === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setDraft(held.before);
+      endDrag();
+      setStatus(`The drag of ${nameOf(held.id)} is cancelled.`);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+
+  const startDrag = (event: PointerEvent<HTMLDivElement>, box: LayoutBox): void => {
+    if (!editing || drag.current !== null) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const onHandle = event.target instanceof Element && event.target.closest(".layout-handle") !== null;
     const cell = cellAt(event.clientX, event.clientY);
     if (cell === null) return;
-    const column = cell.column - held.grab.column;
-    const row = cell.row - held.grab.row;
-    if (moveTo(held.id, column, row)) return;
-    const under = cards.find(
-      (other) =>
-        other.id !== held.id &&
-        cell.column >= other.column &&
-        cell.column < other.column + other.columns &&
-        cell.row >= other.row &&
-        cell.row < other.row + other.rows,
-    );
-    if (under !== undefined && swapWith(held.id, under.id)) return;
-    setStatus(`${nameOf(held.id)} does not fit there.`);
+    // No text selection and no page scroll while a box moves.
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = {
+      id: box.id,
+      pointerId: event.pointerId,
+      mode: onHandle && resizable.has(box.id) ? "resize" : "move",
+      grab: { column: cell.column - box.column, row: cell.row - box.row },
+      before: latest.current.draft,
+      element: event.currentTarget,
+    };
+    setDragging(box.id);
   };
 
-  const keyOnBox = (event: KeyboardEvent<HTMLButtonElement>, card: PlacedWidget): void => {
-    if (event.key === "Escape" && chosen !== null) {
-      event.preventDefault();
-      setSelected(null);
-      setStatus("");
+  const moveDrag = (event: PointerEvent<HTMLDivElement>): void => {
+    const held = drag.current;
+    if (held?.pointerId !== event.pointerId) return;
+    const cell = cellAt(event.clientX, event.clientY);
+    const now = current();
+    const box = now.find((each) => each.id === held.id);
+    if (cell === null || box === undefined) return;
+    const next =
+      held.mode === "resize"
+        ? resizeBoxToward(
+            now,
+            form,
+            held.id,
+            Math.max(1, cell.column - box.column + 1),
+            Math.max(1, cell.row - box.row + 1),
+          )
+        : moveBox(
+            now,
+            form,
+            held.id,
+            Math.min(Math.max(1, cell.column - held.grab.column), columns - box.columns + 1),
+            Math.max(1, cell.row - held.grab.row),
+          );
+    if (next !== null) apply(next);
+  };
+
+  const dropDrag = (event: PointerEvent<HTMLDivElement>): void => {
+    const held = drag.current;
+    if (held?.pointerId !== event.pointerId) return;
+    endDrag();
+    const box = current().find((each) => each.id === held.id);
+    if (box === undefined || held.before === latest.current.draft) return;
+    setStatus(held.mode === "resize" ? sizeWords(nameOf(box.id), box) : moveWords(nameOf(box.id), box));
+  };
+
+  const keyOnBox = (event: KeyboardEvent<HTMLDivElement>, box: LayoutBox): void => {
+    const direction = arrowKeys[event.key];
+    if (!editing || direction === undefined) return;
+    event.preventDefault();
+    const name = nameOf(box.id);
+    if (event.shiftKey) {
+      if (!resizable.has(box.id)) {
+        setStatus(`Approve ${name} on this computer to change its size.`);
+        return;
+      }
+      const wider = { left: -1, right: 1, up: 0, down: 0 }[direction];
+      const taller = { up: -1, down: 1, left: 0, right: 0 }[direction];
+      const next = resizeBox(current(), form, box.id, box.columns + wider, box.rows + taller);
+      const shaped = next?.find((each) => each.id === box.id);
+      if (next === null || shaped === undefined) {
+        setStatus(
+          `${name} cannot be ${{ left: "narrower", right: "wider", up: "shorter", down: "taller" }[direction]}.`,
+        );
+        return;
+      }
+      apply(next);
+      setStatus(sizeWords(name, shaped));
       return;
     }
-    const direction = arrowKeys[event.key];
-    if (direction === undefined || card.id !== chosen) return;
-    event.preventDefault();
-    nudge(card.id, direction);
+    const next = stepBox(current(), form, box.id, direction);
+    const moved = next?.find((each) => each.id === box.id);
+    if (next === null || moved === undefined) {
+      setStatus(`${name} cannot move ${direction}.`);
+      return;
+    }
+    apply(next);
+    setStatus(moveWords(name, moved));
   };
 
-  const ghost =
-    hover !== null && selectedCard !== null && targets.some((t) => t.column === hover.column && t.row === hover.row)
-      ? { ...selectedCard, column: hover.column, row: hover.row }
-      : null;
-  const covered = coveredCells(cards);
-  const selectedWidget = widgets.find((widget) => widget.id === chosen) ?? null;
   const formName = form === "computer" ? "a computer" : "a phone";
-
-  return (
-    <Card
-      item="widget-layout"
-      title="Widget layout"
-      description="Choose where each widget shows on the home page, and its size. The computer and the phone each have their own layout. A narrow window uses the phone layout."
-    >
-      <ChoiceChips
-        label="Layout for"
-        value={form}
-        choices={formChoices}
-        onChange={(next) => {
-          setForm(next);
-          setSelected(null);
-          setStatus("");
-        }}
-      />
-      {widgets.length === 0 ? (
-        <p className="empty">Turn on a widget to place it on the home page.</p>
-      ) : (
-        <>
-          <div className={`layout-preview-frame layout-${form}`}>
-            <div
-              ref={grid}
-              className="layout-preview"
-              role="group"
-              aria-label={`Preview of the home page on ${formName}`}
-              style={{
-                gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
-                gridTemplateRows: `repeat(${String(rows)}, var(--layout-row))`,
-              }}
-            >
-              {freeCells(columns, rows, covered).map(({ column, row }) => {
-                const target = targets.some((t) => t.column === column && t.row === row);
-                const place = { gridColumn: String(column), gridRow: String(row) };
-                return target && chosen !== null ? (
-                  <button
-                    key={`${String(column)},${String(row)}`}
-                    type="button"
-                    className="layout-cell layout-target"
-                    style={place}
-                    aria-label={`Move ${nameOf(chosen)} to ${placeWords(column, row)}`}
-                    onClick={() => void moveTo(chosen, column, row)}
-                  />
-                ) : (
-                  <div
-                    key={`${String(column)},${String(row)}`}
-                    className="layout-cell"
-                    style={place}
-                    aria-hidden="true"
-                  />
-                );
-              })}
-              {/* In list order, not in reading order: a move keeps the focus on its box. */}
-              {widgets.map((widget) => {
-                const card = cards.find((each) => each.id === widget.id);
-                if (card === undefined) return null;
-                const isSelected = card.id === chosen;
-                return (
-                  <button
-                    key={card.id}
-                    type="button"
-                    className={`layout-box${isSelected ? " selected" : ""}${widget.resizable ? "" : " waiting"}`}
-                    style={gridPlace(card)}
-                    aria-pressed={isSelected}
-                    aria-label={boxName(card, nameOf(card.id), form)}
-                    onClick={() => pressBox(card)}
-                    onKeyDown={(event) => keyOnBox(event, card)}
-                    onPointerDown={(event) => startDrag(event, card)}
-                    onPointerMove={moveDrag}
-                    onPointerUp={endDrag}
-                    onPointerCancel={() => {
-                      drag.current = null;
-                      setHover(null);
-                    }}
-                  >
-                    {!widget.resizable && <Icon name="lock" />}
-                    <span className="layout-box-name">{nameOf(card.id)}</span>
-                    <span className="layout-box-size">{sizeLabel(card.size, form)}</span>
-                  </button>
-                );
-              })}
-              {ghost !== null && <div className="layout-ghost" style={gridPlace(ghost)} aria-hidden="true" />}
-            </div>
-          </div>
-          <p className="field-hint" role="status">
-            {status !== "" ? status : "Select a widget, then tap a free place or another widget. You can also drag it."}
-          </p>
-          {selectedWidget !== null && chosen !== null && (
-            <div className="layout-tools" role="group" aria-label={`Move or resize ${nameOf(chosen)}`}>
-              <div className="field">
-                <span className="field-label">Move {nameOf(chosen)}</span>
-                <div className="button-row">
-                  {moveButtons.map(({ direction, label, className }) => (
-                    <button
-                      key={direction}
-                      type="button"
-                      className="icon-button"
-                      aria-label={`Move ${nameOf(chosen)} ${label}`}
-                      data-tooltip={`Move ${label}`}
-                      onClick={() => nudge(chosen, direction)}
-                    >
-                      <Icon name="back" className={className} />
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      setSelected(null);
-                      setStatus("");
-                    }}
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-              {selectedWidget.resizable ? (
-                <ChoiceChips<WidgetSize>
-                  label={`Size of ${nameOf(chosen)}`}
-                  value={sizeIn(selectedWidget, form)}
-                  choices={sizeChoices(form)}
-                  hint="Columns × rows on the home page. The widget shows more in a larger size."
-                  onChange={(size) =>
-                    apply(
-                      resizeWidget(widgets, form, chosen, size),
-                      `${nameOf(chosen)} is ${sizeLabel(size, form)} now.`,
-                    )
-                  }
+  const preview =
+    widgets.length === 0 ? (
+      <p className="empty">Turn on a widget to place it on the home page.</p>
+    ) : (
+      <>
+        <div className={`layout-preview-frame layout-${form}`}>
+          <div
+            ref={grid}
+            className={editing ? "layout-preview editing" : "layout-preview"}
+            role="group"
+            aria-label={`Preview of the home page on ${formName}`}
+            style={{
+              gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${String(rows)}, var(--layout-row))`,
+            }}
+          >
+            {editing &&
+              cellsOf(columns, rows).map(({ column, row }) => (
+                <div
+                  key={`${String(column)},${String(row)}`}
+                  className="layout-cell"
+                  style={{ gridColumn: String(column), gridRow: String(row) }}
+                  aria-hidden="true"
                 />
-              ) : (
-                <p className="field-hint">Approve {nameOf(chosen)} on this computer to choose its size.</p>
-              )}
-            </div>
-          )}
-          {offered.length > 0 && (
-            <ChoiceChips
-              label="Arrangements"
-              value={current?.id ?? "none"}
-              choices={offered.map((each) => ({ value: each.id, label: each.label }))}
-              hint="One tap places every widget. Then move each one as you like."
-              onChange={(id) => {
-                const picked = offered.find((each) => each.id === id);
-                if (picked === undefined) return;
-                setSelected(null);
-                apply(picked.slots, `${picked.label}: done. Save to keep it.`);
-              }}
-            />
-          )}
-          <div className="button-row">
-            <SaveButton className="primary" aria-disabled={changed ? undefined : "true"} onSave={save}>
-              Save layout
-            </SaveButton>
+              ))}
+            {/* In list order, not in reading order: a move keeps the focus on its box. */}
+            {widgets.map((widget) => {
+              const box = boxes.find((each) => each.id === widget.id);
+              if (box === undefined) return null;
+              const name = nameOf(box.id);
+              return (
+                <div
+                  key={box.id}
+                  className={`layout-box${dragging === box.id ? " dragging" : ""}${widget.resizable ? "" : " waiting"}`}
+                  style={gridPlace(box)}
+                  role="group"
+                  aria-label={boxName(name, box)}
+                  aria-describedby={editing ? helpId : undefined}
+                  tabIndex={editing ? 0 : undefined}
+                  onPointerDown={(event) => startDrag(event, box)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={dropDrag}
+                  onPointerCancel={dropDrag}
+                  onKeyDown={(event) => keyOnBox(event, box)}
+                >
+                  <span className="layout-box-name">
+                    {!widget.resizable && <Icon name="lock" />}
+                    {name}
+                  </span>
+                  <span className="layout-box-size" aria-hidden="true">
+                    {shapeWords(box)}
+                  </span>
+                  {editing && <Icon name="move" className="layout-grip" />}
+                  {editing && widget.resizable && (
+                    <span className="layout-handle">
+                      <Icon name="resize" label={`Resize ${name}`} />
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <p id={helpId} className="visually-hidden">
+          Drag the widget, or press the arrow keys, to move it. Drag its corner, or press Shift and the arrow keys, to
+          change its size.
+        </p>
+        <div className="layout-foot">
+          <p className="field-hint" role="status">
+            {status !== ""
+              ? status
+              : editing
+                ? "Drag a widget to move it. Drag its corner to change its size."
+                : "This is how your home page looks."}
+          </p>
+          {editing && (
             <button
               type="button"
               className="ghost"
-              aria-disabled={hasOwnLayout(widgets, form) ? undefined : "true"}
+              aria-disabled={canReset(widgets, draft, form) ? undefined : "true"}
               onClick={() => {
-                if (!hasOwnLayout(widgets, form)) return;
-                setSelected(null);
-                apply(null, `The layout on ${formName} is back to the default. Save to keep it.`);
+                if (!canReset(widgets, draft, form)) return;
+                setDraft({ ...draft, [form]: null });
+                setStatus(`The layout on ${formName} is back to the default. Press Done to keep it.`);
               }}
             >
               <Icon name="restart" />
               Reset to default
             </button>
-            {changed && (
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => {
-                  setDraft({});
-                  setSelected(null);
-                  setStatus("The changes are gone.");
-                }}
-              >
-                Discard changes
+          )}
+        </div>
+      </>
+    );
+
+  return (
+    <Card
+      item="widget-layout"
+      title="Widget layout"
+      description="Where each widget shows on the home page, and its size. The computer and the phone each have their own layout. A narrow window uses the phone layout."
+    >
+      <Tabs
+        label="Layout for"
+        look="line"
+        fit
+        selected={form}
+        onSelect={(next) => {
+          setForm(next as LayoutForm);
+          setStatus("");
+        }}
+        actions={
+          widgets.length === 0 ? undefined : editing ? (
+            <>
+              <button type="button" className="ghost" onClick={leave}>
+                Cancel
               </button>
-            )}
-          </div>
-        </>
-      )}
+              <SaveButton className="primary" onSave={save}>
+                <Icon name="check" />
+                Done
+              </SaveButton>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(true);
+                setStatus("");
+              }}
+            >
+              <Icon name="pen" />
+              Edit
+            </button>
+          )
+        }
+        tabs={[
+          { id: "computer", label: "Computer", icon: "laptop", content: preview },
+          { id: "phone", label: "Phone", icon: "phone", content: preview },
+        ]}
+      />
     </Card>
   );
 }
 
-function withForm(
-  widgets: ReturnType<typeof layoutWidgetsOfItems>,
-  form: LayoutForm,
-  slots: LayoutSlots,
-): ReturnType<typeof layoutWidgetsOfItems> {
-  return drafted(widgets, { [form]: slots });
-}
-
-/** The places of the cards, to compare two layouts. */
-function slotsKey(cards: readonly PlacedWidget[]): string {
-  return cards.map((card) => `${card.id}@${String(card.column)},${String(card.row)}`).join(" ");
-}
-
-function coveredCells(cards: readonly PlacedWidget[]): Set<string> {
-  const covered = new Set<string>();
-  for (const card of cards)
-    for (let x = card.column; x < card.column + card.columns; x += 1)
-      for (let y = card.row; y < card.row + card.rows; y += 1) covered.add(`${String(x)},${String(y)}`);
-  return covered;
-}
-
-function freeCells(columns: number, rows: number, covered: ReadonlySet<string>): { column: number; row: number }[] {
+function cellsOf(columns: number, rows: number): { column: number; row: number }[] {
   const cells: { column: number; row: number }[] = [];
   for (let row = 1; row <= rows; row += 1)
-    for (let column = 1; column <= columns; column += 1)
-      if (!covered.has(`${String(column)},${String(row)}`)) cells.push({ column, row });
+    for (let column = 1; column <= columns; column += 1) cells.push({ column, row });
   return cells;
 }

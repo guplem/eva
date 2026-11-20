@@ -1,25 +1,29 @@
 /**
- * The words and the unsaved changes of the layout editor in Settings (#985). The editor and the
- * home grid turn their widgets into `LayoutWidget`s here, so both give `placeWidgets` the same input.
+ * The words and the unsaved changes of the layout editor in Settings (#985, #995). The editor and
+ * the home grid turn their widgets into `LayoutWidget`s here, so both give `placeWidgets` the same input.
  */
-import { widgetSizes, type WidgetSize } from "../../../core/widgets/widget-kinds.ts";
 import {
-  spanOf,
+  placeWidgets,
+  slotsOfBoxes,
   withSlots,
+  type LayoutBox,
   type LayoutForm,
+  type LayoutShape,
   type LayoutSlots,
   type LayoutWidget,
-  type PlacedWidget,
 } from "../../../core/widgets/widget-layout.ts";
 import type { WidgetFrame, WidgetItem } from "./api.ts";
 
-/** The unsaved slots of each form. A missing form is unchanged; null goes back to the default. */
+/**
+ * The changes of the edit mode, for each form: the boxes as the person left them, or null for
+ * "Reset to default". A missing form has no change: it shows the places of the home page.
+ */
 export interface LayoutDraft {
-  readonly computer?: LayoutSlots | null;
-  readonly phone?: LayoutSlots | null;
+  readonly computer?: readonly LayoutBox[] | null;
+  readonly phone?: readonly LayoutBox[] | null;
 }
 
-/** The cards of the home grid. A card to approve stays small. */
+/** The cards of the home grid. A card to approve stays 1 x 1. */
 export function layoutWidgetsOfFrames(frames: readonly WidgetFrame[]): LayoutWidget[] {
   return frames.map((frame) => ({
     id: frame.id,
@@ -41,53 +45,69 @@ export function layoutWidgetsOfItems(items: readonly WidgetItem[]): LayoutWidget
     }));
 }
 
-export function drafted(widgets: readonly LayoutWidget[], draft: LayoutDraft): LayoutWidget[] {
+function slotsOf(boxes: readonly LayoutBox[] | null): LayoutSlots | null {
+  return boxes === null ? null : slotsOfBoxes(boxes);
+}
+
+/** The widgets with the changes of the draft, so a phone with no layout of its own follows a changed computer. */
+export function draftedWidgets(widgets: readonly LayoutWidget[], draft: LayoutDraft): LayoutWidget[] {
   let next = [...widgets];
-  if (draft.computer !== undefined) next = withSlots(next, "computer", draft.computer);
-  if (draft.phone !== undefined) next = withSlots(next, "phone", draft.phone);
+  if (draft.computer !== undefined) next = withSlots(next, "computer", slotsOf(draft.computer));
+  if (draft.phone !== undefined) next = withSlots(next, "phone", slotsOf(draft.phone));
   return next;
+}
+
+/** The boxes that the preview shows for a form. */
+export function shownBoxes(widgets: readonly LayoutWidget[], draft: LayoutDraft, form: LayoutForm): LayoutBox[] {
+  const boxes = draft[form];
+  return boxes === undefined || boxes === null ? placeWidgets(draftedWidgets(widgets, draft), form) : [...boxes];
 }
 
 export function draftChanged(draft: LayoutDraft): boolean {
   return draft.computer !== undefined || draft.phone !== undefined;
 }
 
-/** True when a widget has its own slot in this form, so "Reset to default" changes something. */
-export function hasOwnLayout(widgets: readonly LayoutWidget[], form: LayoutForm): boolean {
+/** True when "Reset to default" changes something: the form has its own layout, saved or in the draft. */
+export function canReset(widgets: readonly LayoutWidget[], draft: LayoutDraft, form: LayoutForm): boolean {
+  const boxes = draft[form];
+  if (boxes !== undefined) return boxes !== null;
   return widgets.some((widget) => widget.layout[form] !== undefined);
 }
 
 /** The body of the save: only the forms that changed. */
 export function draftChange(draft: LayoutDraft): Partial<Record<LayoutForm, LayoutSlots | null>> {
   return {
-    ...(draft.computer !== undefined ? { computer: draft.computer } : {}),
-    ...(draft.phone !== undefined ? { phone: draft.phone } : {}),
+    ...(draft.computer !== undefined ? { computer: slotsOf(draft.computer) } : {}),
+    ...(draft.phone !== undefined ? { phone: slotsOf(draft.phone) } : {}),
   };
 }
 
-const sizeNames: Readonly<Record<WidgetSize, string>> = {
-  small: "Small",
-  medium: "Medium",
-  large: "Large",
-  tall: "Tall",
-  xlarge: "Extra large",
-};
-
-/** A size with its span in this form, such as "Medium 2 × 1". */
-export function sizeLabel(size: WidgetSize, form: LayoutForm): string {
-  const { columns, rows } = spanOf(size, form);
-  return `${sizeNames[size]} ${String(columns)} × ${String(rows)}`;
+/** The shape of a box as the preview shows it, such as "2 × 1". */
+export function shapeWords({ columns, rows }: LayoutShape): string {
+  return `${String(columns)} × ${String(rows)}`;
 }
 
-export function sizeChoices(form: LayoutForm): { value: WidgetSize; label: string }[] {
-  return widgetSizes.map((size) => ({ value: size, label: sizeLabel(size, form) }));
+function count(value: number, word: string): string {
+  return `${String(value)} ${word}${value === 1 ? "" : "s"}`;
 }
 
-export function placeWords(column: number, row: number): string {
-  return `column ${String(column)}, row ${String(row)}`;
+function longShape({ columns, rows }: LayoutShape): string {
+  return `${count(columns, "column")} by ${count(rows, "row")}`;
+}
+
+function placeWords(box: LayoutBox): string {
+  return `column ${String(box.column)}, row ${String(box.row)}`;
 }
 
 /** The name of a box of the preview for a screen reader. */
-export function boxName(card: PlacedWidget, name: string, form: LayoutForm): string {
-  return `${name}, ${sizeLabel(card.size, form).toLowerCase()}, ${placeWords(card.column, card.row)}`;
+export function boxName(name: string, box: LayoutBox): string {
+  return `${name}, ${longShape(box)}, at ${placeWords(box)}`;
+}
+
+export function moveWords(name: string, box: LayoutBox): string {
+  return `${name} moved to ${placeWords(box)}.`;
+}
+
+export function sizeWords(name: string, box: LayoutBox): string {
+  return `${name} is ${longShape(box)} now.`;
 }

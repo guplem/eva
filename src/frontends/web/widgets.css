@@ -217,50 +217,35 @@ button.files-entry:focus-visible {
 }
 
 /*
- * The preview of the layout editor (#985): the home grid at a smaller scale. A computer cell is
- * about 4:3, as the home page shows it; a phone cell is about square. Each target keeps the touch
- * size, so a narrow screen makes the preview longer, not the targets smaller.
+ * The preview of the layout editor (#985, #995): the home grid at a smaller scale. A computer cell
+ * is wider than it is high, as on the home page; a phone cell is about square. Each row keeps the
+ * touch size, so a narrow screen makes the preview longer, not the boxes smaller.
  */
 .layout-preview-frame {
   container-type: inline-size;
   width: 100%;
-  max-width: 560px;
 }
 
 .layout-preview-frame.layout-phone {
-  max-width: 240px;
+  max-width: 330px;
   margin-inline: auto;
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
 }
 
 .layout-preview {
   --layout-gap: var(--space-2);
-  --layout-row: max(var(--touch-target), calc((100cqw - 3 * var(--layout-gap)) / 4 * 0.75));
-  position: relative;
+  --layout-row: max(var(--touch-target), calc((100cqw - 3 * var(--layout-gap)) / 4 * 0.6));
   display: grid;
   gap: var(--layout-gap);
-  touch-action: pan-y;
 }
 
 .layout-phone .layout-preview {
   --layout-row: max(var(--touch-target), calc((100cqw - var(--layout-gap)) / 2 * 0.95));
 }
 
+/* A free cell of the edit mode. */
 .layout-cell {
-  border: 1px dashed var(--line);
+  border: 1.5px dashed var(--line);
   border-radius: var(--radius-input);
-  background: transparent;
-  padding: 0;
-  min-height: 0;
-}
-
-/* A free place where the selected widget fits: a press moves it there. */
-.layout-cell.layout-target {
-  border-color: var(--accent);
-  background: var(--soft);
-  cursor: pointer;
 }
 
 .layout-box {
@@ -268,41 +253,53 @@ button.files-entry:focus-visible {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
   gap: 2px;
   min-width: 0;
   min-height: 0;
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: var(--radius-input);
-  background: var(--panel);
+  background: var(--chip);
   color: var(--ink);
-  font: inherit;
-  text-align: left;
-  cursor: grab;
 }
 
-/* A finger drags the selected box, so the page does not scroll under it. */
-.layout-box.selected {
-  border: 2px solid var(--accent);
+/* A drag moves the box, so the page must not scroll under the finger. A swipe on a free cell still scrolls. */
+.editing .layout-box {
+  border-color: var(--line);
   background: var(--soft);
   color: var(--soft-ink);
+  cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.layout-box:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.layout-box.dragging {
+  z-index: 2;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    var(--shadow);
+  cursor: grabbing;
 }
 
 .layout-box.waiting {
   color: var(--muted);
 }
 
-.layout-box .icon {
-  width: 14px;
-  height: 14px;
-}
-
 .layout-box-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
   max-width: 100%;
+  /* Room for the grip at the top right. */
+  padding-right: var(--space-5);
   overflow: hidden;
   font-weight: 600;
   font-size: var(--text-sm);
@@ -310,38 +307,69 @@ button.files-entry:focus-visible {
   text-overflow: ellipsis;
 }
 
+.layout-box-name .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
 .layout-box-size {
-  max-width: 100%;
-  overflow: hidden;
+  font-family: var(--mono);
   font-size: var(--text-xs);
   color: var(--muted);
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-/* Where a drag would drop the selected box. */
-.layout-ghost {
-  z-index: 2;
-  border: 2px dashed var(--accent);
-  border-radius: var(--radius-input);
-  pointer-events: none;
+.editing .layout-box-size {
+  color: inherit;
+  opacity: 0.75;
 }
 
-.layout-tools {
+.layout-grip {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 16px;
+  height: 16px;
+  opacity: 0.55;
+}
+
+/* The resize handle: the whole corner takes the press, and only the arrow shows. */
+.layout-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: end;
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+  color: var(--accent-ink);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.layout-handle .icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (pointer: coarse), (max-width: 760px) {
+  .layout-handle {
+    width: var(--touch-target);
+    height: var(--touch-target);
+    padding: var(--space-2);
+  }
+}
+
+.layout-foot {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
 }
 
-/* The move buttons are the back arrow, turned. */
-.layout-arrow-up {
-  transform: rotate(90deg);
-}
-
-.layout-arrow-down {
-  transform: rotate(-90deg);
-}
-
-.layout-arrow-right {
-  transform: rotate(180deg);
+.layout-foot .field-hint {
+  margin: 0;
 }

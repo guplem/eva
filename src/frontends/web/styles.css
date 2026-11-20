@@ -466,12 +466,12 @@ button.save-button {
 .save-button-label,
 .save-button-done {
   grid-area: 1 / 1;
-}
-
-.save-button-done {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+.save-button-done {
   visibility: hidden;
 }
 

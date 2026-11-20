@@ -300,14 +300,17 @@ const scenes: readonly Scene[] = [
   { name: "settings", show: (page) => openAddress(page, "#/settings", "Settings") },
   {
     name: "widget-layout",
-    // The layout editor of the home grid (#985), with Habits selected, so the free places show.
-    show: async (page) => {
+    // The layout editor of the home grid (#995) in its edit mode, on the tab of the device, so the handles and the free cells show.
+    show: async (page, view) => {
       await openAddress(page, "#/settings/personalize/widget-layout", "Personalize");
       const editor = page.getByRole("region", { name: "Widget layout" });
-      await editor.getByRole("button", { name: /^Habits/ }).click();
-      await editor.locator(".layout-target").first().waitFor();
-      // The preview at the top of the screen, with the tools below it.
+      await editor.getByRole("tab", { name: view.device === "phone" ? "Phone" : "Computer" }).click();
+      await editor.getByRole("button", { name: "Edit" }).click();
+      await editor.locator(".layout-handle").first().waitFor();
       await editor.evaluate((element) => element.scrollIntoView({ block: "start" }));
+    },
+    after: async (page) => {
+      await page.getByRole("region", { name: "Widget layout" }).getByRole("button", { name: "Cancel" }).click();
     },
   },
   { name: "devices", show: (page) => openAddress(page, "#/settings/devices", "Devices") },

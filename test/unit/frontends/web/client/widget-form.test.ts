@@ -3,6 +3,7 @@ import type { WidgetManifest } from "../../../../../src/core/widgets/widget-cont
 import {
   checkChoices,
   updateCheckNote,
+  defaultChoice,
   formInputs,
   initialValues,
   isPickable,
@@ -47,6 +48,52 @@ describe("the activation form", () => {
       count: 3,
       habits: "Life/Habits",
     });
+  });
+
+  test("never fills a folder or a file with its default: only a tap picks it", () => {
+    const withDefaults: WidgetManifest = {
+      ...manifest,
+      inputs: manifest.inputs.map((input) =>
+        input.id === "habits"
+          ? { ...input, default: "Life/Health/Habits" }
+          : input.id === "notes"
+            ? { ...input, default: "Notes/a.md" }
+            : input,
+      ),
+    };
+    expect(initialValues(withDefaults, {})).toEqual({ title: "Habits" });
+    expect(initialValues(withDefaults, { habits: "Life/Habits" })).toEqual({ title: "Habits", habits: "Life/Habits" });
+  });
+
+  test("offers the default folder or file by what the vault holds", () => {
+    const folder = { ...base, id: "habits", type: "folder", label: "Habits folder", required: true } as const;
+    const habits = { ...folder, access: "write", files: "*.json", default: "Life/Health/Habits" } as const;
+    expect(defaultChoice(habits, "folder")).toEqual({
+      action: "use",
+      path: "Life/Health/Habits",
+      label: "Use the default folder",
+      tooltip: "Picks the folder Life/Health/Habits",
+    });
+    expect(defaultChoice(habits, "missing")).toEqual({
+      action: "create",
+      path: "Life/Health/Habits",
+      label: "Create the default folder",
+      tooltip: "Creates the folder Life/Health/Habits in your vault and picks it",
+    });
+    expect(defaultChoice(habits, "file")).toBeNull();
+    expect(defaultChoice(habits, null)).toBeNull();
+    expect(defaultChoice(habits, undefined)).toBeNull();
+    expect(defaultChoice({ ...habits, default: ".eva/data" }, "missing")).toBeNull();
+    const note = { ...base, id: "notes", type: "file", label: "Notes", required: false, access: "read" } as const;
+    expect(defaultChoice({ ...note, default: "Notes/a.md" }, "file")).toEqual({
+      action: "use",
+      path: "Notes/a.md",
+      label: "Use the default file",
+      tooltip: "Picks the file Notes/a.md",
+    });
+    // Eva creates no file: a missing default file shows no button.
+    expect(defaultChoice({ ...note, default: "Notes/a.md" }, "missing")).toBeNull();
+    expect(defaultChoice({ ...note, default: "Notes/a.md" }, "folder")).toBeNull();
   });
 
   test("names each required input with no value, and sends only the values", () => {

@@ -5,7 +5,8 @@
 import type { WidgetInput, WidgetManifest } from "../../../core/widgets/widget-contract.ts";
 import { evaDataInputTypes } from "../../../core/widgets/widget-kinds.ts";
 import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
-import { isClosedPlace, isPlainName } from "../../../core/widgets/widget-places.ts";
+import type { DefaultPlace } from "../../../core/widgets/widget-defaults.ts";
+import { defaultPath, isClosedPlace, isPlainName } from "../../../core/widgets/widget-places.ts";
 import { defaultPrompt, filledPrompt, type PromptPlace } from "../../../core/widgets/widget-prompt.ts";
 import type { IconName } from "./icons.tsx";
 import { minuteChoices } from "./minute-choices.ts";
@@ -17,14 +18,18 @@ export function formInputs(manifest: WidgetManifest): WidgetInput[] {
   return manifest.inputs.filter((input) => !evaDataInputTypes.has(input.type));
 }
 
-/** The value of each input: the one in the vault, or else the manifest's default. */
+/**
+ * The value of each input: the one in the vault, or else the manifest's default. A folder or a
+ * file is never filled with its default: the person taps "Use the default folder" (#984).
+ */
 export function initialValues(
   manifest: WidgetManifest,
   current: FormValues,
 ): Record<string, WidgetInputValue | undefined> {
   const values: Record<string, WidgetInputValue | undefined> = {};
   for (const input of formInputs(manifest)) {
-    const value = ownValue(current, input.id) ?? input.default;
+    const isPlace = input.type === "folder" || input.type === "file";
+    const value = ownValue(current, input.id) ?? (isPlace ? undefined : input.default);
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") values[input.id] = value;
   }
   return values;
@@ -102,6 +107,33 @@ export function promptLine(manifest: WidgetManifest, values: FormValues): string
     return [{ path: value, formatFolder: input.schema === undefined || folder === "" ? null : folder }];
   });
   return defaultPrompt(manifest.name, places);
+}
+
+export interface DefaultChoice {
+  readonly action: "use" | "create";
+  readonly path: string;
+  readonly label: string;
+  readonly tooltip: string;
+}
+
+/**
+ * The button of the default place of a folder or a file input (#984), by what the vault holds
+ * there. Eva creates a missing default folder, never a file. Null: no button.
+ */
+export function defaultChoice(input: WidgetInput, place: DefaultPlace | undefined): DefaultChoice | null {
+  const path = defaultPath(input);
+  if (path === null) return null;
+  const what = input.type === "folder" ? "folder" : "file";
+  if (place === what)
+    return { action: "use", path, label: `Use the default ${what}`, tooltip: `Picks the ${what} ${path}` };
+  if (place === "missing" && what === "folder")
+    return {
+      action: "create",
+      path,
+      label: "Create the default folder",
+      tooltip: `Creates the folder ${path} in your vault and picks it`,
+    };
+  return null;
 }
 
 /** True for an entry of the vault picker that a widget may reach, by its path from the vault root. */

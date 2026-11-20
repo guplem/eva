@@ -170,13 +170,29 @@ describe("the widget list", () => {
     }
   });
 
-  test("adds, checks, approves, moves, turns off and removes a widget", async () => {
+  test("adds, checks, approves, places, turns off and removes a widget", async () => {
     await approvedSrc();
     const listed = (await (await call("/api/widgets")).json()) as { id: string; state: string }[];
     expect(listed.map((item) => [item.id, item.state])).toEqual([[id, "on"]]);
     const checked = (await (await call("/api/widgets/check", { method: "POST" })).json()) as { problems: unknown }[];
     expect(checked[0]?.problems).toEqual([]);
-    expect((await call(`/api/widgets/${id}/move`, { method: "POST", body: { direction: "up" } })).status).toBe(200);
+    const placed = await call("/api/widgets/layout", {
+      method: "PUT",
+      body: { computer: { [id]: { column: 2, row: 1, size: "tall" } }, phone: null },
+    });
+    expect(((await placed.json()) as { layout: unknown }[])[0]?.layout).toEqual({
+      computer: { column: 2, row: 1, size: "tall" },
+    });
+    // A place out of the grid or an unknown size is refused, and nothing changes.
+    const refused = await call("/api/widgets/layout", {
+      method: "PUT",
+      body: { computer: { [id]: { column: 9, row: 1 } } },
+    });
+    expect(refused.status).toBe(400);
+    expect(
+      (await call("/api/widgets/layout", { method: "PUT", body: { phone: { [id]: { size: "huge" } } } })).status,
+    ).toBe(400);
+    expect((await call(`/api/widgets/${id}/move`, { method: "POST", body: { direction: "up" } })).status).toBe(404);
     expect((await call(`/api/widgets/${id}/enabled`, { method: "PUT", body: { enabled: false } })).status).toBe(200);
     expect((await call(`/api/widgets/${id}`, { method: "DELETE" })).status).toBe(200);
     expect(JSON.parse(readFileSync(join(vault, ".eva/widgets.json"), "utf-8"))).toEqual({ version: 1, widgets: [] });

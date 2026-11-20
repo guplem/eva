@@ -40,6 +40,7 @@ const designIcons: readonly IconName[] = [
   "key",
   "calendar",
   "chart",
+  "tiles",
   "down",
   "restart",
   "palette",

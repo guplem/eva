@@ -315,6 +315,7 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   user: "The person, an account",
   home: "Home page",
   chart: "Statistics",
+  tiles: "Arrange the widgets of the home page",
   mic: "Record a voice note",
   panel: "Hide or show the chat details",
   expand: "Make the file preview large",

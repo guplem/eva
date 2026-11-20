@@ -10,6 +10,8 @@ import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
 import { widgetAddress } from "./widget-address.ts";
+import { widgetSizes } from "./widget-kinds.ts";
+import { readLayout, type WidgetLayout } from "./widget-layout.ts";
 
 export const widgetListVersion = 1;
 
@@ -17,11 +19,19 @@ export const widgetListVersion = 1;
 export const widgetInputValueSchema = z.union([z.string().max(10_000), z.number(), z.boolean()]);
 export type WidgetInputValue = z.infer<typeof widgetInputValueSchema>;
 
+const layoutSlotSchema = z.object({
+  column: z.number().int().optional(),
+  row: z.number().int().optional(),
+  size: z.enum(widgetSizes).optional(),
+});
+
 /** The stored names of one entry, for the stored-name check. The reader keeps every other key as it is. */
 export const widgetEntrySchema = z.object({
   repository: z.string(),
   enabled: z.boolean(),
   inputs: z.record(z.string(), widgetInputValueSchema),
+  /** The place and size on the home grid, for each form (#985). `readLayout` reads it. */
+  layout: z.object({ computer: layoutSlotSchema.optional(), phone: layoutSlotSchema.optional() }).optional(),
 });
 
 export interface WidgetEntry {
@@ -31,6 +41,8 @@ export interface WidgetEntry {
   readonly repository: string;
   readonly enabled: boolean;
   readonly inputs: Readonly<Record<string, WidgetInputValue>>;
+  /** The saved layout, only when it holds a good value. A write keeps it unless `layouts` changes it. */
+  readonly layout?: WidgetLayout;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -49,8 +61,13 @@ export function readWidgetList(vaultPath: string): WidgetEntry[] {
  * file keeps its own, so a later Eva or another tool loses nothing. An entry that Eva cannot read
  * stays at the end. A second entry of one widget goes: a removed widget must not come back.
  * Throws `widget_invalid` for a file that Eva cannot read at all, so a write never drops the list.
+ * `layouts` gives a new layout to some entries; an empty one removes the key.
  */
-export function writeWidgetList(vaultPath: string, next: readonly WidgetEntry[]): void {
+export function writeWidgetList(
+  vaultPath: string,
+  next: readonly WidgetEntry[],
+  layouts: ReadonlyMap<string, WidgetLayout> = new Map(),
+): void {
   assertVaultWritable(vaultPath);
   const { file, entries, readable } = readRaw(vaultPath);
   if (!readable)
@@ -61,12 +78,18 @@ export function writeWidgetList(vaultPath: string, next: readonly WidgetEntry[])
   const rawById = new Map(entries.flatMap(({ raw, entry }) => (entry === null ? [] : [[entry.id, raw] as const])));
   const unreadable = entries.flatMap(({ raw, entry, duplicate }) => (entry === null && !duplicate ? [raw] : []));
   const widgets = [
-    ...next.map((entry) => ({
-      ...(rawById.get(entry.id) ?? {}),
-      repository: entry.repository,
-      enabled: entry.enabled,
-      inputs: entry.inputs,
-    })),
+    ...next.map((entry) => {
+      const written: JsonObject = {
+        ...(rawById.get(entry.id) ?? {}),
+        repository: entry.repository,
+        enabled: entry.enabled,
+        inputs: entry.inputs,
+      };
+      const layout = layouts.get(entry.id);
+      if (layout === undefined) return written;
+      const { layout: _old, ...rest } = written;
+      return Object.keys(layout).length === 0 ? rest : { ...rest, layout };
+    }),
     ...unreadable,
   ];
   const content = { ...file, version: widgetListVersion, widgets };
@@ -107,7 +130,9 @@ function entryOf(raw: unknown): WidgetEntry | null {
   const address = widgetAddress(raw["repository"]);
   if (address === null) return null;
   const inputs = isObject(raw["inputs"]) ? raw["inputs"] : {};
+  const layout = readLayout(raw["layout"]);
   return {
+    ...(Object.keys(layout).length > 0 ? { layout } : {}),
     id: address.id,
     repository: address.url,
     // Only a real `true` turns a widget on: a typo leaves it off.

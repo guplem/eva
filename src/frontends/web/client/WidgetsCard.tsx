@@ -10,6 +10,7 @@ import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { Card, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
 import { WidgetInputs, WidgetPermissions } from "./WidgetInputs.tsx";
+import { WidgetLayoutCard } from "./WidgetLayoutCard.tsx";
 import {
   checkChoices,
   updateCheckNote,
@@ -124,7 +125,7 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
       <Card
         item="widgets"
         title="Widgets"
-        description="Widgets show on Eva's home page, in a grid. Each one does nothing until you turn it on and approve what it may do on this computer. The list, the order and the inputs live in your vault, in .eva/widgets.json."
+        description="Widgets show on Eva's home page, in a grid. Each one does nothing until you turn it on and approve what it may do on this computer. The list, the layout and the inputs live in your vault, in .eva/widgets.json. Place them in Widget layout, below."
       >
         <form className="inline-form" onSubmit={(event) => void add(event)}>
           <label className="field grow">
@@ -153,17 +154,14 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
         {items !== null && items.length === 0 && <p className="empty">No widget yet.</p>}
         {items !== null && items.length > 0 && (
           <ul className="widget-list" aria-label="Widgets">
-            {items.map((item, index) => (
+            {items.map((item) => (
               <WidgetRow
                 key={item.id}
                 item={item}
-                first={index === 0}
-                last={index === items.length - 1}
                 onTurnOn={() => void turnOn(item)}
                 onTurnOff={() => void run(() => api.setWidgetEnabled(item.id, false))}
                 onApprove={() => setActivating(item)}
                 onRefuse={() => void run(() => api.refuseWidgetUpdate(item.id))}
-                onMove={(direction) => void run(() => api.moveWidget(item.id, direction))}
                 onRemove={() => setRemoving(item)}
               />
             ))}
@@ -208,6 +206,7 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
           </Dialog>
         )}
       </Card>
+      {items !== null && <WidgetLayoutCard items={items} onSaved={setItems} notify={notify} />}
       <Card
         item="widget-updates"
         title="Widget updates"
@@ -239,23 +238,17 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
 
 function WidgetRow({
   item,
-  first,
-  last,
   onTurnOn,
   onTurnOff,
   onApprove,
   onRefuse,
-  onMove,
   onRemove,
 }: {
   readonly item: WidgetItem;
-  readonly first: boolean;
-  readonly last: boolean;
   readonly onTurnOn: () => void;
   readonly onTurnOff: () => void;
   readonly onApprove: () => void;
   readonly onRefuse: () => void;
-  readonly onMove: (direction: "up" | "down") => void;
   readonly onRemove: () => void;
 }): ReactElement {
   const state = stateWords[item.state];
@@ -349,24 +342,6 @@ function WidgetRow({
             Turn off
           </button>
         )}
-        <button
-          type="button"
-          className="ghost icon-button"
-          aria-label={`Move ${item.name} up`}
-          aria-disabled={first ? "true" : undefined}
-          onClick={() => !first && onMove("up")}
-        >
-          <Icon name="back" className="widget-move-up" />
-        </button>
-        <button
-          type="button"
-          className="ghost icon-button"
-          aria-label={`Move ${item.name} down`}
-          aria-disabled={last ? "true" : undefined}
-          onClick={() => !last && onMove("down")}
-        >
-          <Icon name="down" />
-        </button>
         {item.sources.includes("list") && (
           <button type="button" className="ghost danger" onClick={onRemove}>
             <Icon name="trash" />

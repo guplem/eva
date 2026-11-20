@@ -195,6 +195,9 @@ const drawings = {
     </>
   ),
   external: <path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />,
+  link: (
+    <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2" />
+  ),
   forward: <path d="M5 12h14M13 6l6 6-6 6" />,
   play: <path d="M8 5.5v13l10.5-6.5z" />,
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,

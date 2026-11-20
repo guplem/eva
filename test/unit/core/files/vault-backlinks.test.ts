@@ -81,10 +81,44 @@ describe("findBacklinks: Markdown links", () => {
     expect(pathsOf()).toEqual(["Methods/a.md", "Principles/b.md", "c.md", "d.md"]);
   });
 
-  test("never matches a web link, a link that leaves the vault, or a link from another folder", () => {
+  test("never matches a web link, a link that leaves the vault, or a link to a file beside the note", () => {
     write("a.md", "[web](https://example.com/Principles/Small%20steps.md)\n");
+    write("Methods/Small steps.md", "# Another note\n");
     write("Methods/b.md", "[x](Small%20steps.md) [y](../../Principles/Small%20steps.md)\n");
     expect(pathsOf()).toEqual([]);
+  });
+
+  test("finds a link by the shortest path, as Obsidian writes it, when no file beside the note has that name", () => {
+    write("Methods/b.md", "[x](Small%20steps.md)\n");
+    expect(pathsOf()).toEqual(["Methods/b.md"]);
+  });
+
+  test("takes a title in any quotes and a path with parentheses", () => {
+    write("Principles/Small steps (old).md", "# Old\n");
+    write("a.md", "[x](Principles/Small%20steps.md 'title')\n");
+    write("b.md", "[x](Principles/Small%20steps.md (title))\n");
+    write("c.md", "[x](Principles/Small%20steps%20(old).md)\n");
+    expect(pathsOf()).toEqual(["a.md", "b.md"]);
+    expect(pathsOf("Principles/Small steps (old).md")).toEqual(["c.md"]);
+  });
+});
+
+describe("findBacklinks: Obsidian forms", () => {
+  test("finds a link in a table, a block link, a relative wiki link and a name in another Unicode form", () => {
+    write("Life/a.md", "| [[Small steps\\|alias]] |\n");
+    write("Life/b.md", "[[Small steps^block1]]\n");
+    write("Life/c.md", "[[../Principles/Small steps]]\n");
+    write("Life/Café.md", "x");
+    write("Life/d.md", "[[Cafe\u0301]]\n");
+    expect(pathsOf()).toEqual(["Life/a.md", "Life/b.md", "Life/c.md"]);
+    expect(pathsOf("Life/Café.md")).toEqual(["Life/d.md"]);
+  });
+
+  test("never counts a link in code", () => {
+    write("a.md", "Write `[[Small steps]]` to link.\n");
+    write("b.md", "```\n[[Small steps]]\n```\n");
+    write("c.md", "```\n[[x]]\n```\nThen [[Small steps]].\n");
+    expect(pathsOf()).toEqual(["c.md"]);
   });
 });
 

@@ -117,7 +117,7 @@ A widget talks to its host only through `fetch` to relative paths. The host deci
 - A data file is JSON or YAML.
 - Eva answers a refused request with a status code. Handle each one: `400` for a body that is not valid JSON or YAML, `403` for a write that the approval does not allow, `404` for a file or a token that is gone, `405` for another method, `409` for a file on disk that Eva cannot read, so she does not overwrite it, `413` for a write over 5 MB or a read over 50 MB, and `422` for data that does not fit the schema or that holds a secret.
 
-Eva gives the size in the address, as `?size=small`, `medium`, `large`, `tall`, `xlarge` or `full`.
+Eva gives the size in the address, as `?size=small`, `medium`, `large`, `tall`, `xlarge` or `full`. A new size from the layout loads the widget again with the new address.
 
 ### The calendar
 
@@ -160,7 +160,7 @@ An `eva-cases` input gives the widget the person's open cases. Eva reads them fr
 
 ## Sizes
 
-A widget has five sizes for a fixed grid, and a full-screen view, `full`. The manifest's `size` is the size of its card in the grid. Eva can change the sizes later. `tall` and `xlarge` come with contract 2.
+A widget has five sizes for a fixed grid, and a full-screen view, `full`. The manifest's `size` is the default size of its card in the grid. The person can give the card another of the five sizes, apart on a computer and on a phone, so a widget must work at each size. `tall` and `xlarge` come with contract 2.
 
 | Size     | On a computer (4 columns) | On a phone (2 columns)                                 |
 | -------- | ------------------------- | ------------------------------------------------------ |
@@ -172,9 +172,12 @@ A widget has five sizes for a fixed grid, and a full-screen view, `full`. The ma
 
 The grid is the day panel of Eva's home page:
 
-- The cards follow the order of the list in `.eva/widgets.json`. A card fills the first hole where it fits, so no order makes cards overlap.
+- The person places each card in **Settings > Personalize > Widget layout**, with a preview of the grid. The computer and the phone each have their own layout. A place can stay empty.
+- Each entry of `.eva/widgets.json` can keep its place and size in an optional `layout` key: `{ "computer": { "column": 1, "row": 1, "size": "xlarge" }, "phone": { "column": 1, "row": 4 } }`. `column` and `row` start at 1. Eva ignores a bad value.
+- A card with no saved place fills the first hole where it fits, in the order of the list, after the saved cards. So no order makes cards overlap. A phone with no saved place follows the order of the computer layout.
+- `placeWidgets` in `src/core/widgets/widget-layout.ts` places the cards of the home grid and of the preview.
 - On a computer, at least three rows share the height above the message box. Each row is at least 140 px high. More cards add rows, and the page scrolls.
-- On a phone, each row is 168 px high, and the page scrolls. An `xlarge` card shows after the smaller cards, so a long calendar does not push them out of view. Two `small` cards share a row. A `small` card with no partner, such as the last of an odd number, takes the full width.
+- On a phone, each row is 168 px high, and the page scrolls. With no saved place, an `xlarge` card shows after the smaller cards, so a long calendar does not push them out of view. Two `small` cards share a row. A `small` card with no partner in its row takes the full width.
 
 - The widget always fills the space that it gets, at every screen size. It has no empty border.
 - Keep the top right corner free of text and buttons: 56 px wide and 56 px high, at every size. Eva puts her full-screen button there, over the widget, and her close button in full screen.

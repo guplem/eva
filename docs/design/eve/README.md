@@ -275,8 +275,9 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 - This is the home page: a tap on the visor opens it from any page.
 - A bell at the top right opens the notification center. It shows the same count and dot as the visor. On a phone, a gear beside it opens Settings.
+- With a widget on, a tiles button before the bell opens the widget layout in Settings.
 - EVE greets with happy eyes instead of a blank page.
-- With a widget on, the page is the day panel. The 56 px visor, the greeting and its line take one row at the top left. The widgets fill the rest of the page above the message box, in sandboxed frames. A corner button opens one in full screen. The panel shows no suggestions. [docs/widgets.md](../../widgets.md#sizes) gives the place of each size on a computer and on a phone.
+- With a widget on, the page is the day panel. The 56 px visor, the greeting and its line take one row at the top left. The widgets fill the rest of the page above the message box, in sandboxed frames, at the places of the widget layout. A corner button opens one in full screen. The panel shows no suggestions. [docs/widgets.md](../../widgets.md#sizes) gives the place of each size on a computer and on a phone.
 - With no widget on, the large visor greets in the centre. Suggestions show what Eva does well: notes, calendar, projects and reminders. The calendar shows only when Google is set up.
 - With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks. With a widget on, the step takes the row of the greeting, and the widgets stay below it.
 - The engine and the model show in the composer, and change there. The header shows the mode.
@@ -379,6 +380,16 @@ Cases, a case page, People, Inventory, Pets and Periods, on a computer and on a 
 - The setup is a ring with the steps left. The open step has the main button.
 - Optional steps have another icon and colour, so they do not look like errors.
 - Appearance has the colour picker, the theme and the density.
+
+### Widget layout
+
+![Computer](screenshots/widget-layout-computer-light.webp) ![Phone](screenshots/widget-layout-phone-light.webp)
+
+- Settings > Personalize > Widget layout places the widgets of the home page. Chips pick the computer or the phone layout.
+- The preview is the home grid at a small scale: four columns on a computer, two on a phone. Each widget that is on has a box with its name and size. `placeWidgets` places the preview and the home grid, so the two never differ.
+- A tap selects a box: it takes the soft accent fill and a 2 px accent border. Each free place where it fits shows a dashed accent cell. A tap on a cell moves the box. A tap on another box swaps the two. A drag shows a dashed outline where the box would land.
+- Below the preview, the arrows move the selected box, and chips pick its size. Each target is 44 px at least on a phone.
+- Arrangement chips place every widget with one tap. Save layout is the main button. Nothing changes on the home page before it.
 
 ### Devices
 

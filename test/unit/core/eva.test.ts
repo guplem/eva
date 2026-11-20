@@ -1914,6 +1914,39 @@ describe("Eva", () => {
     expect(session).toMatchObject({ continuedFrom: old.id, firstMessageDraft: null });
   });
 
+  test("a chat takes a name from the branch on screen, and a fork from its own branch (#996)", async () => {
+    const engine = new FakeEngine((request) => {
+      if (request.mode !== "model-call") return FakeEngine.answer(request, "Sure.");
+      return FakeEngine.answer(request, request.prompt.includes("book the hotel") ? "Rome hotel" : "Rome trip");
+    });
+    const instance = start(engine);
+    const chat = instance.createAssistantSession({ source: "web" });
+    await instance.sessions.send(chat.id, "Plan a trip to Rome", "api");
+    const messageId = instance.sessions.get(chat.id).turns[0]!.lastMessageId!;
+    const { session: fork } = await instance.forkChat(chat.id, messageId);
+    await instance.sessions.send(fork.id, "Now book the hotel", "api");
+    // The header reads the branch on screen, and names the whole chat.
+    expect(await instance.renameAutomatically(fork.id, "chat")).toMatchObject({ id: chat.id, title: "Rome hotel" });
+    expect(instance.sessions.get(fork.id).forkName).not.toBe("Rome hotel");
+    expect(await instance.renameAutomatically(chat.id, "fork")).toMatchObject({ id: chat.id, forkName: "Rome trip" });
+    expect(instance.sessions.get(chat.id).title).toBe("Rome hotel");
+  });
+
+  test("a failed automatic name keeps the old name and gives the reason (#996)", async () => {
+    const engine = new FakeEngine((request) =>
+      request.mode === "model-call"
+        ? [{ kind: "turn_failed", reason: "Rate limited." }]
+        : FakeEngine.answer(request, "Sure."),
+    );
+    const instance = start(engine);
+    const chat = instance.createAssistantSession({ source: "web" });
+    await instance.sessions.send(chat.id, "Hello", "api");
+    const error: unknown = await instance.renameAutomatically(chat.id, "chat").catch((caught: unknown) => caught);
+    expect(isEvaError(error, "engine_failed")).toBe(true);
+    expect((error as Error).message).toBe("Rate limited.");
+    expect(instance.sessions.get(chat.id).title).toBe("Hello");
+  });
+
   test("an unknown project is an EvaError", async () => {
     const instance = start(new FakeEngine());
     const error: unknown = await instance

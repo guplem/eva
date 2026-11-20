@@ -59,7 +59,7 @@ export class ChatSummarizer {
       systemPrompt,
       prompt: "Summarize this chat.",
       context: {
-        chat: transcript(input.turns),
+        chat: chatTranscript(input.turns),
         ...(input.gitState === null ? {} : { "git-state": input.gitState }),
       },
       timeoutMs: summaryTimeoutMs,
@@ -74,28 +74,55 @@ export class ChatSummarizer {
   }
 }
 
+/** How much of a chat a transcript keeps. The summary keeps much, and a name needs little (#996). */
+export interface TranscriptLimits {
+  readonly maxLength: number;
+  /** The most characters of each message and each answer. */
+  readonly textLength: number;
+  /** Keeps the first turn when older turns go: it often says what the whole chat is for. */
+  readonly keepFirst: boolean;
+}
+
+const summaryLimits: TranscriptLimits = { maxLength: historyLength, textLength, keepFirst: false };
+
 /** The newest turns that fit, oldest first. A note says when older turns are left out. */
-function transcript(turns: ChatSummaryInput["turns"]): string {
+export function chatTranscript(turns: ChatSummaryInput["turns"], limits: TranscriptLimits = summaryLimits): string {
+  const part = (turn: ChatSummaryInput["turns"][number]): string => {
+    const answer =
+      turn.failure === null
+        ? cut(turn.answerText, limits.textLength)
+        : `The turn failed: ${cut(turn.failure, limits.textLength)}`;
+    // Eva sends some messages herself, such as a project work result. The person did not write them.
+    return `${turn.fromEva === true ? "Eva" : "Person"}: ${cut(turn.userText, limits.textLength)}\n\nAgent: ${answer}`;
+  };
+  const first = limits.keepFirst ? turns[0] : undefined;
+  const firstPart = first === undefined ? null : part(first);
   const parts: string[] = [];
-  let length = 0;
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
+  let length = firstPart?.length ?? 0;
+  const oldest = firstPart === null ? 0 : 1;
+  for (let index = turns.length - 1; index >= oldest; index -= 1) {
     const turn = turns[index];
     if (turn === undefined) continue;
-    const answer = turn.failure === null ? cut(turn.answerText) : `The turn failed: ${cut(turn.failure)}`;
-    // Eva sends some messages herself, such as a project work result. The person did not write them.
-    const part = `${turn.fromEva === true ? "Eva" : "Person"}: ${cut(turn.userText)}\n\nAgent: ${answer}`;
+    const text = part(turn);
     // The newest turn always goes, even when it is long: it holds the open work.
-    if (parts.length > 0 && length + part.length > historyLength) {
-      parts.push(`(${String(index + 1)} older turns are left out.)`);
+    if (parts.length > 0 && length + text.length > limits.maxLength) {
+      const left = index + 1 - oldest;
+      parts.push(
+        firstPart === null
+          ? `(${String(left)} older turns are left out.)`
+          : `(${String(left)} turns are left out here.)`,
+      );
       break;
     }
-    parts.push(part);
-    length += part.length;
+    parts.push(text);
+    length += text.length;
   }
+  if (firstPart !== null && turns.length > 1) parts.push(firstPart);
+  else if (firstPart !== null) return firstPart;
   return parts.reverse().join("\n\n---\n\n");
 }
 
-function cut(text: string): string {
+function cut(text: string, limit: number): string {
   const characters = Array.from(text);
-  return characters.length > textLength ? `${characters.slice(0, textLength).join("")}…` : text;
+  return characters.length > limit ? `${characters.slice(0, limit).join("")}…` : text;
 }

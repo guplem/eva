@@ -1,6 +1,7 @@
 /**
  * Names a chat after its first turn, by the person's rules in the vault's `.eva/settings/chat-names.md`
  * (issue 50). Without rules, the chat keeps the first line of its first message, and no model runs.
+ * The person can also ask for a new name from the whole chat (#996).
  */
 import {
   movedSettingsFile,
@@ -12,18 +13,38 @@ import {
 import { readTextTolerant } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
-import { cheapestModel, type ModelCalls } from "../model-calls/model-calls.ts";
+import { cheapestModel, type ModelCallResult, type ModelCalls } from "../model-calls/model-calls.ts";
+import { chatTranscript, type ChatSummaryInput } from "./chat-summary.ts";
 import type { FirstTurn } from "./session-manager.ts";
 
 /** Enough of each text to name the chat, and a small call. */
 const sentTextLength = 2_000;
+/**
+ * A name from the whole chat reads a short part of each turn. A long chat keeps its first turn, which
+ * often says what the chat is for, and its newest turns, where it ended.
+ */
+const chatLimits = { maxLength: 12_000, textLength: 300, keepFirst: true } as const;
 
-const systemPrompt = [
+const nameLines = [
   "You name chats. Answer with the name only: one line, at most 60 characters, with no quotes.",
   "Follow the person's rules. They win over every other line here.",
+];
+const systemPrompt = [
+  ...nameLines,
   "Write the name in the language of the first message.",
   "Example answer: Implementing #50",
 ].join("\n");
+const wholeChatPrompt = [
+  ...nameLines,
+  "Name the whole chat, not only its start. Lines from Eva are messages that Eva sent herself.",
+  "Write the name in the language of the person's messages.",
+  "Example answer: Implementing #50",
+].join("\n");
+
+/** The rules when the person wrote none. The name after the first turn never uses them. */
+const defaultRules = "Name the main goal or topic of the chat in 2 to 6 words. Use sentence case.";
+
+export type ChatNameInput = Pick<ChatSummaryInput, "engine" | "model" | "turns">;
 
 export function chatNameRulesPath(vaultPath: string): string {
   return chatNameRulesFile(vaultPath).path;
@@ -81,6 +102,30 @@ export class ChatNamer {
       return null;
     }
     return cleanName(result.text);
+  }
+
+  /**
+   * A name from every turn of a chat, when the person asks for one (#996). Without rules, it follows
+   * hidden default rules: the person asked for a name, so a first line does not answer. Never throws.
+   */
+  async nameFromChat(chat: ChatNameInput): Promise<ModelCallResult> {
+    if (chat.turns.length === 0) return { ok: false, failure: "failed", reason: "The chat has no messages yet." };
+    const rules = this.rules();
+    const result = await this.options.modelCalls.ask({
+      engine: chat.engine,
+      model: cheapestModel(chat.engine, chat.model),
+      systemPrompt: wholeChatPrompt,
+      prompt: "Name this chat.",
+      context: { rules: rules.length === 0 ? defaultRules : rules, chat: chatTranscript(chat.turns, chatLimits) },
+    });
+    if (!result.ok) {
+      this.options.logger?.log("warn", `A chat name failed: ${result.reason}`);
+      return result;
+    }
+    const name = cleanName(result.text);
+    return name === null
+      ? { ok: false, failure: "failed", reason: "The model gave an empty name." }
+      : { ok: true, text: name };
   }
 }
 

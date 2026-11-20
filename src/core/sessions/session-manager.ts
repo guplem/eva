@@ -890,6 +890,11 @@ export class SessionManager {
     return ids;
   }
 
+  /** The chat that a branch belongs to: the chat itself, or the chat that a fork branches from. */
+  chatOf(sessionId: string): SessionRecord {
+    return this.rootOf(this.get(sessionId));
+  }
+
   /** The chat that a fork branches from, through every level. A missing parent ends the walk. */
   private rootOf(session: SessionRecord): SessionRecord {
     let root = session;

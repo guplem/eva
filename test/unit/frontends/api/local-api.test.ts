@@ -982,6 +982,20 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("names a chat or a fork from its turns, and refuses a bad body (#996)", async () => {
+    turnScript = (request) => FakeEngine.answer(request, request.mode === "model-call" ? "Rome trip" : "Sure.");
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "Plan a trip");
+    const chat = await call(`/api/sessions/${session.id}/auto-rename`, { method: "POST", body: { target: "chat" } });
+    expect(await json<{ title: string }>(chat)).toMatchObject({ title: "Rome trip" });
+    const fork = await call(`/api/sessions/${session.id}/auto-rename`, { method: "POST", body: { target: "fork" } });
+    expect(await json<{ forkName: string }>(fork)).toMatchObject({ forkName: "Rome trip" });
+    const bad = await call(`/api/sessions/${session.id}/auto-rename`, { method: "POST", body: { target: "x" } });
+    expect(bad.status).toBe(400);
+  });
+
   test("explains a step in plain words with the cheapest model, and refuses a bad body (#963)", async () => {
     turnScript = (request) =>
       FakeEngine.answer(request, request.mode === "model-call" ? "1. Delete the build folder." : "Sure.");

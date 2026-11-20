@@ -305,6 +305,9 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
   nameFork: (sessionId: string, name: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork-name`, { name }),
+  /** A model names the chat of this branch, or the branch itself, from the turns of the branch (#996). */
+  autoRename: (sessionId: string, target: "chat" | "fork"): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/auto-rename`, { target }),
   archive: (sessionId: string, archived: boolean): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/archive`, { archived }),
   unsentTexts: (): Promise<UnsentTexts> => request("GET", "/api/unsent-texts", undefined, { limit: quickRead }),

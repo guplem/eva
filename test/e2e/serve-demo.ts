@@ -277,6 +277,15 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, "Goal: the demo summary.");
     return;
   }
+  // A name from the whole chat (#996). The name after the first turn sends no <chat> part.
+  if (
+    request.mode === "model-call" &&
+    request.prompt.startsWith("Name this chat.") &&
+    request.prompt.includes("<chat>")
+  ) {
+    yield* FakeEngine.answer(request, "Kestrel field notes");
+    return;
+  }
   // A text action of the message box menu, such as Polish (issue 661).
   const typed = /<text>\n([\s\S]*)\n<\/text>$/.exec(request.prompt)?.[1];
   if (request.mode === "model-call" && typed !== undefined) {

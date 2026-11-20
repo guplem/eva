@@ -317,6 +317,8 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   home: "Home page",
   chart: "Statistics",
   tiles: "Arrange the widgets of the home page",
+  move: "A widget box that you drag to another place",
+  resize: "The corner handle that changes the size of a widget box",
   mic: "Record a voice note",
   panel: "Hide or show the chat details",
   expand: "Make the file preview large",

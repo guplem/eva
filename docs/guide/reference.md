@@ -614,14 +614,17 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - The list, the layout and the inputs live in `.eva/widgets.json` in the vault. The approvals and a read-only copy of each widget stay on this computer. So another computer shows the same widgets, each with **Approve to show this widget**, until you approve it there.
   - **Turn off** hides a widget and keeps its approval. **Remove** drops its approval and its copy. Your data in the vault stays.
   - **Widget layout**, below the list, chooses where each widget shows and its size. The tiles button next to the bell of the home page opens it too.
-    - Pick **Computer** or **Phone**. Each has its own layout. A window narrower than 761 px uses the phone layout. A phone with no layout of its own follows the computer's order, with no gaps.
-    - The preview shows the home page at a small scale, with one box for each widget that is on. Select a box, then tap a free place to move it there, or another box to swap the two. A mouse can drag a box, and a finger can drag the selected box. The arrows, or the arrow keys, move the selected box one place.
-    - Pick a size for the selected widget: Small, Medium, Large, Tall or Extra large. Each shows its columns and rows. A widget that waits for approval stays small.
+    - Pick the **Computer** or the **Phone** tab. Each has its own layout. A window narrower than 761 px uses the phone layout. A phone with no layout of its own follows the computer's order, with no gaps.
+    - The preview shows the home page at a small scale, with one box for each widget that is on. Each box shows the name of the widget and its size in columns × rows, such as 2 × 1.
+    - Press **Edit** to change the layout. The free cells show as dashed outlines, with one spare row at the bottom.
+    - Drag a box to move it. It snaps to the cells. A place that another box takes does nothing, but a box dropped exactly on a box of the same size swaps places with it.
+    - Drag the corner handle at the bottom right of a box to change its width and its height, in whole cells. The other boxes and the edge of the grid stop it. A widget that waits for approval stays 1 × 1 and has no handle.
+    - With the keyboard, press Tab to go to a box. The arrow keys move it one cell, past the boxes in the way. Shift and the arrow keys change its size by one cell. Press Escape during a drag to put the box back.
     - An empty place stays empty: the home page keeps the gap. A widget that you turn on later goes after the others.
-    - **Arrangements** place every widget with one tap, such as **Big widget left**. **Reset to default** gives back the order of the list, with no gaps.
-    - Nothing changes until you press **Save layout**. Eva then writes the layout into the vault once. When you leave with changes that are not saved, Eva asks first.
-    - With no saved layout, each widget fills the first place where it fits, in the order of the list. On a phone, an Extra large widget then shows after the smaller ones.
-    - On a phone, a Small widget alone in its row always takes the whole row.
+    - **Reset to default** gives back the order of the list, with no gaps, and the size of each widget.
+    - Press **Done** to keep the changes of both tabs. Eva then writes the layout into the vault once. **Cancel** drops them. When you leave with changes that are not saved, Eva asks first.
+    - Eva tells each widget the nearest of its five sizes for the shape that you give it. [docs/widgets.md](../widgets.md#sizes) lists them.
+    - With no saved layout, each widget fills the first place where it fits, in the order of the list. On a phone, an Extra large widget then shows after the smaller ones, and a Small widget alone in its row takes the whole row. A widget that you placed keeps the shape that you gave it.
   - Each folder where a widget keeps data gets a `DATA_FORMAT.md`. Eva writes the whole file: it lists the files, the fields and the widget of each field. Do not edit it. Write your notes in the `AGENTS.md` or the `README.md` of the folder.
   - **Turn on** also shows the line that the widget adds to Eva's prompt. Each new chat with Eva gets it with your real folder. A project chat does not. So when you say "today I trained", Eva saves it where the training widget reads it.
   - Two widgets can share a folder. When one names a field with another type than the other, Eva warns you. Then turn the second widget on with read access only, or pick another folder.

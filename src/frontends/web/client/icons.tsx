@@ -218,6 +218,12 @@ const drawings = {
       <rect x="13" y="13" width="7" height="7" rx="1.5" />
     </>
   ),
+  /** Four arrows from the centre: a box that the person can drag to another place. */
+  move: (
+    <path d="M12 4v16M4 12h16M12 4l-2.5 2.5M12 4l2.5 2.5M12 20l-2.5-2.5M12 20l2.5-2.5M4 12l2.5-2.5M4 12l2.5 2.5M20 12l-2.5-2.5M20 12l-2.5 2.5" />
+  ),
+  /** An arrow to a corner: drag it to change the size of a box. */
+  resize: <path d="M19 10v9h-9M19 19L9 9" />,
   /** The corners of a frame point out: make the file preview fill the page. */
   expand: <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
   /** The corners point in: give the page back to the folders. */

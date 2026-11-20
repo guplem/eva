@@ -178,17 +178,21 @@ describe("the widget list", () => {
     expect(checked[0]?.problems).toEqual([]);
     const placed = await call("/api/widgets/layout", {
       method: "PUT",
-      body: { computer: { [id]: { column: 2, row: 1, size: "tall" } }, phone: null },
+      body: { computer: { [id]: { column: 2, row: 1, columns: 2, rows: 2 } }, phone: null },
     });
     expect(((await placed.json()) as { layout: unknown }[])[0]?.layout).toEqual({
-      computer: { column: 2, row: 1, size: "tall" },
+      computer: { column: 2, row: 1, columns: 2, rows: 2 },
     });
-    // A place out of the grid or an unknown size is refused, and nothing changes.
-    const refused = await call("/api/widgets/layout", {
-      method: "PUT",
-      body: { computer: { [id]: { column: 9, row: 1 } } },
-    });
-    expect(refused.status).toBe(400);
+    // A place or a shape out of the grid, or an unknown size, is refused, and nothing changes.
+    for (const slot of [
+      { column: 9, row: 1 },
+      { column: 1, row: 1, columns: 5, rows: 1 },
+      { column: 3, row: 1, columns: 3, rows: 1 },
+      { column: 1, row: 1, columns: 1, rows: 9 },
+    ]) {
+      const refused = await call("/api/widgets/layout", { method: "PUT", body: { computer: { [id]: slot } } });
+      expect(refused.status).toBe(400);
+    }
     expect(
       (await call("/api/widgets/layout", { method: "PUT", body: { phone: { [id]: { size: "huge" } } } })).status,
     ).toBe(400);

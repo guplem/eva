@@ -333,7 +333,7 @@ export const searchEntries: readonly SearchEntry[] = [
     section: "personalize",
     title: "Widget layout",
     words:
-      "widgets home page grid place position order move arrange size small medium large tall extra large xlarge preview computer phone gap reset",
+      "widgets home page grid place position order move drag edit resize size width height columns rows preview computer phone tabs gap reset",
   },
   {
     item: "widget-updates",

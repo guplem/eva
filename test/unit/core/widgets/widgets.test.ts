@@ -233,16 +233,22 @@ describe("the list", () => {
 
   test("saves the layout of each form apart, and a reset clears one form", () => {
     let items = widgets.saveLayout({
-      computer: { [habitsId]: { column: 2, row: 1, size: "tall" }, "example-owner/unknown": { column: 1, row: 1 } },
+      computer: {
+        [habitsId]: { column: 2, row: 1, columns: 1, rows: 2 },
+        "example-owner/unknown": { column: 1, row: 1 },
+      },
     });
-    expect(items[0]?.layout).toEqual({ computer: { column: 2, row: 1, size: "tall" } });
-    items = widgets.saveLayout({ phone: { [habitsId]: { column: 1, row: 2 } } });
-    expect(items[0]?.layout).toEqual({ computer: { column: 2, row: 1, size: "tall" }, phone: { column: 1, row: 2 } });
+    expect(items[0]?.layout).toEqual({ computer: { column: 2, row: 1, columns: 1, rows: 2 } });
+    items = widgets.saveLayout({ phone: { [habitsId]: { column: 1, row: 2, columns: 2, rows: 1 } } });
+    expect(items[0]?.layout).toEqual({
+      computer: { column: 2, row: 1, columns: 1, rows: 2 },
+      phone: { column: 1, row: 2, columns: 2, rows: 1 },
+    });
     // The layout stays when the widget turns off and on: only a remove drops it.
     widgets.setEnabled(habitsId, false);
     expect(readWidgetList(vault)[0]?.layout).toEqual(items[0]?.layout);
     items = widgets.saveLayout({ computer: null });
-    expect(items[0]?.layout).toEqual({ phone: { column: 1, row: 2 } });
+    expect(items[0]?.layout).toEqual({ phone: { column: 1, row: 2, columns: 2, rows: 1 } });
     expect(readWidgetList(vault).map((entry) => entry.id)).toEqual([habitsId]);
   });
 });

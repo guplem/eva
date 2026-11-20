@@ -552,7 +552,9 @@ vault .eva/widgets.json widgets[].inputs
 vault .eva/widgets.json widgets[].layout
 vault .eva/widgets.json widgets[].layout.computer
 vault .eva/widgets.json widgets[].layout.computer.column
+vault .eva/widgets.json widgets[].layout.computer.columns
 vault .eva/widgets.json widgets[].layout.computer.row
+vault .eva/widgets.json widgets[].layout.computer.rows
 vault .eva/widgets.json widgets[].layout.computer.size
 vault .eva/widgets.json widgets[].layout.computer.size=large
 vault .eva/widgets.json widgets[].layout.computer.size=medium
@@ -561,7 +563,9 @@ vault .eva/widgets.json widgets[].layout.computer.size=tall
 vault .eva/widgets.json widgets[].layout.computer.size=xlarge
 vault .eva/widgets.json widgets[].layout.phone
 vault .eva/widgets.json widgets[].layout.phone.column
+vault .eva/widgets.json widgets[].layout.phone.columns
 vault .eva/widgets.json widgets[].layout.phone.row
+vault .eva/widgets.json widgets[].layout.phone.rows
 vault .eva/widgets.json widgets[].layout.phone.size
 vault .eva/widgets.json widgets[].layout.phone.size=large
 vault .eva/widgets.json widgets[].layout.phone.size=medium

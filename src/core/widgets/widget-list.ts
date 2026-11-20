@@ -22,6 +22,10 @@ export type WidgetInputValue = z.infer<typeof widgetInputValueSchema>;
 const layoutSlotSchema = z.object({
   column: z.number().int().optional(),
   row: z.number().int().optional(),
+  /** The shape of the card (#995). */
+  columns: z.number().int().optional(),
+  rows: z.number().int().optional(),
+  /** The older form of the shape (#985): Eva still reads it, and no longer writes it. */
   size: z.enum(widgetSizes).optional(),
 });
 

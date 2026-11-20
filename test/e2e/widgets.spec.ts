@@ -253,34 +253,77 @@ test("the widget layout places a widget, leaves a gap, and the home page shows t
   await page.getByRole("button", { name: "Arrange the widgets" }).click();
   const editor = page.getByRole("region", { name: "Widget layout" });
   await expect(editor).toBeVisible();
-  await editor.getByRole("button", { name: form, exact: true }).click();
+  await editor.getByRole("tab", { name: form }).click();
   const preview = editor.getByRole("group", { name: /^Preview of the home page/ });
-  const habits = preview.getByRole("button", { name: /^Habits/ });
-  // Select Habits, then move it down by the keyboard, past the other cards: a gap stays where it was.
-  await habits.click();
-  await expect(habits).toHaveAttribute("aria-pressed", "true");
-  for (let step = 0; step < 6; step += 1) await habits.press("ArrowDown");
-  // Escape ends the selection: the preview then shows the cards as the home page does.
-  await habits.press("Escape");
+  const box = (name: string): Locator => preview.getByRole("group", { name: new RegExp(`^${name},`) });
   const place = async (locator: Locator): Promise<string> =>
     locator.evaluate((element) => `${element.style.gridColumn} ${element.style.gridRow}`);
+  // The view mode is read only: no box takes the focus, and Reset shows only in the edit mode.
+  await expect(box("Habits")).not.toHaveAttribute("tabindex");
+  await expect(editor.getByRole("button", { name: "Reset to default" })).toHaveCount(0);
+  await editor.getByRole("button", { name: "Edit" }).click();
+
+  // A drag that Escape cancels puts the box back.
+  const cases = box("Cases");
+  const before = await place(cases);
+  const start = await cases.boundingBox();
+  if (start === null) throw new Error("Cases has no box.");
+  await page.mouse.move(start.x + 20, start.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 20, start.y + start.height + 120, { steps: 8 });
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  expect(await place(cases)).toBe(before);
+
+  // The keyboard moves Habits past the other boxes, which leaves a gap, and Shift with an arrow resizes it.
+  const habits = box("Habits");
+  const status = editor.getByRole("status");
+  const keys =
+    form === "Computer"
+      ? ["ArrowDown", "ArrowLeft", "ArrowLeft", "ArrowLeft", "Shift+ArrowRight", "Shift+ArrowDown"]
+      : ["ArrowDown", "Shift+ArrowLeft", "ArrowRight", "Shift+ArrowDown"];
+  for (const key of keys) await habits.press(key);
+  const [shape, size] = form === "Computer" ? ["2 columns by 2 rows", "large"] : ["1 column by 2 rows", "tall"];
+  await expect(status).toHaveText(`Habits is ${shape} now.`);
+  await expect(habits).toHaveAccessibleName(new RegExp(`^Habits, ${shape}, at`));
+  await expect(habits.locator(".layout-box-size")).toHaveText(form === "Computer" ? "2 × 2" : "1 × 2");
   const previewPlaces = {
     Habits: await place(habits),
-    Cases: await place(preview.getByRole("button", { name: /^Cases/ })),
-    Calendar: await place(preview.getByRole("button", { name: /^Calendar/ })),
+    Cases: await place(cases),
+    Calendar: await place(box("Calendar")),
   };
-  await editor.getByRole("button", { name: "Save layout" }).click();
-  await expect(editor.getByRole("button", { name: "Discard changes" })).toHaveCount(0);
+  await editor.getByRole("button", { name: "Done" }).click();
+  await expect(editor.getByRole("button", { name: "Edit" })).toBeVisible();
   await page.goto("/#/chats/new");
   const grid = page.getByRole("group", { name: "Widgets" });
   for (const [name, expected] of Object.entries(previewPlaces))
     expect(await place(grid.locator(`.widget-card:has(iframe[aria-label="${name}"])`))).toBe(expected);
+  // The frame gets the size name of the new shape.
+  expect(await grid.locator('iframe[aria-label="Habits"]').getAttribute("src")).toMatch(new RegExp(`\\?size=${size}$`));
   // Put the default back, so the other tests see the grid of the demo.
   await page.goto("/#/settings/personalize/widget-layout");
-  await editor.getByRole("button", { name: form, exact: true }).click();
+  await editor.getByRole("tab", { name: form }).click();
+  await editor.getByRole("button", { name: "Edit" }).click();
   await editor.getByRole("button", { name: "Reset to default" }).click();
-  await editor.getByRole("button", { name: "Save layout" }).click();
   await expect(editor.getByRole("button", { name: "Reset to default" })).toHaveAttribute("aria-disabled", "true");
+  await editor.getByRole("button", { name: "Done" }).click();
+  await expect(editor.getByRole("button", { name: "Edit" })).toBeVisible();
+});
+
+test("the widget layout keeps the changes of both tabs until Done or Cancel", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/settings/personalize/widget-layout");
+  const editor = page.getByRole("region", { name: "Widget layout" });
+  const habits = editor.getByRole("group", { name: /^Habits,/ });
+  await editor.getByRole("button", { name: "Edit" }).click();
+  await habits.press("ArrowDown");
+  const moved = await habits.getAttribute("aria-label");
+  await editor.getByRole("tab", { name: "Phone" }).click();
+  await editor.getByRole("tab", { name: "Computer" }).click();
+  await expect(habits).toHaveAccessibleName(moved ?? "");
+  await editor.getByRole("button", { name: "Cancel" }).click();
+  await expect(habits).not.toHaveAccessibleName(moved ?? "");
+  await expect(editor.getByRole("button", { name: "Edit" })).toBeVisible();
 });
 test("Preview on a clone shows a change that is not pushed, with example data first, then my data", async ({
   page,

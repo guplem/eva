@@ -5,7 +5,7 @@
  * opens full screen. With no widget on, the grid shows nothing, and the page looks as before.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
-import { placeWidgets, type PlacedWidget } from "../../../core/widgets/widget-layout.ts";
+import { placeWidgets, type LayoutBox } from "../../../core/widgets/widget-layout.ts";
 import { widgetSandbox } from "../../../shared/widget-sandbox.ts";
 import { api, type WidgetFrame } from "./api.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -180,7 +180,7 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
 }
 
 /** The explicit place of a card in a CSS grid: the home grid and the preview of Settings both use it. */
-export function gridPlace(card: PlacedWidget): CSSProperties {
+export function gridPlace(card: LayoutBox): CSSProperties {
   return {
     gridColumn: `${String(card.column)} / span ${String(card.columns)}`,
     gridRow: `${String(card.row)} / span ${String(card.rows)}`,

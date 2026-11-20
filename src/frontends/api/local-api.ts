@@ -364,6 +364,9 @@ const widgetFramesSchema = z.object({
   keep: z.array(z.string().max(100)).max(100).default([]),
 });
 const widgetReleaseSchema = z.object({ tokens: z.array(z.string().max(100)).max(100) });
+/** The default places of a form (#984), by their path from the vault root. */
+const widgetPlacesSchema = z.object({ paths: z.array(z.string().max(1_000)).max(100) });
+const widgetFolderSchema = z.object({ path: z.string().min(1).max(1_000) });
 const widgetApproveSchema = z.object({
   commit: z.string().min(1).max(100),
   values: z.record(z.string().max(100), widgetInputValueSchema),
@@ -795,6 +798,13 @@ async function widgetsApi(request: Request, url: URL, options: LocalApiOptions):
   if (parts.length === 3 && parts[2] === "preview" && method === "POST") {
     const { mode, scheme, colors, ...place } = widgetPreviewSchema.parse(await request.json());
     return json(await widgets.preview(place, mode, widgetTheme(scheme, colors), ownHosts));
+  }
+  if (parts.length === 3 && parts[2] === "places" && method === "POST")
+    return json(widgets.defaultPlaces(widgetPlacesSchema.parse(await request.json()).paths));
+  if (parts.length === 3 && parts[2] === "folders" && method === "POST") {
+    const { path } = widgetFolderSchema.parse(await request.json());
+    await widgets.createFolder(path);
+    return json({ path }, 201);
   }
   // A POST of four parts is no widget route of its own: the widget id routes take DELETE only.
   if (parts.length === 4 && parts[2] === "preview" && parts[3] === "approve" && method === "POST") {

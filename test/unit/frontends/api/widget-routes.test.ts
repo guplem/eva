@@ -267,6 +267,27 @@ describe("the widget list", () => {
   });
 });
 
+describe("the default places of a form", () => {
+  test("says what each default is, and creates a missing default folder only in a place that a widget reaches", async () => {
+    const places = await call("/api/widgets/places", {
+      method: "POST",
+      body: { paths: ["Life/Habits", "Life/Habits/walk.json", "Life/Health/Habits", ".eva/data"] },
+    });
+    expect(await places.json()).toEqual({
+      "Life/Habits": "folder",
+      "Life/Habits/walk.json": "file",
+      "Life/Health/Habits": "missing",
+      ".eva/data": null,
+    });
+    const created = await call("/api/widgets/folders", { method: "POST", body: { path: "Life/Health/Habits" } });
+    expect(created.status).toBe(201);
+    expect(existsSync(join(vault, "Life/Health/Habits/.gitkeep"))).toBe(true);
+    const refused = await call("/api/widgets/folders", { method: "POST", body: { path: ".eva/data" } });
+    expect(refused.status).toBe(400);
+    expect(existsSync(join(vault, ".eva/data"))).toBe(false);
+  });
+});
+
 describe("the preview of a clone", () => {
   test("serves a change that is not pushed, in a frame with the widget policy, and asks before My data", async () => {
     const project = "2026-01-01-0900-habits";

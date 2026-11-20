@@ -7959,6 +7959,22 @@ test("Files: the search finds a name, then the text inside a file, and a match o
   await expect(page.getByRole("region", { name: "File text" })).toBeVisible();
 });
 
+test("Files: a button counts the notes that link to the open file, and lists them (#992)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/Methods/Small%20steps.md");
+  const button = page.getByRole("button", { name: "Notes that link here: 2" });
+  await expect(button).toHaveText("2");
+  await button.click();
+  const dialog = page.getByRole("dialog", { name: "Linked from" });
+  const list = dialog.getByRole("list", { name: "Notes that link here" });
+  await expect(list.getByRole("link")).toHaveCount(2);
+  await expect(list.getByRole("link").filter({ hasText: "Weekly review" })).toContainText("[[Small steps]]");
+  await list.getByRole("link").filter({ hasText: "Garden" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/files\/Journal\/2027-garden\.md$/);
+  await expect(page.getByRole("button", { name: "Notes that link here: 0" })).toBeVisible();
+});
+
 /** The width inside the padding: the row of columns has padding for the shadows of its cards. */
 function contentWidth(locator: Locator): Promise<number> {
   return locator.evaluate((element) => {

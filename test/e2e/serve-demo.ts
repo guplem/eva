@@ -84,6 +84,14 @@ for (const run of ["desktop", "phone"]) {
   sandbox.write(vault, `Notes/${run}-draft.md`, "# Draft\n");
 }
 sandbox.write(vault, "Notes/settings.json", '{"theme":"dark","size":2}');
+// Two notes link to one, so the Files page shows its backlinks (#992).
+sandbox.write(vault, "Methods/Small steps.md", "# Small steps\n\nSplit each goal into a step that fits one day.\n");
+sandbox.write(vault, "Methods/Weekly review.md", "# Weekly review\n\nPick one of the [[Small steps]] for the week.\n");
+sandbox.write(
+  vault,
+  "Journal/2027-garden.md",
+  "# Garden\n\nI follow [small steps](../Methods/Small%20steps.md) in the garden.\n",
+);
 // A browser shows an image and plays a sound, so the Files page shows them too (issue 737).
 mkdirSync(join(vault, "Media"), { recursive: true });
 writeFileSync(join(vault, "Media/landscape.png"), readFileSync(join(import.meta.dir, "demo-landscape.png")));

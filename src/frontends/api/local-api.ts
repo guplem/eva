@@ -1128,6 +1128,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
         url.searchParams.get("shareable") === "true",
       ),
     );
+  if (method === "GET" && url.pathname === "/api/files/backlinks")
+    return json(eva.fileBacklinks(url.searchParams.get("path") ?? ""));
   if (method === "POST" && url.pathname === "/api/files/existing") {
     const { paths } = existingFilesSchema.parse(await request.json());
     return json({ existing: eva.existingFiles(paths) });

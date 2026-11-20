@@ -2150,6 +2150,27 @@ export class Eva {
   }
 
   /**
+   * Names a chat or one fork from the turns of a branch, by the person's chat name rules (#996).
+   * "chat" renames the whole chat, and "fork" names the branch itself. The person asked for it, so
+   * the name counts as theirs, and a Telegram topic follows it.
+   */
+  async renameAutomatically(branchId: string, target: "chat" | "fork"): Promise<SessionRecord> {
+    const namer = this.chatNames;
+    if (namer === null) throw new EvaError("vault_not_found", "Eva needs a vault to name a chat.");
+    const branch = this.sessions.get(branchId);
+    const result = await namer.nameFromChat({
+      engine: branch.engine,
+      model: branch.modelAlias,
+      turns: this.sessions.branchTurns(branch.id),
+    });
+    if (!result.ok) throw new EvaError("engine_failed", result.reason);
+    // The call takes a while, and the person may delete the chat meanwhile: then get throws.
+    return target === "fork"
+      ? this.sessions.nameFork(branch.id, result.text)
+      : this.sessions.rename(this.sessions.chatOf(branch.id).id, result.text);
+  }
+
+  /**
    * A fork of a chat at one answer. A fork of a Project chat can run in a new clone, with the files of
    * that answer or a clean clone (issue 523). The notice says why a fork lost its history, or is null.
    */

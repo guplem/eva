@@ -118,7 +118,20 @@ describe("findBacklinks: Obsidian forms", () => {
     write("a.md", "Write `[[Small steps]]` to link.\n");
     write("b.md", "```\n[[Small steps]]\n```\n");
     write("c.md", "```\n[[x]]\n```\nThen [[Small steps]].\n");
-    expect(pathsOf()).toEqual(["c.md"]);
+    write("d.md", "Use ``[[Small steps]]`` here.\n");
+    write("e.md", "````\n```\n[[Small steps]]\n````\n");
+    write("f.md", "~~~\n```\n~~~\nThen [[Small steps]].\n");
+    write("g.md", "```x``` then [[Small steps]].\n");
+    write("h.md", "- Steps:\n    ```md\n    [[Small steps]]\n    ```\n");
+    expect(pathsOf()).toEqual(["c.md", "f.md", "g.md"]);
+  });
+
+  test("reads a long line of backticks that never close in linear time", () => {
+    const runs = Array.from({ length: 400 }, (_, index) => `${"`".repeat(index + 1)}a`).join("");
+    write("a.md", `${runs} [[Small steps]]\n`);
+    const started = performance.now();
+    expect(pathsOf()).toEqual(["a.md"]);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 

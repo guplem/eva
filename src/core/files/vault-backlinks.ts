@@ -40,9 +40,13 @@ const wikiLink = /\[\[([^[\]\n]+)\]\]/g;
 const markdownLink = /\]\(\s*(<[^>\n]*>|(?:[^()\s]|\([^()\s]*\))+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?\s*\)/g;
 /** A link with a scheme, such as `https:` or `mailto:`, leaves the vault. */
 const scheme = /^[a-z][a-z0-9+.-]*:/i;
-/** A line that opens or closes a code block. Obsidian makes no link inside code. */
-const fence = /^\s*(?:```|~~~)/;
-const inlineCode = /`[^`\n]*`/g;
+/**
+ * A line that opens a code block, with its fence in group 1. Obsidian makes no link inside code. A
+ * backtick fence has no backtick after it, so ` ```x``` ` is inline code, not a fence.
+ */
+const fenceOpen = /^\s*(`{3,}(?!.*`)|~{3,})/;
+/** A line that can close a code block: a fence alone on its line. */
+const fenceClose = /^\s*(`{3,}|~{3,})\s*$/;
 
 /** Where a note is, and what it looks for. `wanted` is lower case and in Unicode form NFC. */
 interface Place {
@@ -100,17 +104,21 @@ function linkIn(
 ): Backlink | null {
   const lines = plainLinesOf(file, budget);
   if (lines === null) return null;
-  let inCode = false;
+  /** The fence of the open code block, or null outside code. */
+  let fence: string | null = null;
   for (const [index, line] of lines.entries()) {
-    if (fence.test(line)) {
-      inCode = !inCode;
+    if (fence !== null) {
+      // Only a fence of the same mark, at least as long, and alone on its line closes the block.
+      const close = fenceClose.exec(line)?.[1];
+      if (close !== undefined && close.startsWith(fence.charAt(0)) && close.length >= fence.length) fence = null;
       continue;
     }
-    if (inCode) continue;
-    const link = firstLinkTo(
-      line.replace(inlineCode, (code) => " ".repeat(code.length)),
-      place,
-    );
+    const open = fenceOpen.exec(line)?.[1];
+    if (open !== undefined) {
+      fence = open;
+      continue;
+    }
+    const link = firstLinkTo(withoutInlineCode(line), place);
     if (link === null) continue;
     const shown = redact(line);
     const at = Math.max(0, shown.indexOf(link));
@@ -157,4 +165,34 @@ function markdownPointsTo(raw: string, { root, folder, wanted }: Place): boolean
   const short = comparable(decoded);
   if (fromRoot || short.startsWith("./") || short.startsWith("../") || existsSync(join(root, resolved))) return false;
   return wanted === short || wanted.endsWith(`/${short}`);
+}
+
+/**
+ * The line with each inline code span turned to spaces. A span opens with a run of backticks and
+ * closes at the next run of the same length. A regular expression takes quadratic time on a long
+ * line of runs that never close, and the walk blocks the core, so this scan is linear.
+ */
+function withoutInlineCode(line: string): string {
+  if (!line.includes("`")) return line;
+  const runs = [...line.matchAll(/`+/g)].map((run) => ({ at: run.index, length: run[0].length }));
+  // The next run of the same length after each run, found from the end of the line.
+  const next: (number | undefined)[] = [];
+  const lastOfLength = new Map<number, number>();
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const length = runs[index]?.length ?? 0;
+    next[index] = lastOfLength.get(length);
+    lastOfLength.set(length, index);
+  }
+  let shown = "";
+  let from = 0;
+  for (let index = 0; index < runs.length; index += 1) {
+    const close = next[index];
+    const open = runs[index];
+    if (close === undefined || open === undefined) continue;
+    const end = (runs[close]?.at ?? 0) + open.length;
+    shown += line.slice(from, open.at) + " ".repeat(end - open.at);
+    from = end;
+    index = close;
+  }
+  return shown + line.slice(from);
 }

@@ -3371,7 +3371,10 @@ test("Settings: in compact density on a narrow phone, the tab bar fits and butto
   expect(tabBar).not.toBeNull();
   expect((tabBar?.x ?? 0) + (tabBar?.width ?? 0)).toBeLessThanOrEqual(360);
   // A phone button is 44 px tall at least, so a short label with narrow sides becomes a circle, not a pill.
-  const edit = await page.getByRole("button", { name: "Edit", exact: true }).boundingBox();
+  const edit = await page
+    .getByRole("region", { name: "Eva's rules" })
+    .getByRole("button", { name: "Edit", exact: true })
+    .boundingBox();
   expect(edit).not.toBeNull();
   expect(edit?.width ?? 0).toBeGreaterThan(edit?.height ?? 0);
 });

@@ -145,8 +145,6 @@ export interface MapRow {
   /** The lane of the row's own dot. */
   readonly lane: number;
   readonly onPath: boolean;
-  /** The first row of a branch. Its menu renames and deletes the branch. */
-  readonly branchHead: boolean;
   /** The last row of the shown branch. */
   readonly current: boolean;
   /** The last row of its own branch, shown or not. */
@@ -238,7 +236,6 @@ export function branchMap(tree: readonly BranchSession[], shownId: string): Bran
       label: row.label,
       lane: row.lane,
       onPath: row.onPath,
-      branchHead: position === rowsOf(row.session.id)[0],
       current: row.session.id === shown.id && position === rowsOf(shown.id).at(-1),
       tip: position === rowsOf(row.session.id).at(-1),
       lines,

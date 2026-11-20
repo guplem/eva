@@ -13,7 +13,9 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { api, type ChatBlocker, type SessionRecord, type UndoPreview } from "./api.ts";
+import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
+import { answerActions } from "./answer-actions.ts";
+import { useAnswerActions, type AnswerActions } from "./AnswerActions.tsx";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
 import {
@@ -25,9 +27,7 @@ import {
   type BranchState,
   type PathStep,
 } from "./branch-path.ts";
-import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./BranchChoiceDialog.tsx";
 import { forkedFromText, historyNotice } from "./branch-choices.ts";
-import { chatKind } from "../../../shared/chat-kind.ts";
 import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { endedProjectWork, tasksOfTurn, tasksStillRun } from "./chat-details.ts";
 import { Composer, storedChoices, unsentTexts } from "./Composer.tsx";
@@ -52,7 +52,6 @@ import {
   senderName,
   sentTurnCount,
   turnEndNotice,
-  undoQuestion,
   deliveryWords,
   shownOutbox,
   type PendingMessage,
@@ -69,7 +68,6 @@ import { useMessageMenu } from "./MessageMenu.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
-import { RetryUndoDialog } from "./RetryUndoDialog.tsx";
 import { StepFold } from "./TurnSteps.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -120,6 +118,7 @@ export function Conversation({
   const tree = chatTree(root, sessions);
   const branch = tree.find((session) => session.id === shown.id) ?? root;
   const states = useBranchStates(tree, branch.id, approvals.pending, live);
+  const answers = useAnswerActions(onChanged, `${root.id} ${branch.id}`);
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
@@ -206,8 +205,10 @@ export function Conversation({
           shownId={branch.id}
           states={states}
           onPick={(row) => pickRow(shown, branch.id, row)}
+          answers={answers}
         />
       )}
+      {answers.parts}
       <Branch
         key={branch.id}
         session={branch}
@@ -221,6 +222,7 @@ export function Conversation({
         voiceNotes={voiceNotes}
         projectTitle={projectTitle}
         forkedFrom={forkedFromNote(root, sessions)}
+        answers={answers}
       />
     </div>
   );
@@ -238,6 +240,7 @@ function Branch({
   voiceNotes,
   projectTitle,
   forkedFrom,
+  answers,
 }: {
   session: SessionRecord;
   /** The chat and its forks, the chat first. */
@@ -252,6 +255,8 @@ function Branch({
   projectTitle: string | null;
   /** The note of a chat that came from another clone, with the chat to link, or null. */
   forkedFrom: { readonly text: string; readonly chatId: string | null } | null;
+  /** Retry and Fork of an answer. The branch map shares them, so the view draws their questions. */
+  answers: AnswerActions;
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
@@ -261,22 +266,10 @@ function Branch({
   const sent = useOutbox(session.id);
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<PathStep<SessionRecord> | "running" | null>(null);
-  /** The question before a retry that would undo file changes (#525), or null. */
-  const [undoAsk, setUndoAsk] = useState<{
-    readonly sessionId: string;
-    readonly index: number;
-    readonly title: string;
-    readonly preview: UndoPreview;
-  } | null>(null);
-  const closeUndoAsk = useCallback(() => setUndoAsk(null), []);
   const path = pathOf(session, tree);
   const names = branchNames(tree);
   const start = branchesAtStart(session, tree);
   const closeTasks = useCallback(() => setShownTasks(null), []);
-  /** The retry or fork of a Project chat whose choices the dialog shows. */
-  const [branching, setBranching] = useState<BranchRequest | null>(null);
-  const closeBranching = useCallback(() => setBranching(null), []);
-  const finishBranch = useFinishBranch(onChanged);
   const historyNote = historyNotice(session);
   const tasks = tasksOf(live.tasks, [session.id]);
   // The side panel hides on a phone, so a running task also shows here.
@@ -332,45 +325,13 @@ function Branch({
     if (removed !== undefined) unsentTexts.restore(session.id, removed.text);
   };
 
-  /** Runs an action on an answer, and shows its failure. */
+  /** Runs an action on the branch, and shows its failure. */
   const runAction = (action: () => Promise<unknown>): void => {
     action()
       .then(onChanged)
       .catch((caught: unknown) => {
         showError(caught);
       });
-  };
-
-  /**
-   * A retry of an answer in the vault that changed files asks first whether to undo them (#525):
-   * an Assistant or a specialist answer (#703). A retry of a chat in a clone asks where it runs and
-   * from which files of its clone (#523).
-   */
-  const retryAnswer = (owner: SessionRecord, index: number): void => {
-    const turn = owner.turns[index];
-    if (chatKind(owner) === "project" && turn !== undefined) {
-      setBranching({ kind: "retry", sessionId: owner.id, turnIndex: index, turn });
-      return;
-    }
-    runAction(async () => {
-      const preview = chatKind(owner) === "project" ? null : await api.retryUndo(owner.id, index);
-      const title = preview === null ? null : undoQuestion(preview);
-      if (preview === null || title === null) await api.retry(owner.id, index);
-      else setUndoAsk({ sessionId: owner.id, index, title, preview });
-    });
-  };
-
-  const retryAfterQuestion = async (undo: boolean): Promise<void> => {
-    if (undoAsk === null) return;
-    try {
-      await api.retry(undoAsk.sessionId, undoAsk.index, { undo });
-      setUndoAsk(null);
-      await onChanged();
-    } catch (caught) {
-      // A failed undo starts no retry. The question closes, so the person sees why.
-      setUndoAsk(null);
-      showError(caught);
-    }
   };
 
   return (
@@ -405,14 +366,8 @@ function Branch({
               turn={turn}
               endedWork={endedWork}
               onShowTasks={() => setShownTasks(step)}
-              // A Project chat asks where the branch runs and from which files (issue 523).
-              onRetry={() => retryAnswer(owner, index)}
-              onFork={() =>
-                // A specialist has no clone, so its fork is a branch of the chat (#703).
-                chatKind(owner) === "project"
-                  ? setBranching({ kind: "fork", sessionId: owner.id, atMessageId: turn.lastMessageId ?? "", turn })
-                  : runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))
-              }
+              onRetry={() => answers.retry(owner, index)}
+              onFork={() => answers.fork(owner, index)}
             />
             <TurnNotes notes={turn.notes} />
             {point !== null && (
@@ -468,7 +423,6 @@ function Branch({
           {counted(running, "background task")} running
         </button>
       )}
-      {branching !== null && <BranchChoiceDialog request={branching} onClose={closeBranching} onDone={finishBranch} />}
       {shownTasks === "running" && <TasksDialog tasks={tasks} empty="No task runs now." onClose={closeTasks} />}
       {shownTasks !== null && shownTasks !== "running" && (
         <TasksDialog
@@ -479,14 +433,6 @@ function Branch({
           // An older answer comes with no steps, to keep the session list small.
           empty="Eva no longer keeps the details of these tasks."
           onClose={closeTasks}
-        />
-      )}
-      {undoAsk !== null && (
-        <RetryUndoDialog
-          title={undoAsk.title}
-          preview={undoAsk.preview}
-          onRetry={retryAfterQuestion}
-          onClose={closeUndoAsk}
         />
       )}
       <TurnNotes notes={notes} live />
@@ -750,8 +696,7 @@ function StoredAnswer({
 }): ReactElement {
   const shown = useShownAnswer(turn.steps, turn.answerText, false);
   // A closed chat takes no new turn, so it offers no way to start one.
-  const canRetry = !owner.closed;
-  const canFork = !owner.closed && turn.lastMessageId !== null && turn.failure === null;
+  const { retry: canRetry, fork: canFork } = answerActions(owner, turn);
   const { props, parts } = useMessageMenu(shown.body, "Actions of Eva's answer", [
     ...(canRetry ? [{ label: "Retry", icon: "restart" as const, onChoose: onRetry }] : []),
     ...(canFork ? [{ label: "Fork", icon: "fork" as const, onChoose: onFork }] : []),

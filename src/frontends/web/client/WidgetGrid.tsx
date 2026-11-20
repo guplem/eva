@@ -4,14 +4,17 @@
  * cookie or another widget. A tap inside a frame goes to the widget; the corner button outside it
  * opens full screen. With no widget on, the grid shows nothing, and the page looks as before.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
+import { placeWidgets, type PlacedWidget } from "../../../core/widgets/widget-layout.ts";
 import { widgetSandbox } from "../../../shared/widget-sandbox.ts";
 import { api, type WidgetFrame } from "./api.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 import { goTo } from "./back-layers.ts";
+import { useIsPhone } from "./ChatHeader.tsx";
 import { Icon } from "./icons.tsx";
 import { settingsHash } from "./settings-routes.ts";
 import { contractColours, frameAddress, onReconnect, pageScheme, refreshDue } from "./widget-frames.ts";
+import { layoutWidgetsOfFrames } from "./widget-layout-draft.ts";
 
 /** The light or dark mode that the page shows now. The clone preview (#693) sends it too. */
 export function currentScheme(): "light" | "dark" {
@@ -118,14 +121,20 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
   const full = frames.find((frame) => frame.id === fullId && frame.src !== null) ?? null;
   const closeFull = useCallback(() => setFullId(null), []);
   useBackLayer(full !== null, closeFull, "widget-full");
+  // The width chooses the layout. The preview of Settings places the cards with the same function (#985).
+  const form = useIsPhone() ? "phone" : "computer";
 
   if (frames.length === 0) return null;
+  const byId = new Map(frames.map((frame) => [frame.id, frame]));
   return (
     <>
       <div className="widget-grid" role="group" aria-label="Widgets">
-        {frames.map((frame) =>
-          frame.src === null ? (
-            <div key={frame.id} className={`card widget-card size-${frame.size} widget-approve`}>
+        {placeWidgets(layoutWidgetsOfFrames(frames), form).map((card) => {
+          const frame = byId.get(card.id);
+          if (frame === undefined) return null;
+          const place = gridPlace(card);
+          return frame.src === null ? (
+            <div key={frame.id} className="card widget-card widget-approve" style={place}>
               <Icon name="lock" />
               <strong>{frame.name}</strong>
               <span>Approve to show this widget</span>
@@ -138,8 +147,9 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
               </button>
             </div>
           ) : (
-            <div key={frame.id} className={`card widget-card size-${frame.size}`}>
-              <WidgetFrameView frame={frame} size={frame.size} scheme={scheme} />
+            <div key={frame.id} className="card widget-card" style={place}>
+              {/* The size is in the frame's address, so a new size loads the widget again. */}
+              <WidgetFrameView frame={frame} size={card.size} scheme={scheme} />
               <button
                 type="button"
                 className="icon-button widget-full-button"
@@ -149,8 +159,8 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
                 <Icon name="expand" />
               </button>
             </div>
-          ),
-        )}
+          );
+        })}
       </div>
       {full !== null && (
         <div className="widget-full" role="dialog" aria-modal="true" aria-label={full.name}>
@@ -167,6 +177,14 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
       )}
     </>
   );
+}
+
+/** The explicit place of a card in a CSS grid: the home grid and the preview of Settings both use it. */
+export function gridPlace(card: PlacedWidget): CSSProperties {
+  return {
+    gridColumn: `${String(card.column)} / span ${String(card.columns)}`,
+    gridRow: `${String(card.row)} / span ${String(card.rows)}`,
+  };
 }
 
 /**

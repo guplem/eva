@@ -17,6 +17,8 @@ import { goTo } from "./back-layers.ts";
 import { withFixRequest, withProjectMention } from "./mentions.ts";
 import { assistantChatAddressOf, newChatPageId } from "./navigation.ts";
 import { useWidgetFrames } from "./WidgetGrid.tsx";
+import { Icon } from "./icons.tsx";
+import { settingsHash } from "./settings-routes.ts";
 
 /** The key of the unsent text of this page, which has no chat yet. A chat id never takes it. */
 const newChatTextKey = "new-chat";
@@ -171,7 +173,20 @@ export function NewChatDraft({
           <h1>New chat</h1>
           {draft !== null && <div className="sub">{chatSubtitle(draft, false)}</div>}
         </div>
-        {homeButtons}
+        <div className="home-actions">
+          {widgets.frames.length > 0 && (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Arrange the widgets"
+              data-tooltip="Arrange the widgets"
+              onClick={() => goTo(settingsHash({ section: "personalize", item: "widget-layout" }))}
+            >
+              <Icon name="tiles" />
+            </button>
+          )}
+          {homeButtons}
+        </div>
       </div>
       <div className="branches">
         <section className="branch" aria-label="New chat">

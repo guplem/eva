@@ -1,4 +1,4 @@
-import { expect, test, type Frame, type Page } from "@playwright/test";
+import { expect, test, type Frame, type Locator, type Page } from "@playwright/test";
 
 /**
  * The widgets of the home page in a real browser (#691). The demo server approved, in this order,
@@ -84,8 +84,15 @@ test("on a phone two small cards share a row, and a small card with no partner t
   page,
 }) => {
   test.skip(test.info().project.name !== "phone", "The phone grid only.");
-  // Cards to approve need no frame, so the grid shows them at once, at their sizes.
-  const card = (id: string, size: string): Record<string, unknown> => ({ id, name: id, size, src: null, token: null });
+  // A card to approve is always small, so these cards have a frame. Its page does not exist: the test needs only its place.
+  const card = (id: string, size: string): Record<string, unknown> => ({
+    id,
+    name: id,
+    size,
+    layout: {},
+    src: `/widgets/none/${id}/index.html`,
+    token: null,
+  });
   await page.route("**/api/widgets/frames", async (route) => {
     await route.fulfill({
       json: [
@@ -100,10 +107,7 @@ test("on a phone two small cards share a row, and a small card with no partner t
   await page.goto("/#/chats/new");
   const grid = await page.locator(".widget-grid").boundingBox();
   const box = async (name: string): Promise<{ x: number; y: number; width: number }> => {
-    const found = await page
-      .locator(".widget-card")
-      .filter({ has: page.getByText(name, { exact: true }) })
-      .boundingBox();
+    const found = await page.locator(`.widget-card:has(iframe[aria-label="${name}"])`).boundingBox();
     if (found === null) throw new Error(`The grid must show ${name}.`);
     return found;
   };
@@ -241,6 +245,43 @@ test("Personalize lists the widget, on, with its repository and owner", async ({
   await expect(list).toContainText("On");
 });
 
+test("the widget layout places a widget, leaves a gap, and the home page shows the same places", async ({ page }) => {
+  await logIn(page);
+  const form = test.info().project.name === "phone" ? "Phone" : "Computer";
+  // The tiles button of the home page opens the editor.
+  await page.goto("/#/chats/new");
+  await page.getByRole("button", { name: "Arrange the widgets" }).click();
+  const editor = page.getByRole("region", { name: "Widget layout" });
+  await expect(editor).toBeVisible();
+  await editor.getByRole("button", { name: form, exact: true }).click();
+  const preview = editor.getByRole("group", { name: /^Preview of the home page/ });
+  const habits = preview.getByRole("button", { name: /^Habits/ });
+  // Select Habits, then move it down by the keyboard, past the other cards: a gap stays where it was.
+  await habits.click();
+  await expect(habits).toHaveAttribute("aria-pressed", "true");
+  for (let step = 0; step < 6; step += 1) await habits.press("ArrowDown");
+  // Escape ends the selection: the preview then shows the cards as the home page does.
+  await habits.press("Escape");
+  const place = async (locator: Locator): Promise<string> =>
+    locator.evaluate((element) => `${element.style.gridColumn} ${element.style.gridRow}`);
+  const previewPlaces = {
+    Habits: await place(habits),
+    Cases: await place(preview.getByRole("button", { name: /^Cases/ })),
+    Calendar: await place(preview.getByRole("button", { name: /^Calendar/ })),
+  };
+  await editor.getByRole("button", { name: "Save layout" }).click();
+  await expect(editor.getByRole("button", { name: "Discard changes" })).toHaveCount(0);
+  await page.goto("/#/chats/new");
+  const grid = page.getByRole("group", { name: "Widgets" });
+  for (const [name, expected] of Object.entries(previewPlaces))
+    expect(await place(grid.locator(`.widget-card:has(iframe[aria-label="${name}"])`))).toBe(expected);
+  // Put the default back, so the other tests see the grid of the demo.
+  await page.goto("/#/settings/personalize/widget-layout");
+  await editor.getByRole("button", { name: form, exact: true }).click();
+  await editor.getByRole("button", { name: "Reset to default" }).click();
+  await editor.getByRole("button", { name: "Save layout" }).click();
+  await expect(editor.getByRole("button", { name: "Reset to default" })).toHaveAttribute("aria-disabled", "true");
+});
 test("Preview on a clone shows a change that is not pushed, with example data first, then my data", async ({
   page,
 }) => {

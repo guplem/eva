@@ -1,14 +1,12 @@
 /*
  * The widgets of the home page and their list in Personalize (#691). The grid of the day panel
- * (#972) has two columns on a phone and four on a computer. docs/widgets.md gives the place of
- * each size. The cards keep the order of .eva/widgets.json, and dense placement fills each hole
- * that a large card leaves, so no order makes cards overlap.
+ * (#972) has two columns on a phone and four on a computer. Each card has an explicit row and
+ * column from `placeWidgets` (#985), the function that also places the preview of Settings.
  */
 .widget-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: 168px;
-  grid-auto-flow: row dense;
   gap: var(--space-3);
   width: 100%;
 }
@@ -18,34 +16,6 @@
   padding: 0;
   gap: 0;
   overflow: hidden;
-  grid-column: span 1;
-}
-
-.widget-card.size-medium {
-  grid-column: span 2;
-}
-
-.widget-card.size-large,
-.widget-card.size-tall {
-  grid-column: span 2;
-  grid-row: span 2;
-}
-
-/* On a phone the cards stack, so the smaller cards come first, and the long xlarge card after them. */
-.widget-card.size-xlarge {
-  grid-column: span 2;
-  grid-row: span 3;
-  order: 1;
-}
-
-@media (max-width: 760px) {
-  /*
-   * Every other card spans both columns, so dense placement pairs the small cards in order. Only
-   * the last of an odd number has no partner: it takes the whole row instead of half of it.
-   */
-  .widget-card.size-small:nth-child(odd of .size-small):nth-last-child(1 of .size-small) {
-    grid-column: span 2;
-  }
 }
 
 @media (min-width: 761px) {
@@ -55,20 +25,6 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-template-rows: repeat(3, minmax(140px, 1fr));
     grid-auto-rows: minmax(140px, 1fr);
-  }
-
-  .widget-card.size-large {
-    grid-column: span 4;
-    grid-row: span 1;
-  }
-
-  .widget-card.size-tall {
-    grid-column: span 1;
-  }
-
-  .widget-card.size-xlarge {
-    grid-column: span 3;
-    order: 0;
   }
 }
 
@@ -160,11 +116,6 @@
   gap: var(--space-2);
 }
 
-/* The up arrow is the back arrow turned a quarter. */
-.widget-move-up {
-  transform: rotate(90deg);
-}
-
 .widget-activation {
   display: flex;
   flex-direction: column;
@@ -248,4 +199,134 @@ button.files-entry:focus-visible {
   button.files-entry:hover {
     background: var(--soft);
   }
+}
+
+/*
+ * The preview of the layout editor (#985): the home grid at a smaller scale. A computer cell is
+ * about 4:3, as the home page shows it; a phone cell is about square. Each target keeps the touch
+ * size, so a narrow screen makes the preview longer, not the targets smaller.
+ */
+.layout-preview-frame {
+  container-type: inline-size;
+  width: 100%;
+  max-width: 560px;
+}
+
+.layout-preview-frame.layout-phone {
+  max-width: 240px;
+  margin-inline: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.layout-preview {
+  --layout-gap: var(--space-2);
+  --layout-row: max(var(--touch-target), calc((100cqw - 3 * var(--layout-gap)) / 4 * 0.75));
+  position: relative;
+  display: grid;
+  gap: var(--layout-gap);
+  touch-action: pan-y;
+}
+
+.layout-phone .layout-preview {
+  --layout-row: max(var(--touch-target), calc((100cqw - var(--layout-gap)) / 2 * 0.95));
+}
+
+.layout-cell {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-input);
+  background: transparent;
+  padding: 0;
+  min-height: 0;
+}
+
+/* A free place where the selected widget fits: a press moves it there. */
+.layout-cell.layout-target {
+  border-color: var(--accent);
+  background: var(--soft);
+  cursor: pointer;
+}
+
+.layout-box {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-2);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-input);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+}
+
+/* A finger drags the selected box, so the page does not scroll under it. */
+.layout-box.selected {
+  border: 2px solid var(--accent);
+  background: var(--soft);
+  color: var(--soft-ink);
+  touch-action: none;
+}
+
+.layout-box.waiting {
+  color: var(--muted);
+}
+
+.layout-box .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.layout-box-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.layout-box-size {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Where a drag would drop the selected box. */
+.layout-ghost {
+  z-index: 2;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-input);
+  pointer-events: none;
+}
+
+.layout-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The move buttons are the back arrow, turned. */
+.layout-arrow-up {
+  transform: rotate(90deg);
+}
+
+.layout-arrow-down {
+  transform: rotate(-90deg);
+}
+
+.layout-arrow-right {
+  transform: rotate(180deg);
 }

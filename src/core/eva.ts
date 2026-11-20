@@ -133,6 +133,7 @@ import {
   type BrowsedPath,
 } from "./files/file-browser.ts";
 import { downloadVaultPath, type VaultDownload } from "./files/file-download.ts";
+import { findBacklinks, type BacklinksResult } from "./files/vault-backlinks.ts";
 import { searchVault, type SearchResult } from "./files/vault-search.ts";
 import { cleanScratch, receivedFileNote, receivedFolder, saveReceivedFile } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
@@ -2259,6 +2260,11 @@ export class Eva {
    */
   searchFiles(query: string, contents: boolean, shareable = false): SearchResult {
     return searchVault(this.browsedVault(), query, { contents, shareable }, (text) => this.redactor.redact(text));
+  }
+
+  /** The vault notes that link to the file at `path`, for the links button of the file explorer (#992). */
+  fileBacklinks(path: string): BacklinksResult {
+    return findBacklinks(this.browsedVault(), path, (text) => this.redactor.redact(text));
   }
 
   /** A vault file, or a folder as one zip, for the Download button of the file explorer. */

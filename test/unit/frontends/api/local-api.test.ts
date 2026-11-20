@@ -2308,6 +2308,17 @@ describe("web routes", () => {
     expect(inside.matches.map((match) => [match.path, match.line?.number])).toEqual([[".eva/assistant.md", 1]]);
   });
 
+  test("files: the backlinks list the notes that link to a file (#992)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, "Methods"), { recursive: true });
+    writeFileSync(join(vaultPath, "Methods", "Plan.md"), "# Plan\nAsk [[assistant]] first.\n");
+    const answer = await json(await call(`/api/files/backlinks?path=${encodeURIComponent(".eva/assistant.md")}`));
+    expect(answer).toEqual({
+      links: [{ path: "Methods/Plan.md", name: "Plan.md", line: { number: 2, text: "Ask [[assistant]] first." } }],
+      complete: true,
+    });
+  });
+
   test("files: a file downloads as itself, a folder as a zip, and a secrets file does not", async () => {
     const file = await call(`/api/files/download?path=${encodeURIComponent(".eva/assistant.md")}`);
     expect(file.status).toBe(200);

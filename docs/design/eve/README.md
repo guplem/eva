@@ -385,11 +385,12 @@ Cases, a case page, People, Inventory, Pets and Periods, on a computer and on a 
 
 ![Computer](screenshots/widget-layout-computer-light.webp) ![Phone](screenshots/widget-layout-phone-light.webp)
 
-- Settings > Personalize > Widget layout places the widgets of the home page. Chips pick the computer or the phone layout.
-- The preview is the home grid at a small scale: four columns on a computer, two on a phone. Each widget that is on has a box with its name and size. `placeWidgets` places the preview and the home grid, so the two never differ.
-- A tap selects a box: it takes the soft accent fill and a 2 px accent border. Each free place where it fits shows a dashed accent cell. A tap on a cell moves the box. A tap on another box swaps the two. A drag shows a dashed outline where the box would land.
-- Below the preview, the arrows move the selected box, and chips pick its size. Each target is 44 px at least on a phone.
-- Arrangement chips place every widget with one tap. Save layout is the main button. Nothing changes on the home page before it.
+- Settings > Personalize > Widget layout places the widgets of the home page. Line tabs pick the computer or the phone layout: the shown tab has an accent line on the rule under the row.
+- The preview is the home grid at a small scale: four columns on a computer, two on a phone. Each widget that is on has a box with its name and its size in columns × rows, in the mono font. `placeWidgets` places the preview and the home grid, so the two never differ.
+- The view mode is read only: chip-coloured boxes, and an Edit button at the right end of the tab row.
+- Edit turns on the edit mode. Cancel and Done take the place of Edit. Each free cell is a dashed outline, with one spare row at the bottom. The boxes take the soft accent fill, a move grip at the top right, and a resize handle at the bottom right. A box that moves gets an accent ring and the card shadow.
+- A box snaps to the cells as it moves, and never covers another box. The size label changes as the handle moves. The handle is 44 px on a phone. Reset to default shows only in the edit mode.
+- Done is the main button. Nothing changes on the home page before it.
 
 ### Devices
 

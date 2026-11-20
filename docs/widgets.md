@@ -170,7 +170,9 @@ An `eva-cases` input gives the widget the person's open cases. Eva reads them fr
 
 ## Sizes
 
-A widget has five sizes for a fixed grid, and a full-screen view, `full`. The manifest's `size` is the default size of its card in the grid. The person can give the card another of the five sizes, apart on a computer and on a phone, so a widget must work at each size. `tall` and `xlarge` come with contract 2.
+A widget has five sizes for a grid, and a full-screen view, `full`. The manifest's `size` is the default size of its card in the grid. The person can give the card any shape of whole columns and rows, apart on a computer and on a phone. Eva gives the widget the nearest of the five sizes, so a widget must work at each size. `tall` and `xlarge` come with contract 2.
+
+The default shape of each size:
 
 | Size     | On a computer (4 columns) | On a phone (2 columns)                                 |
 | -------- | ------------------------- | ------------------------------------------------------ |
@@ -180,14 +182,28 @@ A widget has five sizes for a fixed grid, and a full-screen view, `full`. The ma
 | `tall`   | 1 column, 2 rows          | The full width, 2 rows                                 |
 | `xlarge` | 3 columns, 3 rows         | The full width, 3 rows                                 |
 
+The size of any other shape (`sizeOfShape` in `src/core/widgets/widget-layout.ts`):
+
+| Shape                                | Size     | Examples                   |
+| ------------------------------------ | -------- | -------------------------- |
+| 1 column, 1 row                      | `small`  | 1 × 1                      |
+| 1 column, 2 rows or more             | `tall`   | 1 × 2, 1 × 4               |
+| 2 columns, 1 row                     | `medium` | 2 × 1                      |
+| 3 columns or more, 1 row             | `large`  | 3 × 1, 4 × 1               |
+| 2 columns or more and 2 rows or more | `large`  | 2 × 2                      |
+| The same, with 6 cells or more       | `xlarge` | 3 × 2, 2 × 3, 3 × 3, 4 × 4 |
+
+A card at the default shape of its own size keeps that size. So a `tall` card at 2 × 2 on a phone stays `tall`, and a card with no saved shape gets the size of its manifest.
+
 The grid is the day panel of Eva's home page:
 
 - The person places each card in **Settings > Personalize > Widget layout**, with a preview of the grid. The computer and the phone each have their own layout. A place can stay empty.
-- Each entry of `.eva/widgets.json` can keep its place and size in an optional `layout` key: `{ "computer": { "column": 1, "row": 1, "size": "xlarge" }, "phone": { "column": 1, "row": 4 } }`. `column` and `row` start at 1. Eva ignores a bad value.
-- A card with no saved place fills the first hole where it fits, in the order of the list, after the saved cards. So no order makes cards overlap. A phone with no saved place follows the order of the computer layout.
+- Each entry of `.eva/widgets.json` can keep its place and shape in an optional `layout` key: `{ "computer": { "column": 1, "row": 1, "columns": 3, "rows": 2 }, "phone": { "column": 1, "row": 4, "columns": 2, "rows": 3 } }`. `column` and `row` start at 1. A card has 4 columns and 8 rows at most. Eva ignores a bad value.
+- An older Eva saved a size name instead of a shape, such as `{ "column": 1, "row": 1, "size": "xlarge" }`. Eva still reads it: the card gets the default shape and the name of that size. A new save writes `columns` and `rows`.
+- A card with no saved place fills the first hole where it fits, in the order of the list, after the saved cards. So no order makes cards overlap. A phone with no saved place follows the order of the computer layout. It takes the size of the computer shape, with the phone shape of that size.
 - `placeWidgets` in `src/core/widgets/widget-layout.ts` places the cards of the home grid and of the preview.
 - On a computer, at least three rows share the height above the message box. Each row is at least 140 px high. More cards add rows, and the page scrolls.
-- On a phone, each row is 168 px high, and the page scrolls. With no saved place, an `xlarge` card shows after the smaller cards, so a long calendar does not push them out of view. Two `small` cards share a row. A `small` card with no partner in its row takes the full width.
+- On a phone, each row is 168 px high, and the page scrolls. With no saved place, an `xlarge` card shows after the smaller cards, so a long calendar does not push them out of view. Two `small` cards share a row. A `small` card that Eva places alone in its row takes the full width. A card that the person placed keeps the shape that the person gave it.
 
 - The widget always fills the space that it gets, at every screen size. It has no empty border.
 - Keep the top right corner free of text and buttons: 56 px wide and 56 px high, at every size. Eva puts her full-screen button there, over the widget, and her close button in full screen.

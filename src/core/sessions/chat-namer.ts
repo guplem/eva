@@ -19,8 +19,11 @@ import type { FirstTurn } from "./session-manager.ts";
 
 /** Enough of each text to name the chat, and a small call. */
 const sentTextLength = 2_000;
-/** A name from the whole chat reads its newest turns: a chat often ends far from where it began. */
-const chatLength = 12_000;
+/**
+ * A name from the whole chat reads a short part of each turn. A long chat keeps its first turn, which
+ * often says what the chat is for, and its newest turns, where it ended.
+ */
+const chatLimits = { maxLength: 12_000, textLength: 300, keepFirst: true } as const;
 
 const nameLines = [
   "You name chats. Answer with the name only: one line, at most 60 characters, with no quotes.",
@@ -113,7 +116,7 @@ export class ChatNamer {
       model: cheapestModel(chat.engine, chat.model),
       systemPrompt: wholeChatPrompt,
       prompt: "Name this chat.",
-      context: { rules: rules.length === 0 ? defaultRules : rules, chat: chatTranscript(chat.turns, chatLength) },
+      context: { rules: rules.length === 0 ? defaultRules : rules, chat: chatTranscript(chat.turns, chatLimits) },
     });
     if (!result.ok) {
       this.options.logger?.log("warn", `A chat name failed: ${result.reason}`);

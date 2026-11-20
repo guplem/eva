@@ -182,3 +182,18 @@ describe("a name from the whole chat (#996)", () => {
     expect(await blank.nameFromChat(chat)).toMatchObject({ ok: false });
   });
 });
+
+test("a long chat keeps its first turn and its newest turns, each cut short (#996)", async () => {
+  const { namer: longChat, engine } = namer((request) => FakeEngine.answer(request, "Rome trip"));
+  const turns = Array.from({ length: 60 }, (_, index) => ({
+    userText: index === 0 ? "Plan a trip to Rome" : `Question ${String(index)} ${"x".repeat(1_000)}`,
+    answerText: "y".repeat(1_000),
+    failure: null,
+  }));
+  await longChat.nameFromChat({ engine: "claude-code", model: "opus", turns });
+  const prompt = engine.requests[0]?.prompt ?? "";
+  expect(prompt).toContain("Person: Plan a trip to Rome");
+  expect(prompt).toContain("Question 59");
+  expect(prompt).toMatch(/\(\d+ turns are left out here\.\)/);
+  expect(prompt.length).toBeLessThan(14_000);
+});

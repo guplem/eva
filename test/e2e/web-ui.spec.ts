@@ -499,6 +499,48 @@ test("a pick of the last answer of the main line shows it, also under a fork fro
   await expect(point).toContainText("Main line · 1 of 2");
 });
 
+test("a right click on any row of the branch map gives the actions of its turn and its branch (#990)", async ({
+  page,
+  context,
+}) => {
+  test.skip(test.info().project.name === "phone", "A phone opens the map from the header, and other tests cover it.");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Row menu"));
+  await waitUntilIdle(page, chatId);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("A second question");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").nth(1)).toContainText("A second question");
+  await waitUntilIdle(page, chatId);
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  await expect(page.getByRole("group", { name: "Branches after answer 1" })).toContainText("Fork 1 · 2 of 2");
+
+  // The second row of the main line is no branch head, and it still has Eva's menu, not the browser's.
+  const map = page.getByRole("navigation", { name: "Branch map" });
+  await map.getByRole("button", { name: /Main line · answer 2/ }).click({ button: "right" });
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("group", { name: "Main line · answer 2" })).toBeVisible();
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    "Show",
+    "Copy message",
+    "Retry",
+    "Fork",
+    "Rename",
+    "Delete fork",
+  ]);
+
+  // Copy message copies the person's words of that turn.
+  await menu.getByRole("menuitem", { name: "Copy message" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Copied." })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("A second question");
+
+  // Fork from the map makes a new branch after that answer, as the button under the answer does.
+  await map.getByRole("button", { name: /Main line · answer 2/ }).click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Fork", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Branches after answer 2" })).toContainText("Fork 2 · 2 of 2");
+});
+
 test("on a wide screen, the chat fills the width beside the branch map (issue 828)", async ({ page }) => {
   test.skip(
     test.info().project.name === "phone",
@@ -1237,6 +1279,42 @@ test("a retry of an answer that wrote a note asks to undo it, and the undo remov
   await expect(question).toBeHidden();
   await expect(page.getByRole("group", { name: "Branches from the start" })).toContainText("Fork 1");
   expect((await page.request.get(`/api/files?path=Notes/${note}.md`)).status()).toBe(404);
+});
+
+test("a retry question that loads after the person showed another branch does not open there (#990)", async ({
+  page,
+}) => {
+  const note = `late-undo-${test.info().project.name}`;
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, `Please write the note ${note}`));
+  await waitUntilIdle(page, chatId);
+  // A fork of the answer gives the chat a second branch, and the page shows the fork.
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  const point = page.getByRole("group", { name: "Branches after answer 1" });
+  await expect(point).toContainText("Fork 1 · 2 of 2");
+  // Eva reads the changes of the answer slowly, so the person moves on first.
+  let release = (): void => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/retry-undo?*", async (route) => {
+    await held;
+    await route.continue();
+  });
+  const loaded = page.waitForResponse((response) => response.url().includes("/retry-undo?"));
+  await page.getByRole("button", { name: "Retry" }).first().click();
+  await point.getByRole("button", { name: "Next branch" }).click();
+  await expect(point).toContainText("Main line · 1 of 2");
+  release();
+  // The late answer has a file to undo, so without the guard it would ask the question.
+  const preview = (await (await loaded).json()) as { restore: string[] };
+  expect(preview.restore).toContain(`Notes/${note}.md`);
+  // A round trip of the page and two frames let it handle the late answer, so a wrong question would show by now.
+  await page.evaluate(async () => {
+    await fetch("/api/status");
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  await expect(page.getByRole("dialog", { name: "Undo the changes" })).toHaveCount(0);
 });
 
 test("a new chat from a summary starts with the summary to edit, and each chat links to the other (#522)", async ({

@@ -21,6 +21,10 @@ import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import { latestId, type LiveState } from "./live-state.ts";
 import { useContextMenu, type ContextMenuProps, type MenuItem } from "./Menu.tsx";
+import { branchRowActions, type BranchRowAction } from "./answer-actions.ts";
+import type { AnswerActions } from "./AnswerActions.tsx";
+import { useCopyToast } from "./MessageMenu.tsx";
+import { personWords } from "../../../shared/project-report.ts";
 
 /** The branch that the page shows, and the turn to bring into view after a pick. */
 export interface ShownBranch {
@@ -179,11 +183,14 @@ export function BranchMap({
   shownId,
   states,
   onPick,
+  answers,
 }: {
   readonly tree: readonly SessionRecord[];
   readonly shownId: string;
   readonly states: ReadonlyMap<string, BranchState>;
   readonly onPick: (row: MapRow) => void;
+  /** Retry and Fork of the chat. A map outside the chat, such as the phone's sheet, has none. */
+  readonly answers?: AnswerActions;
 }): ReactElement {
   const map = branchMap(tree, shownId);
   const lastRows = new Map(map.rows.map((row) => [row.sessionId, row.key]));
@@ -202,10 +209,11 @@ export function BranchMap({
           key={row.key}
           row={row}
           width={width}
-          fork={row.branchHead ? tree.find((session) => session.id === row.sessionId) : undefined}
+          fork={tree.find((session) => session.id === row.sessionId)}
           forkName={names.get(row.sessionId) ?? "the fork"}
           state={lastRows.get(row.sessionId) === row.key ? states.get(row.sessionId) : undefined}
           onPick={onPick}
+          answers={answers}
         />
       ))}
     </ol>
@@ -228,13 +236,15 @@ function scrollToEnd(row: HTMLElement): void {
 
 /**
  * The context menu of a branch: Open when the place gives it, then Rename and Delete fork (issues 637, 647).
- * Spread `props` on the fork's element, and draw `parts` next to it. With no fork, the element keeps
- * the browser's menu, as it has no Eva action.
+ * A row of the branch map puts the actions of its turn first (#990): `turnItems` then gives them,
+ * and each part gets a heading. Spread `props` on the fork's element, and draw `parts` next to it.
+ * With no fork, the element keeps the browser's menu, as it has no Eva action.
  */
 export function useForkMenu(
   fork: SessionRecord | undefined,
   forkName: string,
   onOpen?: () => void,
+  turnItems?: readonly MenuItem[],
 ): { readonly props: ContextMenuProps | Record<string, never>; readonly parts: ReactElement } {
   const [asking, setAsking] = useState<"rename" | "delete" | null>(null);
   // A closed dialog gives the focus back to the row, so a keyboard or a screen reader keeps its place.
@@ -244,11 +254,22 @@ export function useForkMenu(
     // A deleted fork has no row any more.
     if (opener.current?.isConnected === true) opener.current.focus();
   };
-  const items: MenuItem[] = [
+  const forkItems: MenuItem[] = [
     ...(onOpen === undefined ? [] : [{ label: "Open", icon: "chat" as const, onChoose: onOpen }]),
     { label: "Rename", icon: "pen", onChoose: () => setAsking("rename") },
     { label: "Delete fork", icon: "trash", danger: true, onChoose: () => setAsking("delete") },
   ];
+  const items: MenuItem[] =
+    turnItems === undefined
+      ? forkItems
+      : [
+          ...turnItems,
+          ...forkItems.map((item, index) => ({
+            ...item,
+            group: forkName,
+            ...(index === 0 ? { groupIcon: "fork" as const } : {}),
+          })),
+        ];
   const { props, menu } = useContextMenu(items, `Actions of ${forkName}`);
   const menuProps: ContextMenuProps = {
     ...props,
@@ -290,7 +311,7 @@ export function useForkMenu(
   return { props: fork === undefined ? {} : menuProps, parts };
 }
 
-/** One row of the map. The first row of a branch has the branch menu. */
+/** One row of the map. Its menu has the quick actions of its turn and of its branch (#990). */
 function BranchRow({
   row,
   width,
@@ -298,6 +319,7 @@ function BranchRow({
   forkName,
   state,
   onPick,
+  answers,
 }: {
   readonly row: MapRow;
   readonly width: number;
@@ -305,11 +327,38 @@ function BranchRow({
   readonly forkName: string;
   readonly state: BranchState | undefined;
   readonly onPick: (row: MapRow) => void;
+  readonly answers: AnswerActions | undefined;
 }): ReactElement {
-  const { props: menuProps, parts } = useForkMenu(fork, forkName);
+  const { copy, toast } = useCopyToast();
+  const index = row.index;
+  const turn = fork === undefined || index === null ? undefined : fork.turns[index];
+  const words = turn === undefined ? null : personWords(turn);
+  const actions =
+    fork === undefined
+      ? []
+      : branchRowActions(fork, turn === undefined ? null : { ...turn, words }, answers !== undefined);
+  const turnItem = (action: BranchRowAction): MenuItem | null => {
+    if (action === "show") return { label: "Show", icon: "eye", onChoose: () => onPick(row) };
+    if (action === "copy" && words !== null)
+      return { label: "Copy message", icon: "copy", onChoose: () => copy(words) };
+    if (fork === undefined || index === null || answers === undefined) return null;
+    if (action === "retry") return { label: "Retry", icon: "restart", onChoose: () => answers.retry(fork, index) };
+    if (action === "fork") return { label: "Fork", icon: "fork", onChoose: () => answers.fork(fork, index) };
+    return null;
+  };
+  const turnItems = actions
+    .map(turnItem)
+    .filter((item): item is MenuItem => item !== null)
+    .map((item, position) => ({
+      ...item,
+      group: row.label,
+      ...(position === 0 ? { groupIcon: "chat" as const } : {}),
+    }));
+  const { props: menuProps, parts } = useForkMenu(fork, forkName, undefined, turnItems);
   return (
     <li>
       {parts}
+      {toast}
       <button
         className={row.onPath ? "branch-row on-path" : "branch-row"}
         aria-current={row.current ? "true" : undefined}

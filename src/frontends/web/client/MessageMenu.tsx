@@ -8,37 +8,37 @@ import { useShowError } from "./error-toast.tsx";
 import { useContextMenu, type ContextMenuProps, type MenuItem } from "./Menu.tsx";
 import { Toast } from "./Toast.tsx";
 
+/** Copy from a menu: it copies the text, then says "Copied.". Draw `toast` next to the menu. */
+export function useCopyToast(): { readonly copy: (text: string) => void; readonly toast: ReactElement | null } {
+  const showError = useShowError();
+  // A count, so a second copy starts the toast again.
+  const [copies, setCopies] = useState(0);
+  const copy = (text: string): void => {
+    copyText(text)
+      .then(() => setCopies((count) => count + 1))
+      .catch((caught: unknown) => showError(caught));
+  };
+  const toast = copies > 0 ? <Toast key={copies} message="Copied." onClose={() => setCopies(0)} /> : null;
+  return { copy, toast };
+}
+
 /** Spread `props` on the message, and draw `parts` next to it. */
 export function useMessageMenu(
   text: string,
   label: string,
   actions: readonly MenuItem[] = [],
 ): { readonly props: ContextMenuProps; readonly parts: ReactElement } {
-  const showError = useShowError();
-  // A count, so a second copy starts the toast again.
-  const [copies, setCopies] = useState(0);
+  const { copy, toast } = useCopyToast();
   const items: MenuItem[] = [
     // An answer that failed before its first message has no text, so it has no Copy button either.
-    ...(text === ""
-      ? []
-      : [
-          {
-            label: "Copy",
-            icon: "copy" as const,
-            onChoose: () => {
-              copyText(text)
-                .then(() => setCopies((count) => count + 1))
-                .catch((caught: unknown) => showError(caught));
-            },
-          },
-        ]),
+    ...(text === "" ? [] : [{ label: "Copy", icon: "copy" as const, onChoose: () => copy(text) }]),
     ...actions,
   ];
   const { props, menu } = useContextMenu(items, label);
   const parts = (
     <>
       {menu}
-      {copies > 0 && <Toast key={copies} message="Copied." onClose={() => setCopies(0)} />}
+      {toast}
     </>
   );
   return { props, parts };

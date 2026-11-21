@@ -273,7 +273,7 @@ The root `AGENTS.md` says "Decide by group, not by file." and "A spreadsheet bec
 
 - **Version:** 11
 - **Date:** 2026-11-21
-- **Pull request:** https://github.com/guplem/eva/pull/PRNUMBER
+- **Pull request:** https://github.com/guplem/eva/pull/1003
 - **Summary:** Your habits get a folder of their own, Life/Habits, for habits of any kind, such as reading or exercise. The Habits widget offers it as its default folder.
 - **Migrations first:**
 

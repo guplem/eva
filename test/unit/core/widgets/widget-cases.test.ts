@@ -58,6 +58,7 @@ describe("openCases", () => {
     expect(openCases(vault)).toEqual([
       {
         id: "2026-11-01-bathroom-leak",
+        path: "Life/Cases/2026-11-01-bathroom-leak",
         title: "Fix the bathroom leak",
         nextStep: { text: "Confirm the date with the plumber", waitingFor: "plumber", dueDate: "2026-11-17" },
         deadline: { date: "2026-12-01", cost: "A fine of 50 EUR" },
@@ -74,6 +75,7 @@ describe("openCases", () => {
     expect(openCases(vault)).toEqual([
       {
         id: "2026-03-06-old-next",
+        path: "Life/Cases/2026-03-06-old-next",
         title: "Old next",
         nextStep: { text: "Call the bank", waitingFor: "the bank", dueDate: "2026-11-30" },
         deadline: null,
@@ -82,13 +84,22 @@ describe("openCases", () => {
       },
       {
         id: "2026-03-04-move-flat",
+        path: "Life/Cases/2026-03-04-move-flat",
         title: "Move flat",
         nextStep: { text: "Book the van", waitingFor: null, dueDate: null },
         deadline: { date: "2026-12-20", cost: null },
         stepsDone: null,
         stepsTotal: null,
       },
-      { id: "2026-03-05-refund", title: "Refund", nextStep: null, deadline: null, stepsDone: 1, stepsTotal: 1 },
+      {
+        id: "2026-03-05-refund",
+        path: "Life/Cases/2026-03-05-refund",
+        title: "Refund",
+        nextStep: null,
+        deadline: null,
+        stepsDone: 1,
+        stepsTotal: 1,
+      },
     ]);
   });
 
@@ -122,9 +133,18 @@ describe("openCases", () => {
     write("Life/Cases/no-front-matter/Case.md", "# No front matter\n");
     caseFile("good", ["next: Do it"], "Good");
     expect(openCases(vault)).toEqual([
-      { id: "broken-keys", title: "Broken keys", nextStep: null, deadline: null, stepsDone: null, stepsTotal: null },
+      {
+        id: "broken-keys",
+        path: "Life/Cases/broken-keys",
+        title: "Broken keys",
+        nextStep: null,
+        deadline: null,
+        stepsDone: null,
+        stepsTotal: null,
+      },
       {
         id: "good",
+        path: "Life/Cases/good",
         title: "Good",
         nextStep: { text: "Do it", waitingFor: null, dueDate: null },
         deadline: null,
@@ -133,13 +153,22 @@ describe("openCases", () => {
       },
       {
         id: "no-front-matter",
+        path: "Life/Cases/no-front-matter",
         title: "No front matter",
         nextStep: null,
         deadline: null,
         stepsDone: null,
         stepsTotal: null,
       },
-      { id: "odd-values", title: "Odd values", nextStep: null, deadline: null, stepsDone: null, stepsTotal: null },
+      {
+        id: "odd-values",
+        path: "Life/Cases/odd-values",
+        title: "Odd values",
+        nextStep: null,
+        deadline: null,
+        stepsDone: null,
+        stepsTotal: null,
+      },
     ]);
   });
 });

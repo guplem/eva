@@ -319,7 +319,13 @@ export class WidgetPreviews {
     }
     // Example data answers 404, so the widget reads its mock files under `example/` (#778).
     if (grant !== null) {
-      const calendar = await calendarAnswer(path, query, grant.googleCalendar, this.options.calendar);
+      const calendar = await calendarAnswer(
+        path,
+        query,
+        grant.googleCalendar,
+        this.options.calendar,
+        this.options.projects,
+      );
       if (calendar !== null) return calendar;
     }
     const evaData = grant === null ? null : evaDataAnswer(path, grant, { vaultPath: this.options.vaultPath });

@@ -967,7 +967,13 @@ export class Widgets {
     if (path === "config.json") return jsonAnswer(configOf(record, entry));
     if (path === "eva/location.json")
       return jsonAnswer(record.location ? contractLocation(this.options.location()) : null);
-    const calendar = await calendarAnswer(path, query, record.googleCalendar, this.options.calendar ?? noCalendar);
+    const calendar = await calendarAnswer(
+      path,
+      query,
+      record.googleCalendar,
+      this.options.calendar ?? noCalendar,
+      this.options.projects,
+    );
     if (calendar !== null) return calendar;
     const evaData = evaDataAnswer(path, record, { vaultPath: this.options.vaultPath });
     if (evaData !== null) return evaData;

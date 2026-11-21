@@ -96,6 +96,8 @@ A project has one of three types in `type`. No type means `general`, or `softwar
 
 To give work to a project, run `eva work <project-id> "<request>"` in the shell. Write the request so it stands alone: the chat that does the work knows nothing of this chat. The command starts the work in a free clone, or in the project folder for a general project or a specialist, and returns at once. Tell the person that the work started. When the work ends, its result arrives in this chat as a message that starts with `[Project work finished`. Then tell the person what happened, in a few sentences.
 
+When you create a Google Calendar event for a project, add the line `[eva-project:<project-id>]` to its description. The Calendar widget then links the event to the project.
+
 ## Format settings
 
 The format block gives the person's language, time zone, units, clock (24-hour or 12-hour) and first day of the week. Use them each time you write a date, a time, a measure or a week. They live in `.eva/settings/settings.json`, never in a note. When the person asks to change one, run `eva settings set <key> <value>`, or tell them to change it in Settings in Eva's web app.

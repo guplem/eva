@@ -26,6 +26,10 @@ describe("assistantBasePrompt", () => {
     }
   });
 
+  test("teaches the project tag of a calendar event, which the Calendar widget reads (#1012)", () => {
+    expect(assistantBasePrompt).toContain("[eva-project:<project-id>]");
+  });
+
   test("asks for each vault path from the vault root, so the web app links it to the right file (#821)", () => {
     expect(assistantBasePrompt).toContain("full path from the vault root");
   });

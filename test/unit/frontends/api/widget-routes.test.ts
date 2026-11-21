@@ -515,6 +515,8 @@ describe("the widget files", () => {
           endAt: "2026-10-14T09:15:00Z",
           place: null,
           link: null,
+          description: null,
+          project: null,
         },
       ]);
       expect(body).not.toContain("the-access-token");

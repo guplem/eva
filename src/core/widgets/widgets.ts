@@ -17,6 +17,7 @@ import { checkManifest, manifestPath, type WidgetInput, type WidgetManifest } fr
 import type { WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { evaDataAnswer } from "./widget-eva-data.ts";
+import { answerStatePath, removeWidgetState, statePath } from "./widget-state.ts";
 import type { WidgetAskType } from "./widget-kinds.ts";
 import { calendarAnswer } from "./widget-google-calendar.ts";
 import { noCalendar, type CalendarSource } from "../google/google-calendar.ts";
@@ -830,6 +831,8 @@ export class Widgets {
       this.options.vaultPath,
       entries.filter((entry) => entry.id !== id),
     );
+    // The state is the widget's own: it goes with the widget. Turn off keeps it.
+    removeWidgetState(this.options.vaultPath, id);
     // In the background: the list answers at once, and the formats lose the widget's fields.
     void this.syncFormats();
     return this.list();
@@ -962,6 +965,15 @@ export class Widgets {
         exclusive: this.options.exclusive,
         redact: this.options.redact,
         wrote: (written) => this.formats.wrote(written),
+      });
+    if (path === statePath)
+      return answerStatePath({
+        vaultPath: this.options.vaultPath,
+        id: session.id,
+        method,
+        body,
+        exclusive: this.options.exclusive,
+        redact: this.options.redact,
       });
     if (method !== "GET" && method !== "HEAD") return { status: 405 };
     if (path === "config.json") return jsonAnswer(configOf(record, entry));

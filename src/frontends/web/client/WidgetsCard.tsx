@@ -18,6 +18,7 @@ import {
   missingInputs,
   promptLine,
   sentValues,
+  sizeLabel,
   type FormValues,
 } from "./widget-form.ts";
 
@@ -271,7 +272,7 @@ function WidgetRow({
             {sourceWords[source]}
           </span>
         ))}
-        {item.size !== null && <span className="pill">{item.size}</span>}
+        {item.size !== null && <span className="pill">{sizeLabel(item.size)}</span>}
       </div>
       {blocked && (
         <div className="callout danger">

@@ -3,7 +3,7 @@
  * of what the person approves. The core checks each value again: this only guides the person.
  */
 import type { WidgetInput, WidgetManifest } from "../../../core/widgets/widget-contract.ts";
-import { evaDataInputTypes } from "../../../core/widgets/widget-kinds.ts";
+import { evaDataInputTypes, type WidgetSize } from "../../../core/widgets/widget-kinds.ts";
 import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
 import type { DefaultPlace } from "../../../core/widgets/widget-defaults.ts";
 import { defaultPath, isClosedPlace, isPlainName } from "../../../core/widgets/widget-places.ts";
@@ -169,4 +169,18 @@ export function updateCheckNote(waiting: number, failed = 0): string {
       .filter((part) => part !== null)
       .join(" ");
   return waits ?? "Each widget is up to date, or its update installed.";
+}
+
+const sizeWords: Readonly<Record<WidgetSize, string>> = {
+  small: "Small",
+  medium: "Medium",
+  large: "Large",
+  tall: "Tall",
+  xlarge: "Extra large",
+  header: "Header",
+};
+
+/** The size of a widget in the list, in the words of the guide, not the name of the contract. */
+export function sizeLabel(size: WidgetSize): string {
+  return `Size: ${sizeWords[size]}`;
 }

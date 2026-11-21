@@ -468,7 +468,7 @@ test("the header slot shows its widget beside the greeting on a computer, and as
   }
 });
 
-test("a narrow window shrinks the header slot, then puts it below the greeting before the phone layout (#1007)", async ({
+test("a narrow window shrinks the header slot, then shows it as the first card of the phone layout (#1007, #1023)", async ({
   page,
 }) => {
   test.skip(test.info().project.name === "phone", "The break points are widths of a computer window.");
@@ -495,16 +495,15 @@ test("a narrow window shrinks the header slot, then puts it below the greeting b
   expect(middle.slot.y).toBeLessThan(middle.greeting.y + middle.greeting.height);
   expect(middle.slot.width).toBeLessThan(640);
   expect(middle.slot.width).toBeGreaterThanOrEqual(320);
-  // No room for both: below the greeting, at the full width of the row.
-  for (const width of [1100, 761]) {
+  // No room for both: the panel is too narrow for four columns too, so the phone layout shows the
+  // widget as the first card of the grid, below the greeting, at the full width.
+  for (const width of [1100, 761, 760]) {
     const below = await placeAt(width);
     expect(below.slot.y).toBeGreaterThanOrEqual(below.greeting.y + below.greeting.height);
     expect(Math.abs(below.slot.width - below.row.width)).toBeLessThan(2);
+    await expect(page.locator(".widget-grid").locator(summaryCard)).toHaveCount(1);
+    await expect(card.locator("iframe")).toHaveAttribute("src", /\?size=header$/);
   }
-  // The phone layout: the first row of the grid.
-  await page.setViewportSize({ width: 760, height: 800 });
-  await expect(page.locator(".widget-grid").locator(summaryCard)).toHaveCount(1);
-  await expect(card.locator("iframe")).toHaveAttribute("src", /\?size=header$/);
 });
 
 test("the layout editor moves a widget into the header slot and out of it, with the pointer and the keyboard (#1007)", async ({
@@ -574,4 +573,28 @@ test("the layout editor moves a widget into the header slot and out of it, with 
   );
   // Put the demo back: the default places, and Summary in the slot.
   await page.request.put("/api/widgets/layout", { data: { computer: null, header: null } });
+});
+
+test("a narrow day panel on a computer uses the phone layout: two columns, and the header widget as the first card (#1023)", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name === "phone", "The phone always has the phone layout.");
+  await logIn(page);
+  await defaultSlot(page);
+  const columns = (): Promise<number> =>
+    page.locator(".widget-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
+  // The chat list takes about 300 px, so a window of 1000 px leaves a panel of about 570 px.
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await page.goto("/#/chats/new");
+  await expect(page.locator(".widget-grid").locator(summaryCard)).toHaveCount(1);
+  await expect(page.locator(".day-greeting").locator(summaryCard)).toHaveCount(0);
+  await expect(page.locator(".widget-grid").locator(summaryCard).locator("iframe")).toHaveAttribute(
+    "src",
+    /\?size=header$/,
+  );
+  expect(await columns()).toBe(2);
+  // A wide window keeps the computer layout: four columns, and the slot beside the greeting.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.locator(".day-greeting").locator(summaryCard)).toHaveCount(1);
+  expect(await columns()).toBe(4);
 });

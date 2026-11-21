@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { widgetAddress } from "./widget-address.ts";
-import { widgetSizes } from "./widget-kinds.ts";
+import { widgetAskTypes, widgetSizes } from "./widget-kinds.ts";
 import type { WidgetEntry, WidgetInputValue } from "./widget-list.ts";
 
 export const approvalsVersion = 1;
@@ -39,6 +39,8 @@ export const approvalSchema = z.object({
   googleCalendar: z.enum(["read", "write"]).nullable().default(null),
   /** True for an `eva-cases` input. A record from before the field reads as "no cases". */
   cases: z.boolean().default(false),
+  /** The approved asks of contract 3, such as `chat`. A record from before the field reads as "no asks". */
+  asks: z.array(z.enum(widgetAskTypes)).default([]),
   /** The approved origins, such as `https://api.example.com`. */
   hosts: z.array(z.string()),
   /**

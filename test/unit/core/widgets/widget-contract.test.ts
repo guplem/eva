@@ -56,11 +56,11 @@ describe("checkManifest", () => {
   });
 
   test("refuses a contract that Eva does not know, and asks for an update", () => {
-    const result = checkManifest(JSON.stringify({ ...manifest, contract: 3 }));
+    const result = checkManifest(JSON.stringify({ ...manifest, contract: 4 }));
     expect(result.manifest).toBeNull();
-    expect(result.problems).toEqual(["This widget follows contract 3. Update Eva to use this widget."]);
+    expect(result.problems).toEqual(["This widget follows contract 4. Update Eva to use this widget."]);
     expect(result.newerContract).toBe(true);
-    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 3 })).newerContract).toBe(true);
+    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 4 })).newerContract).toBe(true);
   });
 
   test("accepts contract 2, with its sizes and its inputs of Eva's data", () => {
@@ -113,6 +113,39 @@ describe("checkManifest", () => {
     const { access: _caseAccess, ...readCases } = cases;
     expect(fails(readCases)).toBe(false);
     expect(fails({ ...readCases, default: true })).toBe(true);
+  });
+
+  test("accepts contract 3, with its asks and the header size", () => {
+    const asks = [
+      { type: "chat", why: "Starts a chat about a habit." },
+      { type: "open", why: "Opens the habit's file." },
+    ] as const;
+    const result = checkManifest(JSON.stringify({ ...manifest, contract: 3, size: "header", asks }));
+    expect(result.problems).toEqual([]);
+    expect(result.manifest?.size).toBe("header");
+    expect(result.manifest?.asks).toEqual(asks);
+    // With no key, the manifest asks for nothing.
+    expect(checkManifest(JSON.stringify({ ...manifest, contract: 3 })).manifest?.asks).toEqual([]);
+  });
+
+  test("keeps the rules of the asks of contract 3", () => {
+    const fails = (asks: unknown): boolean =>
+      checkManifest(JSON.stringify({ ...manifest, contract: 3, asks })).problems.length > 0;
+    expect(fails([{ type: "send", why: "x" }])).toBe(true);
+    expect(fails([{ type: "chat" }])).toBe(true);
+    expect(fails([{ type: "chat", why: "" }])).toBe(true);
+    expect(fails([{ type: "chat", why: "x", text: "y" }])).toBe(true);
+    expect(
+      fails([
+        { type: "chat", why: "x" },
+        { type: "chat", why: "y" },
+      ]),
+    ).toBe(true);
+    // Contract 2 has no asks and no header size.
+    expect(checkManifest(JSON.stringify({ ...manifest, contract: 2, asks: [] })).problems.length).toBeGreaterThan(0);
+    expect(checkManifest(JSON.stringify({ ...manifest, contract: 2, size: "header" })).problems.length).toBeGreaterThan(
+      0,
+    );
   });
 
   test("keeps contract 1 as it was: no new size and no new input type", () => {
@@ -301,5 +334,6 @@ describe("the meta-schemas", () => {
       return rest;
     };
     expect(await rules(2)).toEqual(await rules(1));
+    expect(await rules(3)).toEqual(await rules(1));
   });
 });

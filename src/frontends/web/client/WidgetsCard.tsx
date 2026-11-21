@@ -162,6 +162,7 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
                 onTurnOn={() => void turnOn(item)}
                 onTurnOff={() => void run(() => api.setWidgetEnabled(item.id, false))}
                 onApprove={() => setActivating(item)}
+                onSettings={() => setActivating(item)}
                 onRefuse={() => void run(() => api.refuseWidgetUpdate(item.id))}
                 onRemove={() => setRemoving(item)}
               />
@@ -172,13 +173,15 @@ export function WidgetsCard({ context }: { readonly context: SettingsContext }):
           <WidgetActivation
             item={activating}
             onClose={() => setActivating(null)}
-            onApproved={(next) => {
+            onApproved={(next, editing) => {
               setActivating(null);
               setItems(next);
               notify(
-                activating.update !== null
-                  ? `${activating.name} is up to date.`
-                  : `${activating.name} is on. It shows on the home page.`,
+                editing
+                  ? `Saved the settings of ${activating.name}.`
+                  : activating.update !== null
+                    ? `${activating.name} is up to date.`
+                    : `${activating.name} is on. It shows on the home page.`,
               );
             }}
           />
@@ -242,6 +245,7 @@ function WidgetRow({
   onTurnOn,
   onTurnOff,
   onApprove,
+  onSettings,
   onRefuse,
   onRemove,
 }: {
@@ -249,6 +253,8 @@ function WidgetRow({
   readonly onTurnOn: () => void;
   readonly onTurnOff: () => void;
   readonly onApprove: () => void;
+  /** Opens the form of an on widget with its saved values (#1022). */
+  readonly onSettings: () => void;
   readonly onRefuse: () => void;
   readonly onRemove: () => void;
 }): ReactElement {
@@ -338,6 +344,11 @@ function WidgetRow({
             Approve
           </button>
         )}
+        {item.state === "on" && (
+          <button type="button" className="ghost" onClick={onSettings}>
+            Settings
+          </button>
+        )}
         {item.state !== "off" && (
           <button type="button" className="ghost" onClick={onTurnOff}>
             Turn off
@@ -365,7 +376,8 @@ function WidgetActivation({
 }: {
   readonly item: WidgetItem;
   readonly onClose: () => void;
-  readonly onApproved: (items: WidgetItem[]) => void;
+  /** `editing` is true when the form saved new settings of the installed version. */
+  readonly onApproved: (items: WidgetItem[], editing: boolean) => void;
 }): ReactElement {
   const [review, setReview] = useState<WidgetReview | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -404,7 +416,7 @@ function WidgetActivation({
     setProblem(null);
     setConflict(null);
     try {
-      onApproved(await api.approveWidget(item.id, review.commit, sentValues(manifest, values), readOnly));
+      onApproved(await api.approveWidget(item.id, review.commit, sentValues(manifest, values), readOnly), editing);
     } catch (error) {
       // A conflict of the data formats has a way out: the widget can turn on with read access only (#692).
       if (error instanceof ApiError && error.code === "widget_format_conflict") setConflict(error.message);
@@ -416,14 +428,15 @@ function WidgetActivation({
   const line = manifest === null ? null : promptLine(manifest, values);
   // An update of an installed widget: the dialog names what is new since the approved version.
   const updating = review !== null && review.installed !== null && review.installed !== review.commit;
-  const verb = updating ? "Update" : "Turn on";
+  // The installed version, opened from Settings: the same form saves new values (#1022).
+  const editing = review !== null && review.installed === review.commit && item.state === "on";
+  const titleOf = (name: string): string =>
+    editing ? `Settings of ${name}` : `${updating ? "Update" : "Turn on"} ${name}`;
 
   return (
     <>
-      <Dialog label={`${verb} ${item.name}`} closeLabel="Cancel" closeDisabled={saving} onClose={onClose}>
-        <h2>
-          {verb} {manifest?.name ?? item.name}
-        </h2>
+      <Dialog label={titleOf(item.name)} closeLabel="Cancel" closeDisabled={saving} onClose={onClose}>
+        <h2>{titleOf(manifest?.name ?? item.name)}</h2>
         <p className="field-hint">
           A widget is code from its author, {item.owner}, at{" "}
           <a href={item.repository} target="_blank" rel="noreferrer">
@@ -483,7 +496,7 @@ function WidgetActivation({
                 onClick={() => void approve()}
               >
                 {saving && <ButtonSpinner />}
-                {updating ? "Approve and update" : "Approve and turn on"}
+                {editing ? "Save" : updating ? "Approve and update" : "Approve and turn on"}
               </button>
               {conflict !== null && (
                 <button
@@ -496,7 +509,7 @@ function WidgetActivation({
                 </button>
               )}
             </div>
-            {saving && <ProgressBar label="Installing the widget" />}
+            {saving && <ProgressBar label={editing ? "Saving the settings" : "Installing the widget"} />}
           </div>
         )}
         {manifest === null && problem !== null && <div className="callout danger">{problem}</div>}

@@ -415,7 +415,7 @@ export function ChoiceChips<T extends string>({
   readonly label: string;
   readonly value: T;
   readonly choices: readonly { readonly value: T; readonly label: string; readonly icon?: IconName }[];
-  readonly hint?: string;
+  readonly hint?: ReactNode;
   readonly onChange: (value: T) => void;
 }): ReactElement {
   return (

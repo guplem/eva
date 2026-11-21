@@ -268,3 +268,27 @@ The root `AGENTS.md` says "Decide by group, not by file." and "A spreadsheet bec
 
 1. Each line of _Personal rules_ that says where a big file, a font, a spreadsheet or a job's record goes. The default is "keep it as an exception", with the rule that it overrides.
 2. Each period with records loose beside `Period.md`, as one list, with the new path of each record (item 5). The default is "no", so "yes to all" moves nothing. The person answers "move all" to move every record in the list.
+
+## v11
+
+- **Version:** 11
+- **Date:** 2026-11-21
+- **Pull request:** https://github.com/guplem/eva/pull/PRNUMBER
+- **Summary:** Your habits get a folder of their own, Life/Habits, for habits of any kind, such as reading or exercise. The Habits widget offers it as its default folder.
+- **Migrations first:**
+
+### What changes, and why
+
+1. **The vault gets `Life/Habits/`,** with its `AGENTS.md` in the exact text of `template/`. Each habit is one JSON file, which the Habits widget of the home page reads and writes. Why: habits are of many kinds, such as reading, a behaviour or exercise. `Life/Health/` holds only body and mind, and `Methods/` holds steps to follow, not a record of what the person did.
+2. **The root `AGENTS.md` names the new folder.** Replace these parts with the exact text of `template/`: the `Life/Health/` row of the _Their life_ table and the new `Life/Habits/` row after it, and step 8 of _Where things go_. Leave the rest of the file as it is.
+3. **`Life/Health/AGENTS.md` gets the exact text of `template/`:** one more _Not here_ line sends a habit to `Life/Habits/`.
+4. **Nothing moves by itself.** A habits folder that the person picked for the Habits widget elsewhere, such as `Life/Health/Habits/`, stays where it is: the widget keeps the folder that the person picked, and a new default never moves data. Move it only after the person approves: `git mv` each habit file (`*.json`) into `Life/Habits/`, then write in the report that the person must pick the new folder for the widget: **Remove** it in **Settings > Personalize > Widgets**, then **Turn on** again and press **Use the default folder**. Their data stays in the vault.
+
+### How to detect a vault that has it
+
+`Life/Habits/AGENTS.md` exists, and the _Their life_ table of the root `AGENTS.md` has a `Life/Habits/` row. Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. Each folder of habit files outside `Life/Habits/`, such as `Life/Health/Habits/`, and whether to move it (item 4). The default is "no".
+2. Each line of _Personal rules_ that says where habits go. The default is "keep it as an exception", with the rule that it overrides.

@@ -11,5 +11,6 @@ Body and mind: allergies, diet, sleep, measurements, conditions, test results, g
 **Not here:**
 - The process of a surgery or a treatment: appointments, papers, recovery → `Life/Cases/`. When the case closes, add what stays to the note of its topic here.
 - A training plan or a routine to follow → `Methods/`.
+- A habit that the person tracks day by day, such as a daily walk or meditation → `Life/Habits/`.
 - A doctor as a person → `Life/People/`. Their phone → the contacts app. The clinic or the practice → `Life/Providers/`.
 - Health insurance → `Life/Inventory/`.

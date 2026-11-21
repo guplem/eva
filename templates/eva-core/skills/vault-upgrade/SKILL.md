@@ -26,7 +26,7 @@ An Eva update never changes the structure of a vault. This skill does, with the 
 
 ## 1. Read and plan, with no change
 
-1. Read `.eva/vault-structure.json` and `CHANGELOG.md`. Take every entry newer than the vault's version, oldest first.
+1. Read `.eva/vault-structure.json` and `CHANGELOG.md`. Take every entry newer than the vault's version, oldest first. Read them all before you plan: a newer entry can withdraw an older one, as v12 withdraws v11. Then the newer entry says what to do.
 2. Check what `start` needs, so the person does not answer for nothing: this computer is the hub and the vault sync is on (`eva status`), no branch `upgrade-v*` exists (`git branch --list "upgrade-v*"`), and `.eva/migrations.json` lists each id of the entry's "Migrations first" line. When one fails, tell the person what to do, and stop.
 3. For each entry, check "How to detect a vault that has it". When the vault already has every change, tell the person, run `eva vault-upgrade start`, then `eva vault-upgrade finish`, and stop: only the record changes.
 4. List every file: `git ls-files`, and the git-ignored ones with `git ls-files -o -i --exclude-standard --directory`. Leave out `.eva/scratch/`, `Scratch/` and `Projects/*/repos/`.

@@ -292,3 +292,50 @@ The root `AGENTS.md` says "Decide by group, not by file." and "A spreadsheet bec
 
 1. Each folder of habit files outside `Life/Habits/`, such as `Life/Health/Habits/`, and whether to move it (item 4). The default is "no".
 2. Each line of _Personal rules_ that says where habits go. The default is "keep it as an exception", with the rule that it overrides.
+
+## v12
+
+- **Version:** 12
+- **Date:** 2026-11-21
+- **Pull request:** https://github.com/guplem/eva/pull/PRNUMBER
+- **Summary:** Life/Habits leaves the vault map, and v11 is withdrawn. The Habits widget still uses Life/Habits as its default folder, creates it when you turn it on, and tells Eva where your habits live. Your habit files stay where they are.
+- **Migrations first:**
+
+### What changes, and why
+
+This entry withdraws v11. Why: the Habits widget does not need the vault map. Its form creates `Life/Habits` when the person turns it on, and its `prompt` line tells Eva in every chat where the habits live, with the folder that the person picked. Eva also writes `DATA_FORMAT.md` in that folder. So the map held the same fact a second time, and it tied the vault structure to an optional widget.
+
+1. **A vault below version 11 does nothing for v11 and v12.** Together they change nothing. Skip the v11 entry, ask nothing about it, and only record the version.
+2. **The root `AGENTS.md` goes back to its v10 text in two places.** Remove the `Life/Habits/` row of the _Their life_ table. Replace the `Life/Health/` row and step 8 of _Where things go_ with the exact text of `template/`: the sentence "A habit tracked day by day → `Life/Habits/`." leaves the row, and step 8 is again "8. About body or mind → `Life/Health/`." Leave the rest of the file as it is.
+3. **`Life/Health/AGENTS.md` loses one line:** the _Not here_ line "A habit that the person tracks day by day, such as a daily walk or meditation → `Life/Habits/`." Leave the rest of the file as it is.
+4. **`Life/Habits/AGENTS.md` goes only when it is Eva's text.** Compare it with the v11 text below, which `template/` no longer has. When it matches, `git rm` it. When the person changed it, keep it, unless they say to delete it.
+5. **Nothing else moves, and nothing else goes.** The folder `Life/Habits/` and each habit file in it, such as `read.json`, stay where they are, also `DATA_FORMAT.md`. A folder that the person or the widget uses is never moved or deleted. When `AGENTS.md` was the only file in `Life/Habits/`, git drops the empty folder with it: nobody used it, and the widget's **Create the default folder** button creates it again. `.eva/widgets.json` and _Personal rules_ stay as they are.
+
+The v11 text of `Life/Habits/AGENTS.md`:
+
+```text
+# Habits
+
+The habits that the person tracks day by day, of any kind: reading, exercise, meditation, a behaviour to keep or to stop.
+
+- **One JSON file for each habit,** such as `read.json`. The name is the habit's name in lowercase, with ASCII letters, digits and hyphens only. Never `index.json`.
+- **The Habits widget of the home page reads and writes these files.** When the widget is on, Eva writes `DATA_FORMAT.md` in this folder. Read it before you write a habit file, and follow it.
+- **Keep each field that you do not know.** Read the file, change your fields, and write the whole object back.
+- **When the person says that they did a habit,** add a check for that day to its file.
+- **Before you create a habit file, ask the person once.**
+
+**Not here:**
+- The steps of a routine or a training plan → `Methods/`. A habit file can name the method in its `note`.
+- A health goal, a measurement or a condition → `Life/Health/`.
+- A one-off task or a reminder → the task app or the calendar.
+```
+
+### How to detect a vault that has it
+
+The _Their life_ table of the root `AGENTS.md` has no `Life/Habits/` row, and its step 8 of _Where things go_ is "8. About body or mind → `Life/Health/`." `Life/Health/AGENTS.md` sends no habit to `Life/Habits/`. `Life/Habits/AGENTS.md` does not exist, or it differs from the v11 text above. Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+Ask nothing in most vaults. Ask only this, when it applies:
+
+1. When `Life/Habits/AGENTS.md` differs from the v11 text, show the diff, and ask whether to delete it. The default is "keep it".

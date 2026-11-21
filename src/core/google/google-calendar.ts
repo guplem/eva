@@ -8,6 +8,7 @@
 import { EvaError } from "../../shared/errors.ts";
 import { googleAccessToken, type GoogleCheckInputs } from "./google-check.ts";
 import { googleUrls } from "./google-login.ts";
+import { plainDescription } from "./calendar-text.ts";
 
 export type GoogleCalendarInputs = Omit<GoogleCheckInputs, "readServices">;
 
@@ -25,6 +26,8 @@ interface EventBase {
   readonly title: string;
   readonly place: string | null;
   readonly link: string | null;
+  /** The description as plain text, or null. The widget layer finds a project tag in it and cuts it. */
+  readonly description: string | null;
 }
 
 export interface WidgetTimedEvent extends EventBase {
@@ -178,6 +181,7 @@ interface GoogleEvent {
   readonly summary?: unknown;
   readonly location?: unknown;
   readonly htmlLink?: unknown;
+  readonly description?: unknown;
   readonly start?: { readonly date?: unknown; readonly dateTime?: unknown };
   readonly end?: { readonly date?: unknown; readonly dateTime?: unknown };
   readonly attendees?: unknown;
@@ -225,6 +229,8 @@ function contractEvent(item: GoogleEvent, calendarId: string): WidgetCalendarEve
     title: text(item.summary) ?? "",
     place: text(item.location),
     link: text(item.htmlLink),
+    // Google keeps the HTML of its editor: the contract gives plain text.
+    description: plainDescription(item.description),
   };
   const startAt = text(item.start?.dateTime);
   if (startAt !== null) return { ...base, startAt, endAt: text(item.end?.dateTime) ?? startAt };

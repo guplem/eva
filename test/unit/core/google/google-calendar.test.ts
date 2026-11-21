@@ -116,6 +116,7 @@ describe("the events", () => {
         status: "confirmed",
         summary: "Standup",
         location: "Room B",
+        description: "Daily sync.<br>Bring <b>notes</b> &amp; questions.",
         htmlLink: "https://www.google.com/calendar/event?eid=standup",
         start: { dateTime: "2026-11-18T09:00:00+01:00" },
         end: { dateTime: "2026-11-18T09:15:00+01:00" },
@@ -151,6 +152,7 @@ describe("the events", () => {
         endDate: "2026-11-19",
         place: null,
         link: null,
+        description: null,
       },
       {
         id: "untitled",
@@ -160,6 +162,7 @@ describe("the events", () => {
         endAt: "2026-11-18T08:30:00+01:00",
         place: null,
         link: null,
+        description: null,
       },
       {
         id: "standup",
@@ -169,6 +172,7 @@ describe("the events", () => {
         endAt: "2026-11-18T09:15:00+01:00",
         place: "Room B",
         link: "https://www.google.com/calendar/event?eid=standup",
+        description: "Daily sync.\nBring notes & questions.",
       },
     ]);
   });

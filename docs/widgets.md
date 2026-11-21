@@ -139,8 +139,8 @@ An `eva-google-calendar` input gives the widget the person's Google Calendar. Ev
 - `eva/google-calendar/events.json?from=2026-11-16&to=2026-11-22` answers `null` for the same reasons, or the events of each of these calendars, sorted by start. `to` is inclusive. The days are in the time zone of the person's main calendar. Eva refuses a window over 62 days, a missing day, or a day that is not `YYYY-MM-DD`, with `400`.
 - A timed event: `{ "id", "calendarId", "title", "startAt": "2026-11-18T09:00:00+01:00", "endAt", "place": "Room B", "link": "https://…", "description", "project" }`.
 - An all-day event: `{ "id", "calendarId", "title", "date": "2026-11-21", "endDate": "2026-11-21", "place", "link", "description", "project" }`. `endDate` is inclusive.
-- `description` is the event's description as plain text, with no HTML tags, 2000 characters at most. It is `null` for an event with no description. (Not on yet: Eva gives no `description` and no `project` until a later release of contract 3. Read a missing key as `null`.)
-- `project` is the project of the event, or `null`: `{ "id": "2026-11-02-1030-example-app", "title": "Example app", "path": "Projects/2026-11-02-1030-example-app" }`. An event belongs to a project when its description has a line `[eva-project:<id>]`. `<id>` is the folder name of the project, or its name with no date when exactly one project has it. Eva removes that line from `description`. An unknown project gives `null`.
+- `description` is the event's description as plain text, with no HTML tags, 2000 characters at most. It is `null` for an event with no description. Show it as text, never as HTML. An older Eva gives no `description` and no `project`: read a missing key as `null`.
+- `project` is the project of the event, or `null`: `{ "id": "2026-11-02-1030-example-app", "title": "Example app", "path": "Projects/2026-11-02-1030-example-app" }`. An event belongs to a project when its description has a line `[eva-project:<id>]`. `<id>` is the folder name of the project, or its name with no date when exactly one project has it. Eva removes that line from `description`. An unknown project, or a project outside the vault, gives `null`.
 - `place` and `link` can be `null`. `title` is `""` for an event with no title. Eva leaves out an event that the person declined, a cancelled event, and the place where the person works each day.
 - Eva keeps each answer for 1 minute, so a new event can take a minute to show.
 - Eva answers `502` when Google fails or refuses. Show that the calendar is not available now, and try again later.
@@ -167,7 +167,7 @@ An `eva-cases` input gives the widget the person's open cases. Eva reads them fr
   ```
 
 - `id` is the folder name of the case. A case is open until its `closed` key has a date.
-- `path` is the folder of the case from the vault root, such as `Life/Cases/fix-the-bathroom-leak`. Give it to an `open` ask to show the case in Eva. (Not on yet: a later release of contract 3 adds `path`. Until then, build it from `id`.)
+- `path` is the folder of the case from the vault root, such as `Life/Cases/fix-the-bathroom-leak`. Give it to an `open` ask to show the case in Eva. An older Eva gives no `path`: build it from `id` then.
 - `nextStep`, `deadline`, `waitingFor`, `dueDate` and `cost` can be `null`. `stepsDone` and `stepsTotal` are `null` together, for a case with no list of steps.
 - A date is as the person wrote it: usually `YYYY-MM-DD`, but a month such as `2026-12` or a free text can come too. Show such a date as text.
 - The order: the earliest of `nextStep.dueDate` and `deadline.date` first, so a passed day comes before a day to come. A month counts as its first day. The cases with no date come last, by title.

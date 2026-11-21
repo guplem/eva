@@ -160,6 +160,7 @@ describe("the widget list", () => {
     const shipped = evaWith(join(own, "vault"), true, own);
     try {
       expect(shipped.widgets?.list().map((item) => [item.name, item.state, item.sources])).toEqual([
+        ["Summary", "off", ["base"]],
         ["Calendar", "off", ["base"]],
         ["Habits", "off", ["base"]],
         ["Cases", "off", ["base"]],

@@ -3,8 +3,9 @@ import { baseWidgets } from "../../../../src/core/widgets/base-widgets.ts";
 import { widgetAddress } from "../../../../src/core/widgets/widget-address.ts";
 
 describe("baseWidgets", () => {
-  test("ships the calendar, habits, cases and weather widgets, in the order of the day panel", () => {
+  test("ships the summary, calendar, habits, cases and weather widgets, in the order of the day panel", () => {
     expect(baseWidgets).toEqual([
+      { url: "https://github.com/guplem/eva-widget-summary", name: "Summary" },
       { url: "https://github.com/guplem/eva-widget-calendar", name: "Calendar" },
       { url: "https://github.com/guplem/eva-widget-habits", name: "Habits" },
       { url: "https://github.com/guplem/eva-widget-cases", name: "Cases" },

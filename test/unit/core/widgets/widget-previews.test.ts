@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Project } from "../../../../src/core/projects/project-catalog.ts";
@@ -216,6 +216,20 @@ describe("the preview of a clone", () => {
       status: 200,
       body: "[]",
     });
+  });
+
+  test("My data keeps the widget's own state in the vault, and Example data answers 404", async () => {
+    const example = (await widgets.preview(place, "example", theme, ownHosts)).token ?? "";
+    expect((await get(example, "eva/state.json")).status).toBe(404);
+    expect((await widgets.serve(example, "eva/state.json", "PUT", Buffer.from("{}")))?.status).toBe(404);
+    const asked = await widgets.preview(place, "mine", theme, ownHosts);
+    const mine =
+      (await widgets.approvePreview(place, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
+        .token ?? "";
+    expect(await get(mine, "eva/state.json")).toEqual({ status: 200, body: "{}" });
+    expect((await widgets.serve(mine, "eva/state.json", "PUT", Buffer.from('{"open":true}')))?.status).toBe(204);
+    expect(JSON.parse((await get(mine, "eva/state.json")).body)).toEqual({ open: true });
+    expect(existsSync(join(vault, ".eva", "widget-state", "example-owner", "habits.json"))).toBe(true);
   });
 
   test("never serves git data, a hidden name, an ignored file or a link", async () => {

@@ -509,6 +509,25 @@ describe("the grid", () => {
   });
 });
 
+describe("the widget's own state", () => {
+  test("eva/state.json keeps a state in the vault, needs no permission, and goes with Remove", async () => {
+    const token = await approveHabits();
+    expect(text((await widgets.serve(token, "eva/state.json", "GET", null))?.body)).toBe("{}");
+    const body = new TextEncoder().encode('{ "hiddenCalendars": ["work"] }');
+    expect((await widgets.serve(token, "eva/state.json", "PUT", body))?.status).toBe(204);
+    expect(JSON.parse(text((await widgets.serve(token, "eva/state.json", "GET", null))?.body))).toEqual({
+      hiddenCalendars: ["work"],
+    });
+    const file = join(vault, ".eva", "widget-state", "example-owner", "habits.json");
+    expect(existsSync(file)).toBe(true);
+    // Off keeps the state; Remove deletes it.
+    widgets.setEnabled(habitsId, false);
+    expect(existsSync(file)).toBe(true);
+    widgets.remove(habitsId);
+    expect(existsSync(file)).toBe(false);
+  });
+});
+
 describe("the widget routes", () => {
   test("answer the contract paths from Eva, never from the copy's mock files", async () => {
     const token = await approveHabits({ habits: "Life/Habits", title: "Mine" });

@@ -27,6 +27,7 @@ import { checkManifest, manifestPath, type WidgetManifest } from "./widget-contr
 import { answerText, serveFolderFile, type WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { evaDataAnswer } from "./widget-eva-data.ts";
+import { answerStatePath, statePath } from "./widget-state.ts";
 import { calendarAnswer } from "./widget-google-calendar.ts";
 import type { CalendarSource } from "../google/google-calendar.ts";
 import { checkHost } from "./widget-hosts.ts";
@@ -165,6 +166,8 @@ interface PreviewSession {
   readonly values: Readonly<Record<string, WidgetInputValue>>;
   /** "mine" on the approval of a set-up widget: the record and commit that it stands on. */
   readonly record: { readonly id: string; readonly commit: string } | null;
+  /** "mine": the widget whose `eva/state.json` the preview uses, by the clone's repository, or null. */
+  readonly stateId: string | null;
   readonly expiresAt: number;
   /**
    * Each written schema as it was at the open, parsed: an agent that edits a schema afterwards
@@ -208,7 +211,7 @@ export class WidgetPreviews {
     if (mode === "example")
       return {
         ...view,
-        ...this.start({ folder, manifest, mode, theme, hosts, grant: null, values: {}, record: null }),
+        ...this.start({ folder, manifest, mode, theme, hosts, grant: null, values: {}, record: null, stateId: null }),
         problems,
         ask: null,
       };
@@ -216,7 +219,7 @@ export class WidgetPreviews {
     if ("ask" in mine) return { ...view, src: null, token: null, problems, ask: mine.ask };
     return {
       ...view,
-      ...this.start({ folder, manifest, mode, theme, hosts: mine.grant.hosts, ...mine }),
+      ...this.start({ folder, manifest, mode, theme, hosts: mine.grant.hosts, stateId: address?.id ?? null, ...mine }),
       problems,
       ask: null,
     };
@@ -310,6 +313,18 @@ export class WidgetPreviews {
         redact: this.options.redact,
         wrote: this.options.wrote,
       });
+    // Example data answers 404, so the widget keeps its state in memory, as on GitHub Pages.
+    if (path === statePath)
+      return grant === null || session.stateId === null
+        ? { status: 404 }
+        : answerStatePath({
+            vaultPath: this.options.vaultPath,
+            id: session.stateId,
+            method,
+            body,
+            exclusive: this.options.exclusive,
+            redact: this.options.redact,
+          });
     // Example data changes nothing: the widget shows its demo note.
     if (method !== "GET" && method !== "HEAD") return { status: 405 };
     const location = session.manifest.inputs.some((input) => input.type === "eva-location");

@@ -16,7 +16,7 @@ This repository is a widget for Eva's home page: a small web page that Eva shows
 - Never rely on a form submit, also `<form method="dialog">`: Eva's sandbox blocks it. Handle each button with a `click` listener.
 - When the widget changes a data file, keep the fields that it does not know.
 - Each input that the widget writes has a JSON Schema in `schemas/`. Its field names follow the naming rules of the contract.
-- Give each folder input a `default`: the folder where the data usually lives, by its path from the vault root, such as `Life/Health/Habits`. Eva offers it with one tap, and creates it when it is missing.
+- Give each folder input a `default`: the folder where the data usually lives, by its path from the vault root, such as `Life/Habits`. Eva offers it with one tap, and creates it when it is missing.
 - A pull request that adds or widens a permission of `eva-widget.json` says so in its body: a new input, a write access, the location, or a host.
 - Keep the mock files in line with the code: `config.json`, `data/`, `eva/theme.css` and `example/location.json`.
 - Keep `tests/fills-screen.spec.js`: the widget fills the space that it gets, at every size.

@@ -291,17 +291,17 @@ describe("the default places of a form", () => {
   test("says what each default is, and creates a missing default folder only in a place that a widget reaches", async () => {
     const places = await call("/api/widgets/places", {
       method: "POST",
-      body: { paths: ["Life/Habits", "Life/Habits/walk.json", "Life/Health/Habits", ".eva/data"] },
+      body: { paths: ["Life/Habits", "Life/Habits/walk.json", "Life/Health/Sleep", ".eva/data"] },
     });
     expect(await places.json()).toEqual({
       "Life/Habits": "folder",
       "Life/Habits/walk.json": "file",
-      "Life/Health/Habits": "missing",
+      "Life/Health/Sleep": "missing",
       ".eva/data": null,
     });
-    const created = await call("/api/widgets/folders", { method: "POST", body: { path: "Life/Health/Habits" } });
+    const created = await call("/api/widgets/folders", { method: "POST", body: { path: "Life/Health/Sleep" } });
     expect(created.status).toBe(201);
-    expect(existsSync(join(vault, "Life/Health/Habits/.gitkeep"))).toBe(true);
+    expect(existsSync(join(vault, "Life/Health/Sleep/.gitkeep"))).toBe(true);
     const refused = await call("/api/widgets/folders", { method: "POST", body: { path: ".eva/data" } });
     expect(refused.status).toBe(400);
     expect(existsSync(join(vault, ".eva/data"))).toBe(false);

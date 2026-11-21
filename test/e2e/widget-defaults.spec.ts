@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * The default place of a folder input in the "Turn on" form (#984). The page talks to the demo
  * server, but a test widget joins the list here: a manifest with three folder defaults. The demo
- * vault has `Life/Health/Habits`, has no `Life/Health/Sleep`, and `.eva/` is closed to widgets.
+ * vault has `Life/Habits`, has no `Life/Health/Sleep`, and `.eva/` is closed to widgets.
  */
 
 const widget = {
@@ -44,7 +44,7 @@ const review = {
     entry: "index.html",
     size: "small",
     inputs: [
-      folderInput("habits", "Habits folder", "Life/Health/Habits"),
+      folderInput("habits", "Habits folder", "Life/Habits"),
       folderInput("sleep", "Sleep folder", "Life/Health/Sleep"),
       folderInput("secret", "Closed folder", ".eva/data"),
     ],
@@ -96,14 +96,14 @@ test("a folder default that exists is one tap away, and the tap picks it", async
   const habits = field(page, "Habits folder (required)");
   await expect(habits.locator(".widget-picked")).toHaveText("Nothing picked");
   const use = habits.getByRole("button", { name: "Use the default folder" });
-  await expect(use).toHaveAttribute("data-tooltip", "Picks the folder Life/Health/Habits");
+  await expect(use).toHaveAttribute("data-tooltip", "Picks the folder Life/Habits");
   // A phone has no hover: the path shows as text too.
-  await expect(habits).toContainText("Default folder: Life/Health/Habits");
+  await expect(habits).toContainText("Default folder: Life/Habits");
   await expect(habits.getByRole("button", { name: "Pick a folder" })).toBeVisible();
   await use.click();
-  await expect(habits.locator(".widget-picked")).toHaveText("Life/Health/Habits");
+  await expect(habits.locator(".widget-picked")).toHaveText("Life/Habits");
   await expect(use).toHaveCount(0);
-  await expect(page.getByRole("dialog")).toContainText("Reads the folder Life/Health/Habits");
+  await expect(page.getByRole("dialog")).toContainText("Reads the folder Life/Habits");
 });
 
 test("a folder default that is missing is created and picked only after the tap", async ({ page }) => {

@@ -55,7 +55,7 @@ describe("the activation form", () => {
       ...manifest,
       inputs: manifest.inputs.map((input) =>
         input.id === "habits"
-          ? { ...input, default: "Life/Health/Habits" }
+          ? { ...input, default: "Life/Habits" }
           : input.id === "notes"
             ? { ...input, default: "Notes/a.md" }
             : input,
@@ -67,18 +67,18 @@ describe("the activation form", () => {
 
   test("offers the default folder or file by what the vault holds", () => {
     const folder = { ...base, id: "habits", type: "folder", label: "Habits folder", required: true } as const;
-    const habits = { ...folder, access: "write", files: "*.json", default: "Life/Health/Habits" } as const;
+    const habits = { ...folder, access: "write", files: "*.json", default: "Life/Habits" } as const;
     expect(defaultChoice(habits, "folder")).toEqual({
       action: "use",
-      path: "Life/Health/Habits",
+      path: "Life/Habits",
       label: "Use the default folder",
-      tooltip: "Picks the folder Life/Health/Habits",
+      tooltip: "Picks the folder Life/Habits",
     });
     expect(defaultChoice(habits, "missing")).toEqual({
       action: "create",
-      path: "Life/Health/Habits",
+      path: "Life/Habits",
       label: "Create the default folder",
-      tooltip: "Creates the folder Life/Health/Habits in your vault and picks it",
+      tooltip: "Creates the folder Life/Habits in your vault and picks it",
     });
     expect(defaultChoice(habits, "file")).toBeNull();
     expect(defaultChoice(habits, null)).toBeNull();

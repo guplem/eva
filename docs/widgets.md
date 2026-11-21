@@ -56,7 +56,7 @@ The manifest says what the widget is and what it needs. [`widgets/manifest-v2.js
 | `hosts`    | no       | The web addresses that the widget calls. Each has a `url` (`https`, with no path) and a `why`.   |
 | `prompt`   | no       | One line for Eva's prompt, such as "Habits live in {habits}." `{habits}` names an input's value. |
 
-Eva adds the `prompt` line of each widget that is on to the prompt of each new chat with Eva, with the person's values in place of the placeholders. A placeholder of an empty input reads "(not set)". The person sees the line when they turn the widget on. A widget with no `prompt` gets a default line, such as "Habits data lives in Life/Health/Habits. Read Life/Health/Habits/DATA_FORMAT.md before you write."
+Eva adds the `prompt` line of each widget that is on to the prompt of each new chat with Eva, with the person's values in place of the placeholders. A placeholder of an empty input reads "(not set)". The person sees the line when they turn the widget on. A widget with no `prompt` gets a default line, such as "Habits data lives in Life/Habits. Read Life/Habits/DATA_FORMAT.md before you write."
 
 Eva shows each `why` to the person when the person turns the widget on. Write each `why` for the person: say what the widget does with the permission.
 
@@ -94,13 +94,15 @@ A widget gets only what its inputs give. A widget with no `eva-location` input g
 
 ### Default places
 
-A `folder` or a `file` input can give a `default`: a path of the vault, from the vault root, such as `Life/Health/Habits`. Write no `/` at the start. This needs no new contract: contract 1 allows a `default` on each input.
+A `folder` or a `file` input can give a `default`: a path of the vault, from the vault root, such as `Life/Habits`. Write no `/` at the start. This needs no new contract: contract 1 allows a `default` on each input.
+
+Pick a folder that the vault map names, so the agent knows what lives there: the root `AGENTS.md` of a new vault lists each folder of `Life/`, such as `Life/Habits` or `Life/Cases`.
 
 - Eva never fills the input with the default by herself. The form offers it with one tap next to **Pick a folder**, and shows the path as text.
 - **Use the default folder** shows when the folder exists. **Use the default file** shows when the file exists.
 - **Create the default folder** shows when the folder does not exist. The tap creates the folder and each missing parent, with an empty `.gitkeep`, so the vault sync keeps the empty folder. Eva creates no file.
 - A default in a place that no widget reaches, such as `.eva/` or `Scratch/`, shows no button.
-- A default is not a permission. A new or changed default asks for no new approval, and changes no value that the person picked. A widget with no `eva-google-calendar` input gets nothing from `eva/google-calendar/`, and a widget with no `eva-cases` input gets nothing at `eva/cases.json`.
+- A default is not a permission. A new or changed default asks for no new approval, changes no value that the person picked, and moves no file. A person who picked the old default keeps that folder. A widget with no `eva-google-calendar` input gets nothing from `eva/google-calendar/`, and a widget with no `eva-cases` input gets nothing at `eva/cases.json`.
 
 ## How a widget talks to Eva
 
@@ -385,7 +387,7 @@ A widget of contract 1 works with no change. To use a new size or input, set `co
 
 This widget shows the person's habits and checks a habit for today. The [base habits widget](https://github.com/guplem/eva-widget-habits) of Eva uses the same data format.
 
-The person picks a folder, such as `Life/Health/Habits/`. The folder has one file for each habit, such as `meditate.json`. The file name is the habit name in lower case, with ASCII letters, digits and hyphens only. The name `index` is not allowed.
+The person picks a folder, such as `Life/Habits/`. The folder has one file for each habit, such as `meditate.json`. The file name is the habit name in lower case, with ASCII letters, digits and hyphens only. The name `index` is not allowed.
 
 `eva-widget.json`:
 

@@ -2,7 +2,7 @@ import { expect, test, type Frame, type Locator, type Page } from "@playwright/t
 
 /**
  * The widgets of the home page in a real browser (#691). The demo server approved, in this order,
- * a static Calendar (xlarge), the habits widget of the template for `Life/Health/Habits` (small)
+ * a static Calendar (xlarge), the habits widget of the template for `Life/Habits` (small)
  * and a static Cases (tall).
  */
 
@@ -148,9 +148,7 @@ test("a tap in the habits widget in full screen marks a habit", async ({ page })
   const checkedToday = async (): Promise<boolean> => {
     const texts = await Promise.all(
       ["meditate", "read", "walk"].map(async (habit) => {
-        const answer = await page.request.get(
-          `/api/files?path=${encodeURIComponent(`Life/Health/Habits/${habit}.json`)}`,
-        );
+        const answer = await page.request.get(`/api/files?path=${encodeURIComponent(`Life/Habits/${habit}.json`)}`);
         return ((await answer.json()) as { text?: string }).text ?? "";
       }),
     );

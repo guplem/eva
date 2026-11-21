@@ -25,6 +25,7 @@ This repository is a widget for Eva's home page: a small web page that Eva shows
 
 - `npm run check` runs every check: the format, the lint, the contract check (`npm run check:widget`) and the tests. CI runs the same checks as the "lint" and "test" jobs.
 - `npm start` runs the widget at http://localhost:3000/. Add `?size=small`, `medium`, `large`, `tall`, `xlarge`, `header` or `full` to the address.
+- The tests serve the widget on port 3100. Set `WIDGET_TEST_PORT` to test while another widget repository tests on the same computer.
 
 ## Skills
 

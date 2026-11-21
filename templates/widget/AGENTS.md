@@ -6,7 +6,7 @@ This repository is a widget for Eva's home page: a small web page that Eva shows
 
 - **This repository is public, and holds no data of a person.** It holds only mock data for the tests and the demo. Never write a name of a private person, a real data value, a token or a home path.
 - **Plain, standard web code.** HTML, JavaScript and CSS, with no framework and no build step. A browser loads the files as they are.
-- **The widget talks to its host only through `fetch` to relative paths** of the contract: `config.json`, `data/<input>/`, `eva/location.json` and `eva/theme.css`.
+- **The widget reads and writes data only through `fetch` to relative paths** of the contract, such as `config.json`, `data/<input>/`, `eva/location.json` and `eva/theme.css`. It asks Eva to act only with the messages of the contract's asks.
 - **The widget works outside Eva,** on GitHub Pages and with `npm start`, with the mock files at the same paths.
 
 ## Rules

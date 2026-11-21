@@ -15,6 +15,15 @@ import { Icon } from "./icons.tsx";
 import { settingsHash } from "./settings-routes.ts";
 import { contractColours, frameAddress, onReconnect, pageScheme, refreshDue } from "./widget-frames.ts";
 import { layoutWidgetsOfFrames } from "./widget-layout-draft.ts";
+import { fillNewChat } from "./new-chat-text.ts";
+import {
+  askRequestOf,
+  checkAsk,
+  openAddressOf,
+  textAfterTyped,
+  type AskAnswer,
+  type AskRequest,
+} from "./widget-asks.ts";
 
 /** The light or dark mode that the page shows now. The clone preview (#693) sends it too. */
 export function currentScheme(): "light" | "dark" {
@@ -120,6 +129,10 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
   const [fullId, setFullId] = useState<string | null>(null);
   const full = frames.find((frame) => frame.id === fullId && frame.src !== null) ?? null;
   const closeFull = useCallback(() => setFullId(null), []);
+  const onAsk = useCallback(
+    (frame: WidgetFrame, request: AskRequest, tapped: boolean) => answerAsk(frame, request, tapped, closeFull),
+    [closeFull],
+  );
   useBackLayer(full !== null, closeFull, "widget-full");
   // The width chooses the layout. The preview of Settings places the cards with the same function (#985).
   const form = useIsPhone() ? "phone" : "computer";
@@ -149,7 +162,12 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
           ) : (
             <div key={frame.id} className="card widget-card" style={place}>
               {/* The size is in the frame's address, so a new size loads the widget again. */}
-              <WidgetFrameView frame={frame} size={card.size} scheme={scheme} />
+              <WidgetFrameView
+                frame={frame}
+                size={card.size}
+                scheme={scheme}
+                onAsk={(request, tapped) => onAsk(frame, request, tapped)}
+              />
               <button
                 type="button"
                 className="icon-button widget-full-button"
@@ -164,7 +182,12 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
       </div>
       {full !== null && (
         <div className="widget-full" role="dialog" aria-modal="true" aria-label={full.name}>
-          <WidgetFrameView frame={full} size="full" scheme={scheme} />
+          <WidgetFrameView
+            frame={full}
+            size="full"
+            scheme={scheme}
+            onAsk={(request, tapped) => onAsk(full, request, tapped)}
+          />
           <button
             type="button"
             className="icon-button widget-full-button"
@@ -188,20 +211,90 @@ export function gridPlace(card: LayoutBox): CSSProperties {
 }
 
 /**
+ * Does what a widget asks (contract 3, #696, #1006), and gives the answer. `chat` puts the text in
+ * the message box of the home page, and `open` opens the best page for a vault path. Both close full
+ * screen first, so the person sees the result.
+ */
+async function answerAsk(
+  frame: WidgetFrame,
+  request: AskRequest,
+  tapped: boolean,
+  closeFull: () => void,
+): Promise<AskAnswer> {
+  const approved = frame.asks;
+  const reason = checkAsk(request, { approved, tapped, preview: false });
+  if (reason !== null) return { ok: false, reason };
+  if (request.ask === "chat") {
+    closeFull();
+    const text = request.text as string;
+    fillNewChat((typed) => textAfterTyped(typed, text), frame.name);
+    return { ok: true };
+  }
+  if (request.ask === "open") {
+    const path = (request.path as string).replace(/\/+$/, "");
+    const address = openAddressOf(path);
+    if (address === null) return { ok: false, reason: "not-found" };
+    const existing = await api.existingFiles([path]).catch((): readonly string[] => []);
+    if (!existing.includes(path)) return { ok: false, reason: "not-found" };
+    closeFull();
+    goTo(address);
+    return { ok: true };
+  }
+  return { ok: true, asks: approved };
+}
+
+/**
+ * True when the person tapped this frame just now. A tap in a frame activates Eva's page too, so the
+ * page also checks that the frame holds the focus: a tap elsewhere on the page moves the focus away.
+ * A browser with no `userActivation` has only the focus check.
+ */
+function tappedFrame(element: HTMLIFrameElement): boolean {
+  const activation = (navigator as { userActivation?: UserActivation }).userActivation;
+  return (activation?.isActive ?? true) && document.activeElement === element;
+}
+
+/**
  * One frame, with the sandbox of `widgetSandbox`. The clone preview (#693) uses it too. The frame takes the page's `color-scheme`, so a widget that follows `prefers-color-scheme` follows Eva.
+ * It answers each ask of its widget (contract 3) with `onAsk`. With no `onAsk`, as in the preview of
+ * a clone, it refuses each ask, so the widget hides what needs Eva.
  */
 export function WidgetFrameView({
   frame,
   size,
   scheme,
+  onAsk,
 }: {
   readonly frame: Pick<WidgetFrame, "name" | "src">;
   readonly size: WidgetFrame["size"] | "full";
   readonly scheme: "light" | "dark";
+  readonly onAsk?: (request: AskRequest, tapped: boolean) => Promise<AskAnswer>;
 }): ReactElement | null {
+  const element = useRef<HTMLIFrameElement>(null);
+  const ask = useRef(onAsk);
+  ask.current = onAsk;
+  useEffect(() => {
+    const onMessage = (event: MessageEvent): void => {
+      const own = element.current;
+      // Eva knows the widget by its frame: `event.origin` is "null" for every widget.
+      const target = own?.contentWindow ?? null;
+      if (own === null || target === null || event.source !== target) return;
+      const request = askRequestOf(event.data);
+      if (request === null) return;
+      const reply = (answer: AskAnswer): void => target.postMessage({ eva: "widget", id: request.id, ...answer }, "*");
+      const handle = ask.current;
+      if (handle === undefined) {
+        reply({ ok: false, reason: checkAsk(request, { approved: [], tapped: false, preview: true }) ?? "unknown" });
+        return;
+      }
+      handle(request, tappedFrame(own)).then(reply, () => reply({ ok: false, reason: "unknown" }));
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
   if (frame.src === null) return null;
   return (
     <iframe
+      ref={element}
       className="widget-frame"
       aria-label={frame.name}
       src={frameAddress(frame.src, size)}

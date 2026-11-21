@@ -57,6 +57,7 @@ import { composerMenuItems, insertedText } from "./menu-text.ts";
 import { setupBlock } from "./new-chat.ts";
 import { prepareSendMorph, startSendMorph } from "./send-morph-player.ts";
 import { UnsentTexts } from "./unsent-texts.ts";
+import { clearTextSource, onTextSource, takeFocusAsk, textSourceOf } from "./text-sources.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType, withHeardText } from "./voice-notes.ts";
 import { goTo } from "./back-layers.ts";
@@ -164,6 +165,8 @@ export function Composer({
   const setText = (value: string): void => {
     // A cleared summary stays cleared: without the entry, the box would start with the summary again.
     if (draftKey !== undefined) unsentTexts.set(draftKey, value, summary !== null);
+    // The text of a widget is gone once the person sends it or clears it, and so is its source.
+    if (draftKey !== undefined && value.trim() === "") clearTextSource(draftKey);
     typed.current = value;
     setTypedText(value);
     // A new text makes the old cursor wrong, until the person types or taps again.
@@ -309,6 +312,24 @@ export function Composer({
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
   const box = useRef<HTMLTextAreaElement>(null);
+  // Who wrote the text that Eva put in the box, such as a widget (#696). A fill also asks for the focus.
+  const [source, setSource] = useState(() => (draftKey === undefined ? null : textSourceOf(draftKey)));
+  useEffect(() => {
+    if (draftKey === undefined) return undefined;
+    const follow = (): void => {
+      setSource(textSourceOf(draftKey));
+      if (!takeFocusAsk(draftKey)) return;
+      // After the render of the new text, so the cursor goes to its end.
+      requestAnimationFrame(() => {
+        const field = box.current;
+        if (field === null) return;
+        field.focus({ preventScroll: true });
+        field.setSelectionRange(field.value.length, field.value.length);
+      });
+    };
+    follow();
+    return onTextSource(draftKey, follow);
+  }, [draftKey]);
   const height = useComposerHeight(box, text);
   const visibleHeight = useVisibleHeight();
   // A short screen, such as a phone with its keyboard up, gets one row, and the + button opens the settings (#943).
@@ -598,6 +619,14 @@ export function Composer({
           />
           {folded && sendButtons}
         </div>
+        {source !== null && (
+          <ul className="composer-files" aria-label="Where the text comes from">
+            <li className="chip">
+              <Icon name="tiles" />
+              <span className="composer-file-name">From {source}</span>
+            </li>
+          </ul>
+        )}
         {files.attachments.length > 0 && (
           <ul className="composer-files" aria-label="Attached files">
             {files.attachments.map((attachment) => (

@@ -35,5 +35,9 @@
     }
   ],
   "hosts": [],
+  "asks": [
+    { "type": "chat", "why": "The widget starts a chat with Eva about your habits. You send it." },
+    { "type": "open", "why": "The widget opens your habits folder in Eva." }
+  ],
   "prompt": "Habits live in {habits}, one JSON file for each habit. Before you create a habit file, ask the person once."
 }

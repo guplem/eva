@@ -130,6 +130,47 @@ test("with no widget on, the home page keeps the large visor and the suggestions
   await expect(page.getByRole("group", { name: "Widgets" })).toHaveCount(0);
 });
 
+test("a widget asks Eva after a tap: its text goes in the message box, and a path opens its page (#696, #1006)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await habitsFrame(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill("My own words");
+  // The small card shows only the count, so the taps happen in full screen.
+  await page.getByRole("button", { name: "Open Habits in full screen" }).click();
+  await page.frameLocator(".widget-full iframe").getByRole("button", { name: "Chat about my habits" }).click();
+  // Full screen closes, the text comes after the person's own words, and the box names the widget.
+  await expect(page.locator(".widget-full")).toHaveCount(0);
+  await expect(box).toHaveValue("My own words\n\nLet us talk about my habits in Life/Habits.");
+  await expect(page.getByRole("list", { name: "Where the text comes from" })).toHaveText("From Habits");
+  // Eva never sends the text: the person clears it, and the box no longer names the widget.
+  await box.fill("");
+  await expect(page.getByRole("list", { name: "Where the text comes from" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open Habits in full screen" }).click();
+  await page.frameLocator(".widget-full iframe").getByRole("button", { name: "Open the folder in Eva" }).click();
+  await expect(page).toHaveURL(/#\/files\/Life\/Habits$/);
+  await expect(page.locator(".widget-full")).toHaveCount(0);
+});
+
+test("a widget's message with no tap before it does nothing (#696)", async ({ page }) => {
+  await logIn(page);
+  const frame = await habitsFrame(page);
+  // The widget sends the ask by itself, with no tap of the person.
+  const answer = await frame.evaluate(
+    () =>
+      new Promise((resolve) => {
+        window.addEventListener("message", (event: MessageEvent) => {
+          const data = event.data as { id?: number; ok?: boolean };
+          if (data.id === 990 && typeof data.ok === "boolean") resolve(data);
+        });
+        window.parent.postMessage({ eva: "widget", id: 990, ask: "open", path: "Life" }, "*");
+      }),
+  );
+  expect(answer).toEqual({ eva: "widget", id: 990, ok: false, reason: "no-tap" });
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+});
+
 test("a tap in the habits widget in full screen marks a habit", async ({ page }) => {
   await logIn(page);
   await habitsFrame(page);

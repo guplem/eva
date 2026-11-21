@@ -149,6 +149,23 @@ describe("the activation form", () => {
     ]);
   });
 
+  test("shows each ask of contract 3 as a permission with its reason", () => {
+    const asking: WidgetManifest = {
+      ...manifest,
+      contract: 3,
+      inputs: [],
+      hosts: [],
+      asks: [
+        { type: "chat", why: "Starts a chat about a habit." },
+        { type: "open", why: "Opens the habit's file." },
+      ],
+    };
+    expect(permissionLines(asking, {})).toEqual([
+      { icon: "chat", text: "Writes a text in your message box, for you to send", why: "Starts a chat about a habit." },
+      { icon: "link", text: "Opens a page of Eva for a place of your vault", why: "Opens the habit's file." },
+    ]);
+  });
+
   test("the vault picker hides each place that a widget never reaches", () => {
     expect(isPickable("Life/Habits")).toBe(true);
     for (const path of [".eva", "Scratch", "Life/About me.md", "Projects/2026-01-01-0900-app/repos", "Notes/.git"]) {

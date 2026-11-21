@@ -32,6 +32,7 @@ import providersRulesFile from "../../../templates/vault/Life/Providers/AGENTS.m
 import periodsRulesFile from "../../../templates/vault/Life/Periods/AGENTS.md" with { type: "text" };
 import healthRulesFile from "../../../templates/vault/Life/Health/AGENTS.md" with { type: "text" };
 import diaryRulesFile from "../../../templates/vault/Life/Diary/AGENTS.md" with { type: "text" };
+import habitsRulesFile from "../../../templates/vault/Life/Habits/AGENTS.md" with { type: "text" };
 
 /**
  * The person's rules for Eva as a new vault gets them. They hold no setup answer, so the settings
@@ -63,6 +64,7 @@ const lifeRules: Readonly<Record<string, string>> = {
   "Life/Providers/AGENTS.md": providersRulesFile,
   "Life/Periods/AGENTS.md": periodsRulesFile,
   "Life/Health/AGENTS.md": healthRulesFile,
+  "Life/Habits/AGENTS.md": habitsRulesFile,
   "Life/Diary/AGENTS.md": diaryRulesFile,
 };
 

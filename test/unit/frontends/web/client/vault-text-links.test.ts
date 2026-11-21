@@ -76,9 +76,9 @@ describe("vaultTextParts", () => {
   });
 
   test("links another vault path when it has no space or ends with a file extension", () => {
-    expect(vaultTextParts("See Life/Health/Habits and Projects/2026-01-01-0900-example-app/Plan.md.")).toEqual([
+    expect(vaultTextParts("See Life/Habits and Projects/2026-01-01-0900-example-app/Plan.md.")).toEqual([
       { text: "See " },
-      { text: "Life/Health/Habits", href: "#/files/Life/Health/Habits", title: "Life/Health/Habits" },
+      { text: "Life/Habits", href: "#/files/Life/Habits", title: "Life/Habits" },
       { text: " and " },
       {
         text: "Projects/2026-01-01-0900-example-app/Plan.md",

@@ -23,7 +23,7 @@
       "access": "write",
       "schema": "schemas/habits.json",
       "files": "*.json",
-      "default": "Life/Health/Habits"
+      "default": "Life/Habits"
     },
     {
       "id": "location",

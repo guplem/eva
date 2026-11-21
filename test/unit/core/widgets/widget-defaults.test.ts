@@ -16,7 +16,7 @@ const folderInput: WidgetInput = {
   access: "write",
   schema: "schemas/habits.json",
   files: "*.json",
-  default: "Life/Health/Habits",
+  default: "Life/Habits",
 };
 
 let folder: string;
@@ -34,8 +34,8 @@ afterEach(() => {
 
 describe("defaultPath", () => {
   test("gives the default of a folder or a file input, as a path from the vault root", () => {
-    expect(defaultPath(folderInput)).toBe("Life/Health/Habits");
-    expect(defaultPath({ ...folderInput, default: " Life/Health/Habits/ " })).toBe("Life/Health/Habits");
+    expect(defaultPath(folderInput)).toBe("Life/Habits");
+    expect(defaultPath({ ...folderInput, default: " Life/Habits/ " })).toBe("Life/Habits");
     expect(defaultPath({ ...base, id: "note", type: "file", access: "read", default: "Notes/a.md" })).toBe(
       "Notes/a.md",
     );
@@ -66,11 +66,11 @@ describe("defaultPath", () => {
 
 describe("defaultPlace", () => {
   test("says whether the default is a folder, a file, or a folder that Eva can create", () => {
-    expect(defaultPlace(vault, "Life/Health/Habits")).toBe("missing");
-    mkdirSync(join(vault, "Life/Health/Habits"), { recursive: true });
-    expect(defaultPlace(vault, "Life/Health/Habits")).toBe("folder");
-    writeFileSync(join(vault, "Life/Health/Habits/walk.json"), "{}\n");
-    expect(defaultPlace(vault, "Life/Health/Habits/walk.json")).toBe("file");
+    expect(defaultPlace(vault, "Life/Habits")).toBe("missing");
+    mkdirSync(join(vault, "Life/Habits"), { recursive: true });
+    expect(defaultPlace(vault, "Life/Habits")).toBe("folder");
+    writeFileSync(join(vault, "Life/Habits/walk.json"), "{}\n");
+    expect(defaultPlace(vault, "Life/Habits/walk.json")).toBe("file");
   });
 
   test("refuses a place on a file, a closed place, or a link", () => {
@@ -90,17 +90,17 @@ describe("defaultPlace", () => {
 
 describe("createDefaultFolder", () => {
   test("creates the folder and each missing parent, with a file that keeps it in git", () => {
-    createDefaultFolder(vault, "Life/Health/Habits");
-    expect(readdirSync(join(vault, "Life/Health/Habits"))).toEqual([keepFileName]);
+    createDefaultFolder(vault, "Life/Health/Sleep");
+    expect(readdirSync(join(vault, "Life/Health/Sleep"))).toEqual([keepFileName]);
     expect(keepFileName).toBe(".gitkeep");
-    expect(defaultPlace(vault, "Life/Health/Habits")).toBe("folder");
+    expect(defaultPlace(vault, "Life/Health/Sleep")).toBe("folder");
   });
 
   test("leaves a folder that exists as it is", () => {
-    mkdirSync(join(vault, "Life/Health/Habits"), { recursive: true });
-    writeFileSync(join(vault, "Life/Health/Habits/walk.json"), "{}\n");
-    createDefaultFolder(vault, "Life/Health/Habits");
-    expect(readdirSync(join(vault, "Life/Health/Habits"))).toEqual(["walk.json"]);
+    mkdirSync(join(vault, "Life/Habits"), { recursive: true });
+    writeFileSync(join(vault, "Life/Habits/walk.json"), "{}\n");
+    createDefaultFolder(vault, "Life/Habits");
+    expect(readdirSync(join(vault, "Life/Habits"))).toEqual(["walk.json"]);
   });
 
   test("refuses each place that no widget reaches, and creates nothing there", () => {
@@ -115,11 +115,11 @@ describe("createDefaultFolder", () => {
   });
 
   test("gives the widget an empty list for the new folder, without the hidden file", () => {
-    createDefaultFolder(vault, "Life/Health/Habits");
+    createDefaultFolder(vault, "Life/Habits");
     const approved = {
       input: "habits",
       type: "folder" as const,
-      path: "Life/Health/Habits",
+      path: "Life/Habits",
       access: "write" as const,
       files: "*",
       schema: null,

@@ -25,9 +25,9 @@ describe("widgetTemplate", () => {
     expect(Object.keys(widgetTemplate(names)).sort()).toEqual(trackedTemplateFiles());
   });
 
-  test("keeps the habits of the preview in Life/Health/Habits, a folder of the vault map (#772)", () => {
+  test("keeps the habits of the preview in Life/Habits, a folder of the vault map (#772, #1001)", () => {
     const config = JSON.parse(widgetTemplate(names)["config.json"] ?? "") as { habits: string };
-    expect(config.habits).toBe("Life/Health/Habits");
+    expect(config.habits).toBe("Life/Habits");
   });
 
   test("puts the names of the new repository in place of the example names", () => {

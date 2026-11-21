@@ -61,6 +61,13 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBeGreaterThanOrEqual(10);
   });
 
+  test("v11 gives habits of any kind their own folder, Life/Habits/, and moves nothing (#1001)", () => {
+    const v11 = structureChanges.find((change) => change.version === 11);
+    expect(v11?.summary).toStartWith("Your habits get a folder of their own");
+    expect(v11?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(11);
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

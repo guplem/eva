@@ -2,7 +2,7 @@ import { expect, test, type Frame, type Locator, type Page } from "@playwright/t
 
 /**
  * The widgets of the home page in a real browser (#691). The demo server approved, in this order,
- * a static Calendar (xlarge), the habits widget of the template for `Life/Health/Habits` (small)
+ * a static Calendar (xlarge), the habits widget of the template for `Life/Habits` (small)
  * and a static Cases (tall).
  */
 
@@ -142,14 +142,14 @@ test("a widget asks Eva after a tap: its text goes in the message box, and a pat
   await page.frameLocator(".widget-full iframe").getByRole("button", { name: "Chat about my habits" }).click();
   // Full screen closes, the text comes after the person's own words, and the box names the widget.
   await expect(page.locator(".widget-full")).toHaveCount(0);
-  await expect(box).toHaveValue("My own words\n\nLet us talk about my habits in Life/Health/Habits.");
+  await expect(box).toHaveValue("My own words\n\nLet us talk about my habits in Life/Habits.");
   await expect(page.getByRole("list", { name: "Where the text comes from" })).toHaveText("From Habits");
   // Eva never sends the text: the person clears it, and the box no longer names the widget.
   await box.fill("");
   await expect(page.getByRole("list", { name: "Where the text comes from" })).toHaveCount(0);
   await page.getByRole("button", { name: "Open Habits in full screen" }).click();
   await page.frameLocator(".widget-full iframe").getByRole("button", { name: "Open the folder in Eva" }).click();
-  await expect(page).toHaveURL(/#\/files\/Life\/Health\/Habits$/);
+  await expect(page).toHaveURL(/#\/files\/Life\/Habits$/);
   await expect(page.locator(".widget-full")).toHaveCount(0);
 });
 
@@ -189,9 +189,7 @@ test("a tap in the habits widget in full screen marks a habit", async ({ page })
   const checkedToday = async (): Promise<boolean> => {
     const texts = await Promise.all(
       ["meditate", "read", "walk"].map(async (habit) => {
-        const answer = await page.request.get(
-          `/api/files?path=${encodeURIComponent(`Life/Health/Habits/${habit}.json`)}`,
-        );
+        const answer = await page.request.get(`/api/files?path=${encodeURIComponent(`Life/Habits/${habit}.json`)}`);
         return ((await answer.json()) as { text?: string }).text ?? "";
       }),
     );

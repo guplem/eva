@@ -38,7 +38,7 @@ test("inside Eva, each approved ask shows, and a tap sends it", async ({ page })
     .poll(sent)
     .toEqual([
       { ask: "hello" },
-      { ask: "chat", text: "Let us talk about my habits in Life/Health/Habits." },
-      { ask: "open", path: "Life/Health/Habits" },
+      { ask: "chat", text: "Let us talk about my habits in Life/Habits." },
+      { ask: "open", path: "Life/Habits" },
     ]);
 });

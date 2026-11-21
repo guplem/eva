@@ -478,9 +478,19 @@ describe("the grid", () => {
   test("a widget on in the vault with no approval here shows a card to approve", () => {
     writeWidgetList(vault, [{ ...(readWidgetList(vault)[0] ?? ({} as never)), enabled: true }]);
     expect(widgets.frames(theme, [])).toEqual([
-      { id: habitsId, name: "Habits", size: "small", layout: {}, src: null, token: null },
+      { id: habitsId, name: "Habits", size: "small", layout: {}, src: null, token: null, asks: [] },
     ]);
     expect(widgets.list()[0]?.state).toBe("approve");
+  });
+
+  test("the frame of an approved widget carries its approved asks, so the page answers them", async () => {
+    const asks = [
+      { type: "open", why: "Opens a habit's file." },
+      { type: "chat", why: "Starts a chat about a habit." },
+    ];
+    commit({ "eva-widget.json": JSON.stringify({ ...manifest, contract: 3, asks }) });
+    await approveHabits();
+    expect(widgets.frames(theme, [])[0]?.asks).toEqual(["chat", "open"]);
   });
 
   test("a base widget on in the vault with no approval here shows its own name", () => {
@@ -505,6 +515,7 @@ describe("the grid", () => {
       layout: {},
       src: `/widgets/${token}/index.html`,
       token,
+      asks: [],
     });
     expect(widgets.frames(theme, ["unknown"])[0]?.token).not.toBe(token);
     now = new Date(now.getTime() + 5.5 * 60 * 60_000);

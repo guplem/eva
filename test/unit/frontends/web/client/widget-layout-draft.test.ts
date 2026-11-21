@@ -33,7 +33,7 @@ function item(id: string, state: WidgetItem["state"], size: WidgetItem["size"], 
 }
 
 function frame(id: string, size: WidgetFrame["size"], approved: boolean, layout = {}): WidgetFrame {
-  return { id, name: id, size, layout, src: approved ? "/widgets/token/index.html" : null, token: null };
+  return { id, name: id, size, layout, src: approved ? "/widgets/token/index.html" : null, token: null, asks: [] };
 }
 
 describe("the same widgets for the editor and the home grid", () => {

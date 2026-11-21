@@ -18,6 +18,7 @@ import type { WidgetCopies } from "./widget-copies.ts";
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { evaDataAnswer } from "./widget-eva-data.ts";
 import { answerStatePath, removeWidgetState, statePath } from "./widget-state.ts";
+import type { WidgetAskType } from "./widget-kinds.ts";
 import { calendarAnswer } from "./widget-google-calendar.ts";
 import { noCalendar, type CalendarSource } from "../google/google-calendar.ts";
 import { checkHost } from "./widget-hosts.ts";
@@ -147,6 +148,8 @@ export interface WidgetFrame {
   /** The token path of the entry page, or null for a widget to approve on this computer. */
   readonly src: string | null;
   readonly token: string | null;
+  /** The approved asks of contract 3, which the page answers for this widget. Empty for a widget to approve. */
+  readonly asks: readonly WidgetAskType[];
 }
 
 interface FrameSession {
@@ -892,6 +895,7 @@ export class Widgets {
             layout: entry.layout ?? {},
             src: null,
             token: null,
+            asks: [],
           };
         let token = kept.get(entry.id);
         const session = token === undefined ? undefined : this.sessions.get(token);
@@ -908,6 +912,7 @@ export class Widgets {
           layout: entry.layout ?? {},
           src: `/widgets/${token}/${record.entry}`,
           token,
+          asks: record.asks,
         };
       });
   }

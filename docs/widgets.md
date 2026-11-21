@@ -195,8 +195,6 @@ A widget of contract 3 can ask Eva to act: to write a text in the message box (`
 ]
 ```
 
-(Not on yet: a later release of contract 3 answers the messages. Until then, Eva answers nothing, and the widget hides the entries that need Eva.)
-
 The widget sends a message to its parent window, right after a tap of the person. `id` is a number of the widget's choice, which comes back in the answer:
 
 ```js
@@ -220,7 +218,7 @@ The asks:
 - `hello` needs no permission and no tap. Eva answers `{ "eva": "widget", "id": 7, "ok": true, "asks": ["chat", "open"] }`, with the approved types. Send it when the widget starts. Outside Eva, no answer comes: wait about 400 ms, then hide each entry that needs Eva.
 - `chat` puts `text` in the message box of the home page, or of the empty chat that is open. A text that the person already typed stays, and the widget's text comes after it. The box shows where the text comes from, such as "from Cases". Eva closes full screen and puts the cursor in the box. Eva never sends the text: the person sends it.
 - `open` takes `path`, a path of the vault from the vault root, with no `/` at the start. Eva closes full screen and opens the best page for it: the page of a Life entity, such as a case, or the page of a project. For any other path, she opens the Files page at that folder or file. Eva refuses a path outside the vault, or in a place that no widget reaches (see [How a widget talks to Eva](#how-a-widget-talks-to-eva)).
-- Eva checks that the person tapped the widget just before a `chat` or an `open`. So a widget cannot act by itself. Send the message in the `click` listener, with no wait before it.
+- Eva checks that the person tapped the widget just before a `chat` or an `open`. So a widget cannot act by itself. Send the message in the `click` listener, with no wait before it. A tap in the widget activates Eva's page for a few seconds, and Eva also checks that the widget's frame still has the focus. So a tap elsewhere on Eva's page does not count.
 - Eva knows the widget by the frame that sent the message. A widget cannot ask for another widget.
 
 ## Sizes

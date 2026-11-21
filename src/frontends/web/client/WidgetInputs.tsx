@@ -183,7 +183,7 @@ function InputField({
           { value: "yes", label: "Yes" },
           { value: "no", label: "No" },
         ]}
-        hint={`${input.description} Why: ${input.why}`}
+        hint={hint}
         onChange={(picked) => onChange(picked === "yes")}
       />
     );

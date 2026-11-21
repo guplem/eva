@@ -4,7 +4,16 @@
  * cookie or another widget. A tap inside a frame goes to the widget; the corner button outside it
  * opens full screen. With no widget on, the grid shows nothing, and the page looks as before.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import type { WidgetSize } from "../../../core/widgets/widget-kinds.ts";
 import { placeHome, type LayoutBox } from "../../../core/widgets/widget-layout.ts";
 import { widgetSandbox } from "../../../shared/widget-sandbox.ts";
@@ -148,7 +157,10 @@ export function WidgetGrid({
     [closeFull],
   );
   useBackLayer(full !== null, closeFull, "widget-full");
-  const form = useIsPhone() ? "phone" : "computer";
+  const gridRef = useRef<HTMLDivElement>(null);
+  const narrow = useNarrowGrid(gridRef);
+  // A computer window with the chat list open can leave the panel too narrow for four columns (#1023).
+  const form = useIsPhone() || narrow ? "phone" : "computer";
 
   const byId = new Map(frames.map((frame) => [frame.id, frame]));
   const home = placeHome(layoutWidgetsOfFrames(frames), form);
@@ -195,7 +207,12 @@ export function WidgetGrid({
         {greeting}
         {form === "computer" && header !== undefined && card(header, "header", {}, " widget-header")}
       </div>
-      <div className="widget-grid" role="group" aria-label="Widgets">
+      <div
+        ref={gridRef}
+        className={form === "computer" ? "widget-grid is-computer" : "widget-grid"}
+        role="group"
+        aria-label="Widgets"
+      >
         {form === "phone" && header !== undefined && card(header, "header", { gridColumn: "1 / -1", gridRow: "1" })}
         {home.cards.map((placed) => {
           const frame = byId.get(placed.id);
@@ -224,6 +241,27 @@ export function WidgetGrid({
       )}
     </>
   );
+}
+
+/**
+ * The narrowest panel that keeps the computer layout. Below it a column is under about 160 px. It is
+ * also the width at which the header slot leaves the greeting row (`widgets.css`).
+ */
+const computerGridMinPx = 680;
+
+/** True when the grid is narrower than `computerGridMinPx`. The grid's width is the panel's width. */
+function useNarrowGrid(ref: { readonly current: HTMLElement | null }): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element === null) return;
+    const measure = (): void => setNarrow(element.clientWidth > 0 && element.clientWidth < computerGridMinPx);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return narrow;
 }
 
 /** The explicit place of a card in a CSS grid: the home grid and the preview of Settings both use it. */

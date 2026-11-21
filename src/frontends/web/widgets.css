@@ -18,14 +18,15 @@
   overflow: hidden;
 }
 
-@media (min-width: 761px) {
-  /* At least three rows share the height above the message box, so an xlarge card fills it. More cards add rows. */
-  .widget-grid {
-    flex: 1;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    grid-template-rows: repeat(3, minmax(140px, 1fr));
-    grid-auto-rows: minmax(140px, 1fr);
-  }
+/*
+ * The computer layout, which `WidgetGrid` picks by the window and the panel's own width (#1023). At
+ * least three rows share the height above the message box, so an xlarge card fills it. More cards add rows.
+ */
+.widget-grid.is-computer {
+  flex: 1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(140px, 1fr));
+  grid-auto-rows: minmax(140px, 1fr);
 }
 
 /*

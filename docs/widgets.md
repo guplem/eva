@@ -273,7 +273,7 @@ The test `tests/fills-screen.spec.js` of the template checks this at several siz
 ### The header slot
 
 - On a computer, the home page has a header slot at the right of the greeting row. It is 72 px high, and from 320 to 640 px wide. It holds one line of content.
-- The slot grows to 640 px when the row has room, and shrinks to 320 px. When the page column is narrower than 680 px, the row has no room for the greeting and the slot. Then the slot takes its own row under the greeting, at the full width of the column. A window narrower than 761 px uses the phone layout.
+- The slot grows to 640 px when the row has room, and shrinks to 320 px. When the page column is narrower than 680 px, the row has no room for the greeting and the slot, and a column of the grid would be narrower than about 160 px. Then the home page uses the phone layout, as a window narrower than 761 px does: the widget of the slot is the first row of the grid, with `?size=header`.
 - One widget at most sits in the slot. A widget with the manifest size `header` goes there by default, when the slot is free: the first such widget in the list order. A widget that waits for approval never goes there.
 - In the layout editor, the person can move any widget in or out of the slot. A widget in the slot gets `?size=header`. A widget that leaves the slot gets the size of its shape in the grid. A `header` widget in the grid is 2 × 1 and gets `medium`.
 - The entry of `.eva/widgets.json` keeps the choice in its `layout` key: `"header": true` puts the widget in the slot, and `"header": false` keeps a `header` widget out of it. With no value, the default decides. An older Eva ignores the key.

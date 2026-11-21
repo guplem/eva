@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
-import { Composer, unsentTexts, type ChatChoices } from "./Composer.tsx";
+import { Composer, type ChatChoices } from "./Composer.tsx";
 import { UserMessage } from "./Conversation.tsx";
 import { newMessageId } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
@@ -15,13 +15,10 @@ import { outbox } from "./page-outbox.ts";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { goTo } from "./back-layers.ts";
 import { withFixRequest, withProjectMention } from "./mentions.ts";
-import { assistantChatAddressOf, newChatPageId } from "./navigation.ts";
+import { fillNewChat, newChatTextKey } from "./new-chat-text.ts";
 import { useWidgetFrames } from "./WidgetGrid.tsx";
 import { Icon } from "./icons.tsx";
 import { settingsHash } from "./settings-routes.ts";
-
-/** The key of the unsent text of this page, which has no chat yet. A chat id never takes it. */
-const newChatTextKey = "new-chat";
 
 /**
  * Opens the New chat page of Chats with a mention of the project at the start of its text (issue 657).
@@ -29,12 +26,9 @@ const newChatTextKey = "new-chat";
  * The page keeps the text that the person typed before, so nothing is lost.
  */
 export function startChatAbout(projectId: string, fixRequest?: string): void {
-  const text = unsentTexts.get(newChatTextKey);
-  unsentTexts.set(
-    newChatTextKey,
+  fillNewChat((text) =>
     fixRequest === undefined ? withProjectMention(text, projectId) : withFixRequest(text, projectId, fixRequest),
   );
-  goTo(assistantChatAddressOf(newChatPageId));
 }
 
 /** How long the page waits to read the settings again after a failed read. */

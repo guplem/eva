@@ -245,6 +245,15 @@ test("Personalize lists the widget, on, with its repository and owner", async ({
   await expect(list).toContainText("On");
 });
 
+/** The demo's stand-in Summary has the size header, so the default puts it in the header slot (#1007). */
+const summaryCard = '.widget-card:has(iframe[aria-label="Summary"])';
+
+/** Puts the header slot back to its default, after a test that changed it. */
+async function defaultSlot(page: Page): Promise<void> {
+  const saved = await page.request.put("/api/widgets/layout", { data: { header: null } });
+  expect(saved.ok()).toBe(true);
+}
+
 test("the tiles button of the home page scrolls Settings to the Widget layout card and marks it (issue 1002)", async ({
   page,
 }) => {
@@ -312,8 +321,16 @@ test("the widget layout places a widget, leaves a gap, and the home page shows t
   await expect(editor.getByRole("button", { name: "Edit" })).toBeVisible();
   await page.goto("/#/chats/new");
   const grid = page.getByRole("group", { name: "Widgets" });
+  // On a phone, the widget of the header slot takes the first row of the home grid (#1007).
+  await expect(grid.locator(".widget-card").first()).toBeVisible();
+  const below = form === "Phone" && (await grid.locator(summaryCard).count()) > 0 ? 1 : 0;
+  const shifted = (spot: string): string =>
+    spot.replace(
+      /(\d+) \/ span (\d+)$/,
+      (_all, row: string, span: string) => `${String(Number(row) + below)} / span ${span}`,
+    );
   for (const [name, expected] of Object.entries(previewPlaces))
-    expect(await place(grid.locator(`.widget-card:has(iframe[aria-label="${name}"])`))).toBe(expected);
+    expect(await place(grid.locator(`.widget-card:has(iframe[aria-label="${name}"])`))).toBe(shifted(expected));
   // The frame gets the size name of the new shape.
   expect(await grid.locator('iframe[aria-label="Habits"]').getAttribute("src")).toMatch(new RegExp(`\\?size=${size}$`));
   // Put the default back, so the other tests see the grid of the demo.
@@ -367,15 +384,6 @@ test("Preview on a clone shows a change that is not pushed, with example data fi
   await expect(widget.locator(".widget-title")).toHaveText("Mock habits");
 });
 
-/** The demo's stand-in Summary. The layout test resets the computer layout, and the slot with it, so each test puts it back. */
-const summaryId = "example-owner/summary-widget";
-const summaryCard = '.widget-card:has(iframe[aria-label="Summary"])';
-
-async function summaryInSlot(page: Page): Promise<void> {
-  const saved = await page.request.put("/api/widgets/layout", { data: { header: { id: summaryId } } });
-  expect(saved.ok()).toBe(true);
-}
-
 interface Box {
   x: number;
   y: number;
@@ -393,7 +401,7 @@ test("the header slot shows its widget beside the greeting on a computer, and as
   page,
 }) => {
   await logIn(page);
-  await summaryInSlot(page);
+  await defaultSlot(page);
   await page.goto("/#/chats/new");
   const card = page.locator(summaryCard);
   await expect(card.locator("iframe")).toHaveAttribute("src", /\?size=header$/);
@@ -426,7 +434,7 @@ test("a narrow window shrinks the header slot, then puts it below the greeting b
 }) => {
   test.skip(test.info().project.name === "phone", "The break points are widths of a computer window.");
   await logIn(page);
-  await summaryInSlot(page);
+  await defaultSlot(page);
   await page.goto("/#/chats/new");
   const card = page.locator(summaryCard);
   const row = page.locator(".day-greeting");
@@ -465,7 +473,7 @@ test("the layout editor moves a widget into the header slot and out of it, with 
 }) => {
   test.skip(test.info().project.name === "phone", "The slot sits beside the greeting only on the Computer tab.");
   await logIn(page);
-  await summaryInSlot(page);
+  await defaultSlot(page);
   // Tall enough for the slot and the whole grid, so each drag starts and ends on the screen.
   await page.setViewportSize({ width: 1280, height: 1200 });
   await page.goto("/#/settings/personalize/widget-layout");
@@ -526,6 +534,5 @@ test("the layout editor moves a widget into the header slot and out of it, with 
     /\?size=medium$/,
   );
   // Put the demo back: the default places, and Summary in the slot.
-  await page.request.put("/api/widgets/layout", { data: { computer: null } });
-  await summaryInSlot(page);
+  await page.request.put("/api/widgets/layout", { data: { computer: null, header: null } });
 });

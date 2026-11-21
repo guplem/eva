@@ -40,8 +40,8 @@ function page(title: string, body: string): string {
 `;
 }
 
-function manifest(name: string, size: string): string {
-  return `${JSON.stringify({ contract: 2, name, entry: "index.html", size, inputs: [], hosts: [] }, null, 2)}\n`;
+function manifest(name: string, size: string, contract = 2): string {
+  return `${JSON.stringify({ contract, name, entry: "index.html", size, inputs: [], hosts: [] }, null, 2)}\n`;
 }
 
 const days: readonly (readonly [string, readonly (readonly [string, string])[]])[] = [
@@ -128,9 +128,8 @@ export const demoWidgets: Readonly<Record<string, Readonly<Record<string, string
     "index.html": page("Calendar", calendarBody),
     "style.css": style,
   },
-  // Contract 2 has no size header, so the demo saves the slot instead (serve-demo.ts).
   "summary-widget": {
-    "eva-widget.json": manifest("Summary", "medium"),
+    "eva-widget.json": manifest("Summary", "header", 3),
     "index.html": page("Summary", summaryBody),
     "style.css": summaryStyle,
   },

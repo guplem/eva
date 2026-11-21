@@ -279,7 +279,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - EVE greets with happy eyes instead of a blank page.
 - With a widget on, the page is the day panel. The 56 px visor, the greeting and its line take one row at the top left. On a computer, the header slot at the right of that row holds one widget: 72 px high, from 320 to 640 px wide. When the row has no room for both, the slot takes its own row under the greeting, at the full width. On a phone, the widget of the slot is the first row of the grid. The widgets fill the rest of the page above the message box, in sandboxed frames, at the places of the widget layout. A corner button opens one in full screen. The panel shows no suggestions. [docs/widgets.md](../../widgets.md#sizes) gives the place of each size on a computer and on a phone.
 - With no widget on, the large visor greets in the centre. Suggestions show what Eva does well: notes, calendar, projects and reminders. The calendar shows only when Google is set up.
-- With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks. With a widget on, the step takes the row of the greeting, and the widgets stay below it.
+- With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks. With a widget on, the step takes the row of the greeting, and the widgets stay below it. The header slot then takes its own row under the step.
 - The engine and the model show in the composer, and change there. The header shows the mode.
 
 ### A conversation at work

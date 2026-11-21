@@ -52,6 +52,12 @@
   }
 }
 
+/* A missing setup step puts its button in the row: the step comes first, so the slot takes its own row. */
+.day-greeting:has(> button) .widget-card.widget-header {
+  flex-basis: 100%;
+  max-width: none;
+}
+
 .widget-frame {
   display: block;
   width: 100%;

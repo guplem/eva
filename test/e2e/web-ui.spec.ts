@@ -777,6 +777,14 @@ test("a new chat with no engine says what is missing, locks the box, and unlocks
   // The demo has widgets on, so the step shows in the one-line form of the day panel, above them (#972).
   await expect(page.locator(".day-panel .day-greeting")).toContainText("Not ready yet");
   await expect(page.getByRole("group", { name: "Widgets" })).toBeVisible();
+  if (test.info().project.name !== "phone") {
+    // The step comes first: the header slot takes its own row under it (#1007).
+    const slot = page.locator(".day-greeting .widget-header");
+    await expect(slot).toBeVisible();
+    const step = await page.locator(".day-greeting h2").boundingBox();
+    const box = await slot.boundingBox();
+    expect(box?.y ?? 0).toBeGreaterThan((step?.y ?? 0) + (step?.height ?? 0));
+  }
   await expect(page.getByLabel("Message").first()).toBeDisabled();
   await expect(page.getByText("Set up an AI engine to send a message.")).toBeVisible();
 

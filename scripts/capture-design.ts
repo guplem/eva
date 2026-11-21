@@ -110,7 +110,7 @@ async function send(page: Page, text: string): Promise<void> {
 
 async function rename(page: Page, title: string): Promise<void> {
   await page.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type(title);
   await page.keyboard.press("Enter");
@@ -236,7 +236,8 @@ const scenes: readonly Scene[] = [
       await openAddress(page, homeAddress, "New chat");
       await page.locator(".home-buttons").waitFor();
       await page.locator(".new-chat").waitFor();
-      // The demo approved a Calendar, the habits widget and a Cases widget: the day panel (#972).
+      // The demo approved a Calendar, the habits widget, a Cases widget and a Summary in the header slot:
+      // the day panel (#972, #1007).
       // The habits frame shows its habits once it is ready (#691).
       await page
         .frameLocator('.widget-grid iframe[aria-label="Habits"]')

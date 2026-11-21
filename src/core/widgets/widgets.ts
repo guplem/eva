@@ -23,7 +23,7 @@ import { calendarAnswer } from "./widget-google-calendar.ts";
 import { noCalendar, type CalendarSource } from "../google/google-calendar.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
-import { layoutForms, type LayoutForm, type LayoutSlots, type WidgetLayout } from "./widget-layout.ts";
+import { layoutForms, type LayoutChange, type WidgetLayout } from "./widget-layout.ts";
 import { checkValues, inspectFiles } from "./widget-values.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
 import type { DataFormatRecord } from "./data-format-writer.ts";
@@ -842,12 +842,14 @@ export class Widgets {
    * Saves the layout of the home grid in one write, so the editor makes one vault commit. A form
    * with slots gives each named widget its new slot; a widget that is off keeps its own. A null form
    * clears that form for every widget, so its default comes back. An unknown id changes nothing.
+   * `header` names the widget of the header slot beside the greeting (#1007), or none; null clears
+   * the choice of every widget, so the default comes back.
    */
-  saveLayout(change: Partial<Record<LayoutForm, LayoutSlots | null | undefined>>): WidgetItem[] {
+  saveLayout(change: LayoutChange): WidgetItem[] {
     const entries = readWidgetList(this.options.vaultPath);
     const layouts = new Map<string, WidgetLayout>();
     for (const entry of entries) {
-      let layout: { -readonly [form in LayoutForm]?: WidgetLayout[form] } = { ...entry.layout };
+      let layout: { -readonly [key in keyof WidgetLayout]?: WidgetLayout[key] } = { ...entry.layout };
       let changed = false;
       for (const form of layoutForms) {
         const slots = change[form];
@@ -862,11 +864,27 @@ export class Widgets {
           changed = true;
         }
       }
+      if (change.header !== undefined) {
+        const { header: _old, ...rest } = layout;
+        const header = this.headerChoice(entry.id, change.header);
+        layout = header === undefined ? rest : { ...rest, header };
+        changed = true;
+      }
       // An entry that does not change keeps its raw key as it is, with any key of a later Eva.
       if (changed) layouts.set(entry.id, layout);
     }
     writeWidgetList(this.options.vaultPath, entries, layouts);
     return this.list();
+  }
+
+  /**
+   * The saved choice of the header slot for one widget: true for the widget in the slot. A widget
+   * of the size `header` elsewhere saves false, or the default would put it back. Any other widget saves nothing.
+   */
+  private headerChoice(id: string, header: { readonly id: string | null } | null): boolean | undefined {
+    if (header === null) return undefined;
+    if (header.id === id) return true;
+    return this.options.approvals.get(id)?.size === "header" ? false : undefined;
   }
 
   /**

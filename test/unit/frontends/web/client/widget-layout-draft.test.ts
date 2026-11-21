@@ -12,6 +12,7 @@ import {
   moveWords,
   shapeWords,
   shownBoxes,
+  shownHeader,
   sizeWords,
 } from "../../../../../src/frontends/web/client/widget-layout-draft.ts";
 
@@ -129,5 +130,45 @@ describe("the words", () => {
   test("say a move and a new size for the live region", () => {
     expect(moveWords("Cases", box)).toBe("Cases moved to column 4, row 1.");
     expect(sizeWords("Cases", box)).toBe("Cases is 1 column by 2 rows now.");
+  });
+});
+
+describe("the header slot in the editor (#1007)", () => {
+  const widgets = layoutWidgetsOfItems([
+    item("a/calendar", "on", "xlarge"),
+    item("a/summary", "on", "header"),
+    item("a/habits", "on", "small"),
+  ]);
+
+  test("the slot shows the widget of the size header, and the grid the rest", () => {
+    expect(shownHeader(widgets, {})).toBe("a/summary");
+    expect(shownBoxes(widgets, {}, "computer").map((box) => box.id)).toEqual(["a/calendar", "a/habits"]);
+  });
+
+  test("a move into the slot sends the new widget, and the old one goes back to the grid", () => {
+    const draft = { header: { id: "a/habits" } };
+    expect(shownHeader(widgets, draft)).toBe("a/habits");
+    expect(shownBoxes(widgets, draft, "computer").map((box) => box.id)).toEqual(["a/calendar", "a/summary"]);
+    expect(shownBoxes(widgets, draft, "phone").map((box) => box.id)).not.toContain("a/habits");
+    expect(draftChange(draft)).toEqual({ header: { id: "a/habits" } });
+    expect(draftChanged(draft)).toBe(true);
+  });
+
+  test("edited boxes follow the slot: the box of the widget in the slot goes", () => {
+    const computer = placeWidgets(widgets, "computer");
+    const draft = { computer, header: { id: "a/calendar" } };
+    expect(shownBoxes(widgets, draft, "computer").map((box) => box.id)).toEqual(["a/habits", "a/summary"]);
+  });
+
+  test("an empty slot keeps the header widget out, and a reset brings the default back", () => {
+    expect(shownHeader(widgets, { header: { id: null } })).toBeNull();
+    expect(draftChange({ header: "default" })).toEqual({ header: null });
+    const saved = widgets.map((each) => (each.id === "a/habits" ? { ...each, layout: { header: true } } : each));
+    expect(shownHeader(saved, {})).toBe("a/habits");
+    expect(shownHeader(saved, { header: "default" })).toBe("a/summary");
+    // The computer tab offers a reset when the slot has a saved choice; the phone tab does not.
+    expect(canReset(saved, {}, "computer")).toBe(true);
+    expect(canReset(saved, {}, "phone")).toBe(false);
+    expect(canReset(saved, { computer: null, header: "default" }, "computer")).toBe(false);
   });
 });

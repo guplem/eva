@@ -270,13 +270,14 @@ The test `tests/fills-screen.spec.js` of the template checks this at several siz
 
 ### The header slot
 
-(Not on yet: a later release of contract 3 adds the header slot. Until then, a `header` widget shows in the grid.)
-
-- On a computer, the home page has a header slot at the right of the greeting: about 320 to 640 px wide and 64 to 76 px high. It holds one line of content.
-- One widget at most sits in the slot. A widget with the manifest size `header` goes there by default.
-- In the layout editor, the person can move any widget in or out of the slot. A widget in the slot gets `?size=header`. A widget that leaves the slot gets the size of its shape in the grid.
+- On a computer, the home page has a header slot at the right of the greeting row. It is 72 px high, and from 320 to 640 px wide. It holds one line of content.
+- The slot grows to 640 px when the row has room, and shrinks to 320 px. When the page column is narrower than 680 px, the row has no room for the greeting and the slot. Then the slot takes its own row under the greeting, at the full width of the column. A window narrower than 761 px uses the phone layout.
+- One widget at most sits in the slot. A widget with the manifest size `header` goes there by default, when the slot is free: the first such widget in the list order. A widget that waits for approval never goes there.
+- In the layout editor, the person can move any widget in or out of the slot. A widget in the slot gets `?size=header`. A widget that leaves the slot gets the size of its shape in the grid. A `header` widget in the grid is 2 × 1 and gets `medium`.
+- The entry of `.eva/widgets.json` keeps the choice in its `layout` key: `"header": true` puts the widget in the slot, and `"header": false` keeps a `header` widget out of it. With no value, the default decides. An older Eva ignores the key.
 - On a phone, there is no room beside the greeting. The widget of the slot shows as the first card of the grid, at the full width and 1 row high, still with `?size=header`. So a `header` widget must also fill a frame of about 358 × 168 px.
 - The full-screen button stays on a widget in the slot. Keep the top right corner free there too.
+- `placeHome` in `src/core/widgets/widget-layout.ts` chooses the widget of the slot and places the grid, for the home page and the preview.
 
 ## Theme
 

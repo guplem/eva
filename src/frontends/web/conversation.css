@@ -707,7 +707,8 @@ button.ghost .icon {
 
 .day-greeting-text {
   flex: 1;
-  min-width: 0;
+  /* The greeting keeps this room: the header slot shrinks, then drops below it (#1007). */
+  min-width: 16rem;
 }
 
 .new-chat.day-panel h2 {

@@ -569,6 +569,7 @@ vault .eva/widgets.json widgets[].layout.computer.size=medium
 vault .eva/widgets.json widgets[].layout.computer.size=small
 vault .eva/widgets.json widgets[].layout.computer.size=tall
 vault .eva/widgets.json widgets[].layout.computer.size=xlarge
+vault .eva/widgets.json widgets[].layout.header
 vault .eva/widgets.json widgets[].layout.phone
 vault .eva/widgets.json widgets[].layout.phone.column
 vault .eva/widgets.json widgets[].layout.phone.columns

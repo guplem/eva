@@ -4,8 +4,9 @@
  * cookie or another widget. A tap inside a frame goes to the widget; the corner button outside it
  * opens full screen. With no widget on, the grid shows nothing, and the page looks as before.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
-import { placeWidgets, type LayoutBox } from "../../../core/widgets/widget-layout.ts";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import type { WidgetSize } from "../../../core/widgets/widget-kinds.ts";
+import { placeHome, type LayoutBox } from "../../../core/widgets/widget-layout.ts";
 import { widgetSandbox } from "../../../shared/widget-sandbox.ts";
 import { api, type WidgetFrame } from "./api.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
@@ -123,7 +124,20 @@ export function useWidgetFrames(): WidgetFrames {
   return { frames, scheme };
 }
 
-export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): ReactElement | null {
+/**
+ * The day panel's widgets: the greeting row with its header slot (#1007), and the grid. The width
+ * chooses the layout. The preview of Settings places the cards with the same function (#985). On a
+ * computer the widget of the header slot sits at the right of the greeting; on a phone there is no
+ * room, so it is the first row of the grid, at the full width.
+ */
+export function WidgetGrid({
+  widgets,
+  greeting,
+}: {
+  readonly widgets: WidgetFrames;
+  /** The content of the greeting row: EVE, the greeting, and an action such as a setup button. */
+  readonly greeting: ReactNode;
+}): ReactElement {
   const { frames, scheme } = widgets;
   // By id, so the full-screen frame takes the new token after each ask, as the grid does.
   const [fullId, setFullId] = useState<string | null>(null);
@@ -134,50 +148,60 @@ export function WidgetGrid({ widgets }: { readonly widgets: WidgetFrames }): Rea
     [closeFull],
   );
   useBackLayer(full !== null, closeFull, "widget-full");
-  // The width chooses the layout. The preview of Settings places the cards with the same function (#985).
   const form = useIsPhone() ? "phone" : "computer";
 
-  if (frames.length === 0) return null;
   const byId = new Map(frames.map((frame) => [frame.id, frame]));
+  const home = placeHome(layoutWidgetsOfFrames(frames), form);
+  const header = home.header === null ? undefined : byId.get(home.header);
+  // On a phone the header widget takes the first row, so every other card moves one row down.
+  const below = form === "phone" && header !== undefined ? 1 : 0;
+  const card = (frame: WidgetFrame, size: WidgetSize, place: CSSProperties, className = ""): ReactElement =>
+    frame.src === null ? (
+      <div key={frame.id} className="card widget-card widget-approve" style={place}>
+        <Icon name="lock" />
+        <strong>{frame.name}</strong>
+        <span>Approve to show this widget</span>
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => goTo(settingsHash({ section: "personalize", item: "widgets" }))}
+        >
+          Approve
+        </button>
+      </div>
+    ) : (
+      <div key={frame.id} className={`card widget-card${className}`} style={place}>
+        {/* The size is in the frame's address, so a new size loads the widget again. */}
+        <WidgetFrameView
+          frame={frame}
+          size={size}
+          scheme={scheme}
+          onAsk={(request, tapped) => onAsk(frame, request, tapped)}
+        />
+        <button
+          type="button"
+          className="icon-button widget-full-button"
+          aria-label={`Open ${frame.name} in full screen`}
+          onClick={() => setFullId(frame.id)}
+        >
+          <Icon name="expand" />
+        </button>
+      </div>
+    );
+
   return (
     <>
+      <div className="day-greeting">
+        {greeting}
+        {form === "computer" && header !== undefined && card(header, "header", {}, " widget-header")}
+      </div>
       <div className="widget-grid" role="group" aria-label="Widgets">
-        {placeWidgets(layoutWidgetsOfFrames(frames), form).map((card) => {
-          const frame = byId.get(card.id);
-          if (frame === undefined) return null;
-          const place = gridPlace(card);
-          return frame.src === null ? (
-            <div key={frame.id} className="card widget-card widget-approve" style={place}>
-              <Icon name="lock" />
-              <strong>{frame.name}</strong>
-              <span>Approve to show this widget</span>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => goTo(settingsHash({ section: "personalize", item: "widgets" }))}
-              >
-                Approve
-              </button>
-            </div>
-          ) : (
-            <div key={frame.id} className="card widget-card" style={place}>
-              {/* The size is in the frame's address, so a new size loads the widget again. */}
-              <WidgetFrameView
-                frame={frame}
-                size={card.size}
-                scheme={scheme}
-                onAsk={(request, tapped) => onAsk(frame, request, tapped)}
-              />
-              <button
-                type="button"
-                className="icon-button widget-full-button"
-                aria-label={`Open ${frame.name} in full screen`}
-                onClick={() => setFullId(frame.id)}
-              >
-                <Icon name="expand" />
-              </button>
-            </div>
-          );
+        {form === "phone" && header !== undefined && card(header, "header", { gridColumn: "1 / -1", gridRow: "1" })}
+        {home.cards.map((placed) => {
+          const frame = byId.get(placed.id);
+          return frame === undefined
+            ? null
+            : card(frame, placed.size, gridPlace({ ...placed, row: placed.row + below }));
         })}
       </div>
       {full !== null && (

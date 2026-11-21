@@ -545,6 +545,8 @@ async function approveWidget(id: string, values: Readonly<Record<string, string>
 await approveWidget("example-owner/calendar-widget", {});
 await approveWidget(habitsWidgetId, { habits: "Life/Health/Habits" });
 await approveWidget("example-owner/cases-widget", {});
+// A stand-in Summary of the size header: it takes the free header slot beside the greeting (#1007).
+await approveWidget("example-owner/summary-widget", {});
 // No front end confirms a card here, so each new schedule's card waits for the web UI. A short
 // check keeps the browser tests fast; Eva itself checks every 30 seconds.
 setInterval(() => void eva.schedules?.tick(), 300);

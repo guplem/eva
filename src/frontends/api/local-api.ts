@@ -404,7 +404,16 @@ const layoutSlotSchema = z
   })
   .refine((slot) => slot.column + (slot.columns ?? 1) - 1 <= 4, "The card does not fit in four columns.");
 const layoutSlotsSchema = z.record(z.string().max(200), layoutSlotSchema).nullable().optional();
-const widgetLayoutSchema = z.object({ computer: layoutSlotsSchema, phone: layoutSlotsSchema });
+/** The widget of the header slot beside the greeting (#1007), or none; null puts the default back. */
+const headerChoiceSchema = z
+  .object({ id: z.string().max(200).nullable() })
+  .nullable()
+  .optional();
+const widgetLayoutSchema = z.object({
+  computer: layoutSlotsSchema,
+  phone: layoutSlotsSchema,
+  header: headerChoiceSchema,
+});
 /** The core refuses a larger write too; this check stops it before Eva reads the body. */
 const maxWidgetWriteBytes = maxWriteBytes;
 /** The login cookies live a year; the person logs out to end them. */

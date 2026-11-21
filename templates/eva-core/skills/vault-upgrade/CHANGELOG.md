@@ -297,7 +297,7 @@ The root `AGENTS.md` says "Decide by group, not by file." and "A spreadsheet bec
 
 - **Version:** 12
 - **Date:** 2026-11-21
-- **Pull request:** https://github.com/guplem/eva/pull/PRNUMBER
+- **Pull request:** https://github.com/guplem/eva/pull/1029
 - **Summary:** Life/Habits leaves the vault map, and v11 is withdrawn. The Habits widget still uses Life/Habits as its default folder, creates it when you turn it on, and tells Eva where your habits live. Your habit files stay where they are.
 - **Migrations first:**
 

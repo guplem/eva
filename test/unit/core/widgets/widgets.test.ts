@@ -590,12 +590,70 @@ describe("the widget routes", () => {
     expect(JSON.parse(text((await widgets.serve(token, "eva/cases.json", "GET", null))?.body))).toEqual([
       {
         id: "2026-11-01-leak",
+        path: "Life/Cases/2026-11-01-leak",
         title: "Fix the leak",
         nextStep: { text: "Call the plumber", waitingFor: null, dueDate: null },
         deadline: null,
         stepsDone: null,
         stepsTotal: null,
       },
+    ]);
+  });
+
+  test("an event gets the project that its description names, with the tag line gone (#1012)", async () => {
+    const source: CalendarSource = {
+      calendars: () => Promise.resolve([]),
+      events: () =>
+        Promise.resolve([
+          {
+            id: "e1",
+            calendarId: "work",
+            title: "Planning",
+            date: "2026-11-18",
+            endDate: "2026-11-18",
+            place: null,
+            link: null,
+            description: "Plan the release.\n[eva-project:example-app]",
+          },
+        ]),
+    };
+    projects = [
+      {
+        id: "2026-11-02-1030-example-app",
+        title: "Example app",
+        parsedId: { slug: "example-app" },
+        frontMatter: { repos: [], repoTypes: {} },
+        vaultFolder: "Projects/2026-11-02-1030-example-app",
+      } as unknown as Project,
+    ];
+    widgets = new Widgets({ ...options, calendar: source });
+    const calendar = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      access: "read",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+    };
+    commit({ "eva-widget.json": JSON.stringify({ ...manifest, contract: 3, inputs: [...manifest.inputs, calendar] }) });
+    const token = await approveHabits();
+    const answer = await widgets.serve(
+      token,
+      "eva/google-calendar/events.json",
+      "GET",
+      null,
+      new URLSearchParams("from=2026-11-18&to=2026-11-18"),
+    );
+    expect(JSON.parse(text(answer?.body))).toEqual([
+      expect.objectContaining({
+        description: "Plan the release.",
+        project: {
+          id: "2026-11-02-1030-example-app",
+          title: "Example app",
+          path: "Projects/2026-11-02-1030-example-app",
+        },
+      }),
     ]);
   });
 

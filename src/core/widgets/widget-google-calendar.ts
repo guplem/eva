@@ -4,6 +4,8 @@
  */
 import { isEvaError } from "../../shared/errors.ts";
 import { isDay, type CalendarSource } from "../google/google-calendar.ts";
+import type { Project } from "../projects/project-catalog.ts";
+import { eventsWithProjects } from "./widget-calendar-projects.ts";
 import type { WidgetGrant } from "./widget-changes.ts";
 import { jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 
@@ -22,6 +24,8 @@ export async function calendarAnswer(
   query: URLSearchParams,
   access: WidgetGrant["googleCalendar"],
   source: CalendarSource,
+  /** The projects, read only when an event names one with its tag (#1012). */
+  projects: () => readonly Project[],
 ): Promise<WidgetAnswer | null> {
   if (path !== calendarsPath && path !== eventsPath) return null;
   if (access === null) return { status: 404 };
@@ -30,7 +34,8 @@ export async function calendarAnswer(
     const from = query.get("from") ?? "";
     const to = query.get("to") ?? "";
     if (!isWindow(from, to)) return { status: 400 };
-    return jsonAnswer(await source.events(from, to));
+    const events = await source.events(from, to);
+    return jsonAnswer(events === null ? null : eventsWithProjects(events, projects));
   } catch (error) {
     // Google failed or refused: the widget shows that the calendar is not there now, and tries again later.
     if (isEvaError(error, "google_failed")) return { status: 502 };

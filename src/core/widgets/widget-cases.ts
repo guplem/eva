@@ -10,6 +10,8 @@ import { caseDeadline, caseStepRules, currentCaseStep, daySortKey, isClosedCase 
 export interface WidgetCase {
   /** The folder name of the case. */
   readonly id: string;
+  /** The folder of the case from the vault root, such as `Life/Cases/<id>`: a widget opens it in Eva. */
+  readonly path: string;
   readonly title: string;
   readonly nextStep: {
     readonly text: string;
@@ -38,6 +40,7 @@ function widgetCaseOf(entity: LifeEntity): WidgetCase {
   const step = currentCaseStep(entity.fields);
   return {
     id: entity.id,
+    path: entity.folder,
     title: entity.title,
     nextStep: step === null ? null : { text: step.text, waitingFor: step.waitingFor, dueDate: step.dueBy },
     deadline: caseDeadline(entity.fields),

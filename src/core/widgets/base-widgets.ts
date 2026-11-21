@@ -9,8 +9,12 @@ export interface BaseWidget {
   readonly name: string;
 }
 
-/** The order of the day panel (#972): with all on, Calendar fills the left, and Habits sits above Cases. */
+/**
+ * The order of the day panel (#972): with all on, Summary sits in the header slot beside the greeting
+ * (#1007), Calendar fills the left, and Habits sits above Cases.
+ */
 export const baseWidgets: readonly BaseWidget[] = [
+  { url: "https://github.com/guplem/eva-widget-summary", name: "Summary" },
   { url: "https://github.com/guplem/eva-widget-calendar", name: "Calendar" },
   { url: "https://github.com/guplem/eva-widget-habits", name: "Habits" },
   { url: "https://github.com/guplem/eva-widget-cases", name: "Cases" },

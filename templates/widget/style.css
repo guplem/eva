@@ -110,6 +110,18 @@ body {
   font-size: clamp(16px, 9vmin, 48px);
 }
 
+/* Header: one wide, short line beside Eva's greeting, with the title and the count only. */
+.widget[data-size="header"] .habit-list,
+.widget[data-size="header"] .widget-footer {
+  display: none;
+}
+
+.widget[data-size="header"] .widget-header {
+  flex: 1;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
 /* Large, xlarge and full: the list takes two columns when the space is wide. */
 @media (min-aspect-ratio: 3/2) {
   .widget[data-size="large"] .habit-list,

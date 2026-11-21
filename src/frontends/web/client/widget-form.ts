@@ -62,7 +62,7 @@ export interface PermissionLine {
   readonly why: string;
 }
 
-/** What the person approves, in words, each with its reason: the places, Eva's data and the hosts. */
+/** What the person approves, in words, each with its reason: the places, Eva's data, the asks and the hosts. */
 export function permissionLines(manifest: WidgetManifest, values: FormValues): PermissionLine[] {
   const places = manifest.inputs.flatMap((input): PermissionLine[] => {
     if (input.type !== "folder" && input.type !== "file") return [];
@@ -83,12 +83,17 @@ export function permissionLines(manifest: WidgetManifest, values: FormValues): P
     if (input.type === "eva-cases") return [{ icon: "case", text: "Reads your open cases", why: input.why }];
     return [];
   });
+  const asks = (manifest.asks ?? []).map((ask): PermissionLine =>
+    ask.type === "chat"
+      ? { icon: "chat", text: "Writes a text in your message box, for you to send", why: ask.why }
+      : { icon: "link", text: "Opens a page of Eva for a place of your vault", why: ask.why },
+  );
   const hosts = manifest.hosts.map((host): PermissionLine => ({
     icon: "external",
     text: `Calls ${host.url}`,
     why: host.why,
   }));
-  return [...places, ...evaData, ...hosts];
+  return [...places, ...evaData, ...asks, ...hosts];
 }
 
 /**

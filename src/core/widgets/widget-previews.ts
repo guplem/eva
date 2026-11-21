@@ -76,6 +76,7 @@ export const previewGrantSchema = z.object({
   location: z.boolean(),
   googleCalendar: approvalSchema.shape.googleCalendar,
   cases: approvalSchema.shape.cases,
+  asks: approvalSchema.shape.asks,
   hosts: z.array(z.string()),
   prompt: z.string().nullable(),
   values: z.record(z.string(), widgetInputValueSchema),

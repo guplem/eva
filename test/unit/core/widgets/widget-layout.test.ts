@@ -51,6 +51,14 @@ describe("placeWidgets with no saved layout", () => {
     expect(picture(owner, "phone")).toEqual(["cases 1,1 2x2", "weather 1,3 2x1", "calendar 1,4 2x3"]);
   });
 
+  test("a header widget outside the header slot is a 2 x 1 card that gets the size medium", () => {
+    const summary = [widget("summary", "header")];
+    expect(picture(summary, "computer")).toEqual(["summary 1,1 2x1"]);
+    expect(picture(summary, "phone")).toEqual(["summary 1,1 2x1"]);
+    expect(placeWidgets(summary, "computer")[0]?.size).toBe("medium");
+    expect(placeWidgets(summary, "phone")[0]?.size).toBe("medium");
+  });
+
   test("two small cards share a phone row", () => {
     const list = [widget("a", "small"), widget("b", "medium"), widget("c", "small"), widget("d", "small")];
     expect(picture(list, "phone")).toEqual(["a 1,1 1x1", "c 2,1 1x1", "b 1,2 2x1", "d 1,3 2x1"]);

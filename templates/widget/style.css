@@ -130,3 +130,25 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* The asks to Eva: hidden outside Eva, where nobody answers them. */
+.widget-asks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.widget-ask {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent, #3b82f6);
+  font: inherit;
+  font-size: clamp(12px, 3.5vmin, 22px);
+  cursor: pointer;
+}
+
+.widget-ask[hidden] {
+  display: none;
+}

@@ -68,8 +68,8 @@ const maxRow = 60;
 export const maxCardRows = 8;
 
 const spans: Readonly<Record<LayoutForm, Readonly<Record<WidgetSize, readonly [number, number]>>>> = {
-  computer: { small: [1, 1], medium: [2, 1], large: [4, 1], tall: [1, 2], xlarge: [3, 3] },
-  phone: { small: [1, 1], medium: [2, 1], large: [2, 2], tall: [2, 2], xlarge: [2, 3] },
+  computer: { small: [1, 1], medium: [2, 1], large: [4, 1], tall: [1, 2], xlarge: [3, 3], header: [2, 1] },
+  phone: { small: [1, 1], medium: [2, 1], large: [2, 2], tall: [2, 2], xlarge: [2, 3], header: [2, 1] },
 };
 
 export function columnsOf(form: LayoutForm): number {
@@ -127,7 +127,9 @@ export function sizeIn(widget: LayoutWidget, form: LayoutForm): WidgetSize {
   if (!widget.resizable) return "small";
   const shape = shapeIn(widget, form);
   const base = widget.layout[form]?.size ?? baseSize(widget, form);
-  return sameShape(shape, spanOf(base, form)) ? base : sizeOfShape(shape);
+  const size = sameShape(shape, spanOf(base, form)) ? base : sizeOfShape(shape);
+  // In the grid, a header widget is a 2 x 1 card: only the header slot beside the greeting gives `header`.
+  return size === "header" ? "medium" : size;
 }
 
 /** The rows that the grid shows: three at least on a computer, so a large card fills the height. */

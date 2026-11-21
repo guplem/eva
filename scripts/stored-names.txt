@@ -314,6 +314,7 @@ machine state/widget-approvals.json approvals[].paths[].type=folder
 machine state/widget-approvals.json approvals[].prompt
 machine state/widget-approvals.json approvals[].repository
 machine state/widget-approvals.json approvals[].size
+machine state/widget-approvals.json approvals[].size=header
 machine state/widget-approvals.json approvals[].size=large
 machine state/widget-approvals.json approvals[].size=medium
 machine state/widget-approvals.json approvals[].size=small
@@ -556,6 +557,7 @@ vault .eva/widgets.json widgets[].layout.computer.columns
 vault .eva/widgets.json widgets[].layout.computer.row
 vault .eva/widgets.json widgets[].layout.computer.rows
 vault .eva/widgets.json widgets[].layout.computer.size
+vault .eva/widgets.json widgets[].layout.computer.size=header
 vault .eva/widgets.json widgets[].layout.computer.size=large
 vault .eva/widgets.json widgets[].layout.computer.size=medium
 vault .eva/widgets.json widgets[].layout.computer.size=small
@@ -567,6 +569,7 @@ vault .eva/widgets.json widgets[].layout.phone.columns
 vault .eva/widgets.json widgets[].layout.phone.row
 vault .eva/widgets.json widgets[].layout.phone.rows
 vault .eva/widgets.json widgets[].layout.phone.size
+vault .eva/widgets.json widgets[].layout.phone.size=header
 vault .eva/widgets.json widgets[].layout.phone.size=large
 vault .eva/widgets.json widgets[].layout.phone.size=medium
 vault .eva/widgets.json widgets[].layout.phone.size=small

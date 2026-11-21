@@ -178,11 +178,9 @@ An `eva-cases` input gives the widget the person's open cases. Eva reads them fr
 
 A widget of contract 3 can keep a small state of its own, such as the calendars that the person hides. Eva keeps it in the vault, so every device of the person shows the same.
 
-(Not on yet: a later release of contract 3 serves `eva/state.json`. Until then, the path answers `404`.)
-
 - `GET eva/state.json` answers a JSON object: the last saved state, or `{}` when the widget saved none.
 - `PUT eva/state.json` with a JSON object replaces the whole state. The body is 64 KB at most. Eva answers `413` for a larger body, `400` for a body that is not a JSON object, and `422` for a text that holds a secret.
-- The state needs no permission: it is the widget's own data. Eva keeps it with the widget's entry, and removes it when the person removes the widget.
+- The state needs no permission: it is the widget's own data. Eva keeps it in the vault at `.eva/widget-state/<owner>/<name>.json`, apart from the list of widgets. **Turn off** keeps it, and **Remove** deletes it.
 - The widget owns its keys. Name them by the [naming rules](#naming-rules), such as `{ "hiddenCalendars": ["…"] }`. Tolerate a missing key, and keep the keys that you do not know.
 - Outside Eva, and in the **Example data** preview, the path answers `404`, and a `PUT` fails. Keep the state in memory there.
 

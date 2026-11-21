@@ -124,7 +124,8 @@ export function NewChatSetup({
 }
 
 /**
- * The home page with widgets (#972): EVE, the greeting and its line in one row, then the grid at
+ * The home page with widgets (#972): EVE, the greeting and its line in one row, with the header
+ * slot at its right on a computer (#1007), then the grid at
  * the full width. On a computer the grid fills the height above the message box.
  */
 function DayPanel({
@@ -145,16 +146,20 @@ function DayPanel({
 }): ReactElement {
   return (
     <div className="new-chat day-panel">
-      <div className="day-greeting">
-        <Visor size={56} face={face} festive={festive} followPointer={face === stateFaces.greeting} />
-        <div className="day-greeting-text">
-          {/* The chat's title is the page's h1. */}
-          <h2>{title}</h2>
-          <p>{line}</p>
-        </div>
-        {children}
-      </div>
-      <WidgetGrid widgets={widgets} />
+      <WidgetGrid
+        widgets={widgets}
+        greeting={
+          <>
+            <Visor size={56} face={face} festive={festive} followPointer={face === stateFaces.greeting} />
+            <div className="day-greeting-text">
+              {/* The chat's title is the page's h1. */}
+              <h2>{title}</h2>
+              <p>{line}</p>
+            </div>
+            {children}
+          </>
+        }
+      />
     </div>
   );
 }

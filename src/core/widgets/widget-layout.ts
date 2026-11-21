@@ -522,3 +522,20 @@ export interface LayoutChange {
   readonly phone?: LayoutSlots | null | undefined;
   readonly header?: { readonly id: string | null } | null | undefined;
 }
+
+/**
+ * The widgets with a new choice of the header slot, as Eva saves it (#1007): the named widget gets
+ * true, a widget of the size `header` elsewhere gets false, and every other widget loses its choice.
+ * Null clears every choice, so the default comes back.
+ */
+export function withHeader(
+  widgets: readonly LayoutWidget[],
+  header: { readonly id: string | null } | null,
+): LayoutWidget[] {
+  return widgets.map((widget) => {
+    const { header: _old, ...rest } = widget.layout;
+    if (header === null) return { ...widget, layout: rest };
+    if (header.id === widget.id) return { ...widget, layout: { ...rest, header: true } };
+    return { ...widget, layout: widget.size === "header" ? { ...rest, header: false } : rest };
+  });
+}

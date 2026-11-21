@@ -350,3 +350,166 @@ test("Preview on a clone shows a change that is not pushed, with example data fi
   await dialog.getByRole("button", { name: "Example data" }).click();
   await expect(widget.locator(".widget-title")).toHaveText("Mock habits");
 });
+
+/** The demo's stand-in Summary. The layout test resets the computer layout, and the slot with it, so each test puts it back. */
+const summaryId = "example-owner/summary-widget";
+const summaryCard = '.widget-card:has(iframe[aria-label="Summary"])';
+
+async function summaryInSlot(page: Page): Promise<void> {
+  const saved = await page.request.put("/api/widgets/layout", { data: { header: { id: summaryId } } });
+  expect(saved.ok()).toBe(true);
+}
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+async function boxOf(locator: Locator): Promise<Box> {
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error("The element has no box.");
+  return box;
+}
+
+test("the header slot shows its widget beside the greeting on a computer, and as the first row on a phone (#1007)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await summaryInSlot(page);
+  await page.goto("/#/chats/new");
+  const card = page.locator(summaryCard);
+  await expect(card.locator("iframe")).toHaveAttribute("src", /\?size=header$/);
+  await expect(card.getByRole("button", { name: "Open Summary in full screen" })).toBeVisible();
+  const slot = await boxOf(card);
+  const greeting = await boxOf(page.locator(".day-greeting h2"));
+  if (test.info().project.name === "phone") {
+    // No room beside the greeting: the first card of the grid, at the full width, one row.
+    await expect(page.locator(".day-greeting").locator(summaryCard)).toHaveCount(0);
+    const grid = await boxOf(page.locator(".widget-grid"));
+    expect(Math.abs(slot.y - grid.y)).toBeLessThan(2);
+    expect(Math.abs(slot.width - grid.width)).toBeLessThan(2);
+    expect(slot.height).toBe(168);
+    const habits = await boxOf(page.locator('.widget-card:has(iframe[aria-label="Habits"])'));
+    expect(habits.y).toBeGreaterThan(slot.y + slot.height);
+  } else {
+    // At the right of the greeting, in the same row: one line of content, wide and short.
+    await expect(page.locator(".day-greeting").locator(summaryCard)).toHaveCount(1);
+    expect(slot.x).toBeGreaterThan(greeting.x + greeting.width);
+    expect(slot.y).toBeLessThan(greeting.y + greeting.height);
+    expect(slot.width).toBeGreaterThanOrEqual(320);
+    expect(slot.width).toBeLessThanOrEqual(640);
+    expect(slot.height).toBe(72);
+    await expect(page.locator(".widget-grid").locator(summaryCard)).toHaveCount(0);
+  }
+});
+
+test("a narrow window shrinks the header slot, then puts it below the greeting before the phone layout (#1007)", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name === "phone", "The break points are widths of a computer window.");
+  await logIn(page);
+  await summaryInSlot(page);
+  await page.goto("/#/chats/new");
+  const card = page.locator(summaryCard);
+  const row = page.locator(".day-greeting");
+  const heading = row.locator("h2");
+  const placeAt = async (width: number): Promise<{ slot: Box; greeting: Box; row: Box }> => {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(card).toBeVisible();
+    // The greeting stays on one line, and nothing in the row spills out of it.
+    expect((await boxOf(heading)).height).toBeLessThan(45);
+    expect(await row.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    return { slot: await boxOf(card), greeting: await boxOf(heading), row: await boxOf(row) };
+  };
+  // Wide: beside the greeting, at its widest.
+  const wide = await placeAt(1920);
+  expect(wide.slot.y).toBeLessThan(wide.greeting.y + wide.greeting.height);
+  expect(wide.slot.width).toBe(640);
+  // Narrower: still beside the greeting, and smaller.
+  const middle = await placeAt(1180);
+  expect(middle.slot.y).toBeLessThan(middle.greeting.y + middle.greeting.height);
+  expect(middle.slot.width).toBeLessThan(640);
+  expect(middle.slot.width).toBeGreaterThanOrEqual(320);
+  // No room for both: below the greeting, at the full width of the row.
+  for (const width of [1100, 761]) {
+    const below = await placeAt(width);
+    expect(below.slot.y).toBeGreaterThanOrEqual(below.greeting.y + below.greeting.height);
+    expect(Math.abs(below.slot.width - below.row.width)).toBeLessThan(2);
+  }
+  // The phone layout: the first row of the grid.
+  await page.setViewportSize({ width: 760, height: 800 });
+  await expect(page.locator(".widget-grid").locator(summaryCard)).toHaveCount(1);
+  await expect(card.locator("iframe")).toHaveAttribute("src", /\?size=header$/);
+});
+
+test("the layout editor moves a widget into the header slot and out of it, with the pointer and the keyboard (#1007)", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name === "phone", "The slot sits beside the greeting only on the Computer tab.");
+  await logIn(page);
+  await summaryInSlot(page);
+  // Tall enough for the slot and the whole grid, so each drag starts and ends on the screen.
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await page.goto("/#/settings/personalize/widget-layout");
+  await page.getByRole("region", { name: "Widget layout" }).scrollIntoViewIfNeeded();
+  const editor = page.getByRole("region", { name: "Widget layout" });
+  const slot = editor.getByRole("group", { name: "Header slot, beside the greeting" });
+  const preview = editor.getByRole("group", { name: /^Preview of the home page/ });
+  const status = editor.getByRole("status");
+  await expect(slot.getByRole("group", { name: "Summary, beside the greeting" })).toBeVisible();
+  // The Phone tab shows the widget of the slot as the first row.
+  await editor.getByRole("tab", { name: "Phone" }).click();
+  await expect(editor.getByRole("group", { name: /^Summary, the first row/ })).toBeVisible();
+  await editor.getByRole("tab", { name: "Computer" }).click();
+  await editor.getByRole("button", { name: "Edit" }).click();
+
+  // A drag takes Summary out of the slot, to a free cell of the grid.
+  const held = await boxOf(slot.getByRole("group", { name: "Summary, beside the greeting" }));
+  const grid = await boxOf(preview);
+  const cell = { x: grid.x + grid.width * 0.1, y: grid.y + grid.height - 10 };
+  await page.mouse.move(held.x + 20, held.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(cell.x, cell.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(slot.getByText("Drop a widget here")).toBeVisible();
+  await expect(preview.getByRole("group", { name: /^Summary,/ })).toBeVisible();
+  await expect(status).toHaveText(/^Summary moved to column 1, row \d+\.$/);
+
+  // Arrow Up from the top row puts Habits in the slot, and the focus follows it.
+  const habits = preview.getByRole("group", { name: /^Habits,/ });
+  await habits.press("ArrowUp");
+  const habitsInSlot = slot.getByRole("group", { name: "Habits, beside the greeting" });
+  await expect(habitsInSlot).toBeFocused();
+  await expect(status).toHaveText("Habits is beside the greeting now.");
+  // Arrow Down takes it back to the grid.
+  await habitsInSlot.press("ArrowDown");
+  await expect(preview.getByRole("group", { name: /^Habits,/ })).toBeFocused();
+  await expect(slot.getByText("Drop a widget here")).toBeVisible();
+
+  // A drag of a box onto the slot puts it there.
+  const summary = await boxOf(preview.getByRole("group", { name: /^Summary,/ }));
+  const target = await boxOf(slot);
+  await page.mouse.move(summary.x + 20, summary.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect(slot.getByRole("group", { name: "Summary, beside the greeting" })).toBeVisible();
+  await expect(preview.getByRole("group", { name: /^Summary,/ })).toHaveCount(0);
+
+  // Habits to the slot, and Done: the home page shows it there, and Summary in the grid.
+  await preview.getByRole("group", { name: /^Habits,/ }).press("ArrowUp");
+  await editor.getByRole("button", { name: "Done" }).click();
+  await expect(editor.getByRole("button", { name: "Edit" })).toBeVisible();
+  await page.goto("/#/chats/new");
+  const habitsCard = page.locator(".day-greeting").locator('.widget-card:has(iframe[aria-label="Habits"])');
+  await expect(habitsCard.locator("iframe")).toHaveAttribute("src", /\?size=header$/);
+  await expect(page.locator(".widget-grid").locator(summaryCard).locator("iframe")).toHaveAttribute(
+    "src",
+    /\?size=medium$/,
+  );
+  // Put the demo back: the default places, and Summary in the slot.
+  await page.request.put("/api/widgets/layout", { data: { computer: null } });
+  await summaryInSlot(page);
+});

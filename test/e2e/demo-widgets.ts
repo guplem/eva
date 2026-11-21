@@ -1,7 +1,7 @@
 /**
- * Two small static widgets of the demo, so the home page shows a day panel with more than one size
- * (#972). The real Calendar and Cases widgets live in their own repositories, and the demo never
- * reaches GitHub. Each one is a page with made-up data and no script.
+ * Small static widgets of the demo, so the home page shows a day panel with more than one size
+ * (#972) and the header slot (#1007). The real Calendar, Cases and Summary widgets live in their own
+ * repositories, and the demo never reaches GitHub. Each one is a page with made-up data and no script.
  */
 
 /** The shared look: the colours of eva/theme.css, with a fallback for each. */
@@ -103,12 +103,36 @@ const casesBody = `
         <li class="case"><strong>Tax return <span class="muted">In 5 days</span></strong><span class="muted">Send the receipts</span></li>
       </ul>`;
 
+const summaryBody = `
+      <div class="summary">
+        <span class="now"><strong>15°</strong> <span class="muted">Partly cloudy</span></span>
+        <span class="item"><span class="dot live"></span>Design review <span class="muted">ends in 25 min</span></span>
+        <span class="item"><span class="dot"></span>Dentist <span class="muted">in 2 h</span></span>
+      </div>`;
+
+/** A stand-in for the Summary widget of the header slot (#1007): one line, wide and short. */
+const summaryStyle = `${style}
+.widget { justify-content: center; padding: 10px 56px 10px 16px; }
+.summary { display: flex; align-items: center; gap: 6px 18px; min-width: 0; overflow: hidden; }
+@media (min-height: 120px) { .summary { flex-direction: column; align-items: flex-start; } }
+.now strong { font-size: 20px; }
+.item { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted, #5d6475); }
+.dot.live { background: var(--ok, #2e7d32); }
+`;
+
 /** The files of each demo widget, by its repository name. */
 export const demoWidgets: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   "calendar-widget": {
     "eva-widget.json": manifest("Calendar", "xlarge"),
     "index.html": page("Calendar", calendarBody),
     "style.css": style,
+  },
+  // Contract 2 has no size header, so the demo saves the slot instead (serve-demo.ts).
+  "summary-widget": {
+    "eva-widget.json": manifest("Summary", "medium"),
+    "index.html": page("Summary", summaryBody),
+    "style.css": summaryStyle,
   },
   "cases-widget": {
     "eva-widget.json": manifest("Cases", "tall"),

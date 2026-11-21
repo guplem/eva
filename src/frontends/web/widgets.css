@@ -28,6 +28,30 @@
   }
 }
 
+/*
+ * The header slot at the right of the greeting row on a computer (#1007): one line of content,
+ * wide and short. It grows to 640 px and shrinks to 320 px. Below that the row has no room, so it
+ * takes its own row under the greeting, at the full width.
+ */
+.day-panel {
+  container-type: inline-size;
+}
+
+.widget-card.widget-header {
+  flex: 1 1 320px;
+  min-width: 320px;
+  max-width: 640px;
+  height: 72px;
+  margin-left: auto;
+}
+
+@container (max-width: 679px) {
+  .widget-card.widget-header {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
 .widget-frame {
   display: block;
   width: 100%;
@@ -240,6 +264,65 @@ button.files-entry:focus-visible {
 
 .layout-phone .layout-preview {
   --layout-row: max(var(--touch-target), calc((100cqw - var(--layout-gap)) / 2 * 0.95));
+}
+
+/*
+ * The greeting row of the computer preview (#1007): a stand-in for the greeting, and the header slot
+ * at its right, about half a row high, as on the home page.
+ */
+.layout-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.layout-greeting {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.layout-slot {
+  flex: 0 1 55%;
+  display: flex;
+  height: max(var(--touch-target), calc((100cqw - 3 * var(--space-2)) / 4 * 0.3));
+  border: 1.5px dashed transparent;
+  border-radius: var(--radius-input);
+}
+
+.layout-slot.editing,
+.layout-slot:has(.layout-slot-empty) {
+  border-color: var(--line);
+}
+
+.layout-slot.over {
+  border-color: var(--accent);
+  background: var(--soft);
+}
+
+.layout-slot-box {
+  flex: 1;
+  justify-content: center;
+}
+
+.layout-slot-empty {
+  margin: auto;
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-align: center;
+}
+
+/* On a phone the widget of the header slot is the first row, at the full width. */
+.layout-phone-head {
+  grid-template-rows: var(--layout-row);
+  margin-bottom: var(--layout-gap);
 }
 
 /* A free cell of the edit mode. */

@@ -16,6 +16,7 @@ import {
   sizeOfShape,
   slotsOfBoxes,
   stepBox,
+  withHeader,
   withSlots,
   type LayoutBox,
   type LayoutForm,
@@ -372,5 +373,17 @@ describe("fitBoxes: the boxes of a form after the slot changes", () => {
   test("drops the box of a widget that is no longer in the list", () => {
     const start = placeWidgets(list, "computer");
     expect(boxes(fitBoxes(start, [widget("calendar", "xlarge")], "computer", null))).toEqual(["calendar 1,1 3x3"]);
+  });
+});
+
+describe("withHeader: a new choice of the header slot", () => {
+  test("marks the chosen widget, keeps a header widget out, and a reset clears every choice", () => {
+    const list = [widget("summary", "header"), widget("habits", "small", { header: true })];
+    expect(withHeader(list, { id: "habits" }).map((each) => each.layout)).toEqual([
+      { header: false },
+      { header: true },
+    ]);
+    expect(withHeader(list, { id: null }).map((each) => each.layout)).toEqual([{ header: false }, {}]);
+    expect(withHeader(list, null).map((each) => each.layout)).toEqual([{}, {}]);
   });
 });

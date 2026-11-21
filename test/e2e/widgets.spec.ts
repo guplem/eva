@@ -286,6 +286,22 @@ test("Personalize lists the widget, on, with its repository and owner", async ({
   await expect(list).toContainText("On");
 });
 
+test("the tiles button of the home page scrolls Settings to the Widget layout card and marks it (issue 1002)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.goto("/#/chats/new");
+  await page.getByRole("button", { name: "Arrange the widgets" }).click();
+  await expect(page).toHaveURL(/#\/settings\/personalize\/widget-layout$/);
+  // The card comes after the widget list loads, so it shows after the first scroll of the page.
+  const editor = page.getByRole("region", { name: "Widget layout" });
+  await expect(editor).toHaveClass(/\bflash\b/);
+  await expect(editor).toBeInViewport();
+  // The cards of the page below it fill late too: the card stays at the top.
+  await page.waitForTimeout(500);
+  await expect(editor).toBeInViewport();
+});
+
 test("the widget layout places a widget, leaves a gap, and the home page shows the same places", async ({ page }) => {
   await logIn(page);
   const form = test.info().project.name === "phone" ? "Phone" : "Computer";

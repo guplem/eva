@@ -458,7 +458,7 @@ A widget of contract 1 or 2 works with no change. To use a new size, input, key 
 
 ## Example: a habits widget
 
-This widget shows the person's habits and checks a habit for today. The [base habits widget](https://github.com/guplem/eva-widget-habits) of Eva uses the same data format.
+This widget shows the person's habits and checks a habit for today. The [base habits widget](https://github.com/guplem/eva-widget-habits) of Eva uses the same data format, plus optional fields, such as a target, skipped days, a colour and an archive flag: see its [`schemas/habits.json`](https://github.com/guplem/eva-widget-habits/blob/main/schemas/habits.json).
 
 The person picks a folder, such as `Life/Habits/`. The folder has one file for each habit, such as `meditate.json`. The file name is the habit name in lower case, with ASCII letters, digits and hyphens only. The name `index` is not allowed.
 

@@ -97,7 +97,7 @@ A widget gets only what its inputs give. A widget with no `eva-location` input g
 
 A `folder` or a `file` input can give a `default`: a path of the vault, from the vault root, such as `Life/Habits`. Write no `/` at the start. This needs no new contract: contract 1 allows a `default` on each input.
 
-Pick a folder that the vault map names, so the agent knows what lives there: the root `AGENTS.md` of a new vault lists each folder of `Life/`, such as `Life/Habits` or `Life/Cases`.
+The default folder need not exist, and the vault map need not name it. Eva's form creates it when the person turns the widget on. The widget's `prompt` line tells Eva in each chat where the data lives, with the folder that the person picked. For an input with a `schema`, Eva also writes `DATA_FORMAT.md` in it. Pick a path in the part of the vault where the data fits, such as `Life/Habits`.
 
 - Eva never fills the input with the default by herself. The form offers it with one tap next to **Pick a folder**, and shows the path as text.
 - **Use the default folder** shows when the folder exists. **Use the default file** shows when the file exists.

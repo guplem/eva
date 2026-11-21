@@ -72,7 +72,6 @@ describe("the vault template", () => {
       "Life/About me.md",
       "Life/Cases/AGENTS.md",
       "Life/Diary/AGENTS.md",
-      "Life/Habits/AGENTS.md",
       "Life/Health/AGENTS.md",
       "Life/Health/Allergies and Diet.md",
       "Life/Inventory/AGENTS.md",
@@ -165,17 +164,7 @@ describe("the vault template", () => {
     for (const folder of ["Principles/", "Methods/", "Toolbox/", "Library/", "Projects/", ".eva/"]) {
       expect(map).toContain(`\`${folder}`);
     }
-    for (const folder of [
-      "Cases",
-      "Inventory",
-      "People",
-      "Pets",
-      "Providers",
-      "Periods",
-      "Health",
-      "Habits",
-      "Diary",
-    ]) {
+    for (const folder of ["Cases", "Inventory", "People", "Pets", "Providers", "Periods", "Health", "Diary"]) {
       expect(map).toContain(`\`Life/${folder}/`);
     }
     for (const heading of ["## What is where", "## Outside the vault", "## Where things go", "## Entities"]) {
@@ -258,17 +247,13 @@ describe("the vault template", () => {
     expect(map).not.toContain("such as a company, stays as plain text");
   });
 
-  test("habits of any kind live in Life/Habits/, the default folder of the Habits widget (#1001)", () => {
+  test("a new vault has no Life/Habits/: the Habits widget creates its own folder and names it in the prompt (#1028)", () => {
     const files = vaultTemplateFiles(answers);
     const map = files["AGENTS.md"] ?? "";
-    const habits = files["Life/Habits/AGENTS.md"] ?? "";
-    // The first yes wins, so a habit of the body, such as a daily walk, still goes to Life/Habits/.
-    expect(map).toContain("8. A habit that the person tracks day by day, of any kind → `Life/Habits/`.");
-    expect(habits).toContain("One JSON file for each habit");
-    expect(habits).toContain("`DATA_FORMAT.md`");
-    expect(habits).toContain("Before you create a habit file, ask the person once.");
-    expect(files["Life/Health/AGENTS.md"]).toContain("→ `Life/Habits/`.");
-    expect(map).toContain("| `Life/Habits/` |");
+    expect(Object.keys(files).filter((path) => path.startsWith("Life/Habits/"))).toEqual([]);
+    expect(map).not.toContain("Life/Habits");
+    expect(map).toContain("8. About body or mind → `Life/Health/`.\n");
+    expect(files["Life/Health/AGENTS.md"]).not.toContain("Life/Habits");
   });
 
   test("everything the person has or uses is an item in Life/Inventory/, with one question to decide (#940)", () => {

@@ -68,6 +68,23 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBeGreaterThanOrEqual(11);
   });
 
+  test("v12 withdraws v11: a new vault gets no Life/Habits/, and a habit file never moves (#1028)", () => {
+    const v12 = structureChanges.find((change) => change.version === 12);
+    expect(v12?.summary).toStartWith("Life/Habits leaves the vault map");
+    expect(v12?.migrations).toEqual([]);
+    // The v11 entry stays: some vaults applied it, and v12 tells them how to go back.
+    expect(structureChanges.some((change) => change.version === 11)).toBe(true);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(12);
+    // The upgrade deletes Life/Habits/AGENTS.md only when it matches this text byte for byte.
+    const changelog = readFileSync(
+      join(import.meta.dir, "../../../../templates/eva-core/skills/vault-upgrade/CHANGELOG.md"),
+      "utf-8",
+    );
+    expect(changelog).toContain(
+      "**Not here:**\n- The steps of a routine or a training plan → `Methods/`. A habit file can name the method in its `note`.\n",
+    );
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

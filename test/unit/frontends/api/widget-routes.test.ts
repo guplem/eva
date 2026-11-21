@@ -196,6 +196,13 @@ describe("the widget list", () => {
     expect(
       (await call("/api/widgets/layout", { method: "PUT", body: { phone: { [id]: { size: "huge" } } } })).status,
     ).toBe(400);
+    // The header slot beside the greeting (#1007).
+    const header = await call("/api/widgets/layout", { method: "PUT", body: { header: { id } } });
+    expect(((await header.json()) as { layout: unknown }[])[0]?.layout).toEqual({
+      computer: { column: 2, row: 1, columns: 2, rows: 2 },
+      header: true,
+    });
+    expect((await call("/api/widgets/layout", { method: "PUT", body: { header: { id: 7 } } })).status).toBe(400);
     expect((await call(`/api/widgets/${id}/move`, { method: "POST", body: { direction: "up" } })).status).toBe(404);
     expect((await call(`/api/widgets/${id}/enabled`, { method: "PUT", body: { enabled: false } })).status).toBe(200);
     expect((await call(`/api/widgets/${id}`, { method: "DELETE" })).status).toBe(200);

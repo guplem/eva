@@ -35,7 +35,14 @@ export const widgetEntrySchema = z.object({
   enabled: z.boolean(),
   inputs: z.record(z.string(), widgetInputValueSchema),
   /** The place and size on the home grid, for each form (#985). `readLayout` reads it. */
-  layout: z.object({ computer: layoutSlotSchema.optional(), phone: layoutSlotSchema.optional() }).optional(),
+  layout: z
+    .object({
+      computer: layoutSlotSchema.optional(),
+      phone: layoutSlotSchema.optional(),
+      /** The header slot beside the greeting (#1007). */
+      header: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export interface WidgetEntry {

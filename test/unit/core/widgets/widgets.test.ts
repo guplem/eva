@@ -251,6 +251,17 @@ describe("the list", () => {
     expect(items[0]?.layout).toEqual({ phone: { column: 1, row: 2, columns: 2, rows: 1 } });
     expect(readWidgetList(vault).map((entry) => entry.id)).toEqual([habitsId]);
   });
+
+  test("saves the widget of the header slot, an empty slot, and a reset to the default (#1007)", () => {
+    let items = widgets.saveLayout({ header: { id: habitsId } });
+    expect(items[0]?.layout).toEqual({ header: true });
+    // An empty slot drops the choice of a widget that is not of the size header: the default leaves it out.
+    items = widgets.saveLayout({ header: { id: null } });
+    expect(items[0]?.layout).toEqual({});
+    widgets.saveLayout({ header: { id: habitsId } });
+    items = widgets.saveLayout({ header: null });
+    expect(items[0]?.layout).toEqual({});
+  });
 });
 
 describe("the review and the approval", () => {

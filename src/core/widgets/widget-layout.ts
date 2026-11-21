@@ -28,6 +28,11 @@ export interface LayoutSlot {
 export interface WidgetLayout {
   readonly computer?: LayoutSlot;
   readonly phone?: LayoutSlot;
+  /**
+   * The header slot beside the greeting (#1007): true puts the widget there, false keeps a widget
+   * of the size `header` out of it. With no value, `headerOf` decides.
+   */
+  readonly header?: boolean;
 }
 
 export interface LayoutWidget {
@@ -245,12 +250,84 @@ class Grid {
 /** Reads the `layout` key of an entry of `.eva/widgets.json`. A person or an agent can edit it, so it never throws. */
 export function readLayout(raw: unknown): WidgetLayout {
   if (!isObject(raw)) return {};
-  const layout: { computer?: LayoutSlot; phone?: LayoutSlot } = {};
+  const layout: { -readonly [key in keyof WidgetLayout]: WidgetLayout[key] } = {};
   for (const form of layoutForms) {
     const slot = readSlot(raw[form]);
     if (slot !== null) layout[form] = slot;
   }
+  if (typeof raw["header"] === "boolean") layout.header = raw["header"];
   return layout;
+}
+
+/**
+ * The widget in the header slot beside the greeting (#1007), or null. A widget that the person put
+ * there wins: the first in list order. Else the first widget of the size `header` that the person
+ * did not take out. A widget that waits for approval never goes there: it is a small card to approve.
+ */
+export function headerOf(widgets: readonly LayoutWidget[]): string | null {
+  const ready = widgets.filter((widget) => widget.resizable);
+  const chosen = ready.find((widget) => widget.layout.header === true);
+  if (chosen !== undefined) return chosen.id;
+  return ready.find((widget) => widget.size === "header" && widget.layout.header !== false)?.id ?? null;
+}
+
+/** The home page: the widget of the header slot, and the cards of the grid at their places. */
+export interface HomeLayout {
+  readonly header: string | null;
+  readonly cards: PlacedWidget[];
+}
+
+/**
+ * Places the home page (#1007): the header slot first, then the grid with every other widget. The
+ * home page and the preview of Settings both use it. On a computer the slot sits beside the
+ * greeting; on a phone it is the first row of the grid, above these cards.
+ */
+export function placeHome(
+  widgets: readonly LayoutWidget[],
+  form: LayoutForm,
+  options: { readonly widen?: boolean } = {},
+): HomeLayout {
+  const header = headerOf(widgets);
+  return { header, cards: placeWidgets(withoutId(widgets, header), form, options) };
+}
+
+function withoutId<T extends { readonly id: string }>(list: readonly T[], id: string | null): T[] {
+  return list.filter((each) => each.id !== id);
+}
+
+/** A cell that the person chose for a box that comes back to the grid, such as with a drop from the header slot. */
+export interface BoxDrop {
+  readonly id: string;
+  readonly column: number;
+  readonly row: number;
+}
+
+/**
+ * The boxes of a form, fitted to the widgets and the header slot (#1007). The box of the widget in
+ * the slot goes, and so does the box of a widget that left the list. A widget with no box gets one
+ * of its shape: at the cell of `drop` when it is free, else at the first hole.
+ */
+export function fitBoxes(
+  boxes: readonly LayoutBox[],
+  widgets: readonly LayoutWidget[],
+  form: LayoutForm,
+  header: string | null,
+  drop?: BoxDrop,
+): LayoutBox[] {
+  const shown = withoutId(widgets, header);
+  const kept = boxes.filter((box) => box.id !== header && shown.some((widget) => widget.id === box.id));
+  const grid = new Grid(columnsOf(form));
+  for (const box of kept) grid.take(box.column, box.row, box.columns, box.rows);
+  const next = [...kept];
+  for (const widget of shown) {
+    if (kept.some((box) => box.id === widget.id)) continue;
+    const { columns, rows } = shapeIn(widget, form);
+    const asked = drop?.id === widget.id && grid.fits(drop.column, drop.row, columns, rows) ? drop : null;
+    const { column, row } = asked ?? grid.firstHole(columns, rows, 1);
+    grid.take(column, row, columns, rows);
+    next.push({ id: widget.id, column, row, columns, rows });
+  }
+  return next;
 }
 
 function readSlot(raw: unknown): LayoutSlot | null {
@@ -434,4 +511,14 @@ export function stepBox(
     if (!others.some((other) => overlaps(moved, other))) return replaced(boxes, moved);
   }
   return null;
+}
+
+/**
+ * A change of the layout that the editor saves: the new slots of each form that changed (null
+ * resets that form), and the widget of the header slot, or none (null resets the slot to its default).
+ */
+export interface LayoutChange {
+  readonly computer?: LayoutSlots | null | undefined;
+  readonly phone?: LayoutSlots | null | undefined;
+  readonly header?: { readonly id: string | null } | null | undefined;
 }

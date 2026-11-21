@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { WidgetSize } from "../../../../src/core/widgets/widget-kinds.ts";
 import {
   editRows,
+  fitBoxes,
+  headerOf,
+  placeHome,
   moveBox,
   placeWidgets,
   readLayout,
@@ -283,5 +286,91 @@ describe("editing the boxes", () => {
     const saved = withSlots(list, "phone", { habits: { column: 2, row: 1 } });
     expect(saved[0]?.layout).toEqual({ phone: { column: 2, row: 1 } });
     expect(withSlots(saved, "phone", null)[0]?.layout).toEqual({});
+  });
+});
+
+describe("the header slot beside the greeting", () => {
+  test("a widget of the size header goes to the slot by default, and the grid places the rest", () => {
+    const list = [widget("calendar", "xlarge"), widget("summary", "header"), widget("habits", "small")];
+    expect(headerOf(list)).toBe("summary");
+    const home = placeHome(list, "computer");
+    expect(home.header).toBe("summary");
+    expect(home.cards.map((card) => card.id)).toEqual(["calendar", "habits"]);
+    expect(placeHome(list, "phone").header).toBe("summary");
+    expect(placeHome(list, "phone").cards.map((card) => card.id)).not.toContain("summary");
+  });
+
+  test("the first header widget in list order takes the free slot, and the second goes to the grid", () => {
+    const list = [widget("a", "header"), widget("b", "header")];
+    expect(headerOf(list)).toBe("a");
+    const cards = placeHome(list, "computer").cards;
+    expect(cards.map((card) => `${card.id} ${card.column},${card.row} ${card.columns}x${card.rows}`)).toEqual([
+      "b 1,1 2x1",
+    ]);
+    // Outside the slot, a header widget gets the size of its shape.
+    expect(cards[0]?.size).toBe("medium");
+  });
+
+  test("a saved choice wins over the default, and a header widget that the person took out stays out", () => {
+    expect(headerOf([widget("summary", "header"), widget("habits", "small", { header: true })])).toBe("habits");
+    expect(headerOf([widget("summary", "header", { header: false })])).toBeNull();
+    expect(headerOf([widget("habits", "small")])).toBeNull();
+  });
+
+  test("a widget that waits for approval never takes the slot", () => {
+    expect(headerOf([widget("summary", "header", {}, false)])).toBeNull();
+    expect(headerOf([widget("habits", "small", { header: true }, false), widget("summary", "header")])).toBe("summary");
+  });
+
+  test("with no widget in the slot, the grid is as before", () => {
+    const list = [widget("calendar", "xlarge"), widget("habits", "small")];
+    expect(placeHome(list, "computer")).toEqual({ header: null, cards: placeWidgets(list, "computer") });
+  });
+
+  test("readLayout reads the choice of the slot, and drops a bad value", () => {
+    expect(readLayout({ header: true })).toEqual({ header: true });
+    expect(readLayout({ header: false, phone: { column: 1, row: 1 } })).toEqual({
+      header: false,
+      phone: { column: 1, row: 1 },
+    });
+    expect(readLayout({ header: "yes" })).toEqual({});
+  });
+
+  test("withSlots keeps the choice of the slot", () => {
+    const saved = withSlots([widget("habits", "small", { header: true })], "computer", null);
+    expect(saved[0]?.layout).toEqual({ header: true });
+  });
+});
+
+describe("fitBoxes: the boxes of a form after the slot changes", () => {
+  const list = [widget("calendar", "xlarge"), widget("summary", "header"), widget("habits", "small")];
+
+  test("drops the box of the widget in the slot, and adds a box for a widget that left it", () => {
+    const start = placeWidgets(list, "computer");
+    expect(boxes(fitBoxes(start, list, "computer", "summary"))).toEqual(["calendar 1,1 3x3", "habits 4,1 1x1"]);
+    const without = start.filter((box) => box.id !== "summary");
+    expect(boxes(fitBoxes(without, list, "computer", null))).toEqual([
+      "calendar 1,1 3x3",
+      "habits 4,1 1x1",
+      "summary 1,4 2x1",
+    ]);
+  });
+
+  test("puts a box that left the slot at the cell that the person chose when it is free", () => {
+    const without = placeWidgets(list, "computer").filter((box) => box.id !== "summary");
+    expect(boxes(fitBoxes(without, list, "computer", null, { id: "summary", column: 3, row: 4 }))).toEqual([
+      "calendar 1,1 3x3",
+      "habits 4,1 1x1",
+      "summary 3,4 2x1",
+    ]);
+    // A taken cell gives the first hole instead.
+    expect(boxes(fitBoxes(without, list, "computer", null, { id: "summary", column: 1, row: 1 }))).toContain(
+      "summary 1,4 2x1",
+    );
+  });
+
+  test("drops the box of a widget that is no longer in the list", () => {
+    const start = placeWidgets(list, "computer");
+    expect(boxes(fitBoxes(start, [widget("calendar", "xlarge")], "computer", null))).toEqual(["calendar 1,1 3x3"]);
   });
 });

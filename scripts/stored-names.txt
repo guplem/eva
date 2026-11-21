@@ -291,6 +291,9 @@ machine state/vault-structure.json prompted
 machine state/vault-structure.json read
 machine state/widget-approvals.json approvals
 machine state/widget-approvals.json approvals[].approvedAt
+machine state/widget-approvals.json approvals[].asks
+machine state/widget-approvals.json approvals[].asks[]=chat
+machine state/widget-approvals.json approvals[].asks[]=open
 machine state/widget-approvals.json approvals[].cases
 machine state/widget-approvals.json approvals[].commit
 machine state/widget-approvals.json approvals[].entry
@@ -324,6 +327,9 @@ machine state/widget-approvals.json version
 machine state/widget-approvals.json version=1
 machine state/widget-previews.json previews
 machine state/widget-previews.json previews[].approvedAt
+machine state/widget-previews.json previews[].asks
+machine state/widget-previews.json previews[].asks[]=chat
+machine state/widget-previews.json previews[].asks[]=open
 machine state/widget-previews.json previews[].cases
 machine state/widget-previews.json previews[].folder
 machine state/widget-previews.json previews[].googleCalendar

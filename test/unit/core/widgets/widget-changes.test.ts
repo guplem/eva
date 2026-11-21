@@ -32,6 +32,7 @@ const approved: WidgetGrant = {
   location: false,
   googleCalendar: null,
   cases: false,
+  asks: [],
   hosts: [],
   prompt: null,
 };
@@ -135,5 +136,27 @@ describe("grantChange", () => {
     ]);
     // Less access asks for nothing.
     expect(grantChange({ ...change.grant, googleCalendar: "write" }, both, values, none, none).added).toEqual([]);
+  });
+
+  test("each new ask of contract 3 is a new permission, and a removed one asks for nothing", () => {
+    const asking = manifest({
+      contract: 3,
+      asks: [
+        { type: "chat", why: "Starts a chat about a habit." },
+        { type: "open", why: "Opens the habit's file." },
+      ],
+    });
+    const change = grantChange(approved, asking, values, none, none);
+    expect(change.added).toEqual([
+      "Write a text in your message box, for you to send.",
+      "Open a page of Eva for a place of your vault.",
+    ]);
+    expect(change.grant.asks).toEqual(["chat", "open"]);
+    expect(grantChange(change.grant, asking, values, none, none).added).toEqual([]);
+    expect(grantChange({ ...approved, asks: ["chat"] }, asking, values, none, none).added).toEqual([
+      "Open a page of Eva for a place of your vault.",
+    ]);
+    expect(grantChange(change.grant, manifest(), values, none, none).grant.asks).toEqual([]);
+    expect(grantChange(change.grant, manifest(), values, none, none).added).toEqual([]);
   });
 });

@@ -7,15 +7,17 @@ import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.
 import addFormatsModule from "ajv-formats";
 import manifestV1Text from "../../../docs/widgets/manifest-v1.json" with { type: "text" };
 import manifestV2Text from "../../../docs/widgets/manifest-v2.json" with { type: "text" };
-// Contract 2 keeps the data rules of contract 1 (a test pins it), so one meta-schema checks both.
-import metaSchemaText from "../../../docs/widgets/meta-schema-v2.json" with { type: "text" };
+import manifestV3Text from "../../../docs/widgets/manifest-v3.json" with { type: "text" };
+// Contracts 2 and 3 keep the data rules of contract 1 (a test pins it), so one meta-schema checks all.
+import metaSchemaText from "../../../docs/widgets/meta-schema-v3.json" with { type: "text" };
 // TypeScript types a JSON import as its value, but Bun gives a text import as a string.
-import type { WidgetInputType, WidgetSize } from "./widget-kinds.ts";
+import type { WidgetAskType, WidgetInputType, WidgetSize } from "./widget-kinds.ts";
 
 /** The manifest schema of each contract that Eva reads. A widget with another one waits for an update of Eva. */
 const manifestSchemas: ReadonlyMap<number, unknown> = new Map<number, unknown>([
   [1, manifestV1Text],
   [2, manifestV2Text],
+  [3, manifestV3Text],
 ]);
 
 export const manifestPath = "eva-widget.json";
@@ -34,6 +36,11 @@ export interface WidgetInput {
   readonly choices?: readonly string[];
 }
 
+export interface WidgetAsk {
+  readonly type: WidgetAskType;
+  readonly why: string;
+}
+
 export interface WidgetManifest {
   readonly contract: number;
   readonly name: string;
@@ -41,6 +48,8 @@ export interface WidgetManifest {
   readonly size: WidgetSize;
   readonly inputs: readonly WidgetInput[];
   readonly hosts: readonly { readonly url: string; readonly why: string }[];
+  /** What the widget may ask Eva to do (contract 3). `checkManifest` gives an empty list for an older contract. */
+  readonly asks?: readonly WidgetAsk[];
   readonly prompt?: string;
 }
 
@@ -111,6 +120,7 @@ export function checkManifest(text: string): ManifestCheck {
         entry: manifest.entry ?? "index.html",
         inputs: manifest.inputs ?? [],
         hosts: manifest.hosts ?? [],
+        asks: manifest.asks ?? [],
       },
       problems: [],
     };

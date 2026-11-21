@@ -14,7 +14,7 @@ import { DeveloperSection } from "./DeveloperSection.tsx";
 import { EnginesSection } from "./EnginesSection.tsx";
 import { guideHeadingId, guideItem, guidePageOf, parseGuideItem, searchGuide, type SnippetPart } from "./guide.ts";
 import { GuideDocument, GuideHome } from "./GuideSection.tsx";
-import { holdInView } from "./hold-in-view.ts";
+import { holdInView, waitForElement } from "./hold-in-view.ts";
 import { hasPageIndex } from "./page-index.ts";
 import { PageIndexList, usePageIndex } from "./PageIndex.tsx";
 import { Icon, type IconName } from "./icons.tsx";
@@ -109,33 +109,41 @@ export function SettingsView({
       document.querySelector(".settings-content")?.scrollTo({ top: 0 });
       return;
     }
-    const card = document.getElementById(heading === null ? cardId(route.item) : guideHeadingId(heading));
-    if (card === null) {
-      // An old link to a heading that a doc renamed still opens the doc, at its top.
+    const reveal = (card: HTMLElement): void => {
+      show();
+      // A card above the target can fill later and push it down, so the scroll holds it in place.
+      const box = document.querySelector(".settings-content");
+      const stopScroll = box === null ? undefined : holdInView(box, card);
       if (heading !== null) {
-        show();
-        document.querySelector(".settings-content")?.scrollTo({ top: 0 });
+        // React does not make the doc's HTML, so the heading has no tabIndex. Give it one, so it can take the focus.
+        // A keyboard then continues from the heading, and a screen reader reads it.
+        card.tabIndex = -1;
+        card.focus({ preventScroll: true });
       }
-      // Otherwise the card comes with the settings: the next run scrolls to it.
+      card.classList.add("flash");
+      const timer = setTimeout(() => card.classList.remove("flash"), 1_600);
+      stopHold.current = () => {
+        clearTimeout(timer);
+        card.classList.remove("flash");
+        stopScroll?.();
+      };
+    };
+    const id = heading === null ? cardId(route.item) : guideHeadingId(heading);
+    const card = document.getElementById(id);
+    if (card !== null) {
+      reveal(card);
       return;
     }
-    show();
-    // A card above the target can fill later and push it down, so the scroll holds it in place.
-    const box = document.querySelector(".settings-content");
-    const stopScroll = box === null ? undefined : holdInView(box, card);
+    // An old link to a heading that a doc renamed still opens the doc, at its top.
     if (heading !== null) {
-      // React does not make the doc's HTML, so the heading has no tabIndex. Give it one, so it can take the focus.
-      // A keyboard then continues from the heading, and a screen reader reads it.
-      card.tabIndex = -1;
-      card.focus({ preventScroll: true });
+      show();
+      document.querySelector(".settings-content")?.scrollTo({ top: 0 });
+      return;
     }
-    card.classList.add("flash");
-    const timer = setTimeout(() => card.classList.remove("flash"), 1_600);
-    stopHold.current = () => {
-      clearTimeout(timer);
-      card.classList.remove("flash");
-      stopScroll?.();
-    };
+    // The card comes with the settings, or later with its own data, such as Widget layout after the widget
+    // list (issue 1002). Wait for it to show, then scroll to it.
+    if (settings === null) return;
+    return waitForElement(id, reveal);
   }, [route, settings]);
 
   const notify = useCallback((note: Note): void => setNotice(note), []);

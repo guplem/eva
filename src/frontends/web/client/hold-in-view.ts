@@ -42,3 +42,26 @@ function layoutOf(box: Element, target: Element): string {
   const top = target.getBoundingClientRect().top - box.getBoundingClientRect().top;
   return `${String(Math.round(top))}/${String(box.scrollHeight)}`;
 }
+
+/**
+ * Calls `found` once the element with `id` shows in the page, such as a card that fills after its own data loads.
+ * The person's own scroll or key press, or the end of the time, stops the wait. Returns a stop function.
+ */
+export function waitForElement(id: string, found: (element: HTMLElement) => void): () => void {
+  const check = (): void => {
+    const element = document.getElementById(id);
+    if (element === null) return;
+    stop();
+    found(element);
+  };
+  const observer = new MutationObserver(check);
+  const timer = setTimeout(() => stop(), holdMs);
+  const stop = (): void => {
+    observer.disconnect();
+    clearTimeout(timer);
+    for (const name of personEvents) window.removeEventListener(name, stop, true);
+  };
+  observer.observe(document.body, { childList: true, subtree: true });
+  for (const name of personEvents) window.addEventListener(name, stop, { capture: true, passive: true });
+  return stop;
+}

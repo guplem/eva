@@ -3722,6 +3722,17 @@ test("Settings: each page lists its cards, and an entry opens its card (issue 82
   await expect(page.getByRole("list", { name: "On this page" })).toHaveCount(0);
 });
 
+test("Settings: a link to a card that loads its own data scrolls to it once it shows (issue 1002)", async ({
+  page,
+}) => {
+  await logIn(page);
+  // Chat names shows only after its rules load, after the first scroll of the page.
+  await page.goto("/#/settings/personalize/chat-names");
+  const card = page.getByRole("region", { name: "Chat names" });
+  await expect(card).toHaveClass(/\bflash\b/);
+  await expect(card).toBeInViewport();
+});
+
 test("Settings: a search result stays at its card while a card above it loads (issue 720)", async ({ page }) => {
   await logIn(page);
   // Eva's rules fill their card after the page opens, above the message box menu.

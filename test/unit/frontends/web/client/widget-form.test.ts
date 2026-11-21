@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { WidgetManifest } from "../../../../../src/core/widgets/widget-contract.ts";
+import { widgetSizes } from "../../../../../src/core/widgets/widget-kinds.ts";
 import {
   checkChoices,
   updateCheckNote,
@@ -12,6 +13,7 @@ import {
   permissionLines,
   promptLine,
   sentValues,
+  sizeLabel,
 } from "../../../../../src/frontends/web/client/widget-form.ts";
 
 const base = { description: "d", why: "w" };
@@ -219,5 +221,18 @@ describe("the update check choices", () => {
     expect(updateCheckNote(3)).toBe("3 updates wait for you.");
     expect(updateCheckNote(1, 2)).toBe("Eva could not check 2 widgets. The list says why. An update waits for you.");
     expect(updateCheckNote(0, 1)).toBe("Eva could not check 1 widget. The list says why.");
+  });
+});
+
+describe("sizeLabel", () => {
+  test("names each size in words, as the guide does", () => {
+    expect(widgetSizes.map(sizeLabel)).toEqual([
+      "Size: Small",
+      "Size: Medium",
+      "Size: Large",
+      "Size: Tall",
+      "Size: Extra large",
+      "Size: Header",
+    ]);
   });
 });

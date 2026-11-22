@@ -308,6 +308,24 @@ describe("the vault template", () => {
     expect(map).toContain("`__xludf.DUMMYFUNCTION`");
   });
 
+  test("a source is judged for rigor before it is filed as a fact, with the highest bar for Health (#1031)", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    // One rule that agents apply with judgment, not a table of bars per folder.
+    expect(map).toContain("**Judge the rigor of a source before you file it as a fact.**");
+    // A score from a test is checked, but the person's own word about their life needs no other source.
+    expect(map).toContain("The person's own word about their life");
+    expect(map).toContain('such as "I have ADHD", still needs one');
+    expect(map).toContain("a validated test, each used as designed");
+    // A weak source stays as a dated record, so a later chat never repeats it as a fact.
+    expect(map).toContain("an online IQ quiz goes to the diary");
+    // The table sends a weak result away from Health too, for an agent that stops at the first yes.
+    expect(map).toContain("A result with a weak source, such as an online quiz → `Life/Diary/`. |");
+    // An agent that reads only the folder rules still finds the rule.
+    expect(files["Life/Health/AGENTS.md"]).toContain("Judge the rigor of a source");
+    expect(files["Life/Diary/AGENTS.md"]).toContain("Judge the rigor of a source");
+  });
+
   test("a period files its records by topic and keeps the work of a short job (#949)", () => {
     const periods = vaultTemplateFiles(answers)["Life/Periods/AGENTS.md"] ?? "";
     expect(periods).toContain("`Documents/<topic>/`");

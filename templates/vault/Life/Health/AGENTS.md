@@ -7,6 +7,7 @@ Body and mind: allergies, diet, sleep, measurements, conditions, test results, g
 - **A test result or a medical report** sits beside the note of its topic, as a small file.
 - **Measurements that change,** such as weight, are dated lines, newest first.
 - **A lasting condition** gets its own note: what it is, since when, treatment, and what to avoid.
+- **This folder needs the strongest source in the vault.** Follow the rule "Judge the rigor of a source" in _Where things go_ of the root `AGENTS.md`.
 
 **Not here:**
 - The process of a surgery or a treatment: appointments, papers, recovery → `Life/Cases/`. When the case closes, add what stays to the note of its topic here.

@@ -6,6 +6,7 @@ What happened on one day and belongs to nothing else: an outing, a dinner, a fir
 - **Append,** never rewrite. Each entry is a short paragraph or a few lines.
 - **The diary is written in the person's own voice,** in the first person. It is the only exception to impersonal notes.
 - **Link what an entry mentions:** the person, the case, the item.
+- **A result with a weak source, such as an online quiz,** is an entry here, on the day of the test. The rule "Judge the rigor of a source" in _Where things go_ of the root `AGENTS.md` says what the entry holds.
 
 **Not here:**
 - A fact that stays true, such as a new allergy or a new address → its folder. The diary can add one line that links to it.

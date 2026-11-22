@@ -85,6 +85,13 @@ describe("the CHANGELOG", () => {
     );
   });
 
+  test("v13 offers the rule that judges the rigor of a source, and moves nothing (#1031)", () => {
+    const v13 = structureChanges.find((change) => change.version === 13);
+    expect(v13?.summary).toStartWith("Eva checks how serious a source is");
+    expect(v13?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(13);
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

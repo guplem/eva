@@ -90,6 +90,12 @@ describe("the CHANGELOG", () => {
     expect(v13?.summary).toStartWith("Eva checks how serious a source is");
     expect(v13?.migrations).toEqual([]);
     expect(newestStructureVersion).toBeGreaterThanOrEqual(13);
+    const changelog = readFileSync(
+      join(import.meta.dir, "../../../../templates/eva-core/skills/vault-upgrade/CHANGELOG.md"),
+      "utf-8",
+    );
+    // The upgrade never judges an old Health note, so it moves none.
+    expect(changelog).toContain("A note that is already in `Life/Health/` stays where it is.");
   });
 
   test("names only migrations that this Eva knows", () => {

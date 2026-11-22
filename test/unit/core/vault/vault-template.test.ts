@@ -319,6 +319,8 @@ describe("the vault template", () => {
     expect(map).toContain("a validated test, each used as designed");
     // A weak source stays as a dated record, so a later chat never repeats it as a fact.
     expect(map).toContain("an online IQ quiz goes to the diary");
+    // The table sends a weak result away from Health too, for an agent that stops at the first yes.
+    expect(map).toContain("A result with a weak source, such as an online quiz → `Life/Diary/`. |");
     // An agent that reads only the folder rules still finds the rule.
     expect(files["Life/Health/AGENTS.md"]).toContain("Judge the rigor of a source");
     expect(files["Life/Diary/AGENTS.md"]).toContain("Judge the rigor of a source");

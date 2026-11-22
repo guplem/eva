@@ -350,13 +350,13 @@ Ask nothing in most vaults. Ask only this, when it applies:
 
 ### What changes, and why
 
-1. **The root `AGENTS.md` gets the rule "Judge the rigor of a source before you file it as a fact".** Add it from `template/` after the rule "When the meaning is unclear, ask" of _Where things go_. Leave the rest of the file as it is. Why: the rules sent a note to a folder by topic only. So a free online personality quiz and a clinical test looked the same, and a later chat could repeat a quiz result as a fact about the person.
+1. **The root `AGENTS.md` gets the rule "Judge the rigor of a source before you file it as a fact".** Add it from `template/` after the rule "When the meaning is unclear, ask" of _Where things go_. Replace the _Not here_ cell of the `Life/Health/` row of the _Their life_ table with the exact text of `template/`: it adds "A result with a weak source, such as an online quiz → `Life/Diary/`." Leave the rest of the file as it is. Why: the rules sent a note to a folder by topic only. So a free online personality quiz and a clinical test looked the same, and a later chat could repeat a quiz result as a fact about the person.
 2. **`Life/Health/AGENTS.md` and `Life/Diary/AGENTS.md` point to the rule.** Add the line "This folder needs the strongest source in the vault" from `template/` after the line "A lasting condition" of `Life/Health/AGENTS.md`. Add the line "A result with a weak source" from `template/` after the line "Link what an entry mentions" of `Life/Diary/AGENTS.md`. Leave the rest of both files as they are. Why: an agent that reads only the folder rules must see it too, and the diary rule "A fact that stays true → its folder" must not send a quiz result back to `Life/Health/`.
 3. **Nothing moves.** A note that is already in `Life/Health/` stays where it is. The upgrade does not judge old notes. Each other file stays as it is.
 
 ### How to detect a vault that has it
 
-The root `AGENTS.md` says "Judge the rigor of a source before you file it as a fact." `Life/Health/AGENTS.md` and `Life/Diary/AGENTS.md` name the rule. Then the upgrade only records the version.
+The root `AGENTS.md` says "Judge the rigor of a source before you file it as a fact." and "A result with a weak source, such as an online quiz → `Life/Diary/`." `Life/Health/AGENTS.md` and `Life/Diary/AGENTS.md` name the rule. Then the upgrade only records the version.
 
 ### What to ask, all in the one message up front
 

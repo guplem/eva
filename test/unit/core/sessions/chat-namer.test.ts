@@ -111,22 +111,37 @@ describe("the chat namer", () => {
 
 describe("the chat name rules in the settings folder (#662, #685)", () => {
   const oldFile = (): string => join(vault, ".eva", "chat-names.md");
+  const recordTheMove = (): void =>
+    writeFileSync(
+      join(vault, ".eva", "migrations.json"),
+      JSON.stringify({ applied: [{ id: "2026-10-30-settings-folder", at: "", version: "1.40.0" }] }),
+    );
 
   test("the rules live in .eva/settings/", () => {
     expect(chatNameRulesPath(vault)).toBe(join(vault, ".eva", "settings", "chat-names.md"));
   });
 
-  test("the namer reads only the new file, also in a vault that still has the old one", () => {
+  test("before the hub moves the files, the namer reads the old file, and after it, only the new one", () => {
     mkdirSync(join(vault, ".eva", "settings"), { recursive: true });
     writeFileSync(oldFile(), "Old rules.\n");
-    expect(namer().namer.rules()).toBe("");
     writeFileSync(chatNameRulesPath(vault), "New rules.\n");
+    expect(namer().namer.rules()).toBe("Old rules.");
+    recordTheMove();
     expect(namer().namer.rules()).toBe("New rules.");
   });
 
-  test("a save writes only the new file", () => {
-    const { namer: rulesNamer } = namer();
-    rulesNamer.saveRules("Lead with an emoji.");
+  test("before the move, a save writes both places, so the move keeps the new rules", () => {
+    mkdirSync(join(vault, ".eva"), { recursive: true });
+    writeFileSync(oldFile(), "Old rules.\n");
+    namer().namer.saveRules("Lead with an emoji.");
+    expect(readFileSync(oldFile(), "utf-8")).toBe("Lead with an emoji.\n");
+    expect(readFileSync(chatNameRulesPath(vault), "utf-8")).toBe("Lead with an emoji.\n");
+  });
+
+  test("after the move, a save writes only the new file", () => {
+    mkdirSync(join(vault, ".eva"), { recursive: true });
+    recordTheMove();
+    namer().namer.saveRules("Lead with an emoji.");
     expect(readFileSync(chatNameRulesPath(vault), "utf-8")).toBe("Lead with an emoji.\n");
     expect(existsSync(oldFile())).toBe(false);
   });

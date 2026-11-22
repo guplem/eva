@@ -4,14 +4,12 @@
  * the port and the program paths, stay in the home's `config.json`. Secrets never go in the vault.
  */
 import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { vaultSettingsFolder } from "./settings-folder.ts";
+import { movedSettingsFile, readablePath, writeSettingsFile, type VaultSettingsFile } from "./settings-folder.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { defaultConfig, parseConfig, saveConfig, type EvaConfig, type HomePaths } from "./home.ts";
 import { withMachineDefaults } from "./machine-defaults.ts";
 import { assertVaultWritable, vaultAhead } from "../migrations/migrations.ts";
-import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 
 /** The settings that the vault holds, as dotted keys. Every other key belongs to the machine. */
 export const sharedSettingKeys: readonly string[] = [
@@ -49,7 +47,11 @@ export interface LoadedSettings {
 }
 
 export function vaultSettingsPath(vaultPath: string): string {
-  return join(vaultSettingsFolder(vaultPath), "settings.json");
+  return vaultSettingsFile(vaultPath).path;
+}
+
+function vaultSettingsFile(vaultPath: string): VaultSettingsFile {
+  return movedSettingsFile(vaultPath, "settings.json");
 }
 
 /** The machine's `config.json`, with the machine's own defaults, and the vault's settings on top. */
@@ -66,10 +68,9 @@ export function loadSettings(paths: HomePaths): LoadedSettings {
  */
 export function withVaultSettings(config: EvaConfig): LoadedSettings {
   if (config.vaultPath === null) return { config, problem: null };
-  const file = vaultSettingsPath(config.vaultPath);
+  const file = readablePath(vaultSettingsFile(config.vaultPath));
   const read = readJsonTolerant(file);
-  if (!read.ok && read.reason === "missing") return { config, problem: unmovedSettingsProblem(config.vaultPath) };
-  if (!read.ok) return { config, problem: `${file} is not valid JSON.` };
+  if (!read.ok) return { config, problem: read.reason === "missing" ? null : `${file} is not valid JSON.` };
   if (!isObject(read.value)) return { config, problem: `${file} does not hold a JSON object.` };
   try {
     const vaultSettings = pickKeys(read.value, [...sharedSettingKeys, ...oldSharedSettingKeys]);
@@ -77,25 +78,6 @@ export function withVaultSettings(config: EvaConfig): LoadedSettings {
   } catch (error) {
     return { config, problem: error instanceof Error ? error.message : String(error) };
   }
-}
-
-/** The settings file from before #662, and the migration that moves it into `.eva/settings/`. */
-const oldSettingsName = "settings.json";
-const settingsFolderMigrationId = "2026-10-30-settings-folder";
-
-/**
- * True while the hub has not moved the old settings file. The move waits while that file is broken
- * or holds a bad value, so the file can stay for a long time (#685).
- */
-function settingsFileUnmoved(vaultPath: string): boolean {
-  if (!existsSync(join(vaultPath, ".eva", oldSettingsName))) return false;
-  return !migrationApplied(vaultMigrationRecordPath(vaultPath), settingsFolderMigrationId);
-}
-
-/** Eva names an old file that waits, so it never hides the person's settings without a word. */
-function unmovedSettingsProblem(vaultPath: string): string | null {
-  if (!settingsFileUnmoved(vaultPath)) return null;
-  return "The hub did not move .eva/settings.json into .eva/settings/, because the file is broken or holds a bad value. So Eva uses the default settings. Ask Eva to fix the file, then restart Eva on the hub.";
 }
 
 /**
@@ -118,12 +100,9 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
   }
   writeFileAtomic(paths.config, toJson(machine));
   if (!ahead) {
-    const file = vaultSettingsPath(vaultPath);
+    const file = vaultSettingsFile(vaultPath);
     const shared = pickKeys(config, sharedSettingKeys);
-    const content = toJson({ ...shared, ...unknownVaultKeys(file) });
-    // The move copies the old file over the new one, so the save goes there too, and repairs it.
-    if (settingsFileUnmoved(vaultPath)) writeFileAtomic(join(vaultPath, ".eva", oldSettingsName), content);
-    writeFileAtomic(file, content);
+    writeSettingsFile(file, toJson({ ...shared, ...unknownVaultKeys(readablePath(file)) }));
   }
 }
 

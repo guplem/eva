@@ -344,7 +344,7 @@ Ask nothing in most vaults. Ask only this, when it applies:
 
 - **Version:** 13
 - **Date:** 2026-11-22
-- **Pull request:** https://github.com/guplem/eva/pull/TBD
+- **Pull request:** https://github.com/guplem/eva/pull/1033
 - **Summary:** Eva checks how serious a source is before she files it as a fact. Your health notes keep only results from a clinic, a doctor, a lab, a measuring device or a validated test. An online quiz goes to your diary as a dated record.
 - **Migrations first:**
 

@@ -20,7 +20,11 @@ type JsonObject = Record<string, unknown>;
 
 /** The files that moved on 2026-10-30, by their name in `.eva/`. */
 const oldFiles: readonly string[] = ["settings.json", "chat-names.md"];
-const settingsFolderId = "2026-10-30-settings-folder";
+/**
+ * The vault migrations that must run first. Before the move, the old files hold the only copy. The
+ * start of the vault settings writes the old place, so after the delete it would bring one back.
+ */
+const runFirst: readonly string[] = ["2026-10-18-start-vault-settings", "2026-10-30-settings-folder"];
 
 /**
  * The settings that the vault held on 2026-10-18. They hold the only keys that the old tier
@@ -44,8 +48,7 @@ export const deleteOldSettingsFiles: Migration = {
   run: (context) => {
     const vaultPath = context.vaultPath;
     if (vaultPath === null) return "done";
-    // Before the move, the old files hold the only copy of the person's settings.
-    if (!settingsFolderDone(vaultPath)) return "later";
+    if (!runFirst.every((id) => recorded(vaultPath, id))) return "later";
     for (const name of oldFiles) {
       const path = join(vaultPath, ".eva", name);
       if (!existsSync(path)) continue;
@@ -86,12 +89,12 @@ function hasSettingsFile(vaultPath: string): boolean {
   );
 }
 
-/** True once the settings folder migration is in the vault's record. A broken record counts as not yet. */
-function settingsFolderDone(vaultPath: string): boolean {
+/** True once the vault's record lists the migration. A broken record counts as not yet. */
+function recorded(vaultPath: string, id: string): boolean {
   const read = readJsonTolerant(join(vaultPath, ".eva", "migrations.json"));
   if (!read.ok || !isObject(read.value)) return false;
   const applied = read.value["applied"];
-  return Array.isArray(applied) && applied.some((entry) => isObject(entry) && entry["id"] === settingsFolderId);
+  return Array.isArray(applied) && applied.some((entry) => isObject(entry) && entry["id"] === id);
 }
 
 function omitKeys(source: JsonObject, keys: readonly string[]): JsonObject {

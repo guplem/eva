@@ -15,7 +15,7 @@ import {
   dropOldSharedKeysFromConfig,
 } from "../../../../src/core/migrations/old-settings-files.ts";
 import { moveSettingsToFolder } from "../../../../src/core/migrations/settings-folder.ts";
-import { moveSharedSettingsToVault } from "../../../../src/core/migrations/settings-moves.ts";
+import { moveSharedSettingsToVault, startVaultSettings } from "../../../../src/core/migrations/settings-moves.ts";
 
 let root: string;
 let paths: HomePaths;
@@ -65,7 +65,8 @@ describe("deleteOldSettingsFiles (#685)", () => {
   test("after the move, it deletes the old files, keeps a copy, and the new files stay", () => {
     write(".eva/settings.json", '{ "timeZone": "Europe/Madrid" }\n');
     write(".eva/chat-names.md", "Lead with an emoji.\n");
-    expect(migrate(moveSettingsToFolder, deleteOldSettingsFiles).applied).toEqual([
+    expect(migrate(startVaultSettings, moveSettingsToFolder, deleteOldSettingsFiles).applied).toEqual([
+      startVaultSettings.id,
       moveSettingsToFolder.id,
       deleteOldSettingsFiles.id,
     ]);
@@ -75,19 +76,27 @@ describe("deleteOldSettingsFiles (#685)", () => {
     expect(read(".eva/settings/chat-names.md")).toBe("Lead with an emoji.\n");
     const backup = migrationBackupPath(paths, deleteOldSettingsFiles, join(".eva", "chat-names.md"));
     expect(readFileSync(backup, "utf-8")).toBe("Lead with an emoji.\n");
+    const settingsBackup = migrationBackupPath(paths, deleteOldSettingsFiles, join(".eva", "settings.json"));
+    expect(readFileSync(settingsBackup, "utf-8")).toBe('{ "timeZone": "Europe/Madrid" }\n');
   });
 
   test("waits while the move has not run, because the old files hold the only copy", () => {
     write(".eva/settings.json", "{ not json");
-    expect(migrate(moveSettingsToFolder, deleteOldSettingsFiles)).toEqual({
-      applied: [],
+    expect(migrate(startVaultSettings, moveSettingsToFolder, deleteOldSettingsFiles)).toEqual({
+      applied: [startVaultSettings.id],
       later: [moveSettingsToFolder.id, deleteOldSettingsFiles.id],
     });
     expect(read(".eva/settings.json")).toBe("{ not json");
   });
 
+  test("waits for the start of the vault settings, which still writes the old place", () => {
+    write(".eva/settings/settings.json", "{}\n");
+    write(".eva/migrations.json", JSON.stringify({ applied: [{ id: moveSettingsToFolder.id, at: "", version: "" }] }));
+    expect(migrate(moveSettingsToFolder, deleteOldSettingsFiles).later).toEqual([deleteOldSettingsFiles.id]);
+  });
+
   test("a vault without the old files has nothing to delete", () => {
-    expect(migrate(moveSettingsToFolder, deleteOldSettingsFiles).applied).toHaveLength(2);
+    expect(migrate(startVaultSettings, moveSettingsToFolder, deleteOldSettingsFiles).applied).toHaveLength(3);
     expect(existsSync(join(vault, ".eva", "settings"))).toBe(false);
   });
 

@@ -11,6 +11,7 @@ import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { defaultConfig, parseConfig, saveConfig, type EvaConfig, type HomePaths } from "./home.ts";
 import { withMachineDefaults } from "./machine-defaults.ts";
 import { assertVaultWritable, vaultAhead } from "../migrations/migrations.ts";
+import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 
 /** The settings that the vault holds, as dotted keys. Every other key belongs to the machine. */
 export const sharedSettingKeys: readonly string[] = [
@@ -78,14 +79,23 @@ export function withVaultSettings(config: EvaConfig): LoadedSettings {
   }
 }
 
+/** The settings file from before #662, and the migration that moves it into `.eva/settings/`. */
+const oldSettingsName = "settings.json";
+const settingsFolderMigrationId = "2026-10-30-settings-folder";
+
 /**
- * The hub moves the settings file from before #662 at start, unless the file is broken. Eva then
- * names the old file, so a broken file never hides the person's settings without a word (#685).
+ * True while the hub has not moved the old settings file. The move waits while that file is broken
+ * or holds a bad value, so the file can stay for a long time (#685).
  */
+function settingsFileUnmoved(vaultPath: string): boolean {
+  if (!existsSync(join(vaultPath, ".eva", oldSettingsName))) return false;
+  return !migrationApplied(vaultMigrationRecordPath(vaultPath), settingsFolderMigrationId);
+}
+
+/** Eva names an old file that waits, so it never hides the person's settings without a word. */
 function unmovedSettingsProblem(vaultPath: string): string | null {
-  const old = join(vaultPath, ".eva", "settings.json");
-  if (!existsSync(old)) return null;
-  return `Eva did not move ${old} into .eva/settings/, so she does not use it. Make it valid JSON, then restart Eva on the hub.`;
+  if (!settingsFileUnmoved(vaultPath)) return null;
+  return "The hub did not move .eva/settings.json into .eva/settings/, because the file is broken or holds a bad value. So Eva uses the default settings. Ask Eva to fix the file, then restart Eva on the hub.";
 }
 
 /**
@@ -110,7 +120,10 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
   if (!ahead) {
     const file = vaultSettingsPath(vaultPath);
     const shared = pickKeys(config, sharedSettingKeys);
-    writeFileAtomic(file, toJson({ ...shared, ...unknownVaultKeys(file) }));
+    const content = toJson({ ...shared, ...unknownVaultKeys(file) });
+    // The move copies the old file over the new one, so the save goes there too, and repairs it.
+    if (settingsFileUnmoved(vaultPath)) writeFileAtomic(join(vaultPath, ".eva", oldSettingsName), content);
+    writeFileAtomic(file, content);
   }
 }
 

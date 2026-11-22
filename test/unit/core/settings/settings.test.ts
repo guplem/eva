@@ -341,9 +341,32 @@ describe("the settings folder of the vault (#662, #685)", () => {
     expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Europe/Madrid");
   });
 
-  test("a deleted new file does not bring back the old values", () => {
+  test("after the move, a deleted new file does not bring back the old values, and names no problem", () => {
     writeFileSync(oldFile(), JSON.stringify({ timeZone: "Asia/Tokyo" }));
-    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBeNull();
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault })).toEqual({
+      config: { ...defaultConfig, vaultPath: vault },
+      problem: null,
+    });
+  });
+
+  test("before the move, an old file that the hub cannot move is a problem, and no old file is none", () => {
+    rmSync(join(vault, ".eva", "migrations.json"));
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).problem).toBeNull();
+    // Valid JSON with a bad value also stops the move.
+    writeFileSync(oldFile(), JSON.stringify({ updates: { frequency: "sometimes" } }));
+    const loaded = withVaultSettings({ ...defaultConfig, vaultPath: vault });
+    expect(loaded.config).toEqual({ ...defaultConfig, vaultPath: vault });
+    expect(loaded.problem).toBe(
+      "The hub did not move .eva/settings.json into .eva/settings/, because the file is broken or holds a bad value. So Eva uses the default settings. Ask Eva to fix the file, then restart Eva on the hub.",
+    );
+  });
+
+  test("before the move, a save also writes the old file, so the move keeps the saved values", () => {
+    rmSync(join(vault, ".eva", "migrations.json"));
+    writeFileSync(oldFile(), "{ not json");
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
+    expect(readJson(oldFile())).toMatchObject({ timeZone: "Europe/Madrid" });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Europe/Madrid" });
   });
 
   test("a save writes only the new file, and keeps the keys that this Eva does not know", () => {

@@ -55,7 +55,7 @@ function read(path: string): string {
 }
 
 describe("deleteOldSettingsFiles (#685)", () => {
-  test("is a dated vault migration in the list", () => {
+  test("is a dated vault migration, and both new migrations are in the list", () => {
     expect(deleteOldSettingsFiles.store).toBe("vault");
     expect(deleteOldSettingsFiles.id).toMatch(/^\d{4}-\d{2}-\d{2}-/);
     expect(migrations).toContain(deleteOldSettingsFiles);
@@ -104,6 +104,16 @@ describe("deleteOldSettingsFiles (#685)", () => {
     const context = { paths, vaultPath: null, write: () => expect.unreachable() };
     expect(deleteOldSettingsFiles.run(context)).toBe("done");
   });
+
+  test("a run after a stop halfway keeps the first copy, which holds the original file", () => {
+    write(".eva/chat-names.md", "Newer rules.\n");
+    const backup = migrationBackupPath(paths, deleteOldSettingsFiles, join(".eva", "chat-names.md"));
+    mkdirSync(join(backup, ".."), { recursive: true });
+    writeFileSync(backup, "Original rules.\n");
+    expect(migrate(startVaultSettings, moveSettingsToFolder, deleteOldSettingsFiles).applied).toHaveLength(3);
+    expect(existsSync(join(vault, ".eva", "chat-names.md"))).toBe(false);
+    expect(readFileSync(backup, "utf-8")).toBe("Original rules.\n");
+  });
 });
 
 describe("dropOldSharedKeysFromConfig (#685)", () => {
@@ -150,5 +160,25 @@ describe("dropOldSharedKeysFromConfig (#685)", () => {
     writeFileSync(paths.config, JSON.stringify({ port: 4000 }));
     expect(migrate(dropOldSharedKeysFromConfig).applied).toHaveLength(1);
     expect(readConfig()).toEqual({ port: 4000 });
+  });
+
+  test.each([["{ not json"], ["[]"]])("waits while config.json is %s, and leaves it as it is", (text) => {
+    writeFileSync(paths.config, text);
+    expect(migrate(dropOldSharedKeysFromConfig).later).toEqual([dropOldSharedKeysFromConfig.id]);
+    expect(readFileSync(paths.config, "utf-8")).toBe(text);
+  });
+
+  test("waits while the vault folder is missing, such as before its first clone", () => {
+    writeFileSync(paths.config, JSON.stringify(oldConfig));
+    rmSync(vault, { recursive: true });
+    expect(migrate(dropOldSharedKeysFromConfig).later).toEqual([dropOldSharedKeysFromConfig.id]);
+    expect(readConfig()).toEqual(oldConfig);
+  });
+
+  test("an instance without a vault keeps its keys in config.json, where they still apply", () => {
+    writeFileSync(paths.config, JSON.stringify(oldConfig));
+    const context = { paths, vaultPath: null, write: () => expect.unreachable() };
+    expect(dropOldSharedKeysFromConfig.run(context)).toBe("done");
+    expect(readConfig()).toEqual(oldConfig);
   });
 });

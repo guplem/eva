@@ -30,23 +30,22 @@ export function movedSettingsFile(vaultPath: string, name: string): VaultSetting
   return { vaultPath, path: join(vaultSettingsFolder(vaultPath), name), oldPath: join(vaultPath, ".eva", name) };
 }
 
-/** True while the old file waits for the move. A deleted new file then never brings back old values. */
-function waitsForMove(file: VaultSettingsFile): boolean {
-  if (!existsSync(file.oldPath)) return false;
-  return !migrationApplied(vaultMigrationRecordPath(file.vaultPath), moveSettingsToFolder.id);
+function moved(file: VaultSettingsFile): boolean {
+  return migrationApplied(vaultMigrationRecordPath(file.vaultPath), moveSettingsToFolder.id);
 }
 
-/** The place to read. */
+/** The place to read. After the move, a deleted new file never brings back old values. */
 export function readablePath(file: VaultSettingsFile): string {
-  return waitsForMove(file) ? file.oldPath : file.path;
+  return !moved(file) && existsSync(file.oldPath) ? file.oldPath : file.path;
 }
 
 /**
- * Writes the new place, and the old place while it waits for the move. The move copies the old
- * file over the new one, so a save that skipped it would be lost. The old place goes first: a stop
- * between the writes keeps the newest value where Eva reads it.
+ * Writes the new place, and the old place until the move. The move copies the old file over the
+ * new one, so a save that skipped it would be lost. The old place is written even when it is
+ * missing: the hub's first start can still create it from its own `config.json`, and then finds it.
+ * The old place goes first: a stop between the writes keeps the newest value where Eva reads it.
  */
 export function writeSettingsFile(file: VaultSettingsFile, content: string): void {
-  if (waitsForMove(file)) writeFileAtomic(file.oldPath, content);
+  if (!moved(file)) writeFileAtomic(file.oldPath, content);
   writeFileAtomic(file.path, content);
 }

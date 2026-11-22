@@ -372,6 +372,14 @@ describe("the settings folder of the vault (#662, #685)", () => {
     expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
   });
 
+  test("before the move, a save writes the old place even when it is missing", () => {
+    // The hub's first start can still write the old file from its config.json, and the move copies it.
+    forgetTheMove();
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
+    expect(readJson(oldFile())).toMatchObject({ timeZone: "Europe/Madrid" });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Europe/Madrid" });
+  });
+
   test("before the move, a broken old file is a problem, and a save repairs it", () => {
     forgetTheMove();
     writeFileSync(oldFile(), "{ not json");

@@ -102,7 +102,7 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
   if (!ahead) {
     const file = vaultSettingsFile(vaultPath);
     const shared = pickKeys(config, sharedSettingKeys);
-    writeSettingsFile(file, toJson({ ...shared, ...unknownVaultKeys(readablePath(file)) }));
+    writeSettingsFile(file, toJson({ ...shared, ...unknownVaultKeys(file) }));
   }
 }
 
@@ -110,10 +110,15 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
  * The top-level keys of the vault's file that this Eva does not know, such as a setting that a
  * newer satellite added. They stay, so an older hub's save never drops them.
  */
-function unknownVaultKeys(file: string): SettingsObject {
-  const read = readJsonTolerant(file);
-  if (!read.ok || !isObject(read.value)) return {};
-  return Object.fromEntries(Object.entries(read.value).filter(([key]) => !(key in defaultConfig)));
+function unknownVaultKeys(file: VaultSettingsFile): SettingsObject {
+  let kept: SettingsObject = {};
+  // Both places: before the move, a newer satellite may have written only one of them.
+  for (const path of [file.oldPath, file.path]) {
+    const read = readJsonTolerant(path);
+    if (!read.ok || !isObject(read.value)) continue;
+    kept = { ...kept, ...Object.fromEntries(Object.entries(read.value).filter(([key]) => !(key in defaultConfig))) };
+  }
+  return kept;
 }
 
 /** A config with a change, such as `{ updates: { frequency: "weekly" } }`, on top. Throws on a bad value. */

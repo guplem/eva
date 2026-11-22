@@ -371,6 +371,7 @@ migration machine 2026-10-18-move-shared-settings-to-vault
 migration machine 2026-10-20-google-access-per-service
 migration machine 2026-10-24-delete-old-clone-folders
 migration machine 2026-10-24-model-tiers-in-config
+migration machine 2026-11-22-drop-old-shared-keys-from-config
 migration vault 2026-10-18-drop-security-settings-from-vault
 migration vault 2026-10-18-start-vault-settings
 migration vault 2026-10-20-move-assistant-personality
@@ -385,6 +386,7 @@ migration vault 2026-11-02-pinned-files
 migration vault 2026-11-03-format-settings
 migration vault 2026-11-04-project-in-use
 migration vault 2026-11-06-project-created-offset
+migration vault 2026-11-22-delete-old-settings-files
 typed cli --check
 typed cli --clone
 typed cli --engine

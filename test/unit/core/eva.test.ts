@@ -3585,7 +3585,8 @@ describe("migrations (#119)", () => {
     expect(instance.role()).toBe("satellite");
     await instance.becomeHub();
     expect(instance.role()).toBe("hub");
-    expect(JSON.parse(readFileSync(join(vault, ".eva", "settings.json"), "utf-8"))).toEqual({});
+    expect(JSON.parse(readFileSync(join(vault, ".eva", "settings", "settings.json"), "utf-8"))).toEqual({});
+    expect(existsSync(join(vault, ".eva", "settings.json"))).toBe(false);
     expect(existsSync(join(vault, ".eva", "migrations.json"))).toBe(true);
     expect(existsSync(join(vault, ".eva", "settings", "text-actions", "Polish.md"))).toBe(true);
   });

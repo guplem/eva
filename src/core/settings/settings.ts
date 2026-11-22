@@ -4,7 +4,8 @@
  * the port and the program paths, stay in the home's `config.json`. Secrets never go in the vault.
  */
 import { existsSync } from "node:fs";
-import { movedSettingsFile, readablePath, writeSettingsFile, type VaultSettingsFile } from "./settings-folder.ts";
+import { join } from "node:path";
+import { vaultSettingsFolder } from "./settings-folder.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { defaultConfig, parseConfig, saveConfig, type EvaConfig, type HomePaths } from "./home.ts";
@@ -38,24 +39,6 @@ export const sharedSettingKeys: readonly string[] = [
  */
 const oldSharedSettingKeys: readonly string[] = ["engines.claudeCode.defaultModel"];
 
-/**
- * The vault's settings with the old keys too. An older hub reads only those, and its next save would
- * put its own defaults back for every machine. Remove them one release after #550.
- */
-function withOldVaultKeys(shared: SettingsObject): SettingsObject {
-  const engines = shared["engines"];
-  if (!isObject(engines) || typeof engines["defaultModel"] !== "string") return shared;
-  const defaultModel = engines["defaultModel"];
-  const claudeCode = isObject(engines["claudeCode"]) ? engines["claudeCode"] : {};
-  const withClaude = { ...engines, claudeCode: { ...claudeCode, defaultModel } };
-  const pi = engines["pi"];
-  const models = isObject(pi) ? pi["models"] : undefined;
-  // A read fills each empty tier from the old entry, so it goes only where every tier names a model.
-  if (!isObject(pi) || !isObject(models) || Object.values(models).some((model) => model === null))
-    return { ...shared, engines: withClaude };
-  return { ...shared, engines: { ...withClaude, pi: { ...pi, models: { ...models, default: models[defaultModel] } } } };
-}
-
 type SettingsObject = Record<string, unknown>;
 
 export interface LoadedSettings {
@@ -65,11 +48,7 @@ export interface LoadedSettings {
 }
 
 export function vaultSettingsPath(vaultPath: string): string {
-  return vaultSettingsFile(vaultPath).path;
-}
-
-function vaultSettingsFile(vaultPath: string): VaultSettingsFile {
-  return movedSettingsFile(vaultPath, "settings.json");
+  return join(vaultSettingsFolder(vaultPath), "settings.json");
 }
 
 /** The machine's `config.json`, with the machine's own defaults, and the vault's settings on top. */
@@ -86,9 +65,10 @@ export function loadSettings(paths: HomePaths): LoadedSettings {
  */
 export function withVaultSettings(config: EvaConfig): LoadedSettings {
   if (config.vaultPath === null) return { config, problem: null };
-  const file = readablePath(vaultSettingsFile(config.vaultPath));
+  const file = vaultSettingsPath(config.vaultPath);
   const read = readJsonTolerant(file);
-  if (!read.ok) return { config, problem: read.reason === "missing" ? null : `${file} is not valid JSON.` };
+  if (!read.ok && read.reason === "missing") return { config, problem: unmovedSettingsProblem(config.vaultPath) };
+  if (!read.ok) return { config, problem: `${file} is not valid JSON.` };
   if (!isObject(read.value)) return { config, problem: `${file} does not hold a JSON object.` };
   try {
     const vaultSettings = pickKeys(read.value, [...sharedSettingKeys, ...oldSharedSettingKeys]);
@@ -96,6 +76,16 @@ export function withVaultSettings(config: EvaConfig): LoadedSettings {
   } catch (error) {
     return { config, problem: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * The hub moves the settings file from before #662 at start, unless the file is broken. Eva then
+ * names the old file, so a broken file never hides the person's settings without a word (#685).
+ */
+function unmovedSettingsProblem(vaultPath: string): string | null {
+  const old = join(vaultPath, ".eva", "settings.json");
+  if (!existsSync(old)) return null;
+  return `Eva did not move ${old} into .eva/settings/, so she does not use it. Make it valid JSON, then restart Eva on the hub.`;
 }
 
 /**
@@ -118,9 +108,9 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
   }
   writeFileAtomic(paths.config, toJson(machine));
   if (!ahead) {
-    const file = vaultSettingsFile(vaultPath);
-    const shared = withOldVaultKeys(pickKeys(config, sharedSettingKeys));
-    writeSettingsFile(file, toJson({ ...shared, ...unknownVaultKeys(file) }));
+    const file = vaultSettingsPath(vaultPath);
+    const shared = pickKeys(config, sharedSettingKeys);
+    writeFileAtomic(file, toJson({ ...shared, ...unknownVaultKeys(file) }));
   }
 }
 
@@ -128,15 +118,10 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
  * The top-level keys of the vault's file that this Eva does not know, such as a setting that a
  * newer satellite added. They stay, so an older hub's save never drops them.
  */
-function unknownVaultKeys(file: VaultSettingsFile): SettingsObject {
-  let kept: SettingsObject = {};
-  // Both places: a newer satellite may have written only one of them.
-  for (const path of [file.oldPath, file.path]) {
-    const read = readJsonTolerant(path);
-    if (!read.ok || !isObject(read.value)) continue;
-    kept = { ...kept, ...Object.fromEntries(Object.entries(read.value).filter(([key]) => !(key in defaultConfig))) };
-  }
-  return kept;
+function unknownVaultKeys(file: string): SettingsObject {
+  const read = readJsonTolerant(file);
+  if (!read.ok || !isObject(read.value)) return {};
+  return Object.fromEntries(Object.entries(read.value).filter(([key]) => !(key in defaultConfig)));
 }
 
 /** A config with a change, such as `{ updates: { frequency: "weekly" } }`, on top. Throws on a bad value. */

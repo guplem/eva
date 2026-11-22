@@ -732,8 +732,8 @@ describe("topics", () => {
   });
 
   test("a model's chat name renames only a topic that Eva opened (issue 50, lesson 125)", async () => {
-    mkdirSync(join(sandbox.root, "vault", ".eva"), { recursive: true });
-    writeFileSync(join(sandbox.root, "vault", ".eva", "chat-names.md"), "Lead with an emoji.\n");
+    mkdirSync(join(sandbox.root, "vault", ".eva", "settings"), { recursive: true });
+    writeFileSync(join(sandbox.root, "vault", ".eva", "settings", "chat-names.md"), "Lead with an emoji.\n");
     createEva((request, turnNumber) =>
       FakeEngine.answer(request, request.mode === "model-call" ? "🇮🇹 Rome trip" : `answer ${String(turnNumber)}`),
     );

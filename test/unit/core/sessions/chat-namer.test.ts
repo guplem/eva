@@ -109,38 +109,31 @@ describe("the chat namer", () => {
   });
 });
 
-describe("the chat name rules in the settings folder (#662)", () => {
+describe("the chat name rules in the settings folder (#662, #685)", () => {
   const oldFile = (): string => join(vault, ".eva", "chat-names.md");
 
   test("the rules live in .eva/settings/", () => {
     expect(chatNameRulesPath(vault)).toBe(join(vault, ".eva", "settings", "chat-names.md"));
   });
 
-  test("before the hub moves the files, the namer reads the old file, which an older Eva still writes", () => {
+  test("the namer reads only the new file, also in a vault that still has the old one", () => {
     mkdirSync(join(vault, ".eva", "settings"), { recursive: true });
     writeFileSync(oldFile(), "Old rules.\n");
+    expect(namer().namer.rules()).toBe("");
     writeFileSync(chatNameRulesPath(vault), "New rules.\n");
-    expect(namer().namer.rules()).toBe("Old rules.");
-    writeFileSync(
-      join(vault, ".eva", "migrations.json"),
-      JSON.stringify({ applied: [{ id: "2026-10-30-settings-folder", at: "", version: "1.40.0" }] }),
-    );
     expect(namer().namer.rules()).toBe("New rules.");
   });
 
-  test("a save writes both places, so an older satellite reads the new rules", () => {
+  test("a save writes only the new file", () => {
     const { namer: rulesNamer } = namer();
     rulesNamer.saveRules("Lead with an emoji.");
     expect(readFileSync(chatNameRulesPath(vault), "utf-8")).toBe("Lead with an emoji.\n");
-    expect(readFileSync(oldFile(), "utf-8")).toBe("Lead with an emoji.\n");
+    expect(existsSync(oldFile())).toBe(false);
   });
 
-  test("an empty save clears the rules in a vault that has only the old file", () => {
-    mkdirSync(join(vault, ".eva"), { recursive: true });
-    writeFileSync(oldFile(), "Old rules.\n");
-    const { namer: rulesNamer } = namer();
-    rulesNamer.saveRules("");
-    expect(rulesNamer.rules()).toBe("");
+  test("an empty save in a vault without rules writes no file", () => {
+    namer().namer.saveRules("");
+    expect(existsSync(chatNameRulesPath(vault))).toBe(false);
   });
 });
 

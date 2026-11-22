@@ -193,7 +193,10 @@ describe("prepareStart with a vault", () => {
     expect(prepared.notes).toContainEqual({
       level: "warn",
       message: "The vault's settings were not used.",
-      fields: { problem: `${oldSettingsPath()} is not valid JSON.` },
+      // The broken old file stops the move, so Eva names it instead of the missing new file (#685).
+      fields: {
+        problem: `Eva did not move ${oldSettingsPath()} into .eva/settings/, so she does not use it. Make it valid JSON, then restart Eva on the hub.`,
+      },
     });
   });
 });

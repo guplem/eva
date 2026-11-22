@@ -1283,16 +1283,19 @@ describe("runSetup", () => {
     });
 
     test("an existing vault keeps its own shared settings", async () => {
-      mkdirSync(join(existingVault, ".eva"), { recursive: true });
-      writeFileSync(join(existingVault, ".eva", "settings.json"), JSON.stringify({ updates: { frequency: "weekly" } }));
+      mkdirSync(join(existingVault, ".eva", "settings"), { recursive: true });
+      writeFileSync(
+        join(existingVault, ".eva", "settings", "settings.json"),
+        JSON.stringify({ updates: { frequency: "weekly" } }),
+      );
       await setup({ vault: existingVault }, { interactive: false });
       expect(loadSettings(homePaths(home)).config.updates.frequency).toBe("weekly");
     });
 
     test("a script's engine answer wins over the engine that a vault brings", async () => {
-      mkdirSync(join(existingVault, ".eva"), { recursive: true });
+      mkdirSync(join(existingVault, ".eva", "settings"), { recursive: true });
       writeFileSync(
-        join(existingVault, ".eva", "settings.json"),
+        join(existingVault, ".eva", "settings", "settings.json"),
         JSON.stringify({ engines: { default: "claude-code" } }),
       );
       await setup({ vault: existingVault, engine: "pi" }, { interactive: false });

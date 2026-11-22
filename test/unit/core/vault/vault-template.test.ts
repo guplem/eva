@@ -315,7 +315,8 @@ describe("the vault template", () => {
     expect(map).toContain("**Judge the rigor of a source before you file it as a fact.**");
     // A score from a test is checked, but the person's own word about their life needs no other source.
     expect(map).toContain("The person's own word about their life");
-    expect(map).toContain("the person used it as designed");
+    expect(map).toContain('such as "I have ADHD", still needs one');
+    expect(map).toContain("a validated test, each used as designed");
     // A weak source stays as a dated record, so a later chat never repeats it as a fact.
     expect(map).toContain("an online IQ quiz goes to the diary");
     // An agent that reads only the folder rules still finds the rule.

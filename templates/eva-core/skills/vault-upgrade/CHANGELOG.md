@@ -339,3 +339,25 @@ The _Their life_ table of the root `AGENTS.md` has no `Life/Habits/` row, and it
 Ask nothing in most vaults. Ask only this, when it applies:
 
 1. When `Life/Habits/AGENTS.md` differs from the v11 text, show the diff, and ask whether to delete it. The default is "keep it".
+
+## v13
+
+- **Version:** 13
+- **Date:** 2026-11-22
+- **Pull request:** https://github.com/guplem/eva/pull/1033
+- **Summary:** Eva checks how serious a source is before she files it as a fact. Your health notes keep only results from a clinic, a doctor, a lab, a measuring device or a validated test. An online quiz goes to your diary as a dated record.
+- **Migrations first:**
+
+### What changes, and why
+
+1. **The root `AGENTS.md` gets the rule "Judge the rigor of a source before you file it as a fact".** Add it from `template/` after the rule "When the meaning is unclear, ask" of _Where things go_. Replace the _Not here_ cell of the `Life/Health/` row of the _Their life_ table with the exact text of `template/`: it adds "A result with a weak source, such as an online quiz → `Life/Diary/`." Leave the rest of the file as it is. Why: the rules sent a note to a folder by topic only. So a free online personality quiz and a clinical test looked the same, and a later chat could repeat a quiz result as a fact about the person.
+2. **`Life/Health/AGENTS.md` and `Life/Diary/AGENTS.md` point to the rule.** Add the line "This folder needs the strongest source in the vault" from `template/` after the line "A lasting condition" of `Life/Health/AGENTS.md`. Add the line "A result with a weak source" from `template/` after the line "Link what an entry mentions" of `Life/Diary/AGENTS.md`. Leave the rest of both files as they are. Why: an agent that reads only the folder rules must see it too, and the diary rule "A fact that stays true → its folder" must not send a quiz result back to `Life/Health/`.
+3. **Nothing moves.** A note that is already in `Life/Health/` stays where it is. The upgrade does not judge old notes. Each other file stays as it is.
+
+### How to detect a vault that has it
+
+The root `AGENTS.md` says "Judge the rigor of a source before you file it as a fact." and "A result with a weak source, such as an online quiz → `Life/Diary/`." `Life/Health/AGENTS.md` and `Life/Diary/AGENTS.md` name the rule. Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. Each line of _Personal rules_ that says where a test result, a quiz or a measurement goes. The default is "keep it as an exception", with the rule that it overrides.

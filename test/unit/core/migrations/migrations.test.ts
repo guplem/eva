@@ -144,7 +144,8 @@ describe("runStartMigrations", () => {
       port: 4000,
       trust: { trustedRepositoryOwners: ["example-owner"] },
     });
-    expect(readJson(join(vault, ".eva", "settings.json"))).toEqual({ voice: { language: "es" } });
+    expect(readJson(join(vault, ".eva", "settings", "settings.json"))).toEqual({ voice: { language: "es" } });
+    expect(existsSync(join(vault, ".eva", "settings.json"))).toBe(false);
     const loaded = loadSettings(paths).config;
     expect(loaded).toMatchObject({ port: 4000, voice: { language: "es" } });
     expect(loaded.trust.trustedRepositoryOwners).toEqual(["example-owner"]);
@@ -153,14 +154,23 @@ describe("runStartMigrations", () => {
   test("on a hub without a vault settings file, the shared keys move at the next start", () => {
     writeFileSync(paths.config, JSON.stringify({ vaultPath: vault, timeZone: "Europe/Madrid" }));
     const first = start();
-    expect(first.machine).toMatchObject({ kind: "done", later: ["2026-10-18-move-shared-settings-to-vault"] });
-    expect(readJson(join(vault, ".eva", "settings.json"))).toEqual({ timeZone: "Europe/Madrid" });
+    expect(first.machine).toMatchObject({
+      kind: "done",
+      later: ["2026-10-18-move-shared-settings-to-vault", "2026-11-22-drop-old-shared-keys-from-config"],
+    });
+    expect(readJson(join(vault, ".eva", "settings", "settings.json"))).toEqual({ timeZone: "Europe/Madrid" });
+    // The vault's old file is gone, so the new machine migration drops the keys (#685).
+    expect(start().machine).toEqual({
+      kind: "done",
+      applied: ["2026-11-22-drop-old-shared-keys-from-config"],
+      later: ["2026-10-18-move-shared-settings-to-vault"],
+    });
+    expect(readJson(paths.config)).toEqual({ vaultPath: vault });
     expect(start().machine).toEqual({
       kind: "done",
       applied: ["2026-10-18-move-shared-settings-to-vault"],
       later: [],
     });
-    expect(readJson(paths.config)).toEqual({ vaultPath: vault });
   });
 
   test("a satellite runs only the machine migrations", () => {

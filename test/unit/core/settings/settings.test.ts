@@ -209,10 +209,8 @@ describe("the model and the effort of new chats (#550)", () => {
     expect(readJson(vaultSettingsPath(vault))).toMatchObject({
       engines: { defaultModel: "opus", defaultEffort: "medium", pi: { models: { haiku: "openai/gpt-5-mini" } } },
     });
-    // Each tier names a model, so an older hub also gets its one pi model: the one of the default tier.
-    expect(readJson(vaultSettingsPath(vault))).toMatchObject({
-      engines: { pi: { models: { default: "openai/gpt-5" } } },
-    });
+    // Every hub knows the tiers now, so a save writes no old single pi model (#685).
+    expect(JSON.stringify(readJson(vaultSettingsPath(vault)))).not.toContain('"default":"openai');
     expect(loadSettings(paths).config.engines.pi.models).toEqual(config.engines.pi.models);
   });
 
@@ -224,15 +222,14 @@ describe("the model and the effort of new chats (#550)", () => {
     expect(loadSettings(paths).config.engines.pi.models).toEqual(models);
   });
 
-  test("a save also writes the old Claude Code key, so an older hub keeps the person's model", () => {
+  test("a save writes only the new model key (#685)", () => {
     saveSettings(paths, {
       ...defaultConfig,
       vaultPath: vault,
       engines: { ...defaultConfig.engines, defaultModel: "sonnet" },
     });
-    expect(readJson(vaultSettingsPath(vault))).toMatchObject({
-      engines: { defaultModel: "sonnet", claudeCode: { defaultModel: "sonnet" } },
-    });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ engines: { defaultModel: "sonnet" } });
+    expect(JSON.stringify(readJson(vaultSettingsPath(vault)))).not.toContain("claudeCode");
     expect(loadSettings(paths).config.engines.defaultModel).toBe("sonnet");
   });
 
@@ -316,7 +313,6 @@ describe("a vault that a newer Eva migrated (#119)", () => {
     saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
     writeNewerRecord();
     const machineBefore = readFileSync(paths.config, "utf-8");
-    const oldBefore = readFileSync(join(vault, ".eva", "settings.json"), "utf-8");
     const vaultBefore = readFileSync(vaultSettingsPath(vault), "utf-8");
     let caught: unknown = null;
     try {
@@ -326,65 +322,71 @@ describe("a vault that a newer Eva migrated (#119)", () => {
     }
     expect(isEvaError(caught, "vault_ahead")).toBe(true);
     expect(readFileSync(paths.config, "utf-8")).toBe(machineBefore);
-    expect(readFileSync(join(vault, ".eva", "settings.json"), "utf-8")).toBe(oldBefore);
     expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toBe(vaultBefore);
   });
 });
 
-describe("the settings folder of the vault (#662)", () => {
+describe("the settings folder of the vault (#662, #685)", () => {
   const oldFile = (): string => join(vault, ".eva", "settings.json");
-
-  function writeBoth(old: string, current: string): void {
-    mkdirSync(join(vault, ".eva", "settings"), { recursive: true });
-    writeFileSync(oldFile(), JSON.stringify({ timeZone: old }));
-    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: current }));
-  }
+  const forgetTheMove = (): void => rmSync(join(vault, ".eva", "migrations.json"));
 
   test("the settings file lives in .eva/settings/", () => {
     expect(vaultSettingsPath(vault)).toBe(join(vault, ".eva", "settings", "settings.json"));
   });
 
-  test("before the hub moves the files, Eva reads the old file, which an older Eva still writes", () => {
-    rmSync(join(vault, ".eva", "migrations.json"));
-    writeBoth("Asia/Tokyo", "Europe/Madrid");
-    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Asia/Tokyo");
-  });
-
-  test("after the move, Eva reads the new file", () => {
-    writeBoth("Asia/Tokyo", "Europe/Madrid");
+  test("after the move, Eva reads only the new file", () => {
+    writeFileSync(oldFile(), JSON.stringify({ timeZone: "Asia/Tokyo" }));
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: "Europe/Madrid" }));
     expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Europe/Madrid");
   });
 
-  test("before the move, a vault with only the new file reads it", () => {
-    rmSync(join(vault, ".eva", "migrations.json"));
-    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: "Asia/Tokyo" }));
+  test("after the move, a deleted new file does not bring back the old values, and names no problem", () => {
+    writeFileSync(oldFile(), JSON.stringify({ timeZone: "Asia/Tokyo" }));
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault })).toEqual({
+      config: { ...defaultConfig, vaultPath: vault },
+      problem: null,
+    });
+  });
+
+  test("after the move, a save writes only the new file, and keeps the keys that this Eva does not know", () => {
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ fromTheFuture: true }));
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Europe/Madrid", fromTheFuture: true });
+    expect(existsSync(oldFile())).toBe(false);
+  });
+
+  test("before the move, Eva reads the old file, which holds the person's values", () => {
+    forgetTheMove();
+    writeFileSync(oldFile(), JSON.stringify({ timeZone: "Asia/Tokyo" }));
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: "Europe/Madrid" }));
     expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBe("Asia/Tokyo");
   });
 
-  test("after the move, a deleted new file does not bring back the old values", () => {
-    writeFileSync(oldFile(), JSON.stringify({ timeZone: "Asia/Tokyo" }));
-    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).config.timeZone).toBeNull();
-  });
-
-  test("a save writes both places, so an older satellite reads the new value", () => {
-    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
-    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Europe/Madrid" });
-    expect(readJson(oldFile())).toMatchObject({ timeZone: "Europe/Madrid" });
-  });
-});
-
-describe("a new satellite on a vault that the hub did not move yet (#662)", () => {
-  test("a save writes both places, and the next read keeps every value", () => {
-    rmSync(join(vault, ".eva", "migrations.json"));
-    writeFileSync(join(vault, ".eva", "settings.json"), JSON.stringify({ voice: { language: "es" } }));
+  test("before the move, a save writes both places and keeps every old value, so the move loses nothing", () => {
+    // Such as a new satellite, or eva setup, on a vault whose hub has not moved the files yet.
+    forgetTheMove();
+    writeFileSync(oldFile(), JSON.stringify({ voice: { language: "es" } }));
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     changeSettings(paths, { timeZone: "Asia/Tokyo" });
-    expect(readJson(join(vault, ".eva", "settings.json"))).toMatchObject({
-      timeZone: "Asia/Tokyo",
-      voice: { language: "es" },
-    });
+    expect(readJson(oldFile())).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
     expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
-    expect(loadSettings(paths).config).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
+  });
+
+  test("before the move, a save writes the old place even when it is missing", () => {
+    // The hub's first start can still write the old file from its config.json, and the move copies it.
+    forgetTheMove();
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
+    expect(readJson(oldFile())).toMatchObject({ timeZone: "Europe/Madrid" });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Europe/Madrid" });
+  });
+
+  test("before the move, a broken old file is a problem, and a save repairs it", () => {
+    forgetTheMove();
+    writeFileSync(oldFile(), "{ not json");
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).problem).toBe(`${oldFile()} is not valid JSON.`);
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
+    expect(readJson(oldFile())).toMatchObject({ timeZone: "Europe/Madrid" });
+    expect(withVaultSettings({ ...defaultConfig, vaultPath: vault }).problem).toBeNull();
   });
 });
 

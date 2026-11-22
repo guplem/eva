@@ -3,10 +3,10 @@
  * (issue 50). Without rules, the chat keeps the first line of its first message, and no model runs.
  * The person can also ask for a new name from the whole chat (#996).
  */
+import { existsSync } from "node:fs";
 import {
   movedSettingsFile,
   readablePath,
-  settingsFileExists,
   writeSettingsFile,
   type VaultSettingsFile,
 } from "../settings/settings-folder.ts";
@@ -78,7 +78,7 @@ export class ChatNamer {
     const rules = text.trim();
     // A vault without rules keeps no empty file, so the autosave has nothing to commit.
     const file = chatNameRulesFile(this.options.vaultPath);
-    if (rules.length === 0 && !settingsFileExists(file)) return;
+    if (rules.length === 0 && !existsSync(readablePath(file))) return;
     writeSettingsFile(file, rules.length === 0 ? "" : `${rules}\n`);
   }
 

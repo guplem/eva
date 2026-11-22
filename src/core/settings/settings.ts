@@ -38,24 +38,6 @@ export const sharedSettingKeys: readonly string[] = [
  */
 const oldSharedSettingKeys: readonly string[] = ["engines.claudeCode.defaultModel"];
 
-/**
- * The vault's settings with the old keys too. An older hub reads only those, and its next save would
- * put its own defaults back for every machine. Remove them one release after #550.
- */
-function withOldVaultKeys(shared: SettingsObject): SettingsObject {
-  const engines = shared["engines"];
-  if (!isObject(engines) || typeof engines["defaultModel"] !== "string") return shared;
-  const defaultModel = engines["defaultModel"];
-  const claudeCode = isObject(engines["claudeCode"]) ? engines["claudeCode"] : {};
-  const withClaude = { ...engines, claudeCode: { ...claudeCode, defaultModel } };
-  const pi = engines["pi"];
-  const models = isObject(pi) ? pi["models"] : undefined;
-  // A read fills each empty tier from the old entry, so it goes only where every tier names a model.
-  if (!isObject(pi) || !isObject(models) || Object.values(models).some((model) => model === null))
-    return { ...shared, engines: withClaude };
-  return { ...shared, engines: { ...withClaude, pi: { ...pi, models: { ...models, default: models[defaultModel] } } } };
-}
-
 type SettingsObject = Record<string, unknown>;
 
 export interface LoadedSettings {
@@ -119,7 +101,7 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
   writeFileAtomic(paths.config, toJson(machine));
   if (!ahead) {
     const file = vaultSettingsFile(vaultPath);
-    const shared = withOldVaultKeys(pickKeys(config, sharedSettingKeys));
+    const shared = pickKeys(config, sharedSettingKeys);
     writeSettingsFile(file, toJson({ ...shared, ...unknownVaultKeys(file) }));
   }
 }
@@ -130,7 +112,7 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
  */
 function unknownVaultKeys(file: VaultSettingsFile): SettingsObject {
   let kept: SettingsObject = {};
-  // Both places: a newer satellite may have written only one of them.
+  // Both places: before the move, a newer satellite may have written only one of them.
   for (const path of [file.oldPath, file.path]) {
     const read = readJsonTolerant(path);
     if (!read.ok || !isObject(read.value)) continue;

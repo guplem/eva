@@ -39,13 +39,15 @@ import {
   faceFixedReason,
   isFixedEntry,
   maxPhoneEntries,
+  moved,
   navChoice,
   onNavChoiceChange,
+  rowOrder,
   saveNavChoice,
   toggled,
   type NavForm,
 } from "./nav-choice.ts";
-import { addressOf, destinations, homeAddress, type NavEntryId } from "./navigation.ts";
+import { addressOf, destinations, homeAddress, type NavEntry, type NavEntryId } from "./navigation.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
 const chatNameRulesLength = 4_000;
@@ -196,6 +198,7 @@ const navForms: readonly { form: NavForm; title: string; hint: string }[] = [
 /**
  * The entries of the main navigation. Each press applies at once, with no Save, as the look does. A press that
  * cannot apply is turned off with `aria-disabled`, so it plays the problem cue and the card says why.
+ * The arrows of an entry that is on change its place (#1034). Buttons work on a phone, where a drag is hard.
  */
 function NavigationCard(): ReactElement {
   const choice = useSyncExternalStore(onNavChoiceChange, navChoice);
@@ -209,11 +212,17 @@ function NavigationCard(): ReactElement {
     setRefusal(null);
     saveNavChoice(result.choice);
   };
+  const move = (form: NavForm, id: NavEntryId, step: -1 | 1): void => {
+    const next = moved(choice, form, id, step);
+    if (next === null) return;
+    setRefusal(null);
+    saveNavChoice(next);
+  };
   return (
     <Card
       item="navigation"
       title="Navigation"
-      description="Choose the pages that the main navigation shows. Each browser keeps its own choice. A narrow window of a computer uses the phone list."
+      description="Choose the pages that the main navigation shows, and their order. Each browser keeps its own choice. A narrow window of a computer uses the phone list."
     >
       <div className="nav-choice-forms">
         {navForms.map(({ form, title, hint }) => (
@@ -230,18 +239,27 @@ function NavigationCard(): ReactElement {
                 blocked
                 onPress={() => setRefusal({ form, reason: faceFixedReason })}
               />
-              {destinations.map((destination) => (
-                <NavChoiceRow
-                  key={destination.id}
-                  icon={destination.icon}
-                  label={destination.label}
-                  address={addressOf(destination.id)}
-                  on={choice[form].includes(destination.id)}
-                  fixed={isFixedEntry(form, destination.id)}
-                  blocked={!toggled(choice, form, destination.id).ok}
-                  onPress={() => press(form, destination.id)}
-                />
-              ))}
+              {rowOrder(choice, form)
+                .map((id) => destinations.find((destination) => destination.id === id))
+                .filter((destination): destination is NavEntry => destination !== undefined)
+                .map((destination) => (
+                  <NavChoiceRow
+                    key={destination.id}
+                    icon={destination.icon}
+                    label={destination.label}
+                    address={addressOf(destination.id)}
+                    on={choice[form].includes(destination.id)}
+                    fixed={isFixedEntry(form, destination.id)}
+                    blocked={!toggled(choice, form, destination.id).ok}
+                    onPress={() => press(form, destination.id)}
+                    move={{
+                      up:
+                        moved(choice, form, destination.id, -1) === null ? null : () => move(form, destination.id, -1),
+                      down:
+                        moved(choice, form, destination.id, 1) === null ? null : () => move(form, destination.id, 1),
+                    }}
+                  />
+                ))}
             </ul>
             {refusal?.form === form && (
               <span className="field-hint nav-choice-refusal" role="status">
@@ -263,6 +281,7 @@ function NavChoiceRow({
   fixed,
   blocked,
   onPress,
+  move,
 }: {
   readonly icon: IconName;
   readonly label: string;
@@ -272,7 +291,12 @@ function NavChoiceRow({
   /** A press cannot change it: it is fixed, or the list is full. */
   readonly blocked: boolean;
   readonly onPress: () => void;
+  /** Null for a row that never moves, such as Eva's face. A null arrow cannot move that way now. */
+  readonly move?: { readonly up: (() => void) | null; readonly down: (() => void) | null };
 }): ReactElement {
+  // An entry that is off keeps an empty space, so the Open links stay in one column. A fixed entry never moves:
+  // it gives the space to its Fixed pill, so its name does not wrap on a phone.
+  const movable = move !== undefined && on && !fixed;
   return (
     <li className="nav-choice-entry">
       <Icon name={icon} />
@@ -281,6 +305,32 @@ function NavChoiceRow({
       <a className="nav-choice-open" href={address} aria-label={`Open ${label}`}>
         Open
       </a>
+      {!fixed && (
+        <span className="nav-choice-move">
+          {movable && (
+            <>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`Move ${label} up`}
+                disabled={move.up === null}
+                onClick={move.up ?? undefined}
+              >
+                <Icon name="up" />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`Move ${label} down`}
+                disabled={move.down === null}
+                onClick={move.down ?? undefined}
+              >
+                <Icon name="down" />
+              </button>
+            </>
+          )}
+        </span>
+      )}
       <button
         type="button"
         className="toggle"

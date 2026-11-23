@@ -22,6 +22,12 @@ async function logIn(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
 }
 
+/** Opens the Schedules page. A phone has no Schedules tab by default (#1034), so it opens the address there. */
+async function openSchedules(page: Page): Promise<void> {
+  if (test.info().project.name === "phone") await page.goto("/#/schedules");
+  else await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Schedules" }).click();
+}
+
 /** Opens the list where a button hides it, such as on a phone. */
 async function openList(page: Page): Promise<void> {
   const menu = page.getByRole("button", { name: "Show the list" });
@@ -1736,7 +1742,7 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
     // The sheet does not cover the tab bar: the person can still go to another page.
     await page
       .getByRole("navigation", { name: "Main" })
-      .getByRole("button", { name: /^Schedules/ })
+      .getByRole("button", { name: /^Cases/ })
       .click({ trial: true, timeout: 2_000 });
   } else {
     await expect(page.locator(".msg:has(.approval-card) .mk.e-firm")).toBeVisible();
@@ -1889,7 +1895,7 @@ test("a request of another chat gets a notice that opens it, and an answer from 
   const notice = page.getByRole("region", { name: "Chats that wait for you" });
   await expect(notice).toContainText(`Eva needs your permission in ${title}`);
   // The notice also shows on another page.
-  await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Cases" }).click();
   await notice.getByRole("button", { name: `Open ${title}` }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   await expect(card).toContainText("gh issue create");
@@ -3882,9 +3888,11 @@ test("Schedules page: open it from the main navigation, add a schedule, see its 
 }, testInfo) => {
   const id = `walk-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await logIn(page);
-  await page.getByRole("button", { name: "Schedules" }).click();
+  await openSchedules(page);
   await expect(page.getByRole("navigation", { name: "Schedules" }).getByRole("heading")).toHaveText("Schedules");
-  await expect(page.getByRole("button", { name: "Schedules", exact: true })).toHaveAttribute("aria-current", "page");
+  if (test.info().project.name !== "phone") {
+    await expect(page.getByRole("button", { name: "Schedules", exact: true })).toHaveAttribute("aria-current", "page");
+  }
   // No sidebar shows here, so the list button would do nothing.
   await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
   // The form opens in a dialog, so it does not fill the page.
@@ -3961,7 +3969,7 @@ test("Schedules page: a past run opens its chat", async ({ page }, testInfo) => 
 test("Schedules page: add a schedule that repeats every few days", async ({ page }, testInfo) => {
   const id = `water-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await logIn(page);
-  await page.getByRole("button", { name: "Schedules" }).click();
+  await openSchedules(page);
   await page.getByRole("button", { name: "Add schedule" }).click();
   const form = page.getByRole("dialog", { name: "Add schedule" });
   await form.getByLabel(/^Id/).fill(id);
@@ -3984,7 +3992,7 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
 test("Schedules page: add a schedule with a last day (#687)", async ({ page }, testInfo) => {
   const id = `watch-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await logIn(page);
-  await page.getByRole("button", { name: "Schedules" }).click();
+  await openSchedules(page);
   await page.getByRole("button", { name: "Add schedule" }).click();
   const form = page.getByRole("dialog", { name: "Add schedule" });
   await form.getByLabel(/^Id/).fill(id);
@@ -4004,7 +4012,7 @@ test("Schedules page: add a schedule with a last day (#687)", async ({ page }, t
 test("Schedules page: add a schedule that runs once (#822)", async ({ page }, testInfo) => {
   const id = `bank-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await logIn(page);
-  await page.getByRole("button", { name: "Schedules" }).click();
+  await openSchedules(page);
   await page.getByRole("button", { name: "Add schedule" }).click();
   const form = page.getByRole("dialog", { name: "Add schedule" });
   await form.getByLabel(/^Id/).fill(id);
@@ -4038,7 +4046,7 @@ test("Schedules page: edit a schedule on its own page, and keep the keys that th
       enabled: false,
     },
   });
-  await page.getByRole("button", { name: "Schedules" }).click();
+  await openSchedules(page);
   const row = page.getByRole("listitem", { name });
   await row.getByRole("button").click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -4116,7 +4124,7 @@ test("the main navigation opens each destination at its own address, and the bac
   await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   for (const [name, address] of [
     ["Projects", "#/projects"],
-    ["Schedules", "#/schedules"],
+    ["Cases", "#/cases"],
     ["Chats", "#/chats"],
     // The visor opens the home page, the New chat page of Chats (#761).
     ["Eva: ", "#/chats/new"],
@@ -4139,13 +4147,10 @@ test("the main navigation opens each destination at its own address, and the bac
   await page.goBack();
   await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   await page.goBack();
-  // Like Projects, the Schedules page names its list, not the page.
-  await expect(
-    page.getByRole("navigation", { name: "Schedules" }).getByRole("heading", { name: "Schedules" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Cases" })).toBeVisible();
   // A reload keeps the destination.
   await page.reload();
-  await expect(nav.getByRole("button", { name: "Schedules" })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: "Cases" })).toHaveAttribute("aria-current", "page");
   // A link from Telegram or web push still opens the notification center, which has no button of its own.
   await page.goto("/#/notifications");
   await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
@@ -4197,10 +4202,10 @@ test("the rail shows the nine destinations, with Settings at its foot (#911)", a
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.locator(".nav-button .nav-label")).toHaveText([
     "Chats",
-    "Projects",
     "Files",
-    "Schedules",
+    "Projects",
     "Cases",
+    "Schedules",
     "People",
     "Inventory",
     "Pets",
@@ -6607,14 +6612,14 @@ test.describe("on a phone", () => {
     const tabs = page.getByRole("navigation", { name: "Main" });
     const box = await tabs.boundingBox();
     expect((box?.y ?? 0) + (box?.height ?? 0)).toBe(page.viewportSize()?.height);
-    await expect(tabs.getByText("Schedules", { exact: true })).toBeVisible();
+    await expect(tabs.getByText("Cases", { exact: true })).toBeVisible();
     // By default the tab bar has no Settings tab. The visor is the last tab, with the label "Eva" (#566, #911).
     await expect(tabs.getByRole("button", { name: /^Settings/ })).toHaveCount(0);
     const visor = tabs.locator(".main-nav-visor");
     await expect(visor).toContainText("Eva");
     const visorBox = await visor.boundingBox();
-    const schedulesBox = await tabs.getByRole("button", { name: "Schedules" }).boundingBox();
-    expect(visorBox?.x ?? 0).toBeGreaterThan(schedulesBox?.x ?? Infinity);
+    const casesBox = await tabs.getByRole("button", { name: "Cases" }).boundingBox();
+    expect(visorBox?.x ?? 0).toBeGreaterThan(casesBox?.x ?? Infinity);
     await openSettings(page);
     await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
     await expect(page.getByRole("region", { name: "Setup" })).toBeVisible();
@@ -6639,11 +6644,11 @@ test.describe("on a phone", () => {
     await tabs.locator(".main-nav-visor").click();
     const gear = page.locator(".home-buttons").getByRole("button", { name: /^Settings: \d+ to set up$/ });
     await expect(gear.locator(".nav-badge")).toBeVisible();
-    // Cases has no tab by default, but its address still opens it.
+    // People has no tab by default, but its address still opens it.
     await tabs.getByRole("button", { name: projectsButton }).click();
-    await page.goto("/#/cases");
-    await expect(page.getByRole("heading", { level: 1, name: "Cases" })).toBeVisible();
-    await expect(tabs.getByRole("button", { name: "Cases" })).toHaveCount(0);
+    await page.goto("/#/people");
+    await expect(page.getByRole("heading", { level: 1, name: "People" })).toBeVisible();
+    await expect(tabs.getByRole("button", { name: "People" })).toHaveCount(0);
     await expect(tabs.locator('[aria-current="page"]')).toHaveCount(0);
     await page.goBack();
     await expect(tabs.getByRole("button", { name: projectsButton })).toHaveAttribute("aria-current", "page");
@@ -6661,15 +6666,15 @@ test.describe("on a phone", () => {
       .getByRole("region", { name: "Navigation", exact: true })
       .getByRole("group", { name: "On a phone" });
     // The four default tabs fill the bar: a fifth is refused, with the reason.
-    const cases = phone.getByRole("switch", { name: "Cases" });
-    await expect(cases).toHaveAttribute("aria-disabled", "true");
+    const schedules = phone.getByRole("switch", { name: "Schedules" });
+    await expect(schedules).toHaveAttribute("aria-disabled", "true");
     // Playwright waits for a control with aria-disabled to turn on, so the press must force it.
-    await cases.scrollIntoViewIfNeeded();
-    await cases.click({ force: true });
+    await schedules.scrollIntoViewIfNeeded();
+    await schedules.click({ force: true });
     await expect(phone.getByRole("status")).toContainText("at most 4 entries");
-    await expect(cases).toHaveAttribute("aria-checked", "false");
-    await expect(tabs.getByRole("button", { name: "Cases" })).toHaveCount(0);
-    for (const name of ["Files", "Schedules"]) await phone.getByRole("switch", { name }).click();
+    await expect(schedules).toHaveAttribute("aria-checked", "false");
+    await expect(tabs.getByRole("button", { name: "Schedules" })).toHaveCount(0);
+    for (const name of ["Files", "Cases"]) await phone.getByRole("switch", { name }).click();
     await expect(tabs.locator(".nav-button")).toHaveCount(2);
     // Chats, Projects and the visor share the whole width.
     const bar = await tabs.boundingBox();
@@ -6689,6 +6694,28 @@ test.describe("on a phone", () => {
     );
   });
 
+  test("the arrows of the Navigation card change the order of the tabs, and a reload keeps it (#1034)", async ({
+    page,
+  }) => {
+    await logIn(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    await page.goto("/#/settings/personalize");
+    const phone = page
+      .getByRole("region", { name: "Navigation", exact: true })
+      .getByRole("group", { name: "On a phone" });
+    const labels = tabs.locator(".nav-button .nav-label");
+    await expect(labels).toHaveText(["Chats", "Files", "Projects", "Cases"]);
+    // The first entry cannot move up, and the last cannot move down.
+    await expect(phone.getByRole("button", { name: "Move Chats up" })).toBeDisabled();
+    await expect(phone.getByRole("button", { name: "Move Cases down" })).toBeDisabled();
+    await phone.getByRole("button", { name: "Move Cases up" }).click();
+    await expect(labels).toHaveText(["Chats", "Files", "Cases", "Projects"]);
+    // An entry that is off has no arrows.
+    await expect(phone.getByRole("button", { name: "Move Schedules up" })).toHaveCount(0);
+    await page.reload();
+    await expect(labels).toHaveText(["Chats", "Files", "Cases", "Projects"]);
+  });
+
   test("this browser keeps the phone choice after a reload (#911)", async ({ page }) => {
     await logIn(page);
     const tabs = page.getByRole("navigation", { name: "Main" });
@@ -6703,7 +6730,7 @@ test.describe("on a phone", () => {
     await page.reload();
     await expect(tabs.getByRole("button", { name: /^Settings/ })).toBeVisible();
     await expect(tabs.getByRole("button", { name: "Files" })).toHaveCount(0);
-    await expect(tabs.getByRole("button", { name: "Schedules" })).toBeVisible();
+    await expect(tabs.getByRole("button", { name: "Cases" })).toBeVisible();
     await expect(phone.getByRole("switch", { name: "Files" })).toHaveAttribute("aria-checked", "false");
     await expect(phone.getByRole("switch", { name: "Settings" })).toHaveAttribute("aria-checked", "true");
   });
@@ -6738,7 +6765,7 @@ test.describe("on a phone", () => {
       for (const box of boxes) expect(Math.abs(box.width - first.width), `${count} tabs: equal widths`).toBeLessThan(2);
     };
     // The default list holds four entries. Eva's face alone fills the bar first.
-    for (const name of ["Chats", "Projects", "Files", "Schedules"]) await toggle(name);
+    for (const name of ["Chats", "Files", "Projects", "Cases"]) await toggle(name);
     await expectSpread(1);
     await toggle("Chats");
     await expectSpread(2);
@@ -7190,9 +7217,9 @@ async function expectNoSymbolMarks(page: Page): Promise<void> {
 test("each page shows line icons, never an emoji or a symbol mark", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await expect(page.getByRole("button", { name: "Schedules" }).locator("svg.icon")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cases" }).locator("svg.icon")).toBeVisible();
   await expectNoSymbolMarks(page);
-  await page.getByRole("button", { name: "Schedules" }).click();
+  await openSchedules(page);
   // Like Projects, the Schedules page names its list, not the page.
   await expect(
     page.getByRole("navigation", { name: "Schedules" }).getByRole("heading", { name: "Schedules" }),

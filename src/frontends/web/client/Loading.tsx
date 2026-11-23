@@ -5,7 +5,7 @@
  */
 import { Fragment, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
-import { navChoice, shownDestinations } from "./nav-choice.ts";
+import { navChoice, navParts } from "./nav-choice.ts";
 import { notificationCenter, type Destination, type NavEntry } from "./navigation.ts";
 import { settingsSections } from "./settings-routes.ts";
 import { inUseRow, statusRow } from "./project-format.ts";
@@ -663,7 +663,7 @@ function MainNavSkeleton({
   readonly current: Destination;
   readonly isPhone: boolean;
 }): ReactElement {
-  const shown = shownDestinations(navChoice(), isPhone);
+  const parts = navParts(navChoice(), isPhone);
   const button = (destination: NavEntry): ReactElement => (
     <button
       key={destination.id}
@@ -692,8 +692,8 @@ function MainNavSkeleton({
           <Ghost>Eva</Ghost>
         </span>
       </button>
-      <div className="main-nav-scroll">{shown.filter((destination) => destination.id !== "settings").map(button)}</div>
-      {shown.filter((destination) => destination.id === "settings").map(button)}
+      <div className="main-nav-scroll">{parts.scroll.map(button)}</div>
+      {parts.foot.map(button)}
     </div>
   );
 }

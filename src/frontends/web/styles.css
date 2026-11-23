@@ -2547,6 +2547,25 @@ button.link-button {
   font-size: var(--text-sm);
 }
 
+/* Two arrows, or an empty space of the same width, so the Open links stay in one column. */
+.nav-choice-move {
+  display: inline-flex;
+  flex: none;
+  width: 72px;
+}
+
+/* A phone row has no room for two arrows of 44 px. 36 px is still well above the smallest target that WCAG allows. */
+.nav-choice-move > .icon-button {
+  width: 36px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+}
+
+.nav-choice-move > .icon-button:disabled {
+  opacity: 0.3;
+}
+
 .nav-choice-refusal {
   color: var(--warn-ink);
 }

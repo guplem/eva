@@ -44,6 +44,7 @@ const designIcons: readonly IconName[] = [
   "move",
   "resize",
   "down",
+  "up",
   "restart",
   "palette",
   "trash",

@@ -149,6 +149,7 @@ const drawings = {
     </>
   ),
   down: <path d="M6 9l6 6 6-6" />,
+  up: <path d="M6 15l6-6 6 6" />,
   restart: (
     <>
       <path d="M4 12a8 8 0 1 0 2.3-5.6" />

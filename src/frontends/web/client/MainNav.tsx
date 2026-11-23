@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, useSyncExternalStore, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
-import { navChoice, onNavChoiceChange, shownDestinations } from "./nav-choice.ts";
+import { navChoice, navParts, onNavChoiceChange } from "./nav-choice.ts";
 import {
   bellName,
   homeGearName,
@@ -53,11 +53,11 @@ interface MainNavProps extends NavVisorInput {
 
 export function MainNav(props: MainNavProps): ReactElement {
   const { current, onOpen, approvals, setupMissing, signal } = props;
-  const shown = shownDestinations(useSyncExternalStore(onNavChoiceChange, navChoice), props.isPhone);
+  const parts = navParts(useSyncExternalStore(onNavChoiceChange, navChoice), props.isPhone);
   const shownButton = currentNavButton(
     current,
     props.homeShown,
-    shown.map((destination) => destination.id),
+    [...parts.scroll, ...parts.foot].map((destination) => destination.id),
   );
   const visor = navVisorState(props);
   const offline = !props.isConnected;
@@ -142,8 +142,8 @@ export function MainNav(props: MainNavProps): ReactElement {
           Eva
         </span>
       </button>
-      <div className="main-nav-scroll">{shown.filter((destination) => destination.id !== "settings").map(button)}</div>
-      {shown.filter((destination) => destination.id === "settings").map(button)}
+      <div className="main-nav-scroll">{parts.scroll.map(button)}</div>
+      {parts.foot.map(button)}
     </nav>
   );
 }
